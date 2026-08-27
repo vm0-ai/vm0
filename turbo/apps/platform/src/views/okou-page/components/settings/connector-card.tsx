@@ -385,40 +385,26 @@ export function ConnectorAccountSummaryText({
   }
   if (status === "unavailable") {
     return (
-      <span className={className}>
-        {t(($) => {
-          return $.connectors.accounts.accountsUnavailable;
-        })}
+      <span className={cn("flex min-w-0 items-center gap-2", className)}>
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+        <span className="min-w-0 truncate text-amber-600 dark:text-amber-400">
+          {t(($) => {
+            return $.connectors.accounts.accountsUnavailable;
+          })}
+        </span>
       </span>
     );
   }
   const accountCount = summary?.accountCount ?? 0;
-  let summaryText =
-    accountCount === 0
-      ? t(($) => {
-          return $.connectors.accounts.noAccounts;
-        })
-      : accountCount === 1
-        ? t(
-            ($) => {
-              return $.connectors.accounts.summaryOne;
-            },
-            { value: accountCount },
-          )
-        : t(
-            ($) => {
-              return $.connectors.accounts.summaryMany;
-            },
-            { value: accountCount },
-          );
-  if (summary?.defaultConnection) {
-    summaryText = t(
-      ($) => {
-        return $.connectors.accounts.summaryWithDefault;
-      },
-      {
-        summary: summaryText,
-        account: connectorAccountEffectiveLabel(
+  let summaryText = (() => {
+    if (accountCount === 0) {
+      return t(($) => {
+        return $.connectors.accounts.noAccounts;
+      });
+    }
+    if (accountCount === 1) {
+      if (summary?.defaultConnection) {
+        return connectorAccountEffectiveLabel(
           summary.defaultConnection,
           t(
             ($) => {
@@ -426,19 +412,56 @@ export function ConnectorAccountSummaryText({
             },
             { id: summary.defaultConnection.id.slice(0, 8) },
           ),
-        ),
+        );
+      }
+      return t(
+        ($) => {
+          return $.connectors.accounts.summaryOne;
+        },
+        { value: accountCount },
+      );
+    }
+    return t(
+      ($) => {
+        return $.connectors.accounts.summaryMany;
       },
+      { value: accountCount },
     );
-  }
+  })();
   if (summary && summary.attentionCount > 0) {
     summaryText = t(
       ($) => {
         return $.connectors.accounts.summaryWithAttention;
       },
-      { summary: summaryText, value: summary.attentionCount },
+      { total: accountCount, value: summary.attentionCount },
     );
   }
-  return <span className={className}>{summaryText}</span>;
+  return (
+    <span className={cn("flex min-w-0 items-center gap-2", className)}>
+      <span
+        className={cn(
+          "h-1.5 w-1.5 shrink-0 rounded-full",
+          accountCount === 0 && "bg-muted-foreground/50",
+          accountCount > 0 && summary?.attentionCount === 0 && "bg-emerald-500",
+          accountCount > 0 &&
+            summary !== undefined &&
+            summary.attentionCount > 0 &&
+            "bg-amber-500",
+        )}
+      />
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          summary !== undefined &&
+            summary.attentionCount > 0 &&
+            "text-amber-600 dark:text-amber-400",
+        )}
+        title={summaryText}
+      >
+        {summaryText}
+      </span>
+    </span>
+  );
 }
 
 function AccountsConnectorCard({
@@ -452,38 +475,62 @@ function AccountsConnectorCard({
 }: AccountsConnectorCardProps) {
   const { t } = useTranslation();
   const accountCount = summary?.accountCount ?? 0;
-  if (summaryStatus === "ready" && accountCount === 0) {
-    return (
-      <CatalogConnectorCard
-        variant="catalog"
-        connector={connector}
-        busy={busy}
-        connect={connect}
-      />
-    );
-  }
-  const canManage = summaryStatus === "ready" && accountCount > 0 && !busy;
+  const showDescription = summaryStatus === "ready" && accountCount === 0;
+  const canManage = summaryStatus === "ready" && accountCount > 0;
+  const canConnect = summaryStatus === "ready" && accountCount === 0;
+  const canActivate = !busy && (canManage || canConnect);
+  const activate = () => {
+    if (!canActivate) {
+      return;
+    }
+    if (canManage) {
+      onManage();
+      return;
+    }
+    if (canConnect) {
+      runConnect(connector, connect, busy);
+    }
+  };
   return (
     <div
       className={cn(
         "zero-card relative flex flex-col text-left",
-        canManage && "cursor-pointer",
+        showDescription && "overflow-hidden",
+        canActivate && "cursor-pointer",
       )}
     >
-      {canManage ? (
+      {canManage || canConnect ? (
         <button
           type="button"
-          aria-label={t(
-            ($) => {
-              return $.connectors.accounts.managerTitle;
-            },
-            { connector: connector.label },
+          aria-label={
+            canManage
+              ? t(
+                  ($) => {
+                    return $.connectors.accounts.managerTitle;
+                  },
+                  { connector: connector.label },
+                )
+              : t(
+                  ($) => {
+                    return $.connectors.card.connectAria;
+                  },
+                  { connector: connector.label },
+                )
+          }
+          className={cn(
+            "absolute inset-0 z-10 rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            busy ? "cursor-default" : "cursor-pointer",
           )}
-          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          onClick={onManage}
+          disabled={busy}
+          onClick={activate}
         />
       ) : null}
-      <div className="flex h-14 items-center gap-2.5 px-5">
+      <div
+        className={cn(
+          "flex items-center gap-2.5 px-5",
+          showDescription ? "pb-1 pt-4" : "h-14",
+        )}
+      >
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           <ConnectorIcon icon={connector.icon} size={20} />
         </span>
@@ -493,37 +540,41 @@ function AccountsConnectorCard({
         >
           {connector.label}
         </span>
-      </div>
-      <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
-        {summaryStatus === "ready" ? (
-          <span className="flex min-w-0 flex-1 items-center gap-2 truncate text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-            <span>
-              {t(($) => {
-                return $.connectors.accounts.connected;
-              })}
-            </span>
-            {accountCount > 1 ? (
-              <span>
-                ·{" "}
-                {t(
-                  ($) => {
-                    return $.connectors.accounts.summaryMany;
-                  },
-                  { value: accountCount },
-                )}
-              </span>
-            ) : null}
+        {accountCount === 0 && summaryStatus === "ready" ? (
+          <span
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+              !busy && "border border-border/60",
+            )}
+            aria-hidden="true"
+          >
+            {busy ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Plus size={14} />
+            )}
           </span>
-        ) : (
+        ) : null}
+      </div>
+      {showDescription ? (
+        <div className="px-5 pb-4 pt-1">
+          <div
+            data-testid="connector-help-text"
+            className="line-clamp-2 text-xs text-muted-foreground"
+          >
+            {connector.description}
+          </div>
+        </div>
+      ) : (
+        <div className="flex h-11 items-center gap-2 border-t border-border/50 pl-5 pr-2">
           <ConnectorAccountSummaryText
             summary={summary}
             status={summaryStatus}
-            className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+            className="min-w-0 flex-1 text-xs text-muted-foreground"
           />
-        )}
-        <div className="relative z-20">{manageAccess}</div>
-      </div>
+          <div className="relative z-20 min-w-0 max-w-full">{manageAccess}</div>
+        </div>
+      )}
     </div>
   );
 }

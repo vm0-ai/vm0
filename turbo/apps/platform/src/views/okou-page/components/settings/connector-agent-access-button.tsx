@@ -1,25 +1,32 @@
 import { useTranslation } from "react-i18next";
+import type { LoadableState } from "ccstate-react";
 import { Button } from "@okouai/ui";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 
-const AGENT_NAME_LIMIT = 2;
-const AGENT_NAME_MAX_CHARS = 12;
+export type ConnectorAgentAccessStatus = "loading" | "unavailable" | "ready";
 
-function truncateAgentName(name: string): string {
-  if (name.length <= AGENT_NAME_MAX_CHARS) {
-    return name;
+export function connectorAgentAccessStatus(
+  state: LoadableState,
+): ConnectorAgentAccessStatus {
+  if (state === "hasData") {
+    return "ready";
   }
-  return `${name.slice(0, AGENT_NAME_MAX_CHARS - 1)}…`;
+  if (state === "hasError") {
+    return "unavailable";
+  }
+  return "loading";
 }
 
 export function ConnectorAgentAccessButton({
   agents,
-  loading,
+  status,
+  allowAccessIncrease,
   connectorLabel,
   onClick,
 }: {
   readonly agents: readonly AgentResponse[];
-  readonly loading: boolean;
+  readonly status: ConnectorAgentAccessStatus;
+  readonly allowAccessIncrease: boolean;
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
@@ -27,20 +34,19 @@ export function ConnectorAgentAccessButton({
   const unnamed = t(($) => {
     return $.connectors.catalog.unnamedAgent;
   });
-  const agentNames = agents.map((agent) => {
-    return agent.displayName ?? unnamed;
-  });
-  const visibleNames = agentNames.slice(0, AGENT_NAME_LIMIT).map((name) => {
-    return truncateAgentName(name);
-  });
-  const overflowCount = agents.length - visibleNames.length;
+  const singleAgentName =
+    agents.length === 1 ? (agents[0]?.displayName ?? unnamed) : undefined;
+
+  if (status === "ready" && agents.length === 0 && !allowAccessIncrease) {
+    return null;
+  }
 
   return (
     <Button
       type="button"
       variant="quiet"
       size="xs"
-      className="min-w-0 gap-0 px-2 text-xs"
+      className="min-w-0 max-w-full gap-0 px-2 text-xs"
       aria-label={t(
         ($) => {
           return $.connectors.catalog.access.manage;
@@ -48,11 +54,18 @@ export function ConnectorAgentAccessButton({
         { connector: connectorLabel },
       )}
       data-testid="connector-card-agent-access"
-      title={agentNames.length > 0 ? agentNames.join(", ") : undefined}
+      title={singleAgentName}
+      disabled={status !== "ready"}
       onClick={onClick}
     >
-      {loading ? (
+      {status === "loading" ? (
         <span className="block h-3 w-20 animate-pulse rounded bg-muted" />
+      ) : status === "unavailable" ? (
+        <span className="truncate text-muted-foreground">
+          {t(($) => {
+            return $.connectors.catalog.access.unavailable;
+          })}
+        </span>
       ) : agents.length === 0 ? (
         <span
           className="underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
@@ -74,13 +87,15 @@ export function ConnectorAgentAccessButton({
             className="min-w-0 truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
             data-testid="connector-card-access-names"
           >
-            {visibleNames.join(", ")}
+            {agents.length === 1
+              ? singleAgentName
+              : t(
+                  ($) => {
+                    return $.connectors.catalog.access.summaryMany;
+                  },
+                  { value: agents.length },
+                )}
           </span>
-          {overflowCount > 0 ? (
-            <span className="shrink-0 text-muted-foreground/70">
-              {"\u00a0"}+{overflowCount}
-            </span>
-          ) : null}
         </>
       )}
     </Button>

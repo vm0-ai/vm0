@@ -47,7 +47,10 @@ import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.ts
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
 import { CustomConnectorAccessManagementDialog } from "./connector-access-management-dialog.tsx";
-import { ConnectorAgentAccessButton } from "./connector-agent-access-button.tsx";
+import {
+  ConnectorAgentAccessButton,
+  connectorAgentAccessStatus,
+} from "./connector-agent-access-button.tsx";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 import { customConnectorTarget } from "./custom-connector-display.ts";
@@ -106,14 +109,11 @@ function CustomConnectorAgentAccess({
       ? (authorizedAgentsByIdLoadable.data.get(connector.id) ?? [])
       : [];
 
-  if (!allowAccessIncrease && authorizedAgents.length === 0) {
-    return null;
-  }
-
   return (
     <ConnectorAgentAccessButton
       agents={authorizedAgents}
-      loading={authorizedAgentsByIdLoadable.state === "loading"}
+      status={connectorAgentAccessStatus(authorizedAgentsByIdLoadable.state)}
+      allowAccessIncrease={allowAccessIncrease}
       connectorLabel={connector.displayName}
       onClick={onManageAccess}
     />
@@ -217,8 +217,6 @@ function CustomConnectorCardFooter({
   accountSummaryStatus,
   accountManagement,
 }: Omit<CustomConnectorCardContentProps, "canConnect">) {
-  const { t } = useTranslation();
-  const accountCount = accountSummary?.accountCount ?? 0;
   return (
     <div
       className={`flex h-11 items-center justify-between gap-2 border-t border-border/50 pl-5 ${
@@ -226,40 +224,16 @@ function CustomConnectorCardFooter({
       }`}
     >
       {accountManagement ? (
-        accountSummaryStatus === "ready" ? (
-          <div className="min-w-0 flex-1">
-            <CustomConnectorConnectionStatus connected={accountCount > 0} />
-            {accountCount > 1 ? (
-              <span className="ml-2 text-xs text-muted-foreground">
-                ·{" "}
-                {t(
-                  ($) => {
-                    return $.connectors.accounts.summaryMany;
-                  },
-                  { value: accountCount },
-                )}
-              </span>
-            ) : null}
-          </div>
-        ) : (
-          <ConnectorAccountSummaryText
-            summary={accountSummary}
-            status={accountSummaryStatus}
-            className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
-          />
-        )
+        <ConnectorAccountSummaryText
+          summary={accountSummary}
+          status={accountSummaryStatus}
+          className="min-w-0 flex-1 text-xs text-muted-foreground"
+        />
       ) : (
         <CustomConnectorConnectionStatus connected={connector.connected} />
       )}
-      {connector.connected || (accountManagement && accountCount > 0) ? (
-        <div
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-          }}
-        >
+      {connector.connected || accountManagement ? (
+        <div className="relative z-20 min-w-0 max-w-full">
           <CustomConnectorAgentAccess
             connector={connector}
             allowAccessIncrease={allowAccessIncrease}
@@ -294,36 +268,25 @@ function CustomConnectorActivationCard({
   readonly children: ReactNode;
 }) {
   const { t } = useTranslation();
-  const activate = () => {
-    if (canActivate) {
-      onActivate();
-    }
-  };
   return (
     <div
-      role={canActivate ? "button" : undefined}
-      tabIndex={canActivate ? 0 : undefined}
-      aria-label={
-        canActivate
-          ? t(
-              ($) => {
-                return managesAccounts
-                  ? $.connectors.accounts.managerTitle
-                  : $.connectors.card.connectAria;
-              },
-              { connector: connectorLabel },
-            )
-          : undefined
-      }
-      className={`zero-card flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
-      onClick={activate}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          activate();
-        }
-      }}
+      className={`zero-card relative flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
     >
+      {canActivate ? (
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return managesAccounts
+                ? $.connectors.accounts.managerTitle
+                : $.connectors.card.connectAria;
+            },
+            { connector: connectorLabel },
+          )}
+          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={onActivate}
+        />
+      ) : null}
       {children}
     </div>
   );
@@ -358,7 +321,7 @@ function CustomConnectorActions({
   }
   const directOAuth = connectsDirectlyWithOAuth(connector);
   return (
-    <div className="absolute bottom-2 right-2">
+    <div className="absolute bottom-2 right-2 z-20">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -448,7 +411,9 @@ function CustomConnectorRow({
     <CustomConnectorCardContent
       connector={connector}
       hasActions={hasActions}
-      allowAccessIncrease={mcpActionsEnabled}
+      allowAccessIncrease={
+        mcpActionsEnabled && (!accountManagement || accountCount > 0)
+      }
       onManageAccess={onManageAccess}
       accountSummary={accountSummary}
       accountSummaryStatus={accountSummaryStatus}
@@ -489,6 +454,21 @@ function CustomConnectorDialogs({
 }) {
   const dialog = useGet(customConnectorDialog$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
+  const accountManagement =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
+  const accountSummariesLoadable = useLoadable(
+    connectorAccountSummaryByTarget$,
+  );
+  const accessAccountSummary =
+    dialog.kind === "access" && accountSummariesLoadable.state === "hasData"
+      ? accountSummariesLoadable.data.get(`custom:${dialog.connector.id}`)
+      : undefined;
+  const allowAccessIncrease =
+    dialog.kind === "access" &&
+    (dialog.connector.kind === "http" || mcpEnabled) &&
+    (!accountManagement ||
+      (accountSummariesLoadable.state === "hasData" &&
+        (accessAccountSummary?.accountCount ?? 0) > 0));
   return (
     <>
       {dialog.kind === "create" && <CustomConnectorCreateDialog />}
@@ -501,7 +481,7 @@ function CustomConnectorDialogs({
       {dialog.kind === "access" && (
         <CustomConnectorAccessManagementDialog
           connector={dialog.connector}
-          allowAccessIncrease={dialog.connector.kind === "http" || mcpEnabled}
+          allowAccessIncrease={allowAccessIncrease}
           onClose={closeDialog}
         />
       )}

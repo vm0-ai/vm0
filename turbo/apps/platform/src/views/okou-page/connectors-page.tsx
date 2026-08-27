@@ -77,7 +77,10 @@ import {
 } from "./components/settings/launch-connector-connect.ts";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
-import { ConnectorAgentAccessButton } from "./components/settings/connector-agent-access-button.tsx";
+import {
+  ConnectorAgentAccessButton,
+  connectorAgentAccessStatus,
+} from "./components/settings/connector-agent-access-button.tsx";
 import {
   closeConnectorAccessManagement$,
   connectorAuthorizedAgentsBySlug$,
@@ -735,10 +738,12 @@ function connectorAgentName(agent: AgentResponse): string {
 function ConnectorAccessButton({
   connectorSlug,
   connectorLabel,
+  allowAccessIncrease,
   onClick,
 }: {
   readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
+  readonly allowAccessIncrease: boolean;
   readonly onClick: () => void;
 }) {
   const agentsBySlugLoadable = useLastLoadable(
@@ -748,11 +753,11 @@ function ConnectorAccessButton({
     agentsBySlugLoadable.state === "hasData"
       ? (agentsBySlugLoadable.data.get(connectorSlug) ?? [])
       : [];
-  const loading = agentsBySlugLoadable.state === "loading";
   return (
     <ConnectorAgentAccessButton
       agents={agents}
-      loading={loading}
+      status={connectorAgentAccessStatus(agentsBySlugLoadable.state)}
+      allowAccessIncrease={allowAccessIncrease}
       connectorLabel={connectorLabel}
       onClick={onClick}
     />
@@ -936,6 +941,11 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
     <ConnectorAccessButton
       connectorSlug={props.connector.slug}
       connectorLabel={props.connector.label}
+      allowAccessIncrease={
+        !props.accountManagement ||
+        (props.accountSummaryStatus === "ready" &&
+          (props.accountSummary?.accountCount ?? 0) > 0)
+      }
       onClick={props.onManageAccess}
     />
   );
@@ -978,6 +988,41 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
   );
 }
 
+function ManagedConnectorAccessDialog() {
+  const connectorSlug = useGet(managedConnectorAccessSlug$);
+  const close = useSet(closeConnectorAccessManagement$);
+  const catalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
+  const accountSummariesLoadable = useLoadable(
+    connectorAccountSummaryByTarget$,
+  );
+  const accountManagement =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
+  if (!connectorSlug || catalogItemsLoadable.state !== "hasData") {
+    return null;
+  }
+  const connectorLabel = connectorLabelForSlug(
+    catalogItemsLoadable.data,
+    connectorSlug,
+  );
+  if (!connectorLabel) {
+    return null;
+  }
+  const accountSummary =
+    accountSummariesLoadable.state === "hasData"
+      ? accountSummariesLoadable.data.get(`builtin:${connectorSlug}`)
+      : undefined;
+  return (
+    <ConnectorAccessManagementDialog
+      connectorSlug={connectorSlug}
+      connectorLabel={connectorLabel}
+      allowAccessIncrease={
+        !accountManagement || (accountSummary?.accountCount ?? 0) > 0
+      }
+      onClose={close}
+    />
+  );
+}
+
 export function ConnectorsPage() {
   const { t } = useTranslation();
   const relatedCatalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
@@ -1013,9 +1058,7 @@ export function ConnectorsPage() {
   const setSelected = useSet(setSelectedConnectorSlug$);
   const scopeReviewConnectorSlug = useGet(scopeReviewConnectorSlug$);
   const setScopeReviewConnectorSlug = useSet(setScopeReviewConnectorSlug$);
-  const managedConnectorSlug = useGet(managedConnectorAccessSlug$);
   const setManagedConnectorSlug = useSet(setManagedConnectorAccessSlug$);
-  const closeManagedConnector = useSet(closeConnectorAccessManagement$);
   const optimisticConnected = useGet(justConnectedSlugs$);
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
@@ -1060,10 +1103,6 @@ export function ConnectorsPage() {
         return connector.slug === selectedConnectorSlug;
       })
     : undefined;
-  const managedConnectorLabel = connectorLabelForSlug(
-    allConnectors,
-    managedConnectorSlug,
-  );
   const disconnecting = disconnectLoadable.state === "loading";
 
   const connectHandlers = (
@@ -1409,13 +1448,7 @@ export function ConnectorsPage() {
       )}
       <ConnectorAccountNameDialog />
 
-      {managedConnectorSlug && managedConnectorLabel && (
-        <ConnectorAccessManagementDialog
-          connectorSlug={managedConnectorSlug}
-          connectorLabel={managedConnectorLabel}
-          onClose={closeManagedConnector}
-        />
-      )}
+      <ManagedConnectorAccessDialog />
     </div>
   );
 }
