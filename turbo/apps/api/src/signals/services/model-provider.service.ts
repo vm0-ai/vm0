@@ -17,6 +17,7 @@ import {
   type ModelProviderWriteType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { upsertBuiltInNoSecretModelProviderIdentity } from "@okouai/db/operations/model-provider-built-in-identity";
 import { modelProviders as modelProvidersTable } from "@okouai/db/schema/model-provider";
 import { modelProviderConnections } from "@okouai/db/schema/model-provider-gateway";
 import { secrets } from "@okouai/db/schema/secret";
@@ -1046,6 +1047,9 @@ export const upsertOrgNoSecretModelProvider$ = command(
     if (builtIn) {
       return builtIn;
     }
+    if (args.type !== "built-in") {
+      return badRequestMessage(`Provider "${args.type}" requires a secret`);
+    }
 
     const writeDb = set(writeDb$);
 
@@ -1055,53 +1059,24 @@ export const upsertOrgNoSecretModelProvider$ = command(
       selectedModel: args.selectedModel,
     });
 
-    const [existingProvider] = await writeDb
-      .select({ id: modelProvidersTable.id })
-      .from(modelProvidersTable)
-      .where(
-        and(
-          eq(modelProvidersTable.orgId, args.orgId),
-          eq(modelProvidersTable.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProvidersTable.type, args.type),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    const [provider] = await writeDb
-      .insert(modelProvidersTable)
-      .values({
-        type: args.type,
-        userId: ORG_SENTINEL_USER_ID,
-        isDefault: false,
-        selectedModel: args.selectedModel ?? null,
+    const result = await upsertBuiltInNoSecretModelProviderIdentity(
+      writeDb,
+      {
         orgId: args.orgId,
-      })
-      .onConflictDoUpdate({
-        target: [
-          modelProvidersTable.orgId,
-          modelProvidersTable.userId,
-          modelProvidersTable.type,
-        ],
-        set: {
-          selectedModel: args.selectedModel ?? null,
-          updatedAt: nowDate(),
-        },
-      })
-      .returning();
+        selectedModel: args.selectedModel ?? null,
+        updatedAt: nowDate(),
+      },
+      signal,
+    );
     signal.throwIfAborted();
-
-    if (!provider) {
-      throw new Error("Expected no-secret model provider upsert to return row");
-    }
 
     return {
       provider: toModelProviderInfoFromRow({
-        provider,
+        provider: result.provider,
         userId: ORG_SENTINEL_USER_ID,
         type: args.type,
       }),
-      created: !existingProvider,
+      created: result.created,
     };
   },
 );

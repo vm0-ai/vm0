@@ -132,7 +132,7 @@ run_real_claude_steer() {
     run jq -e --arg model "$REAL_CLAUDE_MODEL" '
         any(.policies[]?;
             .model == $model and
-            .defaultProviderType == "vm0" and
+            .defaultProviderType == "built-in" and
             .credentialScope == "org" and
             .modelProviderId == null
         )
@@ -158,7 +158,7 @@ run_real_claude_steer() {
     run jq -e '
         any(.policies[]?;
             .model == "deepseek-v4-flash" and
-            .defaultProviderType == "vm0" and
+            .defaultProviderType == "built-in" and
             .credentialScope == "org" and
             .modelProviderId == null
         )

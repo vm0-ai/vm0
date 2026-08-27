@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { modelProviderWriteTypeSchema } from "@okouai/api-contracts/contracts/model-providers";
+import { upsertBuiltInNoSecretModelProviderIdentity } from "@okouai/db/operations/model-provider-built-in-identity";
+import { drizzle } from "drizzle-orm/node-postgres";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 
@@ -16,12 +20,29 @@ interface ProviderRowSnapshot {
   readonly type: string | null;
 }
 
+interface NewAppNoSecretProviderRow {
+  readonly id: string;
+  readonly selectedModel: string | null;
+  readonly type: string;
+}
+
 function databaseErrorMessage(error: unknown): string {
   if (typeof error !== "object" || error === null || !("message" in error)) {
     return "";
   }
   const message = Reflect.get(error, "message");
   return typeof message === "string" ? message : "";
+}
+
+function databaseErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  const code = Reflect.get(error, "code");
+  if (typeof code === "string") {
+    return code;
+  }
+  return databaseErrorCode(Reflect.get(error, "cause"));
 }
 
 function createDatabaseUrl(baseUrl: string, databaseName: string): string {
@@ -98,6 +119,40 @@ function expectedCanonicalRows(
   });
 }
 
+async function executeNewAppNoSecretProviderWrite(
+  db: NodePgDatabase<Record<string, never>>,
+  args: {
+    readonly orgId: string;
+    readonly proposedId: string;
+    readonly requestType: "vm0" | "built-in";
+    readonly selectedModel: string;
+  },
+): Promise<{
+  readonly created: boolean;
+  readonly provider: NewAppNoSecretProviderRow;
+}> {
+  const canonicalType = modelProviderWriteTypeSchema.parse(args.requestType);
+  assert.equal(canonicalType, "built-in");
+  const result = await upsertBuiltInNoSecretModelProviderIdentity(
+    db,
+    {
+      orgId: args.orgId,
+      selectedModel: args.selectedModel,
+      updatedAt: new Date("2026-08-27T00:00:00.000Z"),
+      proposedId: args.proposedId,
+    },
+    new AbortController().signal,
+  );
+  return {
+    created: result.created,
+    provider: {
+      id: result.provider.id,
+      selectedModel: result.provider.selectedModel,
+      type: result.provider.type,
+    },
+  };
+}
+
 async function assertNoLegacyValues(client: Client): Promise<void> {
   const result = await client.query<{ count: number }>(`
     SELECT (
@@ -115,6 +170,7 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
   const databaseUrl = await createDatabase(baseUrl, databaseName);
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
+  const db = drizzle(client);
 
   const ids = {
     session: "00000000-0000-4000-8000-000000299120",
@@ -132,6 +188,13 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
     vm0Provider: "00000000-0000-4000-8000-000000299132",
     canonicalProvider: "00000000-0000-4000-8000-000000299133",
     historicalProvider: "00000000-0000-4000-8000-000000299134",
+    preBridgeProvider: "00000000-0000-4000-8000-000000299135",
+    preBridgeLockProbeProvider: "00000000-0000-4000-8000-000000299144",
+    preBridgeProposedProvider: "00000000-0000-4000-8000-000000299136",
+    preBridgeSecondProposedProvider: "00000000-0000-4000-8000-000000299137",
+    preBridgeLegacyProposedProvider: "00000000-0000-4000-8000-000000299138",
+    preBridgeNewProvider: "00000000-0000-4000-8000-000000299139",
+    postBridgeProposedProvider: "00000000-0000-4000-8000-000000299140",
   } as const;
 
   try {
@@ -206,10 +269,179 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
         ) VALUES
           ($1, 'provider-migration-org-legacy', '__org__', 'vm0', 'gpt-5.6-sol', 'legacy-plan'),
           ($2, 'provider-migration-org-canonical', '__org__', 'built-in', 'gpt-5.6-luna', 'canonical-plan'),
-          ($3, 'provider-migration-org-historical', '__org__', 'VM0', 'gpt-5.5', 'historical-plan')
+          ($3, 'provider-migration-org-historical', '__org__', 'VM0', 'gpt-5.5', 'historical-plan'),
+          ($4, 'provider-migration-org-prebridge-upsert', '__org__', 'vm0', 'gpt-5.6-sol', 'preserved-plan')
       `,
-      [ids.vm0Provider, ids.canonicalProvider, ids.historicalProvider],
+      [
+        ids.vm0Provider,
+        ids.canonicalProvider,
+        ids.historicalProvider,
+        ids.preBridgeProvider,
+      ],
     );
+
+    const lockClient = new Client({ connectionString: databaseUrl });
+    await lockClient.connect();
+    try {
+      await lockClient.query("BEGIN");
+      await lockClient.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+        "model_provider_state:provider-migration-org-prebridge-upsert:__org__:built-in",
+      ]);
+      await client.query("SET lock_timeout = '100ms'");
+      try {
+        await assert.rejects(
+          executeNewAppNoSecretProviderWrite(db, {
+            orgId: "provider-migration-org-prebridge-upsert",
+            proposedId: ids.preBridgeLockProbeProvider,
+            requestType: "vm0",
+            selectedModel: "gpt-5.6-terra",
+          }),
+          (error: unknown) => {
+            return databaseErrorCode(error) === "55P03";
+          },
+        );
+      } finally {
+        await client.query("RESET lock_timeout");
+        await lockClient.query("ROLLBACK");
+      }
+    } finally {
+      await lockClient.end();
+    }
+
+    const afterCanonicalLockProbe = await client.query<{
+      id: string;
+      selectedModel: string;
+      type: string;
+    }>(`
+      SELECT
+        "id"::text AS "id", "selected_model" AS "selectedModel", "type"
+      FROM "model_providers"
+      WHERE "org_id" = 'provider-migration-org-prebridge-upsert'
+        AND "user_id" = '__org__'
+        AND "type" IN ('vm0', 'built-in')
+    `);
+    assert.deepEqual(afterCanonicalLockProbe.rows, [
+      {
+        id: ids.preBridgeProvider,
+        selectedModel: "gpt-5.6-sol",
+        type: "vm0",
+      },
+    ]);
+
+    const preBridgeUpsert = await executeNewAppNoSecretProviderWrite(db, {
+      orgId: "provider-migration-org-prebridge-upsert",
+      proposedId: ids.preBridgeProposedProvider,
+      requestType: "built-in",
+      selectedModel: "gpt-5.6-terra",
+    });
+    assert.deepEqual(preBridgeUpsert, {
+      created: false,
+      provider: {
+        id: ids.preBridgeProvider,
+        selectedModel: "gpt-5.6-terra",
+        type: "built-in",
+      },
+    });
+    const repeatedPreBridgeUpsert = await executeNewAppNoSecretProviderWrite(
+      db,
+      {
+        orgId: "provider-migration-org-prebridge-upsert",
+        proposedId: ids.preBridgeSecondProposedProvider,
+        requestType: "built-in",
+        selectedModel: "gpt-5.6-luna",
+      },
+    );
+    assert.deepEqual(repeatedPreBridgeUpsert, {
+      created: false,
+      provider: {
+        id: ids.preBridgeProvider,
+        selectedModel: "gpt-5.6-luna",
+        type: "built-in",
+      },
+    });
+    const legacyLockClient = new Client({ connectionString: databaseUrl });
+    await legacyLockClient.connect();
+    let legacyRequestPreBridgeUpsert:
+      | Awaited<ReturnType<typeof executeNewAppNoSecretProviderWrite>>
+      | undefined;
+    try {
+      await legacyLockClient.query("BEGIN");
+      await legacyLockClient.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1))`,
+        [
+          "model_provider_state:provider-migration-org-prebridge-upsert:__org__:vm0",
+        ],
+      );
+      await client.query("SET lock_timeout = '100ms'");
+      try {
+        legacyRequestPreBridgeUpsert = await executeNewAppNoSecretProviderWrite(
+          db,
+          {
+            orgId: "provider-migration-org-prebridge-upsert",
+            proposedId: ids.preBridgeLegacyProposedProvider,
+            requestType: "vm0",
+            selectedModel: "gpt-5.6-sol",
+          },
+        );
+      } finally {
+        await client.query("RESET lock_timeout");
+        await legacyLockClient.query("ROLLBACK");
+      }
+    } finally {
+      await legacyLockClient.end();
+    }
+    assert.deepEqual(legacyRequestPreBridgeUpsert, {
+      created: false,
+      provider: {
+        id: ids.preBridgeProvider,
+        selectedModel: "gpt-5.6-sol",
+        type: "built-in",
+      },
+    });
+    const createdPreBridgeUpsert = await executeNewAppNoSecretProviderWrite(
+      db,
+      {
+        orgId: "provider-migration-org-prebridge-new",
+        proposedId: ids.preBridgeNewProvider,
+        requestType: "built-in",
+        selectedModel: "gpt-5.6-luna",
+      },
+    );
+    assert.deepEqual(createdPreBridgeUpsert, {
+      created: true,
+      provider: {
+        id: ids.preBridgeNewProvider,
+        selectedModel: "gpt-5.6-luna",
+        type: "built-in",
+      },
+    });
+    const preBridgeIdentity = await client.query<{
+      count: number;
+      id: string;
+      planType: string;
+      selectedModel: string;
+      type: string;
+    }>(`
+      SELECT
+        count(*) OVER ()::integer AS "count",
+        "id"::text AS "id",
+        "plan_type" AS "planType",
+        "selected_model" AS "selectedModel",
+        "type"
+      FROM "model_providers"
+      WHERE "org_id" = 'provider-migration-org-prebridge-upsert'
+        AND "user_id" = '__org__'
+        AND "type" IN ('vm0', 'built-in')
+    `);
+    assert.deepEqual(preBridgeIdentity.rows, [
+      {
+        count: 1,
+        id: ids.preBridgeProvider,
+        planType: "preserved-plan",
+        selectedModel: "gpt-5.6-sol",
+        type: "built-in",
+      },
+    ]);
 
     const surfaces = [
       ["agent_runs", "model_provider"],
@@ -230,7 +462,7 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
         (SELECT count(*) FROM "model_providers" WHERE "type" = 'built-in')
       )::integer AS "count"
     `);
-    assert.deepEqual(oldSchemaCanonicalRows.rows, [{ count: 4 }]);
+    assert.deepEqual(oldSchemaCanonicalRows.rows, [{ count: 6 }]);
 
     await applyThrough(client, CANONICAL_SCHEMA_MIGRATION);
     await assertNoLegacyValues(client);
@@ -241,6 +473,22 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
       const afterRows = await snapshotRows(client, tableName, columnName);
       assert.deepEqual(afterRows, expectedCanonicalRows(beforeRows));
     }
+
+    const postBridgeUpsert = await executeNewAppNoSecretProviderWrite(db, {
+      orgId: "provider-migration-org-prebridge-upsert",
+      proposedId: ids.postBridgeProposedProvider,
+      requestType: "vm0",
+      selectedModel: "gpt-5.6-sol",
+    });
+    assert.deepEqual(postBridgeUpsert, {
+      created: false,
+      provider: {
+        id: ids.preBridgeProvider,
+        selectedModel: "gpt-5.6-sol",
+        type: "built-in",
+      },
+    });
+    await assertNoLegacyValues(client);
 
     const firstCanonicalState = new Map<
       string,
@@ -270,6 +518,15 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
       "   ✅ new-app/before-bridge built-in SQL is accepted by the expanded schema",
     );
     console.log(
+      "   ✅ canonical, repeated, and legacy-request app upserts keep one pre-bridge row, its original id, and accurate created state",
+    );
+    console.log(
+      "   ✅ legacy-shaped app writes take only the canonical built-in provider-state advisory lock",
+    );
+    console.log(
+      "   ✅ the same new-app SQL remains one-row/id-preserving with the database bridge installed",
+    );
+    console.log(
       "   ✅ 5,001-row input crosses the 5,000-row bounded backfill boundary",
     );
     console.log(
@@ -291,6 +548,7 @@ async function validateCollisionAndDriftFailures(
   const databaseUrl = await createDatabase(baseUrl, databaseName);
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
+  const db = drizzle(client);
   const legacyId = "00000000-0000-4000-8000-000000299141";
   const canonicalId = "00000000-0000-4000-8000-000000299142";
 
@@ -316,6 +574,32 @@ async function validateCollisionAndDriftFailures(
       WHERE "org_id" = 'provider-collision-org'
       ORDER BY "id"
     `);
+
+    await assert.rejects(
+      executeNewAppNoSecretProviderWrite(db, {
+        orgId: "provider-collision-org",
+        proposedId: "00000000-0000-4000-8000-000000299143",
+        requestType: "built-in",
+        selectedModel: "gpt-5.6-terra",
+      }),
+      (error: unknown) => {
+        return databaseErrorMessage(error).includes(
+          "refusing to merge or delete either row",
+        );
+      },
+    );
+    const afterApplicationFailure = await client.query<{
+      id: string;
+      selectedModel: string;
+      type: string;
+    }>(`
+      SELECT
+        "id"::text AS "id", "selected_model" AS "selectedModel", "type"
+      FROM "model_providers"
+      WHERE "org_id" = 'provider-collision-org'
+      ORDER BY "id"
+    `);
+    assert.deepEqual(afterApplicationFailure.rows, before.rows);
 
     await assert.rejects(
       applyThrough(client, BRIDGE_MIGRATION),
@@ -356,7 +640,7 @@ async function validateCollisionAndDriftFailures(
     );
 
     console.log(
-      "   ✅ alias-pair collisions abort without merging, deleting, or changing either row",
+      "   ✅ app and migration alias-pair collisions abort without merging, deleting, or changing either row",
     );
     console.log(
       "   ✅ provider-identity unique-index drift aborts before any backfill\n",
