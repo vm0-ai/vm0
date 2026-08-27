@@ -24,7 +24,10 @@ pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
     let server = MockServer::start();
     unsafe {
         crate::common::clear_guest_agent_bootstrap_env_for_test();
-        std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            server.base_url(),
+        );
         std::env::set_var(
             guest_contracts::env::CANONICAL_API_TOKEN_ENV,
             "test-token-abc123",

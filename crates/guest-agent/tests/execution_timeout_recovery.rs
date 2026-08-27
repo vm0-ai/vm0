@@ -88,7 +88,10 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
             )
             .env("SHELL", "/bin/sh")
             .env("HOME", &home)
-            .env(guest_contracts::env::API_URL_ENV, server.base_url())
+            .env(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            )
             .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
             .env(guest_contracts::env::RUN_ID_ENV, RUN_ID)
             .env(

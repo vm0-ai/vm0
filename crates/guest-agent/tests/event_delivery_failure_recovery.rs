@@ -143,7 +143,10 @@ async fn run_event_failure_case(
             )
             .env("SHELL", "/bin/sh")
             .env("HOME", &home)
-            .env(guest_contracts::env::API_URL_ENV, server.base_url())
+            .env(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            )
             .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
             .env(guest_contracts::env::RUN_ID_ENV, run_id)
             .env(

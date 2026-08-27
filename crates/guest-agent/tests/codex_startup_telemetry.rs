@@ -142,7 +142,10 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             args.run_payload_path,
         )
-        .env("VM0_API_BACKEND_URL", "http://127.0.0.1:1")
+        .env(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        )
         .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "")
         .env(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
