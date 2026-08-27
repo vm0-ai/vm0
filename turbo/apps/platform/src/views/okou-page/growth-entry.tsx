@@ -298,5 +298,13 @@ export function GrowthEntryHeader() {
   if (!isAdmin) {
     return null;
   }
-  return <AdminGrowthEntryHeader />;
+  return (
+    <>
+      {/* Match the former in-flow header's 16px + 32px + 8px height. The
+          controls stay absolute, but the home content keeps its established
+          desktop position before and after the async entry resolves. */}
+      <div aria-hidden className="hidden h-14 shrink-0 md:block" />
+      <AdminGrowthEntryHeader />
+    </>
+  );
 }

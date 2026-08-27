@@ -1296,6 +1296,9 @@ test("home content stays fixed while the growth entry loads", async ({
   if (!mainBefore || !taglineBefore) {
     throw new Error("Home content has no measurable layout before entry load");
   }
+  // The async entry is absolute, but its former 56px header slot remains in
+  // flow so the landing content does not jump upward.
+  expect(mainBefore.y).toBe(56);
 
   releaseSlackStatus.resolve();
   await expect(growthEntry).toBeVisible();
@@ -1309,6 +1312,54 @@ test("home content stays fixed while the growth entry loads", async ({
   expect(mainAfter.y).toBe(mainBefore.y);
   expect(mainAfter.height).toBe(mainBefore.height);
   expect(taglineAfter.y).toBe(taglineBefore.y);
+});
+
+test("non-admin home content keeps its original top edge", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        json: { id: "org_member", name: "Member Org", role: "member" },
+      });
+    },
+  );
+  const memberOrgLoaded = page.waitForResponse((response) => {
+    const request = response.request();
+    return (
+      response.ok() &&
+      request.method() === "GET" &&
+      new URL(response.url()).pathname === "/api/org"
+    );
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await memberOrgLoaded;
+  await expect(page.getByTestId("chat-tagline")).toBeVisible({
+    timeout: 20_000,
+  });
+  // Let the member role commit before reading the stable layout.
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+  });
+
+  await expect(page.getByTestId("growth-entry")).not.toBeAttached();
+  const mainBox = await page.locator("main").boundingBox();
+  if (!mainBox) {
+    throw new Error("Non-admin home content has no measurable layout");
+  }
+  expect(mainBox.y).toBe(0);
 });
 
 test("checkmark keeps its column across selection states and previews deactivation", async ({
