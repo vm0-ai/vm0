@@ -28,7 +28,10 @@ export function withBuiltInModelRuntimeRouteUnavailableForTest<T>(
   return withRuntimeRouteUnavailable(selectedModel, work);
 }
 
-/** Holds one production candidate-route row lock for a route-level test. */
+/**
+ * No production API exposes transaction lock ownership, so this fixture holds
+ * one exact-route row lock while route tests verify public receipt-time behavior.
+ */
 export async function holdBuiltInModelCandidateRouteLockFixture(args: {
   readonly selectedModel: string;
   readonly providerType: string;
@@ -65,7 +68,7 @@ export async function holdBuiltInModelCandidateRouteLockFixture(args: {
     },
     done,
     blockedWaiterCount: async () => {
-      const rows = await executeRawRows(
+      const [row] = await executeRawRows(
         db(),
         sql`
           SELECT ${count()}::int AS "waiterCount"
@@ -74,7 +77,10 @@ export async function holdBuiltInModelCandidateRouteLockFixture(args: {
         `,
         waiterCountRowSchema,
       );
-      return rows[0]?.waiterCount ?? 0;
+      if (!row) {
+        throw new Error("Expected the blocked waiter count");
+      }
+      return row.waiterCount;
     },
   };
 }
