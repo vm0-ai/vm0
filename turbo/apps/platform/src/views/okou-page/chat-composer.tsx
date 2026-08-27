@@ -8899,6 +8899,7 @@ function ConnectorsPopoverButton({
                           actions={
                             showPermissionAction || accountAction ? (
                               <>
+                                {accountAction}
                                 {showPermissionAction ? (
                                   <PopoverClose asChild>
                                     <Button
@@ -8925,7 +8926,6 @@ function ConnectorsPopoverButton({
                                     </Button>
                                   </PopoverClose>
                                 ) : null}
-                                {accountAction}
                               </>
                             ) : null
                           }
