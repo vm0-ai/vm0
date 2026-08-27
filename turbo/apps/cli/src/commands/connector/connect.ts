@@ -114,7 +114,7 @@ export const connectCommand = new Command()
   .addOption(
     new Option(
       "--reconnect <connection-id>",
-      "Reconnect one exact account ID from connector account list",
+      "Reconnect the account with this connection ID",
     )
       .conflicts("add")
       .argParser(parseReconnectConnectionId),
