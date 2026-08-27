@@ -46,6 +46,8 @@ const RECHECK_MAX_ATTEMPTS: u32 = 3;
 /// Maximum number of runner reports built or rechecked concurrently.
 const DOCTOR_IO_CONCURRENCY: usize = 4;
 
+const SYSTEMD_SYSTEM_DIR: &str = "/etc/systemd/system";
+
 /// Total timeout for each API connectivity probe.
 const API_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -431,10 +433,8 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     // Phase 1: Discover running processes (single /proc scan)
     let discovered = process::discover_all().await;
     let home = HomePaths::new()?;
-    let config_path_filter = resolve_service_config_path(args.name.as_deref()).await?;
-
-    // Phase 2: Discover installed services
-    let installed_services = find_installed_services().await;
+    let (config_path_filter, installed_services) =
+        discover_services(args.name.as_deref(), Path::new(SYSTEMD_SYSTEM_DIR)).await?;
 
     // Phase 3: Build runner reports
     let live_runners = crate::live_runner_instances::try_list(&home).await?;
@@ -719,9 +719,12 @@ async fn build_runner_report(
     report
 }
 
-async fn resolve_service_config_path(name: Option<&str>) -> RunnerResult<Option<PathBuf>> {
+async fn discover_services(
+    name: Option<&str>,
+    system_dir: &Path,
+) -> RunnerResult<(Option<PathBuf>, Vec<InstalledService>)> {
     let Some(name) = name else {
-        return Ok(None);
+        return Ok((None, find_installed_services(system_dir).await));
     };
     let unit = super::service::RunnerServiceUnit::from_suffix(name)?;
     let config_path = super::service::read_unit_config_path(&unit)
@@ -732,7 +735,7 @@ async fn resolve_service_config_path(name: Option<&str>) -> RunnerResult<Option<
                 unit.unit_name()
             ))
         })?;
-    Ok(Some(config_path))
+    Ok((Some(config_path), Vec::new()))
 }
 
 fn build_status_diagnostics(
@@ -834,14 +837,17 @@ async fn detect_service_type(pid: u32, installed: &[InstalledService]) -> Servic
 // Installed service discovery
 // ---------------------------------------------------------------------------
 
-/// Scan `/etc/systemd/system/vm0-runner-*.service` for installed services.
-async fn find_installed_services() -> Vec<InstalledService> {
-    let mut services = Vec::new();
-    let mut entries = match tokio::fs::read_dir("/etc/systemd/system").await {
+/// Scan `vm0-runner-*.service` unit files for installed services.
+async fn find_installed_services(system_dir: &Path) -> Vec<InstalledService> {
+    let mut units = Vec::new();
+    let mut entries = match tokio::fs::read_dir(system_dir).await {
         Ok(e) => e,
         Err(e) => {
-            tracing::warn!("find_installed_services: cannot read /etc/systemd/system: {e}");
-            return services;
+            tracing::warn!(
+                "find_installed_services: cannot read {}: {e}",
+                system_dir.display()
+            );
+            return Vec::new();
         }
     };
     loop {
@@ -849,7 +855,10 @@ async fn find_installed_services() -> Vec<InstalledService> {
             Ok(Some(entry)) => entry,
             Ok(None) => break,
             Err(e) => {
-                tracing::warn!("find_installed_services: read entry in /etc/systemd/system: {e}");
+                tracing::warn!(
+                    "find_installed_services: read entry in {}: {e}",
+                    system_dir.display()
+                );
                 break;
             }
         };
@@ -860,22 +869,29 @@ async fn find_installed_services() -> Vec<InstalledService> {
         let Some(unit) = super::service::RunnerServiceUnit::from_file_name(name_str) else {
             continue;
         };
-        let config_path = match super::service::read_unit_config_path(&unit).await {
-            Ok(config_path) => config_path,
-            Err(e) => {
-                tracing::warn!(
-                    "find_installed_services: cannot read effective config for {}: {e}",
-                    unit.service_name()
-                );
-                None
-            }
-        };
-        services.push(InstalledService {
-            unit_name: unit.unit_name().to_string(),
-            config_path,
-        });
+        units.push(unit);
     }
-    services
+
+    stream::iter(units)
+        .map(|unit| async move {
+            let config_path = match super::service::read_unit_config_path(&unit).await {
+                Ok(config_path) => config_path,
+                Err(e) => {
+                    tracing::warn!(
+                        "find_installed_services: cannot read effective config for {}: {e}",
+                        unit.service_name()
+                    );
+                    None
+                }
+            };
+            InstalledService {
+                unit_name: unit.unit_name().to_string(),
+                config_path,
+            }
+        })
+        .buffered(DOCTOR_IO_CONCURRENCY)
+        .collect()
+        .await
 }
 
 /// Find installed services that have no matching running runner.
@@ -1460,8 +1476,45 @@ fn format_uptime(started_at: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
     use super::*;
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
     use httpmock::prelude::*;
+
+    const SERVICE_DISCOVERY_SCENARIO_ENV: &str = "OKOU_RUN_DOCTOR_DISCOVERY_SCENARIO";
+    const SERVICE_DISCOVERY_SYSTEM_DIR_ENV: &str = "OKOU_RUN_DOCTOR_DISCOVERY_SYSTEM_DIR";
+    const SERVICE_DISCOVERY_STATE_DIR_ENV: &str = "OKOU_RUN_DOCTOR_DISCOVERY_STATE_DIR";
+    const SERVICE_DISCOVERY_INVOCATIONS_ENV: &str = "OKOU_RUN_DOCTOR_DISCOVERY_INVOCATIONS";
+    const SERVICE_DISCOVERY_CHILD_TEST: &str =
+        "cmd::doctor::tests::doctor_service_discovery_systemctl_child";
+    const FAKE_DISCOVERY_SYSTEMCTL: &str = r#"#!/bin/sh
+printf '%s\n' "$*" >> "$OKOU_RUN_DOCTOR_DISCOVERY_INVOCATIONS"
+
+if [ "$1" != "--no-pager" ] || [ "$2" != "cat" ] || [ "$3" != "--" ]; then
+  printf '%s\n' "unexpected fake systemctl invocation: $*" >&2
+  exit 2
+fi
+
+unit="$4"
+if [ "$OKOU_RUN_DOCTOR_DISCOVERY_SCENARIO" = "bounded" ]; then
+  : > "$OKOU_RUN_DOCTOR_DISCOVERY_STATE_DIR/$unit.started"
+  while [ ! -f "$OKOU_RUN_DOCTOR_DISCOVERY_STATE_DIR/$unit.release" ]; do :; done
+fi
+
+if [ "$unit" = "vm0-runner-failure.service" ]; then
+  printf '%s\n' 'cannot read selected unit content' >&2
+  exit 1
+fi
+
+suffix=${unit#vm0-runner-}
+suffix=${suffix%.service}
+printf '%s\n' \
+  '[Service]' \
+  "ExecStart=/usr/bin/runner start --config /configs/$suffix.yaml"
+"#;
 
     #[test]
     fn format_uptime_minutes() {
@@ -2432,6 +2485,157 @@ mod tests {
             base_dir,
         };
         assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
+    }
+
+    #[tokio::test]
+    async fn installed_service_discovery_overlaps_with_a_fixed_bound() {
+        run_service_discovery_scenario("bounded").await;
+    }
+
+    #[tokio::test]
+    async fn named_service_discovery_queries_only_the_target_once() {
+        run_service_discovery_scenario("named").await;
+    }
+
+    async fn run_service_discovery_scenario(scenario: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_systemctl = dir.path().join("systemctl");
+        std::fs::write(&fake_systemctl, FAKE_DISCOVERY_SYSTEMCTL).unwrap();
+        let mut permissions = std::fs::metadata(&fake_systemctl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&fake_systemctl, permissions).unwrap();
+
+        let system_dir = dir.path().join("system");
+        std::fs::create_dir(&system_dir).unwrap();
+        for suffix in ["alpha", "beta", "delta", "failure", "gamma"] {
+            std::fs::write(system_dir.join(format!("vm0-runner-{suffix}.service")), "").unwrap();
+        }
+        std::fs::write(system_dir.join("unrelated.service"), "").unwrap();
+
+        let state_dir = dir.path().join("state");
+        std::fs::create_dir(&state_dir).unwrap();
+        let invocations_path = dir.path().join("invocations");
+        let path = format!(
+            "{}:{}",
+            dir.path().display(),
+            std::env::var("PATH").unwrap()
+        );
+        run_ignored_child_test(
+            SERVICE_DISCOVERY_CHILD_TEST,
+            (SERVICE_DISCOVERY_SCENARIO_ENV, scenario),
+            &[
+                ("PATH", Some(path.as_str())),
+                (
+                    SERVICE_DISCOVERY_SYSTEM_DIR_ENV,
+                    Some(system_dir.to_str().unwrap()),
+                ),
+                (
+                    SERVICE_DISCOVERY_STATE_DIR_ENV,
+                    Some(state_dir.to_str().unwrap()),
+                ),
+                (
+                    SERVICE_DISCOVERY_INVOCATIONS_ENV,
+                    Some(invocations_path.to_str().unwrap()),
+                ),
+            ],
+            Duration::from_secs(15),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by doctor service discovery systemctl tests"]
+    async fn doctor_service_discovery_systemctl_child() {
+        let Ok(scenario) = std::env::var(SERVICE_DISCOVERY_SCENARIO_ENV) else {
+            return;
+        };
+        if !ignored_child_test_env_guard_enabled((SERVICE_DISCOVERY_SCENARIO_ENV, &scenario)) {
+            return;
+        }
+
+        let system_dir = PathBuf::from(std::env::var(SERVICE_DISCOVERY_SYSTEM_DIR_ENV).unwrap());
+        match scenario.as_str() {
+            "bounded" => assert_bounded_installed_service_discovery(&system_dir).await,
+            "named" => assert_named_service_discovery(&system_dir).await,
+            unexpected => panic!("unexpected service discovery scenario: {unexpected}"),
+        }
+    }
+
+    async fn assert_bounded_installed_service_discovery(system_dir: &Path) {
+        let state_dir = PathBuf::from(std::env::var(SERVICE_DISCOVERY_STATE_DIR_ENV).unwrap());
+        let system_dir = system_dir.to_path_buf();
+        let discovery = tokio::spawn(async move { find_installed_services(&system_dir).await });
+
+        wait_for_started_units(&state_dir, DOCTOR_IO_CONCURRENCY).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let first_batch = started_units(&state_dir);
+        assert_eq!(first_batch.len(), DOCTOR_IO_CONCURRENCY);
+        release_units(&state_dir, &first_batch);
+
+        wait_for_started_units(&state_dir, DOCTOR_IO_CONCURRENCY + 1).await;
+        release_units(&state_dir, &started_units(&state_dir));
+
+        let mut services = tokio::time::timeout(Duration::from_secs(5), discovery)
+            .await
+            .expect("bounded service discovery should finish after releases")
+            .unwrap();
+        services.sort_by(|left, right| left.unit_name.cmp(&right.unit_name));
+        assert_eq!(services.len(), 5);
+        for service in services {
+            let suffix = service.unit_name.strip_prefix("vm0-runner-").unwrap();
+            if suffix == "failure" {
+                assert_eq!(service.config_path, None);
+            } else {
+                assert_eq!(
+                    service.config_path,
+                    Some(PathBuf::from(format!("/configs/{suffix}.yaml")))
+                );
+            }
+        }
+    }
+
+    async fn assert_named_service_discovery(system_dir: &Path) {
+        let (config_path_filter, installed_services) =
+            discover_services(Some("target"), system_dir).await.unwrap();
+
+        assert_eq!(
+            config_path_filter,
+            Some(PathBuf::from("/configs/target.yaml"))
+        );
+        assert!(installed_services.is_empty());
+        let invocations_path =
+            PathBuf::from(std::env::var(SERVICE_DISCOVERY_INVOCATIONS_ENV).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(invocations_path).unwrap(),
+            "--no-pager cat -- vm0-runner-target.service\n"
+        );
+    }
+
+    async fn wait_for_started_units(state_dir: &Path, expected: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if started_units(state_dir).len() >= expected {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("fake systemctl lookups should reach the gate");
+    }
+
+    fn started_units(state_dir: &Path) -> Vec<String> {
+        std::fs::read_dir(state_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter_map(|name| name.strip_suffix(".started").map(str::to_string))
+            .collect()
+    }
+
+    fn release_units(state_dir: &Path, units: &[String]) {
+        for unit in units {
+            std::fs::write(state_dir.join(format!("{unit}.release")), "").unwrap();
+        }
     }
 
     #[tokio::test]
