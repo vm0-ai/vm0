@@ -738,12 +738,8 @@ export function AccountDropdown({
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
   const subscriptionsEnabled =
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
-  // The three-column nav stacks the account mark under the workspace logo, so
-  // it takes the same rounded square there and stays a circle everywhere else.
-  const avatarShape =
-    (features?.[FeatureSwitchKey.ThreeColumnNav] ?? false)
-      ? "square"
-      : "circle";
+  // The account mark aligns with the rounded-square workspace logo in the rail.
+  const avatarShape = "square";
   const realtimeIndicator = useGet(okouDebugRealtimeIndicator$);
   const openSettings = useSet(openSettingsDialogAt$);
   const setPendingSettingsSection = useSet(

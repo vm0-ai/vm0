@@ -52,7 +52,6 @@ async function mockPinnedAgentGrid(
         effectiveSwitches: {
           ...body.effectiveSwitches,
           gradientColorThemes,
-          threeColumnNav: true,
         },
       },
     });

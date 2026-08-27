@@ -19,7 +19,6 @@ import {
   chatThreadUnpinContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   agentsByIdContract,
   agentsMainContract,
@@ -335,11 +334,11 @@ function buttonByLabel(
 }
 
 function sidebar(): HTMLElement {
-  return screen.getByRole("navigation", { name: "Sidebar" });
+  return screen.getByTestId("chat-list-column");
 }
 
 function mobileSidebar(): HTMLElement {
-  const drawer = screen.getByLabelText("Collapse sidebar").closest("aside");
+  const drawer = document.querySelector("aside.zero-pwa-fixed-cover");
   if (!(drawer instanceof HTMLElement)) {
     throw new Error("Mobile sidebar not found");
   }
@@ -599,15 +598,17 @@ describe("zero sidebar", () => {
     });
 
     const newChatButton = await waitFor(() => {
-      expect(screen.getByText("Existing conversation")).toBeInTheDocument();
-      return screen.getByLabelText("Open chat list menu");
+      expect(
+        within(sidebar()).getByText("Existing conversation"),
+      ).toBeInTheDocument();
+      return within(sidebar()).getByLabelText("Open chat list menu");
     });
 
     click(newChatButton);
     click(menuItemByText("New chat"));
 
     await waitFor(() => {
-      const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
+      const sidebar = screen.getByTestId("chat-list-column");
       expect(
         within(sidebar).getByText("Existing conversation"),
       ).toBeInTheDocument();
@@ -776,7 +777,7 @@ describe("zero sidebar", () => {
           "C server third",
         ]),
       ).toStrictEqual(["A server first", "B server second", "C server third"]);
-      return screen.getByLabelText("Open chat list menu");
+      return within(sidebar()).getByLabelText("Open chat list menu");
     });
 
     click(newChatButton);
@@ -1317,7 +1318,9 @@ describe("zero sidebar", () => {
       expect(
         within(sidebar()).getByText("Scheduled launch"),
       ).toBeInTheDocument();
-      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
+      expect(
+        within(sidebar()).queryByTestId("sidebar-chat-threads-load-more"),
+      ).toBeNull();
     });
 
     openThreadMenu("Scheduled launch");
@@ -1380,13 +1383,15 @@ describe("zero sidebar", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
       expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+        within(sidebar()).queryByTestId("sidebar-chat-threads-load-more"),
+      ).toBeNull();
+      expect(
+        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
 
-    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
     Object.defineProperty(scrollArea, "clientHeight", {
       configurable: true,
       value: 200,
@@ -1441,9 +1446,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const desktopList = await screen.findByTestId("chat-list-column");
@@ -1504,11 +1506,11 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
 
-    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
     Object.defineProperties(scrollArea, {
       clientHeight: { configurable: true, value: 200 },
       scrollHeight: { configurable: true, value: 1000 },
@@ -1567,11 +1569,11 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
 
-    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
     let scrollTop = 780;
     Object.defineProperty(scrollArea, "clientHeight", {
       configurable: true,
@@ -1645,7 +1647,7 @@ describe("zero sidebar", () => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
     });
 
-    screen.getByTestId("sidebar-scroll-area").focus();
+    within(sidebar()).getByTestId("sidebar-scroll-area").focus();
 
     await waitFor(() => {
       expect(threadLinkByTitle("Release plan")).toHaveFocus();
@@ -1684,13 +1686,15 @@ describe("zero sidebar", () => {
       expect(within(sidebar()).getByText("Research Agent")).toBeInTheDocument();
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
 
-    const scrollArea = screen.getByTestId("sidebar-scroll-area");
-    const pinnedHeader = screen.getByTestId("pinned-section-header");
-    const pinnedAgent = within(sidebar()).getByText("Research Agent");
+    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
+    const pinnedHeader = within(sidebar()).getByTestId(
+      "pinned-agents-horizontal",
+    );
+    const pinnedAgent = within(pinnedHeader).getByText("Research Agent");
     const chatTitle = within(sidebar()).getByText("Chats with Zero");
     expect(scrollArea).not.toContainElement(pinnedHeader);
     expect(scrollArea).not.toContainElement(pinnedAgent);
@@ -1730,12 +1734,19 @@ describe("zero sidebar", () => {
       return within(sidebar()).getByText("Chats with Zero");
     });
 
-    // The footer below supplies the 8px boundary out of its own padding.
+    const content = within(sidebar()).getByTestId(
+      "pinned-agents-horizontal",
+    ).parentElement;
+    if (!(content instanceof HTMLElement)) {
+      throw new Error("Chat list content wrapper not found");
+    }
+
+    // The footer below supplies the bottom boundary out of its own padding.
     // A bottom padding here stacks a second one on top of it, which reads as
     // a void under the last thread row.
-    expect(sidebar()).toHaveClass("px-2", "pt-1");
-    expect(sidebar()).not.toHaveClass("p-2");
-    expect(sidebar()).not.toHaveClass("pb-2");
+    expect(content).toHaveClass("px-3", "pt-1");
+    expect(content).not.toHaveClass("p-3");
+    expect(content).not.toHaveClass("pb-3");
   });
 
   it("scrolls the current chat into the virtualized sidebar on page setup", async () => {
@@ -1758,9 +1769,9 @@ describe("zero sidebar", () => {
     });
 
     await waitFor(() => {
-      const scrollArea = screen.getByTestId("sidebar-scroll-area");
+      const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
       expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(scrollArea.scrollTop).toBeGreaterThan(0);
@@ -1784,9 +1795,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const desktopList = await screen.findByTestId("chat-list-column");
@@ -1819,7 +1827,7 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByTestId("sidebar-chat-thread-virtual-row"),
+        within(sidebar()).getAllByTestId("sidebar-chat-thread-virtual-row"),
       ).toHaveLength(100);
     });
   });
@@ -1847,8 +1855,10 @@ describe("zero sidebar", () => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
     });
 
-    const scrollArea = screen.getByTestId("sidebar-scroll-area");
-    const virtualList = screen.getByTestId("sidebar-chat-threads-virtual-list");
+    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
+    const virtualList = within(sidebar()).getByTestId(
+      "sidebar-chat-threads-virtual-list",
+    );
     const currentRow = threadLinkByTitle("Release plan").closest(
       '[data-testid="sidebar-chat-thread-virtual-row"]',
     );
@@ -1947,9 +1957,7 @@ describe("zero sidebar", () => {
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const sidebar = await waitFor(() => {
-      const currentSidebar = screen.getByRole("navigation", {
-        name: "Sidebar",
-      });
+      const currentSidebar = mobileSidebar();
       expect(pinnedAgentLink(currentSidebar, "Zero")).toBeInTheDocument();
       return currentSidebar;
     });
@@ -1962,42 +1970,6 @@ describe("zero sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("keeps pinned agents in team order without the three-column nav", async () => {
-    prepareAgents();
-    // Reverse of the team order, so preference order and team order disagree.
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
-    });
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    const sidebar = await waitFor(() => {
-      const currentSidebar = screen.getByRole("navigation", {
-        name: "Sidebar",
-      });
-      expect(
-        pinnedAgentLink(currentSidebar, "Support Agent"),
-      ).toBeInTheDocument();
-      return currentSidebar;
-    });
-
-    expect(pinnedAgentNames(sidebar)).toStrictEqual([
-      "Zero",
-      "Research Agent",
-      "Support Agent",
-    ]);
-
-    click(within(sidebar).getByLabelText("Open a conversation"));
-
-    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-    await waitFor(() => {
-      expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
-    });
-    expect(
-      dialogAgentOrder(dialog, ["Research Agent", "Support Agent"]),
-    ).toStrictEqual(["Research Agent", "Support Agent"]);
-  });
-
   it("lists pinned agents in pinned order under the three-column nav", async () => {
     prepareAgents();
     context.mocks.data.userPreferences({
@@ -2007,9 +1979,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -2057,7 +2026,7 @@ describe("zero sidebar", () => {
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const initialSidebar = await waitFor(() => {
-      return screen.getByRole("navigation", { name: "Sidebar" });
+      return mobileSidebar();
     });
     click(within(initialSidebar).getByLabelText("Open a conversation"));
 
@@ -2150,77 +2119,59 @@ describe("zero sidebar", () => {
     expect(createRequests).toBe(0);
   });
 
-  it.each([
-    { label: "single-column", threeColumnNav: false },
-    { label: "three-column", threeColumnNav: true },
-  ])(
-    "closes the $label mobile sidebar after selecting a pinned agent",
-    async ({ threeColumnNav }) => {
-      prepareAgents();
-      context.mocks.data.userPreferences({
-        pinnedAgentIds: [RESEARCH_AGENT_ID],
-      });
-      const openedTargets = context.mocks.browser.open();
+  it("closes the mobile sidebar after selecting a pinned agent", async () => {
+    prepareAgents();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    const openedTargets = context.mocks.browser.open();
 
-      setupSidebarPage({
-        context,
-        path: `/agents/${AGENT_ID}/chat`,
-        featureSwitches: {
-          [FeatureSwitchKey.ThreeColumnNav]: threeColumnNav,
-        },
-      });
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      await waitFor(() => {
-        expect(
-          pinnedAgentLink(mobileSidebar(), "Research Agent"),
-        ).toBeInTheDocument();
-      });
+    await waitFor(() => {
+      expect(
+        pinnedAgentLink(mobileSidebar(), "Research Agent"),
+      ).toBeInTheDocument();
+    });
 
-      click(screen.getByLabelText("Open menu"));
-      await waitFor(() => {
-        expect(mobileSidebar()).toHaveAttribute(
-          "data-sidebar-expanded",
-          "true",
-        );
-      });
+    click(screen.getByLabelText("Open menu"));
+    await waitFor(() => {
+      expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
+    });
 
-      fireEvent.click(pinnedAgentLink(mobileSidebar(), "Research Agent"), {
-        metaKey: true,
-      });
-      await waitFor(() => {
-        expect(openedTargets.calls).toStrictEqual([
-          expect.objectContaining({
-            target: "_blank",
-            url: expect.stringContaining(`/agents/${RESEARCH_AGENT_ID}/chat`),
-          }),
-        ]);
-        expect(mobileSidebar()).toHaveAttribute(
-          "data-sidebar-expanded",
-          "true",
-        );
-      });
+    fireEvent.click(pinnedAgentLink(mobileSidebar(), "Research Agent"), {
+      metaKey: true,
+    });
+    await waitFor(() => {
+      expect(openedTargets.calls).toStrictEqual([
+        expect.objectContaining({
+          target: "_blank",
+          url: expect.stringContaining(`/agents/${RESEARCH_AGENT_ID}/chat`),
+        }),
+      ]);
+      expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
+    });
 
-      click(pinnedAgentLink(mobileSidebar(), "Zero"));
-      await waitFor(() => {
-        expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
-        expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
-      });
+    click(pinnedAgentLink(mobileSidebar(), "Zero"));
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+      expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
+    });
 
-      click(screen.getByLabelText("Open menu"));
-      await waitFor(() => {
-        expect(mobileSidebar()).toHaveAttribute(
-          "data-sidebar-expanded",
-          "true",
-        );
-      });
+    click(screen.getByLabelText("Open menu"));
+    await waitFor(() => {
+      expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
+    });
 
-      click(pinnedAgentLink(mobileSidebar(), "Research Agent"));
-      await waitFor(() => {
-        expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
-        expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
-      });
-    },
-  );
+    click(pinnedAgentLink(mobileSidebar(), "Research Agent"));
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+      expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
+    });
+  });
 
   it("opens the agent picker from the global shortcut", async () => {
     prepareAgents();
@@ -2424,7 +2375,7 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
     });
-    click(within(sidebar()).getByLabelText("Open a conversation"));
+    click(within(mobileSidebar()).getByLabelText("Open a conversation"));
 
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     await fill(
@@ -2521,9 +2472,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     await screen.findByPlaceholderText(PLACEHOLDER);
@@ -2543,31 +2491,6 @@ describe("zero sidebar", () => {
       name: "Search chats, messages, workflows, and artifacts...",
     });
     expect(dialog).toBeInTheDocument();
-  });
-
-  it("leaves mod+k to the browser without three-column navigation", async () => {
-    prepareAgents();
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await waitFor(() => {
-      expect(sidebar()).toBeInTheDocument();
-    });
-    const event = new KeyboardEvent("keydown", {
-      key: "k",
-      code: "KeyK",
-      ctrlKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    document.body.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBeFalsy();
-    expect(
-      screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
-      }),
-    ).not.toBeInTheDocument();
   });
 
   it("moves to the next pinned agent chat from the composer", async () => {
@@ -2756,7 +2679,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("toggles the sidebar with mod+b while the chat composer is focused", async () => {
+  it("toggles the chat list with mod+b while the chat composer is focused", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
 
@@ -2766,9 +2689,9 @@ describe("zero sidebar", () => {
     });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    const list = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
-      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
+      expect(within(list).getByLabelText("Hide chat list")).toBeInTheDocument();
     });
 
     composer.focus();
@@ -2781,7 +2704,12 @@ describe("zero sidebar", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("labeled-nav-rail")).getByLabelText(
+          "Show chat list",
+        ),
+      ).toBeInTheDocument();
     });
   });
 
@@ -2890,7 +2818,7 @@ describe("zero sidebar", () => {
     });
 
     const nav = await waitFor(() => {
-      const current = sidebar();
+      const current = mobileSidebar();
       expect(within(current).getByText("Research Agent")).toBeInTheDocument();
       return current;
     });
@@ -3019,7 +2947,7 @@ describe("zero sidebar", () => {
     });
 
     const nav = await waitFor(() => {
-      const current = sidebar();
+      const current = mobileSidebar();
       expect(within(current).getByText("Research Agent")).toBeInTheDocument();
       return current;
     });
@@ -3071,7 +2999,7 @@ describe("zero sidebar", () => {
     });
 
     const nav = await waitFor(() => {
-      const current = sidebar();
+      const current = mobileSidebar();
       expect(within(current).getByText("Zero")).toBeInTheDocument();
       return current;
     });
@@ -3101,23 +3029,19 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("collapses and reopens the sidebar", async () => {
+  it("hides and reopens the chat list", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Collapse sidebar");
-      }),
-    );
+    const list = await screen.findByTestId("chat-list-column");
+    click(within(list).getByLabelText("Hide chat list"));
 
-    const expandButton = await screen.findByLabelText("Expand sidebar");
-    click(expandButton);
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    click(within(rail).getByLabelText("Show chat list"));
 
     await waitFor(() => {
-      expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
     });
   });
 
@@ -3133,10 +3057,11 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const nav = await screen.findByRole("navigation", {
-      name: "Barra lateral",
+    const nav = await waitFor(() => {
+      const drawer = mobileSidebar();
+      expect(within(drawer).getByText("Agentes")).toBeInTheDocument();
+      return drawer;
     });
-    expect(within(nav).getByText("Agentes")).toBeInTheDocument();
 
     click(within(nav).getByLabelText("Abrir uma conversa"));
 
@@ -3156,9 +3081,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const rail = await screen.findByTestId("labeled-nav-rail");
@@ -3171,13 +3093,13 @@ describe("zero sidebar", () => {
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const nav = await waitFor(() => {
-      const current = sidebar();
+      const current = mobileSidebar();
       expect(within(current).getByText("Agents")).toBeInTheDocument();
       expect(within(current).getByText("Connectors")).toBeInTheDocument();
       return current;
     });
 
-    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    const scrollArea = within(nav).getByTestId("sidebar-scroll-area");
     Object.defineProperty(scrollArea, "clientHeight", {
       configurable: true,
       value: 200,
@@ -3250,7 +3172,7 @@ describe("zero sidebar", () => {
     });
 
     const nav = await waitFor(() => {
-      return sidebar();
+      return mobileSidebar();
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
@@ -3268,15 +3190,12 @@ describe("zero sidebar", () => {
     expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
   });
 
-  it("renders the three-column navigation when the flag is on", async () => {
+  it("renders the three-column navigation", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const rail = await waitFor(() => {
@@ -3308,9 +3227,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     await screen.findByPlaceholderText(PLACEHOLDER);
@@ -3375,9 +3291,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const list = await waitFor(() => {
@@ -3423,9 +3336,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -3482,9 +3392,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const list = await screen.findByTestId("chat-list-column");
@@ -3662,9 +3569,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const list = await screen.findByTestId("chat-list-column");
@@ -3782,9 +3686,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const list = await screen.findByTestId("chat-list-column");
@@ -3847,9 +3748,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -3925,9 +3823,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const list = await screen.findByTestId("chat-list-column");
@@ -3992,9 +3887,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const list = await screen.findByTestId("chat-list-column");
@@ -4050,9 +3942,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     // The user temporarily switched the landing composer image model without
@@ -4086,9 +3975,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const initialGrid = await screen.findByTestId("pinned-agents-grid");
@@ -4134,9 +4020,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context: refreshContext,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -4161,9 +4044,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
@@ -4203,9 +4083,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -4251,9 +4128,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -4286,9 +4160,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -4321,9 +4192,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -4373,9 +4241,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -4415,9 +4280,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -4514,9 +4376,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
@@ -4574,22 +4433,6 @@ describe("zero sidebar", () => {
     expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
   });
 
-  it("keeps the single-column sidebar when the three-column flag is off", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await waitFor(() => {
-      return sidebar();
-    });
-
-    expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
-  });
-
   it("localizes desktop and mobile shell navigation and shortcut help", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
@@ -4608,9 +4451,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const rail = await screen.findByTestId("labeled-nav-rail");
@@ -4666,9 +4506,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const rail = await screen.findByTestId("labeled-nav-rail");
@@ -4723,9 +4560,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
     });
 
     const rail = await screen.findByTestId("labeled-nav-rail");
@@ -4764,7 +4598,7 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps localized navigation accessible while collapsing and expanding", async () => {
+  it("keeps localized navigation accessible while hiding and showing the chat list", async () => {
     prepareDefaultAgent();
     context.mocks.data.userPreferences({
       locale: "pt-BR",
@@ -4776,21 +4610,16 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const nav = await screen.findByRole("navigation", {
-      name: "Barra lateral",
-    });
-    expect(within(nav).getByText("Gerenciar")).toBeInTheDocument();
-    expect(within(nav).getByText("Fluxos de trabalho")).toBeInTheDocument();
+    const list = await screen.findByTestId("chat-list-column");
+    click(within(list).getByLabelText("Ocultar lista de conversas"));
 
-    click(screen.getByLabelText("Recolher barra lateral"));
-
-    const expandButton = await screen.findByLabelText("Expandir barra lateral");
+    const rail = await screen.findByTestId("labeled-nav-rail");
     expect(
-      screen.getAllByRole("navigation", { name: "Barra lateral" }).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Agentes")).toBeInTheDocument();
+      within(rail).getByRole("navigation", { name: "Barra lateral" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByLabelText("Agentes")).toBeInTheDocument();
 
-    click(expandButton);
-    await screen.findByLabelText("Recolher barra lateral");
+    click(within(rail).getByLabelText("Mostrar lista de conversas"));
+    await screen.findByTestId("chat-list-column");
   });
 });

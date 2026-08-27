@@ -619,6 +619,15 @@ function DeleteChatThreadDialog() {
   );
 }
 
+export function ChatThreadDialogs() {
+  return (
+    <>
+      <ChatThreadRenameDialog />
+      <DeleteChatThreadDialog />
+    </>
+  );
+}
+
 function VirtualizedChatThreads({
   scrollSignals,
   threadCount,
@@ -1137,8 +1146,6 @@ export function ChatThreadsSection({
         showMarkAllRead={showMarkAllRead}
       />
       <ChatThreadsContent scrollSignals={scrollSignals} />
-      <ChatThreadRenameDialog />
-      <DeleteChatThreadDialog />
     </div>
   );
 }
