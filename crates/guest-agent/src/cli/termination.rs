@@ -226,8 +226,8 @@ impl PostResultCleanupState {
 pub(super) enum ControlTerminationLog {
     ExecutionTimeout { timeout_secs: u64 },
     UserCancellation,
-    ClaudeStdinWriterFailed { error: String },
-    ClaudeStdinWriterTaskFailed { error: String },
+    StdinWriterFailed { error: String },
+    StdinWriterTaskFailed { error: String },
     StuckTool { name: String, elapsed: u64 },
     HeartbeatFailed,
     HeartbeatTaskPanicked,
@@ -248,16 +248,16 @@ impl ControlTerminationLog {
             Self::UserCancellation => {
                 log_warn!(LOG_TAG, "User cancelled run, SIGTERM pgid={pgid}");
             }
-            Self::ClaudeStdinWriterFailed { error } => {
+            Self::StdinWriterFailed { error } => {
                 log_warn!(
                     LOG_TAG,
-                    "Claude stdin writer failed, SIGTERM pgid={pgid}: {error}"
+                    "CLI stdin writer failed, SIGTERM pgid={pgid}: {error}"
                 );
             }
-            Self::ClaudeStdinWriterTaskFailed { error } => {
+            Self::StdinWriterTaskFailed { error } => {
                 log_warn!(
                     LOG_TAG,
-                    "Claude stdin writer task failed, SIGTERM pgid={pgid}: {error}"
+                    "CLI stdin writer task failed, SIGTERM pgid={pgid}: {error}"
                 );
             }
             Self::StuckTool { name, elapsed } => {

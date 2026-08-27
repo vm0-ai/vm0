@@ -587,6 +587,30 @@ mod tests {
     }
 
     #[test]
+    fn pi_result_source_logs_pi_attribution() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Pi,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::PiResult)
+        .with_session_history_status(SessionHistoryStatus::NotApplicable);
+        let failure = executor::ExecutionFailure::new(1, "provider failed", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_field_eq(&event, "failure_class", "cli_nonzero");
+        assert_field_eq(&event, "failure_framework", "pi");
+        assert_field_eq(&event, "failure_detail_source", "pi_result");
+    }
+
+    #[test]
     fn claude_result_provider_overloaded_logs_job_execution_failed_at_info() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,

@@ -119,8 +119,8 @@ async fn task_notification_result_does_not_end_the_user_command()
             .reason,
         CliTerminationReason::ExecutionTimeout
     );
-    assert!(result.claude_result.is_none());
-    assert!(result.post_result_cleanup_result.is_none());
+    assert!(result.jsonl_result.is_none());
+    assert!(result.post_result_cleanup_jsonl_result.is_none());
 
     let agent_log = std::fs::read_to_string(runtime.paths.agent_log_file())?;
     assert!(agent_log.contains(r#""kind":"task-notification""#));

@@ -425,8 +425,8 @@ async fn run_codex_app_server(
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             event_delivery: None,
-            claude_result: None,
-            post_result_cleanup_result: None,
+            jsonl_result: None,
+            post_result_cleanup_jsonl_result: None,
             failure_diagnostic: ingestor.failure_diagnostic(),
             control_error: None,
             cli_termination: None,
@@ -510,8 +510,8 @@ async fn run_codex_app_server(
                 stderr_lines,
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: None,
-                post_result_cleanup_result: None,
+                jsonl_result: None,
+                post_result_cleanup_jsonl_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
                 control_error: Some(AgentError::Execution(format!(
                     "Agent execution timed out after {timeout_secs} seconds"
@@ -536,8 +536,8 @@ async fn run_codex_app_server(
                 stderr_lines,
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: None,
-                post_result_cleanup_result: None,
+                jsonl_result: None,
+                post_result_cleanup_jsonl_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
                 control_error: Some(AgentError::Execution("Run cancelled by user".to_string())),
                 cli_termination: Some(CliTerminationDiagnostic::new(

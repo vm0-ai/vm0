@@ -32,7 +32,7 @@ pub(crate) struct CodexFailureDiagnostic {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct ClaudeFailureDiagnostic {
+pub(crate) struct JsonlResultFailureDiagnostic {
     pub subtype: Option<&'static str>,
     pub message: String,
 }
@@ -168,17 +168,17 @@ pub(crate) fn masked_codex_failure_diagnostic(
     })
 }
 
-/// Extract a secret-masked Claude Code terminal failure diagnostic.
+/// Extract a secret-masked terminal JSONL result failure diagnostic.
 ///
-/// Claude Code reports the terminal run outcome as `type=result`. On failure,
-/// the `result` field carries the concise terminal reason that is otherwise
-/// lost when stderr is empty.
-pub(crate) fn masked_claude_failure_diagnostic(
+/// JSONL CLI backends report the terminal run outcome as `type=result`. On
+/// failure, the `result` field carries the concise terminal reason that is
+/// otherwise lost when stderr is empty.
+pub(crate) fn masked_jsonl_result_failure_diagnostic(
     event: &Value,
     masker: &SecretMasker,
-) -> Option<ClaudeFailureDiagnostic> {
-    let diagnostic = extract_claude_failure_diagnostic(event)?;
-    Some(ClaudeFailureDiagnostic {
+) -> Option<JsonlResultFailureDiagnostic> {
+    let diagnostic = extract_jsonl_result_failure_diagnostic(event)?;
+    Some(JsonlResultFailureDiagnostic {
         subtype: diagnostic.subtype,
         message: mask_and_truncate_diagnostic(&diagnostic.message, masker),
     })
@@ -211,7 +211,7 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
     }
 }
 
-fn extract_claude_failure_diagnostic(event: &Value) -> Option<ClaudeFailureDiagnostic> {
+fn extract_jsonl_result_failure_diagnostic(event: &Value) -> Option<JsonlResultFailureDiagnostic> {
     if event.get("type").and_then(Value::as_str)? != "result" {
         return None;
     }
@@ -227,7 +227,7 @@ fn extract_claude_failure_diagnostic(event: &Value) -> Option<ClaudeFailureDiagn
         return None;
     }
 
-    Some(ClaudeFailureDiagnostic {
+    Some(JsonlResultFailureDiagnostic {
         subtype,
         message: raw_message_from_field(event.get("result"))?,
     })
@@ -1020,7 +1020,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_error_result_yields_failure_diagnostic() {
+    fn jsonl_error_result_yields_failure_diagnostic() {
         let event = serde_json::json!({
             "type": "result",
             "subtype": "error",
@@ -1029,8 +1029,8 @@ mod tests {
         });
 
         assert_eq!(
-            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(ClaudeFailureDiagnostic {
+            masked_jsonl_result_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(JsonlResultFailureDiagnostic {
                 subtype: Some("error"),
                 message: "permission denied while running command".to_string(),
             })
@@ -1038,7 +1038,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_error_subtype_without_is_error_yields_failure_diagnostic() {
+    fn jsonl_error_subtype_without_is_error_yields_failure_diagnostic() {
         let event = serde_json::json!({
             "type": "result",
             "subtype": "error",
@@ -1046,8 +1046,8 @@ mod tests {
         });
 
         assert_eq!(
-            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(ClaudeFailureDiagnostic {
+            masked_jsonl_result_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(JsonlResultFailureDiagnostic {
                 subtype: Some("error"),
                 message: "terminal result failed".to_string(),
             })
@@ -1055,7 +1055,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_failure_diagnostic_drops_unrecognized_subtype() {
+    fn jsonl_result_failure_diagnostic_drops_unrecognized_subtype() {
         let event = serde_json::json!({
             "type": "result",
             "subtype": "secret\nsubtype",
@@ -1064,8 +1064,8 @@ mod tests {
         });
 
         assert_eq!(
-            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
-            Some(ClaudeFailureDiagnostic {
+            masked_jsonl_result_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(JsonlResultFailureDiagnostic {
                 subtype: None,
                 message: "terminal result failed".to_string(),
             })
@@ -1073,7 +1073,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_success_result_has_no_failure_diagnostic() {
+    fn jsonl_success_result_has_no_failure_diagnostic() {
         let event = serde_json::json!({
             "type": "result",
             "subtype": "success",
@@ -1082,13 +1082,13 @@ mod tests {
         });
 
         assert_eq!(
-            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            masked_jsonl_result_failure_diagnostic(&event, &SecretMasker::from_raw("")),
             None
         );
     }
 
     #[test]
-    fn claude_error_result_requires_nonempty_result_message() {
+    fn jsonl_error_result_requires_nonempty_result_message() {
         let event = serde_json::json!({
             "type": "result",
             "subtype": "error",
@@ -1097,13 +1097,13 @@ mod tests {
         });
 
         assert_eq!(
-            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            masked_jsonl_result_failure_diagnostic(&event, &SecretMasker::from_raw("")),
             None
         );
     }
 
     #[test]
-    fn claude_failure_diagnostic_masks_and_escapes_line_breaks() {
+    fn jsonl_result_failure_diagnostic_masks_and_escapes_line_breaks() {
         let event = serde_json::json!({
             "type": "result",
             "is_error": true,
@@ -1112,8 +1112,8 @@ mod tests {
         let masker = SecretMasker::from_raw("c3VwZXJzZWNyZXQ=");
 
         assert_eq!(
-            masked_claude_failure_diagnostic(&event, &masker),
-            Some(ClaudeFailureDiagnostic {
+            masked_jsonl_result_failure_diagnostic(&event, &masker),
+            Some(JsonlResultFailureDiagnostic {
                 subtype: None,
                 message: "first line with ***\\nsecond\\rthird".to_string(),
             })
@@ -1121,14 +1121,15 @@ mod tests {
     }
 
     #[test]
-    fn claude_failure_diagnostic_truncates_to_max_bytes() {
+    fn jsonl_result_failure_diagnostic_truncates_to_max_bytes() {
         let event = serde_json::json!({
             "type": "result",
             "is_error": true,
             "result": "é".repeat(FAILURE_DIAGNOSTIC_MAX_BYTES)
         });
-        let diagnostic = masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw(""))
-            .expect("Claude error result should produce a diagnostic");
+        let diagnostic =
+            masked_jsonl_result_failure_diagnostic(&event, &SecretMasker::from_raw(""))
+                .expect("JSONL error result should produce a diagnostic");
 
         assert_eq!(diagnostic.message.len(), FAILURE_DIAGNOSTIC_MAX_BYTES);
         assert!(
