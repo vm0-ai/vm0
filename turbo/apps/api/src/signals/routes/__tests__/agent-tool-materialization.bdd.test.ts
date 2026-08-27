@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { PREVIOUS_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { v5 as uuidv5 } from "uuid";
 import { describe, expect, it } from "vitest";
 
@@ -502,7 +503,12 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatToolActivity]: true,
     });
-    const rows = await chat.listThreadEventRows(actor, threadId);
+    const rows = await chat.listThreadEventRows(
+      actor,
+      threadId,
+      undefined,
+      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+    );
     const toolRows = rows.filter((row) => {
       return row.eventType === "output.tool";
     });
@@ -847,7 +853,12 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     await flushWaitUntilForTest();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
 
-    const rows = await chat.listThreadEventRows(actor, threadId);
+    const rows = await chat.listThreadEventRows(
+      actor,
+      threadId,
+      undefined,
+      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+    );
     const toolRows = rows.filter((row) => {
       return row.eventType === "output.tool";
     });
