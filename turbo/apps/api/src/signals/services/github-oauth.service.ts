@@ -536,7 +536,7 @@ export async function buildGithubUserConnectAuthorizationUrl(
     ),
     codeVerifier: authResult.codeVerifier,
     oauthContext: authResult.oauthContext,
-    accountMutation: { intent: "single-account" },
+    accountMutation: { intent: "add" },
     expiresAt: connectorOAuthStateExpiresAt(),
   });
   signal.throwIfAborted();
