@@ -37,12 +37,18 @@ describe("link navigation", () => {
     detachedSetupPage({ context, path: "/missing-platform-route" });
 
     await waitFor(() => {
+      const homeLink = queryAllByRoleFast("link").find((link) => {
+        return link.textContent?.trim() === "Back to home";
+      });
+
       expect(
         screen.getByRole("heading", { name: "Page not found" }),
       ).toBeInTheDocument();
       expect(
         screen.getByText("The page you are looking for does not exist."),
       ).toBeInTheDocument();
+      expect(homeLink).toHaveAttribute("href", "/");
+      expect(homeLink).toHaveAttribute("data-slot", "button");
     });
   });
 
@@ -61,6 +67,10 @@ describe("link navigation", () => {
     expect(
       screen.getByText("A página que você procura não existe."),
     ).toBeInTheDocument();
+    const homeLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent?.trim() === "Voltar ao início";
+    });
+    expect(homeLink).toHaveAttribute("href", "/");
 
     reportForceUpgradeRequired();
 

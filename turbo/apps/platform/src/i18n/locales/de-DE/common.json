@@ -5357,6 +5357,7 @@
       "viewSource": "Diagrammquelle"
     },
     "notFound": {
+      "action": "Zurück zur Startseite",
       "description": "Die gesuchte Seite existiert nicht.",
       "title": "Seite nicht gefunden"
     }

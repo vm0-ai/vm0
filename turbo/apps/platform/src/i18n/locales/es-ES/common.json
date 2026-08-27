@@ -5416,6 +5416,7 @@
       "viewSource": "Código del diagrama"
     },
     "notFound": {
+      "action": "Volver al inicio",
       "description": "La página que buscas no existe.",
       "title": "Página no encontrada"
     }

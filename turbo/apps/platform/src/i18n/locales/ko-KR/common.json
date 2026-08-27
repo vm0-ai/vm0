@@ -5349,6 +5349,7 @@
       "viewSource": "다이어그램 소스"
     },
     "notFound": {
+      "action": "홈으로 돌아가기",
       "description": "찾으시는 페이지가 존재하지 않습니다.",
       "title": "페이지를 찾을 수 없습니다"
     }
