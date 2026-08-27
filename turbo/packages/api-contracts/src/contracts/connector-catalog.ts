@@ -11,7 +11,7 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const CONNECTOR_CATALOG_MAX_RAW_BYTES = 16 * 1024 * 1024;
+export const CONNECTOR_CATALOG_MAX_RAW_BYTES = 32 * 1024 * 1024;
 
 const publicConnectorCatalogAuthMethodSummarySchema = z.object({
   id: connectorAuthMethodIdSchema,

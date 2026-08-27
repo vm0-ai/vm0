@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { BUILTIN_FIREWALL_CATALOG_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
@@ -451,7 +451,7 @@ function parseAttestedConnectorCatalogRuntimeProjection(
 ): ConnectorCatalogArtifactConnector | undefined {
   if (
     payload.byteLength === 0 ||
-    payload.byteLength > CONNECTOR_CATALOG_MAX_RAW_BYTES
+    payload.byteLength > BUILTIN_FIREWALL_CATALOG_MAX_BYTES
   ) {
     return undefined;
   }

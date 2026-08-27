@@ -87,6 +87,7 @@ export async function installApiTestConnectorCatalog(
   options: {
     readonly catalogVersion?: string;
     readonly runtimeProjection?: boolean;
+    readonly sourceId?: string;
   } = {},
 ): Promise<void> {
   const catalogVersion =
@@ -102,7 +103,7 @@ export async function installApiTestConnectorCatalog(
   const rawBytes = Buffer.from(`${JSON.stringify(catalog)}\n`);
   const catalogDigest = sha256Digest(rawBytes);
   const catalogGzip = encodeConnectorCatalogSnapshot(rawBytes);
-  const source = connectorCatalogSource();
+  const sourceId = options.sourceId ?? connectorCatalogSource().sourceId;
   const capability = connectorCatalogExecutableCapabilityState();
   const activatedAt = nowDate();
   const db = store.set(writeDb$);
@@ -138,7 +139,7 @@ export async function installApiTestConnectorCatalog(
     await tx
       .insert(connectorCatalogSyncState)
       .values({
-        sourceId: source.sourceId,
+        sourceId,
         schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
         ...syncStateValues,
       })
@@ -152,7 +153,7 @@ export async function installApiTestConnectorCatalog(
     await tx
       .insert(connectorCatalogActiveSnapshot)
       .values({
-        sourceId: source.sourceId,
+        sourceId,
         schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
         ...snapshotValues,
       })
@@ -165,7 +166,7 @@ export async function installApiTestConnectorCatalog(
       });
     await persistConnectorCatalogCompatibility({
       db: tx,
-      sourceId: source.sourceId,
+      sourceId,
       identity: {
         catalogVersion,
         catalogDigest,
@@ -177,13 +178,46 @@ export async function installApiTestConnectorCatalog(
     if (options.runtimeProjection === true) {
       await persistConnectorCatalogRuntimeProjection({
         db: tx,
-        sourceId: source.sourceId,
+        sourceId,
         identity: { catalogVersion, catalogDigest },
         artifact: catalog,
         validator: currentConnectorCatalogValidatorIdentity(),
       });
     }
   });
+}
+
+export async function readApiTestConnectorCatalogSnapshot(
+  sourceId: string,
+): Promise<{
+  readonly catalogVersion: string;
+  readonly catalogDigest: string;
+  readonly catalogRawSize: number;
+  readonly catalogGzip: Buffer;
+}> {
+  const db = store.set(writeDb$);
+  const [snapshot] = await db
+    .select({
+      catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
+      catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
+      catalogRawSize: connectorCatalogActiveSnapshot.catalogRawSize,
+      catalogGzip: connectorCatalogActiveSnapshot.catalogGzip,
+    })
+    .from(connectorCatalogActiveSnapshot)
+    .where(
+      and(
+        eq(connectorCatalogActiveSnapshot.sourceId, sourceId),
+        eq(
+          connectorCatalogActiveSnapshot.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+      ),
+    )
+    .limit(1);
+  if (snapshot === undefined) {
+    throw new Error("Expected an active API test connector catalog snapshot");
+  }
+  return snapshot;
 }
 
 export function setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements(
