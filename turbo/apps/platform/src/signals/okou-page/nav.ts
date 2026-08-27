@@ -229,14 +229,9 @@ export function isChatRoute(key: RouteKey | null): boolean {
   );
 }
 
-export const handleNavSelect$ = command(({ get, set }, id: SidebarNavId) => {
+export const handleNavSelect$ = command(({ set }, id: SidebarNavId) => {
   if (id === "queues") {
     set(openQueueDrawer$);
-  } else if (
-    id === "chat" &&
-    (get(activeRoute$) === "home" || get(activeRoute$) === "agentChat")
-  ) {
-    return;
   } else {
     const navRoutes = {
       chat: ROUTES.home,

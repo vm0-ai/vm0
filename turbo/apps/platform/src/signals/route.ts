@@ -4,6 +4,7 @@ import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
+import { clearPage$ } from "./react-router.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import {
   bestEffort,
@@ -173,6 +174,7 @@ export const initRoutes$ = command(
     window.addEventListener(
       "popstate",
       onDomEventFn(async () => {
+        set(clearPage$);
         set(reloadPathname$, (x) => {
           return x + 1;
         });
@@ -209,6 +211,7 @@ const navigate$ = command(
     const searchStr = options.searchParams?.toString();
     const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
     L.debug("navigating to", newPath);
+    set(clearPage$);
     if (options.replace) {
       replaceState({}, "", newPath);
     } else {
