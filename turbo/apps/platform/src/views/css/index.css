@@ -519,27 +519,27 @@ body {
   --zero-color-theme-ring: 74.2 53.8% 41.6%;
 }
 
-/* Full-system themes keep the existing lightness hierarchy and rotate only a
-   low-concentration hue through surfaces, borders, inputs, and interaction
-   states. Foreground, destructive, success, and brand-primary colors stay
-   unchanged for contrast and hierarchy. Because these variables live on the
-   document root, portaled dialogs and popovers inherit the same system. */
+/* Full-system themes keep the existing lightness hierarchy while carrying a
+   recognizable hue through surfaces, borders, inputs, and interaction states.
+   Foreground, destructive, success, and brand-primary colors stay unchanged
+   for contrast and hierarchy. Because these variables live on the document
+   root, portaled dialogs and popovers inherit the same system. */
 :root[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 24% 98%;
-  --gray-50: var(--zero-color-theme-hue) 22% 96.5%;
-  --gray-100: var(--zero-color-theme-hue) 20% 93.5%;
-  --gray-200: var(--zero-color-theme-hue) 18% 91.5%;
-  --gray-300: var(--zero-color-theme-hue) 17% 88.5%;
-  --gray-400: var(--zero-color-theme-hue) 16% 84.5%;
-  --gray-500: var(--zero-color-theme-hue) 16% 76%;
+  --gray-0: var(--zero-color-theme-hue) 42% 97%;
+  --gray-50: var(--zero-color-theme-hue) 40% 94%;
+  --gray-100: var(--zero-color-theme-hue) 36% 90.5%;
+  --gray-200: var(--zero-color-theme-hue) 32% 87.5%;
+  --gray-300: var(--zero-color-theme-hue) 28% 83.5%;
+  --gray-400: var(--zero-color-theme-hue) 24% 78%;
+  --gray-500: var(--zero-color-theme-hue) 22% 69%;
 
   --divider: var(--gray-200);
-  --background: var(--zero-color-theme-hue) 24% 98.8%;
-  --card: var(--zero-color-theme-hue) 30% 99.4%;
+  --background: var(--zero-color-theme-hue) 44% 97%;
+  --card: var(--zero-color-theme-hue) 48% 98.5%;
   --popover: var(--card);
-  --secondary: var(--zero-color-theme-hue) 22% 96%;
+  --secondary: var(--zero-color-theme-hue) 40% 93.5%;
   --muted: var(--gray-100);
-  --accent: var(--zero-color-theme-hue) 24% 94.5%;
+  --accent: var(--zero-color-theme-hue) 42% 89.5%;
   --border: var(--gray-400);
   --input: var(--card);
   --ring: var(--zero-color-theme-ring);
@@ -549,7 +549,7 @@ body {
   --segment-selected: var(--card);
   --zero-color-theme-selected: color-mix(
     in srgb,
-    #ffffff 84%,
+    #ffffff 64%,
     color-mix(
         in srgb,
         var(--zero-color-theme-anchor) 82%,
@@ -563,31 +563,31 @@ body {
     .dark,
     [data-theme="dark"]
   )[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 5% 7%;
-  --gray-50: var(--zero-color-theme-hue) 6% 10%;
-  --gray-100: var(--zero-color-theme-hue) 8% 15%;
-  --gray-200: var(--zero-color-theme-hue) 9% 19%;
-  --gray-300: var(--zero-color-theme-hue) 10% 23%;
-  --gray-400: var(--zero-color-theme-hue) 11% 27%;
-  --gray-500: var(--zero-color-theme-hue) 12% 33%;
+  --gray-0: var(--zero-color-theme-hue) 18% 7%;
+  --gray-50: var(--zero-color-theme-hue) 20% 10%;
+  --gray-100: var(--zero-color-theme-hue) 22% 15%;
+  --gray-200: var(--zero-color-theme-hue) 24% 19%;
+  --gray-300: var(--zero-color-theme-hue) 26% 23%;
+  --gray-400: var(--zero-color-theme-hue) 28% 27%;
+  --gray-500: var(--zero-color-theme-hue) 30% 33%;
 
   --divider: var(--gray-200);
   --background: var(--gray-50);
-  --card: var(--zero-color-theme-hue) 8% 14%;
+  --card: var(--zero-color-theme-hue) 24% 14%;
   --popover: var(--gray-100);
-  --secondary: var(--zero-color-theme-hue) 9% 17%;
+  --secondary: var(--zero-color-theme-hue) 24% 17%;
   --muted: var(--gray-200);
-  --accent: var(--zero-color-theme-hue) 12% 23%;
+  --accent: var(--zero-color-theme-hue) 30% 23%;
   --border: var(--gray-300);
   --input: var(--gray-200);
-  --ring: var(--zero-color-theme-hue) 45% 62%;
+  --ring: var(--zero-color-theme-hue) 50% 64%;
   --sidebar: var(--gray-100);
   --background-50: var(--gray-50);
-  --state-layer: var(--zero-color-theme-hue) 35% 82%;
+  --state-layer: var(--zero-color-theme-hue) 45% 82%;
   --segment-selected: var(--gray-400);
   --zero-color-theme-selected: color-mix(
     in srgb,
-    hsl(var(--card)) 86%,
+    hsl(var(--card)) 68%,
     color-mix(
         in srgb,
         var(--zero-color-theme-anchor) 82%,
@@ -1562,7 +1562,7 @@ details > summary {
   background-image:
     radial-gradient(
       ellipse 58% 64% at 0% 0%,
-      color-mix(in srgb, hsl(var(--card)) 88%, var(--zero-color-theme-anchor))
+      color-mix(in srgb, hsl(var(--card)) 64%, var(--zero-color-theme-anchor))
         0%,
       transparent 70%
     ),
@@ -1570,7 +1570,7 @@ details > summary {
       ellipse 54% 60% at 100% 100%,
       color-mix(
           in srgb,
-          hsl(var(--card)) 92%,
+          hsl(var(--card)) 70%,
           var(--zero-color-theme-companion)
         )
         0%,
@@ -1585,7 +1585,7 @@ details > summary {
   background-image:
     radial-gradient(
       ellipse 58% 64% at 0% 0%,
-      color-mix(in srgb, hsl(var(--card)) 92%, var(--zero-color-theme-anchor))
+      color-mix(in srgb, hsl(var(--card)) 78%, var(--zero-color-theme-anchor))
         0%,
       transparent 70%
     ),
@@ -1593,7 +1593,7 @@ details > summary {
       ellipse 54% 60% at 100% 100%,
       color-mix(
           in srgb,
-          hsl(var(--card)) 94%,
+          hsl(var(--card)) 82%,
           var(--zero-color-theme-companion)
         )
         0%,
