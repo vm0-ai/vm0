@@ -835,7 +835,8 @@ pub trait Sandbox: Send + Sync + Any {
     async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle>;
     /// Start the controlled guest Agent process.
     ///
-    /// A successful result always includes process control by construction.
+    /// A successful result always includes process control and timing captured
+    /// after the Agent has confirmed runtime placement.
     async fn start_agent_process(
         &self,
         request: &StartAgentProcessRequest<'_>,

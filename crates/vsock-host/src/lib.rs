@@ -98,7 +98,7 @@ pub use exec_operation::{
     ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus, ExecControlHandle,
     ExecControlOutcome, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
     ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest, SupervisedExecCancelHandle,
-    SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest,
+    SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest, SupervisedExecStartTiming,
 };
 pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
 pub use guest_dns_readiness::GuestDnsReadinessResult;
@@ -354,7 +354,8 @@ impl VsockHost {
     /// Start a supervised exec operation and wait for its PID acknowledgement.
     ///
     /// `request.start_timeout` bounds both start-frame writing and waiting for
-    /// `MSG_EXEC_STARTED`. If it elapses after the complete start frame is
+    /// `MSG_EXEC_STARTED` for workloads or `MSG_EXEC_AGENT_READY` for Agents.
+    /// If it elapses after the complete start frame is
     /// written, the host sends `MSG_EXEC_CANCEL` before returning a timeout
     /// error. If the bounded cancel write also times out, the connection is
     /// poisoned. If the cancel write succeeds, the connection remains open but

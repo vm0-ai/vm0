@@ -7,14 +7,14 @@ use tokio::net::UnixStream;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use vsock_proto::{
-    ExecCapturedOutput, ExecControlNonce, ExecControlStatus, ExecOutputStream, ExecTermination,
-    HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
-    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT, MSG_MEMORY_SNAPSHOT,
-    MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING,
-    MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
-    MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
-    MSG_WRITE_FILES_RESULT, RawMessage,
+    ExecAgentReadyTiming, ExecCapturedOutput, ExecControlNonce, ExecControlStatus,
+    ExecOutputStream, ExecTermination, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR,
+    MSG_EXEC_AGENT_READY, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT,
+    MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, MSG_GUEST_DNS_READINESS,
+    MSG_GUEST_DNS_READINESS_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, RawMessage,
 };
 
 use crate::operation_tracker::NormalOperationReadiness;
@@ -155,6 +155,7 @@ fn message_type_name(msg_type: u8) -> &'static str {
         MSG_WRITE_FILES_RESULT => "write_files_result",
         MSG_EXEC_START => "exec_start",
         MSG_EXEC_STARTED => "exec_started",
+        MSG_EXEC_AGENT_READY => "exec_agent_ready",
         MSG_EXEC_OUTPUT => "exec_output",
         MSG_EXEC_RESULT => "exec_result",
         MSG_EXEC_CANCEL => "exec_cancel",
@@ -393,6 +394,17 @@ pub(crate) async fn send_exec_result(
 pub(crate) async fn send_exec_started(stream: &mut UnixStream, seq: u32, pid: u32) {
     let payload = vsock_proto::encode_exec_started(pid).unwrap();
     let frame = vsock_proto::encode(MSG_EXEC_STARTED, seq, &payload).unwrap();
+    stream.write_all(&frame).await.unwrap();
+}
+
+pub(crate) async fn send_exec_agent_ready(stream: &mut UnixStream, seq: u32) {
+    let payload = vsock_proto::encode_exec_agent_ready(ExecAgentReadyTiming {
+        containment_create_us: 1,
+        placement_broker_setup_us: 2,
+        shell_spawn_us: 3,
+        bootstrap_ready_wait_us: 4,
+    });
+    let frame = vsock_proto::encode(MSG_EXEC_AGENT_READY, seq, &payload).unwrap();
     stream.write_all(&frame).await.unwrap();
 }
 

@@ -57,9 +57,9 @@ pub use snapshot::{
 pub use types::{
     CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_7_MIB,
     EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult, ExecTermination,
-    GuestAgentProcessHandle, GuestProcessCancelHandle, GuestProcessControlHandle,
-    GuestProcessControlOutcomeFuture, GuestProcessHandle, GuestProcessWaiter,
-    GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
+    GuestAgentProcessHandle, GuestAgentStartTiming, GuestProcessCancelHandle,
+    GuestProcessControlHandle, GuestProcessControlOutcomeFuture, GuestProcessHandle,
+    GuestProcessWaiter, GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
     ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlOutcome,
     ProcessControlWriteState, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
     ProcessOutputReceiver, StartAgentProcessRequest, StartProcessRequest, StorageManifestRequest,

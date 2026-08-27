@@ -8,6 +8,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -106,6 +107,8 @@ impl PreparedProcessContainmentCommand {
 pub(crate) struct WorkloadPlacementBootstrap {
     endpoint: String,
     tool_endpoint: String,
+    setup_elapsed: Duration,
+    ready_rx: mpsc::Receiver<io::Result<()>>,
     cancel: Arc<AtomicBool>,
     cancel_wake_writer: Option<OwnedFd>,
     active_tool_placement: Arc<ActiveToolPlacement>,
@@ -192,6 +195,14 @@ impl WorkloadPlacementBootstrap {
     pub(crate) fn tool_endpoint(&self) -> &str {
         &self.tool_endpoint
     }
+
+    pub(crate) fn setup_elapsed(&self) -> Duration {
+        self.setup_elapsed
+    }
+
+    pub(crate) fn try_ready(&self) -> Result<io::Result<()>, mpsc::TryRecvError> {
+        self.ready_rx.try_recv()
+    }
 }
 
 impl Drop for WorkloadPlacementBootstrap {
@@ -271,6 +282,15 @@ impl ExecProcessContainment {
                 outer_placement: None,
                 deny_process_inspection: false,
             }),
+        }
+    }
+
+    pub(crate) fn create_elapsed(&self) -> Duration {
+        match &self.backend {
+            ContainmentBackend::Cgroup(guard) => guard.create_elapsed,
+            ContainmentBackend::TestNoop => Duration::ZERO,
+            #[cfg(test)]
+            ContainmentBackend::TestDirectory(_) => Duration::ZERO,
         }
     }
 
@@ -487,6 +507,7 @@ impl CgroupGuard {
         control_endpoint: &str,
         expected_uid: libc::uid_t,
     ) -> Result<WorkloadPlacementBootstrap, ProcessContainmentError> {
+        let started = Instant::now();
         let placement = self
             .workload_placement
             .as_ref()
@@ -528,11 +549,12 @@ impl CgroupGuard {
         let worker_active_tool_placement = Arc::clone(&active_tool_placement);
         let mut cancel_wake_writer = Some(cancel_wake_writer);
         let cancel = Arc::new(AtomicBool::new(false));
+        let (ready_tx, ready_rx) = mpsc::channel();
         let worker_cancel = Arc::clone(&cancel);
         let workload_worker = thread::Builder::new()
             .name(THREAD_WORKLOAD_BOOTSTRAP.to_owned())
             .spawn(move || {
-                serve_workload_placement(
+                let result = serve_workload_placement(
                     listener,
                     placement,
                     expected_uid,
@@ -540,6 +562,7 @@ impl CgroupGuard {
                     &worker_cancel,
                     workload_cancel_reader.as_raw_fd(),
                 );
+                let _ = ready_tx.send(result);
             })
             .map_err(|error| {
                 ProcessContainmentError::new("start workload placement bootstrap worker", error)
@@ -572,6 +595,8 @@ impl CgroupGuard {
         Ok(WorkloadPlacementBootstrap {
             endpoint,
             tool_endpoint,
+            setup_elapsed: started.elapsed(),
+            ready_rx,
             cancel,
             cancel_wake_writer,
             active_tool_placement,
@@ -1055,31 +1080,31 @@ fn serve_workload_placement(
     expected_cgroup: &Path,
     cancel: &AtomicBool,
     cancel_fd: RawFd,
-) {
+) -> io::Result<()> {
     loop {
         let stream = match accept_placement_or_cancelled(&listener, cancel, cancel_fd) {
             Ok(Some(stream)) => stream,
-            Ok(None) => return,
-            Err(error) => {
-                log(
-                    "WARN",
-                    &format!("workload placement bootstrap accept failed: {error}"),
-                );
-                return;
-            }
+            Ok(None) => return Err(workload_bootstrap_cancelled()),
+            Err(error) => return Err(error),
         };
 
         match workload_bootstrap_peer_matches(&stream, expected_uid, expected_cgroup) {
             Ok(true) => {
-                if let Err(error) =
-                    process_control_ipc::send_workload_placement(&stream, placement.as_fd())
-                {
-                    log(
-                        "WARN",
-                        &format!("workload placement descriptor send failed: {error}"),
-                    );
+                stream.set_nonblocking(true)?;
+                send_workload_placement_or_cancelled(
+                    &stream,
+                    placement.as_fd(),
+                    cancel,
+                    cancel_fd,
+                )?;
+                read_workload_confirmation_or_cancelled(&stream, cancel, cancel_fd)?;
+                if !workload_bootstrap_peer_matches(&stream, expected_uid, expected_cgroup)? {
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "workload placement peer left the control cgroup before confirmation",
+                    ));
                 }
-                return;
+                return Ok(());
             }
             Ok(false) => {
                 log(
@@ -1095,6 +1120,120 @@ fn serve_workload_placement(
             }
         }
     }
+}
+
+fn send_workload_placement_or_cancelled(
+    stream: &UnixStream,
+    placement: std::os::fd::BorrowedFd<'_>,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) -> io::Result<()> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Err(workload_bootstrap_cancelled());
+        }
+        match process_control_ipc::send_workload_placement(stream, placement) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                wait_placement_stream_or_cancelled(stream, libc::POLLOUT, cancel, cancel_fd)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn read_workload_confirmation_or_cancelled(
+    stream: &UnixStream,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) -> io::Result<()> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Err(workload_bootstrap_cancelled());
+        }
+        match process_control_ipc::read_workload_placement_confirmation(stream) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                wait_placement_stream_or_cancelled(stream, libc::POLLIN, cancel, cancel_fd)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn wait_placement_stream_or_cancelled(
+    stream: &UnixStream,
+    events: libc::c_short,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) -> io::Result<()> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Err(workload_bootstrap_cancelled());
+        }
+        let mut pollfds = [
+            libc::pollfd {
+                fd: stream.as_raw_fd(),
+                events,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: cancel_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        // SAFETY: both poll entries reference live descriptors owned by the
+        // bootstrap for the duration of this call.
+        let result = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as libc::nfds_t, -1) };
+        if result > 0 {
+            let stream_revents = pollfds[0].revents;
+            let cancel_revents = pollfds[1].revents;
+            if cancel.load(Ordering::Acquire)
+                || cancel_revents & (libc::POLLIN | libc::POLLHUP) != 0
+            {
+                return Err(workload_bootstrap_cancelled());
+            }
+            if cancel_revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                return Err(io::Error::other(
+                    "placement cancellation descriptor became unavailable",
+                ));
+            }
+            if stream_revents & events != 0 {
+                return Ok(());
+            }
+            if stream_revents & libc::POLLNVAL != 0 {
+                return Err(io::Error::other(
+                    "workload placement stream descriptor became unavailable",
+                ));
+            }
+            if stream_revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+                return Err(stream.take_error()?.unwrap_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "workload placement stream closed before confirmation",
+                    )
+                }));
+            }
+            continue;
+        }
+        if result == 0 {
+            continue;
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+fn workload_bootstrap_cancelled() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::Interrupted,
+        "workload placement bootstrap cancelled",
+    )
 }
 
 fn serve_tool_placement(
@@ -1549,6 +1688,15 @@ mod tests {
 
     struct ChildGuard(Child);
 
+    fn current_cgroup_path() -> PathBuf {
+        let current_cgroup = fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative = current_cgroup
+            .lines()
+            .find_map(|line| line.strip_prefix("0::/"))
+            .unwrap();
+        Path::new(CGROUP_V2_MOUNT_PATH).join(relative)
+    }
+
     impl Drop for ChildGuard {
         fn drop(&mut self) {
             let _ = self.0.kill();
@@ -1684,12 +1832,7 @@ mod tests {
         let (peer, _server) = std::os::unix::net::UnixStream::pair().unwrap();
         // SAFETY: geteuid is a simple scalar getter with no preconditions.
         let uid = unsafe { libc::geteuid() };
-        let current_cgroup = fs::read_to_string("/proc/self/cgroup").unwrap();
-        let relative = current_cgroup
-            .lines()
-            .find_map(|line| line.strip_prefix("0::/"))
-            .unwrap();
-        let expected = Path::new(CGROUP_V2_MOUNT_PATH).join(relative);
+        let expected = current_cgroup_path();
 
         assert!(workload_bootstrap_peer_matches(&peer, uid, &expected).unwrap());
         assert!(!workload_bootstrap_peer_matches(&peer, uid.wrapping_add(1), &expected).unwrap());
@@ -1697,6 +1840,83 @@ mod tests {
             !workload_bootstrap_peer_matches(&peer, uid, &expected.join("not-the-peer-cgroup"))
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn workload_bootstrap_completes_after_authenticated_descriptor_confirmation() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-workload-confirm-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let placement: OwnedFd = tempfile::tempfile().unwrap().into();
+        let (cancel_reader, _cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let server_cancel = Arc::clone(&cancel);
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        let uid = unsafe { libc::geteuid() };
+        let expected = current_cgroup_path();
+        let server = thread::spawn(move || {
+            serve_workload_placement(
+                listener,
+                placement,
+                uid,
+                &expected,
+                &server_cancel,
+                cancel_reader.as_raw_fd(),
+            )
+        });
+
+        let client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let descriptor = process_control_ipc::receive_workload_placement(&client).unwrap();
+        process_control_ipc::write_workload_placement_confirmation(&client).unwrap();
+
+        server.join().unwrap().unwrap();
+        drop(descriptor);
+    }
+
+    #[test]
+    fn workload_bootstrap_fails_when_descriptor_recipient_disconnects_before_confirmation() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-workload-disconnect-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let placement: OwnedFd = tempfile::tempfile().unwrap().into();
+        let (cancel_reader, _cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let server_cancel = Arc::clone(&cancel);
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        let uid = unsafe { libc::geteuid() };
+        let expected = current_cgroup_path();
+        let server = thread::spawn(move || {
+            serve_workload_placement(
+                listener,
+                placement,
+                uid,
+                &expected,
+                &server_cancel,
+                cancel_reader.as_raw_fd(),
+            )
+        });
+
+        let client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let descriptor = process_control_ipc::receive_workload_placement(&client).unwrap();
+        drop(client);
+
+        let error = server
+            .join()
+            .unwrap()
+            .expect_err("missing placement confirmation must fail readiness");
+        assert!(matches!(
+            error.kind(),
+            io::ErrorKind::UnexpectedEof
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::BrokenPipe
+        ));
+        drop(descriptor);
     }
 
     #[test]
@@ -1796,9 +2016,12 @@ mod tests {
             .unwrap();
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_after_drop = Arc::clone(&cancel);
+        let (_bootstrap_ready_tx, bootstrap_ready_rx) = mpsc::channel();
         let bootstrap = WorkloadPlacementBootstrap {
             endpoint,
             tool_endpoint,
+            setup_elapsed: Duration::ZERO,
+            ready_rx: bootstrap_ready_rx,
             cancel,
             cancel_wake_writer: Some(cancel_writer),
             active_tool_placement: Arc::new(ActiveToolPlacement::default()),
@@ -1953,9 +2176,12 @@ mod tests {
                 tool_done.fetch_add(1, Ordering::Release);
             })
             .unwrap();
+        let (_bootstrap_ready_tx, bootstrap_ready_rx) = mpsc::channel();
         let bootstrap = WorkloadPlacementBootstrap {
             endpoint,
             tool_endpoint: tool_endpoint.clone(),
+            setup_elapsed: Duration::ZERO,
+            ready_rx: bootstrap_ready_rx,
             cancel,
             cancel_wake_writer: Some(cancel_writer),
             active_tool_placement,

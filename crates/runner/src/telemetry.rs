@@ -154,7 +154,7 @@ impl JobTelemetry {
         self.runner_pre_spawn_attribution = Some(attribution);
     }
 
-    /// Stop decorating operations after the success-only `api_to_spawn` boundary.
+    /// Stop decorating operations after the success-only Agent-ready boundary.
     pub(crate) fn finish_runner_pre_spawn_attribution(&mut self) {
         self.runner_pre_spawn_attribution = None;
     }
@@ -212,7 +212,36 @@ impl JobTelemetry {
         runner_startup_path: RunnerStartupPath,
         sandbox_reuse_result: SandboxReuseResult,
     ) {
-        let mut op = sandbox_op("api_to_spawn", duration, true, None, None, None);
+        self.record_api_startup_boundary(
+            "api_to_spawn",
+            duration,
+            runner_startup_path,
+            sandbox_reuse_result,
+        );
+    }
+
+    pub(crate) fn record_api_to_agent_ready(
+        &mut self,
+        duration: Duration,
+        runner_startup_path: RunnerStartupPath,
+        sandbox_reuse_result: SandboxReuseResult,
+    ) {
+        self.record_api_startup_boundary(
+            "api_to_agent_ready",
+            duration,
+            runner_startup_path,
+            sandbox_reuse_result,
+        );
+    }
+
+    fn record_api_startup_boundary(
+        &mut self,
+        action_type: &'static str,
+        duration: Duration,
+        runner_startup_path: RunnerStartupPath,
+        sandbox_reuse_result: SandboxReuseResult,
+    ) {
+        let mut op = sandbox_op(action_type, duration, true, None, None, None);
         op.runner_startup_path = Some(runner_startup_path);
         op.sandbox_reuse_result = Some(sandbox_reuse_result);
         self.push_operation(op);
@@ -699,13 +728,18 @@ mod tests {
     }
 
     #[test]
-    fn api_to_spawn_serializes_bounded_startup_metadata() {
+    fn api_startup_boundaries_serialize_bounded_startup_metadata() {
         let mut telemetry = JobTelemetry::new(http_client(), RunId::nil(), "tok".to_string(), None);
         telemetry.start_runner_pre_spawn_attribution(RunnerPreSpawnAttribution::new(
             RunnerPreSpawnConcurrencyBucket::ThreeToFour,
         ));
         telemetry.record_api_to_spawn(
             Duration::from_millis(125),
+            RunnerStartupPath::Workspace,
+            SandboxReuseResult::PoolMiss,
+        );
+        telemetry.record_api_to_agent_ready(
+            Duration::from_millis(150),
             RunnerStartupPath::Workspace,
             SandboxReuseResult::PoolMiss,
         );
@@ -716,6 +750,18 @@ mod tests {
                 "ts": telemetry.pending_ops[0].ts.clone(),
                 "action_type": "api_to_spawn",
                 "duration_ms": 125,
+                "success": true,
+                "runner_startup_path": "workspace",
+                "sandbox_reuse_result": "poolMiss",
+                "runner_pre_spawn_concurrency_bucket": "3_4",
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&telemetry.pending_ops[1]).unwrap(),
+            serde_json::json!({
+                "ts": telemetry.pending_ops[1].ts.clone(),
+                "action_type": "api_to_agent_ready",
+                "duration_ms": 150,
                 "success": true,
                 "runner_startup_path": "workspace",
                 "sandbox_reuse_result": "poolMiss",

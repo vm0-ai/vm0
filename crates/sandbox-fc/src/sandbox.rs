@@ -8,11 +8,12 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
-    GuestMemorySnapshot, GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle,
-    GuestProcessWaiter, GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
-    ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlOutcome,
-    ProcessControlWriteState, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox,
-    SandboxConfig, SandboxError, SandboxFinalExecParkHandoff, SandboxFinalExecParkHandoffOutcome,
+    GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
+    GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, GuestStateRestoreRequest,
+    GuestStateRestoreTimezone, ProcessControlAck, ProcessControlFailureKind,
+    ProcessControlGuestStatus, ProcessControlOutcome, ProcessControlWriteState, ProcessExit,
+    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxError,
+    SandboxFinalExecParkHandoff, SandboxFinalExecParkHandoffOutcome,
     SandboxFinalExecParkHandoffPoint, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
     SandboxFinalExecParkStage, SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome,
     SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
@@ -27,7 +28,8 @@ use tracing::{info, warn};
 use vsock_host::{
     ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver,
     GuestStateRestoreResult, GuestStorageManifestResult, NormalOperationFence,
-    NormalOperationFenceRejection, SupervisedExecControl, SupervisedExecRequest, VsockHost,
+    NormalOperationFenceRejection, SupervisedExecControl, SupervisedExecRequest,
+    SupervisedExecStartTiming, VsockHost,
 };
 use vsock_proto::{
     ExecOutputPolicy, ExecOutputStream, ExecProcessRole, ExecTimeoutPolicy,
@@ -1919,7 +1921,7 @@ impl FirecrackerSandbox {
         operation: SandboxOperation,
         role: ExecProcessRole,
         control: SupervisedExecControl,
-    ) -> sandbox::Result<GuestProcessHandle> {
+    ) -> sandbox::Result<(GuestProcessHandle, SupervisedExecStartTiming)> {
         let vsock = self.begin_guest_operation(operation).await?;
         Self::validate_exec_env_keys(operation, request.env)?;
         request.output.validate(operation)?;
@@ -1954,6 +1956,7 @@ impl FirecrackerSandbox {
                     }
                 };
                 let guest_pid = handle.pid();
+                let start_timing = handle.start_timing();
                 let process_control = handle.control_handle().map(|control| {
                     let coordinator = self.park_coordinator.clone();
                     let state = Arc::clone(&self.state);
@@ -2003,10 +2006,11 @@ impl FirecrackerSandbox {
                 if let Some(process_cancel) = process_cancel {
                     public_handle = public_handle.with_cancel_handle(process_cancel);
                 }
-                Ok(match close_stdout {
+                let public_handle = match close_stdout {
                     Some(close_stdout) => public_handle.with_unclaimed_stdout_cleanup(close_stdout),
                     None => public_handle,
-                })
+                };
+                Ok((public_handle, start_timing))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))
@@ -2664,20 +2668,22 @@ impl Sandbox for FirecrackerSandbox {
         &self,
         request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
-        self.start_process_with_contract(
-            request,
-            SandboxOperation::StartProcess,
-            ExecProcessRole::Workload,
-            SupervisedExecControl::Disabled,
-        )
-        .await
+        let (process, _) = self
+            .start_process_with_contract(
+                request,
+                SandboxOperation::StartProcess,
+                ExecProcessRole::Workload,
+                SupervisedExecControl::Disabled,
+            )
+            .await?;
+        Ok(process)
     }
 
     async fn start_agent_process(
         &self,
         request: &StartAgentProcessRequest<'_>,
     ) -> sandbox::Result<GuestAgentProcessHandle> {
-        let process = self
+        let (process, timing) = self
             .start_process_with_contract(
                 &request.process,
                 SandboxOperation::StartAgentProcess,
@@ -2685,7 +2691,35 @@ impl Sandbox for FirecrackerSandbox {
                 SupervisedExecControl::Enabled { sink: true },
             )
             .await?;
-        GuestAgentProcessHandle::try_from_process(process)
+        let ready_at = timing.agent_ready_at.ok_or_else(|| {
+            Self::operation_error(
+                SandboxOperation::StartAgentProcess,
+                io::Error::other("guest Agent start completed without readiness timestamp"),
+                self.has_backend_crashed(),
+            )
+        })?;
+        let ready = timing.agent_ready.ok_or_else(|| {
+            Self::operation_error(
+                SandboxOperation::StartAgentProcess,
+                io::Error::other("guest Agent start completed without readiness timing"),
+                self.has_backend_crashed(),
+            )
+        })?;
+        GuestAgentProcessHandle::try_from_process(
+            process,
+            GuestAgentStartTiming {
+                shell_started_at: timing.shell_started_at,
+                ready_at,
+                containment_create: Duration::from_micros(u64::from(ready.containment_create_us)),
+                placement_broker_setup: Duration::from_micros(u64::from(
+                    ready.placement_broker_setup_us,
+                )),
+                shell_spawn: Duration::from_micros(u64::from(ready.shell_spawn_us)),
+                bootstrap_ready_wait: Duration::from_micros(u64::from(
+                    ready.bootstrap_ready_wait_us,
+                )),
+            },
+        )
     }
 
     async fn wait_process(
