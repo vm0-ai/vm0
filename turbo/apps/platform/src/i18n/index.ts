@@ -24,12 +24,12 @@ export function currentLocale(): string {
   return i18n.resolvedLanguage ?? i18n.language;
 }
 
-interface InitialLocaleResources {
+export interface InitialLocaleResources {
   readonly locale: SupportedLocale;
   readonly resources: Resource;
 }
 
-async function loadInitialLocaleResources(
+export async function loadInitialLocaleResources(
   locale: SupportedLocale,
   signal?: AbortSignal,
 ): Promise<InitialLocaleResources> {
@@ -71,8 +71,15 @@ export async function initializeI18n(
   locale: SupportedLocale = DEFAULT_LOCALE,
   signal?: AbortSignal,
 ): Promise<SupportedLocale> {
-  const hostname = location.hostname;
   const initial = await loadInitialLocaleResources(locale, signal);
+  return initializeI18nWithResources(initial, signal);
+}
+
+export async function initializeI18nWithResources(
+  initial: InitialLocaleResources,
+  signal?: AbortSignal,
+): Promise<SupportedLocale> {
+  const hostname = location.hostname;
   signal?.throwIfAborted();
   await i18n.init({
     defaultNS: DEFAULT_NAMESPACE,
@@ -90,6 +97,7 @@ export async function initializeI18n(
     returnNull: false,
     supportedLngs: SUPPORTED_LOCALES,
   });
+  signal?.throwIfAborted();
   return initial.locale;
 }
 
@@ -101,20 +109,33 @@ function addLocaleResources(
   i18n.addResourceBundle(locale, "common", resources.common, true, true);
 }
 
+export function loadI18nLanguageResources(
+  locale: SupportedLocale,
+  signal?: AbortSignal,
+): Promise<LocaleResources | undefined> {
+  return !i18n.hasResourceBundle(locale, "agents") ||
+    !i18n.hasResourceBundle(locale, "common")
+    ? loadLocaleResources(locale, signal)
+    : Promise.resolve(undefined);
+}
+
 export async function changeI18nLanguage(
   locale: SupportedLocale,
   signal?: AbortSignal,
 ): Promise<void> {
-  let resources: LocaleResources | undefined;
-  if (
-    !i18n.hasResourceBundle(locale, "agents") ||
-    !i18n.hasResourceBundle(locale, "common")
-  ) {
-    resources = await loadLocaleResources(locale, signal);
-  }
+  const resources = await loadI18nLanguageResources(locale, signal);
+  await changeI18nLanguageWithResources(locale, resources, signal);
+}
+
+export async function changeI18nLanguageWithResources(
+  locale: SupportedLocale,
+  resources: LocaleResources | undefined,
+  signal?: AbortSignal,
+): Promise<void> {
   signal?.throwIfAborted();
   if (resources) {
     addLocaleResources(locale, resources);
   }
   await i18n.changeLanguage(locale);
+  signal?.throwIfAborted();
 }

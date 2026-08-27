@@ -46,7 +46,7 @@ const { apiOriginMarker, posthog } = vi.hoisted(() => {
   };
 });
 
-vi.mock("posthog-js", () => {
+vi.mock("posthog-js/dist/module.slim", () => {
   return { posthog };
 });
 
@@ -145,6 +145,14 @@ describe("bootstrap phase telemetry", () => {
     context.store.set(hideAppSkeleton$, context.signal);
 
     expect(timingEvents()).toHaveLength(1);
+    expect(
+      posthog.capture.mock.calls.flatMap(([eventName]) => {
+        return eventName === "app_first_skeleton_hide" ||
+          eventName === BOOTSTRAP_PHASE_TIMING_EVENT
+          ? [eventName]
+          : [];
+      }),
+    ).toStrictEqual(["app_first_skeleton_hide", BOOTSTRAP_PHASE_TIMING_EVENT]);
   });
 
   it("discards thread timing from an aborted navigation", async () => {
