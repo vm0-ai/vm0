@@ -67,7 +67,6 @@ import {
   deleteApiTestConnectorCatalogRuntimeProjectionRow,
   expireApiTestConnectorCatalogRuntimeProjectionAuthority,
   installApiTestConnectorCatalog,
-  mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
@@ -9263,6 +9262,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
   it("uses exact runtime projections and authoritative fallback for builtin sync", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-runtime-sync-projection-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await connectors.updateFeatureSwitches(actor, {
@@ -9294,10 +9298,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     }
     expect(larkTarget.sourceId).toBe(connected.id);
 
-    onTestFinished(async () => {
-      mockApiTestConnectorProviderConfiguration();
-      await installApiTestConnectorCatalog();
-    });
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-runtime-sync-projection-${randomUUID()}`,
       runtimeProjection: true,
