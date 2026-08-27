@@ -1984,7 +1984,7 @@ describe("managed SocialKit route", () => {
           quality: "720p",
           format: "mp4",
           title: { untrusted: true },
-          thumbnail: "https://media.socialkit.test/retry-download",
+          thumbnail: "https://media.socialkit.test/retry-download#preview",
         });
       }),
       http.get("https://media.socialkit.test/retry-download", () => {

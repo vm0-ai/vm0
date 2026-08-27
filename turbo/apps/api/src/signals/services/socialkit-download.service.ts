@@ -732,9 +732,14 @@ type ProviderReady = z.infer<typeof providerReadySchema>;
 
 function safeProviderResult(ready: ProviderReady) {
   const thumbnail = providerThumbnailSchema.safeParse(ready.thumbnail);
+  const downloadUrl = new URL(ready.downloadUrl);
+  downloadUrl.hash = "";
+  const thumbnailUrl = thumbnail.success ? new URL(thumbnail.data) : null;
+  if (thumbnailUrl) {
+    thumbnailUrl.hash = "";
+  }
   const safeThumbnail =
-    thumbnail.success &&
-    new URL(thumbnail.data).href !== new URL(ready.downloadUrl).href
+    thumbnail.success && thumbnailUrl?.href !== downloadUrl.href
       ? thumbnail.data
       : undefined;
   return {
