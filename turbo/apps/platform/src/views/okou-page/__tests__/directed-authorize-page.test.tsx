@@ -25,6 +25,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 
+// Keep runtime route-import transforms outside assertion timeouts. Production
+// still resolves this module only after matching a settings route.
+import "../../../signals/route-setups/settings.ts";
+
 const context = testContext();
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
