@@ -234,7 +234,7 @@ jobs:
       RELEASE_TAG: desktop-v${{ needs.release-please.outputs.desktop_version }}
       OKOU_RELEASE_TAG: okou-desktop-v${{ needs.release-please.outputs.desktop_version }}
       RELEASE_TARGET: ${{ needs.release-please.outputs.release_target }}
-      VM0_DESKTOP_SIGNING_IDENTITY: "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)"
+      OKOU_DESKTOP_SIGNING_IDENTITY: "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)"
       MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
@@ -429,7 +429,7 @@ jobs:
             "$keychain_path"
           security list-keychains -d user -s "$keychain_path"
 
-          if ! security find-identity -p codesigning -v "$keychain_path" | grep -F "$VM0_DESKTOP_SIGNING_IDENTITY"; then
+          if ! security find-identity -p codesigning -v "$keychain_path" | grep -F "$OKOU_DESKTOP_SIGNING_IDENTITY"; then
             echo "::error::Developer ID Application identity not found in imported certificate"
             exit 1
           fi
@@ -476,7 +476,7 @@ jobs:
               --out "$dmg_artifact_path" \
               --volume-name "$volume_name" \
               "${background_args[@]}"
-            codesign --force --sign "$VM0_DESKTOP_SIGNING_IDENTITY" --timestamp "$dmg_artifact_path"
+            codesign --force --sign "$OKOU_DESKTOP_SIGNING_IDENTITY" --timestamp "$dmg_artifact_path"
             xcrun notarytool submit "$dmg_artifact_path" \
               --key "$OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" \
               --key-id "$OKOU_DESKTOP_NOTARIZE_API_KEY_ID" \
@@ -566,11 +566,11 @@ jobs:
             file "$app_dir/Contents/MacOS/$app_name" | grep -q "arm64"
             file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "arm64"
             codesign --verify --deep --strict --verbose=2 "$app_dir"
-            codesign --display --verbose=4 "$app_dir" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
+            codesign --display --verbose=4 "$app_dir" 2>&1 | grep -F "Authority=$OKOU_DESKTOP_SIGNING_IDENTITY"
             xcrun stapler validate "$app_dir"
             unzip -l "$zip_artifact_path" | grep -q "$app_name.app/Contents/MacOS/$app_name"
             codesign --verify --verbose=2 "$dmg_artifact_path"
-            codesign --display --verbose=4 "$dmg_artifact_path" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
+            codesign --display --verbose=4 "$dmg_artifact_path" 2>&1 | grep -F "Authority=$OKOU_DESKTOP_SIGNING_IDENTITY"
             xcrun stapler validate "$dmg_artifact_path"
             hdiutil verify "$dmg_artifact_path"
 

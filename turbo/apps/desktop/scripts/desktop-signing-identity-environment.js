@@ -1,11 +1,11 @@
 const CANONICAL_SIGNING_IDENTITY = "OKOU_DESKTOP_SIGNING_IDENTITY";
 const LEGACY_SIGNING_IDENTITY = "VM0_DESKTOP_SIGNING_IDENTITY";
 
-// The production release workflow remains legacy-only during this reader
-// stage. Remove the legacy alias only after an ordinary signed Desktop release
-// proves legacy-only evidence from both readers, a later writer cutover records
-// canonical-only production evidence, and the supported rollback window plus
-// zero legacy-use gate complete under #28914.
+// The production release workflow is canonical-only during this writer stage.
+// Keep the legacy alias for rollback until an exact signed Desktop release
+// proves two canonical-only reader events with zero legacy-only, dual, or
+// conflict events, signing and notarization outputs remain unchanged, and the
+// supported rollback window completes under #28914.
 function resolveDesktopSigningIdentityEnvironment() {
   const canonicalValue = process.env[CANONICAL_SIGNING_IDENTITY];
   const legacyValue = process.env[LEGACY_SIGNING_IDENTITY];
