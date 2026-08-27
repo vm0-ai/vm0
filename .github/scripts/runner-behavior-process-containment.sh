@@ -1120,21 +1120,6 @@ record_agent_ready_benchmark_sample() {
     }' >> "$AGENT_READY_BENCHMARK_RAW"
 }
 
-restart_agent_ready_benchmark_runner() {
-  sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
-  wait_for_unit_inactive
-  sudo "$BIN_DIR/runner" service start --name "$SVC" \
-    --config "$RUNNER_DIR/runner.yaml" --local \
-    --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
-  INVOCATION_ID=""
-  for _ in $(seq 1 30); do
-    INVOCATION_ID=$(sudo systemctl show "$UNIT" --property=InvocationID --value 2>/dev/null) || true
-    [ -n "$INVOCATION_ID" ] && break
-    sleep 1
-  done
-  [ -n "$INVOCATION_ID" ] || fail "runner invocation ID unavailable after benchmark restart"
-}
-
 for index in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
   thread_id=$(cat /proc/sys/kernel/random/uuid)
   record_agent_ready_benchmark_sample \
@@ -1142,6 +1127,7 @@ for index in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
 done
 
 WORKSPACE_BENCHMARK_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
+WORKSPACE_BENCHMARK_EVICTOR_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$WORKSPACE_BENCHMARK_THREAD_ID" \
   --session-id agent-ready-workspace \
@@ -1150,10 +1136,15 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   || fail "workspace-cache Agent-ready benchmark warmup failed"
 
 for _ in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
-  # Restarting destroys the owned idle sandbox while retaining its promoted
-  # workspace-cache image, so every sample exercises the same cache-hit path
-  # without accumulating one full workspace image per requested sample.
-  restart_agent_ready_benchmark_runner
+  # Pool-pressure eviction promotes the measured workspace. Alternate with a
+  # second key so every sample checks out that promoted image instead of taking
+  # the exact sandbox-reuse path or relying on service-stop promotion.
+  sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+    --chat-thread-id "$WORKSPACE_BENCHMARK_EVICTOR_THREAD_ID" \
+    --session-id agent-ready-workspace-evictor \
+    --feature-flag sandboxReuse=true \
+    --prompt 'true' >/dev/null \
+    || fail "workspace-cache Agent-ready benchmark eviction failed"
   record_agent_ready_benchmark_sample \
     workspace-cache PoolMiss Reused \
     "$WORKSPACE_BENCHMARK_THREAD_ID" agent-ready-workspace
