@@ -103,7 +103,7 @@ async fn acquire_cleanup_service_lock(
     unit: &RunnerServiceUnit,
     home: &HomePaths,
 ) -> RunnerResult<nix::fcntl::Flock<std::fs::File>> {
-    let path = home.service_lock(unit.unit_name());
+    let path = unit.lock_path(home);
     let deadline = TokioInstant::now() + CLEANUP_LOCK_TIMEOUT;
 
     loop {

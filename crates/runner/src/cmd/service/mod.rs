@@ -165,7 +165,7 @@ async fn acquire_service_lock(
     unit: &RunnerServiceUnit,
     home: &HomePaths,
 ) -> RunnerResult<nix::fcntl::Flock<std::fs::File>> {
-    crate::lock::acquire(home.service_lock(unit.unit_name())).await
+    crate::lock::acquire(unit.lock_path(home)).await
 }
 
 struct ServiceActivationConfig {
