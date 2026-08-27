@@ -1162,10 +1162,20 @@ async fn assert_speculation_failure_falls_back_to_fresh(
         completion.reuse_result,
         Some(SandboxReuseResult::UnparkFailed)
     );
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 1, Duration::from_secs(5)).await;
+    assert_eq!(
+        env.idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id,
+        fresh_sandbox_id
+    );
     assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.destroy_call_count(), 2);
 }
 
 #[tokio::test]
@@ -1222,6 +1232,18 @@ async fn speculative_guest_restore_transport_failure_destroys_before_fresh_fallb
                 reason: sandbox::SandboxOperationReason::Guest,
                 message: "simulated guest restore transport failure".into(),
             }));
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn speculative_guest_restore_panic_destroys_before_fresh_fallback() {
+    assert_speculation_failure_falls_back_to_fresh(
+        GuestTimezoneIntent::Default,
+        None,
+        |overrides| {
+            overrides.push_guest_state_restore_panic("simulated guest restore panic");
         },
     )
     .await;

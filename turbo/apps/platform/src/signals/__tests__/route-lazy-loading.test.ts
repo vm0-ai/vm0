@@ -13,10 +13,12 @@ import { appSkeletonVisible$, hideAppSkeleton$ } from "../app-skeleton.ts";
 import { page$, updatePage$ } from "../react-router.ts";
 import {
   detachedNavigateTo$,
+  historyState$,
   initRoutes$,
   lazyRouteSetup,
   prefetchRoute$,
   type RouteSetup,
+  updateSearchParams$,
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { setRootSignal$ } from "../root-signal.ts";
@@ -361,6 +363,7 @@ describe("lazy route setup", () => {
 
   it("clears a popstate route boundary before lazy preparation", async () => {
     const { pushStateMock } = installNavigation(ROUTES.agents);
+    const restoredHistoryState = { source: "artifact-search" };
     const loaderStarted = deferred<void>();
     const releaseLoader = deferred<void>();
     const workflowSetupStarted = deferred<void>();
@@ -400,10 +403,13 @@ describe("lazy route setup", () => {
     );
 
     setPathname(ROUTES.workflows, context.signal);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(
+      new PopStateEvent("popstate", { state: restoredHistoryState }),
+    );
     await loaderStarted.promise;
 
     expect(pathname()).toBe(ROUTES.workflows);
+    expect(context.store.get(historyState$)).toBe(restoredHistoryState);
     expect(context.store.get(page$)).toBeUndefined();
     expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
     expect(agentsSignal?.aborted).toBeTruthy();
@@ -462,8 +468,15 @@ describe("lazy route setup", () => {
     expect(pathname()).toBe(ROUTES.workflows);
   });
 
-  it("cancels stale cold preparation before it can mutate history", async () => {
+  it("cancels stale cold preparation before it can mutate history state", async () => {
     const { pushStateMock } = installNavigation(ROUTES.agents);
+    const currentHistoryState = { source: "agents" };
+    context.store.set(
+      updateSearchParams$,
+      new URLSearchParams(),
+      currentHistoryState,
+    );
+    pushStateMock.mockClear();
     const workflowPreparationStarted = deferred<void>();
     const releaseWorkflowPreparation = deferred<void>();
     const settingsPreparationStarted = deferred<void>();
@@ -520,6 +533,7 @@ describe("lazy route setup", () => {
     expect(pathname()).toBe(ROUTES.agents);
     expect(context.store.get(page$)).toBe("agents");
     expect(agentsSignal?.aborted).toBeFalsy();
+    expect(context.store.get(historyState$)).toBe(currentHistoryState);
     expect(pushStateMock).not.toHaveBeenCalled();
 
     context.store.set(detachedNavigateTo$, ROUTES.settings);
@@ -527,12 +541,14 @@ describe("lazy route setup", () => {
     expect(pathname()).toBe(ROUTES.agents);
     expect(context.store.get(page$)).toBe("agents");
     expect(agentsSignal?.aborted).toBeFalsy();
+    expect(context.store.get(historyState$)).toBe(currentHistoryState);
 
     releaseSettingsPreparation.resolve(undefined);
     await settingsSetupFinished.promise;
     expect(pathname()).toBe(ROUTES.settings);
     expect(context.store.get(page$)).toBe("settings");
     expect(agentsSignal?.aborted).toBeTruthy();
+    expect(context.store.get(historyState$)).toStrictEqual({});
     expect(pushStateMock).toHaveBeenCalledOnce();
     expect(pushStateMock.mock.calls[0]?.[2]).toBe(ROUTES.settings);
 
@@ -541,6 +557,7 @@ describe("lazy route setup", () => {
     expect(workflowSetupCalls).toBe(0);
     expect(pathname()).toBe(ROUTES.settings);
     expect(context.store.get(page$)).toBe("settings");
+    expect(context.store.get(historyState$)).toStrictEqual({});
     expect(pushStateMock).toHaveBeenCalledOnce();
   });
 

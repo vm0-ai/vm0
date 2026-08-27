@@ -57,6 +57,7 @@ import {
   type AttachmentLightboxState,
 } from "../../signals/okou-page/attachment-chips.ts";
 import { openThreadArtifactSplitView$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { closeArtifactCatalogPreview$ } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
 import { FilePreviewIcon } from "./file-preview-icon.tsx";
 import {
   artifactPreviewUrlsMatch,
@@ -1255,6 +1256,7 @@ function ArtifactPreviewDialogActions({
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
+  const closeArtifactCatalogPreview = useSet(closeArtifactCatalogPreview$);
   const openArtifactSidebarPreview = useSet(openThreadArtifactSplitView$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const toggleLightboxDialogFullscreen = useSet(
@@ -1346,7 +1348,7 @@ function ArtifactPreviewDialogActions({
           return $.artifacts.actions.close;
         })}
         onClick={() => {
-          closeLightboxWithDialogExit(rootSignal);
+          closeArtifactCatalogPreview(rootSignal);
         }}
       >
         <X size={18} />
@@ -1367,14 +1369,14 @@ function ArtifactPreviewDialogContent({
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
   const dialogMountRef = useSet(lightboxDialogMountRef$);
-  const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
+  const closeArtifactCatalogPreview = useSet(closeArtifactCatalogPreview$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
   const subtitle = artifactDialogKindLabel(preview, artifact);
   const visible = useGet(lightboxDialogVisible$);
   const fullscreen = useGet(lightboxDialogFullscreen$);
 
   const closeWithAnimation = () => {
-    closeLightboxWithDialogExit(rootSignal);
+    closeArtifactCatalogPreview(rootSignal);
   };
 
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {

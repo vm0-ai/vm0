@@ -53,10 +53,6 @@ function connectorCatalogUnavailable() {
   return providerUnavailable("Connector catalog is temporarily unavailable");
 }
 
-function connectorDiscoveryNotFound() {
-  return notFound("Connector discovery not found");
-}
-
 async function settleConnectorCatalogRead<T>(
   read: Promise<T>,
   signal: AbortSignal,
@@ -152,9 +148,6 @@ const discoverConnectorCatalogInner$ = command(
     const query = get(queryOf(connectorCatalogContract.discovery));
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
-    if (!context.featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
-      return connectorDiscoveryNotFound();
-    }
 
     const connectorState = await settleConnectorCatalogRead(
       get(

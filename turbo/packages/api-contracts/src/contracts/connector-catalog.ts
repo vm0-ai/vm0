@@ -281,7 +281,6 @@ export const connectorCatalogContract = c.router({
       200: publicConnectorCatalogDiscoveryResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
-      404: apiErrorSchema,
       503: apiErrorSchema,
     },
     summary: "Browse featured connectors or search by slug and label",

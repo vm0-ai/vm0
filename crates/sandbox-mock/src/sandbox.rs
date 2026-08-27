@@ -15,7 +15,7 @@ use crate::call_records::{
     WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
-use crate::overrides::{ExecMatcherOutcome, MockSandboxOverrides};
+use crate::overrides::{ExecMatcherOutcome, GuestStateRestoreBehavior, MockSandboxOverrides};
 use crate::support::{
     LockIgnoringPoison, MOCK_COPY_FILE_MAX_BYTES, validate_mock_copy_host_path,
     validate_mock_exec_env_keys, validate_mock_guest_file_path,
@@ -829,11 +829,12 @@ impl Sandbox for MockSandbox {
             .pop_front()
             .or_else(|| {
                 self.overrides.as_ref().and_then(|overrides| {
-                    overrides
+                    let behavior = overrides
                         .exec
-                        .guest_state_restore_results
+                        .guest_state_restore_behaviors
                         .lock_ignoring_poison()
-                        .pop_front()
+                        .pop_front();
+                    behavior.map(GuestStateRestoreBehavior::into_result)
                 })
             })
             .unwrap_or_else(|| Ok(default_exec_result()))?;
