@@ -909,6 +909,9 @@ async function autonomyBudgetFixtureActionResponse(
           autonomyBudget: workflowAutomations.autonomyBudget,
           enabled: workflowAutomations.enabled,
           lastRunId: workflowAutomations.lastRunId,
+          officialBlueprintKey: workflowAutomations.officialBlueprintKey,
+          officialResultEmailEnabled:
+            workflowAutomations.officialResultEmailEnabled,
         })
         .from(workflowAutomations)
         .where(eq(workflowAutomations.id, body.automation_id))
@@ -923,6 +926,9 @@ async function autonomyBudgetFixtureActionResponse(
                 autonomy_budget: automation.autonomyBudget,
                 enabled: automation.enabled,
                 last_run_id: automation.lastRunId,
+                official_blueprint_key: automation.officialBlueprintKey,
+                official_result_email_enabled:
+                  automation.officialResultEmailEnabled,
               }
             : null,
         },

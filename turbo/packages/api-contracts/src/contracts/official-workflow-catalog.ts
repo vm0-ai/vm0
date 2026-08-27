@@ -167,12 +167,14 @@ export type OfficialWorkflowBlueprintDesiredState = z.infer<
   typeof officialWorkflowBlueprintDesiredStateSchema
 >;
 
-// P0 reserves a strict Official-only runtime boundary without introducing any
-// later-slice runtime capability. Unknown settings fail closed until their
-// owning slice lands.
-export type OfficialWorkflowRuntimeSettings = Readonly<Record<string, never>>;
-export const officialWorkflowRuntimeSettingsSchema: z.ZodType<OfficialWorkflowRuntimeSettings> =
-  z.object({}).strict();
+export const officialWorkflowRuntimeSettingsSchema = z
+  .object({
+    resultEmail: z.boolean(),
+  })
+  .strict();
+export type OfficialWorkflowRuntimeSettings = z.infer<
+  typeof officialWorkflowRuntimeSettingsSchema
+>;
 
 export const officialWorkflowBlueprintSchema = z
   .object({

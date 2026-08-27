@@ -61,6 +61,28 @@ function outboxDrainDelayMs(): number {
 const OUTBOX_TTL_MS = 15 * 60 * 1000;
 export const CREDIT_LOW_BALANCE_EMAIL_SUBJECT =
   "Your credit balance is running low";
+export const OFFICIAL_AUTOMATION_RESULT_EMAIL_SUBJECT_MAX_CHARACTERS = 180;
+export const OFFICIAL_AUTOMATION_RESULT_EMAIL_TITLE_MAX_CHARACTERS = 160;
+export const OFFICIAL_AUTOMATION_RESULT_EMAIL_TEXT_MAX_CHARACTERS = 8000;
+const OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES = 96 * 1024;
+export const OFFICIAL_AUTOMATION_RESULT_EMAIL_TEXT_TRUNCATION_MARKER =
+  "\n\n[Result truncated]";
+
+function unicodeCharacterCount(value: string): number {
+  return Array.from(value).length;
+}
+
+function boundedUnicodeString(maxCharacters: number) {
+  return z
+    .string()
+    .min(1)
+    .refine(
+      (value) => {
+        return unicodeCharacterCount(value) <= maxCharacters;
+      },
+      { message: `Must contain at most ${maxCharacters} Unicode characters` },
+    );
+}
 
 const emailTemplateSchema = z.discriminatedUnion("template", [
   z.object({
@@ -104,6 +126,23 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
       unsubscribeUrl: z.string().optional(),
     }),
   }),
+  z
+    .object({
+      template: z.literal("official-automation-result"),
+      props: z
+        .object({
+          title: boundedUnicodeString(
+            OFFICIAL_AUTOMATION_RESULT_EMAIL_TITLE_MAX_CHARACTERS,
+          ),
+          resultText: boundedUnicodeString(
+            OFFICIAL_AUTOMATION_RESULT_EMAIL_TEXT_MAX_CHARACTERS,
+          ),
+          runUrl: z.url().max(1024),
+          manageUrl: z.url().max(1024),
+        })
+        .strict(),
+    })
+    .strict(),
 ]);
 
 export type EmailTemplate = z.output<typeof emailTemplateSchema>;
@@ -287,6 +326,40 @@ function renderMorningBriefTemplate(
   )}" style="${MORNING_BRIEF_LINK_STYLE}">Turn off Morning Brief</a></div></td></tr></table><div style="margin-top:16px;color:#737373;font-size:12px;line-height:1.45">From your &ldquo;Morning Brief&rdquo; routine</div></td></tr></table></td></tr></table></body></html>`;
 }
 
+type OfficialAutomationResultEmailTemplate = Extract<
+  EmailTemplate,
+  { readonly template: "official-automation-result" }
+>;
+
+function renderOfficialAutomationResultTemplate(
+  template: OfficialAutomationResultEmailTemplate,
+  publicBrand: PublicBrand,
+): string {
+  const presentation = publicBrandPresentation(publicBrand);
+  const assistantMark = publicBrand === "okou" ? "O" : "0";
+  const linkStyle = "color:#d94801;text-decoration:underline";
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background-color:#ffffff;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:collapse;background-color:#ffffff"><tr><td align="left" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:680px;border-collapse:collapse;text-align:left"><tr><td><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#ed4e01" style="width:40px;height:40px;border-radius:10px;color:#ffffff;font-size:17px;font-weight:700;line-height:40px;mso-line-height-rule:exactly">${assistantMark}</td><td valign="middle" style="padding-left:12px;line-height:1.4"><strong>${escapeHtml(
+    presentation.assistantName,
+  )}</strong></td></tr></table><h1 style="margin:0 0 20px;font-size:22px;line-height:1.3">${escapeHtml(
+    template.props.title,
+  )}</h1><div style="margin:0 0 24px;white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(
+    template.props.resultText,
+  )}</div><p style="margin:0 0 28px"><a href="${escapeHtml(
+    template.props.runUrl,
+  )}" style="${linkStyle};font-weight:600">View run in ${escapeHtml(
+    presentation.assistantName,
+  )} &rarr;</a></p><hr style="height:1px;margin:0 0 20px;border:0;background-color:#e4e6e8"><p style="margin:0;color:#737373;font-size:12px;line-height:1.45">This result was sent by an Official Automation. <a href="${escapeHtml(
+    template.props.manageUrl,
+  )}" style="${linkStyle}">Manage email preferences</a>.</p></td></tr></table></td></tr></table></body></html>`;
+  if (
+    Buffer.byteLength(html, "utf8") >
+    OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES
+  ) {
+    throw new Error("Official Automation result email exceeded its size bound");
+  }
+  return html;
+}
+
 function renderTemplate(
   template: EmailTemplate,
   publicBrand: PublicBrand,
@@ -326,6 +399,9 @@ function renderTemplate(
       )} credits or less.</p><p><a href="${escapeHtml(
         template.props.billingUrl,
       )}">Manage billing</a></p>${unsubscribe}</main>`;
+    }
+    case "official-automation-result": {
+      return renderOfficialAutomationResultTemplate(template, publicBrand);
     }
   }
 }

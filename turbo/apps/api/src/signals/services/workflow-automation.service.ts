@@ -1515,6 +1515,7 @@ export interface OfficialAutomationCreationMetadata {
   readonly blueprintKey: string;
   readonly appliedFingerprint: string;
   readonly parameterBindings: readonly OfficialWorkflowParameterBinding[];
+  readonly resultEmailEnabled: boolean;
 }
 
 export type CreateAutomationInput = (
@@ -2736,6 +2737,7 @@ async function attachOfficialAutomationMetadata(
       officialReconciliationStatus: "current",
       officialParameterBindings: [...metadata.parameterBindings],
       officialIntendedEnabled: true,
+      officialResultEmailEnabled: metadata.resultEmailEnabled,
       updatedAt: nowDate(),
     })
     .where(eq(workflowAutomations.id, result.summary.id))
@@ -3685,6 +3687,10 @@ interface AutomationActionInput {
   readonly inheritedAutonomyBudget?: number;
 }
 
+interface AutomationRunNowInput extends AutomationActionInput {
+  readonly publicBrand: PublicBrand;
+}
+
 /**
  * Repeated "Run now" clicks are otherwise indistinguishable, so the request time
  * is this run's unique identifier.
@@ -3714,7 +3720,7 @@ function manualTriggerContext(args: {
 export const runOwnedWorkflowAutomationNow$ = command(
   async (
     { set },
-    args: AutomationActionInput,
+    args: AutomationRunNowInput,
     signal: AbortSignal,
   ): Promise<WorkflowAutomationRunNowResult> => {
     const writeDb = set(writeDb$);
@@ -3797,6 +3803,7 @@ export const runOwnedWorkflowAutomationNow$ = command(
           chatThreadId,
         },
         automationContext: manualContext,
+        publicBrand: args.publicBrand,
         apiStartTime: currentTime.getTime(),
         triggerSource: manualTriggerSource(automation),
         triggerBrief:

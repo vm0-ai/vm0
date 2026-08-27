@@ -318,6 +318,8 @@ export const testRuntimeStateActionResponseSchema = z.object({
       autonomy_budget: z.int().min(0).max(10),
       enabled: z.boolean(),
       last_run_id: z.uuid().nullable(),
+      official_blueprint_key: z.string().nullable(),
+      official_result_email_enabled: z.boolean().nullable(),
     })
     .nullable()
     .optional(),

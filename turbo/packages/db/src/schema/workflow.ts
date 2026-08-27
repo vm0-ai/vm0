@@ -257,6 +257,7 @@ export const workflowAutomations = pgTable(
       "official_parameter_bindings",
     ).$type<OfficialWorkflowParameterBindings>(),
     officialIntendedEnabled: boolean("official_intended_enabled"),
+    officialResultEmailEnabled: boolean("official_result_email_enabled"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -306,12 +307,14 @@ export const workflowAutomations = pgTable(
           AND ${table.officialReconciliationStatus} IS NULL
           AND ${table.officialParameterBindings} IS NULL
           AND ${table.officialIntendedEnabled} IS NULL
+          AND ${table.officialResultEmailEnabled} IS NULL
         ) OR (
           ${table.officialBlueprintKey} IS NOT NULL
           AND ${table.officialAppliedFingerprint} ~ '^[0-9a-f]{64}$'
           AND ${table.officialReconciliationStatus} IN ('current', 'reconciling', 'needs_reconfiguration', 'failed')
           AND jsonb_typeof(${table.officialParameterBindings}) = 'array'
           AND ${table.officialIntendedEnabled} IS NOT NULL
+          AND ${table.officialResultEmailEnabled} IS NOT NULL
         )`,
       ),
     ];
