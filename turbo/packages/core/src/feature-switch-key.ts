@@ -17,7 +17,6 @@ export enum FeatureSwitchKey {
   DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
   ExpensifyConnector = "expensifyConnector",
-  ManagedSocialKit = "managedSocialKit",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   NetSuiteConnector = "netSuiteConnector",
