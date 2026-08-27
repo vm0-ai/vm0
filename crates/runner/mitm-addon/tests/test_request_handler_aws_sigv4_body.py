@@ -740,6 +740,40 @@ async def test_bounded_payload_dependent_sigv4_classifies_once_before_buffering(
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
+def test_bounded_sigv4_classification_failure_restores_probe_metadata(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            matching,
+            "match_compiled_firewall_request",
+            side_effect=RuntimeError("bounded classification failed"),
+        ),
+        pytest.raises(RuntimeError, match="bounded classification failed"),
+    ):
+        mitm_addon.requestheaders(flow)
+
+    _assert_no_request_stream(flow)
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
+    assert metadata_keys.TRUSTED_AUTHORITY_HOST not in flow.metadata
+    assert metadata_keys.NETWORK_LOG_TARGET not in flow.metadata
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
 def test_bounded_sigv4_revalidates_public_destination_after_prebind(
     tmp_path,
     real_flow,
