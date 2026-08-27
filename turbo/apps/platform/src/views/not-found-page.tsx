@@ -10,20 +10,23 @@ export function NotFoundPage() {
   const { t } = useTranslation();
 
   return (
-    <main className="relative flex h-full min-h-0 items-center justify-center overflow-hidden bg-gray-50 px-6 py-10 dark:bg-gray-100">
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
+    <main className="relative flex h-full min-h-0 items-center justify-center overflow-hidden bg-primary/[0.035] px-6 py-10">
+      <div className="pointer-events-none absolute left-1/2 top-1/2 size-[30rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/[0.06] blur-3xl" />
 
-      <section className="relative flex w-full max-w-[430px] flex-col items-center rounded-[20px] border border-border bg-background px-6 py-10 text-center sm:px-12 sm:py-12">
-        <ProductBrandMark />
-
-        <div className="mt-10 flex flex-col items-center">
+      <section className="relative w-full max-w-[400px] overflow-hidden rounded-[20px] border border-primary/15 bg-background text-center">
+        <div className="relative flex h-28 items-center justify-center overflow-hidden bg-primary/10">
+          <div className="absolute -right-16 -top-20 size-44 rounded-full bg-primary/10" />
+          <div className="absolute -bottom-20 -left-12 size-40 rounded-full border-[24px] border-primary/10" />
           <div className="relative">
-            <p className="select-none text-[5rem] font-semibold leading-none tracking-[-0.08em] text-foreground sm:text-8xl">
-              404
-            </p>
-            <span className="absolute -right-2 top-0 size-3 rounded-full bg-primary" />
+            <ProductBrandMark size="small" />
           </div>
-          <h1 className="mt-7 text-xl font-medium text-foreground">
+        </div>
+
+        <div className="flex flex-col items-center px-6 pb-10 sm:px-10">
+          <p className="relative -mt-4 inline-flex h-8 items-center rounded-full border border-primary/20 bg-background px-3 text-xs font-semibold text-primary">
+            404
+          </p>
+          <h1 className="mt-7 text-2xl font-semibold tracking-tight text-foreground">
             {t(($) => {
               return $.shared.notFound.title;
             })}
@@ -33,19 +36,19 @@ export function NotFoundPage() {
               return $.shared.notFound.description;
             })}
           </p>
-        </div>
 
-        <Button
-          asChild
-          className="mt-8 bg-foreground text-background hover:bg-foreground-hover active:bg-foreground-pressed"
-        >
-          <Link pathname={ROUTES.home}>
-            <ArrowLeft aria-hidden="true" />
-            {t(($) => {
-              return $.shared.notFound.action;
-            })}
-          </Link>
-        </Button>
+          <Button
+            asChild
+            className="mt-7 bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed"
+          >
+            <Link pathname={ROUTES.home}>
+              <ArrowLeft aria-hidden="true" />
+              {t(($) => {
+                return $.shared.notFound.action;
+              })}
+            </Link>
+          </Button>
+        </div>
       </section>
     </main>
   );
