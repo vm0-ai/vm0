@@ -1249,6 +1249,68 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
+test("home content stays fixed while the growth entry loads", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const slackStatusRequested = deferred();
+  const releaseSlackStatus = deferred();
+  await page.route("**/api/integrations/slack", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    slackStatusRequested.resolve();
+    await releaseSlackStatus.promise;
+    await route.fulfill({
+      json: {
+        connectUrl: null,
+        environment: {
+          missingSecrets: [],
+          missingVars: [],
+          requiredSecrets: [],
+          requiredVars: [],
+        },
+        installUrl: null,
+        isAdmin: true,
+        isConnected: false,
+        isInstalled: true,
+        reinstallUrl: null,
+        scopeMismatch: false,
+        workspaceName: null,
+      },
+    });
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await slackStatusRequested.promise;
+
+  const growthEntry = page.getByTestId("growth-entry");
+  const main = page.locator("main");
+  const tagline = page.getByTestId("chat-tagline");
+  await expect(tagline).toBeVisible({ timeout: 20_000 });
+  await expect(growthEntry).not.toBeAttached();
+  const mainBefore = await main.boundingBox();
+  const taglineBefore = await tagline.boundingBox();
+  if (!mainBefore || !taglineBefore) {
+    throw new Error("Home content has no measurable layout before entry load");
+  }
+
+  releaseSlackStatus.resolve();
+  await expect(growthEntry).toBeVisible();
+  await expect(growthEntry).toContainText("Invite humans 🤝");
+  const mainAfter = await main.boundingBox();
+  const taglineAfter = await tagline.boundingBox();
+  if (!mainAfter || !taglineAfter) {
+    throw new Error("Home content has no measurable layout after entry load");
+  }
+
+  expect(mainAfter.y).toBe(mainBefore.y);
+  expect(mainAfter.height).toBe(mainBefore.height);
+  expect(taglineAfter.y).toBe(taglineBefore.y);
+});
+
 test("checkmark keeps its column across selection states and previews deactivation", async ({
   page,
 }) => {
