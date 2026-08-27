@@ -173,6 +173,9 @@ async function loadReportRun(
 }
 
 function failureSource(source: ConnectionSource | undefined): FailureSource {
+  // Old runners may omit this field while independently deployed sandboxes
+  // drain. Remove the legacy path with #29672 after source-aware runners are
+  // deployed and every pre-source sandbox has finished its bounded drain.
   return source ?? "legacy";
 }
 
