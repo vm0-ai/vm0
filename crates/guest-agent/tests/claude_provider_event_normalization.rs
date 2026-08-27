@@ -89,7 +89,7 @@ async fn claude_content_blocks_are_masked_and_sequenced_in_source_order()
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
         std::env::set_var("VM0_API_BACKEND_URL", &server.base_url);
-        std::env::set_var("VM0_API_TOKEN", "test-token");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
     }
     let mut runtime = common::guest_runtime_from_process_env()?;
     let run_id = runtime.config.run_id.clone();

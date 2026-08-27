@@ -16,6 +16,7 @@ import {
   officialWorkflowCatalogReleases,
   officialWorkflowCatalogState,
   officialWorkflowDefinitionRevisions,
+  officialWorkflowReconciliationWork,
 } from "@okouai/db/schema/official-workflow-catalog";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
@@ -176,6 +177,97 @@ function buildCandidateRelease(
       }),
     },
   };
+}
+
+function blueprintDesiredStateChanged(
+  previous: OfficialWorkflowAcceptedDefinition | undefined,
+  next: OfficialWorkflowAcceptedDefinition,
+): boolean {
+  if (next.lifecycle !== "active" || !previous) {
+    return false;
+  }
+  if (previous.lifecycle !== "active") {
+    return true;
+  }
+  if (previous.blueprints.length !== next.blueprints.length) {
+    return true;
+  }
+  const previousFingerprints = new Map(
+    previous.blueprints.map((blueprint) => {
+      return [blueprint.key, blueprint.fingerprint] as const;
+    }),
+  );
+  return next.blueprints.some((blueprint) => {
+    return previousFingerprints.get(blueprint.key) !== blueprint.fingerprint;
+  });
+}
+
+async function recordBlueprintReconciliationWork(
+  db: Db,
+  args: {
+    readonly previous: AcceptedOfficialWorkflowCatalog | null;
+    readonly payload: OfficialWorkflowCatalogReleasePayload;
+    readonly releaseId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const previousByName = new Map(
+    args.previous?.payload.definitions.map((definition) => {
+      return [definition.name, definition] as const;
+    }) ?? [],
+  );
+  const changed = args.payload.definitions.filter((definition) => {
+    return blueprintDesiredStateChanged(
+      previousByName.get(definition.name),
+      definition,
+    );
+  });
+  for (const definition of args.payload.definitions) {
+    if (definition.lifecycle !== "active") {
+      await db
+        .delete(officialWorkflowReconciliationWork)
+        .where(
+          eq(
+            officialWorkflowReconciliationWork.definitionName,
+            definition.name,
+          ),
+        );
+      signal.throwIfAborted();
+    }
+  }
+  const currentTime = nowDate();
+  for (const definition of changed) {
+    await db
+      .insert(officialWorkflowReconciliationWork)
+      .values({
+        definitionName: definition.name,
+        requestedReleaseId: args.releaseId,
+        cursorWorkflowId: null,
+        state: "pending",
+        leaseId: null,
+        leaseExpiresAt: null,
+        availableAt: currentTime,
+        attemptCount: 0,
+        lastError: null,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+      })
+      .onConflictDoUpdate({
+        target: officialWorkflowReconciliationWork.definitionName,
+        set: {
+          requestedReleaseId: args.releaseId,
+          cursorWorkflowId: null,
+          state: "pending",
+          leaseId: null,
+          leaseExpiresAt: null,
+          availableAt: currentTime,
+          attemptCount: 0,
+          lastError: null,
+          updatedAt: currentTime,
+        },
+      });
+    signal.throwIfAborted();
+  }
 }
 
 type DefinitionPreparationResult =
@@ -663,6 +755,11 @@ async function activateCandidate(
         set: { acceptedReleaseId: releaseId, updatedAt: nowDate() },
       });
     signal.throwIfAborted();
+    await recordBlueprintReconciliationWork(
+      tx,
+      { previous: current, payload: candidate.payload, releaseId },
+      signal,
+    );
     return {
       outcome: "accepted" as const,
       releaseId,

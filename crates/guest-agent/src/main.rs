@@ -1143,7 +1143,7 @@ mod tests {
         unsafe {
             clear_test_env();
             std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
             std::env::set_var(guest_contracts::env::RUN_ID_ENV, "main-recovery-checkpoint");
             std::env::set_var(
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
@@ -1197,8 +1197,8 @@ mod tests {
             guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,
-            guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-            guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::BOOTSTRAP_ENV,

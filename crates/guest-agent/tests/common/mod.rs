@@ -1086,9 +1086,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
         guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
-        guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
         guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
-        guest_contracts::env::MOCK_CODEX_PATH_ENV,
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
@@ -1184,7 +1182,7 @@ pub unsafe fn setup_codex_app_server_env(
         }
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, config.run_id);
         std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
-        std::env::set_var("VM0_API_TOKEN", "");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
         std::env::set_var(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",
@@ -1354,7 +1352,7 @@ pub unsafe fn setup_env(
         )?;
         // Empty API token → has_api() false → no network calls.
         std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
-        std::env::set_var("VM0_API_TOKEN", "");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
         std::env::set_var(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",

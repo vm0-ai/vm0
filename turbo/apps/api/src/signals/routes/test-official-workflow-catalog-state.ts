@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   testOfficialWorkflowCatalogStateContract,
   type TestOfficialWorkflowCatalogStateActionBody,
@@ -7,11 +9,20 @@ import {
   officialWorkflowCatalogReleases,
   officialWorkflowCatalogState,
   officialWorkflowDefinitionRevisions,
+  officialWorkflowReconciliationWork,
 } from "@okouai/db/schema/official-workflow-catalog";
+import { gmailWatchStates } from "@okouai/db/schema/gmail-event";
+import {
+  officialWorkflowAutomationIdentities,
+  workflowAutomations,
+  workflows,
+} from "@okouai/db/schema/workflow";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
-import { and, count, eq, like } from "drizzle-orm";
+import { and, asc, count, eq, like } from "drizzle-orm";
 
+import { nowDate } from "../../lib/time";
+import { testOverride } from "../../lib/singleton";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -21,6 +32,14 @@ import {
   readAcceptedOfficialWorkflowDefinition,
   readAcceptedOfficialWorkflowRevision,
 } from "../services/official-workflow-catalog-read.service";
+import { executeOfficialWorkflowReconciliationWork$ } from "../services/official-workflow-reconciliation-worker.service";
+import {
+  clearAutomationStructureTransitionPreparedHookForTest,
+  clearDormantMaterializationReservedHookForTest,
+  setAutomationStructureTransitionPreparedHookForTest,
+  setDormantMaterializationReservedHookForTest,
+} from "../services/official-workflow-reconciliation.service";
+import { createDeferredPromise } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -31,15 +50,103 @@ const actionBody$ = bodyResultOf(
 );
 const TEST_STORAGE_NAME_PATTERN = "official-workflow@api-test-%";
 
+interface DormantMaterializationPause {
+  readonly reached: ReturnType<typeof createDeferredPromise<void>>;
+  readonly resume: ReturnType<typeof createDeferredPromise<void>>;
+}
+
+const dormantMaterializationPause = testOverride<
+  DormantMaterializationPause | undefined
+>(() => {
+  return undefined;
+});
+
+const structureTransitionPromotionPause = testOverride<
+  DormantMaterializationPause | undefined
+>(() => {
+  return undefined;
+});
+
+function releaseDormantMaterializationPause(): void {
+  const pause = dormantMaterializationPause.get();
+  if (pause && !pause.resume.settled()) {
+    pause.resume.resolve(undefined);
+  }
+  dormantMaterializationPause.clear();
+  clearDormantMaterializationReservedHookForTest();
+}
+
+function pauseNextDormantMaterialization(signal: AbortSignal): void {
+  releaseDormantMaterializationPause();
+  const pause = {
+    reached: createDeferredPromise<void>(signal),
+    resume: createDeferredPromise<void>(signal),
+  };
+  dormantMaterializationPause.set(pause);
+  setDormantMaterializationReservedHookForTest(async () => {
+    const current = dormantMaterializationPause.get();
+    if (!current) {
+      return;
+    }
+    if (!current.reached.settled()) {
+      current.reached.resolve(undefined);
+    }
+    await current.resume.promise;
+  });
+}
+
+function releaseStructureTransitionPromotionPause(): void {
+  const pause = structureTransitionPromotionPause.get();
+  if (pause && !pause.resume.settled()) {
+    pause.resume.resolve(undefined);
+  }
+  structureTransitionPromotionPause.clear();
+  clearAutomationStructureTransitionPreparedHookForTest();
+}
+
+function pauseNextStructureTransitionPromotion(signal: AbortSignal): void {
+  releaseStructureTransitionPromotionPause();
+  const pause = {
+    reached: createDeferredPromise<void>(signal),
+    resume: createDeferredPromise<void>(signal),
+  };
+  structureTransitionPromotionPause.set(pause);
+  setAutomationStructureTransitionPreparedHookForTest(async () => {
+    const current = structureTransitionPromotionPause.get();
+    if (!current) {
+      return;
+    }
+    if (!current.reached.settled()) {
+      current.reached.resolve(undefined);
+    }
+    await current.resume.promise;
+  });
+}
+
+function crashNextStructureTransitionPromotion(): void {
+  releaseStructureTransitionPromotionPause();
+  setAutomationStructureTransitionPreparedHookForTest(() => {
+    clearAutomationStructureTransitionPreparedHookForTest();
+    return Promise.reject(
+      new Error(
+        "Simulated hard crash after Official structure-transition watch preparation",
+      ),
+    );
+  });
+}
+
 type ReadAction = Extract<
   TestOfficialWorkflowCatalogStateActionBody,
   { readonly action: "read" }
 >;
 
 async function cleanupTestState(db: Db, signal: AbortSignal): Promise<void> {
+  releaseDormantMaterializationPause();
+  releaseStructureTransitionPromotionPause();
   // This route is test-only; clearing the singleton projection is the only way
   // to exercise independent initial-release scenarios through the public sync
   // boundary without importing database helpers into route tests.
+  await db.delete(officialWorkflowReconciliationWork);
   await db.delete(officialWorkflowCatalogState);
   await db.delete(officialWorkflowCatalogReleases);
   await db.delete(officialWorkflowDefinitionRevisions);
@@ -139,7 +246,16 @@ async function readStorageState(
 
 async function stateResponse(
   db: Db,
-  body: ReadAction | undefined,
+  body:
+    | Pick<ReadAction, "definitionName" | "revision" | "workflowId">
+    | undefined,
+  worker: {
+    readonly claimed: number;
+    readonly completed: number;
+    readonly advanced: number;
+    readonly retried: number;
+    readonly installations: number;
+  } | null,
   signal: AbortSignal,
 ) {
   const catalog = await readAcceptedOfficialWorkflowCatalog(db, signal);
@@ -158,6 +274,46 @@ async function stateResponse(
           signal,
         )
       : null;
+  const [reconciliationWork, identities] = await Promise.all([
+    db
+      .select({
+        definitionName: officialWorkflowReconciliationWork.definitionName,
+        requestedReleaseId:
+          officialWorkflowReconciliationWork.requestedReleaseId,
+        cursorWorkflowId: officialWorkflowReconciliationWork.cursorWorkflowId,
+        state: officialWorkflowReconciliationWork.state,
+        leaseId: officialWorkflowReconciliationWork.leaseId,
+        attemptCount: officialWorkflowReconciliationWork.attemptCount,
+        lastError: officialWorkflowReconciliationWork.lastError,
+      })
+      .from(officialWorkflowReconciliationWork)
+      .orderBy(asc(officialWorkflowReconciliationWork.definitionName)),
+    body?.workflowId === undefined
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: officialWorkflowAutomationIdentities.id,
+            workflowId: officialWorkflowAutomationIdentities.workflowId,
+            automationId: officialWorkflowAutomationIdentities.automationId,
+            blueprintKey: officialWorkflowAutomationIdentities.blueprintKey,
+            state: officialWorkflowAutomationIdentities.state,
+            retainedParameterBindings:
+              officialWorkflowAutomationIdentities.retainedParameterBindings,
+            retainedIntendedEnabled:
+              officialWorkflowAutomationIdentities.retainedIntendedEnabled,
+            retainedAppliedFingerprint:
+              officialWorkflowAutomationIdentities.retainedAppliedFingerprint,
+          })
+          .from(officialWorkflowAutomationIdentities)
+          .where(
+            eq(
+              officialWorkflowAutomationIdentities.workflowId,
+              body.workflowId,
+            ),
+          )
+          .orderBy(asc(officialWorkflowAutomationIdentities.blueprintKey)),
+  ]);
+  signal.throwIfAborted();
   return {
     status: 200 as const,
     body: {
@@ -167,8 +323,375 @@ async function stateResponse(
       revision,
       storage: await readStorageState(db, body?.definitionName, signal),
       counts: await catalogCounts(db, signal),
+      reconciliationWork,
+      identities,
+      worker,
     },
   };
+}
+
+async function upsertExpiredReconciliationWork(
+  db: Db,
+  definitionName: string,
+  requestedReleaseId: string,
+  currentTime: Date,
+  leaseId: string,
+): Promise<void> {
+  await db
+    .insert(officialWorkflowReconciliationWork)
+    .values({
+      definitionName,
+      requestedReleaseId,
+      state: "running",
+      leaseId,
+      leaseExpiresAt: new Date(currentTime.getTime() - 1),
+      availableAt: currentTime,
+      attemptCount: 0,
+      lastError: null,
+      updatedAt: currentTime,
+    })
+    .onConflictDoUpdate({
+      target: officialWorkflowReconciliationWork.definitionName,
+      set: {
+        requestedReleaseId,
+        cursorWorkflowId: null,
+        state: "running",
+        leaseId,
+        leaseExpiresAt: new Date(currentTime.getTime() - 1),
+        availableAt: currentTime,
+        attemptCount: 0,
+        lastError: null,
+        updatedAt: currentTime,
+      },
+    });
+}
+
+async function deleteGmailWatchState(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .delete(gmailWatchStates)
+    .where(
+      and(
+        eq(gmailWatchStates.orgId, orgId),
+        eq(gmailWatchStates.userId, userId),
+      ),
+    );
+}
+
+async function simulateCommittedLifecycleGap(
+  db: Db,
+  args: {
+    readonly automationId: string;
+    readonly definitionName: string;
+    readonly materializationState: "current" | "reconciling" | "failed";
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const currentTime = nowDate();
+  const leaseId = randomUUID();
+  await db.transaction(async (tx) => {
+    const [catalogState] = await tx
+      .select({
+        acceptedReleaseId: officialWorkflowCatalogState.acceptedReleaseId,
+      })
+      .from(officialWorkflowCatalogState)
+      .where(eq(officialWorkflowCatalogState.authority, "official"))
+      .limit(1);
+    const [automation] = await tx
+      .select({
+        id: workflowAutomations.id,
+        workflowId: workflowAutomations.workflowId,
+        orgId: workflowAutomations.orgId,
+        ownerUserId: workflowAutomations.ownerUserId,
+        eventType: workflowAutomations.eventType,
+        workflowDefinitionName: workflows.officialDefinitionName,
+        officialBlueprintKey: workflowAutomations.officialBlueprintKey,
+        officialAppliedFingerprint:
+          workflowAutomations.officialAppliedFingerprint,
+        officialParameterBindings:
+          workflowAutomations.officialParameterBindings,
+        officialIntendedEnabled: workflowAutomations.officialIntendedEnabled,
+        officialReconciliationStatus:
+          workflowAutomations.officialReconciliationStatus,
+      })
+      .from(workflowAutomations)
+      .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
+      .where(eq(workflowAutomations.id, args.automationId))
+      .for("update")
+      .limit(1);
+    if (
+      !catalogState ||
+      !automation ||
+      automation.workflowDefinitionName !== args.definitionName ||
+      automation.officialBlueprintKey === null ||
+      automation.officialAppliedFingerprint === null ||
+      automation.officialParameterBindings === null ||
+      automation.officialIntendedEnabled !== true ||
+      automation.officialReconciliationStatus !== "current"
+    ) {
+      throw new Error("Cannot simulate an incomplete lifecycle commit");
+    }
+    const [identity] = await tx
+      .select()
+      .from(officialWorkflowAutomationIdentities)
+      .where(eq(officialWorkflowAutomationIdentities.id, automation.id))
+      .for("update")
+      .limit(1);
+    if (
+      !identity ||
+      identity.workflowId !== automation.workflowId ||
+      identity.automationId !== automation.id ||
+      identity.blueprintKey !== automation.officialBlueprintKey ||
+      identity.state !== "active"
+    ) {
+      throw new Error("Cannot simulate lifecycle gap without active identity");
+    }
+    await tx
+      .update(workflowAutomations)
+      .set({
+        enabled: false,
+        nextRunAt: null,
+        ...(args.materializationState === "current"
+          ? {}
+          : { officialReconciliationStatus: args.materializationState }),
+        updatedAt: currentTime,
+      })
+      .where(eq(workflowAutomations.id, automation.id));
+    if (args.materializationState !== "current") {
+      const [reserved] = await tx
+        .update(officialWorkflowAutomationIdentities)
+        .set({
+          automationId: null,
+          state: args.materializationState,
+          retainedParameterBindings: automation.officialParameterBindings,
+          retainedIntendedEnabled: true,
+          retainedAppliedFingerprint: automation.officialAppliedFingerprint,
+          updatedAt: currentTime,
+        })
+        .where(
+          and(
+            eq(officialWorkflowAutomationIdentities.id, automation.id),
+            eq(
+              officialWorkflowAutomationIdentities.automationId,
+              automation.id,
+            ),
+            eq(officialWorkflowAutomationIdentities.state, "active"),
+          ),
+        )
+        .returning({ id: officialWorkflowAutomationIdentities.id });
+      if (!reserved) {
+        throw new Error("Failed to persist dormant materialization stage");
+      }
+    }
+    if (
+      args.materializationState !== "failed" &&
+      (automation.eventType === "gmail-new-message" ||
+        automation.eventType === "gmail-label-applied")
+    ) {
+      await deleteGmailWatchState(tx, automation.orgId, automation.ownerUserId);
+    }
+    await upsertExpiredReconciliationWork(
+      tx,
+      args.definitionName,
+      catalogState.acceptedReleaseId,
+      currentTime,
+      leaseId,
+    );
+  });
+  signal.throwIfAborted();
+}
+
+async function simulateStructureTransitionCrash(
+  db: Db,
+  args: {
+    readonly automationId: string;
+    readonly definitionName: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const currentTime = nowDate();
+  await db.transaction(async (tx) => {
+    const [catalogState] = await tx
+      .select({
+        acceptedReleaseId: officialWorkflowCatalogState.acceptedReleaseId,
+      })
+      .from(officialWorkflowCatalogState)
+      .where(eq(officialWorkflowCatalogState.authority, "official"))
+      .limit(1);
+    const [automation] = await tx
+      .select({
+        id: workflowAutomations.id,
+        workflowDefinitionName: workflows.officialDefinitionName,
+        officialBlueprintKey: workflowAutomations.officialBlueprintKey,
+        officialReconciliationStatus:
+          workflowAutomations.officialReconciliationStatus,
+      })
+      .from(workflowAutomations)
+      .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
+      .where(eq(workflowAutomations.id, args.automationId))
+      .for("update")
+      .limit(1);
+    if (
+      !catalogState ||
+      !automation ||
+      automation.workflowDefinitionName !== args.definitionName ||
+      automation.officialBlueprintKey === null ||
+      automation.officialReconciliationStatus !== "current"
+    ) {
+      throw new Error("Cannot simulate an Official structure-transition crash");
+    }
+    await tx
+      .update(workflowAutomations)
+      .set({
+        enabled: false,
+        nextRunAt: null,
+        officialReconciliationStatus: "reconciling",
+        updatedAt: currentTime,
+      })
+      .where(eq(workflowAutomations.id, automation.id));
+    await upsertExpiredReconciliationWork(
+      tx,
+      args.definitionName,
+      catalogState.acceptedReleaseId,
+      currentTime,
+      randomUUID(),
+    );
+  });
+  signal.throwIfAborted();
+}
+
+async function simulateReconciliationWorkerCrash(
+  db: Db,
+  definitionName: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const currentTime = nowDate();
+  await db
+    .update(officialWorkflowReconciliationWork)
+    .set({
+      state: "running",
+      leaseId: randomUUID(),
+      leaseExpiresAt: new Date(currentTime.getTime() - 1),
+      availableAt: currentTime,
+      updatedAt: currentTime,
+    })
+    .where(
+      eq(officialWorkflowReconciliationWork.definitionName, definitionName),
+    );
+  signal.throwIfAborted();
+}
+
+async function handleLifecycleSimulationAction(
+  db: Db,
+  body: TestOfficialWorkflowCatalogStateActionBody,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (body.action === "simulate-reconciliation-worker-crash") {
+    await simulateReconciliationWorkerCrash(db, body.definitionName, signal);
+    return true;
+  }
+  if (
+    body.action === "simulate-dormant-materialization-crash" ||
+    body.action === "simulate-current-lifecycle-gap" ||
+    body.action === "simulate-dormant-materialization-discard-crash"
+  ) {
+    await simulateCommittedLifecycleGap(
+      db,
+      {
+        automationId: body.automationId,
+        definitionName: body.definitionName,
+        materializationState:
+          body.action === "simulate-current-lifecycle-gap"
+            ? "current"
+            : body.action === "simulate-dormant-materialization-crash"
+              ? "reconciling"
+              : "failed",
+      },
+      signal,
+    );
+    return true;
+  }
+  if (body.action === "simulate-structure-transition-crash") {
+    await simulateStructureTransitionCrash(
+      db,
+      {
+        automationId: body.automationId,
+        definitionName: body.definitionName,
+      },
+      signal,
+    );
+    return true;
+  }
+  return false;
+}
+
+async function handleLifecycleControlAction(
+  body: TestOfficialWorkflowCatalogStateActionBody,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (body.action === "pause-next-dormant-materialization") {
+    pauseNextDormantMaterialization(signal);
+    return true;
+  }
+  if (body.action === "wait-for-dormant-materialization-pause") {
+    const pause = dormantMaterializationPause.get();
+    if (!pause) {
+      throw new Error("Dormant materialization pause is not configured");
+    }
+    await pause.reached.promise;
+    signal.throwIfAborted();
+    return true;
+  }
+  if (body.action === "resume-dormant-materialization") {
+    releaseDormantMaterializationPause();
+    return true;
+  }
+  if (body.action === "pause-next-structure-transition-promotion") {
+    pauseNextStructureTransitionPromotion(signal);
+    return true;
+  }
+  if (body.action === "crash-next-structure-transition-promotion") {
+    crashNextStructureTransitionPromotion();
+    return true;
+  }
+  if (body.action === "wait-for-structure-transition-promotion-pause") {
+    const pause = structureTransitionPromotionPause.get();
+    if (!pause) {
+      throw new Error("Structure-transition pause is not configured");
+    }
+    await pause.reached.promise;
+    signal.throwIfAborted();
+    return true;
+  }
+  if (body.action === "resume-structure-transition-promotion") {
+    releaseStructureTransitionPromotionPause();
+    return true;
+  }
+  return false;
+}
+
+async function makeReconciliationWorkDue(
+  db: Db,
+  definitionName: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const currentTime = nowDate();
+  await db
+    .update(officialWorkflowReconciliationWork)
+    .set({
+      state: "pending",
+      leaseId: null,
+      leaseExpiresAt: null,
+      availableAt: currentTime,
+      updatedAt: currentTime,
+    })
+    .where(
+      eq(officialWorkflowReconciliationWork.definitionName, definitionName),
+    );
+  signal.throwIfAborted();
 }
 
 const officialWorkflowCatalogTestStateRoute$ = command(
@@ -184,9 +707,33 @@ const officialWorkflowCatalogTestStateRoute$ = command(
     const db = set(writeDb$);
     if (bodyResult.data.action === "cleanup") {
       await cleanupTestState(db, signal);
-      return await stateResponse(db, undefined, signal);
+      return await stateResponse(db, undefined, null, signal);
     }
-    return await stateResponse(db, bodyResult.data, signal);
+    if (
+      (await handleLifecycleSimulationAction(db, bodyResult.data, signal)) ||
+      (await handleLifecycleControlAction(bodyResult.data, signal))
+    ) {
+      return await stateResponse(db, undefined, null, signal);
+    }
+    if (bodyResult.data.action === "make-reconciliation-work-due") {
+      await makeReconciliationWorkDue(
+        db,
+        bodyResult.data.definitionName,
+        signal,
+      );
+      return await stateResponse(db, undefined, null, signal);
+    }
+    if (bodyResult.data.action === "run-reconciliation-worker") {
+      const worker = await set(
+        executeOfficialWorkflowReconciliationWork$,
+        signal,
+      );
+      return await stateResponse(db, undefined, worker, signal);
+    }
+    if (bodyResult.data.action === "read") {
+      return await stateResponse(db, bodyResult.data, null, signal);
+    }
+    throw new Error("Unsupported Official Workflow catalog test action");
   },
 );
 

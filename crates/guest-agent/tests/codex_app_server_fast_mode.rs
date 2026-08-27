@@ -15,7 +15,7 @@ async fn codex_app_server_enables_fast_mode_for_eligible_chatgpt_run()
             user_env: HashMap::from([
                 ("CHATGPT_ACCOUNT_ID".to_string(), "account-test".to_string()),
                 ("OPENAI_MODEL".to_string(), "gpt-5.5".to_string()),
-                ("VM0_CODEX_SERVICE_TIER".to_string(), "fast".to_string()),
+                ("OKOU_CODEX_SERVICE_TIER".to_string(), "fast".to_string()),
             ]),
             expect_fast_mode: true,
         },

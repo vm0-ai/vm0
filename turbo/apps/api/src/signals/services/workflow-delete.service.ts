@@ -5,18 +5,20 @@ import {
 import { storages } from "@okouai/db/schema/storage";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
+import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 
 interface DeleteWorkflowInput {
   readonly orgId: string;
   readonly workflowId: string;
   readonly allowOfficialInstallationDeletion?: boolean;
   readonly requiredOfficialInstallationState?: "installing";
+  readonly serializeOfficialLifecycle?: boolean;
 }
 
 export const deleteWorkflow$ = command(
@@ -28,6 +30,14 @@ export const deleteWorkflow$ = command(
     const writeDb = set(writeDb$);
 
     const result = await writeDb.transaction(async (tx) => {
+      if (args.serializeOfficialLifecycle === true) {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock_shared(hashtext(${OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK}))`,
+        );
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
+        );
+      }
       const [workflow] = await tx
         .select({
           id: workflows.id,

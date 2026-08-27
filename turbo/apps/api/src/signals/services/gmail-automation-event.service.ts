@@ -762,6 +762,7 @@ async function ensureGmailWatchWithResolvedAccess(
     readonly emailAddress: string;
     readonly topicName: string;
     readonly forceRefresh: boolean;
+    readonly allowStagedOfficialTarget: boolean;
   },
   signal: AbortSignal,
 ): Promise<EnsureGmailWatchResult> {
@@ -769,6 +770,7 @@ async function ensureGmailWatchWithResolvedAccess(
     await lockGmailLifecycle(tx, args.emailAddress, args.topicName);
     signal.throwIfAborted();
     if (
+      !args.allowStagedOfficialTarget &&
       !(await hasEnabledGmailConsumer(
         {
           db: tx,
@@ -854,6 +856,7 @@ export async function ensureGmailWatchForUser(
     readonly orgId: string;
     readonly userId: string;
     readonly forceRefresh?: boolean;
+    readonly allowStagedOfficialTarget?: boolean;
   },
   signal: AbortSignal,
 ): Promise<EnsureGmailWatchResult> {
@@ -896,6 +899,7 @@ export async function ensureGmailWatchForUser(
       emailAddress,
       topicName,
       forceRefresh: args.forceRefresh ?? false,
+      allowStagedOfficialTarget: args.allowStagedOfficialTarget ?? false,
     },
     signal,
   );
@@ -1228,7 +1232,7 @@ export async function reconcileGmailWatchesForUser(
     readonly userId: string;
   },
   signal: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   const states = await args.db
     .select()
     .from(gmailWatchStates)
@@ -1239,6 +1243,7 @@ export async function reconcileGmailWatchesForUser(
       ),
     );
   signal.throwIfAborted();
+  let succeeded = true;
   for (const scope of gmailPhysicalScopes(states)) {
     const preferredConnectorId = states.find((state) => {
       return (
@@ -1247,7 +1252,7 @@ export async function reconcileGmailWatchesForUser(
         state.topicName === scope.topicName
       );
     })?.connectorId;
-    await reconcileGmailPhysicalScope(
+    const result = await reconcileGmailPhysicalScope(
       {
         db: args.db,
         ...scope,
@@ -1255,7 +1260,9 @@ export async function reconcileGmailWatchesForUser(
       },
       signal,
     );
+    succeeded &&= result.kind !== "failed";
   }
+  return succeeded;
 }
 
 export async function cleanupGmailWatchesForConnector(

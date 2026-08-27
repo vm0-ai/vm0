@@ -21,6 +21,7 @@ export const testOfficialWorkflowCatalogStateActionBodySchema =
       .object({
         action: z.literal("read"),
         definitionName: workflowNameSchema.optional(),
+        workflowId: z.uuid().optional(),
         revision: z
           .string()
           .regex(/^[0-9a-f]{64}$/)
@@ -35,6 +36,86 @@ export const testOfficialWorkflowCatalogStateActionBodySchema =
         },
         { message: "definitionName is required with revision" },
       ),
+    z
+      .object({
+        action: z.literal("run-reconciliation-worker"),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("simulate-reconciliation-worker-crash"),
+        definitionName: workflowNameSchema,
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("simulate-dormant-materialization-crash"),
+        definitionName: workflowNameSchema,
+        automationId: z.uuid(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("simulate-current-lifecycle-gap"),
+        definitionName: workflowNameSchema,
+        automationId: z.uuid(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("simulate-structure-transition-crash"),
+        definitionName: workflowNameSchema,
+        automationId: z.uuid(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("simulate-dormant-materialization-discard-crash"),
+        definitionName: workflowNameSchema,
+        automationId: z.uuid(),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("pause-next-dormant-materialization"),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("wait-for-dormant-materialization-pause"),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("resume-dormant-materialization"),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("pause-next-structure-transition-promotion"),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("crash-next-structure-transition-promotion"),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("wait-for-structure-transition-promotion-pause"),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("resume-structure-transition-promotion"),
+      })
+      .strict(),
+    z
+      .object({
+        action: z.literal("make-reconciliation-work-due"),
+        definitionName: workflowNameSchema,
+      })
+      .strict(),
   ]);
 export type TestOfficialWorkflowCatalogStateActionBody = z.infer<
   typeof testOfficialWorkflowCatalogStateActionBodySchema
@@ -72,6 +153,52 @@ export const testOfficialWorkflowCatalogStateActionResponseSchema = z
         storageVersions: z.number().int().nonnegative(),
       })
       .strict(),
+    reconciliationWork: z.array(
+      z
+        .object({
+          definitionName: workflowNameSchema,
+          requestedReleaseId: z.string().regex(/^[0-9a-f]{64}$/),
+          cursorWorkflowId: z.uuid().nullable(),
+          state: z.enum(["pending", "running"]),
+          leaseId: z.uuid().nullable(),
+          attemptCount: z.number().int().nonnegative(),
+          lastError: z.string().nullable(),
+        })
+        .strict(),
+    ),
+    identities: z.array(
+      z
+        .object({
+          id: z.uuid(),
+          workflowId: z.uuid(),
+          automationId: z.uuid().nullable(),
+          blueprintKey: z.string(),
+          state: z.enum([
+            "active",
+            "reconciling",
+            "needs_reconfiguration",
+            "failed",
+            "removed",
+          ]),
+          retainedParameterBindings: z.array(z.unknown()).nullable(),
+          retainedIntendedEnabled: z.boolean().nullable(),
+          retainedAppliedFingerprint: z
+            .string()
+            .regex(/^[0-9a-f]{64}$/)
+            .nullable(),
+        })
+        .strict(),
+    ),
+    worker: z
+      .object({
+        claimed: z.number().int().nonnegative(),
+        completed: z.number().int().nonnegative(),
+        advanced: z.number().int().nonnegative(),
+        retried: z.number().int().nonnegative(),
+        installations: z.number().int().nonnegative(),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 export type TestOfficialWorkflowCatalogStateActionResponse = z.infer<

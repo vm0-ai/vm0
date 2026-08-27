@@ -51,7 +51,7 @@ unsafe fn setup_api_env(
             },
         )?;
         std::env::set_var("VM0_API_BACKEND_URL", api_url);
-        std::env::set_var("VM0_API_TOKEN", "test-token");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
         std::env::set_var(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",

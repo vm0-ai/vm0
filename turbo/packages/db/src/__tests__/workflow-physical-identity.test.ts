@@ -2,6 +2,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import { schema } from "../index";
+import { officialWorkflowReconciliationWork } from "../schema/official-workflow-catalog";
 import {
   strapiIntegrations,
   strapiWebhookDeliveries,
@@ -9,6 +10,7 @@ import {
   strapiWorkflowPendingEvents,
 } from "../schema/strapi-integration";
 import {
+  officialWorkflowAutomationIdentities,
   workflows,
   workflowAutomations,
   workflowGithubProcessedEvents,
@@ -37,8 +39,14 @@ function explicitNames(table: Parameters<typeof getTableConfig>[0]): {
 }
 
 describe("workflow schema physical identity", () => {
-  it("keeps the six workflow table mappings", () => {
+  it("keeps the workflow and Official reconciliation table mappings", () => {
     expect({
+      officialWorkflowReconciliationWork: getTableConfig(
+        officialWorkflowReconciliationWork,
+      ).name,
+      officialWorkflowAutomationIdentities: getTableConfig(
+        officialWorkflowAutomationIdentities,
+      ).name,
       workflows: getTableConfig(workflows).name,
       workflowAutomations: getTableConfig(workflowAutomations).name,
       workflowWebhookAutomations: getTableConfig(workflowWebhookAutomations)
@@ -49,6 +57,10 @@ describe("workflow schema physical identity", () => {
       ).name,
       strapiWorkflowAutomations: getTableConfig(strapiWorkflowAutomations).name,
     }).toEqual({
+      officialWorkflowReconciliationWork:
+        "official_workflow_reconciliation_work",
+      officialWorkflowAutomationIdentities:
+        "official_workflow_automation_identities",
       workflows: "zero_workflows",
       workflowAutomations: "zero_workflow_automations",
       workflowWebhookAutomations: "zero_workflow_webhook_automations",
@@ -59,6 +71,12 @@ describe("workflow schema physical identity", () => {
   });
 
   it("exports the canonical tables through the root schema", () => {
+    expect(schema.officialWorkflowReconciliationWork).toBe(
+      officialWorkflowReconciliationWork,
+    );
+    expect(schema.officialWorkflowAutomationIdentities).toBe(
+      officialWorkflowAutomationIdentities,
+    );
     expect(schema.workflows).toBe(workflows);
     expect(schema.workflowAutomations).toBe(workflowAutomations);
     expect(schema.workflowWebhookAutomations).toBe(workflowWebhookAutomations);
@@ -81,6 +99,12 @@ describe("workflow schema physical identity", () => {
 
   it("keeps every explicit index and check name in the touched schemas", () => {
     expect({
+      officialWorkflowReconciliationWork: explicitNames(
+        officialWorkflowReconciliationWork,
+      ),
+      officialWorkflowAutomationIdentities: explicitNames(
+        officialWorkflowAutomationIdentities,
+      ),
       workflows: explicitNames(workflows),
       workflowUserAutomationThreads: explicitNames(
         workflowUserAutomationThreads,
@@ -96,6 +120,21 @@ describe("workflow schema physical identity", () => {
       strapiWebhookDeliveries: explicitNames(strapiWebhookDeliveries),
       strapiWorkflowPendingEvents: explicitNames(strapiWorkflowPendingEvents),
     }).toEqual({
+      officialWorkflowReconciliationWork: {
+        indexes: ["idx_official_workflow_reconciliation_work_due"],
+        checks: [
+          "official_workflow_reconciliation_work_attempt_count_check",
+          "official_workflow_reconciliation_work_state_check",
+        ],
+      },
+      officialWorkflowAutomationIdentities: {
+        indexes: [
+          "idx_official_workflow_automation_identities_automation_unique",
+          "idx_official_workflow_automation_identities_key",
+          "idx_official_workflow_automation_identities_workflow",
+        ],
+        checks: ["official_workflow_automation_identities_state_check"],
+      },
       workflows: {
         indexes: [
           "idx_zero_workflows_agent",
