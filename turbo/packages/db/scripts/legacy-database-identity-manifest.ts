@@ -567,6 +567,7 @@ const publicBrandMembers = [
   "public.shared_threads.public_brand = 'vm0'",
   "public.slack_chat_ingress.public_brand = 'vm0'",
   "public.slack_org_installations.public_brand = 'vm0'",
+  "public.socialkit_download_jobs.public_brand = 'vm0'",
   "public.teams_org_installations.public_brand = 'vm0'",
   "public.telegram_installations.public_brand = 'vm0'",
   "public.telegram_official_user_links.public_brand = 'vm0'",

@@ -53,8 +53,13 @@ export const socialKitDownloadRequestSchema = z
       .url()
       .max(4096)
       .refine((value) => {
-        return new URL(value).protocol === "https:";
-      }, "URL must use HTTPS"),
+        const url = new URL(value);
+        return (
+          url.protocol === "https:" &&
+          url.username === "" &&
+          url.password === ""
+        );
+      }, "URL must use HTTPS without embedded credentials"),
     maxDuration: z.number().int().positive().max(86_400),
     quality: socialKitDownloadQualitySchema.default("720p"),
     format: socialKitDownloadFormatSchema.default("mp4"),

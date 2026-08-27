@@ -188,9 +188,12 @@ function sleep(ms: number): Promise<void> {
 async function waitForDownload(
   initial: SocialKitDownloadResponse,
   compact: boolean,
+  retryArtifactFailures: boolean,
 ): Promise<void> {
   let current = initial;
   let previousStatus: string | undefined;
+  let pollImmediately =
+    retryArtifactFailures && current.status === "artifact_failed";
   for (let attempt = 0; attempt < 900; attempt += 1) {
     if (current.status !== previousStatus) {
       console.error(
@@ -207,12 +210,16 @@ async function waitForDownload(
         `SocialKit download ${current.downloadId} failed before billing`,
       );
     }
-    if (current.status === "artifact_failed") {
+    if (current.status === "artifact_failed" && !retryArtifactFailures) {
       throw new Error(
         `SocialKit download ${current.downloadId} was billed but artifact materialization failed; resume with --resume ${current.downloadId}`,
       );
     }
-    await sleep(2_000);
+    if (pollImmediately) {
+      pollImmediately = false;
+    } else {
+      await sleep(2_000);
+    }
     current = await getSocialKitDownload(current.downloadId);
   }
   throw new Error(
@@ -479,6 +486,7 @@ const downloadCommand = new Command()
           await waitForDownload(
             await getSocialKitDownload(options.resume),
             options.json === true,
+            true,
           );
           return;
         }
@@ -503,6 +511,7 @@ const downloadCommand = new Command()
         await waitForDownload(
           await createSocialKitDownload(parsed.data),
           options.json === true,
+          false,
         );
       },
     ),

@@ -13,6 +13,7 @@ import {
   createSocialKitDownload$,
   getSocialKitDownload$,
   reconcileSocialKitDownload$,
+  SOCIALKIT_RECONCILIATION_TIMEOUT_MS,
 } from "../services/socialkit-download.service";
 
 const socialKitRequestBody$ = bodyResultOf(socialContract.request);
@@ -46,6 +47,9 @@ const createSocialKitDownloadInner$ = command(
     }
     const publicBrand =
       auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const reconciliationSignal = AbortSignal.timeout(
+      SOCIALKIT_RECONCILIATION_TIMEOUT_MS,
+    );
     const response = await set(
       createSocialKitDownload$,
       { auth, body: bodyResult.data, publicBrand },
@@ -56,7 +60,7 @@ const createSocialKitDownloadInner$ = command(
         set(
           reconcileSocialKitDownload$,
           response.body.downloadId,
-          AbortSignal.timeout(12 * 60_000),
+          reconciliationSignal,
         ),
       );
     }
@@ -89,7 +93,7 @@ const getSocialKitDownloadInner$ = command(
         set(
           reconcileSocialKitDownload$,
           response.downloadId,
-          AbortSignal.timeout(12 * 60_000),
+          AbortSignal.timeout(SOCIALKIT_RECONCILIATION_TIMEOUT_MS),
         ),
       );
     }

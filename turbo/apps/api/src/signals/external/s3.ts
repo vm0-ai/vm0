@@ -547,6 +547,7 @@ export function createMultipartS3Upload(
   key: string,
   contentType: string,
   metadata?: Readonly<Record<string, string>>,
+  signal?: AbortSignal,
 ): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
     const client = get(s3ClientForBucket(bucket));
@@ -557,6 +558,7 @@ export function createMultipartS3Upload(
         ContentType: contentType,
         Metadata: metadata,
       }),
+      { abortSignal: signal },
     );
     if (!response.UploadId) {
       throw new Error("R2 did not return a multipart upload ID");
@@ -653,6 +655,7 @@ export function completeMultipartS3Upload(
   key: string,
   uploadId: string,
   parts: readonly MultipartS3Part[],
+  signal?: AbortSignal,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(s3ClientForBucket(bucket));
@@ -667,6 +670,7 @@ export function completeMultipartS3Upload(
           }),
         },
       }),
+      { abortSignal: signal },
     );
   });
 }
@@ -675,6 +679,7 @@ export function abortMultipartS3Upload(
   bucket: string,
   key: string,
   uploadId: string,
+  signal?: AbortSignal,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(s3ClientForBucket(bucket));
@@ -684,6 +689,7 @@ export function abortMultipartS3Upload(
         Key: key,
         UploadId: uploadId,
       }),
+      { abortSignal: signal },
     );
   });
 }

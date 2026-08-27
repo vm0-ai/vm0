@@ -2,7 +2,10 @@ import { cronReconcileSocialKitDownloadsContract } from "@okouai/api-contracts/c
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
-import { reconcileSocialKitDownloads$ } from "../services/socialkit-download.service";
+import {
+  reconcileSocialKitDownloads$,
+  SOCIALKIT_RECONCILIATION_TIMEOUT_MS,
+} from "../services/socialkit-download.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const reconcileSocialKitDownloadsRoute$ = command(
@@ -10,7 +13,14 @@ const reconcileSocialKitDownloadsRoute$ = command(
     if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
-    const processed = await set(reconcileSocialKitDownloads$, signal);
+    const processed = await set(
+      reconcileSocialKitDownloads$,
+      AbortSignal.any([
+        signal,
+        AbortSignal.timeout(SOCIALKIT_RECONCILIATION_TIMEOUT_MS),
+      ]),
+    );
+    signal.throwIfAborted();
     return {
       status: 200 as const,
       body: { success: true as const, processed },
