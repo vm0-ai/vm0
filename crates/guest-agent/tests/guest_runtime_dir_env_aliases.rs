@@ -59,7 +59,7 @@ fn guest_agent_command(root: &Path, run_id: &str, private_files: &PrivateFiles) 
         .env(guest_contracts::env::RUN_ID_ENV, run_id)
         .env("HOME", root.join("process-home"))
         .env(guest_contracts::env::API_URL_ENV, "http://127.0.0.1:1")
-        .env(guest_contracts::env::API_TOKEN_ENV, "")
+        .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "")
         .env(
             guest_contracts::env::USER_ENV_FILE_ENV,
             &private_files.user_env_path,

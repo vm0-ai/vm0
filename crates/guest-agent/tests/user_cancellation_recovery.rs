@@ -185,7 +185,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             .env("SHELL", "/bin/sh")
             .env("HOME", &home)
             .env(guest_contracts::env::API_URL_ENV, server.base_url())
-            .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+            .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
             .env(guest_contracts::env::RUN_ID_ENV, scenario.run_id)
             .env(
                 guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,

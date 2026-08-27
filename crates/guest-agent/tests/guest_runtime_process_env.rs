@@ -31,7 +31,7 @@ fn runtime_bootstrap_scrubs_runner_env_and_installs_explicit_paths() {
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         );
-        std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
         std::env::remove_var(guest_contracts::env::USER_ENV_FILE_ENV);
     }
 

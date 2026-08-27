@@ -1143,7 +1143,7 @@ mod tests {
         unsafe {
             clear_test_env();
             std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
             std::env::set_var(guest_contracts::env::RUN_ID_ENV, "main-recovery-checkpoint");
             std::env::set_var(
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
