@@ -692,6 +692,47 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     );
   });
 
+  it("keeps an observation-only route selectable to an in-flight resolver", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 0, 16, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+
+    // A resolver can capture time before the observation transaction commits.
+    await withMockNowForTest(startedAt - 1, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+  });
+
   it("does not extend an active cooldown for one transport observation", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 17, 0);
     const claimed = await createClaimedVm0Run();
