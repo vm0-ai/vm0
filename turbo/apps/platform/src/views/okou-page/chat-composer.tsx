@@ -5671,6 +5671,9 @@ function ImportedPresentationTemplateRenameControl({
         }
         const normalized = normalizeImportedTemplateTitle(nextTitle);
         if (normalized.length > 0 && normalized !== title) {
+          // Confirming ends this edit. Keeping the submit control focused pins
+          // the check visible through the form's focus-within affordance.
+          event.currentTarget.querySelector<HTMLElement>(":focus")?.blur();
           onRename(normalized);
         }
       }}
