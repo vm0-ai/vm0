@@ -6,13 +6,17 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { withMockNowForTest } from "../../../lib/time";
+import { mockNow, withMockNowForTest } from "../../../lib/time";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { setRunModelProviderFixture } from "../../../test-fixtures/agent-runs";
+import {
+  holdBuiltInModelRouteLockFixture,
+  readBuiltInModelCandidateCooldownFixture,
+} from "../../../test-fixtures/built-in-model-runtime-route";
 import {
   deleteVm0BuiltInCandidateCooldownFixture,
   resolveVm0BuiltInModelRouteFixture,
@@ -456,48 +460,67 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     {
       caseName: "authentication intervention",
       failureKind: "authentication",
+      connectionSource: undefined,
       retryAfterSeconds: 1,
       cooldownSeconds: 30 * 60,
     },
     {
       caseName: "billing intervention",
       failureKind: "billing",
+      connectionSource: undefined,
       retryAfterSeconds: 1,
       cooldownSeconds: 30 * 60,
     },
     {
       caseName: "rate limit default",
       failureKind: "rate_limit",
+      connectionSource: undefined,
       retryAfterSeconds: undefined,
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "provider unavailable default",
       failureKind: "provider_unavailable",
+      connectionSource: undefined,
       retryAfterSeconds: undefined,
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "timeout default",
       failureKind: "timeout",
+      connectionSource: undefined,
       retryAfterSeconds: undefined,
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "connection default",
       failureKind: "connection",
+      connectionSource: undefined,
+      retryAfterSeconds: undefined,
+      cooldownSeconds: 5 * 60,
+    },
+    {
+      caseName: "provider-response connection default",
+      failureKind: "connection",
+      connectionSource: "provider_response",
       retryAfterSeconds: undefined,
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "bounded provider retry delay",
       failureKind: "rate_limit",
+      connectionSource: undefined,
       retryAfterSeconds: 120,
       cooldownSeconds: 120,
     },
   ] as const)(
     "records the $caseName cooldown for only the persisted built-in model route",
-    async ({ failureKind, retryAfterSeconds, cooldownSeconds }) => {
+    async ({
+      failureKind,
+      connectionSource,
+      retryAfterSeconds,
+      cooldownSeconds,
+    }) => {
       const startedAt = Date.UTC(2026, 7, 21, 0, 0, 0);
       await withMockNowForTest(startedAt, async () => {
         const claimed = await createClaimedVm0Run();
@@ -518,6 +541,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         await expect(
           runs.reportRunnerModelProviderFailure(claimed.runId, {
             failureKind,
+            ...(connectionSource === undefined ? {} : { connectionSource }),
             ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
           }),
         ).resolves.toStrictEqual({ outcome: "recorded" });
@@ -531,6 +555,8 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
             providerType: primary.provider_type,
             upstreamModel: primary.upstream_model,
             failureKind,
+            source: connectionSource ?? "unspecified",
+            reason: failureKind,
             retryAfterSeconds: cooldownSeconds,
             unavailableUntil: new Date(
               startedAt + cooldownSeconds * 1000,
@@ -597,6 +623,347 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           },
         );
       });
+    },
+  );
+
+  it("requires an inclusive 60-second upstream transport streak", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 0, 15, 0);
+    const claimed = await createClaimedVm0Run();
+    const secondClaimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+    const route = {
+      selectedModel: claimed.selectedModel,
+      providerType: primary.provider_type,
+      upstreamModel: primary.upstream_model,
+    };
+
+    context.mocks.axiomLogging.error.mockClear();
+    await withMockNowForTest(startedAt, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(secondClaimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    await expect(
+      readBuiltInModelCandidateCooldownFixture(route),
+    ).resolves.toStrictEqual({
+      unavailableUntil: new Date(startedAt),
+      connectionObservationStartedAt: new Date(startedAt),
+      connectionObservationUntil: new Date(startedAt + 60_000),
+    });
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+
+    await withMockNowForTest(startedAt + 60_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "recorded" });
+    });
+    await expect(
+      readBuiltInModelCandidateCooldownFixture(route),
+    ).resolves.toStrictEqual({
+      unavailableUntil: new Date(startedAt + 6 * 60_000),
+      connectionObservationStartedAt: null,
+      connectionObservationUntil: null,
+    });
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledTimes(1);
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Built-in model provider failure report recorded",
+      expect.objectContaining({
+        type: "built_in_model_provider_cooldown",
+        failureKind: "connection",
+        source: "upstream_transport",
+        reason: "sustained_transport",
+        unavailableUntil: new Date(startedAt + 6 * 60_000).toISOString(),
+      }),
+    );
+  });
+
+  it("restarts after a gap greater than 60 seconds", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 0, 20, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+    const route = {
+      selectedModel: claimed.selectedModel,
+      providerType: primary.provider_type,
+      upstreamModel: primary.upstream_model,
+    };
+    const report = async (at: number) => {
+      return await withMockNowForTest(at, async () => {
+        return await runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        });
+      });
+    };
+
+    await expect(report(startedAt)).resolves.toStrictEqual({
+      outcome: "observed",
+    });
+    await expect(report(startedAt + 60_001)).resolves.toStrictEqual({
+      outcome: "observed",
+    });
+    await expect(
+      readBuiltInModelCandidateCooldownFixture(route),
+    ).resolves.toMatchObject({
+      connectionObservationStartedAt: new Date(startedAt + 60_001),
+      connectionObservationUntil: new Date(startedAt + 120_001),
+    });
+    await expect(report(startedAt + 120_001)).resolves.toStrictEqual({
+      outcome: "recorded",
+    });
+  });
+
+  it("keeps an active longer cooldown and clears confirmed transport evidence silently", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 0, 25, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+    const route = {
+      selectedModel: claimed.selectedModel,
+      providerType: primary.provider_type,
+      upstreamModel: primary.upstream_model,
+    };
+
+    await withMockNowForTest(startedAt, async () => {
+      await runs.reportRunnerModelProviderFailure(claimed.runId, {
+        failureKind: "authentication",
+      });
+    });
+    context.mocks.axiomLogging.error.mockClear();
+    await withMockNowForTest(startedAt + 100_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "timeout",
+          retryAfterSeconds: 1,
+        }),
+      ).resolves.toStrictEqual({ outcome: "recorded" });
+    });
+    for (const offset of [100_000, 160_000]) {
+      await withMockNowForTest(startedAt + offset, async () => {
+        await runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        });
+      });
+    }
+
+    await expect(
+      readBuiltInModelCandidateCooldownFixture(route),
+    ).resolves.toStrictEqual({
+      unavailableUntil: new Date(startedAt + 30 * 60_000),
+      connectionObservationStartedAt: null,
+      connectionObservationUntil: null,
+    });
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("merges connected receipts when body processing is reversed", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 0, 35, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+    const route = {
+      selectedModel: claimed.selectedModel,
+      providerType: primary.provider_type,
+      upstreamModel: primary.upstream_model,
+    };
+    const earlier = await withMockNowForTest(startedAt, async () => {
+      return await runs.startRunnerModelProviderFailureWithDelayedBody(
+        claimed.runId,
+        {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        },
+      );
+    });
+    onTestFinished(() => {
+      earlier.releaseBody();
+    });
+
+    await withMockNowForTest(startedAt + 60_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    earlier.releaseBody();
+    await expect(earlier.response).resolves.toStrictEqual({
+      status: 200,
+      body: { outcome: "recorded" },
+    });
+    await expect(
+      readBuiltInModelCandidateCooldownFixture(route),
+    ).resolves.toMatchObject({
+      unavailableUntil: new Date(startedAt + 6 * 60_000),
+      connectionObservationStartedAt: null,
+      connectionObservationUntil: null,
+    });
+  });
+
+  it("ignores an older disjoint receipt without replacing newer evidence", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 0, 45, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+    const route = {
+      selectedModel: claimed.selectedModel,
+      providerType: primary.provider_type,
+      upstreamModel: primary.upstream_model,
+    };
+    const report = async (at: number) => {
+      return await withMockNowForTest(at, async () => {
+        return await runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        });
+      });
+    };
+
+    await expect(report(startedAt + 120_000)).resolves.toStrictEqual({
+      outcome: "observed",
+    });
+    await expect(report(startedAt)).resolves.toStrictEqual({
+      outcome: "observed",
+    });
+    await expect(
+      readBuiltInModelCandidateCooldownFixture(route),
+    ).resolves.toMatchObject({
+      connectionObservationStartedAt: new Date(startedAt + 120_000),
+      connectionObservationUntil: new Date(startedAt + 180_000),
+    });
+    await expect(report(startedAt + 180_000)).resolves.toStrictEqual({
+      outcome: "recorded",
+    });
+  });
+
+  it.each([
+    { elapsedMs: 59_000, outcome: "observed" },
+    { elapsedMs: 60_000, outcome: "recorded" },
+  ] as const)(
+    "uses receipt time across a route lock wait at $elapsedMs ms",
+    async ({ elapsedMs, outcome }) => {
+      const startedAt = Date.UTC(2026, 7, 21, 0, 55, 0) + elapsedMs;
+      const claimed = await createClaimedVm0Run();
+      const primary = await resolveVm0BuiltInModelRouteFixture(
+        context,
+        claimed.selectedModel,
+        true,
+      );
+      if (!primary) {
+        throw new Error("Expected a built-in model primary route");
+      }
+      registerVm0BuiltInCandidateCooldownCleanup(
+        context,
+        claimed.selectedModel,
+        primary,
+      );
+      const route = {
+        selectedModel: claimed.selectedModel,
+        providerType: primary.provider_type,
+        upstreamModel: primary.upstream_model,
+      };
+      await withMockNowForTest(startedAt - elapsedMs, async () => {
+        await runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        });
+      });
+      const held = await holdBuiltInModelRouteLockFixture({
+        route,
+        signal: context.signal,
+      });
+      onTestFinished(async () => {
+        held.release();
+        await held.done;
+      });
+
+      await withMockNowForTest(startedAt, async () => {
+        const response = runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        });
+        await expect.poll(held.blockedWaiterCount).toBe(1);
+        mockNow(startedAt + 5 * 60_000);
+        held.release();
+        await held.done;
+        await expect(response).resolves.toStrictEqual({ outcome });
+      });
+
+      const state = await readBuiltInModelCandidateCooldownFixture(route);
+      if (!state) {
+        throw new Error("Expected a built-in model cooldown state");
+      }
+      expect(state.unavailableUntil).toStrictEqual(
+        new Date(
+          outcome === "recorded"
+            ? startedAt + 5 * 60_000
+            : startedAt - elapsedMs,
+        ),
+      );
     },
   );
 
@@ -803,6 +1170,14 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         {
           failureKind: "connection",
           retryAfterSeconds: 301,
+        },
+        {
+          failureKind: "timeout",
+          connectionSource: "upstream_transport",
+        },
+        {
+          failureKind: "connection",
+          connectionSource: "network",
         },
       ]) {
         const invalid = await runs.requestRawRunnerModelProviderFailure(
