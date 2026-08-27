@@ -94,8 +94,9 @@ pub const BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
 
 /// Canonical operation-control endpoint alias accepted by guest readers.
 ///
-/// `vsock-guest` keeps writing [`BOOTSTRAP_ENV`] until the deployed reader
-/// floor, sandbox drain, rollback window, and legacy-read-zero gates in #28914
+/// `vsock-guest` writes only this canonical alias. Guest readers retain
+/// [`BOOTSTRAP_ENV`] as a rollback fallback until the cutover release,
+/// observation window, rollback window, and legacy-read-zero gates in #28914
 /// are complete.
 pub const CANONICAL_BOOTSTRAP_ENV: &str = "OKOU_PROCESS_CONTROL_ENDPOINT";
 
