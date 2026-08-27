@@ -57,6 +57,8 @@ const READY_SETTLEMENT_TIMEOUT_MS = 10_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_ARTIFACT_FILENAME_STEM_CHARS = 120;
+const INVALID_ARTIFACT_FILENAME_CHARS = String.raw`<>:"/\|?*`;
 const RECONCILE_BATCH_SIZE = 2;
 const USAGE_NAMESPACE = "42a65d9f-67d6-4bed-ae87-9f80ce1feb79";
 const ACTIVE_STATUSES = [
@@ -755,6 +757,34 @@ function safeProviderResult(ready: ProviderReady) {
   };
 }
 
+function artifactFilename(
+  title: string | undefined,
+  id: string,
+  format: SocialKitDownloadRequest["format"],
+): string {
+  const extension = `.${format}`;
+  const sanitizedTitle = [...(title?.trim() ?? "")]
+    .map((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined &&
+        (codePoint < 32 ||
+          codePoint === 127 ||
+          INVALID_ARTIFACT_FILENAME_CHARS.includes(character))
+        ? "_"
+        : character;
+    })
+    .join("");
+  const titleWithoutExtension = sanitizedTitle.toLowerCase().endsWith(extension)
+    ? sanitizedTitle.slice(0, -extension.length)
+    : sanitizedTitle;
+  const stem = [...titleWithoutExtension]
+    .slice(0, MAX_ARTIFACT_FILENAME_STEM_CHARS)
+    .join("")
+    .trim()
+    .replace(/[. ]+$/gu, "");
+  return `${stem || `download-${id.slice(0, 8)}`}${extension}`;
+}
+
 const settleSocialKitDownloadUsage$ = command(
   async (
     { set },
@@ -852,7 +882,11 @@ const materializeSocialKitArtifact$ = command(
     },
     signal: AbortSignal,
   ): Promise<NonNullable<DownloadJob["artifact"]>> => {
-    const filename = `socialkit-${args.job.id.slice(0, 8)}.${args.job.request.format}`;
+    const filename = artifactFilename(
+      args.providerResult.title,
+      args.job.id,
+      args.job.request.format,
+    );
     const contentType =
       args.job.request.format === "mp4" ? "video/mp4" : "audio/mp4";
     const existing = await set(

@@ -1597,7 +1597,7 @@ describe("managed SocialKit route", () => {
             creditsCost: 2,
             quality: "480p",
             format: "mp4",
-            title: "Public video",
+            title: "Public / 视频.mp4",
             thumbnail: "https://media.socialkit.test/thumbnail.jpg",
           },
         });
@@ -1681,6 +1681,7 @@ describe("managed SocialKit route", () => {
       billing: { quantity: 2, creditsCharged: 6 },
       artifact: {
         id: created.body.downloadId,
+        filename: "Public _ 视频.mp4",
         contentType: "video/mp4",
         sizeBytes: payload.byteLength,
       },
@@ -2211,7 +2212,7 @@ describe("managed SocialKit route", () => {
         if (!createdDownloadId) {
           return Promise.reject(new Error("Missing created download id"));
         }
-        const filename = `socialkit-${createdDownloadId.slice(0, 8)}.mp4`;
+        const filename = `download-${createdDownloadId.slice(0, 8)}.mp4`;
         const key = buildArtifactKeyV2(
           createdDownloadId,
           filename,
