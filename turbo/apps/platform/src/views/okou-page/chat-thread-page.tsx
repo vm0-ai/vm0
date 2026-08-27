@@ -299,6 +299,8 @@ import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import {
   ChatAssistantMessageBody,
   ChatUserMessageBubble,
+  CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS,
+  CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS,
@@ -6204,7 +6206,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
     <Link
       pathname="/agents/:agentId"
       options={{ pathParams: { agentId } }}
-      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-state-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className={`${CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS} transition-colors duration-150 hover:bg-state-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
       aria-label={t(($) => {
         return $.chat.agentPage.viewAgentProfile;
       })}
@@ -6212,7 +6214,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
       <AgentAvatarImg
         name={agentId}
         alt=""
-        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
+        className={CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS}
       />
     </Link>
   );

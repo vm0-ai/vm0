@@ -60,10 +60,12 @@ describe("shared thread page", () => {
     expect(
       document.querySelector("[data-role='assistant']"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Okou" })).toHaveClass(
-      "h-7",
-      "@[900px]:h-9",
-    );
+    const assistantAvatar = screen.getByRole("img", { name: "Okou" });
+    expect(assistantAvatar).toHaveClass("h-7", "@[900px]:h-9");
+    expect(assistantAvatar.querySelectorAll("img")).toHaveLength(3);
+    expect(
+      document.querySelector("[data-shared-assistant-avatar] svg"),
+    ).not.toBeInTheDocument();
     expect(
       document.querySelector("[data-shared-message-actions='user']"),
     ).toHaveClass("mt-1");

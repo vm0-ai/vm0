@@ -2,10 +2,11 @@ import type {
   SharedMessage,
   SharedThreadResponse,
 } from "@okouai/api-contracts/contracts/shared-threads";
+import { DEFAULT_AGENT_AVATAR_URL } from "@okouai/core/agent-avatar";
 import { Button, Card, CardContent, cn } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { Root } from "hast";
-import { Copy, MessageCircle, Share2 } from "lucide-react";
+import { Copy, Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   appUrlForPublicBrand,
@@ -20,6 +21,8 @@ import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import {
   ChatAssistantMessageBody,
   ChatUserMessageBubble,
+  CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS,
+  CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS,
   CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS,
@@ -30,6 +33,7 @@ import {
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "../okou-page/chat-message-surface.tsx";
+import { AvatarFromUrl } from "../okou-page/sidebar-shared.tsx";
 
 /**
  * A shared message with the tree its body parsed into. The page setup command
@@ -96,11 +100,13 @@ function SharedAssistantAvatar({
   return (
     <div
       data-shared-assistant-avatar=""
-      role="img"
-      aria-label={assistantName}
-      className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary text-primary-foreground @[900px]:mt-0.5 @[900px]:h-9 @[900px]:w-9"
+      className={CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS}
     >
-      <MessageCircle size={17} aria-hidden="true" />
+      <AvatarFromUrl
+        avatarUrl={DEFAULT_AGENT_AVATAR_URL}
+        alt={assistantName}
+        className={CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS}
+      />
     </div>
   );
 }
