@@ -38,6 +38,15 @@ function computerUseRow(switchName: string): HTMLElement {
   return row;
 }
 
+async function composerConnectorsButton(): Promise<HTMLElement> {
+  const editor = await screen.findByPlaceholderText(PLACEHOLDER);
+  const composer = editor.closest(".zero-composer");
+  if (!(composer instanceof HTMLElement)) {
+    throw new Error("Chat composer not found");
+  }
+  return within(composer).getByLabelText("Connectors");
+}
+
 describe("chat lifecycle", () => {
   it("keeps Cloud browser and Computer Use mutually exclusive", async () => {
     const user = userEvent.setup({ delay: null });
@@ -92,7 +101,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     expect(screen.getByText("Your computer")).toBeInTheDocument();
     expect(screen.getByText("Okou")).toBeInTheDocument();
     expect(
@@ -177,7 +186,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
 
     // Declared exception to the "no CSS class assertions" rule in
     // docs/testing/testing-external-behavior.md and AP-7 of
@@ -216,7 +225,7 @@ describe("chat lifecycle", () => {
     });
 
     await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
 
     const cloudBrowserSwitch = await screen.findByRole("switch", {
       name: "Disable Cloud browser",
@@ -255,7 +264,7 @@ describe("chat lifecycle", () => {
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     expect(
       screen.getByRole("switch", { name: "Disable Cloud browser" }),
     ).toHaveAttribute("aria-checked", "true");
@@ -287,7 +296,7 @@ describe("chat lifecycle", () => {
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     await user.click(
       screen.getByRole("switch", { name: "Disable Cloud browser" }),
     );
@@ -340,7 +349,7 @@ describe("chat lifecycle", () => {
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     expect(
       screen.getByRole("switch", { name: "Disable Cloud browser" }),
     ).toHaveAttribute("aria-checked", "true");
@@ -433,7 +442,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
 
     await waitFor(() => {
       expect(screen.getByText("Studio Mac")).toBeInTheDocument();
@@ -476,7 +485,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     await user.click(await screen.findByText("Connect my computer"));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -517,7 +526,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     await user.click(await screen.findByText("Connect my computer"));
 
     expect(screen.getByText("Let Okou use your computer")).toBeInTheDocument();
@@ -552,7 +561,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     await user.click(await screen.findByText("Connect my computer"));
 
     const requiredButton = await waitFor(() => {
@@ -603,7 +612,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     expect(
       screen.getByRole("switch", { name: "Connect Studio Mac" }),
     ).toHaveAttribute("aria-checked", "false");
@@ -660,7 +669,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
 
     await waitFor(() => {
       expect(screen.getByText("Studio Mac")).toBeInTheDocument();
@@ -729,7 +738,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
     const hostsGroup = await screen.findByRole("group", {
       name: "Computer Use hosts",
     });
@@ -810,7 +819,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
 
     const selectedComputer = await screen.findByRole("switch", {
       name: "Disconnect Studio Mac",
@@ -877,7 +886,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
 
     const hostName = await screen.findByText("Studio Mac");
     expect(hostName).toBeInTheDocument();
@@ -908,7 +917,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       return chatComposerTextarea();
     });
-    await user.click(await screen.findByLabelText("Connectors"));
+    await user.click(await composerConnectorsButton());
 
     await waitFor(() => {
       expect(screen.getByText("No online computers")).toBeInTheDocument();
