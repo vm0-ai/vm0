@@ -20,17 +20,11 @@ require_runner_api_credentials() {
     runner_api_token >/dev/null && runner_api_url >/dev/null
 }
 
-runner_api_curl() {
-    local path="$1"
-    shift
+_runner_api_vercel_logs_url_prefix() {
+    local base="$1"
+    local path="$2"
+    local request_host request_path request_host_search request_path_search
 
-    local token base request_url diagnostic_url request_host request_path
-    local request_host_search request_path_search vercel_logs_url_prefix
-    local vercel_logs_url_prefix_write_out vercel_log_write_out
-    token="$(runner_api_token)" || return 1
-    base="$(runner_api_url)" || return 1
-    request_url="$base$path"
-    diagnostic_url="${request_url%%\?*}"
     request_host="${base#*://}"
     request_host="${request_host%%/*}"
     request_path="${path%%\?*}"
@@ -39,7 +33,22 @@ runner_api_curl() {
     request_path_search="${request_path//%/%25}"
     request_path_search="${request_path_search//\//%2F}"
     request_path_search="${request_path_search//:/%3A}"
-    vercel_logs_url_prefix="https://vercel.com/vm0/vm0-api/logs?search=requestHost%3A${request_host_search}+requestPath%3A${request_path_search}+status%3A"
+    printf 'https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3A%s+requestPath%%3A%s+status%%3A' \
+        "$request_host_search" "$request_path_search"
+}
+
+runner_api_curl() {
+    local path="$1"
+    shift
+
+    local token base request_url diagnostic_url vercel_logs_url_prefix
+    local vercel_logs_url_prefix_write_out vercel_log_write_out
+    token="$(runner_api_token)" || return 1
+    base="$(runner_api_url)" || return 1
+    request_url="$base$path"
+    diagnostic_url="${request_url%%\?*}"
+    vercel_logs_url_prefix="$(_runner_api_vercel_logs_url_prefix \
+        "$base" "$path")"
     vercel_logs_url_prefix_write_out="${vercel_logs_url_prefix//%/%%}"
     vercel_log_write_out="%{onerror}%{stderr}Vercel logs: ${vercel_logs_url_prefix_write_out}%{http_code}&timeline=past12Hours\n"
 
@@ -157,11 +166,14 @@ delete_runner_agent() {
 # the production legacy-version deletion veto.
 delete_runner_agent_for_stage0_teardown() {
     local agent_id="$1"
-    local response http_status response_body attempt
+    local request_path response http_status response_body attempt
+    local base vercel_logs_url_prefix
+
+    request_path="/api/agents/$agent_id"
 
     for ((attempt = 1; attempt <= 5; attempt += 1)); do
         response="$(runner_api_curl \
-            "/api/agents/$agent_id" \
+            "$request_path" \
             -X DELETE \
             --no-fail-with-body \
             --write-out $'\n%{http_code}')" || return
@@ -208,6 +220,11 @@ delete_runner_agent_for_stage0_teardown() {
 
         printf 'Stage 0 Runner E2E agent teardown failed with HTTP %s: %s\n' \
             "$http_status" "$response_body" >&2
+        base="$(runner_api_url)" || return 1
+        vercel_logs_url_prefix="$(_runner_api_vercel_logs_url_prefix \
+            "$base" "$request_path")"
+        printf 'Vercel logs: %s%s&timeline=past12Hours\n' \
+            "$vercel_logs_url_prefix" "$http_status" >&2
         return 1
     done
 }
