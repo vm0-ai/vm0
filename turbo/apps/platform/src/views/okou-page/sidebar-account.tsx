@@ -51,6 +51,7 @@ import {
   type SettingsSection,
 } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { ROUTES } from "../../signals/route-paths.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
@@ -736,6 +737,8 @@ export function AccountDropdown({
     userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
+  const authV2AddAccountEnabled =
+    features?.[FeatureSwitchKey.AuthV2AddAccount] ?? false;
   const subscriptionsEnabled =
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   // The three-column nav stacks the account mark under the workspace logo, so
@@ -815,6 +818,10 @@ export function AccountDropdown({
   };
 
   const handleAddAccount = () => {
+    if (authV2AddAccountEnabled) {
+      window.location.href = ROUTES.signInV2;
+      return;
+    }
     detach(
       clerk?.openSignIn({
         fallbackRedirectUrl: "/",

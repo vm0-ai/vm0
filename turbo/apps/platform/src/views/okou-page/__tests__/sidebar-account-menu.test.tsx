@@ -1448,6 +1448,29 @@ describe("zero sidebar account menu", () => {
     });
   });
 
+  it("opens the custom v2 sign-in flow for add account when enabled", async () => {
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.AuthV2AddAccount]: true },
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Add account"));
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/v2/sign-in");
+    });
+    expect(mockedClerk.openSignIn).not.toHaveBeenCalled();
+  });
+
   it("preserves satellite session sync after signing out", async () => {
     prepareDefaultAgent();
     context.mocks.browser.url("https://app.okou.ai/");
