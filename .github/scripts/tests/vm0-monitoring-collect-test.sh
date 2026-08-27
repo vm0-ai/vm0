@@ -22,20 +22,18 @@ reset_dirs() {
   mkdir -p "$textfile_dir"
 }
 
-run_with_aliases() {
+run_with_path_env() {
   env \
     -u OKOU_WORKSPACE_IMAGE_CACHE_DIR \
-    -u VM0_WORKSPACE_IMAGE_CACHE_DIR \
     -u OKOU_MONITORING_TEXTFILE_DIR \
-    -u VM0_MONITORING_TEXTFILE_DIR \
     "$@" \
     bash "$script" 2>"$stderr_file"
 }
 
 run_metrics() {
-  run_with_aliases \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  run_with_path_env \
+    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
 
   [ -f "$output_file" ] || fail "metrics output file was not created"
 }
@@ -52,38 +50,21 @@ assert_no_match() {
   fi
 }
 
-assert_source_state() {
-  local canonical_key="$1"
-  local legacy_key="$2"
-  local state="$3"
-  local expected
-  expected="monitoring path alias source canonical_key=$canonical_key legacy_key=$legacy_key state=$state"
-
-  grep -qxF "$expected" "$stderr_file" ||
-    fail "expected fixed-shape alias source evidence"
-}
-
-assert_conflict_state() {
-  local canonical_key="$1"
-  local legacy_key="$2"
-  local expected
-  expected="monitoring path alias conflict canonical_key=$canonical_key legacy_key=$legacy_key state=conflict"
-
-  grep -qxF "$expected" "$stderr_file" ||
-    fail "expected fixed-shape alias conflict diagnostic"
-}
-
 assert_stderr_excludes_values() {
   local value
   for value in "$@"; do
     if grep -Fq -- "$value" "$stderr_file"; then
-      fail "alias diagnostic exposed a path value"
+      fail "collector diagnostics exposed an ignored value"
     fi
   done
 }
 
+assert_stderr_empty() {
+  [ ! -s "$stderr_file" ] || fail "collector emitted unexpected diagnostics"
+}
+
 assert_output_absent() {
-  [ ! -e "$output_file" ] || fail "collector published output before rejecting aliases"
+  [ ! -e "$output_file" ] || fail "collector published output unexpectedly"
 }
 
 assert_all_buckets_zero() {
@@ -206,148 +187,132 @@ test_ignores_incomplete_and_non_regular_entries() {
   assert_all_buckets_zero
 }
 
-test_workspace_image_cache_dir_alias_matrix() {
+test_workspace_image_cache_dir_canonical_and_defaults() {
   reset_dirs
-  mkdir -p "$cache_dir/alias-entry"
-  touch "$cache_dir/alias-entry/current.ext4"
+  mkdir -p "$cache_dir/canonical-entry"
+  touch "$cache_dir/canonical-entry/current.ext4"
 
-  run_with_aliases \
+  run_with_path_env \
     OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="" \
     OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
   assert_line "vm0_workspace_image_cache_entries 1"
-  assert_source_state \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR \
-    canonical-only
-  assert_stderr_excludes_values "$cache_dir" "$textfile_dir"
+  assert_stderr_empty
 
-  run_with_aliases \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="" \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_line "vm0_workspace_image_cache_entries 1"
-  assert_source_state \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR \
-    legacy-only
-  assert_stderr_excludes_values "$cache_dir" "$textfile_dir"
-
-  run_with_aliases \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_line "vm0_workspace_image_cache_entries 1"
-  assert_source_state \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR \
-    dual
-  assert_stderr_excludes_values "$cache_dir" "$textfile_dir"
-
-  run_with_aliases OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_line "vm0_workspace_image_cache_entries 0"
-
-  run_with_aliases \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="" \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="" \
+  run_with_path_env \
     OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
   assert_line "vm0_workspace_image_cache_entries 0"
+  assert_stderr_empty
+
+  run_with_path_env \
+    OKOU_WORKSPACE_IMAGE_CACHE_DIR="" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line "vm0_workspace_image_cache_entries 0"
+  assert_stderr_empty
+}
+
+test_retired_workspace_image_cache_dir_is_ignored() {
+  reset_dirs
+  local retired_cache_dir="$tmp_root/retired-cache"
+  mkdir -p "$retired_cache_dir/retired-entry"
+  touch "$retired_cache_dir/retired-entry/current.ext4"
+
+  run_with_path_env \
+    VM0_WORKSPACE_IMAGE_CACHE_DIR="$retired_cache_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line "vm0_workspace_image_cache_entries 0"
+  assert_stderr_excludes_values \
+    "$retired_cache_dir" \
+    VM0_WORKSPACE_IMAGE_CACHE_DIR \
+    "monitoring path alias"
+  assert_stderr_empty
+
+  mkdir -p "$cache_dir/canonical-entry"
+  touch "$cache_dir/canonical-entry/current.ext4"
+  run_with_path_env \
+    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
+    VM0_WORKSPACE_IMAGE_CACHE_DIR="$retired_cache_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line "vm0_workspace_image_cache_entries 1"
+  assert_stderr_excludes_values \
+    "$retired_cache_dir" \
+    VM0_WORKSPACE_IMAGE_CACHE_DIR \
+    "monitoring path alias"
+  assert_stderr_empty
+}
+
+test_monitoring_textfile_dir_canonical_and_defaults() {
+  reset_dirs
+  mkdir -p "$cache_dir/canonical-entry"
+  touch "$cache_dir/canonical-entry/current.ext4"
+
+  run_with_path_env \
+    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
+  assert_line "vm0_workspace_image_cache_entries 1"
+  assert_stderr_empty
 
   rm -f "$output_file"
-  local canonical_conflict="$tmp_root/cache-canonical-conflict-value"
-  local legacy_conflict="$tmp_root/cache-legacy-conflict-value"
-  if run_with_aliases \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$canonical_conflict" \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="$legacy_conflict" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"; then
-    fail "expected conflicting cache aliases to fail"
+  if run_with_path_env OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir"; then
+    fail "expected the absent canonical textfile path to use the missing default"
   fi
-  assert_conflict_state \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR
-  assert_stderr_excludes_values "$canonical_conflict" "$legacy_conflict"
+  grep -qF \
+    'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
+    "$stderr_file" || fail "absent canonical textfile path did not use the fixed default"
+  assert_output_absent
+
+  if run_with_path_env \
+    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR=""; then
+    fail "expected an empty canonical textfile path to use the missing default"
+  fi
+  grep -qF \
+    'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
+    "$stderr_file" || fail "empty canonical textfile path did not use the fixed default"
   assert_output_absent
 }
 
-test_monitoring_textfile_dir_alias_matrix() {
+test_retired_monitoring_textfile_dir_is_ignored() {
   reset_dirs
-  mkdir -p "$cache_dir/alias-entry"
-  touch "$cache_dir/alias-entry/current.ext4"
+  local retired_textfile_dir="$tmp_root/retired-textfile"
+  mkdir -p "$cache_dir/canonical-entry" "$retired_textfile_dir"
+  touch "$cache_dir/canonical-entry/current.ext4"
 
-  run_with_aliases \
+  if run_with_path_env \
     OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir" \
-    VM0_MONITORING_TEXTFILE_DIR=""
-  assert_line "vm0_workspace_image_cache_entries 1"
-  assert_source_state \
-    OKOU_MONITORING_TEXTFILE_DIR \
-    VM0_MONITORING_TEXTFILE_DIR \
-    canonical-only
-  assert_stderr_excludes_values "$cache_dir" "$textfile_dir"
-
-  run_with_aliases \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="" \
-    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_line "vm0_workspace_image_cache_entries 1"
-  assert_source_state \
-    OKOU_MONITORING_TEXTFILE_DIR \
-    VM0_MONITORING_TEXTFILE_DIR \
-    legacy-only
-  assert_stderr_excludes_values "$cache_dir" "$textfile_dir"
-
-  run_with_aliases \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_line "vm0_workspace_image_cache_entries 1"
-  assert_source_state \
-    OKOU_MONITORING_TEXTFILE_DIR \
-    VM0_MONITORING_TEXTFILE_DIR \
-    dual
-  assert_stderr_excludes_values "$cache_dir" "$textfile_dir"
-
-  rm -f "$output_file"
-  if run_with_aliases OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir"; then
-    fail "expected the absent textfile alias pair to use the missing default"
+    VM0_MONITORING_TEXTFILE_DIR="$retired_textfile_dir"; then
+    fail "expected the retired textfile path to be ignored in favor of the missing default"
   fi
   grep -qF \
     'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
-    "$stderr_file" || fail "absent textfile aliases did not use the fixed default"
+    "$stderr_file" || fail "retired textfile path redirected the collector"
+  assert_stderr_excludes_values \
+    "$retired_textfile_dir" \
+    VM0_MONITORING_TEXTFILE_DIR \
+    "monitoring path alias"
   assert_output_absent
+  [ ! -e "$retired_textfile_dir/workspace-image-cache.prom" ] ||
+    fail "retired textfile path received collector output"
 
-  if run_with_aliases \
+  run_with_path_env \
     OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="" \
-    VM0_MONITORING_TEXTFILE_DIR=""; then
-    fail "expected empty textfile aliases to use the missing default"
-  fi
-  grep -qF \
-    'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
-    "$stderr_file" || fail "empty textfile aliases did not use the fixed default"
-  assert_output_absent
-
-  local canonical_conflict="$tmp_root/textfile-canonical-conflict-value"
-  local legacy_conflict="$tmp_root/textfile-legacy-conflict-value"
-  if run_with_aliases \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$canonical_conflict" \
-    VM0_MONITORING_TEXTFILE_DIR="$legacy_conflict"; then
-    fail "expected conflicting textfile aliases to fail"
-  fi
-  assert_conflict_state \
-    OKOU_MONITORING_TEXTFILE_DIR \
-    VM0_MONITORING_TEXTFILE_DIR
-  assert_stderr_excludes_values "$canonical_conflict" "$legacy_conflict"
-  assert_output_absent
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir" \
+    VM0_MONITORING_TEXTFILE_DIR="$retired_textfile_dir"
+  assert_line "vm0_workspace_image_cache_entries 1"
+  assert_stderr_excludes_values \
+    "$retired_textfile_dir" \
+    VM0_MONITORING_TEXTFILE_DIR \
+    "monitoring path alias"
+  assert_stderr_empty
+  [ ! -e "$retired_textfile_dir/workspace-image-cache.prom" ] ||
+    fail "retired textfile path overrode the canonical path"
 }
 
 test_missing_textfile_dir_fails() {
   rm -rf "$cache_dir" "$textfile_dir"
 
-  if run_with_aliases \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$textfile_dir"; then
+  if run_with_path_env \
+    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
+    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"; then
     fail "expected missing textfile directory to fail"
   fi
 
@@ -361,8 +326,10 @@ test_sparse_file_uses_allocated_bytes_not_logical_size
 test_regular_file_bucket_counts
 test_multiple_entries_aggregate_across_buckets
 test_ignores_incomplete_and_non_regular_entries
-test_workspace_image_cache_dir_alias_matrix
-test_monitoring_textfile_dir_alias_matrix
+test_workspace_image_cache_dir_canonical_and_defaults
+test_retired_workspace_image_cache_dir_is_ignored
+test_monitoring_textfile_dir_canonical_and_defaults
+test_retired_monitoring_textfile_dir_is_ignored
 test_missing_textfile_dir_fails
 
 echo "vm0 monitoring collector tests passed"
