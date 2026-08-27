@@ -86,6 +86,12 @@ async fn heartbeat_timeout_triggers_reconnect() {
 
 #[tokio::test]
 async fn inbound_activity_refreshes_heartbeat_deadline() {
+    const MAX_IDLE_INTERVAL_MS: i64 = 20_000;
+    const HEARTBEAT_MARGIN: Duration = Duration::from_secs(10);
+    const ACTIVITY_DELAY: Duration = Duration::from_secs(10);
+    const FRAME_DELIVERY_TIMEOUT: Duration = Duration::from_secs(5);
+    const ORIGINAL_DEADLINE_OBSERVATION: Duration = Duration::from_secs(21);
+
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
@@ -100,7 +106,7 @@ async fn inbound_activity_refreshes_heartbeat_deadline() {
                 "ch",
                 "conn-1",
                 HandshakeOptions {
-                    max_idle_interval_ms: 20_000,
+                    max_idle_interval_ms: MAX_IDLE_INTERVAL_MS,
                     ..Default::default()
                 },
             )
@@ -108,7 +114,7 @@ async fn inbound_activity_refreshes_heartbeat_deadline() {
             .unwrap();
 
         step_rx.recv().await.expect("activity step was dropped");
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(ACTIVITY_DELAY).await;
         send_message(
             &mut conn,
             "ch",
@@ -138,7 +144,7 @@ async fn inbound_activity_refreshes_heartbeat_deadline() {
     });
 
     let mut timing = TimingConfig::default();
-    timing.heartbeat_margin = Duration::from_secs(10);
+    timing.heartbeat_margin = HEARTBEAT_MARGIN;
     let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
         .await
         .unwrap();
@@ -148,10 +154,16 @@ async fn inbound_activity_refreshes_heartbeat_deadline() {
 
     step_tx.send(()).await.unwrap();
     activity_sent_rx.await.unwrap();
+    // Real loopback I/O needs resumed time so Tokio does not advance directly
+    // from the virtual activity delay to the next heartbeat timer.
     tokio::time::resume();
-    let event = expect_event(&mut sub, "activity before original heartbeat deadline")
-        .await
-        .unwrap();
+    let event = expect_event_with_timeout(
+        &mut sub,
+        FRAME_DELIVERY_TIMEOUT,
+        "activity before original heartbeat deadline",
+    )
+    .await
+    .unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(
@@ -163,7 +175,10 @@ async fn inbound_activity_refreshes_heartbeat_deadline() {
     }
     tokio::time::pause();
 
-    let event_before_sentinel = tokio::time::timeout(Duration::from_secs(21), sub.next()).await;
+    // The original deadline is 30s. Activity arrives by 15s, so this quiet
+    // window crosses the original deadline but stays inside the refreshed one.
+    let event_before_sentinel =
+        tokio::time::timeout(ORIGINAL_DEADLINE_OBSERVATION, sub.next()).await;
     assert!(
         event_before_sentinel.is_err(),
         "expected no event after the original deadline, got {event_before_sentinel:?}"
@@ -172,9 +187,13 @@ async fn inbound_activity_refreshes_heartbeat_deadline() {
     step_tx.send(()).await.unwrap();
     sentinel_sent_rx.await.unwrap();
     tokio::time::resume();
-    let event = expect_event(&mut sub, "sentinel after original heartbeat deadline")
-        .await
-        .unwrap();
+    let event = expect_event_with_timeout(
+        &mut sub,
+        FRAME_DELIVERY_TIMEOUT,
+        "sentinel after original heartbeat deadline",
+    )
+    .await
+    .unwrap();
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-original-deadline"));
