@@ -17,7 +17,10 @@ async fn execution_deadline_preserves_post_result_sigkill_pending()
         // post-result reaper sends SIGTERM after 1s, the execution deadline
         // lands at 5s, and the 8s SIGKILL grace then completes the reaper.
         common::setup_env(&mock, tmp.path(), "@hang-after-result-deaf", 1, 8)?;
-        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "5");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "5",
+        );
     }
 
     let runtime = common::guest_runtime_from_process_env()?;
