@@ -72,10 +72,13 @@ fi
         std::env::set_var(guest_contracts::env::API_URL_ENV, &server.base_url);
         std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "test-token");
         std::env::set_var(
-            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",
         );
-        std::env::set_var(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
         std::env::set_var("HOME", tmp.path());
         let mut paths = vec![bin_dir];
         paths.extend(std::env::split_paths(base_path));

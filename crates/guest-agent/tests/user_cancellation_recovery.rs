@@ -188,10 +188,13 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
             .env(guest_contracts::env::RUN_ID_ENV, scenario.run_id)
             .env(
-                guest_contracts::env::SANDBOX_ID_ENV,
+                guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
                 "00000000-0000-4000-8000-000000000abc",
             )
-            .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
+            .env(
+                guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+                "reused",
+            )
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
             .env("OKOU_TEST_CODEX_HOME_DIR", &codex_home)
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
@@ -208,11 +211,11 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
                 "runtime-turn-started-before-steer",
             )
             .env(
-                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
                 "1",
             )
             .env(
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
                 "1",
             )
             .env(

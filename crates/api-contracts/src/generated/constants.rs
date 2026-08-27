@@ -113,8 +113,8 @@ pub mod runners {
     pub const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: u32 = 1;
 
     /// Maximum builtin firewall catalog response and cache size accepted by runners.
-    /// This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.
-    pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = 33554432;
+    /// This Runner wire and cache boundary is independent of the larger full connector catalog source-ingestion limit.
+    pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = 16777216;
 
     /// Maximum API admission hold after public user cancellation when recovery completion is lost.
     /// The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.

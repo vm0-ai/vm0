@@ -145,8 +145,14 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
             mock_path.as_str(),
         ),
         ("USE_MOCK_CLAUDE", "true"),
-        ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
-        ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
+        (
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            "1",
+        ),
+        (
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            "1",
+        ),
         (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
         (
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
@@ -154,8 +160,14 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ),
         ("VM0_API_BACKEND_URL", "http://127.0.0.1:1"),
         ("VM0_API_TOKEN", ""),
-        ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
-        ("VM0_SANDBOX_REUSE_RESULT", "reused"),
+        (
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        ),
+        (
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        ),
         ("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
         ("HOME", workdir.as_str()),
     ];
@@ -276,8 +288,14 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
             mock_path.as_str(),
         ),
         ("USE_MOCK_CLAUDE", "true"),
-        ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),
-        ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
+        (
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            "1",
+        ),
+        (
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            "1",
+        ),
         (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
         (
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
@@ -285,8 +303,14 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
         ),
         ("VM0_API_BACKEND_URL", "http://127.0.0.1:1"),
         ("VM0_API_TOKEN", ""),
-        ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
-        ("VM0_SANDBOX_REUSE_RESULT", "reused"),
+        (
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        ),
+        (
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        ),
         ("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
         ("HOME", workdir.as_str()),
     ];

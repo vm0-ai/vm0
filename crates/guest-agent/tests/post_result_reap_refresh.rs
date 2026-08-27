@@ -13,7 +13,10 @@ async fn post_result_reap_refreshes_quiet_deadline_on_meaningful_event()
     let tmp = tempfile::tempdir()?;
     unsafe {
         common::setup_env(&mock, tmp.path(), "@hang-after-result-then-event", 2, 1)?;
-        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "10");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            "10",
+        );
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);

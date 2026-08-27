@@ -110,7 +110,7 @@ const agentExecutionTimeoutSecondsDoc = [
 ] as const;
 const builtinFirewallCatalogMaxBytesDoc = [
   "Maximum builtin firewall catalog response and cache size accepted by runners.",
-  "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
+  "This Runner wire and cache boundary is independent of the larger full connector catalog source-ingestion limit.",
 ] as const;
 const builtinFirewallCatalogCacheSchemaVersionDoc = [
   "Schema version written to builtin firewall catalog cache files and accepted by the mitm addon.",
@@ -528,7 +528,7 @@ describe("Rust constant bindings", () => {
   });
 
   it("renders deterministic Rust constants for the supported registry", () => {
-    expect(BUILTIN_FIREWALL_CATALOG_MAX_BYTES).toBe(32 * 1024 * 1024);
+    expect(BUILTIN_FIREWALL_CATALOG_MAX_BYTES).toBe(16 * 1024 * 1024);
 
     const firstRender = renderRustConstants(rustConstantBindings);
     const secondRender = renderRustConstants(rustConstantBindings);
