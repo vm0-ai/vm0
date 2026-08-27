@@ -35,7 +35,10 @@ function okouBrandLink(): HTMLElement {
 
 function authV2Button(name: string): HTMLButtonElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim() === name;
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.trim() === name
+    );
   });
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error("Auth v2 button not found");

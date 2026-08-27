@@ -1206,6 +1206,7 @@ describe("auth v2 sign-in flow", () => {
               status: "active",
               user: {
                 fullName: "Ada Lovelace",
+                imageUrl: "https://cdn.vm0.test/users/ada.png",
                 primaryEmailAddress: { emailAddress: "ada@example.com" },
               },
             },
@@ -1214,6 +1215,7 @@ describe("auth v2 sign-in flow", () => {
               status: "active",
               user: {
                 fullName: "Grace Hopper",
+                imageUrl: "https://cdn.vm0.test/users/grace.png",
                 primaryEmailAddress: { emailAddress: "grace@example.com" },
               },
             },
@@ -1234,6 +1236,10 @@ describe("auth v2 sign-in flow", () => {
     if (!adaAccount) {
       throw new Error("Ada Lovelace account button not found");
     }
+    expect(screen.getByRole("img", { name: "Ada Lovelace" })).toHaveAttribute(
+      "src",
+      "https://cdn.vm0.test/users/ada.png",
+    );
     fireEvent.click(adaAccount);
     fireEvent.click(adaAccount);
 

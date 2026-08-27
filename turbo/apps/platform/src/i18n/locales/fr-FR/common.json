@@ -1096,6 +1096,7 @@
         "secondFactorDescription": "Cette connexion nécessite une étape de vérification supplémentaire que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "secondFactorTitle": "Vérification supplémentaire requise",
         "selectOrganization": "Continuer avec {{organizationName}}",
+        "signedInAs": "Connecté en tant que {{identifier}}",
         "unsupportedDescription": "Votre compte a renvoyé une étape d'authentification que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "unsupportedTitle": "Étape de connexion indisponible"
       },

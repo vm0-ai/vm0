@@ -1096,6 +1096,7 @@
         "secondFactorDescription": "Este inicio de sesión requiere un paso de verificación adicional que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
         "secondFactorTitle": "Se requiere verificación adicional",
         "selectOrganization": "Continuar con {{organizationName}}",
+        "signedInAs": "Sesión iniciada como {{identifier}}",
         "unsupportedDescription": "Tu cuenta devolvió un paso de autenticación que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
         "unsupportedTitle": "Paso de inicio de sesión no disponible"
       },

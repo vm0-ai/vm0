@@ -17,10 +17,14 @@ import { resolveAuthV2PlatformContext } from "./platform-context.ts";
 
 const context = testContext();
 
-function membership(id: string, name: string): MockedMembership {
+function membership(
+  id: string,
+  name: string,
+  imageUrl?: string,
+): MockedMembership {
   return {
     id: `membership_${id}`,
-    organization: { id, name },
+    organization: { id, imageUrl, name },
     role: "org:member",
   };
 }
@@ -49,6 +53,7 @@ async function setupContinuation(options: {
               user: {
                 fullName: "Test User",
                 organizationMemberships: memberships,
+                primaryEmailAddress: { emailAddress: "test@example.com" },
               },
             },
           ]
@@ -92,7 +97,11 @@ describe("auth v2 continuation recovery", () => {
 
   it("recovers a pending organization task with existing memberships only", async () => {
     const memberships = [
-      membership("org_alpha", "Alpha Company"),
+      membership(
+        "org_alpha",
+        "Alpha Company",
+        "https://cdn.vm0.test/orgs/alpha.png",
+      ),
       membership("org_beta", "Beta Studio"),
     ];
     const signals = await setupContinuation({
@@ -106,9 +115,14 @@ describe("auth v2 continuation recovery", () => {
     await initialize(signals);
 
     expect(context.store.get(signals.state$)).toStrictEqual({
+      accountIdentifier: "test@example.com",
       organizations: [
-        { id: "org_alpha", name: "Alpha Company" },
-        { id: "org_beta", name: "Beta Studio" },
+        {
+          id: "org_alpha",
+          imageUrl: "https://cdn.vm0.test/orgs/alpha.png",
+          name: "Alpha Company",
+        },
+        { id: "org_beta", imageUrl: null, name: "Beta Studio" },
       ],
       selectingOrganizationId: null,
       status: "incomplete",
@@ -203,7 +217,10 @@ describe("auth v2 continuation route ownership", () => {
 
     expect(location.pathname).toBe("/v2/sign-up/tasks/choose-organization");
     expect(context.store.get(signals.state$)).toStrictEqual({
-      organizations: [{ id: "org_alpha", name: "Alpha Company" }],
+      accountIdentifier: "Account",
+      organizations: [
+        { id: "org_alpha", imageUrl: null, name: "Alpha Company" },
+      ],
       selectingOrganizationId: null,
       status: "incomplete",
       task: "choose-organization",

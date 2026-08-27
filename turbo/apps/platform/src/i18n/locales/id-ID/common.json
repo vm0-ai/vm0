@@ -1076,6 +1076,7 @@
         "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "secondFactorTitle": "Verifikasi tambahan diperlukan",
         "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "signedInAs": "Masuk sebagai {{identifier}}",
         "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "unsupportedTitle": "Langkah masuk tidak tersedia"
       },

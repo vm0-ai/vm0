@@ -4,6 +4,7 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
+  cn,
 } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
@@ -27,6 +28,7 @@ interface AuthV2ShellProps {
   readonly description?: ReactNode;
   readonly focusKey: string;
   readonly headerDetail?: ReactNode;
+  readonly layout?: "choice" | "default";
   readonly title: ReactNode;
 }
 
@@ -38,22 +40,37 @@ export function AuthV2Shell({
   description,
   focusKey,
   headerDetail,
+  layout = "default",
   title,
 }: AuthV2ShellProps) {
   const focusHeading = useSet(focusAuthV2HeadingRef$);
   const theme = useGet(theme$);
+  const choiceLayout = layout === "choice";
 
   return (
     <div className="w-[calc(100%+0.5rem)] max-w-[25rem] shrink-0 space-y-4">
       <Card
         aria-describedby={description ? AUTH_V2_DESCRIPTION_ID : undefined}
         aria-labelledby={AUTH_V2_TITLE_ID}
-        className="relative w-full rounded-[12px] border-border p-0 shadow-none"
+        className={cn(
+          "relative w-full rounded-[12px] border-border p-0 shadow-none",
+          choiceLayout && "overflow-hidden",
+        )}
         data-testid="app-auth-v2"
         role="region"
       >
-        <div className="flex flex-col gap-8 px-10 py-8">
-          <CardHeader className="items-center space-y-0 bg-transparent p-0 text-center">
+        <div
+          className={cn(
+            "flex flex-col",
+            choiceLayout ? "" : "gap-8 px-10 py-8",
+          )}
+        >
+          <CardHeader
+            className={cn(
+              "items-center space-y-0 bg-transparent p-0 text-center",
+              choiceLayout && "px-10 py-8",
+            )}
+          >
             {authBrand.brandName === "VM0" ? (
               <img
                 alt=""
@@ -89,7 +106,11 @@ export function AuthV2Shell({
               {headerDetail}
             </div>
           </CardHeader>
-          <CardContent className="p-0">{children}</CardContent>
+          <CardContent
+            className={cn("p-0", choiceLayout && "border-t border-border")}
+          >
+            {children}
+          </CardContent>
         </div>
         {cardFooter ? (
           <CardFooter className="justify-center border-t border-border px-10 py-4">

@@ -15,11 +15,13 @@ import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import { Link } from "../../router/link.tsx";
+import { UserAvatar } from "../../components/avatar.tsx";
 import {
   AUTH_V2_LINK_ACTION_CLASS,
   AUTH_V2_PRIMARY_ACTION_CLASS,
 } from "../auth-v2-action-styles.ts";
 import { AuthV2Divider } from "../auth-v2-divider.tsx";
+import { AuthV2ChoiceRow } from "../auth-v2-choice-row.tsx";
 import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
 import { AuthV2FieldError } from "../auth-v2-field-error.tsx";
 import { AuthV2OAuthIcon } from "../auth-v2-oauth-icon.tsx";
@@ -434,43 +436,57 @@ function ChooseSessionStep({
     );
   };
   return (
-    <div className="space-y-4">
-      <FlowErrorAlert copy={copy} signals={signals} />
-      <div className="space-y-2">
+    <div>
+      <div className="empty:hidden px-10 pt-6">
+        <FlowErrorAlert copy={copy} signals={signals} />
+      </div>
+      <div className="divide-y divide-border">
         {state.accounts.map((account) => {
+          const secondary =
+            account.identifier && account.identifier !== account.displayName
+              ? account.identifier
+              : undefined;
           return (
-            <Button
-              className="h-auto w-full justify-start py-3"
+            <AuthV2ChoiceRow
+              actionLabel={
+                secondary
+                  ? `${account.displayName}, ${secondary}`
+                  : account.displayName
+              }
+              busy={false}
               disabled={selectionLoadable.state === "loading"}
               key={account.sessionId}
-              type="button"
-              variant="outline"
-              onClick={() => {
+              leading={
+                <UserAvatar
+                  imageUrl={account.imageUrl}
+                  initial={account.displayName.charAt(0).toUpperCase()}
+                  name={account.displayName}
+                  size="md"
+                />
+              }
+              onSelect={() => {
                 selectAccount(account.sessionId);
               }}
-            >
-              <span className="min-w-0 text-left">
-                <span className="block truncate">{account.displayName}</span>
-                {account.identifier &&
-                account.identifier !== account.displayName ? (
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {account.identifier}
-                  </span>
-                ) : null}
-              </span>
-            </Button>
+              primary={account.displayName}
+              secondary={secondary}
+            />
           );
         })}
       </div>
-      <Button
-        className={cn("w-full", AUTH_V2_LINK_ACTION_CLASS)}
-        disabled={selectionLoadable.state === "loading"}
-        type="button"
-        variant="ghost"
-        onClick={useAnotherAccount}
-      >
-        {copy.addAccount}
-      </Button>
+      <div className="flex justify-center border-t border-border px-10 py-4">
+        <Button
+          className={cn(
+            "h-auto w-fit p-0 text-sm leading-5",
+            AUTH_V2_LINK_ACTION_CLASS,
+          )}
+          disabled={selectionLoadable.state === "loading"}
+          type="button"
+          variant="link"
+          onClick={useAnotherAccount}
+        >
+          {copy.addAccount}
+        </Button>
+      </div>
     </div>
   );
 }

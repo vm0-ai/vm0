@@ -25,6 +25,7 @@ export type AuthV2PasskeyCapability = "available" | "unavailable" | "unknown";
 export interface AuthV2ExistingAccount {
   readonly displayName: string;
   readonly identifier: string | null;
+  readonly imageUrl: string | null;
   readonly sessionId: string;
 }
 
@@ -213,6 +214,7 @@ export function discoverAuthV2ExistingAccounts(
     return {
       displayName,
       identifier: emailAddress,
+      imageUrl: session.user.imageUrl ?? null,
       sessionId: session.id,
     };
   });
