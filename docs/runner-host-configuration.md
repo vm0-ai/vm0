@@ -24,10 +24,11 @@ persist, or map that field. During deployment overlap, an extra `runnerName`
 from an older Runner payload is tolerated but discarded before request
 handling.
 
-The version-shaped YAML `name` remains an optional local compatibility field
-while retained Runner binaries and operator automation still require it.
-Current production configuration continues writing it, but current runtime,
-readiness, and doctor selection do not use it as process identity.
+Current `runner.yaml` has no release-shaped `name` field. Repository automation
+writes `hostname` through `runner config`, while `--runner-dirname` and systemd
+service `--name` remain explicit release-lifecycle inputs. Live-runner records
+contain exact config/process metadata and no legacy runner name. Readiness and
+doctor select live processes by the unit's exact config path.
 
 Operational queries and alerts should use `runner_hostname` and
 `runner_version`. A bounded historical fallback may use `runner_name` only for

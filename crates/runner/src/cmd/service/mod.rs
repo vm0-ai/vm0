@@ -882,7 +882,6 @@ mod tests {
             config_path,
             format!(
                 r#"
-name: test
 group: test/group
 base_dir: {base_dir}
 ca_dir: {ca_dir}
@@ -1009,17 +1008,12 @@ profiles:
         }
     }
 
-    fn live_runner_instance(
-        runner_name: Option<&str>,
-        config_path: PathBuf,
-        base_dir: PathBuf,
-    ) -> LiveRunnerInstance {
+    fn live_runner_instance(config_path: PathBuf, base_dir: PathBuf) -> LiveRunnerInstance {
         LiveRunnerInstance {
             pid: 123,
             starttime: 456,
             config_path,
             base_dir,
-            runner_name: runner_name.map(String::from),
             runner_group: "test/group".to_string(),
             subcommand: "start".to_string(),
             started_at: "2026-01-01T00:00:00.000Z".to_string(),
@@ -1099,9 +1093,8 @@ profiles:
         let actual_base_dir = PathBuf::from("/vm0-runner/runners/pr-123");
         let config_path = actual_base_dir.join("runner.yaml");
         let instances = vec![
-            live_runner_instance(None, config_path.clone(), actual_base_dir.clone()),
+            live_runner_instance(config_path.clone(), actual_base_dir.clone()),
             live_runner_instance(
-                Some("pr-123-1"),
                 PathBuf::from("/vm0-runner/runners/other/runner.yaml"),
                 PathBuf::from("/vm0-runner/runners/other"),
             ),
@@ -1119,12 +1112,10 @@ profiles:
         let config_path = PathBuf::from("/vm0-runner/runners/pr-123/runner.yaml");
         let instances = vec![
             live_runner_instance(
-                Some("legacy-a"),
                 config_path.clone(),
                 PathBuf::from("/vm0-runner/runners/pr-123"),
             ),
             live_runner_instance(
-                Some("legacy-b"),
                 config_path.clone(),
                 PathBuf::from("/vm0-runner/runners/other"),
             ),
@@ -1152,10 +1143,10 @@ profiles:
         let unit = service_unit();
         let base_dir = Path::new("/var/lib/vm0-runner/runners/test");
 
-        let first = service_activation_config_snapshot_path(&unit, base_dir, b"name: test\n");
-        let second = service_activation_config_snapshot_path(&unit, base_dir, b"name: test\n");
+        let first = service_activation_config_snapshot_path(&unit, base_dir, b"group: test\n");
+        let second = service_activation_config_snapshot_path(&unit, base_dir, b"group: test\n");
         let different =
-            service_activation_config_snapshot_path(&unit, base_dir, b"name: different\n");
+            service_activation_config_snapshot_path(&unit, base_dir, b"group: different\n");
 
         assert_eq!(first, second);
         assert_ne!(first, different);
@@ -1227,7 +1218,7 @@ profiles:
                 assert_ne!(snapshot_path, config_path);
                 assert!(snapshot_path.starts_with(base_dir.join(SERVICE_CONFIG_SNAPSHOT_DIR)));
 
-                tokio::fs::write(&config_path, "name: mutated\n")
+                tokio::fs::write(&config_path, "group: mutated\n")
                     .await
                     .unwrap();
 

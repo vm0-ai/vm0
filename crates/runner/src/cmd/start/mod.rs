@@ -518,7 +518,6 @@ async fn run_start_with_home(
         client_session_id: runner_client_session_id.clone(),
     })?;
     let background_fill = crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()?;
-    let legacy_name = runner_config.name;
     let hostname = runner_config.hostname;
     let group = runner_config.group;
     let cancel_tokens = RunCancellationRegistry::new();
@@ -832,7 +831,6 @@ async fn run_start_with_home(
     let live_runner_instance_metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
         config_path: registry_config_path,
         base_dir: base_dir_canonical.clone(),
-        runner_name: legacy_name,
         runner_group: group_name.clone(),
         subcommand: "start".into(),
     };

@@ -2633,7 +2633,7 @@ mod tests {
         proxy_port: Option<u16>,
         dns_port: Option<u16>,
     ) -> DoctorReportFixture {
-        doctor_report_fixture_for_runner("test-runner", mode, proxy_port, dns_port, None)
+        doctor_report_fixture_with_server(mode, proxy_port, dns_port, None)
     }
 
     fn doctor_report_fixture_without_status() -> DoctorReportFixture {
@@ -2642,8 +2642,7 @@ mod tests {
         fixture
     }
 
-    fn doctor_report_fixture_for_runner(
-        runner_name: &str,
+    fn doctor_report_fixture_with_server(
         mode: &str,
         proxy_port: Option<u16>,
         dns_port: Option<u16>,
@@ -2655,7 +2654,6 @@ mod tests {
 
         let config_path = dir.path().join("runner.yaml");
         let mut config = serde_json::json!({
-            "name": runner_name,
             "group": "vm0/test",
             "base_dir": base_dir.display().to_string(),
             "ca_dir": dir.path().join("ca").display().to_string(),
@@ -2703,21 +2701,11 @@ mod tests {
         config_path: PathBuf,
         base_dir: PathBuf,
     ) -> LiveRunnerInstance {
-        live_runner_instance_named(pid, config_path, base_dir, Some("test-runner"))
-    }
-
-    fn live_runner_instance_named(
-        pid: u32,
-        config_path: PathBuf,
-        base_dir: PathBuf,
-        runner_name: Option<&str>,
-    ) -> LiveRunnerInstance {
         LiveRunnerInstance {
             pid,
             starttime: 0,
             config_path,
             base_dir,
-            runner_name: runner_name.map(String::from),
             runner_group: "vm0/test".into(),
             subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
@@ -2985,7 +2973,6 @@ mod tests {
             crate::live_runner_instances::LiveRunnerInstanceMetadata {
                 config_path: dir.path().join("runner.yaml"),
                 base_dir: base_dir.clone(),
-                runner_name: Some("test-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
             },
@@ -3033,7 +3020,6 @@ mod tests {
             crate::live_runner_instances::LiveRunnerInstanceMetadata {
                 config_path: dir.path().join("runner.yaml"),
                 base_dir: base_dir.clone(),
-                runner_name: Some("test-runner".into()),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
             },
@@ -3221,58 +3207,50 @@ mod tests {
         let fast_a_url = server.url("/fast-a");
         let fast_b_url = server.url("/fast-b");
         let fast_c_url = server.url("/fast-c");
-        let slow_fixture = doctor_report_fixture_for_runner(
-            "runner-a",
+        let slow_fixture = doctor_report_fixture_with_server(
             "running",
             None,
             None,
             Some((&slow_url, "token-slow")),
         );
-        let fast_a_fixture = doctor_report_fixture_for_runner(
-            "runner-b",
+        let fast_a_fixture = doctor_report_fixture_with_server(
             "running",
             None,
             None,
             Some((&fast_a_url, "token-a")),
         );
-        let fast_b_fixture = doctor_report_fixture_for_runner(
-            "runner-c",
+        let fast_b_fixture = doctor_report_fixture_with_server(
             "running",
             None,
             None,
             Some((&fast_b_url, "token-b")),
         );
-        let fast_c_fixture = doctor_report_fixture_for_runner(
-            "runner-d",
+        let fast_c_fixture = doctor_report_fixture_with_server(
             "running",
             None,
             None,
             Some((&fast_c_url, "token-c")),
         );
         let runners = vec![
-            live_runner_instance_named(
+            live_runner_instance(
                 u32::MAX - 3,
                 slow_fixture.config_path.clone(),
                 slow_fixture.base_dir.clone(),
-                Some("runner-a"),
             ),
-            live_runner_instance_named(
+            live_runner_instance(
                 u32::MAX - 2,
                 fast_a_fixture.config_path.clone(),
                 fast_a_fixture.base_dir.clone(),
-                Some("runner-b"),
             ),
-            live_runner_instance_named(
+            live_runner_instance(
                 u32::MAX - 1,
                 fast_b_fixture.config_path.clone(),
                 fast_b_fixture.base_dir.clone(),
-                Some("runner-c"),
             ),
-            live_runner_instance_named(
+            live_runner_instance(
                 u32::MAX,
                 fast_c_fixture.config_path.clone(),
                 fast_c_fixture.base_dir.clone(),
-                Some("runner-d"),
             ),
         ];
         let client = build_api_client();
@@ -3320,45 +3298,28 @@ mod tests {
             .await;
         let target_url = server.url("/target");
         let other_url = server.url("/other");
-        let target_fixture = doctor_report_fixture_for_runner(
-            "target-runner",
+        let target_fixture = doctor_report_fixture_with_server(
             "running",
             None,
             None,
             Some((&target_url, "target-token")),
         );
-        let mut target_config: serde_yaml_ng::Value =
-            serde_yaml_ng::from_str(&std::fs::read_to_string(&target_fixture.config_path).unwrap())
-                .unwrap();
-        target_config
-            .as_mapping_mut()
-            .unwrap()
-            .remove(serde_yaml_ng::Value::String("name".into()))
-            .unwrap();
-        std::fs::write(
-            &target_fixture.config_path,
-            serde_yaml_ng::to_string(&target_config).unwrap(),
-        )
-        .unwrap();
-        let other_fixture = doctor_report_fixture_for_runner(
-            "other-runner",
+        let other_fixture = doctor_report_fixture_with_server(
             "running",
             None,
             None,
             Some((&other_url, "other-token")),
         );
         let runners = vec![
-            live_runner_instance_named(
+            live_runner_instance(
                 u32::MAX - 1,
                 other_fixture.config_path.clone(),
                 other_fixture.base_dir.clone(),
-                Some("shared-legacy-name"),
             ),
-            live_runner_instance_named(
+            live_runner_instance(
                 u32::MAX,
                 target_fixture.config_path.clone(),
                 target_fixture.base_dir.clone(),
-                None,
             ),
         ];
         let client = build_api_client();
