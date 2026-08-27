@@ -516,7 +516,6 @@
         "arrow": "Arrow",
         "box": "Box",
         "pen": "Draw",
-        "redact": "Redact",
         "text": "Text"
       },
       "undo": "Undo"
@@ -656,6 +655,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slides",
+      "introVideo": "Intro video",
       "multiAccent": "Multi-accent",
       "nextSlide": "Preview next slide",
       "noMatches": "No matches",
@@ -673,6 +673,7 @@
       "searchConnector": "Search templates",
       "searchConnectors": "Search templates",
       "selected": "Template: {{title}}",
+      "selectIntroVideo": "Select intro video template {{title}}",
       "selectStyle": "Select style {{style}}",
       "selectTemplate": "Select template {{title}}",
       "selectVideo": "Select video template {{title}}",
@@ -1084,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Use current sign-in",
         "addAccount": "Add account",
         "appleMethod": "Continue with Apple",
         "back": "Back",
@@ -1114,6 +1114,7 @@
         "hidePassword": "Hide password",
         "identifierLabel": "Email address or username",
         "identifierPlaceholder": "Enter your email address or username",
+        "lastUsed": "Last used",
         "methodsHelpPrompt": "Don’t have any of these?",
         "newPasswordLabel": "New password",
         "newPasswordSubtitle": "For security reasons, it is required to reset your password.",
@@ -2255,6 +2256,7 @@
     "templates": {
       "categories": {
         "illustration": "Illustration",
+        "introVideo": "Intro video",
         "presentation": "Presentation",
         "video": "Video",
         "website": "Website",

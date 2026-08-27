@@ -5,6 +5,7 @@ import { createDeferredPromise, settle, withCleanup } from "../utils.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 import {
   enabledAuthV2OAuthStrategies,
+  isAuthV2OAuthStrategy,
   type AuthV2OAuthStrategy,
 } from "./oauth-strategies.ts";
 
@@ -14,6 +15,7 @@ export const AUTH_V2_OAUTH_CALLBACK_PATH = "/sso-callback";
 export interface AuthV2ExternalCapabilities {
   readonly googleOneTapClientId: string | null;
   readonly identifierMode: "email" | "email-or-username" | "username";
+  readonly lastUsedOAuthStrategy: AuthV2OAuthStrategy | null;
   readonly oauthStrategies: readonly AuthV2OAuthStrategy[];
   readonly passkey: boolean;
 }
@@ -158,9 +160,16 @@ export function discoverAuthV2ExternalCapabilities(
   const googleOneTapClientId = oauthStrategies.includes("oauth_google")
     ? (environment?.displayConfig.googleOneTapClientId ?? null)
     : null;
+  const lastAuthenticationStrategy = clerk.client?.lastAuthenticationStrategy;
+  const lastUsedOAuthStrategy =
+    typeof lastAuthenticationStrategy === "string" &&
+    isAuthV2OAuthStrategy(lastAuthenticationStrategy)
+      ? lastAuthenticationStrategy
+      : null;
   return {
     googleOneTapClientId,
     identifierMode,
+    lastUsedOAuthStrategy,
     oauthStrategies,
     passkey,
   };
@@ -214,9 +223,9 @@ export function startAuthV2OAuth(
   navigation: AuthV2Navigation,
   strategy: AuthV2OAuthStrategy,
 ): Promise<void> {
+  // Starting fresh matches Clerk's hosted flow and prevents a failed attempt
+  // from being reused when the user tries an OAuth provider again.
   return resource.authenticateWithRedirect({
-    continueSignIn: true,
-    continueSignUp: false,
     redirectUrl: navigation.href("sign-in", AUTH_V2_OAUTH_CALLBACK_PATH),
     redirectUrlComplete: navigation.completionRedirectUrl,
     strategy,

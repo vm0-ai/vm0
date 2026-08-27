@@ -516,7 +516,6 @@
         "arrow": "तीर",
         "box": "बॉक्स",
         "pen": "बनाएँ",
-        "redact": "छिपाएँ",
         "text": "टेक्स्ट"
       },
       "undo": "पूर्ववत करें"
@@ -656,6 +655,7 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} स्लाइड",
       "importedSlides_other": "{{count}} स्लाइड",
+      "introVideo": "इंट्रो वीडियो",
       "multiAccent": "बहु-उच्चारण",
       "nextSlide": "अगली स्लाइड का पूर्वावलोकन करें",
       "noMatches": "कोई मेल नहीं",
@@ -673,6 +673,7 @@
       "searchConnector": "टेम्पलेट खोजें",
       "searchConnectors": "टेम्पलेट खोजें",
       "selected": "टेम्पलेट: {{title}}",
+      "selectIntroVideo": "इंट्रो वीडियो टेम्पलेट {{title}} चुनें",
       "selectStyle": "शैली {{style}} चुनें",
       "selectTemplate": "टेम्पलेट {{title}} चुनें",
       "selectVideo": "वीडियो टेम्पलेट {{title}} चुनें",
@@ -1084,7 +1085,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "मौजूदा साइन-इन का उपयोग करें",
         "addAccount": "खाता जोड़ें",
         "appleMethod": "Apple के साथ जारी रखें",
         "back": "वापस",
@@ -1114,6 +1114,7 @@
         "hidePassword": "पासवर्ड छिपाएँ",
         "identifierLabel": "ईमेल पता या उपयोगकर्ता नाम",
         "identifierPlaceholder": "अपना ईमेल पता या उपयोगकर्ता नाम दर्ज करें",
+        "lastUsed": "अंतिम समय प्रयोग हुआ",
         "methodsHelpPrompt": "इनमें से कोई विकल्प नहीं है?",
         "newPasswordLabel": "नया पासवर्ड",
         "newPasswordSubtitle": "सुरक्षा कारणों से, आपका पासवर्ड रीसेट करना आवश्यक है।",
@@ -2255,6 +2256,7 @@
     "templates": {
       "categories": {
         "illustration": "चित्रण",
+        "introVideo": "इंट्रो वीडियो",
         "presentation": "प्रस्तुति",
         "video": "वीडियो",
         "website": "वेबसाइट",

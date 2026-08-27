@@ -53,7 +53,7 @@ use super::session_restore::{
     MaterializedResumeSession, SessionRestoreDiagnostics, restore_session,
 };
 use super::storage::download_storages;
-use super::telemetry::{RunnerSpawnTiming, record_api_to_spawn};
+use super::telemetry::{RunnerSpawnTiming, record_api_startup_boundaries};
 use super::workspace_session_history_materializer::{
     WorkspaceSessionHistoryMaterialization, WorkspaceSessionHistoryPhaseTiming,
     WorkspaceSessionHistoryTimings,
@@ -2174,19 +2174,72 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     let agent_handle = match handle {
         Ok(h) => {
-            let spawned_at = Instant::now();
+            let timing = h.start_timing();
             telemetry.record(
                 "runner_agent_start_process",
-                spawned_at.saturating_duration_since(t),
+                timing.shell_started_at.saturating_duration_since(t),
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_start_to_ready",
+                timing.ready_at.saturating_duration_since(t),
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_containment_create",
+                timing.containment_create,
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_placement_broker_setup",
+                timing.placement_broker_setup,
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_shell_spawn",
+                timing.shell_spawn,
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_bootstrap_ready_wait",
+                timing.bootstrap_ready_wait,
                 true,
                 None,
             );
             if let Some(spawn_timing) = spawn_timing {
-                spawn_timing.record_spawn_success_at(telemetry, spawned_at);
+                spawn_timing.record_agent_ready_success_at(
+                    telemetry,
+                    timing.shell_started_at,
+                    timing.ready_at,
+                );
             }
-            // The guest process handle is the api_to_spawn boundary. Releasing here keeps
-            // steady-state execution outside the burst gate while every pre-spawn early return
-            // continues to release through RAII.
+            record_api_startup_boundaries(
+                context,
+                telemetry,
+                start.reuse_result,
+                start.workspace_reuse_result,
+                timing.shell_started_at,
+                timing.ready_at,
+            );
+            info!(
+                run_id = %context.run_id,
+                sandbox_reuse = ?start.reuse_result,
+                workspace_reuse = ?start.workspace_reuse_result,
+                shell_spawn_ms = timing.shell_started_at.saturating_duration_since(t).as_millis(),
+                agent_ready_ms = timing.ready_at.saturating_duration_since(t).as_millis(),
+                containment_create_us = timing.containment_create.as_micros(),
+                placement_broker_setup_us = timing.placement_broker_setup.as_micros(),
+                shell_spawn_component_us = timing.shell_spawn.as_micros(),
+                bootstrap_ready_wait_us = timing.bootstrap_ready_wait.as_micros(),
+                "agent startup timing"
+            );
+            // Keep the burst gate through the authenticated Agent-ready boundary.
+            // Every pre-ready return continues to release through RAII.
             drop(pre_spawn_admission_lease.take());
             h
         }
@@ -2253,14 +2306,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         env_diagnostics,
         env_pairs,
     } = prepared_agent;
-
-    // Claude Code process has a PID now — record end-to-end startup latency.
-    record_api_to_spawn(
-        context,
-        telemetry,
-        start.reuse_result,
-        start.workspace_reuse_result,
-    );
 
     // Start locally owned input and output work, then release deferred cache
     // fill now that process spawn has succeeded.

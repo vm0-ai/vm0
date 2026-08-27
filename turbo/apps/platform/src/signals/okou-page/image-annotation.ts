@@ -45,12 +45,13 @@ export const REDACT_FILL = "#525B68";
 export const STROKE_HALO_INNER = "rgba(255, 255, 255, 0.90)";
 
 /**
- * `highlight` and `crop` were dropped, and `select` with them: a mark is
- * clicked directly, so a mode for "not drawing" has nothing left to do. The
+ * `highlight`, `crop` and `redact` were dropped, and `select` with them: a
+ * mark is clicked directly, so a mode for "not drawing" has nothing left to do,
+ * and a tool whose job nobody could name off its icon is not worth a slot. The
  * *shapes* stay in the contract — a draft saved before this change can still
- * carry a highlight or a crop, and it has to keep rendering.
+ * carry one, and it has to keep rendering.
  */
-export type AnnotationTool = "box" | "arrow" | "pen" | "text" | "redact";
+export type AnnotationTool = "box" | "arrow" | "pen" | "text";
 
 function emptyAnnotation(): ImageAnnotation {
   return { marks: [] };
@@ -80,7 +81,7 @@ function markNote(mark: ImageAnnotationMark): string | undefined {
   if (mark.shape === "text") {
     return mark.text;
   }
-  if (mark.shape === "redact") {
+  if (mark.shape === "highlight" || mark.shape === "redact") {
     return undefined;
   }
   return mark.note;
@@ -108,6 +109,38 @@ function markLocation(mark: ImageAnnotationMark): string {
 }
 
 /**
+ * The number drawn on a mark and quoted back to the agent.
+ *
+ * Stored on the mark rather than read off its position: deleting one mark must
+ * not renumber the others, or every note the user already wrote about "3" now
+ * points at a different box. Marks saved before the field existed fall back to
+ * their position.
+ */
+export function markOrdinal(mark: ImageAnnotationMark, index: number): number {
+  return mark.ordinal ?? index + 1;
+}
+
+/**
+ * The lowest number not currently on the image.
+ *
+ * Deleting the fifth of ten marks leaves a hole, and the next mark drawn fills
+ * it instead of becoming eleven. The numbering stays as dense as the marks are
+ * without disturbing any mark that is already there.
+ */
+export function nextMarkOrdinal(marks: readonly ImageAnnotationMark[]): number {
+  const taken = new Set(
+    marks.map((mark, index) => {
+      return markOrdinal(mark, index);
+    }),
+  );
+  let candidate = 1;
+  while (taken.has(candidate)) {
+    candidate += 1;
+  }
+  return candidate;
+}
+
+/**
  * The half of an annotation that reaches the agent as words.
  *
  * The flattened image alone leaves the model to work out what a box means; the
@@ -121,11 +154,8 @@ export function describeAnnotation(
   annotation: ImageAnnotation,
 ): string | null {
   const lines = annotation.marks.flatMap((mark, index) => {
-    if (mark.shape === "redact") {
-      return [];
-    }
     const note = markNote(mark)?.trim();
-    const ordinal = index + 1;
+    const ordinal = markOrdinal(mark, index);
     return [
       note
         ? `${ordinal}. (${mark.shape} ${markLocation(mark)}) ${note}`
@@ -342,10 +372,11 @@ export const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
     return {
       ...current,
       marks: current.marks.map((mark) => {
-        if (mark.id !== selectedId || mark.shape === "highlight") {
-          return mark;
-        }
-        if (mark.shape === "redact") {
+        if (
+          mark.id !== selectedId ||
+          mark.shape === "highlight" ||
+          mark.shape === "redact"
+        ) {
           return mark;
         }
         return { ...mark, ink };
@@ -381,7 +412,13 @@ export const pushAnnotation$ = command(
 export const addAnnotationMark$ = command(
   ({ set }, mark: ImageAnnotationMark) => {
     set(pushAnnotation$, (current) => {
-      return { ...current, marks: [...current.marks, mark] };
+      return {
+        ...current,
+        marks: [
+          ...current.marks,
+          { ...mark, ordinal: nextMarkOrdinal(current.marks) },
+        ],
+      };
     });
     set(internalSelectedMarkId$, mark.id);
   },
@@ -423,11 +460,7 @@ export const moveAnnotationMarkRect$ = command(
           if (mark.id !== id) {
             return mark;
           }
-          if (
-            mark.shape === "box" ||
-            mark.shape === "redact" ||
-            mark.shape === "highlight"
-          ) {
+          if (mark.shape === "box") {
             return { ...mark, rect };
           }
           if (mark.shape === "text") {
@@ -446,7 +479,11 @@ export const setAnnotationMarkNote$ = command(
       return {
         ...current,
         marks: current.marks.map((mark) => {
-          if (mark.id !== id || mark.shape === "redact") {
+          if (
+            mark.id !== id ||
+            mark.shape === "highlight" ||
+            mark.shape === "redact"
+          ) {
             return mark;
           }
           if (mark.shape === "text") {

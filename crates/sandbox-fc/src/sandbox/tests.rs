@@ -351,10 +351,7 @@ async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
         vsock_proto::ExecControlPolicy::Enabled { sink: true, .. }
     ));
 
-    let pid = 73;
-    let payload = vsock_proto::encode_exec_started(pid).unwrap();
-    let response = vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, start.seq, &payload).unwrap();
-    guest.write_all(&response).await.unwrap();
+    send_agent_started_and_ready(&mut guest, start.seq, 73).await;
     let handle = start_task.await.unwrap();
 
     ExecProcessControlFixture {
@@ -517,6 +514,21 @@ async fn send_exec_exit(stream: &mut UnixStream, exec_seq: u32) {
     .unwrap();
     let response = vsock_proto::encode(vsock_proto::MSG_EXEC_RESULT, exec_seq, &payload).unwrap();
     stream.write_all(&response).await.unwrap();
+}
+
+async fn send_agent_started_and_ready(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
+    let started = vsock_proto::encode_exec_started(pid).unwrap();
+    let started = vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, exec_seq, &started).unwrap();
+    stream.write_all(&started).await.unwrap();
+
+    let ready = vsock_proto::encode_exec_agent_ready(vsock_proto::ExecAgentReadyTiming {
+        containment_create_us: 11,
+        placement_broker_setup_us: 12,
+        shell_spawn_us: 13,
+        bootstrap_ready_wait_us: 14,
+    });
+    let ready = vsock_proto::encode(vsock_proto::MSG_EXEC_AGENT_READY, exec_seq, &ready).unwrap();
+    stream.write_all(&ready).await.unwrap();
 }
 
 fn monitored_cat_process() -> tokio::process::Child {
@@ -2403,14 +2415,18 @@ async fn start_agent_process_maps_to_agent_role_and_control_sink() {
             vsock_proto::ExecControlPolicy::Enabled { sink: true, .. }
         ));
 
-        let payload = vsock_proto::encode_exec_started(73).unwrap();
-        let response =
-            vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, start.seq, &payload).unwrap();
-        guest.write_all(&response).await.unwrap();
+        send_agent_started_and_ready(&mut guest, start.seq, 73).await;
         start.seq
     };
     let (handle, exec_seq) = tokio::join!(start_agent, acknowledge_start);
-    let (process, _control) = handle.unwrap().into_parts();
+    let handle = handle.unwrap();
+    let timing = handle.start_timing();
+    assert_eq!(timing.containment_create, Duration::from_micros(11));
+    assert_eq!(timing.placement_broker_setup, Duration::from_micros(12));
+    assert_eq!(timing.shell_spawn, Duration::from_micros(13));
+    assert_eq!(timing.bootstrap_ready_wait, Duration::from_micros(14));
+    assert!(timing.ready_at >= timing.shell_started_at);
+    let (process, _control) = handle.into_parts();
 
     let payload = vsock_proto::encode_exec_result(
         vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -2845,162 +2861,6 @@ fn supervised_exec_result_to_process_exit_maps_terminal_edge_states() {
         assert_eq!(exit.stderr, Vec::<u8>::new());
         assert_eq!(exit.diagnostic, diagnostic);
     }
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_forwards_only_stdout_output() {
-    let (stream_tx, stream_rx) = mpsc::channel(4);
-    let (mut stdout_rx, _close) = supervised_stdout_receiver(stream_rx, 2);
-
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stderr,
-            output_seq: 1,
-            chunk: b"stderr".to_vec(),
-            truncated: false,
-        })
-        .await
-        .unwrap();
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 2,
-            chunk: b"stdout".to_vec(),
-            truncated: true,
-        })
-        .await
-        .unwrap();
-    drop(stream_tx);
-
-    let chunk = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("stdout chunk was not forwarded")
-        .expect("stdout stream closed before forwarded chunk");
-    assert_eq!(chunk.bytes, b"stdout");
-    assert!(chunk.truncated);
-    assert!(stdout_rx.recv().await.is_none());
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_cleanup_closes_unclaimed_adapter() {
-    let (_stream_tx, stream_rx) = mpsc::channel(1);
-    let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
-
-    close();
-
-    let received = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("stdout adapter did not close");
-    assert!(received.is_none());
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_cleanup_interrupts_blocked_forwarder() {
-    let (stream_tx, stream_rx) = mpsc::channel(1);
-    let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
-
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 1,
-            chunk: b"first".to_vec(),
-            truncated: false,
-        })
-        .await
-        .unwrap();
-
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        stream_tx.send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 2,
-            chunk: b"second".to_vec(),
-            truncated: false,
-        }),
-    )
-    .await
-    .expect("second stdout event was not accepted")
-    .unwrap();
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        stream_tx.send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 3,
-            chunk: b"third".to_vec(),
-            truncated: false,
-        }),
-    )
-    .await
-    .expect("third stdout event was not accepted")
-    .unwrap();
-
-    close();
-
-    let first = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("first stdout chunk was not received")
-        .expect("stdout stream closed before first chunk");
-    assert_eq!(first.bytes, b"first");
-
-    let closed = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("stdout adapter did not close after cleanup");
-    assert!(closed.is_none());
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_dropping_cleanup_handle_does_not_close_claimed_stream() {
-    let (stream_tx, stream_rx) = mpsc::channel(4);
-    let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 2);
-
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 1,
-            chunk: b"before".to_vec(),
-            truncated: false,
-        })
-        .await
-        .unwrap();
-
-    drop(close);
-
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 2,
-            chunk: b"after".to_vec(),
-            truncated: false,
-        })
-        .await
-        .unwrap();
-    drop(stream_tx);
-
-    let first = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("first stdout chunk was not forwarded")
-        .expect("stdout stream closed before first chunk");
-    let second = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("second stdout chunk was not forwarded")
-        .expect("stdout stream closed before second chunk");
-
-    assert_eq!(first.bytes, b"before");
-    assert_eq!(second.bytes, b"after");
-    assert!(stdout_rx.recv().await.is_none());
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_dropping_output_receiver_stops_adapter() {
-    let (stream_tx, stream_rx) = mpsc::channel(1);
-    let (stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
-
-    drop(close);
-    drop(stdout_rx);
-
-    tokio::time::timeout(Duration::from_secs(1), stream_tx.closed())
-        .await
-        .expect("stdout adapter kept the supervised stream receiver alive");
 }
 
 #[test]

@@ -266,6 +266,7 @@ pub(in crate::exec_operation) fn exec_terminal_log_lifecycle(
     match lifecycle {
         ExecOperationLifecycle::OneShot => ExecTerminalLogLifecycle::OneShot,
         ExecOperationLifecycle::SupervisedAwaitingStart { .. }
+        | ExecOperationLifecycle::SupervisedAwaitingAgentReady { .. }
         | ExecOperationLifecycle::SupervisedStarted { .. } => ExecTerminalLogLifecycle::Supervised,
     }
 }

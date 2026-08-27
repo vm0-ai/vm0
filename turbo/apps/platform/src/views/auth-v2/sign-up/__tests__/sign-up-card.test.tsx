@@ -382,10 +382,10 @@ describe("auth v2 sign-up flow", () => {
       const handoff =
         mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
       expect(handoff).toMatchObject({
-        continueSignIn: false,
         continueSignUp: false,
         strategy,
       });
+      expect(handoff).not.toHaveProperty("continueSignIn");
       const callbackUrl = new URL(handoff?.redirectUrl ?? "", location.origin);
       const completionUrl = new URL(handoff?.redirectUrlComplete ?? "");
       expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");

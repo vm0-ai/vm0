@@ -56,19 +56,25 @@ struct FileProcessIdentity {
 struct LivenessContext {
     boot_id: OnceCell<String>,
     euid: u32,
+    proc_root: PathBuf,
 }
 
 impl LivenessContext {
     fn new() -> Self {
+        Self::with_proc_root(PathBuf::from("/proc"))
+    }
+
+    fn with_proc_root(proc_root: PathBuf) -> Self {
         Self {
             boot_id: OnceCell::new(),
             euid: current_euid(),
+            proc_root,
         }
     }
 
     async fn boot_id(&self) -> RunnerResult<&str> {
         self.boot_id
-            .get_or_try_init(current_boot_id)
+            .get_or_try_init(|| read_boot_id(&self.proc_root))
             .await
             .map(String::as_str)
     }
@@ -140,6 +146,14 @@ pub(crate) async fn publish(
 }
 
 pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerInstance>> {
+    let liveness = LivenessContext::new();
+    try_list_with_liveness(home, &liveness).await
+}
+
+async fn try_list_with_liveness(
+    home: &HomePaths,
+    liveness: &LivenessContext,
+) -> RunnerResult<Vec<LiveRunnerInstance>> {
     if !validate_existing_live_runner_instances_dir(home)? {
         return Ok(Vec::new());
     }
@@ -156,7 +170,6 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
         }
     };
 
-    let liveness = LivenessContext::new();
     let mut instances = Vec::new();
     loop {
         let entry = match entries.next_entry().await {
@@ -172,7 +185,7 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
         let file_name = entry.file_name();
         let path = entry.path();
         if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
-            let record = match read_record_for_identity(&path, identity, &liveness).await? {
+            let record = match read_record_for_identity(&path, identity, liveness).await? {
                 RecordForIdentity::Valid(record) => record,
                 RecordForIdentity::InvalidForStaleProcess => {
                     remove_stale_file(&path, "stale live runner instance record").await;
@@ -200,7 +213,7 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        remove_stale_tmp_file(&path, identity, &liveness).await;
+        remove_stale_tmp_file(&path, identity, liveness).await;
     }
 
     instances.sort_by(|left, right| {
@@ -336,6 +349,11 @@ async fn read_record_with_liveness(
 }
 
 async fn remove_stale_records(home: &HomePaths) {
+    let liveness = LivenessContext::new();
+    remove_stale_records_with_liveness(home, &liveness).await;
+}
+
+async fn remove_stale_records_with_liveness(home: &HomePaths, liveness: &LivenessContext) {
     let dir = home.live_runner_instances_dir();
     let mut entries = match tokio::fs::read_dir(&dir).await {
         Ok(entries) => entries,
@@ -345,7 +363,6 @@ async fn remove_stale_records(home: &HomePaths) {
         }
     };
 
-    let liveness = LivenessContext::new();
     loop {
         let entry = match entries.next_entry().await {
             Ok(Some(entry)) => entry,
@@ -358,7 +375,7 @@ async fn remove_stale_records(home: &HomePaths) {
         let file_name = entry.file_name();
         let path = entry.path();
         if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
-            match read_record_for_identity(&path, identity, &liveness).await {
+            match read_record_for_identity(&path, identity, liveness).await {
                 Err(e) => {
                     tracing::info!(
                         path = %path.display(),
@@ -376,7 +393,7 @@ async fn remove_stale_records(home: &HomePaths) {
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        remove_stale_tmp_file(&path, identity, &liveness).await;
+        remove_stale_tmp_file(&path, identity, liveness).await;
     }
 }
 
@@ -495,7 +512,7 @@ async fn file_process_identity_is_live(
         starttime: identity.starttime,
         euid: liveness.euid,
     };
-    Ok(process_identity_is_live_for_boot(&identity, boot_id, liveness.euid).await)
+    process_identity_is_live_for_boot(&identity, boot_id, liveness.euid, &liveness.proc_root).await
 }
 
 async fn process_identity_is_live(
@@ -503,36 +520,63 @@ async fn process_identity_is_live(
     liveness: &LivenessContext,
 ) -> RunnerResult<bool> {
     let boot_id = liveness.boot_id().await?;
-    Ok(process_identity_is_live_for_boot(&identity, boot_id, liveness.euid).await)
+    process_identity_is_live_for_boot(&identity, boot_id, liveness.euid, &liveness.proc_root).await
 }
 
 async fn process_identity_is_live_for_boot(
     identity: &ProcessIdentity,
     boot_id: &str,
     euid: u32,
-) -> bool {
+    proc_root: &Path,
+) -> RunnerResult<bool> {
     if identity.boot_id != boot_id {
-        return false;
+        return Ok(false);
     }
     if identity.euid != euid {
-        return false;
+        return Ok(false);
     }
-    let Some(before) = process::read_process_stat(identity.pid).await else {
-        return false;
+    let before = match process::read_process_stat_checked_from(proc_root, identity.pid).await {
+        process::ProcessStatRead::Found(stat) => stat,
+        process::ProcessStatRead::Missing => return Ok(false),
+        process::ProcessStatRead::Unreadable(error) => {
+            return Err(RunnerError::Internal(format!(
+                "read initial process stat for live runner pid {}: {error}",
+                identity.pid
+            )));
+        }
+        process::ProcessStatRead::Invalid => {
+            return Err(RunnerError::Internal(format!(
+                "parse initial process stat for live runner pid {}",
+                identity.pid
+            )));
+        }
     };
     if !process::process_stat_is_live(&before) || before.starttime != identity.starttime {
-        return false;
+        return Ok(false);
     }
-    let Some(euid) = read_process_euid(identity.pid).await else {
-        return false;
+    let Some(euid) = read_process_euid(proc_root, identity.pid).await? else {
+        return Ok(false);
     };
     if euid != identity.euid {
-        return false;
+        return Ok(false);
     }
-    let Some(after) = process::read_process_stat(identity.pid).await else {
-        return false;
+    let after = match process::read_process_stat_checked_from(proc_root, identity.pid).await {
+        process::ProcessStatRead::Found(stat) => stat,
+        process::ProcessStatRead::Missing => return Ok(false),
+        process::ProcessStatRead::Unreadable(error) => {
+            return Err(RunnerError::Internal(format!(
+                "read final process stat for live runner pid {}: {error}",
+                identity.pid
+            )));
+        }
+        process::ProcessStatRead::Invalid => {
+            return Err(RunnerError::Internal(format!(
+                "parse final process stat for live runner pid {}",
+                identity.pid
+            )));
+        }
     };
-    process::process_stat_is_live(&after) && after.starttime == identity.starttime
+    Ok(process::process_stat_is_live(&after) && after.starttime == identity.starttime)
 }
 
 async fn current_process_identity() -> RunnerResult<ProcessIdentity> {
@@ -554,7 +598,12 @@ async fn current_process_identity() -> RunnerResult<ProcessIdentity> {
 }
 
 async fn current_boot_id() -> RunnerResult<String> {
-    let content = tokio::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+    read_boot_id(Path::new("/proc")).await
+}
+
+async fn read_boot_id(proc_root: &Path) -> RunnerResult<String> {
+    let path = proc_root.join("sys/kernel/random/boot_id");
+    let content = tokio::fs::read_to_string(path)
         .await
         .map_err(|e| RunnerError::Internal(format!("read boot id: {e}")))?;
     let boot_id = content.trim();
@@ -564,17 +613,28 @@ async fn current_boot_id() -> RunnerResult<String> {
     Ok(boot_id.to_owned())
 }
 
-async fn read_process_euid(pid: u32) -> Option<u32> {
-    let path = format!("/proc/{pid}/status");
-    let content = tokio::fs::read_to_string(path).await.ok()?;
-    for line in content.lines() {
-        if let Some(value) = line.strip_prefix("Uid:") {
-            let mut parts = value.split_whitespace();
-            let _real_uid = parts.next()?;
-            return parts.next()?.parse().ok();
+async fn read_process_euid(proc_root: &Path, pid: u32) -> RunnerResult<Option<u32>> {
+    let path = proc_root.join(pid.to_string()).join("status");
+    let content = match tokio::fs::read_to_string(&path).await {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(RunnerError::Internal(format!(
+                "read process status for live runner pid {pid}: {error}"
+            )));
         }
-    }
-    None
+    };
+    let euid = content
+        .lines()
+        .find_map(|line| line.strip_prefix("Uid:"))
+        .and_then(|value| value.split_whitespace().nth(1))
+        .and_then(|value| value.parse().ok())
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "parse process status effective uid for live runner pid {pid}"
+            ))
+        })?;
+    Ok(Some(euid))
 }
 
 #[cfg(unix)]
@@ -593,6 +653,9 @@ mod tests {
 
     const STALE_RECORD_PID: u32 = u32::MAX;
     const STALE_RECORD_STARTTIME: u64 = 1;
+    const TEST_PROCFS_BOOT_ID: &str = "11111111-2222-3333-4444-555555555555";
+    const TEST_PROCFS_PID: u32 = 1234;
+    const TEST_PROCFS_STARTTIME: u64 = 123456;
     const TEST_STARTED_AT: &str = "2026-01-01T00:00:00.000Z";
 
     #[cfg(unix)]
@@ -619,6 +682,152 @@ mod tests {
         fn drop(&mut self) {
             let _ = self.0.kill();
             let _ = self.0.wait();
+        }
+    }
+
+    struct TestProcfs {
+        dir: tempfile::TempDir,
+    }
+
+    impl TestProcfs {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let procfs = Self { dir };
+            std::fs::create_dir_all(procfs.root().join("sys/kernel/random")).unwrap();
+            std::fs::write(
+                procfs.root().join("sys/kernel/random/boot_id"),
+                TEST_PROCFS_BOOT_ID,
+            )
+            .unwrap();
+            std::fs::create_dir_all(procfs.process_dir()).unwrap();
+            procfs.write_stat('S', TEST_PROCFS_STARTTIME);
+            procfs.write_status(current_euid());
+            procfs
+        }
+
+        fn root(&self) -> &Path {
+            self.dir.path()
+        }
+
+        fn process_dir(&self) -> PathBuf {
+            self.root().join(TEST_PROCFS_PID.to_string())
+        }
+
+        fn stat_path(&self) -> PathBuf {
+            self.process_dir().join("stat")
+        }
+
+        fn status_path(&self) -> PathBuf {
+            self.process_dir().join("status")
+        }
+
+        fn liveness(&self) -> LivenessContext {
+            LivenessContext::with_proc_root(self.root().to_path_buf())
+        }
+
+        fn write_stat(&self, state: char, starttime: u64) {
+            let fields = [
+                state.to_string(),
+                "1".into(),
+                TEST_PROCFS_PID.to_string(),
+                "1".into(),
+                "0".into(),
+                "-1".into(),
+                "4194560".into(),
+                "0".into(),
+                "0".into(),
+                "0".into(),
+                "0".into(),
+                "0".into(),
+                "0".into(),
+                "0".into(),
+                "0".into(),
+                "20".into(),
+                "0".into(),
+                "1".into(),
+                "0".into(),
+                starttime.to_string(),
+            ];
+            std::fs::write(
+                self.stat_path(),
+                format!("{TEST_PROCFS_PID} (runner) {}", fields.join(" ")),
+            )
+            .unwrap();
+        }
+
+        fn write_status(&self, euid: u32) {
+            std::fs::write(
+                self.status_path(),
+                format!("Name:\trunner\nUid:\t{euid}\t{euid}\t{euid}\t{euid}\n"),
+            )
+            .unwrap();
+        }
+
+        fn make_stat_unreadable(&self) {
+            std::fs::remove_file(self.stat_path()).unwrap();
+            std::fs::create_dir(self.stat_path()).unwrap();
+        }
+
+        fn make_status_unreadable(&self) {
+            std::fs::remove_file(self.status_path()).unwrap();
+            std::fs::create_dir(self.status_path()).unwrap();
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum InconclusiveProcfs {
+        UnreadableStat,
+        InvalidStat,
+        UnreadableStatus,
+        InvalidStatus,
+    }
+
+    impl InconclusiveProcfs {
+        const ALL: [Self; 4] = [
+            Self::UnreadableStat,
+            Self::InvalidStat,
+            Self::UnreadableStatus,
+            Self::InvalidStatus,
+        ];
+
+        fn apply(self, procfs: &TestProcfs) {
+            match self {
+                Self::UnreadableStat => procfs.make_stat_unreadable(),
+                Self::InvalidStat => std::fs::write(procfs.stat_path(), b"invalid stat").unwrap(),
+                Self::UnreadableStatus => procfs.make_status_unreadable(),
+                Self::InvalidStatus => {
+                    std::fs::write(procfs.status_path(), b"Uid:\t1000\tnot-a-uid\n").unwrap();
+                }
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum ConclusivelyStaleProcfs {
+        MissingProcess,
+        TerminalProcess,
+        StarttimeMismatch,
+        MissingStatus,
+        EuidMismatch,
+    }
+
+    impl ConclusivelyStaleProcfs {
+        const ALL: [Self; 5] = [
+            Self::MissingProcess,
+            Self::TerminalProcess,
+            Self::StarttimeMismatch,
+            Self::MissingStatus,
+            Self::EuidMismatch,
+        ];
+
+        fn apply(self, procfs: &TestProcfs) {
+            match self {
+                Self::MissingProcess => std::fs::remove_dir_all(procfs.process_dir()).unwrap(),
+                Self::TerminalProcess => procfs.write_stat('Z', TEST_PROCFS_STARTTIME),
+                Self::StarttimeMismatch => procfs.write_stat('S', TEST_PROCFS_STARTTIME + 1),
+                Self::MissingStatus => std::fs::remove_file(procfs.status_path()).unwrap(),
+                Self::EuidMismatch => procfs.write_status(current_euid().wrapping_add(1)),
+            }
         }
     }
 
@@ -685,6 +894,21 @@ mod tests {
                 config_path: self.root().join("other-runner.yaml"),
                 base_dir: self.root().join("other-base"),
                 runner_name: "other-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+                started_at: TEST_STARTED_AT.into(),
+            }
+        }
+
+        fn procfs_record(&self) -> LiveRunnerInstanceRecord {
+            LiveRunnerInstanceRecord {
+                boot_id: TEST_PROCFS_BOOT_ID.into(),
+                pid: TEST_PROCFS_PID,
+                starttime: TEST_PROCFS_STARTTIME,
+                euid: current_euid(),
+                config_path: self.root().join("procfs-runner.yaml"),
+                base_dir: self.root().join("procfs-base"),
+                runner_name: "procfs-runner".into(),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
                 started_at: TEST_STARTED_AT.into(),
@@ -1131,6 +1355,81 @@ mod tests {
 
         assert_eq!(instances.len(), 1);
         assert!(live_tmp_path.exists());
+    }
+
+    #[tokio::test]
+    async fn try_list_preserves_record_when_procfs_observation_is_inconclusive() {
+        for scenario in InconclusiveProcfs::ALL {
+            let registry = TestRegistry::new();
+            registry.ensure_dir();
+            let procfs = TestProcfs::new();
+            let record = registry.procfs_record();
+            let record_path = registry.write_record_at_identity(&record).await;
+            scenario.apply(&procfs);
+
+            let result = try_list_with_liveness(&registry.home, &procfs.liveness()).await;
+
+            assert!(result.is_err(), "{scenario:?}");
+            assert!(record_path.exists(), "{scenario:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn stale_cleanup_preserves_files_when_procfs_observation_is_inconclusive() {
+        for scenario in InconclusiveProcfs::ALL {
+            let registry = TestRegistry::new();
+            registry.ensure_dir();
+            let procfs = TestProcfs::new();
+            let record = registry.procfs_record();
+            let record_path = registry.write_record_at_identity(&record).await;
+            let tmp_path = registry.tmp_path_for_record(&record);
+            tokio::fs::write(&tmp_path, b"partial").await.unwrap();
+            scenario.apply(&procfs);
+
+            remove_stale_records_with_liveness(&registry.home, &procfs.liveness()).await;
+
+            assert!(record_path.exists(), "{scenario:?}");
+            assert!(tmp_path.exists(), "{scenario:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn stale_cleanup_removes_files_for_conclusive_process_observations() {
+        for scenario in ConclusivelyStaleProcfs::ALL {
+            let registry = TestRegistry::new();
+            registry.ensure_dir();
+            let procfs = TestProcfs::new();
+            let record = registry.procfs_record();
+            let record_path = registry.write_record_at_identity(&record).await;
+            let tmp_path = registry.tmp_path_for_record(&record);
+            tokio::fs::write(&tmp_path, b"partial").await.unwrap();
+            scenario.apply(&procfs);
+
+            remove_stale_records_with_liveness(&registry.home, &procfs.liveness()).await;
+
+            assert!(!record_path.exists(), "{scenario:?}");
+            assert!(!tmp_path.exists(), "{scenario:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn try_list_accepts_valid_procfs_identity_and_preserves_tmp_file() {
+        let registry = TestRegistry::new();
+        registry.ensure_dir();
+        let procfs = TestProcfs::new();
+        let record = registry.procfs_record();
+        registry.write_record_at_identity(&record).await;
+        let tmp_path = registry.tmp_path_for_record(&record);
+        tokio::fs::write(&tmp_path, b"partial").await.unwrap();
+
+        let instances = try_list_with_liveness(&registry.home, &procfs.liveness())
+            .await
+            .unwrap();
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].pid, TEST_PROCFS_PID);
+        assert_eq!(instances[0].starttime, TEST_PROCFS_STARTTIME);
+        assert!(tmp_path.exists());
     }
 
     #[tokio::test]

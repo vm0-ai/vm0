@@ -13,6 +13,7 @@ use super::super::{
     CACHE_FORMAT_VERSION, CacheBudget, FsStats, TEST_FS_TOTAL_BYTES, WORKSPACE_DRIVE_LAYOUT,
     WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageActiveLeaseRequest,
     WorkspaceImageCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+    WorkspaceImagePromotionRequest,
 };
 use super::support::{TEST_PROFILE_NAME, local_cache, write_current_cache_entry};
 use crate::ids::RunId;
@@ -455,6 +456,77 @@ async fn shared_cache_is_scoped_by_runner_group() {
     assert!(
         cache_b.held_workspace_states().await.is_empty(),
         "a runner must not advertise workspace cache entries from another group"
+    );
+}
+
+#[tokio::test]
+async fn prepare_returns_disk_pressure_without_cache_or_promotion() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let min_free_bytes = CacheBudget::from_fs_stats(FsStats {
+        total_bytes: TEST_FS_TOTAL_BYTES,
+        available_bytes: TEST_FS_TOTAL_BYTES,
+    })
+    .min_free_bytes;
+    let cache = WorkspaceImageCache::new_with_fs_stats(
+        paths,
+        FsStats {
+            total_bytes: TEST_FS_TOTAL_BYTES,
+            available_bytes: min_free_bytes.saturating_sub(1),
+        },
+    );
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let reuse_key = "sess-disk-pressure";
+    let working_dir = "/workspace";
+    let image_size_bytes = 5;
+    let cache_key =
+        cache.scoped_cache_key(TEST_PROFILE_NAME, reuse_key, working_dir, image_size_bytes);
+
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                working_dir,
+                image_size_bytes,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::DiskPressure);
+    assert!(lease.cache_key.is_none());
+    assert!(lease.source_image.is_none());
+    assert!(
+        lease
+            .workspace_drive_config()
+            .expect("disk pressure should fall back to a fresh workspace drive")
+            .seed_image
+            .is_none(),
+        "disk pressure fallback should not seed the fresh workspace drive"
+    );
+    assert!(
+        lease
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                restored_session_identity: None,
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: "2026-05-01T00:00:00.000Z".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+            })
+            .is_none(),
+        "disk pressure should disable workspace image promotion"
+    );
+    assert!(
+        !fs::try_exists(cache.entry_paths(&cache_key).entry_dir().to_path_buf())
+            .await
+            .unwrap(),
+        "disk pressure should not publish a workspace cache entry"
     );
 }
 

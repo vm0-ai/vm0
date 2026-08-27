@@ -53,12 +53,6 @@ export const setupAgentChatPage$ = command(
     set(reloadTagline$);
     set(resetChatPageModelSelection$);
     set(updatePage$, createElement(AgentChatPage), "sidebar");
-    set(
-      updateDocumentTitle$,
-      i18n.t(($) => {
-        return $.chat.documentTitle;
-      }),
-    );
 
     await set(hideAppSkeleton$, signal);
 

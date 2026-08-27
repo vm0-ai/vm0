@@ -310,12 +310,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.LatestWebsiteTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use the latest built-in Website template archives, independent registry, and seedream4 default instead of the pre-cutover release.",
-    enabled: true,
-  },
   [FeatureSwitchKey.LatestPresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -375,13 +369,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
-  },
-  [FeatureSwitchKey.ComposerFlatFeedbackNote]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Rebuild the composer quote block on ProseMirror's native machinery: the note content element is the block itself and the quote chip is a widget decoration, removing the editable wrapper elements and the custom mutation filtering that let WebKit damage go unnoticed.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",

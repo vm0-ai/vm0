@@ -3,8 +3,10 @@ use std::time::Duration;
 
 use vsock_proto::{ExecOutputPolicy, ExecTimeoutPolicy};
 
+use super::super::super::support::setup_host_and_guest;
 use super::support::{
-    assert_supervised_start_fails_without_frame, supervised_request, supervised_stream_request,
+    assert_no_guest_frame, assert_supervised_start_fails_without_frame, supervised_request,
+    supervised_stream_request,
 };
 use crate::SupervisedExecRequest;
 
@@ -48,6 +50,31 @@ async fn supervised_exec_rejects_receiver_without_stream_policy() {
         "exec stream queue capacity requires a streaming output policy",
     )
     .await;
+}
+
+#[tokio::test]
+async fn supervised_process_rejects_streaming_stderr_without_sending_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let err = match host
+        .start_supervised_process(SupervisedExecRequest {
+            stderr: ExecOutputPolicy::Stream {
+                limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+            },
+            ..supervised_stream_request("streaming-stderr")
+        })
+        .await
+    {
+        Ok(_) => panic!("supervised process should reject streaming stderr"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(
+        err.to_string()
+            .contains("supervised process output requires non-streaming stderr")
+    );
+    assert_no_guest_frame(&mut guest, "invalid process output must not send a frame");
 }
 
 #[tokio::test]

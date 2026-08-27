@@ -156,7 +156,23 @@ def reset_forward_request_state_for_tests() -> None:
 
 
 def shutdown_forward_request_workers(*, wait: bool) -> None:
-    """Shut down auth.base forwarding workers."""
+    """Close admission and shut down the auth.base forwarding worker lifecycle.
+
+    This is a one-way production transition: new forwards are rejected, and the
+    admission state is cleared. Admitted waiters are woken so they can observe
+    shutdown, pending worker futures are cancelled, and active DNS lookups or
+    upstream sockets are best-effort aborted. Affected forwards therefore become
+    terminal instead of waiting indefinitely for admission or upstream work.
+
+    Both values of `wait` perform those shutdown actions. `wait=True` additionally
+    joins the tracked daemon worker threads, while `wait=False` returns without
+    joining them and does not wait for slow upstream responses. The latter is used
+    by production teardown to keep process shutdown bounded.
+
+    Production shutdown cannot re-enable admission. The test-only
+    `reset_forward_request_state_for_tests()` helper is the mechanism that resets
+    worker and admission state and re-enables forwarding between tests.
+    """
     global _forward_request_admission_state
     global _forward_request_accepting
 

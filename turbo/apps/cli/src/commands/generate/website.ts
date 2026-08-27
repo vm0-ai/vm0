@@ -12,7 +12,6 @@ import {
   canonicalizeRegistryId,
   formatRegistryListing,
 } from "../shared/resource-listing";
-import { websiteTemplateArchiveVersionFromEnvironment } from "../shared/website-template-archive-version";
 import { dispatchGenerate } from "./lib/dispatch";
 import { getCliPublicBrand } from "../../lib/api/config";
 import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
@@ -124,10 +123,6 @@ ${formatRegistryListing(templates, "website templates")}`;
       });
       if (dispatch.outcome === "handled") return;
       const prompt = dispatch.prompt;
-      const websiteTemplateArchiveVersion =
-        websiteTemplateArchiveVersionFromEnvironment();
-      const latestWebsiteTemplatesEnabled =
-        websiteTemplateArchiveVersion === "latest";
 
       let resolvedDesignSystem;
       if (options.designSystem !== undefined) {
@@ -146,10 +141,8 @@ ${formatRegistryListing(templates, "website templates")}`;
       if (options.template !== undefined) {
         const canonical = canonicalizeRegistryId("template", options.template);
         const entry =
-          findWebsiteTemplateResource(
-            options.template,
-            websiteTemplateArchiveVersion,
-          ) ?? findTemplate(canonical);
+          findWebsiteTemplateResource(options.template) ??
+          findTemplate(canonical);
         if (!entry || !entry.targets?.includes(WEBSITE_TARGET)) {
           throw unknownTemplateError(options.template);
         }
@@ -172,7 +165,6 @@ ${formatRegistryListing(templates, "website templates")}`;
         siteSlug: options.siteSlug,
         details: [
           `Requested title/site name: ${options.title ?? "not specified"}`,
-          `Built-in Website template release: ${websiteTemplateArchiveVersion}`,
           `Selected design system: ${
             resolvedDesignSystem
               ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
@@ -185,12 +177,9 @@ ${formatRegistryListing(templates, "website templates")}`;
           ...templateSelectionRules,
           "If it is a marketing site, make the product or offer visible in the first viewport.",
           "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
-          ...(latestWebsiteTemplatesEnabled
-            ? [WEBSITE_IMAGE_BATCH_INSTRUCTION]
-            : []),
+          WEBSITE_IMAGE_BATCH_INSTRUCTION,
           "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
         ],
-        latestWebsiteTemplatesEnabled,
       });
 
       console.log(packet.instructions);

@@ -65,6 +65,7 @@ export type AuthV2SignInFactor =
   | {
       readonly id: `oauth:${AuthV2OAuthStrategy}`;
       readonly kind: "oauth";
+      readonly lastUsed: boolean;
       readonly strategy: AuthV2OAuthStrategy;
     }
   | {
@@ -262,6 +263,7 @@ function emptyExternalCapabilities(): AuthV2ExternalCapabilities {
   return {
     googleOneTapClientId: null,
     identifierMode: "email",
+    lastUsedOAuthStrategy: null,
     oauthStrategies: [],
     passkey: false,
   };
@@ -274,16 +276,19 @@ interface FactorDiscovery {
 
 function oauthFactor(
   strategy: AuthV2OAuthStrategy,
+  lastUsedOAuthStrategy: AuthV2OAuthStrategy | null,
 ): Extract<AuthV2SignInFactor, { kind: "oauth" }> {
   return {
     id: `oauth:${strategy}`,
     kind: "oauth",
+    lastUsed: strategy === lastUsedOAuthStrategy,
     strategy,
   };
 }
 
 function discoverFactors(
   factors: readonly SignInFirstFactor[] | null,
+  lastUsedOAuthStrategy: AuthV2OAuthStrategy | null,
   passkeyCapability: AuthV2PasskeyCapability,
 ): FactorDiscovery {
   if (!factors) {
@@ -310,7 +315,7 @@ function discoverFactors(
         safeIdentifier: factor.safeIdentifier,
       });
     } else if (isAuthV2OAuthStrategy(factor.strategy)) {
-      discovered.push(oauthFactor(factor.strategy));
+      discovered.push(oauthFactor(factor.strategy, lastUsedOAuthStrategy));
     } else if (factor.strategy === "passkey") {
       if (passkeyCapability !== "unavailable") {
         discovered.push({ id: "passkey", kind: "passkey" });
@@ -352,7 +357,7 @@ function entryFactors(
 ): readonly AuthV2SignInFactor[] {
   const factors: AuthV2SignInFactor[] = [];
   for (const strategy of capabilities.oauthStrategies) {
-    factors.push(oauthFactor(strategy));
+    factors.push(oauthFactor(strategy, capabilities.lastUsedOAuthStrategy));
   }
   if (capabilities.passkey && passkeyCapability !== "unavailable") {
     factors.push({ id: "passkey", kind: "passkey" });
@@ -371,17 +376,25 @@ function snapshotSignInResource(
   const discovered =
     resource.status === "needs_client_trust"
       ? discoverClientTrustFactors(resource.supportedSecondFactors)
-      : discoverFactors(resource.supportedFirstFactors, passkeyCapability);
+      : discoverFactors(
+          resource.supportedFirstFactors,
+          capabilities.lastUsedOAuthStrategy,
+          passkeyCapability,
+        );
   const factorsWithExternalOAuth =
     resource.status === "needs_client_trust"
       ? discovered.factors
       : [
           ...discovered.factors,
-          ...capabilities.oauthStrategies.map(oauthFactor).filter((factor) => {
-            return !discovered.factors.some((candidate) => {
-              return candidate.id === factor.id;
-            });
-          }),
+          ...capabilities.oauthStrategies
+            .map((strategy) => {
+              return oauthFactor(strategy, capabilities.lastUsedOAuthStrategy);
+            })
+            .filter((factor) => {
+              return !discovered.factors.some((candidate) => {
+                return candidate.id === factor.id;
+              });
+            }),
         ];
   const factors =
     resource.status === "needs_identifier" || resource.status === null

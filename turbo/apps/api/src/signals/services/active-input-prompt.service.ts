@@ -202,10 +202,6 @@ export async function materializePendingActiveInputPrompts(
           FeatureSwitchKey.IntroVideoTemplates,
           featureSwitchContext,
         ),
-        latestWebsiteTemplatesEnabled: isFeatureEnabled(
-          FeatureSwitchKey.LatestWebsiteTemplates,
-          featureSwitchContext,
-        ),
         latestPresentationTemplatesEnabled: isFeatureEnabled(
           FeatureSwitchKey.LatestPresentationTemplates,
           featureSwitchContext,
@@ -282,7 +278,6 @@ async function materializeActiveInputPrompt(
     readonly orgId: string;
     readonly userId: string;
     readonly introVideoTemplatesEnabled: boolean;
-    readonly latestWebsiteTemplatesEnabled: boolean;
     readonly latestPresentationTemplatesEnabled: boolean;
     readonly presentationTemplatesEnabled: boolean;
   },
@@ -305,7 +300,6 @@ async function materializeActiveInputPrompt(
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
     introVideoTemplatesEnabled: args.introVideoTemplatesEnabled,
-    latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
     latestPresentationTemplatesEnabled: args.latestPresentationTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     // Steered into a run that is already executing, whose volumes were fixed
