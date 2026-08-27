@@ -695,6 +695,52 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     );
   });
 
+  it("does not extend an active cooldown for one transport observation", async () => {
+    const startedAt = Date.UTC(2026, 7, 21, 0, 17, 0);
+    const claimed = await createClaimedVm0Run();
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      claimed.selectedModel,
+      true,
+    );
+    if (!primary) {
+      throw new Error("Expected a built-in model primary route");
+    }
+    registerVm0BuiltInCandidateCooldownCleanup(
+      context,
+      claimed.selectedModel,
+      primary,
+    );
+
+    await withMockNowForTest(startedAt, async () => {
+      await runs.reportRunnerModelProviderFailure(claimed.runId, {
+        failureKind: "rate_limit",
+        retryAfterSeconds: 60,
+      });
+      context.mocks.axiomLogging.error.mockClear();
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    await withMockNowForTest(startedAt + 60_000, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+  });
+
   it("restarts after a gap greater than 60 seconds", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 20, 0);
     const claimed = await createClaimedVm0Run();
