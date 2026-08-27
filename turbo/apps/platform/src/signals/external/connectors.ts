@@ -61,6 +61,7 @@ export function relatedConnectorCatalog(
 ): Computed<Promise<PublicConnectorCatalogDiscoveryResponse>> {
   return computed(async (get) => {
     get(connectorsReloadVersion$);
+    get(featureSwitch$);
     const keyword = get(keyword$).trim();
     const createClient = get(apiClient$);
     const client = createClient(connectorCatalogContract);
@@ -77,6 +78,7 @@ export function connectorCatalogItemBySlug(
 ): Computed<Promise<PlatformConnectorCatalogStatusItem | null>> {
   return computed(async (get) => {
     get(connectorsReloadVersion$);
+    get(featureSwitch$);
     const createClient = get(apiClient$);
     const client = createClient(connectorCatalogContract);
     const result = await accept(

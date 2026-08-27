@@ -162,7 +162,7 @@ function mockConnectorCatalogStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
   // Register the dynamic slug route first so the subsequently registered
-  // static /status route takes precedence in runtime MSW handlers.
+  // static routes take precedence in runtime MSW handlers.
   context.mocks.api(connectorCatalogContract.get, ({ params, respond }) => {
     const connector = connectors.find((candidate) => {
       return candidate.slug === params.connectorSlug;
@@ -175,6 +175,12 @@ function mockConnectorCatalogStatus(
   });
   context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
+  });
+  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+    return respond(200, {
+      connectors: [...connectors],
+      totalConnectorCount: connectors.length,
+    });
   });
 }
 
