@@ -38,6 +38,7 @@ export const registerPageLayout$ = command(
   },
 );
 
+// Detach the committed page before route-derived state moves to a new location.
 export const clearPage$ = command(({ set }) => {
   set(internalPage$, undefined);
 });

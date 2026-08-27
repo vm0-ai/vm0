@@ -4,6 +4,7 @@ import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
+import { clearPage$ } from "./react-router.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import {
   bestEffort,
@@ -23,7 +24,6 @@ import {
 import { recordAdAttribution$ } from "./bootstrap/ad-attribution.ts";
 import { recordSignupAttribution$ } from "./bootstrap/signup-attribution.ts";
 import { bootstrapGoogleAdsConversionMilestones$ } from "./bootstrap/google-ads-conversion-milestones.ts";
-import { clearPage$ } from "./react-router.ts";
 
 const L = logger("Route");
 
@@ -215,6 +215,16 @@ const currentRoute$ = computed((get) => {
   return findMatchingRoute(config, get(pathname$));
 });
 
+const clearPageForRouteBoundary$ = command(
+  ({ get, set }, nextPathname: string) => {
+    const config = get(internalRouteConfig$);
+    const nextRoute = config ? findMatchingRoute(config, nextPathname) : null;
+    if (get(currentRoute$) !== nextRoute) {
+      set(clearPage$);
+    }
+  },
+);
+
 export const pathParams$ = computed((get) => {
   const currentRoute = get(currentRoute$);
   if (!currentRoute) {
@@ -227,55 +237,82 @@ export const pathParams$ = computed((get) => {
 });
 
 const resetRouteSignal$ = resetSignal();
-const resetRouteLoadSignal$ = resetSignal();
+const resetRoutePreparationSignal$ = resetSignal();
 
-const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const navigationSignal = set(resetRouteLoadSignal$, signal);
+const prepareNavigationRoute$ = command(
+  async (
+    { get, set },
+    targetPathname: string,
+    signal: AbortSignal,
+  ): Promise<Route | null> => {
+    const config = get(internalRouteConfig$);
+    const route = config ? findMatchingRoute(config, targetPathname) : null;
+    if (route?.prefetch) {
+      await set(route.prefetch, signal);
+    }
+    signal.throwIfAborted();
+    return route;
+  },
+);
 
-  const currentRoute = get(currentRoute$);
-  if (!currentRoute) {
-    throw new Error("No route matches, pathname: " + get(pathname$));
-  }
-  set(markBootstrapRouteSetup$, currentRoute.path);
-  L.debug("loading route", currentRoute.path);
-  if (currentRoute.analytics !== false) {
-    set(recordAdAttribution$, get(searchParams$));
-  }
+const loadRoute$ = command(
+  async (
+    { get, set },
+    preparedRoute: Route | null | undefined,
+    signal: AbortSignal,
+  ) => {
+    const currentRoute = get(currentRoute$);
+    if (!currentRoute) {
+      throw new Error("No route matches, pathname: " + get(pathname$));
+    }
+    if (preparedRoute !== undefined && preparedRoute !== currentRoute) {
+      throw new DOMException("Prepared route changed", "AbortError");
+    }
+    set(markBootstrapRouteSetup$, currentRoute.path);
+    L.debug("loading route", currentRoute.path);
+    if (currentRoute.analytics !== false) {
+      set(recordAdAttribution$, get(searchParams$));
+    }
 
-  let clearBeforeSetup = false;
-  if (currentRoute.prefetch) {
-    clearBeforeSetup = await set(currentRoute.prefetch, navigationSignal);
-    navigationSignal.throwIfAborted();
-  }
+    let clearBeforeSetup = false;
+    if (currentRoute.prefetch && preparedRoute !== currentRoute) {
+      const preparationSignal = set(resetRoutePreparationSignal$, signal);
+      clearBeforeSetup = await set(currentRoute.prefetch, preparationSignal);
+      preparationSignal.throwIfAborted();
+    }
 
-  // Keep the active route fully owned while a cold boundary is loading. Once
-  // preparation succeeds, remove its page before aborting the route signal so
-  // a mounted page never observes a torn-down lifecycle.
-  if (clearBeforeSetup) {
-    set(clearPage$);
-  }
-  const routeSignal = set(resetRouteSignal$, signal);
-  await set(currentRoute.setup, routeSignal);
-  signal.throwIfAborted();
-  navigationSignal.throwIfAborted();
-  if (currentRoute.analytics !== false) {
-    capturePageView();
-  }
-  // Record first-touch signup attribution as part of the route-load lifecycle.
-  // Bind to the parent `signal`, not the per-route `routeSignal`: a superseding
-  // route load aborts the previous `routeSignal` via resetRouteSignal$, and
-  // binding here would reject the superseded load with AbortError. The parent
-  // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
-  // completes cleanly. The command early-returns when there is nothing to
-  // record, so this only performs network work on the first qualifying load.
-  // Attribution is best-effort so a final failure after auth recovery cannot
-  // reject the route load; the command only persists its dedupe marker after a
-  // successful record, allowing a later route to retry.
-  if (currentRoute.analytics !== false) {
-    await bestEffort(set(recordSignupAttribution$, signal), signal);
-    await settle(set(bootstrapGoogleAdsConversionMilestones$, signal), signal);
-  }
-});
+    // Keep the active route fully owned while a cold boundary is loading. Once
+    // preparation succeeds, remove its page before aborting the route signal so
+    // a mounted page never observes a torn-down lifecycle.
+    if (clearBeforeSetup) {
+      set(clearPage$);
+    }
+    signal.throwIfAborted();
+    const routeSignal = set(resetRouteSignal$, signal);
+    await set(currentRoute.setup, routeSignal);
+    signal.throwIfAborted();
+    if (currentRoute.analytics !== false) {
+      capturePageView();
+    }
+    // Record first-touch signup attribution as part of the route-load lifecycle.
+    // Bind to the parent `signal`, not the per-route `routeSignal`: a superseding
+    // route load aborts the previous `routeSignal` via resetRouteSignal$, and
+    // binding here would reject the superseded load with AbortError. The parent
+    // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
+    // completes cleanly. The command early-returns when there is nothing to
+    // record, so this only performs network work on the first qualifying load.
+    // Attribution is best-effort so a final failure after auth recovery cannot
+    // reject the route load; the command only persists its dedupe marker after a
+    // successful record, allowing a later route to retry.
+    if (currentRoute.analytics !== false) {
+      await bestEffort(set(recordSignupAttribution$, signal), signal);
+      await settle(
+        set(bootstrapGoogleAdsConversionMilestones$, signal),
+        signal,
+      );
+    }
+  },
+);
 
 const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {
   const config = get(internalRouteConfig$);
@@ -300,16 +337,22 @@ export const initRoutes$ = command(
     window.addEventListener(
       "popstate",
       onDomEventFn(async () => {
+        set(resetRoutePreparationSignal$, signal);
+        set(clearPageForRouteBoundary$, pathname());
+        // History already moved before popstate fires. Abort the old route only
+        // after its page is detached so it cannot render stale content while a
+        // lazy target is preparing.
+        set(resetRouteSignal$, signal);
         set(reloadPathname$, (x) => {
           return x + 1;
         });
         set(navigateToDefaultWhenInvalid$);
-        await set(loadRoute$, signal);
+        await set(loadRoute$, undefined, signal);
       }),
       { signal },
     );
 
-    await set(loadRoute$, signal);
+    await set(loadRoute$, undefined, signal);
   },
 );
 
@@ -336,6 +379,28 @@ const navigate$ = command(
     const searchStr = options.searchParams?.toString();
     const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
     L.debug("navigating to", newPath);
+    const rootSignal = get(rootSignal$);
+    const preparationSignal = set(
+      resetRoutePreparationSignal$,
+      rootSignal,
+      signal,
+    );
+    const preparedRoute = await set(
+      prepareNavigationRoute$,
+      pathname,
+      preparationSignal,
+    );
+    signal.throwIfAborted();
+    preparationSignal.throwIfAborted();
+    rootSignal.throwIfAborted();
+    if (get(rootSignal$) !== rootSignal) {
+      throw new DOMException("Route preparation root changed", "AbortError");
+    }
+
+    // A programmatic navigation can prepare a cold boundary without detaching
+    // the committed page. Once preparation succeeds, clear a cross-boundary
+    // page before history and route-derived state move to the new location.
+    set(clearPageForRouteBoundary$, pathname);
     if (options.replace) {
       replaceState({}, "", newPath);
     } else {
@@ -345,9 +410,7 @@ const navigate$ = command(
     set(reloadPathname$, (x) => {
       return x + 1;
     });
-    // Route preparation is owned by the app root, not the outgoing page, so a
-    // route-triggered navigation is not born from the signal it will replace.
-    await set(loadRoute$, get(rootSignal$));
+    await set(loadRoute$, preparedRoute, rootSignal);
     signal.throwIfAborted();
   },
 );

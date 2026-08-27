@@ -20,7 +20,12 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { setRootSignal$ } from "../root-signal.ts";
-import { createDeferredPromise, isAbortError, resetSignal } from "../utils.ts";
+import {
+  clearAllDetached,
+  createDeferredPromise,
+  isAbortError,
+  resetSignal,
+} from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -29,7 +34,7 @@ function deferred<T>() {
   return createDeferredPromise<T>(context.signal);
 }
 
-function installNavigation(path: string): void {
+function installNavigation(path: string, beforeLocationChange?: () => void) {
   setPathname(path, context.signal);
   setSearch("", context.signal);
   const updateLocation = (
@@ -37,13 +42,17 @@ function installNavigation(path: string): void {
     _unused: string,
     url?: string | URL | null,
   ) => {
+    beforeLocationChange?.();
     const next = new URL(url?.toString() ?? "/", "http://localhost");
     setPathname(next.pathname, context.signal);
     setSearch(next.search, context.signal);
   };
-  mockPushState(vi.fn(updateLocation), context.signal);
-  mockReplaceState(vi.fn(updateLocation), context.signal);
+  const pushStateMock = vi.fn<typeof updateLocation>(updateLocation);
+  const replaceStateMock = vi.fn<typeof updateLocation>(updateLocation);
+  mockPushState(pushStateMock, context.signal);
+  mockReplaceState(replaceStateMock, context.signal);
   context.store.set(setRootSignal$, context.signal);
+  return { pushStateMock, replaceStateMock };
 }
 
 describe("lazy route setup", () => {
@@ -211,13 +220,20 @@ describe("lazy route setup", () => {
   });
 
   it("preserves current content while a cold route group is prepared", async () => {
-    installNavigation(ROUTES.agents);
     const loaderStarted = deferred<void>();
     const releaseLoader = deferred<void>();
     const setupStarted = deferred<void>();
     const releaseSetup = deferred<void>();
     const setupFinished = deferred<void>();
     let agentsSignal: AbortSignal | undefined;
+    const historyHandoff: {
+      page?: unknown;
+      routeSignalAborted?: boolean;
+    } = {};
+    const { pushStateMock } = installNavigation(ROUTES.agents, () => {
+      historyHandoff.page = context.store.get(page$);
+      historyHandoff.routeSignalAborted = agentsSignal?.aborted;
+    });
     const agentsSetup$ = command(async ({ set }, signal: AbortSignal) => {
       agentsSignal = signal;
       set(updatePage$, "agents");
@@ -263,17 +279,142 @@ describe("lazy route setup", () => {
     expect(context.store.get(page$)).toBe("agents");
     expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
     expect(agentsSignal?.aborted).toBeFalsy();
+    expect(pathname()).toBe(ROUTES.agents);
+    expect(pushStateMock).not.toHaveBeenCalled();
 
     releaseLoader.resolve(undefined);
     await setupStarted.promise;
+    expect(historyHandoff).toStrictEqual({
+      page: undefined,
+      routeSignalAborted: false,
+    });
+    expect(pushStateMock).toHaveBeenCalledOnce();
     expect(context.store.get(page$)).toBeUndefined();
     expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
     expect(agentsSignal?.aborted).toBeTruthy();
+    expect(pathname()).toBe(ROUTES.workflows);
 
     releaseSetup.resolve(undefined);
     await setupFinished.promise;
     expect(context.store.get(page$)).toBe("workflows");
     expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
+  });
+
+  it("clears an eager route boundary before history moves", async () => {
+    let agentsSignal: AbortSignal | undefined;
+    const historyHandoff: {
+      page?: unknown;
+      routeSignalAborted?: boolean;
+    } = {};
+    const { pushStateMock } = installNavigation(ROUTES.agents, () => {
+      historyHandoff.page = context.store.get(page$);
+      historyHandoff.routeSignalAborted = agentsSignal?.aborted;
+    });
+    const workflowSetupStarted = deferred<void>();
+    const releaseWorkflowSetup = deferred<void>();
+    const workflowSetupFinished = deferred<void>();
+
+    await context.store.set(
+      initRoutes$,
+      [
+        {
+          path: ROUTES.agents,
+          analytics: false,
+          setup: command(async ({ set }, signal: AbortSignal) => {
+            agentsSignal = signal;
+            set(updatePage$, "agents");
+            await set(hideAppSkeleton$, signal);
+          }),
+        },
+        {
+          path: ROUTES.workflows,
+          analytics: false,
+          setup: command(async ({ set }, signal: AbortSignal) => {
+            workflowSetupStarted.resolve(undefined);
+            await releaseWorkflowSetup.promise;
+            signal.throwIfAborted();
+            set(updatePage$, "workflows");
+            workflowSetupFinished.resolve(undefined);
+          }),
+        },
+      ],
+      context.signal,
+    );
+
+    context.store.set(detachedNavigateTo$, ROUTES.workflows);
+    await workflowSetupStarted.promise;
+
+    expect(historyHandoff).toStrictEqual({
+      page: undefined,
+      routeSignalAborted: false,
+    });
+    expect(pushStateMock).toHaveBeenCalledOnce();
+    expect(pathname()).toBe(ROUTES.workflows);
+    expect(context.store.get(page$)).toBeUndefined();
+    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
+    expect(agentsSignal?.aborted).toBeTruthy();
+
+    releaseWorkflowSetup.resolve(undefined);
+    await workflowSetupFinished.promise;
+    expect(context.store.get(page$)).toBe("workflows");
+  });
+
+  it("clears a popstate route boundary before lazy preparation", async () => {
+    const { pushStateMock } = installNavigation(ROUTES.agents);
+    const loaderStarted = deferred<void>();
+    const releaseLoader = deferred<void>();
+    const workflowSetupStarted = deferred<void>();
+    const releaseWorkflowSetup = deferred<void>();
+    const workflowSetupFinished = deferred<void>();
+    let agentsSignal: AbortSignal | undefined;
+
+    await context.store.set(
+      initRoutes$,
+      [
+        {
+          path: ROUTES.agents,
+          analytics: false,
+          setup: command(async ({ set }, signal: AbortSignal) => {
+            agentsSignal = signal;
+            set(updatePage$, "agents");
+            await set(hideAppSkeleton$, signal);
+          }),
+        },
+        {
+          path: ROUTES.workflows,
+          analytics: false,
+          ...lazyRouteSetup(async () => {
+            loaderStarted.resolve(undefined);
+            await releaseLoader.promise;
+            return command(async ({ set }, signal: AbortSignal) => {
+              workflowSetupStarted.resolve(undefined);
+              await releaseWorkflowSetup.promise;
+              signal.throwIfAborted();
+              set(updatePage$, "workflows");
+              workflowSetupFinished.resolve(undefined);
+            });
+          }),
+        },
+      ],
+      context.signal,
+    );
+
+    setPathname(ROUTES.workflows, context.signal);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await loaderStarted.promise;
+
+    expect(pathname()).toBe(ROUTES.workflows);
+    expect(context.store.get(page$)).toBeUndefined();
+    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
+    expect(agentsSignal?.aborted).toBeTruthy();
+    expect(pushStateMock).not.toHaveBeenCalled();
+
+    releaseLoader.resolve(undefined);
+    await workflowSetupStarted.promise;
+
+    releaseWorkflowSetup.resolve(undefined);
+    await workflowSetupFinished.promise;
+    expect(context.store.get(page$)).toBe("workflows");
   });
 
   it("does not run a loader that resolves after its navigation is aborted", async () => {
@@ -319,6 +460,88 @@ describe("lazy route setup", () => {
     await expect(initialNavigation).rejects.toSatisfy(isAbortError);
     expect(staleSetupCalls).toBe(0);
     expect(pathname()).toBe(ROUTES.workflows);
+  });
+
+  it("cancels stale cold preparation before it can mutate history", async () => {
+    const { pushStateMock } = installNavigation(ROUTES.agents);
+    const workflowPreparationStarted = deferred<void>();
+    const releaseWorkflowPreparation = deferred<void>();
+    const settingsPreparationStarted = deferred<void>();
+    const releaseSettingsPreparation = deferred<void>();
+    const settingsSetupFinished = deferred<void>();
+    let agentsSignal: AbortSignal | undefined;
+    let workflowSetupCalls = 0;
+
+    await context.store.set(
+      initRoutes$,
+      [
+        {
+          path: ROUTES.agents,
+          analytics: false,
+          setup: command(async ({ set }, signal: AbortSignal) => {
+            agentsSignal = signal;
+            set(updatePage$, "agents");
+            await set(hideAppSkeleton$, signal);
+          }),
+        },
+        {
+          path: ROUTES.workflows,
+          analytics: false,
+          prefetch: command(async (_ctx, signal: AbortSignal) => {
+            workflowPreparationStarted.resolve(undefined);
+            await releaseWorkflowPreparation.promise;
+            signal.throwIfAborted();
+            return true;
+          }),
+          setup: command(() => {
+            workflowSetupCalls += 1;
+          }),
+        },
+        {
+          path: ROUTES.settings,
+          analytics: false,
+          prefetch: command(async (_ctx, signal: AbortSignal) => {
+            settingsPreparationStarted.resolve(undefined);
+            await releaseSettingsPreparation.promise;
+            signal.throwIfAborted();
+            return true;
+          }),
+          setup: command(({ set }) => {
+            set(updatePage$, "settings");
+            settingsSetupFinished.resolve(undefined);
+          }),
+        },
+      ],
+      context.signal,
+    );
+
+    context.store.set(detachedNavigateTo$, ROUTES.workflows);
+    await workflowPreparationStarted.promise;
+    expect(pathname()).toBe(ROUTES.agents);
+    expect(context.store.get(page$)).toBe("agents");
+    expect(agentsSignal?.aborted).toBeFalsy();
+    expect(pushStateMock).not.toHaveBeenCalled();
+
+    context.store.set(detachedNavigateTo$, ROUTES.settings);
+    await settingsPreparationStarted.promise;
+    expect(pathname()).toBe(ROUTES.agents);
+    expect(context.store.get(page$)).toBe("agents");
+    expect(agentsSignal?.aborted).toBeFalsy();
+
+    releaseSettingsPreparation.resolve(undefined);
+    await settingsSetupFinished.promise;
+    expect(pathname()).toBe(ROUTES.settings);
+    expect(context.store.get(page$)).toBe("settings");
+    expect(agentsSignal?.aborted).toBeTruthy();
+    expect(pushStateMock).toHaveBeenCalledOnce();
+    expect(pushStateMock.mock.calls[0]?.[2]).toBe(ROUTES.settings);
+
+    releaseWorkflowPreparation.resolve(undefined);
+    await clearAllDetached();
+    expect(workflowSetupCalls).toBe(0);
+    expect(pathname()).toBe(ROUTES.settings);
+    expect(context.store.get(page$)).toBe("settings");
+    expect(pushStateMock).toHaveBeenCalledOnce();
   });
 
   it("reuses resolved route groups across repeated navigation", async () => {
@@ -377,7 +600,7 @@ describe("lazy route setup", () => {
     expect(workflowSignals[0]?.aborted).toBeTruthy();
     expect(agentLoaderCalls).toBe(1);
     expect(workflowLoaderCalls).toBe(1);
-    expect(agentSetupPages).toStrictEqual([undefined, "workflows"]);
+    expect(agentSetupPages).toStrictEqual([undefined, undefined]);
     expect(pathname()).toBe(ROUTES.agents);
   });
 

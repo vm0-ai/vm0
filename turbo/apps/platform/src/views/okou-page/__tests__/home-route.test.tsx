@@ -256,6 +256,8 @@ describe("home route", () => {
       await expect(
         screen.findByRole("textbox", { name: "Message" }),
       ).resolves.toBeInTheDocument();
+      const pageMain = document.querySelector("main");
+      expect(pageMain).not.toBeNull();
       expect(draftLoads()).not.toContain(candidate.candidateId);
 
       team.release.resolve(undefined);
@@ -263,6 +265,7 @@ describe("home route", () => {
         expect(pathname()).toBe(`/agents/${candidate.recoveryAgentId}/chat`);
         expect(document.title).toContain(candidate.recoveryAgentName);
       });
+      expect(document.querySelector("main")).toBe(pageMain);
       expect(draftLoads()).not.toContain(candidate.candidateId);
     },
   );
