@@ -27,8 +27,7 @@ export function computerUseOutputDir(): string {
     return canonical;
   }
 
-  const legacy = process.env.VM0_COMPUTER_OUTPUT_DIR?.trim();
-  return legacy || DEFAULT_COMPUTER_USE_OUTPUT_DIR;
+  return DEFAULT_COMPUTER_USE_OUTPUT_DIR;
 }
 
 async function ensurePrivateDirectory(directory: string): Promise<void> {

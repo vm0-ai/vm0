@@ -260,7 +260,6 @@ describe("computer-use command visibility", () => {
 
   it("should prefer the trimmed canonical output directory", () => {
     vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
-    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", path.join(testOutputDir, "legacy"));
 
     expect(computerUseOutputDir()).toBe(testOutputDir);
   });
@@ -269,23 +268,15 @@ describe("computer-use command visibility", () => {
     ["unset", undefined],
     ["blank", " \t "],
   ])(
-    "should use the trimmed legacy output directory when the canonical variable is %s",
+    "should default computer-use artifacts to the Okou temp directory when the canonical variable is %s",
     (_case, canonical) => {
       vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", canonical);
-      vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
 
-      expect(computerUseOutputDir()).toBe(testOutputDir);
+      expect(computerUseOutputDir()).toBe(
+        path.join(tmpdir(), "okou", "computer-use"),
+      );
     },
   );
-
-  it("should default computer-use artifacts to the Okou temp directory", () => {
-    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", undefined);
-    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", undefined);
-
-    expect(computerUseOutputDir()).toBe(
-      path.join(tmpdir(), "okou", "computer-use"),
-    );
-  });
 
   it("should guide missing computer-use capability errors to delegated authorization", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
