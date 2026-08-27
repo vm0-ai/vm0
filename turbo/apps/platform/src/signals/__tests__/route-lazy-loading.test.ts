@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -107,6 +108,71 @@ describe("lazy route setup", () => {
     ).resolves.toBeUndefined();
     expect(loaderCalls).toBe(2);
     expect(setupCalls).toBe(1);
+  });
+
+  it("keeps a boundary cold when its first setup rejects", async () => {
+    installNavigation(ROUTES.workflows);
+    const setupError = new Error("first setup failed");
+    const agentsSetup = deferred<void>();
+    const retrySetupStarted = deferred<void>();
+    const releaseRetrySetup = deferred<void>();
+    const retrySetupFinished = deferred<void>();
+    let loaderCalls = 0;
+    let setupCalls = 0;
+    let agentsSignal: AbortSignal | undefined;
+    const workflowsSetup$ = command(async ({ set }, signal: AbortSignal) => {
+      setupCalls += 1;
+      if (setupCalls === 1) {
+        throw setupError;
+      }
+      retrySetupStarted.resolve(undefined);
+      await releaseRetrySetup.promise;
+      signal.throwIfAborted();
+      set(updatePage$, "workflows");
+      retrySetupFinished.resolve(undefined);
+    });
+
+    await expect(
+      context.store.set(
+        initRoutes$,
+        [
+          {
+            path: ROUTES.agents,
+            analytics: false,
+            setup: command(({ set }, signal: AbortSignal) => {
+              agentsSignal = signal;
+              set(updatePage$, "agents");
+              agentsSetup.resolve(undefined);
+            }),
+          },
+          {
+            path: ROUTES.workflows,
+            analytics: false,
+            ...lazyRouteSetup(() => {
+              loaderCalls += 1;
+              return Promise.resolve(workflowsSetup$);
+            }),
+          },
+        ],
+        context.signal,
+      ),
+    ).rejects.toBe(setupError);
+
+    context.store.set(detachedNavigateTo$, ROUTES.agents);
+    await agentsSetup.promise;
+    expect(context.store.get(page$)).toBe("agents");
+    expect(agentsSignal?.aborted).toBeFalsy();
+
+    context.store.set(detachedNavigateTo$, ROUTES.workflows);
+    await retrySetupStarted.promise;
+    expect(context.store.get(page$)).toBeUndefined();
+    expect(agentsSignal?.aborted).toBeTruthy();
+
+    releaseRetrySetup.resolve(undefined);
+    await retrySetupFinished.promise;
+    expect(context.store.get(page$)).toBe("workflows");
+    expect(loaderCalls).toBe(1);
+    expect(setupCalls).toBe(2);
   });
 
   it("keeps the bootstrap skeleton until the first cold route is ready", async () => {
@@ -313,6 +379,64 @@ describe("lazy route setup", () => {
     expect(workflowLoaderCalls).toBe(1);
     expect(agentSetupPages).toStrictEqual([undefined, "workflows"]);
     expect(pathname()).toBe(ROUTES.agents);
+  });
+
+  it("identity-guards stale setup finalizers across same-route navigation", async () => {
+    installNavigation("/agents/agent-a/chat");
+    const aRendered = deferred<void>();
+    const releaseA = deferred<void>();
+    const bRendered = deferred<void>();
+    const releaseB = deferred<void>();
+    const interactivePage = createElement("section", { id: "chat" });
+    const setupPages: unknown[] = [];
+    let setupCalls = 0;
+
+    const chatSetup$ = command(async ({ get, set }, signal: AbortSignal) => {
+      setupCalls += 1;
+      setupPages.push(get(page$));
+      if (setupCalls === 1) {
+        set(updatePage$, interactivePage);
+        aRendered.resolve(undefined);
+        await releaseA.promise;
+        signal.throwIfAborted();
+        return;
+      }
+      bRendered.resolve(undefined);
+      await releaseB.promise;
+      signal.throwIfAborted();
+    });
+    const route = lazyRouteSetup(() => {
+      return Promise.resolve(chatSetup$);
+    });
+    const resetSetupSignal$ = resetSignal();
+    const signalA = context.store.set(resetSetupSignal$, context.signal);
+    const attemptA = context.store.set(route.setup, signalA);
+
+    await aRendered.promise;
+    expect(context.store.get(page$)).toBe(interactivePage);
+    await expect(
+      context.store.set(route.prefetch, context.signal),
+    ).resolves.toBeFalsy();
+
+    const signalB = context.store.set(resetSetupSignal$, context.signal);
+    const attemptB = context.store.set(route.setup, signalB);
+    await bRendered.promise;
+    expect(setupPages).toStrictEqual([undefined, interactivePage]);
+    expect(context.store.get(page$)).toBe(interactivePage);
+
+    releaseA.resolve(undefined);
+    await expect(attemptA).rejects.toSatisfy(isAbortError);
+    await expect(
+      context.store.set(route.prefetch, context.signal),
+    ).resolves.toBeFalsy();
+
+    releaseB.resolve(undefined);
+    await expect(attemptB).resolves.toBeUndefined();
+    await expect(
+      context.store.set(route.prefetch, context.signal),
+    ).resolves.toBeFalsy();
+    expect(context.store.get(page$)).toBe(interactivePage);
+    expect(setupCalls).toBe(2);
   });
 
   it("prefetches only the matched route and reuses its pending load", async () => {

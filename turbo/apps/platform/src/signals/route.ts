@@ -93,6 +93,12 @@ export function lazyRouteSetup(load: RouteSetupLoader): LazyRouteSetup {
       }
     | undefined;
   let activatedRootSignal: AbortSignal | undefined;
+  let pendingSetup:
+    | {
+        readonly rootSignal: AbortSignal;
+        readonly setupSignal: AbortSignal;
+      }
+    | undefined;
 
   const resolveRouteSetup$ = command(async ({ get }, signal: AbortSignal) => {
     const rootSignal = get(rootSignal$);
@@ -117,7 +123,11 @@ export function lazyRouteSetup(load: RouteSetupLoader): LazyRouteSetup {
 
   const prefetch$ = command(async ({ get, set }, signal: AbortSignal) => {
     await set(resolveRouteSetup$, signal);
-    return activatedRootSignal !== get(rootSignal$);
+    const rootSignal = get(rootSignal$);
+    if (pendingSetup?.rootSignal === rootSignal) {
+      return pendingSetup.setupSignal.aborted;
+    }
+    return activatedRootSignal !== rootSignal;
   });
 
   const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -125,8 +135,35 @@ export function lazyRouteSetup(load: RouteSetupLoader): LazyRouteSetup {
     signal.throwIfAborted();
     const rootSignal = get(rootSignal$);
     rootSignal.throwIfAborted();
+    const setupAttempt = { rootSignal, setupSignal: signal };
+    pendingSetup = setupAttempt;
+    const clearFailedAttempt = () => {
+      signal.removeEventListener("abort", clearFailedAttempt);
+      if (pendingSetup === setupAttempt) {
+        pendingSetup = undefined;
+        if (activatedRootSignal === rootSignal) {
+          activatedRootSignal = undefined;
+        }
+      }
+    };
+    signal.addEventListener("abort", clearFailedAttempt, { once: true });
+    const completeSetup = async () => {
+      await set(resolvedSetup, signal);
+      signal.throwIfAborted();
+    };
+    await onRejection(completeSetup(), clearFailedAttempt);
+    signal.throwIfAborted();
+    if (rootSignal.aborted || get(rootSignal$) !== rootSignal) {
+      clearFailedAttempt();
+      rootSignal.throwIfAborted();
+      throw new DOMException("Route setup root changed", "AbortError");
+    }
+    if (pendingSetup !== setupAttempt) {
+      throw new DOMException("Route setup was superseded", "AbortError");
+    }
+    signal.removeEventListener("abort", clearFailedAttempt);
+    pendingSetup = undefined;
     activatedRootSignal = rootSignal;
-    await set(resolvedSetup, signal);
   });
 
   return { prefetch: prefetch$, setup: setup$ };
