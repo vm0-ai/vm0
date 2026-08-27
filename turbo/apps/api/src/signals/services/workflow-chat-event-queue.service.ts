@@ -7,10 +7,12 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import {
   and,
+  asc,
   eq,
   inArray,
   isNotNull,
   isNull,
+  lt,
   notExists,
   sql,
 } from "drizzle-orm";
@@ -18,10 +20,9 @@ import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
 import {
-  hasPendingUserChatQueueEvent,
-  listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
+  pendingChatQueueEventCondition,
   staleChatEventQueueThreadIds,
 } from "./chat-event-queue.service";
 import { insertChatEvent, replaceChatEvent } from "./chat-event.service";
@@ -50,25 +51,6 @@ async function chatEventQueueAdmissionLock(
   // Serialize every admission and claim transaction for the same chat thread.
   const lockKey = `chat_event_queue:${chatThreadId}`;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
-}
-
-/** Any active thread-bound run preserves strict per-thread serialization. */
-async function activeRunExistsForWorkflowThread(
-  db: Pick<Db, "select">,
-  threadId: string,
-): Promise<boolean> {
-  const [run] = await db
-    .select({ id: agentRuns.id })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.chatThreadId, threadId),
-        inArray(agentRuns.status, ["queued", "pending", "running"]),
-        isNotNull(agentRuns.triggerSource),
-      ),
-    )
-    .limit(1);
-  return run !== undefined;
 }
 
 async function pendingTickExistsForAutomation(
@@ -224,22 +206,6 @@ export async function loadNextWorkflowQueueEvent(
 ): Promise<PendingWorkflowQueueEvent | null> {
   return await db.transaction(async (tx) => {
     await chatEventQueueAdmissionLock(tx, chatThreadId);
-    if (await hasPendingUserChatQueueEvent(tx, chatThreadId)) {
-      return null;
-    }
-    if (await activeRunExistsForWorkflowThread(tx, chatThreadId)) {
-      return null;
-    }
-
-    const pending = await listPendingChatQueueEvents(
-      tx,
-      chatThreadId,
-      queueItemCreatedBefore,
-    );
-    const head = pending[0];
-    if (!head || head.eventType !== "input.automation") {
-      return null;
-    }
     const [event] = await tx
       .select({
         id: chatEvents.id,
@@ -267,7 +233,41 @@ export async function loadNextWorkflowQueueEvent(
         workflowAutomations,
         eq(workflowAutomations.id, chatAutomationContext.automationId),
       )
-      .where(eq(chatEvents.id, head.id))
+      .where(
+        and(
+          eq(chatEvents.chatThreadId, chatThreadId),
+          pendingChatQueueEventCondition(tx),
+          chatEventTypeIn(["input.automation"]),
+          queueItemCreatedBefore
+            ? lt(chatEvents.createdAt, queueItemCreatedBefore)
+            : undefined,
+          notExists(
+            tx
+              .select({ id: chatEvents.id })
+              .from(chatEvents)
+              .where(
+                and(
+                  eq(chatEvents.chatThreadId, chatThreadId),
+                  pendingChatQueueEventCondition(tx),
+                  chatEventTypeIn(["input.prompt"]),
+                ),
+              ),
+          ),
+          notExists(
+            tx
+              .select({ id: agentRuns.id })
+              .from(agentRuns)
+              .where(
+                and(
+                  eq(agentRuns.chatThreadId, chatThreadId),
+                  inArray(agentRuns.status, ["queued", "pending", "running"]),
+                  isNotNull(agentRuns.triggerSource),
+                ),
+              ),
+          ),
+        ),
+      )
+      .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id))
       .limit(1);
     if (!event) {
       return null;
