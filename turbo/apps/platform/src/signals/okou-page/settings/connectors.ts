@@ -2387,7 +2387,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
         account.intent === "reconnect" ? account.connectionId : null;
     }
 
-    set(reloadConnectors$);
+    set(reloadConnectorConnectionState$);
     const isConnected =
       !options.useDefaultConnectorProjection ||
       (await set(

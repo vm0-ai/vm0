@@ -6,6 +6,7 @@ import {
   type BankingConnectSessionRequest,
 } from "@okouai/api-contracts/contracts/banking";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorManualGrantContract,
   connectorNoAuthGrantContract,
@@ -1701,6 +1702,7 @@ describe("chat event action cards", () => {
     });
     context.mocks.browser.open(authWindow);
     let reconnectRequired = true;
+    let accountSummaryRequests = 0;
     const gmailConnectionId = crypto.randomUUID();
     const siblingConnectionId = crypto.randomUUID();
     const siblingProjectionRead = context.mocks.deferred<void>();
@@ -1752,6 +1754,40 @@ describe("chat event action cards", () => {
           ],
           singleAuthCodeAuthMethodId: "oauth",
         }),
+      });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      accountSummaryRequests += 1;
+      return respond(200, {
+        summaries: [
+          {
+            target: { kind: "builtin", connectorSlug: "gmail" },
+            accountCount: 1,
+            attentionCount: reconnectRequired ? 1 : 0,
+            defaultConnection: {
+              id: gmailConnectionId,
+              target: { kind: "builtin", connectorSlug: "gmail" },
+              authMethod: "oauth",
+              displayName: null,
+              isDefault: true,
+              externalId: null,
+              externalUsername: null,
+              externalEmail: "sender@example.com",
+              oauthScopes: null,
+              connectionStatus: reconnectRequired
+                ? "reconnect-required"
+                : "connected",
+              reconnectReason: reconnectRequired
+                ? "authorization_expired_or_revoked"
+                : null,
+              tokenExpiresAt: null,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: reconnectRequired
+                ? "2026-01-01T00:00:00Z"
+                : "2026-01-01T00:00:02Z",
+            },
+          },
+        ],
       });
     });
     mockAgentConnectorAuthorizations(["gmail"]);
@@ -1818,6 +1854,7 @@ describe("chat event action cards", () => {
       "Reconnect",
       connectorCard,
     );
+    const accountSummaryRequestsBeforeReconnect = accountSummaryRequests;
     await user.click(reconnectButton);
 
     await siblingProjectionRead.promise;
@@ -1842,6 +1879,9 @@ describe("chat event action cards", () => {
       expect(sentPrompts).toStrictEqual([callbackPrompt]);
       expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
       expect(buttonByText("Authorized", connectorCard)).toBeDisabled();
+      expect(accountSummaryRequests).toBeGreaterThan(
+        accountSummaryRequestsBeforeReconnect,
+      );
     });
   });
 
