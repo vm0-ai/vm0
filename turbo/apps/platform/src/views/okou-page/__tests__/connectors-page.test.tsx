@@ -66,6 +66,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { submitManualGrant$ } from "../../../signals/okou-page/settings/connectors.ts";
 import { customConnectorCreateForm$ } from "../../../signals/okou-page/settings/custom-connectors.ts";
 
+// Keep runtime route-import transforms outside assertion timeouts. Production
+// still resolves this module only after matching a settings route.
+import "../../../signals/route-setups/settings.ts";
+
 const context = testContext();
 const resetAfterManualGrantConnectSignal$ = resetSignal();
 const { get$: connectorAppOauthCallbackMetadata$ } = localStorageSignals(
