@@ -81,8 +81,9 @@ use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::status::{StatusTracker, remove_stale_status_file};
-use crate::workspace_image_cache::WorkspaceCacheWatcher;
-use crate::workspace_image_cache::WorkspaceImageCache;
+use crate::workspace_image_cache::{
+    WorkspaceCacheChange, WorkspaceCacheWatcher, WorkspaceImageCache,
+};
 
 mod active_runs;
 mod factory_lifecycle;
@@ -125,6 +126,10 @@ use signals::{
 const READY_DIRECT_CANDIDATE_DRAIN_LIMIT: usize = 8;
 /// Bounds routine cache-budget and stale-state cleanup without returning full scans to promotions.
 const WORKSPACE_CACHE_GC_PERIOD: Duration = Duration::from_secs(60);
+/// Bounds authoritative state recovery from missed workspace-cache observations.
+const WORKSPACE_CACHE_RECONCILIATION_PERIOD: Duration = Duration::from_secs(60);
+/// Staggers the first state inventory from the first routine cache GC.
+const WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY: Duration = Duration::from_secs(30);
 
 fn candidate_for_admission(
     candidate: JobCandidate,
@@ -1686,7 +1691,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         Some(cache) => match WorkspaceCacheWatcher::new(cache).await {
             Ok(watcher) => Some(watcher),
             Err(error) => {
-                warn!(error = %error, "workspace cache watcher unavailable; using routine reconciliation");
+                warn!(error = %error, "workspace cache watcher unavailable; using periodic reconciliation");
                 None
             }
         },
@@ -1727,7 +1732,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         {
             Ok(change) => change,
             Err(error) => {
-                warn!(error = %error, "workspace cache watcher failed during startup reconciliation; using routine reconciliation");
+                warn!(error = %error, "workspace cache watcher failed during startup reconciliation; using periodic reconciliation");
                 workspace_cache_watcher = None;
                 Some(crate::workspace_image_cache::WorkspaceCacheChange {
                     observed_at: tokio::time::Instant::now(),
@@ -1795,6 +1800,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         WORKSPACE_CACHE_GC_PERIOD,
     );
     workspace_cache_gc_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut workspace_cache_reconciliation_tick = tokio::time::interval_at(
+        tokio::time::Instant::now() + WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY,
+        WORKSPACE_CACHE_RECONCILIATION_PERIOD,
+    );
+    workspace_cache_reconciliation_tick
+        .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut workspace_cache_gc_fut = None;
     let mut draining_idle_pool_drained = false;
     let mut pending_finalizing_candidate = None;
@@ -1975,14 +1986,28 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                             .test_observer
                             .notify_workspace_cache_change_observed();
                         let live_mode = *mode_rx.borrow();
-                        if live_mode == RunnerMode::Running {
+                        if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
                             heartbeat.request_workspace_cache(live_mode, change)?;
                         }
                     }
                     Err(error) => {
-                        warn!(error = %error, "workspace cache watcher failed; using routine reconciliation");
+                        warn!(error = %error, "workspace cache watcher failed; using periodic reconciliation");
                         workspace_cache_change_fut = None;
                     }
+                }
+            }
+            _ = workspace_cache_reconciliation_tick.tick(),
+                if exec_config.workspace_cache.is_some() =>
+            {
+                let live_mode = *mode_rx.borrow();
+                if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
+                    heartbeat.request_workspace_cache(
+                        live_mode,
+                        WorkspaceCacheChange {
+                            observed_at: tokio::time::Instant::now(),
+                            committed_cache_keys: std::collections::BTreeSet::new(),
+                        },
+                    )?;
                 }
             }
             result = next_workspace_cache_gc(&mut workspace_cache_gc_fut) => {
