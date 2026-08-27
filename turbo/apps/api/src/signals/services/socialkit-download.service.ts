@@ -1044,8 +1044,15 @@ export const reconcileSocialKitDownload$ = command(
 );
 
 export const reconcileSocialKitDownloads$ = command(
-  async ({ set }, signal: AbortSignal): Promise<number> => {
+  async (
+    { set },
+    args: { readonly candidateIds?: readonly string[] },
+    signal: AbortSignal,
+  ): Promise<number> => {
     const writeDb = set(writeDb$);
+    const candidateScope = args.candidateIds
+      ? inArray(socialKitDownloadJobs.id, args.candidateIds)
+      : undefined;
     const staleCandidates = await writeDb
       .select({ id: socialKitDownloadJobs.id })
       .from(socialKitDownloadJobs)
@@ -1056,6 +1063,7 @@ export const reconcileSocialKitDownloads$ = command(
             socialKitDownloadJobs.createdAt,
             sql`now() - interval '15 minutes'`,
           ),
+          candidateScope,
         ),
       )
       .orderBy(socialKitDownloadJobs.createdAt)
@@ -1102,6 +1110,7 @@ export const reconcileSocialKitDownloads$ = command(
             isNull(socialKitDownloadJobs.claimExpiresAt),
             lt(socialKitDownloadJobs.claimExpiresAt, nowDate()),
           ),
+          candidateScope,
         ),
       )
       .orderBy(socialKitDownloadJobs.updatedAt)

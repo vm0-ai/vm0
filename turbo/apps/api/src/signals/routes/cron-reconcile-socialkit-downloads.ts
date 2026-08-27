@@ -15,6 +15,7 @@ const reconcileSocialKitDownloadsRoute$ = command(
     }
     const processed = await set(
       reconcileSocialKitDownloads$,
+      {},
       AbortSignal.any([
         signal,
         AbortSignal.timeout(SOCIALKIT_RECONCILIATION_TIMEOUT_MS),

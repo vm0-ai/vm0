@@ -50,6 +50,7 @@ import {
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRouteMocks } from "./helpers/route-test";
+import { reconcileSocialKitDownloadsForTest } from "./helpers/runtime-state";
 
 const context = testContext();
 const SOCIALKIT_BASE = "https://api.socialkit.dev";
@@ -1944,6 +1945,95 @@ describe("managed SocialKit route", () => {
       },
     });
     await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
+  it("reconciles an expired claimed download through the bounded cron batch", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const payload = new TextEncoder().encode("cron-reconciled social video");
+    const providerJobId = `provider-cron-${randomUUID()}`;
+    let providerReady = false;
+    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        if (!providerReady) {
+          return HttpResponse.json(
+            { message: "temporary outage" },
+            { status: 503 },
+          );
+        }
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "youtube",
+          downloadUrl: "https://media.socialkit.test/cron-download",
+          durationSeconds: 60,
+          fileSizeMB: 1,
+          creditsCost: 1,
+          quality: "720p",
+          format: "mp4",
+        });
+      }),
+      http.get("https://media.socialkit.test/cron-download", () => {
+        return new HttpResponse(payload, {
+          headers: { "content-length": String(payload.byteLength) },
+        });
+      }),
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof CreateMultipartUploadCommand) {
+        return Promise.resolve({ UploadId: "socialkit-cron-upload" });
+      }
+      if (command instanceof UploadPartCommand) {
+        return Promise.resolve({ ETag: '"socialkit-cron-etag"' });
+      }
+      return Promise.resolve({});
+    });
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    providerReady = true;
+    mockNow(now() + 61_000);
+
+    const processed = await reconcileSocialKitDownloadsForTest(context, [
+      created.body.downloadId,
+    ]);
+    const completed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(processed).toBe(1);
+    expect(completed.body).toMatchObject({
+      status: "completed",
+      billing: { quantity: 1, creditsCharged: 3 },
+      artifact: { sizeBytes: payload.byteLength },
+    });
+    expect(beforeCredits - (await credits(actor))).toBe(3);
   });
 
   it("reuses a completed multipart result and bills concurrent retries once", async () => {

@@ -76,6 +76,7 @@ import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
+import { reconcileSocialKitDownloads$ } from "../services/socialkit-download.service";
 import { steerRunNearTimeBudgetForTest } from "../services/cron-steer-run-time-budget.service";
 import {
   acquireOfficialWorkflowRunCatalogAdmissionLock,
@@ -2541,23 +2542,33 @@ async function officialWorkflowRunFixtureActionResponse(
   }
 }
 
-async function specializedRuntimeFixtureActionResponse(
-  db: Db,
-  body: TestRuntimeStateActionBody,
-  signal: AbortSignal,
-) {
-  if (isCustomConnectorAuthTemplateFixtureAction(body)) {
-    return await customConnectorAuthTemplateFixtureActionResponse(
-      db,
-      body,
-      signal,
-    );
-  }
-  if (isOfficialWorkflowRunFixtureAction(body)) {
-    return await officialWorkflowRunFixtureActionResponse(db, body, signal);
-  }
-  return null;
-}
+const specializedRuntimeFixtureAction$ = command(
+  async ({ set }, body: TestRuntimeStateActionBody, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    if (isCustomConnectorAuthTemplateFixtureAction(body)) {
+      return await customConnectorAuthTemplateFixtureActionResponse(
+        db,
+        body,
+        signal,
+      );
+    }
+    if (isOfficialWorkflowRunFixtureAction(body)) {
+      return await officialWorkflowRunFixtureActionResponse(db, body, signal);
+    }
+    if (body.action === "reconcile-socialkit-downloads") {
+      const processed = await set(
+        reconcileSocialKitDownloads$,
+        { candidateIds: body.download_ids },
+        signal,
+      );
+      return {
+        status: 200 as const,
+        body: { ok: true as const, processed },
+      };
+    }
+    return null;
+  },
+);
 
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -2594,8 +2605,8 @@ const postRuntimeStateAction$ = command(
     if (isVm0BuiltInModelAction(body)) {
       return await vm0BuiltInModelActionResponse(db, body, signal);
     }
-    const specializedFixture = await specializedRuntimeFixtureActionResponse(
-      db,
+    const specializedFixture = await set(
+      specializedRuntimeFixtureAction$,
       body,
       signal,
     );
