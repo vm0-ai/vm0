@@ -522,7 +522,7 @@ async fn verify_final_identity_metadata(
     runtime_dir: &str,
 ) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
     let env = [(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         runtime_dir,
     )];
     let request = ExecRequest {

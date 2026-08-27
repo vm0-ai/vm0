@@ -327,7 +327,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         .arg("--manifest-stdin")
         .env(guest_contracts::env::RUN_ID_ENV, run_id)
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             runtime_dir,
         )
         .stdin(Stdio::piped())

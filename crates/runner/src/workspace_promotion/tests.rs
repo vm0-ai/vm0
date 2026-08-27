@@ -417,7 +417,7 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
     assert_eq!(
         exec_calls[0].env_keys,
-        vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]
+        vec![guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV]
     );
     assert!(exec_calls[1].cmd.contains("rm -f --"));
     assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
