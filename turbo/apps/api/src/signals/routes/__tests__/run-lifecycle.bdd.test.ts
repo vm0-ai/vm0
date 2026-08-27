@@ -14268,6 +14268,13 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain(
       "Be brief and to the point. Skip pleasantries and filler",
     );
+    expect(appendSystemPrompt).toContain("# Execution Time Limit");
+    expect(appendSystemPrompt).toContain(
+      "A single agent run has a maximum execution time of 2 hours.",
+    );
+    expect(appendSystemPrompt).toContain(
+      "provide a final response before the run ends",
+    );
     expect(appendSystemPrompt).toContain("# Agent Tools");
     for (const toolHint of [
       "okou web download-file -h",

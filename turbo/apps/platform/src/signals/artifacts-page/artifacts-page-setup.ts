@@ -6,19 +6,42 @@ import { ArtifactCatalogPage } from "../../views/artifacts-page/artifact-catalog
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
+import { closeLightboxImmediately$ } from "../okou-page/attachment-chips.ts";
 import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
+import { historyState$, searchParams$ } from "../route.ts";
 import {
+  artifactCatalogKindFromSearchParams,
+  artifactCatalogScrollTargetFromHistoryState,
+  artifactIdFromCatalogSearchParams,
+  loadThroughArtifactCatalog$,
+  openArtifact$,
+  prepareArtifactCatalogPreviewHistory$,
   reloadArtifactCatalog$,
-  setArtifactCatalogKind$,
+  setArtifactCatalogKindFromRoute$,
 } from "./artifact-catalog-signals.ts";
 
 export const setupArtifactsPage$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
+    const routeSearchParams = new URLSearchParams(get(searchParams$));
+    const artifactId = artifactIdFromCatalogSearchParams(routeSearchParams);
+    const kind = artifactCatalogKindFromSearchParams(routeSearchParams);
     // Entering the page always starts a fresh first page. Later pages are
     // fetched on scroll and never cached across visits.
-    set(setArtifactCatalogKind$, "presentation");
+    set(setArtifactCatalogKindFromRoute$, kind);
     set(reloadArtifactCatalog$);
-    set(updatePage$, createElement(ArtifactCatalogPage), "sidebar");
+    if (artifactId) {
+      set(prepareArtifactCatalogPreviewHistory$, artifactId, routeSearchParams);
+    } else {
+      set(closeLightboxImmediately$);
+    }
+    const scrollToArtifactId =
+      artifactId ??
+      artifactCatalogScrollTargetFromHistoryState(get(historyState$));
+    set(
+      updatePage$,
+      createElement(ArtifactCatalogPage, { scrollToArtifactId }),
+      "sidebar",
+    );
     set(
       updateDocumentTitle$,
       i18n.t(($) => {
@@ -28,5 +51,11 @@ export const setupArtifactsPage$ = command(
     await set(hideAppSkeleton$, signal);
 
     await set(onboardGuard$, signal);
+    if (artifactId) {
+      await set(openArtifact$, artifactId, signal);
+    }
+    if (scrollToArtifactId) {
+      await set(loadThroughArtifactCatalog$, scrollToArtifactId, signal);
+    }
   },
 );

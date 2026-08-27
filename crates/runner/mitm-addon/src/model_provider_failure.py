@@ -951,7 +951,9 @@ def _post_report(
     if remaining <= 0:
         return status
 
-    # TODO(#29882): Remove the legacy retry after pre-source APIs leave the rollback window.
+    # New runners can reach a pre-#29671 API during rollout or rollback. Remove this
+    # new-runner -> old-API fallback under #29882 after old runners and sandboxes drain
+    # and those APIs are neither serving nor retained rollback targets.
     return _post_report_once(
         url,
         bearer_credential,

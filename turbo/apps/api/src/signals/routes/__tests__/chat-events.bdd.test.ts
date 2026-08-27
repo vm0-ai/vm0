@@ -5018,6 +5018,7 @@ describe("CHAT-02: model-first provider policies", () => {
     let previousSectionIndex = -1;
     for (const section of [
       "# Agent Identity",
+      "# Execution Time Limit",
       "# Agent Tools",
       "# Current User Info",
       "# Current Integration",
