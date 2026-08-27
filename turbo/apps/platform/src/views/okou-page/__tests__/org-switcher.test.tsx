@@ -212,6 +212,63 @@ describe("zero org switcher", () => {
     });
   });
 
+  it("preserves workspace creation while the count endpoint rolls out", async () => {
+    context.mocks.api(orgContract.createdCount, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    });
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Solo",
+      role: "admin",
+      createdBy: "other-user-456",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        createOrganizationEnabled: true,
+        createOrganizationsLimit: 1,
+      },
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Solo",
+          slug: "solo",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Solo",
+            },
+          },
+        ],
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const label = screen.getByText("Solo");
+      const trigger = label.closest("button");
+      if (!trigger) {
+        throw new Error("Org switcher trigger not found");
+      }
+      return trigger;
+    });
+
+    click(orgSwitcher);
+
+    await waitFor(() => {
+      expect(screen.getByText("Create workspace")).toBeInTheDocument();
+    });
+  });
+
   it("hides workspace creation after reaching the limit while another workspace is active", async () => {
     context.mocks.api(orgContract.createdCount, ({ respond }) => {
       return respond(200, { createdOrganizationsCount: 1 });
