@@ -74,8 +74,8 @@ That build creates `Okou.app` with bundle ID and callback scheme
 `ai.okou.desktop`. Development Okou builds use
 `ai.okou.desktop.dev`.
 Local notarized builds use the `notarytool` Keychain profile
-`vm0-desktop-notary` by default. Set `VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE` to
-override the profile and `VM0_DESKTOP_NOTARIZE_KEYCHAIN` to override the
+`vm0-desktop-notary` by default. Set `OKOU_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE` to
+override the profile and `OKOU_DESKTOP_NOTARIZE_KEYCHAIN` to override the
 Keychain path, or set `OKOU_DESKTOP_NOTARIZE_API_KEY_PATH`,
 `OKOU_DESKTOP_NOTARIZE_API_KEY_ID`, and `OKOU_DESKTOP_NOTARIZE_API_ISSUER` to use
 an API key file directly.
