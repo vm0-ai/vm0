@@ -2969,7 +2969,7 @@ describe("connectors page", () => {
       const access = within(card).getByLabelText("Manage GitHub access");
       expect(access.textContent).toContain("Used by\u00a04 agents");
       expect(access).not.toHaveTextContent("Growth");
-      expect(access).toHaveAttribute("title", "Research, Support, Growth, Ops");
+      expect(access).not.toHaveAttribute("title");
     });
 
     click(
@@ -7190,7 +7190,7 @@ describe("connectors page", () => {
       within(connectorCardByLabel("Acme API")).getByTestId(
         "connector-card-agent-access",
       ),
-    ).toHaveAttribute("title", "Zero, Research, Support");
+    ).not.toHaveAttribute("title");
     expect(
       within(connectorCardByLabel("Acme API")).getByText(
         "https://api.acme.test/v1/",

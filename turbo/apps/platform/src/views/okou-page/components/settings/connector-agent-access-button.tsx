@@ -55,7 +55,7 @@ export function ConnectorAgentAccessButton({
         { connector: connectorLabel },
       )}
       data-testid="connector-card-agent-access"
-      title={agentNames.length > 0 ? agentNames.join(", ") : undefined}
+      title={agents.length === 1 ? agentNames[0] : undefined}
       disabled={status !== "ready"}
       onClick={onClick}
     >
