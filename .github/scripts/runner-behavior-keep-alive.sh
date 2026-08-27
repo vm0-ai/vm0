@@ -32,7 +32,7 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --profile vm0/default \
   --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
   --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-  --name ${SVC} \
+  --hostname ${HOST} \
   --group ${GROUP} \
   --runner-dirname ${SVC} \
   --max-concurrent 2 \

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.80](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.79...nbd-cow-v0.4.80) (2026-08-27)
+
+
+### Bug Fixes
+
+* **rust:** fail closed on nbd owner lookup errors ([#29897](https://github.com/vm0-ai/vm0/issues/29897)) ([96f4511](https://github.com/vm0-ai/vm0/commit/96f451182cd012db06b0c615ee13fd2de0657a33))
+
 ## [0.4.79](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.78...nbd-cow-v0.4.79) (2026-08-27)
 
 
