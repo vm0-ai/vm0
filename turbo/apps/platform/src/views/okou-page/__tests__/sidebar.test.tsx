@@ -3221,6 +3221,40 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the new-chat rail responsive across consecutive clicks", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(
+      within(screen.getByTestId("chat-list-column")).getByText(
+        "Existing conversation",
+      ),
+    ).toBeInTheDocument();
+    const newChatLink = within(rail).getByLabelText("New chat");
+    click(newChatLink);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    });
+    click(
+      within(screen.getByTestId("labeled-nav-rail")).getByLabelText("New chat"),
+    );
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+  });
+
   it("hides only the three-column chat list and keeps search available", async () => {
     prepareDefaultAgent();
 

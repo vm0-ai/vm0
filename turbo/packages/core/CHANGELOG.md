@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.599.0](https://github.com/vm0-ai/vm0/compare/core-v8.598.2...core-v8.599.0) (2026-08-27)
+
+
+### Features
+
+* report generation template usage to axiom ([#29823](https://github.com/vm0-ai/vm0/issues/29823)) ([fd6e791](https://github.com/vm0-ai/vm0/commit/fd6e791529b7b2ef0d99d8d3f46aaa6b552704d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.3
+
 ## [8.598.2](https://github.com/vm0-ai/vm0/compare/core-v8.598.1...core-v8.598.2) (2026-08-27)
 
 

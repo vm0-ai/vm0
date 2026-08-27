@@ -1,5 +1,6 @@
 use tracing::warn;
 
+use crate::cmd::service::RunnerServiceUnit;
 use crate::error::RunnerResult;
 use crate::paths::HomePaths;
 
@@ -8,13 +9,10 @@ use super::lock_file::{ExistingLockProbe, probe_existing_lock, remove_unused_loc
 use super::report::GcReport;
 use super::versions::parse_semver;
 
-fn version_from_service_lock_name(name: &str) -> Option<&str> {
-    const PREFIX: &str = "service-vm0-runner-";
-    const SUFFIX: &str = ".lock";
-
-    let version = name.strip_prefix(PREFIX)?.strip_suffix(SUFFIX)?;
-    parse_semver(version)?;
-    Some(version)
+fn version_service_unit_from_lock_file_name(name: &str) -> Option<RunnerServiceUnit> {
+    let unit = RunnerServiceUnit::from_lock_file_name(name)?;
+    parse_semver(unit.suffix())?;
+    Some(unit)
 }
 
 async fn version_has_gc_enumerable_dir(home: &HomePaths, version: &str) -> Result<bool, String> {
@@ -56,9 +54,10 @@ pub(super) async fn gc_orphaned_version_service_locks(
     {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
-        let Some(version) = version_from_service_lock_name(name) else {
+        let Some(unit) = version_service_unit_from_lock_file_name(name) else {
             continue;
         };
+        let version = unit.suffix();
 
         match version_has_gc_enumerable_dir(home, version).await {
             Ok(true) => continue,
@@ -107,14 +106,7 @@ mod tests {
 
     fn test_version_service_lock(home: &HomePaths, version: &str) -> PathBuf {
         let unit = service::RunnerServiceUnit::from_suffix(version).unwrap();
-        home.service_lock(unit.unit_name())
-    }
-
-    fn test_version_service_unit_name(version: &str) -> String {
-        service::RunnerServiceUnit::from_suffix(version)
-            .unwrap()
-            .unit_name()
-            .to_string()
+        unit.lock_path(home)
     }
 
     fn create_test_version_service_lock(home: &HomePaths, version: &str) -> PathBuf {
@@ -123,15 +115,20 @@ mod tests {
         path
     }
     #[test]
-    fn version_from_service_lock_name_parses_only_semver_runner_service_locks() {
+    fn version_service_unit_from_lock_file_name_parses_only_semver_runner_locks() {
+        let unit = service::RunnerServiceUnit::from_suffix("v1.0.0").unwrap();
         assert_eq!(
-            version_from_service_lock_name("service-vm0-runner-v1.0.0.lock"),
-            Some("v1.0.0")
+            version_service_unit_from_lock_file_name(unit.lock_file_name()),
+            Some(unit)
         );
-        assert!(version_from_service_lock_name("service-vm0-runner-staging.lock").is_none());
-        assert!(version_from_service_lock_name("service-vm0-runner-v1.0.lock").is_none());
-        assert!(version_from_service_lock_name("workspace-image-cache-v1.0.0.lock").is_none());
-        assert!(version_from_service_lock_name("service-vm0-runner-v1.0.0").is_none());
+        assert!(
+            version_service_unit_from_lock_file_name("service-vm0-runner-staging.lock").is_none()
+        );
+        assert!(version_service_unit_from_lock_file_name("service-vm0-runner-v1.0.lock").is_none());
+        assert!(
+            version_service_unit_from_lock_file_name("workspace-image-cache-v1.0.0.lock").is_none()
+        );
+        assert!(version_service_unit_from_lock_file_name("service-vm0-runner-v1.0.0").is_none());
     }
 
     #[tokio::test]
@@ -267,8 +264,8 @@ mod tests {
     async fn gc_orphaned_version_service_locks_keeps_non_semver_service_lock() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
-        let unit = test_version_service_unit_name("staging");
-        let service_lock = home.service_lock(&unit);
+        let unit = service::RunnerServiceUnit::from_suffix("staging").unwrap();
+        let service_lock = unit.lock_path(&home);
         drop(lock::open_lock_file(&service_lock).unwrap());
 
         let removed = gc_orphaned_version_service_locks(&home, false)

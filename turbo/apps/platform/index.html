@@ -242,6 +242,10 @@
                 "Spinning up the team...",
               ],
             },
+            preloadRecovery: {
+              message:
+                "This tab could not load part of the app. Refresh now? Choose Cancel to keep this tab open so you can save or copy any unsent work before refreshing manually.",
+            },
             metadata: {
               description:
                 "{{assistantName}} is your AI coworker from {{brandName}}. Text {{assistantName}} or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
@@ -293,6 +297,10 @@
                 "Connexion des idées...",
                 "Mise en place de l’équipe...",
               ],
+            },
+            preloadRecovery: {
+              message:
+                "Cet onglet n’a pas pu charger une partie de l’application. Actualiser maintenant ? Choisissez Annuler pour garder cet onglet ouvert afin d’enregistrer ou de copier tout travail non envoyé avant d’actualiser manuellement.",
             },
             metadata: {
               description:
@@ -347,6 +355,10 @@
                 "Reunindo a equipe...",
               ],
             },
+            preloadRecovery: {
+              message:
+                "Esta guia não conseguiu carregar parte do aplicativo. Atualizar agora? Selecione Cancelar para manter esta guia aberta e salvar ou copiar qualquer trabalho não enviado antes de atualizar manualmente.",
+            },
             metadata: {
               description:
                 "{{assistantName}} é seu colega de IA da {{brandName}}. Envie uma mensagem para o {{assistantName}} ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
@@ -398,6 +410,10 @@
                 "点と点をつないでいます...",
                 "チームを立ち上げています...",
               ],
+            },
+            preloadRecovery: {
+              message:
+                "このタブではアプリの一部を読み込めませんでした。今すぐ再読み込みしますか？未送信の内容を保存またはコピーしてから手動で再読み込みする場合は、［キャンセル］を選んでこのタブを開いたままにしてください。",
             },
             metadata: {
               description:
@@ -451,6 +467,10 @@
                 "팀을 구성하는 중...",
               ],
             },
+            preloadRecovery: {
+              message:
+                "이 탭에서 앱의 일부를 불러오지 못했습니다. 지금 새로고침할까요? 보내지 않은 작업을 저장하거나 복사한 후 직접 새로고침하려면 취소를 선택하여 이 탭을 열어 두세요.",
+            },
             metadata: {
               description:
                 "{{assistantName}}는 {{brandName}}의 AI 팀원입니다. {{assistantName}}에 텍스트를 보내거나 웹에서 채팅하세요 — 리서치, 이메일, 문서, Slack, GitHub, Notion 및 100개 이상의 도구를 지원합니다.",
@@ -502,6 +522,10 @@
                 "Sedang menghubungkan titik-titik...",
                 "Sedang menyiapkan tim...",
               ],
+            },
+            preloadRecovery: {
+              message:
+                "Tab ini tidak dapat memuat sebagian aplikasi. Muat ulang sekarang? Pilih Batal agar tab ini tetap terbuka sehingga Anda dapat menyimpan atau menyalin pekerjaan yang belum dikirim sebelum memuat ulang secara manual.",
             },
             metadata: {
               description:
@@ -556,6 +580,10 @@
                 "Das Team wird zusammengestellt...",
               ],
             },
+            preloadRecovery: {
+              message:
+                "Dieser Tab konnte einen Teil der App nicht laden. Jetzt neu laden? Wählen Sie Abbrechen, um diesen Tab geöffnet zu lassen, damit Sie nicht gesendete Arbeit speichern oder kopieren können, bevor Sie manuell neu laden.",
+            },
             metadata: {
               description:
                 "{{assistantName}} ist Ihr KI-Kollege von {{brandName}}. Schreiben Sie {{assistantName}} oder chatten Sie im Web — für Recherche, E-Mails, Dokumente, Slack, GitHub, Notion und über 100 weitere Tools.",
@@ -607,6 +635,10 @@
                 "Conectando los puntos...",
                 "Reuniendo al equipo...",
               ],
+            },
+            preloadRecovery: {
+              message:
+                "Esta pestaña no pudo cargar parte de la aplicación. ¿Actualizar ahora? Elige Cancelar para mantener esta pestaña abierta y guardar o copiar cualquier trabajo sin enviar antes de actualizar manualmente.",
             },
             metadata: {
               description:
@@ -660,6 +692,10 @@
                 "Radunando il team...",
               ],
             },
+            preloadRecovery: {
+              message:
+                "Questa scheda non è riuscita a caricare una parte dell’app. Ricaricare ora? Scegli Annulla per mantenere aperta la scheda e salvare o copiare il lavoro non inviato prima di ricaricare manualmente.",
+            },
             metadata: {
               description:
                 "{{assistantName}} è il tuo collega AI di {{brandName}}. Scrivi a {{assistantName}} o chatta sul web — ricerca, email, documenti, Slack, GitHub, Notion e oltre 100 strumenti.",
@@ -711,6 +747,10 @@
                 "कड़ियाँ जोड़ रहे हैं...",
                 "टीम को तैयार कर रहे हैं...",
               ],
+            },
+            preloadRecovery: {
+              message:
+                "यह टैब ऐप का एक हिस्सा लोड नहीं कर सका। अभी रीफ़्रेश करें? इस टैब को खुला रखने के लिए रद्द करें चुनें, ताकि मैन्युअल रूप से रीफ़्रेश करने से पहले आप भेजा न गया काम सहेज या कॉपी कर सकें।",
             },
             metadata: {
               description:
@@ -1051,6 +1091,26 @@
               : "light";
         document.documentElement.dataset.theme = t;
         if (t === "dark") document.documentElement.classList.add("dark");
+      })();
+    </script>
+    <script>
+      (function () {
+        var prompted = false;
+        window.addEventListener("vite:preloadError", function (event) {
+          // Vite rethrows preload failures unless this cancelable event is
+          // prevented. Keep preventing repeats, but prompt once per document.
+          // Old web/app clients can remain open for about two days while a
+          // later promotion removes their content-hashed assets. Remove after
+          // #29859 provides durable retention and that client window closes.
+          event.preventDefault();
+          if (prompted) return;
+          prompted = true;
+
+          var reload = window.confirm(
+            window.__vm0PreBundleCopy.preloadRecovery.message,
+          );
+          if (reload) window.location.reload();
+        });
       })();
     </script>
     <script type="module">
