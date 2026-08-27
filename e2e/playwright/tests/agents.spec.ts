@@ -248,7 +248,7 @@ async function computedNavigationAppearance(page: Page) {
   const workspace = page.locator(".zero-workspace-bg");
   const primaryCopy = rail.getByText("New", { exact: true });
   const mutedCopy = rail.getByText("Connectors", { exact: true });
-  const hoverCopy = sidebar.getByText("Chats with Zero", { exact: true });
+  const hoverCopy = sidebar.getByText(/^Chats with .+$/u);
 
   await Promise.all([
     expect(rail).toBeVisible(),
