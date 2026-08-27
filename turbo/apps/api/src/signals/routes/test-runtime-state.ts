@@ -9,6 +9,12 @@ import {
   type TestRuntimeStateActionBody,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventSnapshotProjection,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
@@ -31,7 +37,17 @@ import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
-import { and, count, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  isNotNull,
+  lte,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -1834,10 +1850,10 @@ type ChatEventFixtureAction = Extract<
   {
     action:
       | "advance-chat-event-sequence-as-previous-api"
-      | "delete-chat-event-snapshot-head"
       | "read-chat-event-rows-as-previous-api"
       | "read-chat-event-snapshot-head"
-      | "set-chat-event-snapshot-head-version";
+      | "set-chat-event-snapshot-head-version"
+      | "simulate-chat-event-snapshot-rolling-deploy";
   }
 >;
 
@@ -1846,35 +1862,129 @@ function isChatEventFixtureAction(
 ): body is ChatEventFixtureAction {
   return (
     body.action === "advance-chat-event-sequence-as-previous-api" ||
-    body.action === "delete-chat-event-snapshot-head" ||
     body.action === "read-chat-event-rows-as-previous-api" ||
     body.action === "read-chat-event-snapshot-head" ||
-    body.action === "set-chat-event-snapshot-head-version"
+    body.action === "set-chat-event-snapshot-head-version" ||
+    body.action === "simulate-chat-event-snapshot-rolling-deploy"
   );
 }
 
-async function deleteChatEventSnapshotHeadFixture(
+async function setChatEventSnapshotHeadVersionFixture(
   db: Db,
   body: Extract<
     TestRuntimeStateActionBody,
-    { action: "delete-chat-event-snapshot-head" }
+    { action: "set-chat-event-snapshot-head-version" }
   >,
+  projection: ChatEventSnapshotProjection,
   signal: AbortSignal,
 ) {
-  const deleted = await db
-    .delete(chatEventSnapshots)
+  const [pointer] = await db
+    .select({ id: chatEventSnapshots.id })
+    .from(chatEventSnapshots)
     .where(
       and(
         eq(chatEventSnapshots.chatThreadId, body.thread_id),
-        eq(chatEventSnapshots.projection, body.projection),
+        eq(chatEventSnapshots.projection, projection),
       ),
     )
+    .orderBy(
+      desc(chatEventSnapshots.archiveSchemaVersion),
+      desc(chatEventSnapshots.lastSeqId),
+      desc(chatEventSnapshots.createdAt),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!pointer) {
+    throw new Error("set-chat-event-snapshot-head-version missing pointer");
+  }
+  const updated = await db
+    .update(chatEventSnapshots)
+    .set({
+      archiveSchemaVersion: body.archive_schema_version,
+      ...(body.archive_schema_version < CURRENT_CHAT_EVENT_SCHEMA_VERSION
+        ? { terminalEventId: null, terminalSeqId: null }
+        : body.last_seq_id === 0
+          ? { terminalEventId: null, terminalSeqId: 0 }
+          : {}),
+      ...(body.object_key === undefined ? {} : { objectKey: body.object_key }),
+      ...(body.last_seq_id === undefined
+        ? {}
+        : { lastSeqId: body.last_seq_id }),
+      ...(body.last_event_id === undefined
+        ? {}
+        : { lastEventId: body.last_event_id }),
+    })
+    .where(eq(chatEventSnapshots.id, pointer.id))
     .returning({ id: chatEventSnapshots.id });
   signal.throwIfAborted();
-  if (deleted.length === 0) {
-    throw new Error("delete-chat-event-snapshot-head missing pointer");
+  if (updated.length === 0) {
+    throw new Error("set-chat-event-snapshot-head-version missing pointer");
   }
   return { status: 200 as const, body: { ok: true as const } };
+}
+
+async function simulateChatEventSnapshotRollingDeployFixture(
+  db: Db,
+  body: Extract<
+    TestRuntimeStateActionBody,
+    { action: "simulate-chat-event-snapshot-rolling-deploy" }
+  >,
+  signal: AbortSignal,
+) {
+  const result = await db.transaction(async (tx) => {
+    await tx.insert(chatEventSnapshots).values({
+      chatThreadId: body.thread_id,
+      lastSeqId: body.v6_pointer.last_seq_id,
+      lastEventId: body.v6_pointer.last_event_id,
+      archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
+      objectKey: body.v6_pointer.object_key,
+    });
+    const updated = await tx
+      .update(chatEventSnapshots)
+      .set({
+        lastSeqId: body.v7_pointer.last_seq_id,
+        lastEventId: body.v7_pointer.last_event_id,
+        terminalSeqId: body.v7_pointer.terminal_seq_id,
+        terminalEventId: body.v7_pointer.terminal_event_id,
+        objectKey: body.v7_pointer.object_key,
+      })
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+          eq(
+            chatEventSnapshots.projection,
+            CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
+          ),
+        ),
+      )
+      .returning({ id: chatEventSnapshots.id });
+    if (updated.length !== 1) {
+      throw new Error("Expected exactly one canonical V7 snapshot head");
+    }
+    return await tx
+      .delete(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.chatThreadId, body.thread_id),
+          gt(chatEvents.seqId, body.v7_pointer.last_seq_id),
+          lte(chatEvents.seqId, body.v6_pointer.last_seq_id),
+        ),
+      )
+      .returning({ id: chatEvents.id });
+  });
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      deleted_chat_event_rows: result.length,
+    },
+  };
 }
 
 async function readChatEventRowsAsPreviousApiFixture(
@@ -1937,7 +2047,7 @@ async function chatEventFixtureActionResponse(
   const projection =
     "projection" in body && body.projection !== undefined
       ? body.projection
-      : "full";
+      : CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION;
   if (body.action === "advance-chat-event-sequence-as-previous-api") {
     const [updated] = await db
       .update(chatThreads)
@@ -1957,47 +2067,20 @@ async function chatEventFixtureActionResponse(
   if (body.action === "read-chat-event-rows-as-previous-api") {
     return await readChatEventRowsAsPreviousApiFixture(db, body, signal);
   }
-  if (body.action === "delete-chat-event-snapshot-head") {
-    return await deleteChatEventSnapshotHeadFixture(db, body, signal);
-  }
   if (body.action === "set-chat-event-snapshot-head-version") {
-    const [pointer] = await db
-      .select({ id: chatEventSnapshots.id })
-      .from(chatEventSnapshots)
-      .where(
-        and(
-          eq(chatEventSnapshots.chatThreadId, body.thread_id),
-          eq(chatEventSnapshots.projection, projection),
-        ),
-      )
-      .orderBy(
-        desc(chatEventSnapshots.archiveSchemaVersion),
-        desc(chatEventSnapshots.lastSeqId),
-        desc(chatEventSnapshots.createdAt),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-    if (!pointer) {
-      throw new Error("set-chat-event-snapshot-head-version missing pointer");
-    }
-    const updated = await db
-      .update(chatEventSnapshots)
-      .set({
-        archiveSchemaVersion: body.archive_schema_version,
-        ...(body.object_key === undefined
-          ? {}
-          : { objectKey: body.object_key }),
-        ...(body.last_seq_id === undefined
-          ? {}
-          : { lastSeqId: body.last_seq_id }),
-      })
-      .where(eq(chatEventSnapshots.id, pointer.id))
-      .returning({ id: chatEventSnapshots.id });
-    signal.throwIfAborted();
-    if (updated.length === 0) {
-      throw new Error("set-chat-event-snapshot-head-version missing pointer");
-    }
-    return { status: 200 as const, body: { ok: true as const } };
+    return await setChatEventSnapshotHeadVersionFixture(
+      db,
+      body,
+      projection,
+      signal,
+    );
+  }
+  if (body.action === "simulate-chat-event-snapshot-rolling-deploy") {
+    return await simulateChatEventSnapshotRollingDeployFixture(
+      db,
+      body,
+      signal,
+    );
   }
   const [[head], [snapshotCount]] = await Promise.all([
     db
@@ -2005,6 +2088,8 @@ async function chatEventFixtureActionResponse(
         archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
         lastEventId: chatEventSnapshots.lastEventId,
         lastSeqId: chatEventSnapshots.lastSeqId,
+        terminalEventId: chatEventSnapshots.terminalEventId,
+        terminalSeqId: chatEventSnapshots.terminalSeqId,
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
@@ -2043,6 +2128,8 @@ async function chatEventFixtureActionResponse(
             archive_schema_version: head.archiveSchemaVersion,
             last_event_id: head.lastEventId,
             last_seq_id: head.lastSeqId,
+            terminal_event_id: head.terminalEventId,
+            terminal_seq_id: head.terminalSeqId,
             object_key: head.objectKey,
             snapshot_count: snapshotCount.value,
           }

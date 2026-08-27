@@ -71,10 +71,12 @@ export const writeIndexedDbChatEventRows$ = command(
       threadId,
       rows,
       cursor,
+      schemaVersion,
     }: {
       readonly threadId: string;
       readonly rows: readonly ChatEventRow[];
       readonly cursor: ChatEventCursor;
+      readonly schemaVersion: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -87,6 +89,41 @@ export const writeIndexedDbChatEventRows$ = command(
           threadId,
           rows,
           cursor,
+          schemaVersion,
+          signal,
+        );
+      },
+      signal,
+    );
+  },
+);
+
+export const replaceIndexedDbChatEventRows$ = command(
+  async (
+    { get },
+    {
+      threadId,
+      rows,
+      cursor,
+      schemaVersion,
+    }: {
+      readonly threadId: string;
+      readonly rows: readonly ChatEventRow[];
+      readonly cursor: ChatEventCursor;
+      readonly schemaVersion: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const stores = await get(chatEventRowStores$);
+    signal.throwIfAborted();
+    await chatIdbWriteBestEffort(
+      "indexedDbEventRows:replace",
+      () => {
+        return stores.writeStore.replaceRowsAndCursor(
+          threadId,
+          rows,
+          cursor,
+          schemaVersion,
           signal,
         );
       },

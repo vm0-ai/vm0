@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { testChatEventRetentionContract } from "@okouai/api-contracts/contracts/test-chat-event-retention";
 import { cronRetainChatEventsContract } from "@okouai/api-contracts/contracts/cron";
+import { PREVIOUS_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -219,7 +220,7 @@ describe("chat event retention cron", () => {
       skippedActiveInput: 0,
       skippedBatchLimit: 1,
       toolCleanupRowsDeleted: 0,
-      toolCleanupFullPointersRetired: 1,
+      toolCleanupFullPointersRetired: 0,
       toolCleanupRemainingRows: 0,
       toolCleanupRemainingFullPointers: 0,
       toolCleanupHasMore: false,
@@ -286,6 +287,7 @@ describe("chat event retention cron", () => {
       coverRetentionThread$,
       {
         chatThreadId: projectionThreadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
         snapshotProjections: ["full"],
       },
       context.signal,
@@ -359,7 +361,10 @@ describe("chat event retention cron", () => {
     );
     const coveredSeqId = await store.set(
       coverRetentionThread$,
-      { chatThreadId: coveredThreadId },
+      {
+        chatThreadId: coveredThreadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      },
       context.signal,
     );
     const safeTailId = await store.set(
@@ -375,7 +380,10 @@ describe("chat event retention cron", () => {
     );
     await store.set(
       coverRetentionThread$,
-      { chatThreadId: blockedThreadId },
+      {
+        chatThreadId: blockedThreadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      },
       context.signal,
     );
     const blockedTailToolId = await store.set(
@@ -393,6 +401,7 @@ describe("chat event retention cron", () => {
       coverRetentionThread$,
       {
         chatThreadId: missingHeadThreadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
         snapshotProjections: ["full"],
       },
       context.signal,
@@ -435,6 +444,7 @@ describe("chat event retention cron", () => {
       coverRetentionThread$,
       {
         chatThreadId: blockedThreadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
         snapshotProjections: ["tool-redacted"],
       },
       context.signal,
@@ -443,6 +453,7 @@ describe("chat event retention cron", () => {
       coverRetentionThread$,
       {
         chatThreadId: missingHeadThreadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
         snapshotProjections: ["tool-redacted"],
       },
       context.signal,
@@ -500,12 +511,18 @@ describe("chat event retention cron", () => {
     );
     await store.set(
       coverRetentionThread$,
-      { chatThreadId: firstThreadId },
+      {
+        chatThreadId: firstThreadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      },
       context.signal,
     );
     await store.set(
       coverRetentionThread$,
-      { chatThreadId: secondThreadId },
+      {
+        chatThreadId: secondThreadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      },
       context.signal,
     );
 
@@ -563,7 +580,10 @@ describe("chat event retention cron", () => {
     );
     await store.set(
       coverRetentionThread$,
-      { chatThreadId: threadId },
+      {
+        chatThreadId: threadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      },
       context.signal,
     );
 
@@ -600,7 +620,10 @@ describe("chat event retention cron", () => {
     );
     await store.set(
       coverRetentionThread$,
-      { chatThreadId: threadId },
+      {
+        chatThreadId: threadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      },
       context.signal,
     );
     const writer = await holdRetentionToolWriterFixture(
@@ -644,6 +667,7 @@ describe("chat event retention cron", () => {
       coverRetentionThread$,
       {
         chatThreadId: threadId,
+        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
         snapshotProjections: ["tool-redacted"],
       },
       context.signal,

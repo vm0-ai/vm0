@@ -3,6 +3,7 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
@@ -13,7 +14,10 @@ import {
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
+import {
+  CHAT_EVENT_CURSOR_STORE,
+  CHAT_EVENT_ROWS_STORE,
+} from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
@@ -142,6 +146,7 @@ async function writeCachedRows(rows: readonly ChatEventRow[]): Promise<void> {
       threadId: lastRow.chatThreadId,
       rows,
       cursor: { lastEventId: lastRow.id, lastSeqId: lastRow.seqId },
+      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     },
     context.signal,
   );
@@ -182,7 +187,7 @@ describe("chat event snapshot read", () => {
           url: SNAPSHOT_URL,
           expiresInSeconds: 900,
           lastEventId: assistantEventRow.id,
-          lastSeqId: 10,
+          lastSeqId: assistantEventRow.seqId,
         });
       },
     );
@@ -199,7 +204,7 @@ describe("chat event snapshot read", () => {
         );
         rowRequests.push(query.sinceSeqId);
         rowEventIds.push(query.sinceEventId);
-        if (query.sinceSeqId === 10) {
+        if (query.sinceSeqId === assistantEventRow.seqId) {
           return respond(200, { rows: [tailEventRow] });
         }
         return respond(200, { rows: [] });
@@ -235,12 +240,97 @@ describe("chat event snapshot read", () => {
       parts: [{ type: "text", text: "snapshot prompt" }],
     });
     expect(prompt).not.toHaveProperty("contextType");
-    expect(rowRequests).toStrictEqual([10, 12]);
+    expect(rowRequests).toStrictEqual([assistantEventRow.seqId, 12]);
     expect(rowEventIds).toStrictEqual([assistantEventRow.id, tailEventRow.id]);
 
     await expect(
       appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
     ).resolves.toStrictEqual(tailEventRow);
+  });
+
+  it("retries V6 once when an old API rejects V7 as ahead", async () => {
+    mockSignedInUser();
+    const { threadId, promptEventRow, assistantEventRow } = threadFixture();
+    const appDb = await openTestChatDb();
+    const snapshotVersions: string[] = [];
+    const rowVersions: string[] = [];
+
+    context.mocks.api(
+      chatThreadEventsContract.snapshot,
+      ({ request, respond }) => {
+        const version = request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
+        snapshotVersions.push(version ?? "missing");
+        if (version === CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
+          return respond(409, {
+            error: {
+              code: "CHAT_EVENT_SCHEMA_VERSION_AHEAD",
+              message:
+                "The requested Chat Event schema version is newer than this API",
+            },
+          });
+        }
+        expect(version).toBe(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString());
+        return respond(200, {
+          url: SNAPSHOT_URL,
+          expiresInSeconds: 900,
+          lastEventId: assistantEventRow.id,
+          lastSeqId: assistantEventRow.seqId,
+          projection: "tool-redacted",
+        });
+      },
+    );
+    context.mocks.http.get(SNAPSHOT_URL, () => {
+      return new Response(snapshotNdjson([promptEventRow, assistantEventRow]));
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ request, respond }) => {
+      const version = request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
+      rowVersions.push(version ?? "missing");
+      if (version === CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
+        return respond(409, {
+          error: {
+            code: "CHAT_EVENT_SCHEMA_VERSION_AHEAD",
+            message:
+              "The requested Chat Event schema version is newer than this API",
+          },
+        });
+      }
+      expect(version).toBe(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString());
+      return respond(200, {
+        rows: [],
+        cursor: {
+          lastEventId: assistantEventRow.id,
+          lastSeqId: assistantEventRow.seqId,
+          projection: "tool-redacted",
+        },
+        hasMore: false,
+        projection: "tool-redacted",
+      });
+    });
+
+    const signals = createSignals(threadId);
+    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
+    await context.store.set(signals.syncRemoteEvents$, context.signal);
+
+    expect(snapshotVersions).toStrictEqual([
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    ]);
+    expect(rowVersions).toStrictEqual([
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    ]);
+    expect(
+      context.store.get(signals.chatEvents$).map((event) => {
+        return event.id;
+      }),
+    ).toStrictEqual([promptEventRow.id, assistantEventRow.id]);
+    await expect(
+      appDb.get(CHAT_EVENT_CURSOR_STORE, threadId),
+    ).resolves.toMatchObject({
+      schemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+    });
   });
 
   it("cold-starts from the rows endpoint when the thread has no snapshot yet", async () => {

@@ -173,12 +173,24 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     archive_schema_version: z.int().positive(),
     object_key: z.string().optional(),
     last_seq_id: z.int().nonnegative().optional(),
+    last_event_id: z.uuid().optional(),
     projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS).optional(),
   }),
   z.object({
-    action: z.literal("delete-chat-event-snapshot-head"),
+    action: z.literal("simulate-chat-event-snapshot-rolling-deploy"),
     thread_id: z.uuid(),
-    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS),
+    v7_pointer: z.object({
+      object_key: z.string(),
+      last_event_id: z.uuid(),
+      last_seq_id: z.int().positive(),
+      terminal_event_id: z.uuid().nullable(),
+      terminal_seq_id: z.int().nonnegative().nullable(),
+    }),
+    v6_pointer: z.object({
+      object_key: z.string(),
+      last_event_id: z.uuid(),
+      last_seq_id: z.int().positive(),
+    }),
   }),
   z.object({
     action: z.literal("clear-run-api-start"),
@@ -338,6 +350,8 @@ export const testRuntimeStateActionResponseSchema = z.object({
       archive_schema_version: z.int().positive(),
       last_event_id: z.uuid(),
       last_seq_id: z.int().nonnegative(),
+      terminal_event_id: z.uuid().nullable(),
+      terminal_seq_id: z.int().nonnegative().nullable(),
       object_key: z.string(),
       snapshot_count: z.int().positive(),
     })
@@ -353,6 +367,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
       }),
     )
     .optional(),
+  deleted_chat_event_rows: z.int().nonnegative().optional(),
   api_started_at: z.string().nullable().optional(),
   run_time_budget: z
     .object({

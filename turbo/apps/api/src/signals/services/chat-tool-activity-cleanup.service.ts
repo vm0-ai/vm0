@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { PREVIOUS_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
@@ -10,6 +10,12 @@ import type { Db } from "../external/db";
 
 const CHAT_TOOL_ACTIVITY_CLEANUP_THREAD_SCAN_LIMIT = 1000;
 const CHAT_TOOL_ACTIVITY_CLEANUP_DELETE_LIMIT = 2500;
+// Stage 3 cleanup API/cron -> retained V6 DB/R2 state: keep the residual Stage
+// 2 cleanup pinned to its physical source format. Remove with #29362 after V7
+// heads converge, tool/full blockers remain zero, rollback closes, and Stage 4
+// retires this cleanup path.
+const CHAT_TOOL_ACTIVITY_CLEANUP_SCHEMA_VERSION =
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION;
 
 export type ChatToolActivityCleanupScope =
   | { readonly kind: "global" }
@@ -126,7 +132,7 @@ function lockCleanupThreadsSql(
       SELECT snapshot.chat_thread_id
       FROM ${chatEventSnapshots} snapshot
       WHERE snapshot.archive_schema_version
-          = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
+          = ${CHAT_TOOL_ACTIVITY_CLEANUP_SCHEMA_VERSION}
         AND snapshot.projection = 'full'
         AND ${cleanupScopePredicate(scope, sql`snapshot.chat_thread_id`)}
       ORDER BY snapshot.chat_thread_id ASC
@@ -164,7 +170,7 @@ function lockCleanupSnapshotHeadsSql(chatThreadIds: readonly string[]): SQL {
       snapshot.projection
     FROM ${chatEventSnapshots} snapshot
     WHERE snapshot.archive_schema_version
-        = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
+        = ${CHAT_TOOL_ACTIVITY_CLEANUP_SCHEMA_VERSION}
       AND snapshot.projection IN ('full', 'tool-redacted')
       AND ${uuidListPredicate(sql`snapshot.chat_thread_id`, chatThreadIds)}
     ORDER BY snapshot.chat_thread_id ASC, snapshot.projection ASC
@@ -197,7 +203,7 @@ function cleanupCoverageCtes(
         ON locked.chat_thread_id = snapshot.chat_thread_id
       WHERE ${uuidListPredicate(sql`snapshot.id`, fullHeadIds)}
         AND snapshot.archive_schema_version
-          = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
+          = ${CHAT_TOOL_ACTIVITY_CLEANUP_SCHEMA_VERSION}
         AND snapshot.projection = 'full'
     ),
     redacted_heads AS MATERIALIZED (
@@ -211,7 +217,7 @@ function cleanupCoverageCtes(
         ON locked.chat_thread_id = snapshot.chat_thread_id
       WHERE ${uuidListPredicate(sql`snapshot.id`, redactedHeadIds)}
         AND snapshot.archive_schema_version
-          = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
+          = ${CHAT_TOOL_ACTIVITY_CLEANUP_SCHEMA_VERSION}
         AND snapshot.projection = 'tool-redacted'
     ),
     thread_state AS MATERIALIZED (
@@ -297,7 +303,7 @@ function cleanupMutationCtes(deleteLimit: number): SQL {
       WHERE thread_state.full_pointer_covered
         AND snapshot.id = thread_state.full_head_id
         AND snapshot.archive_schema_version
-          = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
+          = ${CHAT_TOOL_ACTIVITY_CLEANUP_SCHEMA_VERSION}
         AND snapshot.projection = 'full'
       RETURNING snapshot.id
     )
@@ -356,7 +362,7 @@ function cleanupConvergenceSql(scope: ChatToolActivityCleanupScope): SQL {
         SELECT count(*)::int
         FROM ${chatEventSnapshots} snapshot
         WHERE snapshot.archive_schema_version
-            = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
+            = ${CHAT_TOOL_ACTIVITY_CLEANUP_SCHEMA_VERSION}
           AND snapshot.projection = 'full'
           AND ${cleanupScopePredicate(scope, sql`snapshot.chat_thread_id`)}
       ) AS "remainingFullPointers"

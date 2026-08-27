@@ -14,11 +14,22 @@ function adjacentSnapshotUpgrade(
 ): ((rows: readonly ChatEventRow[]) => readonly ChatEventRow[]) | undefined {
   switch (sourceVersion) {
     case 5: {
-      // Persisted V5 DB/R2 -> V6 API fallback: V6 only adds output.tool, so
-      // every V5 row remains valid. Remove with #29362 after both projection
-      // heads converge to V6 and reference-aware GC removes retired V5 state.
+      // Persisted V5 DB/R2 -> V7 API fallback through V6: V6 only added
+      // output.tool, so every V5 row remains valid. Remove with #29362 after
+      // V7 convergence and reference-aware GC remove retired V5/V6 state.
       return (rows) => {
         return rows;
+      };
+    }
+    case 6: {
+      // Persisted V6 DB/R2 -> V7 API/backfill bridge: V7 makes redacted logical
+      // history canonical, so a legacy full prefix loses tool rows. Remove with
+      // #29362 after V7 convergence, App/CLI drain, rollback closure, and
+      // reference-aware GC removes retired V6 state.
+      return (rows) => {
+        return rows.filter((row) => {
+          return row.eventType !== "output.tool";
+        });
       };
     }
     default: {

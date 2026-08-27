@@ -1471,6 +1471,13 @@
       "when": 1787858160467,
       "tag": "1017_vengeful_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 1018,
+      "version": "7",
+      "when": 1787870435556,
+      "tag": "1018_broad_maestro",
+      "breakpoints": true
     }
   ]
 }

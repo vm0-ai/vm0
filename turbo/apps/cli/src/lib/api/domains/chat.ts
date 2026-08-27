@@ -19,6 +19,7 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
   type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
@@ -37,12 +38,16 @@ interface ChatThreadUnread {
 
 export type ChatThreadEvent = ApiChatThreadEvent;
 
-interface ZeroChatEventSnapshotDownload {
-  readonly url: string;
-  readonly lastEventId: string;
-  readonly lastSeqId: number;
-  readonly projection: ChatEventSnapshotProjection;
-}
+type ZeroChatEventSnapshotResult =
+  | {
+      readonly kind: "snapshot";
+      readonly url: string;
+      readonly lastEventId: string | null;
+      readonly lastSeqId: number;
+      readonly projection: ChatEventSnapshotProjection;
+      readonly schemaVersion: number;
+    }
+  | { readonly kind: "missing"; readonly schemaVersion: number };
 
 type ZeroChatEventRowsPage =
   | {
@@ -50,17 +55,77 @@ type ZeroChatEventRowsPage =
       readonly rows: readonly ChatEventRow[];
       readonly cursor: ChatEventCursor;
       readonly hasMore: boolean;
+      readonly schemaVersion: number;
     }
-  | { readonly kind: "expired" };
+  | { readonly kind: "expired"; readonly schemaVersion: number };
 
-const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
-  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-    CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-});
+type ChatEventSchemaVersionHeaders = Readonly<{
+  [CHAT_EVENT_SCHEMA_VERSION_HEADER]: string;
+}>;
 
-function assertChatEventSchemaVersion(headers: Headers): void {
+function chatEventSchemaVersionHeaders(
+  version: number,
+): ChatEventSchemaVersionHeaders {
+  return Object.freeze({
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]: version.toString(),
+  });
+}
+
+const CHAT_EVENT_SCHEMA_VERSION_HEADERS = chatEventSchemaVersionHeaders(
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+);
+
+function isChatEventSchemaVersionAhead(response: {
+  readonly status: number;
+  readonly body: unknown;
+}): boolean {
+  if (
+    response.status !== 409 ||
+    typeof response.body !== "object" ||
+    response.body === null ||
+    !("error" in response.body)
+  ) {
+    return false;
+  }
+  const error = response.body.error;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "CHAT_EVENT_SCHEMA_VERSION_AHEAD"
+  );
+}
+
+/**
+ * V7 pinned CLI -> V6 API rollback bridge. Remove with #29362 after the V6
+ * API leaves serving/rollback and V7 CLI contexts have drained.
+ */
+async function requestWithChatEventSchemaVersionFallback<
+  T extends { readonly status: number; readonly body: unknown },
+>(
+  request: (headers: ChatEventSchemaVersionHeaders) => Promise<T>,
+): Promise<{ readonly response: T; readonly requestedVersion: number }> {
+  const response = await request(CHAT_EVENT_SCHEMA_VERSION_HEADERS);
+  if (!isChatEventSchemaVersionAhead(response)) {
+    return {
+      response,
+      requestedVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    };
+  }
+  return {
+    response: await request(
+      chatEventSchemaVersionHeaders(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION),
+    ),
+    requestedVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+  };
+}
+
+function assertChatEventSchemaVersion(
+  headers: Headers,
+  requestedVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+): void {
   const version = headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-  if (version !== CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
+  if (version !== requestedVersion.toString()) {
     throw new Error(`Unexpected Chat Event schema version ${version}`);
   }
 }
@@ -252,26 +317,36 @@ export async function sendChatEvent(
 
 export async function getChatEventSnapshot(options: {
   readonly threadId: string;
-}): Promise<ZeroChatEventSnapshotDownload | null> {
+}): Promise<ZeroChatEventSnapshotResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
-  const result = await client.snapshot({
-    headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-    params: { threadId: options.threadId },
-  });
-  assertChatEventSchemaVersion(result.headers);
+  const versioned = await requestWithChatEventSchemaVersionFallback(
+    async (headers) => {
+      return await client.snapshot({
+        headers,
+        params: { threadId: options.threadId },
+      });
+    },
+  );
+  const result = versioned.response;
+  assertChatEventSchemaVersion(result.headers, versioned.requestedVersion);
   if (result.status === 200) {
     // New pinned CLI -> old API fallback. Remove with #29362 after the old API
     // leaves rollback and contexts pinned to this CLI have drained.
     return {
+      kind: "snapshot",
       url: result.body.url,
       lastEventId: result.body.lastEventId,
       lastSeqId: result.body.lastSeqId,
       projection: result.body.projection ?? "full",
+      schemaVersion: versioned.requestedVersion,
     };
   }
   if (result.status === 404) {
-    return null;
+    return {
+      kind: "missing",
+      schemaVersion: versioned.requestedVersion,
+    };
   }
   handleError(result, "Failed to get chat event snapshot");
 }
@@ -291,22 +366,27 @@ export async function listChatEventRows(
 ): Promise<ZeroChatEventRowsPage> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
-  const result = await client.rows({
-    headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-    params: { threadId: options.threadId },
-    query:
-      options.sinceEventId === null
-        ? { sinceSeqId: 0, limit: options.limit }
-        : {
-            sinceSeqId: options.sinceSeqId,
-            sinceEventId: options.sinceEventId,
-            ...(options.sinceProjection === undefined
-              ? {}
-              : { sinceProjection: options.sinceProjection }),
-            limit: options.limit,
-          },
-  });
-  assertChatEventSchemaVersion(result.headers);
+  const versioned = await requestWithChatEventSchemaVersionFallback(
+    async (headers) => {
+      return await client.rows({
+        headers,
+        params: { threadId: options.threadId },
+        query:
+          options.sinceEventId === null
+            ? { sinceSeqId: 0, limit: options.limit }
+            : {
+                sinceSeqId: options.sinceSeqId,
+                sinceEventId: options.sinceEventId,
+                ...(options.sinceProjection === undefined
+                  ? {}
+                  : { sinceProjection: options.sinceProjection }),
+                limit: options.limit,
+              },
+      });
+    },
+  );
+  const result = versioned.response;
+  assertChatEventSchemaVersion(result.headers, versioned.requestedVersion);
   if (result.status === 200) {
     // New pinned CLI -> old API fallback. Remove with #29362 after the old API
     // leaves rollback and contexts pinned to this CLI have drained.
@@ -334,10 +414,14 @@ export async function listChatEventRows(
               projection,
             }),
       hasMore: result.body.hasMore ?? result.body.rows.length === options.limit,
+      schemaVersion: versioned.requestedVersion,
     };
   }
   if (result.status === 410) {
-    return { kind: "expired" };
+    return {
+      kind: "expired",
+      schemaVersion: versioned.requestedVersion,
+    };
   }
   handleError(result, "Failed to list chat event rows");
 }

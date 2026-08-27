@@ -36,6 +36,7 @@ export async function readProjectedChatEvents(
     readonly headers: Readonly<{ authorization?: string }>;
     readonly limit?: number;
     readonly extraHeaders?: Readonly<Record<string, string>>;
+    readonly schemaVersion?: number;
   } & (
     | { readonly sinceSeqId?: 0; readonly sinceEventId?: never }
     | { readonly sinceSeqId: number; readonly sinceEventId: string }
@@ -64,8 +65,9 @@ export async function readProjectedChatEvents(
       client.rows({
         headers: {
           ...args.headers,
-          [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+          [CHAT_EVENT_SCHEMA_VERSION_HEADER]: (
+            args.schemaVersion ?? CURRENT_CHAT_EVENT_SCHEMA_VERSION
+          ).toString(),
         },
         ...(args.extraHeaders === undefined
           ? {}
