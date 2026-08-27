@@ -37,6 +37,7 @@ import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -1491,6 +1492,84 @@ describe.sequential("Official Workflow installations", () => {
         intendedEnabled: false,
         reconciliationStatus: "current",
         parameterBindings: [{ key: "label-name", value: "Important" }],
+      },
+    });
+
+    let expiringWatchCalls = 0;
+    server.use(
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
+        expiringWatchCalls++;
+        return HttpResponse.json({
+          historyId: "101",
+          expiration: String(now() + 60_000),
+        });
+      }),
+    );
+    await accept(
+      automationClient().enable({
+        headers,
+        params: { id: installedAutomation.id },
+      }),
+      [200],
+    );
+    expect(expiringWatchCalls).toBe(1);
+
+    const reconciliationWatchStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const releaseReconciliationWatch = createDeferredPromise<void>(
+      context.signal,
+    );
+    server.use(
+      http.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+        async () => {
+          reconciliationWatchStarted.resolve(undefined);
+          await releaseReconciliationWatch.promise;
+          return HttpResponse.json({
+            historyId: "102",
+            expiration: "4102444800000",
+          });
+        },
+      ),
+    );
+    const persistedReconfiguration = accept(
+      installationClient().reconfigure({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+        body: {
+          blueprints: [
+            {
+              blueprintKey: "gmail-label-trigger",
+              bindings: [{ key: "label-name", value: "Follow Up" }],
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    await reconciliationWatchStarted.promise;
+    const disableDuringReconciliation = await accept(
+      automationClient().disable({
+        headers,
+        params: { id: installedAutomation.id },
+      }),
+      [409],
+    );
+    expect(disableDuringReconciliation.body.error.message).toBe(
+      "Official Workflow reconfiguration is in progress; retry shortly",
+    );
+    releaseReconciliationWatch.resolve(undefined);
+    const reconfiguredAfterConflict = await persistedReconfiguration;
+    expect(
+      reconfiguredAfterConflict.body.workflow.automations[0],
+    ).toMatchObject({
+      id: installedAutomation.id,
+      enabled: true,
+      official: {
+        intendedEnabled: true,
+        reconciliationStatus: "current",
+        parameterBindings: [{ key: "label-name", value: "Follow Up" }],
       },
     });
     await accept(
