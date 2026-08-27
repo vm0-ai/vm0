@@ -200,8 +200,11 @@ impl WorkloadPlacementBootstrap {
         self.setup_elapsed
     }
 
-    pub(crate) fn try_ready(&self) -> Result<io::Result<()>, mpsc::TryRecvError> {
-        self.ready_rx.try_recv()
+    pub(crate) fn recv_ready_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<io::Result<()>, mpsc::RecvTimeoutError> {
+        self.ready_rx.recv_timeout(timeout)
     }
 }
 

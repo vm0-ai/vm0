@@ -98,7 +98,7 @@ const EXEC_RESULT_MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
 const EXEC_CAPTURED_OUTPUT_OVERHEAD: usize = 1 + 1 + 4;
 const EXEC_DISCARDED_OUTPUT_LEN: usize = 1;
 const EXEC_OPERATION_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
-const AGENT_READY_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const AGENT_READY_OBSERVATION_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Default)]
 pub(crate) struct ExecOperationRegistry {
@@ -779,20 +779,23 @@ impl RunningExec {
             }
 
             let bootstrap_ready = match self.placement_bootstrap.as_ref() {
-                Some(bootstrap) => match bootstrap.try_ready() {
-                    Ok(Ok(())) => true,
-                    Ok(Err(error)) => {
-                        return AgentReadyWaitOutcome::Failed(format!(
-                            "workload placement bootstrap failed: {error}"
-                        ));
+                Some(bootstrap) => {
+                    match bootstrap.recv_ready_timeout(AGENT_READY_OBSERVATION_INTERVAL) {
+                        Ok(Ok(())) => true,
+                        Ok(Err(error)) => {
+                            return AgentReadyWaitOutcome::Failed(format!(
+                                "workload placement bootstrap failed: {error}"
+                            ));
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => false,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            return AgentReadyWaitOutcome::Failed(
+                                "workload placement bootstrap stopped before confirmation"
+                                    .to_owned(),
+                            );
+                        }
                     }
-                    Err(mpsc::TryRecvError::Empty) => false,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        return AgentReadyWaitOutcome::Failed(
-                            "workload placement bootstrap stopped before confirmation".to_owned(),
-                        );
-                    }
-                },
+                }
                 None => true,
             };
             if bootstrap_ready {
@@ -811,7 +814,6 @@ impl RunningExec {
                     ));
                 }
             }
-            std::thread::sleep(AGENT_READY_POLL_INTERVAL);
         }
     }
 

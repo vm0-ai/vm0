@@ -1138,7 +1138,7 @@ restart_agent_ready_benchmark_runner() {
 for index in $(seq 1 "$AGENT_READY_BENCHMARK_SAMPLES"); do
   thread_id=$(cat /proc/sys/kernel/random/uuid)
   record_agent_ready_benchmark_sample \
-    fresh PoolMiss "" "$thread_id" "agent-ready-fresh-$index"
+    fresh PoolMiss CacheMiss "$thread_id" "agent-ready-fresh-$index"
 done
 
 declare -a WORKSPACE_BENCHMARK_THREADS=()
