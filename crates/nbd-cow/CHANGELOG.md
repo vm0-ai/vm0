@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.79](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.78...nbd-cow-v0.4.79) (2026-08-27)
+
+
+### Documentation
+
+* **nbd-cow:** clarify relocation ordering contract ([#29714](https://github.com/vm0-ai/vm0/issues/29714)) ([f94ec05](https://github.com/vm0-ai/vm0/commit/f94ec05d3c16e0368c885a52ee2cdf904633a518))
+
 ## [0.4.78](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.77...nbd-cow-v0.4.78) (2026-08-21)
 
 

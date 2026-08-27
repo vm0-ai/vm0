@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.176.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.2...runner-rs-v0.176.3) (2026-08-27)
+
+
+### Bug Fixes
+
+* **python:** reject incomplete zstd capture bodies ([#29713](https://github.com/vm0-ai/vm0/issues/29713)) ([afceba9](https://github.com/vm0-ai/vm0/commit/afceba9e79c878e7492eb4fff38934e5b75019f1))
+* **runner:** preserve records on inconclusive procfs reads ([#29760](https://github.com/vm0-ai/vm0/issues/29760)) ([9801832](https://github.com/vm0-ai/vm0/commit/9801832251802aa48b56408f0c2626566a6c0d55))
+
+
+### Documentation
+
+* **mitm-addon:** document auth.base worker shutdown contract ([#29712](https://github.com/vm0-ai/vm0/issues/29712)) ([f39c657](https://github.com/vm0-ai/vm0/commit/f39c6577d222c273bb49685bb5405f89b896a612))
+* **mitm-addon:** document Chat Completions benchmark usage ([#29755](https://github.com/vm0-ai/vm0/issues/29755)) ([cdd7fd2](https://github.com/vm0-ai/vm0/commit/cdd7fd2f750e927cfc2fdd89ad9af9de15e2e015))
+* **python:** document shared model json inspection contract ([#29793](https://github.com/vm0-ai/vm0/issues/29793)) ([0bbf2b9](https://github.com/vm0-ai/vm0/commit/0bbf2b93720fb8ad5829bd2240b4ec5d63ad6d6a))
+
+
+### Refactoring
+
+* **runner:** decouple local identity from config name ([#29797](https://github.com/vm0-ai/vm0/issues/29797)) ([482c364](https://github.com/vm0-ai/vm0/commit/482c364db4b7c816dddad4de51bac72a196b5d05))
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+* **rust:** avoid duplicating process stream capacity ([#29784](https://github.com/vm0-ai/vm0/issues/29784)) ([30918ec](https://github.com/vm0-ai/vm0/commit/30918ec96e76b1498fded4d16943fa6f005ae1bb))
+
+
+### Performance Improvements
+
+* **python:** avoid repeated unicode hostname normalization ([#29715](https://github.com/vm0-ai/vm0/issues/29715)) ([05c6ef5](https://github.com/vm0-ai/vm0/commit/05c6ef506b4aeb65ea9f2200741d6ffa22ca079c))
+* **python:** cache normalized platform api destination ([#29780](https://github.com/vm0-ai/vm0/issues/29780)) ([f7c8bea](https://github.com/vm0-ai/vm0/commit/f7c8bea65b355f7e9d3f13123e8d2e416476b2ef))
+* **python:** retry only pending provider timing states ([#29795](https://github.com/vm0-ai/vm0/issues/29795)) ([9e1da45](https://github.com/vm0-ai/vm0/commit/9e1da455a5f9affbbde9f2ee1366dfcc9b16a18b))
+
 ## [0.176.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.176.1...runner-rs-v0.176.2) (2026-08-27)
 
 

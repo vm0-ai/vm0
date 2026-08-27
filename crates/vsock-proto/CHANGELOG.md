@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.39](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.38...vsock-proto-v0.18.39) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
 ## [0.18.38](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.37...vsock-proto-v0.18.38) (2026-08-26)
 
 

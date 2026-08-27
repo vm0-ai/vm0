@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.4...guest-mock-codex-v0.9.5) (2026-08-27)
+
+
+### Documentation
+
+* **rust:** document guest-mock-codex home resolution ([#29779](https://github.com/vm0-ai/vm0/issues/29779)) ([a6eff03](https://github.com/vm0-ai/vm0/commit/a6eff039777ce742e3463fca7e4c9b41ee5e895d))
+
 ## [0.9.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.3...guest-mock-codex-v0.9.4) (2026-08-26)
 
 ## [0.9.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.2...guest-mock-codex-v0.9.3) (2026-08-26)

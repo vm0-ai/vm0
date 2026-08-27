@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.82.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.0...guest-agent-v0.82.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound pi rpc writes on cancellation ([#29783](https://github.com/vm0-ai/vm0/issues/29783)) ([083255a](https://github.com/vm0-ai/vm0/commit/083255ab967c28674b3b103575444a9732074403))
+
+
+### Documentation
+
+* **guest-agent:** document ignored masker inputs ([#29761](https://github.com/vm0-ai/vm0/issues/29761)) ([9dda9e8](https://github.com/vm0-ai/vm0/commit/9dda9e80a019ffbd1d2fea575cf84385b4e318d1))
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
 ## [0.82.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.81.0...guest-agent-v0.82.0) (2026-08-26)
 
 
