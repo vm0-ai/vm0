@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.502.1](https://github.com/vm0-ai/vm0/compare/api-v1.502.0...api-v1.502.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **api:** require sustained transport failures before cooldown ([#29803](https://github.com/vm0-ai/vm0/issues/29803)) ([59a1dc7](https://github.com/vm0-ai/vm0/commit/59a1dc75def4f4ec2170d609ce92d36de1e4fbee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.0
+    * @okouai/core bumped to 8.598.0
+    * @okouai/db bumped to 1.226.4
+
 ## [1.502.0](https://github.com/vm0-ai/vm0/compare/api-v1.501.2...api-v1.502.0) (2026-08-27)
 
 
