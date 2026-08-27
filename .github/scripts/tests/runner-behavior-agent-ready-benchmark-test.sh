@@ -79,6 +79,12 @@ write_agent_log() {
 }
 
 if [ "$1" = "journalctl" ]; then
+  if [ "$#" -ne 3 ] \
+    || [ "$2" != "--no-pager" ] \
+    || [ "$3" != "_SYSTEMD_INVOCATION_ID=invocation-id" ]; then
+    echo "journal read was not scoped to the expected invocation: $*" >&2
+    exit 2
+  fi
   cat "$TEST_STATE_DIR/journal"
   exit 0
 fi
@@ -129,6 +135,9 @@ case "$session_id" in
     if [ "$promotion" = busy ]; then
       printf '%s\n' \
         "run_id=${workspace_run_id} workspace image cache promotion skipped: capacity lock busy" \
+        >> "$TEST_STATE_DIR/journal"
+      printf '%s\n' \
+        'run_id=unrelated-run workspace image cache promoted' \
         >> "$TEST_STATE_DIR/journal"
     else
       printf '%s\n' \
