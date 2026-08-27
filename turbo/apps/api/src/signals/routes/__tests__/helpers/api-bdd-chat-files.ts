@@ -1069,11 +1069,13 @@ export function createChatFilesBddApi(context: TestContext) {
         | { readonly sinceSeqId?: 0; readonly sinceEventId?: never }
         | { readonly sinceSeqId: number; readonly sinceEventId: string }
       ) = {},
+      schemaVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     ): Promise<{ readonly events: readonly ChatEvent[] }> {
       return {
         events: await readProjectedChatEvents(context, {
           threadId,
           headers: authenticate(context, actor),
+          schemaVersion,
           ...query,
         }),
       };

@@ -592,7 +592,12 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     }
 
     const projected = (
-      await chat.listThreadEvents(actor, threadId)
+      await chat.listThreadEvents(
+        actor,
+        threadId,
+        {},
+        PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      )
     ).events.filter((event) => {
       return (
         event.runId === runId &&
@@ -974,7 +979,12 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     }
 
     const projected = (
-      await chat.listThreadEvents(actor, threadId)
+      await chat.listThreadEvents(
+        actor,
+        threadId,
+        {},
+        PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+      )
     ).events.filter((event) => {
       return (
         event.runId === runId &&
