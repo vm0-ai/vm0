@@ -696,6 +696,7 @@ impl ExecSetupWithStdout {
         self,
         stderr_handle: JoinHandle<()>,
         stderr_result_rx: mpsc::Receiver<BoundedDrainResult>,
+        stream_writer: Option<SharedExecStreamWriter>,
     ) -> RunningExec {
         let ExecSetupWithStdout {
             setup,
@@ -722,6 +723,7 @@ impl ExecSetupWithStdout {
             stdout_result_rx,
             stderr_handle,
             stderr_result_rx,
+            stream_writer,
             drain_cancel,
             drain_done_rx,
         }
@@ -744,6 +746,7 @@ struct RunningExec {
     stdout_result_rx: mpsc::Receiver<BoundedDrainResult>,
     stderr_handle: JoinHandle<()>,
     stderr_result_rx: mpsc::Receiver<BoundedDrainResult>,
+    stream_writer: Option<SharedExecStreamWriter>,
     drain_cancel: Arc<DrainCancellation>,
     drain_done_rx: mpsc::Receiver<()>,
 }
@@ -765,6 +768,7 @@ impl RunningExec {
             stdout_result_rx,
             stderr_handle,
             stderr_result_rx,
+            stream_writer,
             drain_cancel,
             drain_done_rx,
         } = self;
@@ -823,10 +827,38 @@ impl RunningExec {
             );
         }
 
-        let _ = stdout_handle.join();
-        let _ = stderr_handle.join();
-        let stdout_result = stdout_result_rx.recv().unwrap_or_default();
-        let stderr_result = stderr_result_rx.recv().unwrap_or_default();
+        let stdout_join_failed = stdout_handle.join().is_err();
+        let stderr_join_failed = stderr_handle.join().is_err();
+        let stdout_result = stdout_result_rx.recv().ok();
+        let stderr_result = stderr_result_rx.recv().ok();
+        let drains_incomplete = completed < 2
+            || stdout_join_failed
+            || stderr_join_failed
+            || stdout_result.is_none()
+            || stderr_result.is_none();
+        let stdout_settings = output_settings(request.stdout);
+        let stderr_settings = output_settings(request.stderr);
+        let stdout_result =
+            finalize_exec_drain_result(stdout_result, stdout_settings, drains_incomplete);
+        let stderr_result =
+            finalize_exec_drain_result(stderr_result, stderr_settings, drains_incomplete);
+        if drains_incomplete {
+            emit_exec_stream_truncation_markers(
+                stream_writer.as_ref(),
+                [
+                    (
+                        ExecOutputStream::Stdout,
+                        stdout_settings,
+                        stdout_result.stream_truncated,
+                    ),
+                    (
+                        ExecOutputStream::Stderr,
+                        stderr_settings,
+                        stderr_result.stream_truncated,
+                    ),
+                ],
+            );
+        }
 
         let containment_error = containment_result.as_ref().err().map(ToString::to_string);
         let (termination, diagnostic) =
@@ -858,6 +890,75 @@ impl RunningExec {
             captured_output(&stderr_result),
             &diagnostic,
         );
+    }
+}
+
+fn finalize_exec_drain_result(
+    result: Option<BoundedDrainResult>,
+    settings: OutputSettings,
+    drains_incomplete: bool,
+) -> BoundedDrainResult {
+    let mut result = result.unwrap_or_else(|| BoundedDrainResult {
+        captured: settings.capture_limit_bytes.map(|_| Vec::new()),
+        capture_truncated: false,
+        stream_truncated: false,
+    });
+    if drains_incomplete && result.captured.is_some() {
+        result.capture_truncated = true;
+    }
+    result
+}
+
+fn emit_exec_stream_truncation_markers(
+    stream_writer: Option<&SharedExecStreamWriter>,
+    streams: [(ExecOutputStream, OutputSettings, bool); 2],
+) {
+    let Some(stream_writer) = stream_writer else {
+        return;
+    };
+    let mut writer = match stream_writer.lock() {
+        Ok(writer) => writer,
+        Err(_) => {
+            log(
+                "ERROR",
+                "exec operation: terminal stream writer mutex poisoned",
+            );
+            return;
+        }
+    };
+    for (stream, settings, stream_truncated) in streams {
+        if settings.stream.is_none() || stream_truncated {
+            continue;
+        }
+        match writer.write_output(stream, &[], true) {
+            Ok(()) => {}
+            Err(ExecStreamWriteError::Encode(e)) => {
+                log(
+                    "ERROR",
+                    &format!(
+                        "exec operation: failed to encode terminal output truncation seq={} label={} process_class={} operation_kind={}: {e}",
+                        writer.seq,
+                        writer.label_preview,
+                        writer.process_class,
+                        writer.operation_kind,
+                    ),
+                );
+                return;
+            }
+            Err(ExecStreamWriteError::Write(e)) => {
+                log(
+                    "WARN",
+                    &format!(
+                        "exec operation: failed to send terminal output truncation seq={} label={} process_class={} operation_kind={}: {e}",
+                        writer.seq,
+                        writer.label_preview,
+                        writer.process_class,
+                        writer.operation_kind,
+                    ),
+                );
+                return;
+            }
+        }
     }
 }
 
@@ -1250,7 +1351,7 @@ fn run_exec_operation_worker<S>(
         DrainWorker {
             stream: ExecOutputStream::Stderr,
             policy: stderr_settings,
-            stream_writer,
+            stream_writer: stream_writer.clone(),
             drain_cancel: setup.drain_cancel(),
             exec_cancel: exec_cancel.clone(),
             drain_done_tx: setup.drain_done_tx(),
@@ -1259,7 +1360,7 @@ fn run_exec_operation_worker<S>(
     );
     let running = match stderr_spawn {
         Ok((stderr_handle, stderr_result_rx)) => {
-            setup.into_running(stderr_handle, stderr_result_rx)
+            setup.into_running(stderr_handle, stderr_result_rx, stream_writer)
         }
         Err(e) => {
             setup.abort_wait_failed(
@@ -2220,6 +2321,7 @@ mod tests {
         let stderr = BoundedDrainResult {
             captured: Some(b"stderr".to_vec()),
             capture_truncated: true,
+            stream_truncated: false,
         };
 
         let message = exec_terminal_log_message(ExecTerminalLogMessageInput {

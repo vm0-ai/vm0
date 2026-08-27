@@ -285,18 +285,40 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
         122,
         &command,
         LONG_RUNNING_EXEC_TIMEOUT_MS,
-        ExecOutputPolicy::Capture { limit_bytes: 1024 },
+        ExecOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 1024,
+            stream_limit_bytes: 1024,
+            chunk_limit_bytes: 64,
+        },
         ExecOutputPolicy::Capture { limit_bytes: 1024 },
     );
-    let (_chunks, result) = read_exec_result(&mut host_stream, 122);
+    let (chunks, result) = read_exec_result(&mut host_stream, 122);
     let elapsed = start.elapsed();
 
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert!(result.stdout_truncated);
+    assert!(result.stderr_truncated);
     let stdout = result.stdout.unwrap_or_default();
     assert!(
         String::from_utf8_lossy(&stdout).contains("orphan-exec-operation"),
         "expected stdout to contain 'orphan-exec-operation', got: {:?}",
         String::from_utf8_lossy(&stdout),
+    );
+    let streamed_stdout = stdout_data(&chunks);
+    assert!(
+        String::from_utf8_lossy(&streamed_stdout).contains("orphan-exec-operation"),
+        "expected streamed stdout to contain 'orphan-exec-operation', got: {:?}",
+        String::from_utf8_lossy(&streamed_stdout),
+    );
+    let truncation_markers = chunks
+        .iter()
+        .filter(|chunk| chunk.stream == ExecOutputStream::Stdout && chunk.truncated)
+        .collect::<Vec<_>>();
+    assert_eq!(truncation_markers.len(), 1);
+    assert!(truncation_markers[0].chunk.is_empty());
+    assert_eq!(
+        usize::try_from(truncation_markers[0].output_seq).unwrap(),
+        chunks.len() - 1,
     );
     assert!(
         elapsed < EXEC_OUTPUT_DRAIN_DEADLINE,
