@@ -2474,7 +2474,7 @@
       "summaryOne_one": "",
       "summaryOne_many": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} nécessitent votre attention",
+      "summaryWithAttention": "{{value}}/{{total}} nécessitent votre attention",
       "summaryWithAttention_one": "",
       "summaryWithAttention_many": "",
       "summaryWithAttention_other": ""

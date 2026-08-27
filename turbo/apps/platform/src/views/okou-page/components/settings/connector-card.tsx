@@ -433,7 +433,7 @@ export function ConnectorAccountSummaryText({
       ($) => {
         return $.connectors.accounts.summaryWithAttention;
       },
-      { summary: summaryText, value: summary.attentionCount },
+      { total: accountCount, value: summary.attentionCount },
     );
   }
   return (

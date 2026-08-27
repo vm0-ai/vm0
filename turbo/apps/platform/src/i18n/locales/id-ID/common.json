@@ -2420,7 +2420,7 @@
       "summaryMany_other": "",
       "summaryOne": "{{value}} akun",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} memerlukan perhatian",
+      "summaryWithAttention": "{{value}}/{{total}} memerlukan perhatian",
       "summaryWithAttention_other": ""
     },
     "actions": {

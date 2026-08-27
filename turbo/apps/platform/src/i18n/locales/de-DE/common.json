@@ -2427,7 +2427,7 @@
       "summaryOne": "{{value}} Konto",
       "summaryOne_one": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} erfordern Aufmerksamkeit",
+      "summaryWithAttention": "{{value}}/{{total}} erfordern Aufmerksamkeit",
       "summaryWithAttention_one": "",
       "summaryWithAttention_other": ""
     },

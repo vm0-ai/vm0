@@ -2420,7 +2420,7 @@
       "summaryMany_other": "",
       "summaryOne": "{{value}} 件のアカウント",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} 件に対応が必要",
+      "summaryWithAttention": "{{value}}/{{total}} 件に対応が必要",
       "summaryWithAttention_other": ""
     },
     "actions": {

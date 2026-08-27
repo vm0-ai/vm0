@@ -2427,7 +2427,7 @@
       "summaryOne": "{{value}} खाता",
       "summaryOne_one": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} पर ध्यान देना आवश्यक है",
+      "summaryWithAttention": "{{value}}/{{total}} पर ध्यान देना आवश्यक है",
       "summaryWithAttention_one": "",
       "summaryWithAttention_other": ""
     },

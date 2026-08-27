@@ -1490,7 +1490,7 @@ describe("connectors page", () => {
         summaries: [
           {
             target: account.target,
-            accountCount: 1,
+            accountCount: 2,
             attentionCount: 1,
             defaultConnection: account,
           },
@@ -1514,13 +1514,44 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("GitHub");
-      expect(
-        within(card).getByText("Work · 1 need attention"),
-      ).toBeInTheDocument();
+      expect(within(card).getByText("1/2 need attention")).toBeInTheDocument();
       expect(within(card).getByText("Access unavailable")).toBeInTheDocument();
       expect(
         within(card).getByLabelText("Manage GitHub access"),
       ).toBeDisabled();
+    });
+  });
+
+  it("shows when every connector account needs attention", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "work" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: { kind: "builtin", connectorSlug: "github" },
+            accountCount: 2,
+            attentionCount: 2,
+            defaultConnection: null,
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("GitHub")).getByText("2/2 need attention"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -1671,7 +1702,9 @@ describe("connectors page", () => {
     });
 
     await waitFor(() => {
-      expect(connectorCardByLabel("GitHub")).toHaveTextContent("7 accounts");
+      expect(connectorCardByLabel("GitHub")).toHaveTextContent(
+        "1/7 need attention",
+      );
     });
     const manageAccounts = await waitForButtonByAriaLabel(
       "Manage GitHub accounts",

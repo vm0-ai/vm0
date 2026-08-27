@@ -2421,7 +2421,7 @@
       "skipName": "Skip",
       "summaryMany": "{{value}} accounts",
       "summaryOne": "{{value}} account",
-      "summaryWithAttention": "{{summary}} · {{value}} need attention"
+      "summaryWithAttention": "{{value}}/{{total}} need attention"
     },
     "actions": {
       "apply": "Apply",
