@@ -807,7 +807,6 @@ async fn run_start_with_home(
 
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
-        runner_name: name.clone(),
         runner_hostname: hostname,
         registry: registry_handle,
         http,
@@ -1701,7 +1700,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
         idle_pool: &shared.idle_pool,
         runner_identity: runner.identity,
-        name: &runner.name,
         group: &runner.group,
         profiles: &runner.profiles,
         budget: &capacity.budget,
@@ -2226,7 +2224,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let state = collect_heartbeat_state(
             HeartbeatSnapshotMetadata {
                 runner_identity: runner.identity,
-                runner_name: &runner.name,
                 group: &runner.group,
                 sequence: final_heartbeat_sequence,
             },

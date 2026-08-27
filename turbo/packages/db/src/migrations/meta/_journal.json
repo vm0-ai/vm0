@@ -1401,6 +1401,13 @@
       "when": 1787750541538,
       "tag": "1007_flat_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 1008,
+      "version": "7",
+      "when": 1787794381799,
+      "tag": "1008_spotty_legion",
+      "breakpoints": true
     }
   ]
 }

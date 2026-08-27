@@ -1286,6 +1286,12 @@ describe("runner resume session contract", () => {
     expect(
       heartbeatBodySchema.safeParse({
         ...heartbeat,
+        runnerName: undefined,
+      }).success,
+    ).toBe(true);
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
         snapshotGeneration: Number.MAX_SAFE_INTEGER,
         snapshotSequence: Number.MAX_SAFE_INTEGER,
       }).success,

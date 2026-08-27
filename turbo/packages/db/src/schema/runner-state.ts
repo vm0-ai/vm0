@@ -22,7 +22,7 @@ export const runnerState = pgTable(
   "runner_state",
   {
     runnerId: uuid("runner_id").primaryKey(),
-    runnerName: varchar("runner_name", { length: 255 }).notNull(),
+    runnerName: varchar("runner_name", { length: 255 }),
     runnerGroup: varchar("runner_group", { length: 255 }).notNull(),
     heartbeatGeneration: bigint("heartbeat_generation", {
       mode: "number",

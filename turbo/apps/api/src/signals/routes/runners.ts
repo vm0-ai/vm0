@@ -515,7 +515,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .insert(runnerState)
     .values({
       runnerId: body.data.runnerId,
-      runnerName: body.data.runnerName,
+      runnerName: body.data.runnerName ?? null,
       runnerGroup: body.data.group,
       heartbeatGeneration: snapshotOrder.generation,
       heartbeatSequence: snapshotOrder.sequence,
@@ -534,7 +534,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .onConflictDoUpdate({
       target: runnerState.runnerId,
       set: {
-        runnerName: body.data.runnerName,
+        runnerName: body.data.runnerName ?? null,
         runnerGroup: body.data.group,
         heartbeatGeneration: snapshotOrder.generation,
         heartbeatSequence: snapshotOrder.sequence,

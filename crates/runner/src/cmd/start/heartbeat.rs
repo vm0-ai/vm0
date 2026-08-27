@@ -33,7 +33,6 @@ const WORKSPACE_CACHE_COMMIT_WAIT: Duration = Duration::from_secs(2);
 pub(super) struct HeartbeatContext<'a> {
     idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
     runner_identity: RunnerProcessIdentity,
-    name: &'a str,
     group: &'a str,
     profiles: &'a BTreeMap<String, ProfileConfig>,
     budget: &'a ResourceBudget,
@@ -46,7 +45,6 @@ pub(super) struct HeartbeatContext<'a> {
 pub(super) struct HeartbeatContextInit<'a> {
     pub(super) idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
     pub(super) runner_identity: RunnerProcessIdentity,
-    pub(super) name: &'a str,
     pub(super) group: &'a str,
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
     pub(super) budget: &'a ResourceBudget,
@@ -61,7 +59,6 @@ impl<'a> HeartbeatContext<'a> {
         Self {
             idle_pool: init.idle_pool,
             runner_identity: init.runner_identity,
-            name: init.name,
             group: init.group,
             profiles: init.profiles,
             budget: init.budget,
@@ -434,7 +431,6 @@ async fn send_heartbeat(
     let mut state = collect_heartbeat_state(
         HeartbeatSnapshotMetadata {
             runner_identity: hb.runner_identity,
-            runner_name: hb.name,
             group: hb.group,
             sequence: snapshot_sequence,
         },
@@ -744,7 +740,6 @@ fn admittable_profiles_for_heartbeat(
 /// Collect current runner state for heartbeat reporting.
 pub(super) struct HeartbeatSnapshotMetadata<'a> {
     pub(super) runner_identity: RunnerProcessIdentity,
-    pub(super) runner_name: &'a str,
     pub(super) group: &'a str,
     pub(super) sequence: u64,
 }
@@ -775,7 +770,6 @@ pub(super) fn collect_heartbeat_state(
     let admittable_profiles = admittable_profiles_for_heartbeat(profiles, budget, mode);
     HeartbeatState {
         runner_id: snapshot.runner_identity.runner_id().to_string(),
-        runner_name: snapshot.runner_name.to_string(),
         group: snapshot.group.to_string(),
         snapshot_generation: snapshot.runner_identity.heartbeat_generation(),
         snapshot_sequence: snapshot.sequence,
@@ -839,7 +833,6 @@ mod tests {
     fn test_snapshot_metadata() -> HeartbeatSnapshotMetadata<'static> {
         HeartbeatSnapshotMetadata {
             runner_identity: test_runner_identity(),
-            runner_name: "runner-1",
             group: "vm0/test",
             sequence: 42,
         }
@@ -1117,7 +1110,6 @@ mod tests {
         let hb = HeartbeatContext::new(HeartbeatContextInit {
             idle_pool: &idle_pool,
             runner_identity: test_runner_identity(),
-            name: "test-runner",
             group: "vm0/test",
             profiles: &profiles,
             budget: &budget,
@@ -1208,7 +1200,6 @@ mod tests {
         let hb = HeartbeatContext::new(HeartbeatContextInit {
             idle_pool: &idle_pool,
             runner_identity: test_runner_identity(),
-            name: "test-runner",
             group: "vm0/test",
             profiles: &profiles,
             budget: &budget,

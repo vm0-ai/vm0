@@ -215,7 +215,6 @@ impl ExecutorInvocation {
                     exec_config_for_panic.http.clone(),
                     run_id,
                     sandbox_token,
-                    exec_config_for_panic.runner_name.clone(),
                     exec_config_for_panic.runner_hostname.clone(),
                 );
                 let failure =
@@ -1046,13 +1045,7 @@ mod tests {
             },
             exit_code: 0,
             err: None,
-            telemetry: JobTelemetry::new(
-                test_http_client(),
-                run_id,
-                "sandbox-token".into(),
-                "test-runner".into(),
-                None,
-            ),
+            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into(), None),
         }
     }
 
@@ -1072,13 +1065,7 @@ mod tests {
             },
             exit_code: 1,
             err: Some("sandbox unavailable".into()),
-            telemetry: JobTelemetry::new(
-                test_http_client(),
-                run_id,
-                "sandbox-token".into(),
-                "test-runner".into(),
-                None,
-            ),
+            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into(), None),
         }
     }
 

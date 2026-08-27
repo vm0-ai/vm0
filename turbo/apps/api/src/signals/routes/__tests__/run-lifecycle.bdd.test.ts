@@ -5274,7 +5274,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ): Record<string, unknown> {
       return {
         runnerId: reuseRunnerId,
-        runnerName: "bdd-runner",
         group: runnerGroup,
         snapshotGeneration: 1,
         snapshotSequence: nextReuseSnapshotSequence(),

@@ -917,7 +917,6 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
             failure_kind = api_error.failure_kind.as_str(),
             error_summary = %api_error.summary,
             runner_id = %state.runner_id,
-            runner_name = %state.runner_name,
             runner_group = %state.group,
             mode = %state.mode,
             running = state.running_count,
@@ -931,7 +930,6 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
     warn!(
         error = %error,
         runner_id = %state.runner_id,
-        runner_name = %state.runner_name,
         runner_group = %state.group,
         mode = %state.mode,
         running = state.running_count,
@@ -1993,7 +1991,6 @@ mod tests {
     fn heartbeat_state_for_test() -> HeartbeatState {
         HeartbeatState {
             runner_id: "runner-heartbeat-test".to_string(),
-            runner_name: "runner test".to_string(),
             group: "vm0/test".to_string(),
             snapshot_generation: 7,
             snapshot_sequence: 42,
@@ -2087,7 +2084,7 @@ mod tests {
 
         assert_eq!(event.level, Level::WARN);
         assert_eq!(event_field(event, "runner_id"), "runner-heartbeat-test");
-        assert_eq!(event_field(event, "runner_name"), "runner test");
+        assert!(!event.fields.contains_key("runner_name"));
         assert_eq!(event_field(event, "runner_group"), "vm0/test");
         assert_eq!(event_field(event, "mode"), "running");
         assert_eq!(event_field(event, "running"), "1");
