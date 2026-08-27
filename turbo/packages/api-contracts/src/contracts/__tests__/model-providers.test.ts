@@ -60,6 +60,7 @@ import {
 } from "../model-providers";
 import { findMatchingPermissions } from "@okouai/connectors/firewall-rule-matcher";
 import { getModelProviderTypeForSurfaceProtocol } from "../model-provider-gateways";
+import { modelProvidersByTypeContract } from "../model-provider-routes";
 
 describe("model-first canonical catalog", () => {
   it("recognizes GPT 5.6 Codex fast mode models", () => {
@@ -1646,6 +1647,10 @@ describe("built-in provider discriminator compatibility", () => {
     );
     expect(
       upsertModelProviderRequestSchema.parse({ type: "built-in" }).type,
+    ).toBe("built-in");
+    expect(
+      modelProvidersByTypeContract.delete.pathParams.parse({ type: "vm0" })
+        .type,
     ).toBe("built-in");
 
     const policy = {
