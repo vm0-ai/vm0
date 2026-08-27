@@ -3,63 +3,8 @@
 set -euo pipefail
 set +x
 
-resolve_path_alias() {
-  local canonical_key="$1"
-  local legacy_key="$2"
-  local default_value="$3"
-  local canonical_value=""
-  local legacy_value=""
-  local state
-
-  if [[ -v "$canonical_key" ]]; then
-    canonical_value="${!canonical_key}"
-  fi
-  if [[ -v "$legacy_key" ]]; then
-    legacy_value="${!legacy_key}"
-  fi
-
-  if [[ -n "$canonical_value" && -n "$legacy_value" ]]; then
-    if [[ "$canonical_value" != "$legacy_value" ]]; then
-      printf 'monitoring path alias conflict canonical_key=%s legacy_key=%s state=conflict\n' \
-        "$canonical_key" \
-        "$legacy_key" \
-        >&2
-      return 1
-    fi
-    resolved_path_alias_value="$canonical_value"
-    state="dual"
-  elif [[ -n "$canonical_value" ]]; then
-    resolved_path_alias_value="$canonical_value"
-    state="canonical-only"
-  elif [[ -n "$legacy_value" ]]; then
-    resolved_path_alias_value="$legacy_value"
-    state="legacy-only"
-  else
-    resolved_path_alias_value="$default_value"
-    return 0
-  fi
-
-  printf 'monitoring path alias source canonical_key=%s legacy_key=%s state=%s\n' \
-    "$canonical_key" \
-    "$legacy_key" \
-    "$state" \
-    >&2
-}
-
-# Stage 1 keeps legacy aliases for operator-managed collector process
-# environments until #28914 records an all-host canonical configuration floor,
-# completes the rollback window, and verifies that no active host has a
-# legacy-only override.
-resolve_path_alias \
-  OKOU_WORKSPACE_IMAGE_CACHE_DIR \
-  VM0_WORKSPACE_IMAGE_CACHE_DIR \
-  /var/lib/vm0-runner/workspace-image-cache
-cache_dir="$resolved_path_alias_value"
-resolve_path_alias \
-  OKOU_MONITORING_TEXTFILE_DIR \
-  VM0_MONITORING_TEXTFILE_DIR \
-  /var/lib/vm0-monitoring/textfile-collector
-textfile_dir="$resolved_path_alias_value"
+cache_dir="${OKOU_WORKSPACE_IMAGE_CACHE_DIR:-/var/lib/vm0-runner/workspace-image-cache}"
+textfile_dir="${OKOU_MONITORING_TEXTFILE_DIR:-/var/lib/vm0-monitoring/textfile-collector}"
 output_file="$textfile_dir/workspace-image-cache.prom"
 
 mib=$((1024 * 1024))
