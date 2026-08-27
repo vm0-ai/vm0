@@ -1,7 +1,10 @@
 //! Mock Codex app-server for testing.
 //!
 //! The binary speaks newline-delimited JSON-RPC over stdio and persists mock
-//! session artifacts under `$CODEX_HOME`. Behavior is selected with
+//! session artifacts under the resolved Codex home. The artifact root is
+//! resolved as follows: a non-empty `$CODEX_HOME` takes precedence; an empty
+//! `$CODEX_HOME` is treated as unset, so `$HOME/.codex` is used, falling back to
+//! `/home/user/.codex` when `$HOME` is unavailable. Behavior is selected with
 //! `MOCK_CODEX_APP_SERVER_SCENARIO`.
 
 use clap::{Parser, Subcommand};
