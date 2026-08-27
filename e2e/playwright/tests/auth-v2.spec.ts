@@ -11,6 +11,7 @@ import {
   expectNoOrganizationCreation,
   expectStepAnnouncement,
   openAuthV2,
+  reloadAuthV2,
   signInMethodButton,
   submitSignInIdentifier,
   waitForPathname,
@@ -45,8 +46,7 @@ test("base, nested, refreshed, and legacy auth routes coexist on desktop", async
     await openAuthV2(page, route);
     const expectedPathname = new URL(route, "https://auth-v2.invalid").pathname;
     expect(new URL(page.url()).pathname).toBe(expectedPathname);
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(authV2Root(page)).toBeVisible();
+    await reloadAuthV2(page);
     expect(new URL(page.url()).pathname).toBe(expectedPathname);
   }
 
@@ -508,7 +508,7 @@ async function waitForActivatedSessionOrRedirect(
         window.location.pathname === redirectPathname ||
         Boolean(
           window.Clerk?.client?.signUp.status === "complete" &&
-            window.Clerk.session,
+          window.Clerk.session,
         )
       );
     },
