@@ -1889,6 +1889,7 @@ describe("managed SocialKit route", () => {
     let providerStarts = 0;
     let multipartAttempts = 0;
     let artifactStored = false;
+    const createdDownload: { id?: string } = {};
     context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
       { address: "8.8.8.8", family: 4 },
     ]);
@@ -1924,6 +1925,7 @@ describe("managed SocialKit route", () => {
           error.name = "NotFound";
           return Promise.reject(error);
         }
+        const createdDownloadId = createdDownload.id;
         if (!createdDownloadId) {
           return Promise.reject(new Error("Missing created download id"));
         }
@@ -1978,7 +1980,7 @@ describe("managed SocialKit route", () => {
       }),
       [202],
     );
-    const createdDownloadId = created.body.downloadId;
+    createdDownload.id = created.body.downloadId;
     await flushWaitUntilForTest();
     const failed = await accept(
       socialClient.getDownload({
