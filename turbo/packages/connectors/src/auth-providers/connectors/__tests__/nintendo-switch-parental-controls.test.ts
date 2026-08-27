@@ -131,6 +131,8 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
       federationBody?: unknown;
       federationHeaders?: Headers;
     } = {};
+    let tokenScope: string | null =
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.scopes.join(" ");
 
     server.use(
       http.post(
@@ -148,7 +150,7 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
             access_token: "account-access-token",
             expires_in: 3600,
             id_token: idToken,
-            scope: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.scopes.join(" "),
+            ...(tokenScope === null ? {} : { scope: tokenScope }),
             token_type: "Bearer",
           });
         },
@@ -289,6 +291,34 @@ describe("Nintendo Switch Parental Controls external-code provider", () => {
         notificationToken: null,
       },
     });
+
+    tokenScope = "";
+    const { result: emptyStarted, providerState: emptyProviderState } =
+      await startNintendoSwitchParentalControlsSession();
+    const emptyCompleted = await completeConnectorExternalCodeAuthorization({
+      connectorSlug: "nintendo-switch-parental-controls",
+      authMethod: "api",
+      authClient: nintendoSwitchParentalControlsAuthClient(),
+      providerState: emptyStarted.providerState,
+      code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.redirectUri}#session_token_code=empty-session-code&state=${emptyProviderState.state}`,
+      signal: testSignal(),
+    });
+    expect(emptyCompleted.scopes).toStrictEqual([]);
+
+    tokenScope = null;
+    const { result: omittedStarted, providerState: omittedProviderState } =
+      await startNintendoSwitchParentalControlsSession();
+    const omittedCompleted = await completeConnectorExternalCodeAuthorization({
+      connectorSlug: "nintendo-switch-parental-controls",
+      authMethod: "api",
+      authClient: nintendoSwitchParentalControlsAuthClient(),
+      providerState: omittedStarted.providerState,
+      code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.redirectUri}#session_token_code=omitted-session-code&state=${omittedProviderState.state}`,
+      signal: testSignal(),
+    });
+    expect(omittedCompleted.scopes).toStrictEqual(
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.scopes,
+    );
   });
 
   it("refreshes both tokens and omits only a transiently unavailable catalog", async () => {
