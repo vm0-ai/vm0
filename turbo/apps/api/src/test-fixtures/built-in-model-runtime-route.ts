@@ -16,12 +16,6 @@ interface BuiltInModelRuntimeRouteFixtureIdentity {
   readonly upstreamModel: string;
 }
 
-interface BuiltInModelCandidateCooldownFixture {
-  readonly unavailableUntil: Date;
-  readonly connectionObservationStartedAt: Date | null;
-  readonly connectionObservationUntil: Date | null;
-}
-
 interface HeldBuiltInModelRouteBoundary {
   readonly release: () => void;
   readonly done: Promise<void>;
@@ -80,24 +74,11 @@ async function transactionBackendPid(
   return row.pid;
 }
 
-export async function readBuiltInModelCandidateCooldownFixture(
-  route: BuiltInModelRuntimeRouteFixtureIdentity,
-): Promise<BuiltInModelCandidateCooldownFixture | null> {
-  const [row] = await db()
-    .select({
-      unavailableUntil: builtInModelCandidateCooldown.unavailableUntil,
-      connectionObservationStartedAt:
-        builtInModelCandidateCooldown.connectionObservationStartedAt,
-      connectionObservationUntil:
-        builtInModelCandidateCooldown.connectionObservationUntil,
-    })
-    .from(builtInModelCandidateCooldown)
-    .where(routeCondition(route))
-    .limit(1);
-  return row ?? null;
-}
-
-/** Holds the exact production route row so receipt-time behavior is testable. */
+/**
+ * No production API can leave this row lock open while a report is processed.
+ * This fixture creates that infrastructure-only ordering so receipt time stays
+ * externally testable through the report and route APIs.
+ */
 export async function holdBuiltInModelRouteLockFixture(args: {
   readonly route: BuiltInModelRuntimeRouteFixtureIdentity;
   readonly signal: AbortSignal;

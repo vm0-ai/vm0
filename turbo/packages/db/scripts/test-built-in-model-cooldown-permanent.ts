@@ -3,13 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
-interface CooldownRow {
-  readonly connectionObservationStartedAt: Date | null;
-  readonly connectionObservationUntil: Date | null;
+interface PreviousCooldownRow {
   readonly providerType: string;
   readonly selectedModel: string;
   readonly unavailableUntil: Date;
   readonly upstreamModel: string;
+}
+
+interface CooldownRow extends PreviousCooldownRow {
+  readonly connectionObservationStartedAt: Date | null;
+  readonly connectionObservationUntil: Date | null;
 }
 
 interface ColumnRow {
@@ -40,7 +43,32 @@ const fixture = {
   },
 } as const;
 
-async function readFixture(
+async function readPreviousFixture(
+  client: Client,
+  identity: {
+    readonly providerType: string;
+    readonly selectedModel: string;
+    readonly upstreamModel: string;
+  },
+): Promise<readonly PreviousCooldownRow[]> {
+  const result = await client.query<PreviousCooldownRow>(
+    `
+      SELECT
+        "selected_model" AS "selectedModel",
+        "provider_type" AS "providerType",
+        "upstream_model" AS "upstreamModel",
+        "unavailable_until" AS "unavailableUntil"
+      FROM "built_in_model_candidate_cooldown"
+      WHERE "selected_model" = $1
+        AND "provider_type" = $2
+        AND "upstream_model" = $3
+    `,
+    [identity.selectedModel, identity.providerType, identity.upstreamModel],
+  );
+  return result.rows;
+}
+
+async function readObservationFixture(
   client: Client,
   identity: {
     readonly providerType: string;
@@ -62,6 +90,7 @@ async function readFixture(
       WHERE "selected_model" = $1
         AND "provider_type" = $2
         AND "upstream_model" = $3
+      FOR UPDATE
     `,
     [identity.selectedModel, identity.providerType, identity.upstreamModel],
   );
@@ -255,8 +284,10 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
     ],
   );
 
-  const upsert = async (deadline: Date): Promise<readonly CooldownRow[]> => {
-    const result = await client.query<CooldownRow>(
+  const upsertPreviousVersion = async (
+    deadline: Date,
+  ): Promise<readonly PreviousCooldownRow[]> => {
+    const result = await client.query<PreviousCooldownRow>(
       `
         INSERT INTO "built_in_model_candidate_cooldown" (
           "selected_model", "provider_type", "upstream_model", "unavailable_until"
@@ -272,10 +303,7 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
           "selected_model" AS "selectedModel",
           "provider_type" AS "providerType",
           "upstream_model" AS "upstreamModel",
-          "unavailable_until" AS "unavailableUntil",
-          "connection_observation_started_at"
-            AS "connectionObservationStartedAt",
-          "connection_observation_until" AS "connectionObservationUntil"
+          "unavailable_until" AS "unavailableUntil"
       `,
       [
         fixture.statement.selectedModel,
@@ -288,15 +316,19 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
   };
 
   assert.equal(
-    (await upsert(initialDeadline))[0]?.unavailableUntil.getTime(),
+    (
+      await upsertPreviousVersion(initialDeadline)
+    )[0]?.unavailableUntil.getTime(),
     initialDeadline.getTime(),
   );
   assert.equal(
-    (await upsert(earlierDeadline))[0]?.unavailableUntil.getTime(),
+    (
+      await upsertPreviousVersion(earlierDeadline)
+    )[0]?.unavailableUntil.getTime(),
     initialDeadline.getTime(),
   );
   assert.equal(
-    (await upsert(laterDeadline))[0]?.unavailableUntil.getTime(),
+    (await upsertPreviousVersion(laterDeadline))[0]?.unavailableUntil.getTime(),
     laterDeadline.getTime(),
   );
 
@@ -320,10 +352,12 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
   );
   const outgoingDeadline = new Date("2026-08-25T08:30:00.000Z");
   assert.equal(
-    (await upsert(outgoingDeadline))[0]?.unavailableUntil.getTime(),
+    (
+      await upsertPreviousVersion(outgoingDeadline)
+    )[0]?.unavailableUntil.getTime(),
     outgoingDeadline.getTime(),
   );
-  assert.deepEqual(await readFixture(client, fixture.statement), [
+  assert.deepEqual(await readObservationFixture(client, fixture.statement), [
     {
       ...fixture.statement,
       unavailableUntil: outgoingDeadline,
@@ -348,7 +382,7 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
       fixture.statement.upstreamModel,
     ],
   );
-  assert.deepEqual(await readFixture(client, fixture.statement), [
+  assert.deepEqual(await readObservationFixture(client, fixture.statement), [
     {
       ...fixture.statement,
       unavailableUntil: outgoingDeadline,
@@ -368,16 +402,13 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
     [observationUntil],
   );
 
-  const active = await client.query<CooldownRow>(
+  const activePreviousVersion = await client.query<PreviousCooldownRow>(
     `
       SELECT
         "selected_model" AS "selectedModel",
         "provider_type" AS "providerType",
         "upstream_model" AS "upstreamModel",
-        "unavailable_until" AS "unavailableUntil",
-        "connection_observation_started_at"
-          AS "connectionObservationStartedAt",
-        "connection_observation_until" AS "connectionObservationUntil"
+        "unavailable_until" AS "unavailableUntil"
       FROM "built_in_model_candidate_cooldown"
       WHERE "selected_model" = $1
         AND "provider_type" = $2
@@ -392,11 +423,11 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
     ],
   );
   assert.equal(
-    active.rows[0]?.unavailableUntil.getTime(),
+    activePreviousVersion.rows[0]?.unavailableUntil.getTime(),
     outgoingDeadline.getTime(),
   );
 
-  const deleted = await client.query<CooldownRow>(
+  const deletedPreviousVersion = await client.query<PreviousCooldownRow>(
     `
       DELETE FROM "built_in_model_candidate_cooldown"
       WHERE "selected_model" = $1
@@ -406,10 +437,7 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
         "selected_model" AS "selectedModel",
         "provider_type" AS "providerType",
         "upstream_model" AS "upstreamModel",
-        "unavailable_until" AS "unavailableUntil",
-        "connection_observation_started_at"
-          AS "connectionObservationStartedAt",
-        "connection_observation_until" AS "connectionObservationUntil"
+        "unavailable_until" AS "unavailableUntil"
     `,
     [
       fixture.statement.selectedModel,
@@ -417,10 +445,10 @@ async function validateCanonicalStatements(client: Client): Promise<void> {
       fixture.statement.upstreamModel,
     ],
   );
-  assert.deepEqual(deleted.rows, active.rows);
+  assert.deepEqual(deletedPreviousVersion.rows, activePreviousVersion.rows);
   assert.equal(
     (
-      await readFixture(client, fixture.baseline)
+      await readPreviousFixture(client, fixture.baseline)
     )[0]?.unavailableUntil.getTime(),
     baselineDeadline.getTime(),
   );

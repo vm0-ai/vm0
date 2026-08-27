@@ -13,10 +13,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { setRunModelProviderFixture } from "../../../test-fixtures/agent-runs";
-import {
-  holdBuiltInModelRouteLockFixture,
-  readBuiltInModelCandidateCooldownFixture,
-} from "../../../test-fixtures/built-in-model-runtime-route";
+import { holdBuiltInModelRouteLockFixture } from "../../../test-fixtures/built-in-model-runtime-route";
 import {
   deleteVm0BuiltInCandidateCooldownFixture,
   resolveVm0BuiltInModelRouteFixture,
@@ -643,12 +640,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       claimed.selectedModel,
       primary,
     );
-    const route = {
-      selectedModel: claimed.selectedModel,
-      providerType: primary.provider_type,
-      upstreamModel: primary.upstream_model,
-    };
-
     context.mocks.axiomLogging.error.mockClear();
     await withMockNowForTest(startedAt, async () => {
       await expect(
@@ -657,13 +648,16 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           connectionSource: "upstream_transport",
         }),
       ).resolves.toStrictEqual({ outcome: "observed" });
-    });
-    await expect(
-      readBuiltInModelCandidateCooldownFixture(route),
-    ).resolves.toStrictEqual({
-      unavailableUntil: new Date(startedAt),
-      connectionObservationStartedAt: new Date(startedAt),
-      connectionObservationUntil: new Date(startedAt + 60_000),
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
     });
     expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
 
@@ -674,13 +668,16 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           connectionSource: "upstream_transport",
         }),
       ).resolves.toStrictEqual({ outcome: "recorded" });
-    });
-    await expect(
-      readBuiltInModelCandidateCooldownFixture(route),
-    ).resolves.toStrictEqual({
-      unavailableUntil: new Date(startedAt + 6 * 60_000),
-      connectionObservationStartedAt: null,
-      connectionObservationUntil: null,
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
     });
     expect(context.mocks.axiomLogging.error).toHaveBeenCalledTimes(1);
     expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
@@ -757,11 +754,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       claimed.selectedModel,
       primary,
     );
-    const route = {
-      selectedModel: claimed.selectedModel,
-      providerType: primary.provider_type,
-      upstreamModel: primary.upstream_model,
-    };
     const report = async (at: number) => {
       return await withMockNowForTest(at, async () => {
         return await runs.reportRunnerModelProviderFailure(claimed.runId, {
@@ -777,18 +769,12 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     await expect(report(startedAt + 60_001)).resolves.toStrictEqual({
       outcome: "observed",
     });
-    await expect(
-      readBuiltInModelCandidateCooldownFixture(route),
-    ).resolves.toMatchObject({
-      connectionObservationStartedAt: new Date(startedAt + 60_001),
-      connectionObservationUntil: new Date(startedAt + 120_001),
-    });
     await expect(report(startedAt + 120_001)).resolves.toStrictEqual({
       outcome: "recorded",
     });
   });
 
-  it("keeps an active longer cooldown and clears confirmed transport evidence silently", async () => {
+  it("keeps an active longer cooldown and clears transport evidence silently", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 25, 0);
     const claimed = await createClaimedVm0Run();
     const primary = await resolveVm0BuiltInModelRouteFixture(
@@ -804,12 +790,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       claimed.selectedModel,
       primary,
     );
-    const route = {
-      selectedModel: claimed.selectedModel,
-      providerType: primary.provider_type,
-      upstreamModel: primary.upstream_model,
-    };
-
     await withMockNowForTest(startedAt, async () => {
       await runs.reportRunnerModelProviderFailure(claimed.runId, {
         failureKind: "authentication",
@@ -819,28 +799,66 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     await withMockNowForTest(startedAt + 100_000, async () => {
       await expect(
         runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
+    });
+    await withMockNowForTest(startedAt + 120_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
           failureKind: "timeout",
           retryAfterSeconds: 1,
         }),
       ).resolves.toStrictEqual({ outcome: "recorded" });
     });
-    for (const offset of [100_000, 160_000]) {
+    for (const [offset, outcome] of [
+      [160_000, "observed"],
+      [220_000, "recorded"],
+    ] as const) {
       await withMockNowForTest(startedAt + offset, async () => {
-        await runs.reportRunnerModelProviderFailure(claimed.runId, {
-          failureKind: "connection",
-          connectionSource: "upstream_transport",
-        });
+        await expect(
+          runs.reportRunnerModelProviderFailure(claimed.runId, {
+            failureKind: "connection",
+            connectionSource: "upstream_transport",
+          }),
+        ).resolves.toStrictEqual({ outcome });
       });
     }
-
-    await expect(
-      readBuiltInModelCandidateCooldownFixture(route),
-    ).resolves.toStrictEqual({
-      unavailableUntil: new Date(startedAt + 30 * 60_000),
-      connectionObservationStartedAt: null,
-      connectionObservationUntil: null,
+    await withMockNowForTest(startedAt + 280_000, async () => {
+      await expect(
+        runs.reportRunnerModelProviderFailure(claimed.runId, {
+          failureKind: "connection",
+          connectionSource: "upstream_transport",
+        }),
+      ).resolves.toStrictEqual({ outcome: "observed" });
     });
+
     expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+    await withMockNowForTest(startedAt + 8 * 60_000, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
+    await withMockNowForTest(startedAt + 30 * 60_000, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
+    });
   });
 
   it("merges connected receipts when body processing is reversed", async () => {
@@ -859,11 +877,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       claimed.selectedModel,
       primary,
     );
-    const route = {
-      selectedModel: claimed.selectedModel,
-      providerType: primary.provider_type,
-      upstreamModel: primary.upstream_model,
-    };
     const earlier = await withMockNowForTest(startedAt, async () => {
       return await runs.startRunnerModelProviderFailureWithDelayedBody(
         claimed.runId,
@@ -890,12 +903,17 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       status: 200,
       body: { outcome: "recorded" },
     });
-    await expect(
-      readBuiltInModelCandidateCooldownFixture(route),
-    ).resolves.toMatchObject({
-      unavailableUntil: new Date(startedAt + 6 * 60_000),
-      connectionObservationStartedAt: null,
-      connectionObservationUntil: null,
+    await withMockNowForTest(startedAt + 60_000, async () => {
+      await expect(
+        resolveVm0BuiltInModelRouteFixture(
+          context,
+          claimed.selectedModel,
+          true,
+        ),
+      ).resolves.not.toMatchObject({
+        provider_type: primary.provider_type,
+        upstream_model: primary.upstream_model,
+      });
     });
   });
 
@@ -915,11 +933,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       claimed.selectedModel,
       primary,
     );
-    const route = {
-      selectedModel: claimed.selectedModel,
-      providerType: primary.provider_type,
-      upstreamModel: primary.upstream_model,
-    };
     const report = async (at: number) => {
       return await withMockNowForTest(at, async () => {
         return await runs.reportRunnerModelProviderFailure(claimed.runId, {
@@ -935,23 +948,27 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     await expect(report(startedAt)).resolves.toStrictEqual({
       outcome: "observed",
     });
-    await expect(
-      readBuiltInModelCandidateCooldownFixture(route),
-    ).resolves.toMatchObject({
-      connectionObservationStartedAt: new Date(startedAt + 120_000),
-      connectionObservationUntil: new Date(startedAt + 180_000),
-    });
     await expect(report(startedAt + 180_000)).resolves.toStrictEqual({
       outcome: "recorded",
     });
   });
 
   it.each([
-    { elapsedMs: 59_000, outcome: "observed" },
-    { elapsedMs: 60_000, outcome: "recorded" },
+    {
+      cooldownExpiresAfterMs: 341_000,
+      elapsedMs: 59_000,
+      followupOutcome: "recorded",
+      outcome: "observed",
+    },
+    {
+      cooldownExpiresAfterMs: 300_000,
+      elapsedMs: 60_000,
+      followupOutcome: "observed",
+      outcome: "recorded",
+    },
   ] as const)(
     "uses receipt time across a route lock wait at $elapsedMs ms",
-    async ({ elapsedMs, outcome }) => {
+    async ({ cooldownExpiresAfterMs, elapsedMs, followupOutcome, outcome }) => {
       const startedAt = Date.UTC(2026, 7, 21, 0, 55, 0) + elapsedMs;
       const claimed = await createClaimedVm0Run();
       const primary = await resolveVm0BuiltInModelRouteFixture(
@@ -999,17 +1016,26 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         await expect(response).resolves.toStrictEqual({ outcome });
       });
 
-      const state = await readBuiltInModelCandidateCooldownFixture(route);
-      if (!state) {
-        throw new Error("Expected a built-in model cooldown state");
-      }
-      expect(state.unavailableUntil).toStrictEqual(
-        new Date(
-          outcome === "recorded"
-            ? startedAt + 5 * 60_000
-            : startedAt - elapsedMs,
-        ),
-      );
+      await withMockNowForTest(startedAt + (100_000 - elapsedMs), async () => {
+        await expect(
+          runs.reportRunnerModelProviderFailure(claimed.runId, {
+            failureKind: "connection",
+            connectionSource: "upstream_transport",
+          }),
+        ).resolves.toStrictEqual({ outcome: followupOutcome });
+      });
+      await withMockNowForTest(startedAt + cooldownExpiresAfterMs, async () => {
+        await expect(
+          resolveVm0BuiltInModelRouteFixture(
+            context,
+            claimed.selectedModel,
+            true,
+          ),
+        ).resolves.toMatchObject({
+          provider_type: primary.provider_type,
+          upstream_model: primary.upstream_model,
+        });
+      });
     },
   );
 
