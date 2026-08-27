@@ -37,7 +37,7 @@ pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> Runner
         // deleting a version that another process is installing or uninstalling.
         // Workspace GC owns base-dir lock lifecycle because those locks carry
         // the base_dir metadata needed to rediscover dead-runner workspaces.
-        if RunnerServiceUnit::is_lock_file_name(name)
+        if RunnerServiceUnit::is_reserved_lock_file_name(name)
             || entry.path() == home.systemd_daemon_reload_lock()
             || is_base_dir_lock_name(name)
         {

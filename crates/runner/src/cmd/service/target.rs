@@ -75,7 +75,7 @@ impl RunnerServiceUnit {
     /// Accepts `service-vm0-runner-<suffix>.lock` only when `<suffix>` passes
     /// the same validation as [`Self::from_suffix`]. Historical lock names
     /// that use the reserved wrapper but fail current validation remain
-    /// classified by [`Self::is_lock_file_name`] for rolling compatibility.
+    /// classified by [`Self::is_reserved_lock_file_name`] for rolling compatibility.
     pub(crate) fn from_lock_file_name(file_name: &str) -> Option<Self> {
         let unit_name = file_name
             .strip_prefix(LOCK_PREFIX)?
@@ -90,7 +90,7 @@ impl RunnerServiceUnit {
     /// by historical runners, even when the enclosed unit name fails current
     /// validation. General lock GC must preserve those paths while older
     /// runner binaries can overlap with the current version.
-    pub(crate) fn is_lock_file_name(file_name: &str) -> bool {
+    pub(crate) fn is_reserved_lock_file_name(file_name: &str) -> bool {
         file_name.starts_with(LOCK_PREFIX) && file_name.ends_with(LOCK_SUFFIX)
     }
 
@@ -241,18 +241,20 @@ mod tests {
     }
 
     #[test]
-    fn lock_file_name_classifier_preserves_historical_namespace() {
-        assert!(RunnerServiceUnit::is_lock_file_name(
+    fn reserved_lock_file_name_classifier_preserves_historical_namespace() {
+        assert!(RunnerServiceUnit::is_reserved_lock_file_name(
             "service-vm0-runner-v1.0.0.lock"
         ));
-        assert!(RunnerServiceUnit::is_lock_file_name(
+        assert!(RunnerServiceUnit::is_reserved_lock_file_name(
             "service-vm0-runner-OLD_NAME.lock"
         ));
-        assert!(RunnerServiceUnit::is_lock_file_name("service-.lock"));
-        assert!(!RunnerServiceUnit::is_lock_file_name(
+        assert!(RunnerServiceUnit::is_reserved_lock_file_name(
+            "service-.lock"
+        ));
+        assert!(!RunnerServiceUnit::is_reserved_lock_file_name(
             "workspace-image-cache-v1.0.0.lock"
         ));
-        assert!(!RunnerServiceUnit::is_lock_file_name(
+        assert!(!RunnerServiceUnit::is_reserved_lock_file_name(
             "service-vm0-runner-v1.0.0"
         ));
     }
