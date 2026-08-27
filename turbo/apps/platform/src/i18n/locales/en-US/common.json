@@ -2421,8 +2421,7 @@
       "skipName": "Skip",
       "summaryMany": "{{value}} accounts",
       "summaryOne": "{{value}} account",
-      "summaryWithAttention": "{{summary}} · {{value}} need attention",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention": "{{summary}} · {{value}} need attention"
     },
     "actions": {
       "apply": "Apply",
@@ -2486,6 +2485,8 @@
       "access": {
         "add": "Add access",
         "manage": "Manage {{connector}} access",
+        "summaryMany": "{{value}} agents",
+        "unavailable": "Access unavailable",
         "usedBy": "Used by "
       },
       "categories": {

@@ -2421,8 +2421,7 @@
       "summaryOne": "계정 {{value}}개",
       "summaryOne_other": "",
       "summaryWithAttention": "{{summary}} · {{value}}개에 주의 필요",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "적용",
@@ -2486,6 +2485,8 @@
       "access": {
         "add": "접근 권한 추가",
         "manage": "{{connector}} 접근 권한 관리",
+        "summaryMany": "에이전트 {{value}}개",
+        "unavailable": "접근 권한을 사용할 수 없음",
         "usedBy": "사용 중 "
       },
       "categories": {

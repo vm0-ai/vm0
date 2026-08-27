@@ -1462,6 +1462,118 @@ describe("connectors page", () => {
     });
   });
 
+  it("shows an account identity while agent access is unavailable", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "work" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    const account = {
+      id: connector.id,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: connector.authMethod,
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "work",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "reconnect-required" as const,
+      reconnectReason: "authorization_expired_or_revoked" as const,
+      tokenExpiresAt: null,
+      createdAt: connector.createdAt,
+      updatedAt: connector.updatedAt,
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 1,
+            attentionCount: 1,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.data.agents([
+      listAgent("c0000000-0000-4000-a000-000000000001", "Research"),
+    ]);
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+      return respond(500, {
+        error: { message: "Agent access unavailable", code: "UNAVAILABLE" },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("GitHub");
+      expect(
+        within(card).getByText("Work · 1 need attention"),
+      ).toBeInTheDocument();
+      expect(within(card).getByText("Access unavailable")).toBeInTheDocument();
+      expect(
+        within(card).getByLabelText("Manage GitHub access"),
+      ).toBeDisabled();
+    });
+  });
+
+  it("keeps retained agent access revocable after the last account is removed", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000002";
+    mockConnectors([]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, { summaries: [] });
+    });
+    context.mocks.data.agents([
+      listAgent(researchAgentId, "Research"),
+      listAgent(supportAgentId, "Support"),
+    ]);
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
+      return respond(200, {
+        enabledConnectorSlugs: params.id === researchAgentId ? ["github"] : [],
+      });
+    });
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await waitFor(() => {
+      const githubCard = connectorCardByLabel("GitHub");
+      expect(within(githubCard).getByText("No accounts")).toBeInTheDocument();
+      expect(
+        within(githubCard).getByTestId("connector-card-agent-access"),
+      ).toHaveTextContent("Used by Research");
+      return githubCard;
+    });
+    const connectButton = within(card).getByLabelText("Connect GitHub");
+    const manageAccess = within(card).getByLabelText("Manage GitHub access");
+    expect(connectButton).not.toContainElement(manageAccess);
+    click(manageAccess);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(
+      within(dialog).getByLabelText("Revoke GitHub access for Research"),
+    ).toBeEnabled();
+    expect(
+      within(dialog).getByLabelText("Authorize GitHub access for Support"),
+    ).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("names the exact account after a feature-on manual account addition", async () => {
     mockConnectors([]);
     const connectionId = crypto.randomUUID();
@@ -2778,7 +2890,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows authorized agent names with an overflow count on connector cards", async () => {
+  it("shows an exact authorized-agent count on connector cards", async () => {
     const agentIds = [
       "c0000000-0000-4000-a000-000000000001",
       "c0000000-0000-4000-a000-000000000002",
@@ -2812,10 +2924,9 @@ describe("connectors page", () => {
     await waitFor(() => {
       const card = connectorCardByLabel("GitHub");
       const access = within(card).getByLabelText("Manage GitHub access");
-      expect(access.textContent).toContain("Used by\u00a0Research, Support");
-      expect(access).toHaveTextContent("Research, Support");
-      expect(access).toHaveTextContent("+2");
+      expect(access.textContent).toContain("Used by\u00a04 agents");
       expect(access).not.toHaveTextContent("Growth");
+      expect(access).toHaveAttribute("title", "Research, Support, Growth, Ops");
     });
 
     click(
@@ -4512,7 +4623,9 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(
-        within(connectorCardByLabel("AWS")).getByText("Connected"),
+        within(connectorCardByLabel("AWS")).getByText(
+          "arn:aws:iam::000000000000:user/mock-aws",
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -5458,7 +5571,7 @@ describe("connectors page", () => {
         within(connectorCardByLabel("Acme MCP")).getByTestId(
           "connector-card-agent-access",
         ),
-      ).toHaveTextContent("Used by Research, Support");
+      ).toHaveTextContent("Used by 2 agents");
       expect(
         within(connectorCardByLabel("Acme MCP")).getByText("Connected"),
       ).toBeInTheDocument();
@@ -6369,7 +6482,7 @@ describe("connectors page", () => {
       expect(within(card).getByText("Connected")).toBeInTheDocument();
       expect(
         within(card).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by Zero, Research");
+      ).toHaveTextContent("Used by 2 agents");
     });
     expect(browserOpen.calls).toStrictEqual([
       {
@@ -6489,7 +6602,7 @@ describe("connectors page", () => {
       await waitFor(() => {
         expect(
           within(connectorCardByLabel(connector.displayName)).getByText(
-            "Connected",
+            `Account #${connectionId.slice(0, 8)}`,
           ),
         ).toBeInTheDocument();
       });
@@ -6853,7 +6966,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(
         within(connectorCardByLabel(connector.displayName)).getByText(
-          "Connected",
+          `Account #${connectionId.slice(0, 8)}`,
         ),
       ).toBeInTheDocument();
     });
@@ -6927,7 +7040,7 @@ describe("connectors page", () => {
       expect(within(card).getByText("Connected")).toBeInTheDocument();
       expect(
         within(card).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by Zero, Research +1");
+      ).toHaveTextContent("Used by 3 agents");
     });
     expect(
       within(connectorCardByLabel("Acme API")).getByTestId(

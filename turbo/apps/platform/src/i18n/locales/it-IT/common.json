@@ -2477,8 +2477,7 @@
       "summaryWithAttention": "{{summary}} · {{value}} richiedono attenzione",
       "summaryWithAttention_one": "",
       "summaryWithAttention_many": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Applicare",
@@ -2542,6 +2541,8 @@
       "access": {
         "add": "Aggiungi accesso",
         "manage": "Gestisci l'accesso {{connector}}",
+        "summaryMany": "{{value}} agent",
+        "unavailable": "Accesso non disponibile",
         "usedBy": "Utilizzato da "
       },
       "categories": {

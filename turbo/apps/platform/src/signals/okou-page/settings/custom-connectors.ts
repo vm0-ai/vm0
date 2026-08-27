@@ -870,7 +870,11 @@ type DialogState =
   | { kind: "create" }
   | { kind: "edit"; connector: CustomConnectorResponse }
   | { kind: "connect"; connector: CustomConnectorResponse }
-  | { kind: "access"; connector: CustomConnectorResponse }
+  | {
+      kind: "access";
+      connector: CustomConnectorResponse;
+      allowAccessIncrease: boolean;
+    }
   | { kind: "delete"; connector: CustomConnectorResponse };
 
 const internalDialog$ = state<DialogState>({ kind: "none" });
@@ -919,8 +923,14 @@ export const openCustomConnectorConnectDialog$ = command(
   },
 );
 export const openCustomConnectorAccessDialog$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
-    set(internalDialog$, { kind: "access", connector });
+  (
+    { set },
+    args: {
+      readonly connector: CustomConnectorResponse;
+      readonly allowAccessIncrease: boolean;
+    },
+  ) => {
+    set(internalDialog$, { kind: "access", ...args });
   },
 );
 export const openCustomConnectorDeleteDialog$ = command(

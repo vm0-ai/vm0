@@ -2421,8 +2421,7 @@
       "summaryOne": "{{value}} akun",
       "summaryOne_other": "",
       "summaryWithAttention": "{{summary}} · {{value}} memerlukan perhatian",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Terapkan",
@@ -2486,6 +2485,8 @@
       "access": {
         "add": "Tambah akses",
         "manage": "Kelola akses {{connector}}",
+        "summaryMany": "{{value}} agen",
+        "unavailable": "Akses tidak tersedia",
         "usedBy": "Digunakan oleh "
       },
       "categories": {
