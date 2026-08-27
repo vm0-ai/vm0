@@ -741,7 +741,7 @@ describe("okou social command", () => {
               artifact: {
                 id: "6bdc3449-41ef-4624-a525-45bce09c67f0",
                 url: "https://cdn.vm7.io/artifacts/social-video.mp4",
-                filename: "socialkit-6bdc3449.mp4",
+                filename: "Public video.mp4",
                 contentType: "video/mp4",
                 sizeBytes: 1024,
               },
@@ -778,7 +778,7 @@ describe("okou social command", () => {
     expect(JSON.parse(output()) as unknown).toMatchObject({
       status: "completed",
       billing: { quantity: 2, creditsCharged: 6 },
-      artifact: { filename: "socialkit-6bdc3449.mp4" },
+      artifact: { filename: "Public video.mp4" },
     });
     expect(errorOutput()).toContain("completed");
   });
@@ -815,7 +815,7 @@ describe("okou social command", () => {
             artifact: {
               id: "6bdc3449-41ef-4624-a525-45bce09c67f0",
               url: "https://cdn.vm7.io/artifacts/social-video.mp4",
-              filename: "socialkit-6bdc3449.mp4",
+              filename: "Public video.mp4",
               contentType: "video/mp4",
               sizeBytes: 1024,
             },
