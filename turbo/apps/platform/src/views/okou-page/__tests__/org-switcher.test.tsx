@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 
@@ -100,11 +100,11 @@ describe("zero org switcher", () => {
     });
 
     const orgSwitcher = await waitFor(() => {
-      expect(screen.getByText("Acme")).toBeInTheDocument();
+      const switcher = buttonByText("Acme");
       expect(
-        screen.getByTestId("pending-invitations-badge"),
+        within(switcher).getByTestId("pending-invitations-badge"),
       ).toBeInTheDocument();
-      return buttonByText("Acme");
+      return switcher;
     });
 
     click(orgSwitcher);
