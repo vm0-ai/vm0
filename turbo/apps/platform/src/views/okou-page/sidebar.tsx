@@ -201,8 +201,10 @@ function useSidebarCollapseToggle() {
 // to thread onAccountAction through props.
 function AccountDropdownContainer({
   collapsed = false,
+  renderCodexResetDialog = true,
 }: {
   collapsed?: boolean;
+  renderCodexResetDialog?: boolean;
 }) {
   const onAccountAction = useSet(handleAccountAction$);
   const settingsOwnerId = collapsed ? "sidebar-collapsed" : "sidebar-expanded";
@@ -211,6 +213,7 @@ function AccountDropdownContainer({
       onAccountAction={onAccountAction}
       settingsOwnerId={settingsOwnerId}
       collapsed={collapsed}
+      renderCodexResetDialog={renderCodexResetDialog}
     />
   );
 }
@@ -435,7 +438,8 @@ function ExpandedFooter() {
           },
         )}
         <div className="h-px bg-border/30 mx-1 my-1" />
-        <AccountDropdownContainer />
+        {/* The always-mounted rail owns the shared reset dialog controller. */}
+        <AccountDropdownContainer renderCodexResetDialog={false} />
       </div>
     </div>
   );

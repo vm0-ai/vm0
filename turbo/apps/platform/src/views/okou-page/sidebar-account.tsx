@@ -723,11 +723,13 @@ export function AccountDropdown({
   settingsOwnerId,
   collapsed = false,
   hidePreferences = false,
+  renderCodexResetDialog = true,
 }: {
   onAccountAction?: (action: AccountAction) => void;
   settingsOwnerId: string;
   collapsed?: boolean;
   hidePreferences?: boolean;
+  renderCodexResetDialog?: boolean;
 }) {
   const { t } = useTranslation();
   const { clerk, accounts } = useAccountSessions();
@@ -937,13 +939,15 @@ export function AccountDropdown({
           <SignOutItem onAccountAction={handleAccountAction} />
         </DropdownMenuContent>
       </DropdownMenu>
-      <CodexResetUsageDialog
-        open={resetDialog.open}
-        resetCredits={resetDialog.resetCredits}
-        resetting={actionPending}
-        onOpenChange={handleCodexResetOpenChange}
-        onConfirm={handleConfirmCodexReset}
-      />
+      {renderCodexResetDialog && (
+        <CodexResetUsageDialog
+          open={resetDialog.open}
+          resetCredits={resetDialog.resetCredits}
+          resetting={actionPending}
+          onOpenChange={handleCodexResetOpenChange}
+          onConfirm={handleConfirmCodexReset}
+        />
+      )}
     </>
   );
 }
