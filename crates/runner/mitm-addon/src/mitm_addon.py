@@ -357,44 +357,41 @@ def _prebind_requestheaders_upstream_destination(
 def _prebind_bounded_requestheaders_upstream_destination(
     flow: http.HTTPFlow,
 ) -> request_classification.RequestClassification | None:
+    """Classify and prebind while leaving successful probe metadata in place.
+
+    The caller owns restoring requestheaders probe metadata after every call
+    unless it retains the returned classification.
+    """
     if getattr(ctx, "options", None) is None:
         return None
     api_url = get_api_url()
-    metadata_snapshot = {
-        key: flow.metadata[key]
-        for key in _request_headers_probe_metadata_keys()
-        if key in flow.metadata
-    }
     try:
-        try:
-            trusted_authority = get_trusted_authority(flow)
-        except AuthorityValidationError:
-            return None
-        flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
-        is_api_destination = upstream_admission.api_destination_matches(
-            api_url,
-            scheme=flow.request.scheme,
-            hostname=trusted_authority.host,
-            port=trusted_authority.port,
-        )
-        if (
-            not is_api_destination
-            and upstream_admission.has_bound_destination(
-                flow,
-                allowed_kinds=frozenset(("connector_auth",)),
-            )
-            and not _request_may_use_aws_sigv4(flow)
-        ):
-            return None
-        classification = _classify_request_for_flow_with_trusted_authority(
+        trusted_authority = get_trusted_authority(flow)
+    except AuthorityValidationError:
+        return None
+    flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
+    is_api_destination = upstream_admission.api_destination_matches(
+        api_url,
+        scheme=flow.request.scheme,
+        hostname=trusted_authority.host,
+        port=trusted_authority.port,
+    )
+    if (
+        not is_api_destination
+        and upstream_admission.has_bound_destination(
             flow,
-            trusted_authority=trusted_authority,
-            defer_unresolved_public_destination=True,
+            allowed_kinds=frozenset(("connector_auth",)),
         )
-        _prebind_requestheaders_upstream_destination(flow, classification)
-        return classification
-    finally:
-        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        and not _request_may_use_aws_sigv4(flow)
+    ):
+        return None
+    classification = _classify_request_for_flow_with_trusted_authority(
+        flow,
+        trusted_authority=trusted_authority,
+        defer_unresolved_public_destination=True,
+    )
+    _prebind_requestheaders_upstream_destination(flow, classification)
+    return classification
 
 
 def _start_request_timing(flow: http.HTTPFlow) -> None:
@@ -773,25 +770,35 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     body_fits_stream_buffer = (
         auth_base_body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
     )
+    metadata_snapshot = {
+        key: flow.metadata[key]
+        for key in _request_headers_probe_metadata_keys()
+        if key in flow.metadata
+    }
     if body_fits_stream_buffer:
-        bounded_classification = _prebind_bounded_requestheaders_upstream_destination(flow)
+        try:
+            bounded_classification = _prebind_bounded_requestheaders_upstream_destination(flow)
+        except BaseException:
+            _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+            raise
         if (
             bounded_classification is None
             or bounded_classification.kind != "firewall_allow"
             or _firewall_allow_auth_base(bounded_classification.firewall_allow)
             or not _firewall_allow_uses_aws_sigv4(bounded_classification.firewall_allow)
         ):
+            _restore_request_headers_probe_metadata(flow, metadata_snapshot)
             return None
-
-    metadata_snapshot = {
-        key: flow.metadata[key]
-        for key in _request_headers_probe_metadata_keys()
-        if key in flow.metadata
-    }
-    classification = _classify_request_for_flow(
-        flow,
-        defer_unresolved_public_destination=True,
-    )
+        classification = request_classification.revalidate_classification_for_current_destination(
+            flow,
+            bounded_classification,
+            defer_unresolved_public_destination=True,
+        )
+    else:
+        classification = _classify_request_for_flow(
+            flow,
+            defer_unresolved_public_destination=True,
+        )
     if classification.kind == "public_destination_denied":
         _start_request_timing(flow)
         _block_public_destination_denied(
