@@ -22,8 +22,10 @@ function adjacentSnapshotUpgrade(
       };
     }
     case 6: {
-      // V7 makes the already-redacted logical history canonical. A legacy
-      // full prefix is accepted only as an upgrade source and loses tool rows.
+      // Persisted V6 DB/R2 -> V7 API/backfill bridge: V7 makes redacted logical
+      // history canonical, so a legacy full prefix loses tool rows. Remove with
+      // #29362 after V7 convergence, App/CLI drain, rollback closure, and
+      // reference-aware GC removes retired V6 state.
       return (rows) => {
         return rows.filter((row) => {
           return row.eventType !== "output.tool";

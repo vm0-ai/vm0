@@ -10,8 +10,10 @@ import type { Db } from "../external/db";
 
 const CHAT_TOOL_ACTIVITY_CLEANUP_THREAD_SCAN_LIMIT = 1000;
 const CHAT_TOOL_ACTIVITY_CLEANUP_DELETE_LIMIT = 2500;
-// Stage 2 converged V6 before V7 publication began. Keep the residual cleanup
-// pinned to that physical source format throughout Stage 3.
+// Stage 3 cleanup API/cron -> retained V6 DB/R2 state: keep the residual Stage
+// 2 cleanup pinned to its physical source format. Remove with #29362 after V7
+// heads converge, tool/full blockers remain zero, rollback closes, and Stage 4
+// retires this cleanup path.
 const CHAT_TOOL_ACTIVITY_CLEANUP_SCHEMA_VERSION =
   PREVIOUS_CHAT_EVENT_SCHEMA_VERSION;
 
