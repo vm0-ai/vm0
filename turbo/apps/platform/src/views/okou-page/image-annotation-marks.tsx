@@ -5,6 +5,7 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   HIGHLIGHT_FILL,
+  markOrdinal,
   REDACT_FILL,
   STROKE_HALO_INNER,
 } from "../../signals/okou-page/image-annotation.ts";
@@ -233,7 +234,7 @@ export function AnnotationMarkLayer({
           <MarkShape
             key={mark.id}
             mark={mark}
-            ordinal={index + 1}
+            ordinal={markOrdinal(mark, index)}
             aspect={aspect}
           />
         );

@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import type { ImageAnnotationMark } from "@okouai/api-contracts/contracts/chat-threads";
@@ -8,12 +8,14 @@ import {
   agentsByIdContract,
   agentsMainContract,
 } from "@okouai/api-contracts/contracts/agents";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
+import { buildModelPolicy } from "./chat-composer-test-helpers.ts";
 import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -22,6 +24,18 @@ const FILE_ID = "annotated-screenshot";
 const FILE_URL = "https://cdn.vm7.io/artifacts/test/drafts/billing-page.png";
 
 function mockAgentChatPage(): void {
+  // Without a policy the composer refuses to send at all, which would hide
+  // whatever the annotation path does with the message.
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000921",
+      model: "claude-sonnet-4-6",
+      modelLabel: "Claude Sonnet 4.6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+    }),
+  ]);
   context.mocks.data.userModelPreference({
     selectedModel: "claude-sonnet-4-6",
     serviceTier: null,
@@ -57,7 +71,22 @@ function mockAgentChatPage(): void {
  * matters for the ownership model: the marks have to come back off the stored
  * draft, not off a rendered copy, and the file itself is untouched.
  */
-function mockDraftWithImage(marks: ImageAnnotationMark[] | null): void {
+interface SavedDraft {
+  readonly annotation?: unknown;
+}
+
+function mockDraftWithImage(
+  marks: ImageAnnotationMark[] | null,
+  savedDraftAttachments: (readonly SavedDraft[] | null)[] = [],
+): void {
+  // A restored attachment revalidates its file before a send can use it.
+  context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
+    return respond(200, { url: FILE_URL });
+  });
+  context.mocks.api(agentDraftContract.patch, ({ body, respond }) => {
+    savedDraftAttachments.push(body.draftAttachments ?? null);
+    return respond(200, { ok: true });
+  });
   context.mocks.api(agentDraftContract.get, ({ respond }) => {
     return respond(200, {
       draftUserMessage: {
@@ -115,8 +144,17 @@ function attachMarksButton(): HTMLElement {
   return button;
 }
 
+interface DragBox {
+  readonly fromX: number;
+  readonly fromY: number;
+  readonly toX: number;
+  readonly toY: number;
+}
+
 /** Drags a rectangle across the drawing surface. */
-async function dragOnSurface(): Promise<void> {
+async function dragOnSurface(
+  box: DragBox = { fromX: 40, fromY: 30, toX: 200, toY: 180 },
+): Promise<void> {
   const surface = await screen.findByTestId("image-annotation-surface");
   // jsdom reports a zero-sized box for every element, so the surface is given
   // one explicitly — the editor divides by it to normalize each point.
@@ -135,12 +173,131 @@ async function dragOnSurface(): Promise<void> {
       },
     };
   };
-  fireEvent.pointerDown(surface, { clientX: 40, clientY: 30, pointerId: 1 });
-  fireEvent.pointerMove(surface, { clientX: 200, clientY: 180, pointerId: 1 });
-  fireEvent.pointerUp(surface, { clientX: 200, clientY: 180, pointerId: 1 });
+  fireEvent.pointerDown(surface, {
+    clientX: box.fromX,
+    clientY: box.fromY,
+    pointerId: 1,
+  });
+  fireEvent.pointerMove(surface, {
+    clientX: box.toX,
+    clientY: box.toY,
+    pointerId: 1,
+  });
+  fireEvent.pointerUp(surface, {
+    clientX: box.toX,
+    clientY: box.toY,
+    pointerId: 1,
+  });
+}
+
+/**
+ * jsdom fetches nothing, so a real `Image` neither loads nor errors and the
+ * flatten waits out its whole deadline. Failing the decode immediately is the
+ * same branch a broken CDN takes in the browser, and it is the branch the send
+ * has to survive.
+ */
+function failImageDecodes(): void {
+  vi.stubGlobal(
+    "Image",
+    class {
+      crossOrigin = "";
+      #onError: (() => void) | null = null;
+      addEventListener(type: string, handler: () => void) {
+        if (type === "error") {
+          this.#onError = handler;
+        }
+      }
+      set src(_value: string) {
+        this.#onError?.();
+      }
+    },
+  );
+}
+
+async function composerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
 }
 
 describe("composer image annotation", () => {
+  /**
+   * The mark notes only pay off if the agent receives them, and every other
+   * test here stops at the moment the marks are attached. This one crosses the
+   * send boundary: whatever the user wrote on the image has to arrive in the
+   * outgoing prompt, anchored to the file it was drawn on.
+   */
+  it("sends the mark notes to the agent alongside the message", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sentPrompts: string[] = [];
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+    mockAgentChatPage();
+    failImageDecodes();
+    const savedDraftAttachments: (readonly SavedDraft[] | null)[] = [];
+    mockDraftWithImage(null, savedDraftAttachments);
+
+    setup(true);
+
+    // Drawn through the UI rather than seeded from the draft response: the
+    // marks have to survive the whole path, and committing them is the step
+    // that used to leave them behind.
+    const chip = await screen.findByLabelText(
+      "Open image preview for billing-page.png",
+    );
+    await user.click(chip);
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+    await dragOnSurface();
+
+    await user.click(await screen.findByTestId("annotation-mark-1"));
+    await user.type(
+      await screen.findByPlaceholderText("Say what should change here"),
+      "Tighten this spacing",
+    );
+    await user.click(attachMarksButton());
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("composer-attachment-mark-count"),
+      ).toHaveTextContent("1");
+    });
+
+    // Attaching has to reach the stored draft. It used to write the signal and
+    // stop, so anything that reloaded the draft took the marks with it.
+    await waitFor(() => {
+      expect(
+        savedDraftAttachments.some((saved) => {
+          return saved?.some((attachment) => {
+            return attachment.annotation !== undefined;
+          });
+        }),
+      ).toBeTruthy();
+    });
+
+    await fillComposer(await composerEditor(), "Fix the billing page");
+    await user.click(screen.getByLabelText("Send"));
+
+    // jsdom loads no images, so the flattened copy never renders and the send
+    // falls back on the deadline. That is the failure it has to survive: the
+    // notes still have to arrive.
+    await waitFor(() => {
+      expect(sentPrompts.length).toBeGreaterThan(0);
+    });
+    expect(sentPrompts[0]).toContain("Fix the billing page");
+    expect(sentPrompts[0]).toContain("Marks on billing-page.png");
+    expect(sentPrompts[0]).toContain("Tighten this spacing");
+  });
+
   it("restores marks stored on the draft and shows the count on the chip", async () => {
     mockChatLifecycle(context);
     mockAgentChatPage();
@@ -237,6 +394,56 @@ describe("composer image annotation", () => {
     await screen.findByTestId("attachment-lightbox");
     await waitFor(() => {
       expect(screen.getByTestId("annotation-mark-layer")).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The numbers are what the user's notes refer to, in the editor and in the
+   * text the agent receives. Deleting one must not slide the rest down; the
+   * hole it leaves is what the next mark fills.
+   */
+  it("reuses a deleted mark's number instead of renumbering the rest", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage(null);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+
+    await dragOnSurface({ fromX: 20, fromY: 20, toX: 80, toY: 70 });
+    await dragOnSurface({ fromX: 120, fromY: 20, toX: 180, toY: 70 });
+    await dragOnSurface({ fromX: 220, fromY: 20, toX: 280, toY: 70 });
+    await waitFor(() => {
+      expect(screen.getByText("3 marks")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("annotation-mark-2"));
+    await user.click(await screen.findByLabelText("Remove mark"));
+    await waitFor(() => {
+      expect(screen.getByText("2 marks")).toBeInTheDocument();
+    });
+
+    // The survivor keeps its own number rather than sliding into the gap.
+    expect(screen.getByTestId("annotation-mark-3")).toBeInTheDocument();
+    expect(screen.queryByTestId("annotation-mark-2")).toBeNull();
+
+    await dragOnSurface({ fromX: 20, fromY: 150, toX: 80, toY: 200 });
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-mark-2")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("annotation-mark-3")).toBeInTheDocument();
+    expect(screen.queryByTestId("annotation-mark-4")).toBeNull();
+
+    // With no hole left, numbering carries on from the end.
+    await dragOnSurface({ fromX: 120, fromY: 150, toX: 180, toY: 200 });
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-mark-4")).toBeInTheDocument();
     });
   });
 
