@@ -1076,6 +1076,7 @@
         "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
         "secondFactorTitle": "追加の確認が必要です",
         "selectOrganization": "{{organizationName}} で続行",
+        "signedInAs": "{{identifier}} としてサインイン中",
         "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
         "unsupportedTitle": "サインイン手順を利用できません"
       },

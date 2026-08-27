@@ -39,6 +39,8 @@ export function AuthV2SignInCard({
     identifier.length > 0;
   const showsAccountSwitch =
     flowState.status === "incomplete" && flowState.step === "identifier";
+  const showsAccountChooser =
+    flowState.status === "incomplete" && flowState.step === "choose-session";
   const showsMethodsHelp =
     flowState.status === "incomplete" &&
     (flowState.step === "choose-factor" ||
@@ -70,6 +72,7 @@ export function AuthV2SignInCard({
           />
         ) : null
       }
+      layout={showsAccountChooser ? "choice" : "default"}
       title={title}
     >
       <SignInCardContent

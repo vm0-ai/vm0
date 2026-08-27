@@ -1096,6 +1096,7 @@
         "secondFactorDescription": "Este login exige uma etapa adicional de verificação que esta página não oferece. Comece novamente para tentar outro método de login.",
         "secondFactorTitle": "Verificação adicional necessária",
         "selectOrganization": "Continuar com {{organizationName}}",
+        "signedInAs": "Conectado como {{identifier}}",
         "unsupportedDescription": "Sua conta retornou uma etapa de autenticação que esta página não oferece. Comece novamente para tentar outro método de login.",
         "unsupportedTitle": "Etapa de login indisponível"
       },

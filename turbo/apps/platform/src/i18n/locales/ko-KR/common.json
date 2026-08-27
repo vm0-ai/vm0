@@ -1076,6 +1076,7 @@
         "secondFactorDescription": "이 로그인에는 이 페이지에서 지원하지 않는 추가 확인 단계가 필요합니다. 다른 로그인 방법을 사용하려면 처음부터 다시 시작하세요.",
         "secondFactorTitle": "추가 확인 필요",
         "selectOrganization": "{{organizationName}}(으)로 계속",
+        "signedInAs": "{{identifier}}(으)로 로그인됨",
         "unsupportedDescription": "계정에서 이 페이지가 지원하지 않는 인증 단계를 반환했습니다. 다른 로그인 방법을 사용하려면 처음부터 다시 시작하세요.",
         "unsupportedTitle": "로그인 단계를 사용할 수 없음"
       },

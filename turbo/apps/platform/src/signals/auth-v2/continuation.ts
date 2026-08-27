@@ -21,6 +21,7 @@ export const AUTH_V2_CHOOSE_ORGANIZATION_PATH = "/tasks/choose-organization";
 
 export interface AuthV2ContinuationOrganization {
   readonly id: string;
+  readonly imageUrl: string | null;
   readonly name: string;
 }
 
@@ -41,6 +42,7 @@ export type AuthV2ContinuationState =
   | { readonly status: "inactive" }
   | { readonly status: "recovering" }
   | {
+      readonly accountIdentifier: string;
       readonly organizations: readonly AuthV2ContinuationOrganization[];
       readonly selectingOrganizationId: string | null;
       readonly status: "incomplete";
@@ -118,13 +120,23 @@ function availableOrganizations(
   const organizations: AuthV2ContinuationOrganization[] = [];
   const seenOrganizationIds = new Set<string>();
   for (const membership of session.user?.organizationMemberships ?? []) {
-    const { id, name } = membership.organization;
+    const { id, imageUrl, name } = membership.organization;
     if (!seenOrganizationIds.has(id)) {
       seenOrganizationIds.add(id);
-      organizations.push({ id, name });
+      organizations.push({ id, imageUrl: imageUrl ?? null, name });
     }
   }
   return organizations;
+}
+
+function continuationAccountIdentifier(session: SessionResource): string {
+  const user = session.user;
+  return (
+    user?.primaryEmailAddress?.emailAddress ??
+    user?.fullName ??
+    user?.username ??
+    "Account"
+  );
 }
 
 function createContinuationAtoms(): ContinuationAtoms {
@@ -191,6 +203,7 @@ function createApplySessionCommand(
             return;
           }
           set(atoms.state$, {
+            accountIdentifier: continuationAccountIdentifier(session),
             organizations,
             selectingOrganizationId: null,
             status: "incomplete",

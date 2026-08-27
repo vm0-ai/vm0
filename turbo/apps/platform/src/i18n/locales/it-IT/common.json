@@ -1096,6 +1096,7 @@
         "secondFactorDescription": "Questo accesso richiede un ulteriore passaggio di verifica non supportato da questa pagina. Ricomincia per provare un altro metodo di accesso.",
         "secondFactorTitle": "È richiesta un'ulteriore verifica",
         "selectOrganization": "Continua con {{organizationName}}",
+        "signedInAs": "Accesso eseguito come {{identifier}}",
         "unsupportedDescription": "Il tuo account ha restituito un passaggio di autenticazione non supportato da questa pagina. Ricomincia per provare un altro metodo di accesso.",
         "unsupportedTitle": "Passaggio di accesso non disponibile"
       },
