@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.502.2",
+  "version": "1.502.3",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.598.2](https://github.com/vm0-ai/vm0/compare/core-v8.598.1...core-v8.598.2) (2026-08-27)
+
+
+### Refactoring
+
+* roll out managed socialkit ([#29821](https://github.com/vm0-ai/vm0/issues/29821)) ([401f2ca](https://github.com/vm0-ai/vm0/commit/401f2ca82bc38e2e5ca3693249bc0a90962ca104))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.376.2
+
 ## [8.598.1](https://github.com/vm0-ai/vm0/compare/core-v8.598.0...core-v8.598.1) (2026-08-27)
 
 
