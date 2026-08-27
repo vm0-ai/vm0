@@ -12,7 +12,7 @@ use sandbox::{
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, GuestStateRestoreRequest,
     GuestStateRestoreTimezone, ProcessControlAck, ProcessControlFailureKind,
     ProcessControlGuestStatus, ProcessControlOutcome, ProcessControlWriteState, ProcessExit,
-    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxError,
+    ProcessOutputMode, Sandbox, SandboxConfig, SandboxError,
     SandboxFinalExecParkHandoff, SandboxFinalExecParkHandoffOutcome,
     SandboxFinalExecParkHandoffPoint, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
     SandboxFinalExecParkStage, SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome,
@@ -26,13 +26,12 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use vsock_host::{
-    ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver,
-    GuestStateRestoreResult, GuestStorageManifestResult, NormalOperationFence,
-    NormalOperationFenceRejection, SupervisedExecControl, SupervisedExecRequest,
-    SupervisedExecStartTiming, VsockHost,
+    ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver, GuestStateRestoreResult,
+    GuestStorageManifestResult, NormalOperationFence, NormalOperationFenceRejection,
+    SupervisedExecControl, SupervisedExecRequest, SupervisedExecStartTiming, VsockHost,
 };
 use vsock_proto::{
-    ExecOutputPolicy, ExecOutputStream, ExecProcessRole, ExecTimeoutPolicy,
+    ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
     GuestStateRestoreTimezone as VsockGuestStateRestoreTimezone,
 };
 
@@ -1830,70 +1829,6 @@ fn supervised_exec_result_to_process_exit(
     }
 }
 
-fn supervised_stdout_receiver(
-    mut stream_rx: mpsc::Receiver<ExecOutputEvent>,
-    queue_capacity: usize,
-) -> (
-    sandbox::ProcessOutputReceiver,
-    Box<dyn FnOnce() + Send + 'static>,
-) {
-    let (stdout_tx, stdout_rx) = mpsc::channel(queue_capacity.max(1));
-    let stdout_closed = stdout_tx.clone();
-    let close = CancellationToken::new();
-    let task_close = close.clone();
-
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                biased;
-                () = task_close.cancelled() => {
-                    break;
-                }
-                () = stdout_closed.closed() => {
-                    break;
-                }
-                event = stream_rx.recv() => {
-                    let Some(event) = event else {
-                        break;
-                    };
-                    match event.stream {
-                        ExecOutputStream::Stdout => {
-                            let chunk = ProcessOutputChunk {
-                                bytes: event.chunk,
-                                truncated: event.truncated,
-                            };
-                            tokio::select! {
-                                biased;
-                                () = task_close.cancelled() => {
-                                    break;
-                                }
-                                result = stdout_tx.send(chunk) => {
-                                    if result.is_err() {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        ExecOutputStream::Stderr => {
-                            warn!(
-                                output_seq = event.output_seq,
-                                "discarding unexpected stderr event from stdout-only process stream"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    (
-        stdout_rx,
-        Box::new(move || {
-            close.cancel();
-        }),
-    )
-}
-
 fn exec_capture_request<'a>(
     request: &ExecRequest<'a>,
     timeout_ms: u32,
@@ -1928,7 +1863,7 @@ impl FirecrackerSandbox {
 
         let start_future = async move {
             vsock
-                .start_supervised_exec(SupervisedExecRequest {
+                .start_supervised_process(SupervisedExecRequest {
                     role,
                     timeout: process_timeout_policy(request.timeout_ms()),
                     command: request.cmd,
@@ -1976,19 +1911,10 @@ impl FirecrackerSandbox {
                         },
                     )
                 });
-                let (stdout_rx, close_stdout) = if request.output.streams_stdout() {
-                    match handle.take_stream_receiver() {
-                        Some(stream_rx) => {
-                            let queue_capacity = process_stream_queue_capacity(request.output)
-                                .unwrap_or(ProcessOutputMode::DEFAULT_QUEUE_CAPACITY);
-                            let (stdout_rx, close_stdout) =
-                                supervised_stdout_receiver(stream_rx, queue_capacity);
-                            (Some(stdout_rx), Some(close_stdout))
-                        }
-                        None => (None, None),
-                    }
+                let stdout_rx = if request.output.streams_stdout() {
+                    handle.take_process_output_receiver()
                 } else {
-                    (None, None)
+                    None
                 };
                 let process_cancel = handle.take_cancel_handle().map(|cancel| {
                     GuestProcessCancelHandle::new(move |timeout| {
@@ -2006,10 +1932,6 @@ impl FirecrackerSandbox {
                 if let Some(process_cancel) = process_cancel {
                     public_handle = public_handle.with_cancel_handle(process_cancel);
                 }
-                let public_handle = match close_stdout {
-                    Some(close_stdout) => public_handle.with_unclaimed_stdout_cleanup(close_stdout),
-                    None => public_handle,
-                };
                 Ok((public_handle, start_timing))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {

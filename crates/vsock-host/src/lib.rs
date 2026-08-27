@@ -368,6 +368,19 @@ impl VsockHost {
         exec_operation::start_supervised_exec_on_shared(&self.shared, request).await
     }
 
+    /// Start a supervised process whose streamed stdout is delivered through
+    /// the sandbox process-output queue.
+    ///
+    /// The request must not stream stderr. When stdout streams, the returned
+    /// handle owns a bounded [`sandbox::ProcessOutputReceiver`] until it is
+    /// taken with [`SupervisedExecHandle::take_process_output_receiver`].
+    pub async fn start_supervised_process(
+        &self,
+        request: SupervisedExecRequest<'_>,
+    ) -> io::Result<SupervisedExecHandle> {
+        exec_operation::start_supervised_process_on_shared(&self.shared, request).await
+    }
+
     /// Run a capture-only exec operation with default capture limits.
     pub async fn exec_operation_capture_default(
         &self,

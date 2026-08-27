@@ -10,7 +10,8 @@ use super::super::super::support::{
     wait_for_operation_count,
 };
 use super::support::{
-    StartedSupervisedExec, start_supervised_exec_fixture, supervised_stream_request,
+    StartedSupervisedExec, start_supervised_exec_fixture, start_supervised_process_fixture,
+    supervised_stream_request,
 };
 use crate::operation_tracker::NormalOperationReadiness;
 
@@ -206,4 +207,85 @@ async fn supervised_exec_stream_overflow_is_reported_in_terminal_result() {
 
     let result = handle.wait(Duration::from_secs(5)).await.unwrap();
     assert!(result.stream_overflowed);
+}
+
+#[tokio::test]
+async fn supervised_process_output_capacity_retains_one_chunk_before_overflow() {
+    let StartedSupervisedExec {
+        host: _host,
+        mut guest,
+        start,
+        mut handle,
+    } = start_supervised_process_fixture(supervised_stream_request("process-output-overflow"))
+        .await;
+    let start_seq = start.seq();
+    let mut output_rx = handle
+        .take_process_output_receiver()
+        .expect("process output receiver should be available");
+
+    send_exec_output(
+        &mut guest,
+        start_seq,
+        0,
+        ExecOutputStream::Stdout,
+        b"first",
+        false,
+    )
+    .await;
+    send_exec_output(
+        &mut guest,
+        start_seq,
+        1,
+        ExecOutputStream::Stdout,
+        b"second",
+        false,
+    )
+    .await;
+    send_discarded_exec_result(
+        &mut guest,
+        start_seq,
+        ExecTermination::Exited { exit_code: 0 },
+    )
+    .await;
+
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert!(result.stream_overflowed);
+    let chunk = output_rx.recv().await.unwrap();
+    assert_eq!(chunk.bytes, b"first");
+    assert!(!chunk.truncated);
+    assert!(output_rx.recv().await.is_none());
+}
+
+#[tokio::test]
+async fn supervised_process_output_closed_receiver_does_not_mark_overflow() {
+    let StartedSupervisedExec {
+        host: _host,
+        mut guest,
+        start,
+        mut handle,
+    } = start_supervised_process_fixture(supervised_stream_request("process-output-closed")).await;
+    let start_seq = start.seq();
+    let output_rx = handle
+        .take_process_output_receiver()
+        .expect("process output receiver should be available");
+    drop(output_rx);
+
+    send_exec_output(
+        &mut guest,
+        start_seq,
+        0,
+        ExecOutputStream::Stdout,
+        b"closed",
+        false,
+    )
+    .await;
+    send_discarded_exec_result(
+        &mut guest,
+        start_seq,
+        ExecTermination::Exited { exit_code: 0 },
+    )
+    .await;
+
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert!(!result.stream_overflowed);
 }

@@ -381,6 +381,7 @@ impl MockSandbox {
             }
             ProcessOutputMode::Buffered { .. } => (None, None),
         };
+        let mut stream_overflowed = false;
         if let Some(overrides) = &self.overrides {
             let chunks = overrides
                 .process
@@ -396,16 +397,26 @@ impl MockSandbox {
                     });
                 };
                 for chunk in chunks {
-                    sender
-                        .try_send(chunk)
-                        .map_err(|_| SandboxError::Operation {
-                            operation,
-                            reason: SandboxOperationReason::Other,
-                            message: "mock stdout chunks exceeded process stream capacity"
-                                .to_string(),
-                        })?;
+                    match sender.try_send(chunk) {
+                        Ok(()) => {}
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                            stream_overflowed = true;
+                            break;
+                        }
+                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                            return Err(SandboxError::Operation {
+                                operation,
+                                reason: SandboxOperationReason::Other,
+                                message: "mock process stdout receiver closed during start"
+                                    .to_string(),
+                            });
+                        }
+                    }
                 }
             }
+        }
+        if stream_overflowed {
+            tx = None;
         }
         if self.overrides.as_ref().is_some_and(|overrides| {
             *overrides
@@ -492,8 +503,12 @@ impl MockSandbox {
             1,
             rx,
             control,
-            GuestProcessWaiter::new(|_timeout| {
-                Box::pin(std::future::pending::<std::io::Result<ProcessExit>>())
+            GuestProcessWaiter::new(move |_timeout| {
+                Box::pin(async move {
+                    let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
+                    exit.stream_overflowed = stream_overflowed;
+                    Ok(exit)
+                })
             }),
         );
         if let Some(process_cancel) = process_cancel {
@@ -1171,7 +1186,7 @@ impl Sandbox for MockSandbox {
         mut handle: GuestProcessHandle,
         timeout: Duration,
     ) -> Result<ProcessExit> {
-        let Some(_waiter) = handle.take_waiter() else {
+        let Some(waiter) = handle.take_waiter() else {
             return Err(SandboxError::Operation {
                 operation: SandboxOperation::WaitProcess,
                 reason: SandboxOperationReason::Other,
@@ -1182,7 +1197,7 @@ impl Sandbox for MockSandbox {
         // longer be observed by the caller and would otherwise buffer forever.
         handle.drop_unclaimed_stdout();
 
-        let exit = if let Some(overrides) = &self.overrides {
+        if let Some(overrides) = &self.overrides {
             overrides
                 .process
                 .wait_process_calls
@@ -1198,6 +1213,18 @@ impl Sandbox for MockSandbox {
                     message: msg.clone(),
                 });
             }
+        }
+        let observed_exit =
+            waiter
+                .wait(timeout)
+                .await
+                .map_err(|error| SandboxError::Operation {
+                    operation: SandboxOperation::WaitProcess,
+                    reason: SandboxOperationReason::Other,
+                    message: error.to_string(),
+                })?;
+        let observed_stream_overflowed = observed_exit.stream_overflowed;
+        let mut exit = if let Some(overrides) = &self.overrides {
             // Return override exit code when configured.
             if let Some(code) = overrides.process.wait_process_code {
                 ProcessExit::new(handle.guest_pid, code, Vec::new(), Vec::new())
@@ -1209,11 +1236,12 @@ impl Sandbox for MockSandbox {
             {
                 exit
             } else {
-                ProcessExit::new(handle.guest_pid, 0, Vec::new(), Vec::new())
+                observed_exit
             }
         } else {
-            ProcessExit::new(handle.guest_pid, 0, Vec::new(), Vec::new())
+            observed_exit
         };
+        exit.stream_overflowed |= observed_stream_overflowed;
         if let Some(cancel) = self.overrides.as_ref().and_then(|overrides| {
             overrides
                 .process
