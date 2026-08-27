@@ -154,6 +154,7 @@ grep -q "service stop" "${TMPDIR}/arm64-success/service-stop.log" || fail "expec
 run_deploy x86-success x86_64 env >"${TMPDIR}/x86-success.out" 2>"${TMPDIR}/x86-success.err"
 grep -q -- "--target x86_64-unknown-linux-musl" "${TMPDIR}/x86-success/cargo.log" || fail "expected x86_64 cargo target"
 grep -q "service stop" "${TMPDIR}/x86-success/service-stop.log" || fail "expected x86_64 service stop"
+grep -q -- "--hostname dev-host" "${TMPDIR}/x86-success/cf-ssh.log" || fail "expected config hostname"
 gc_command=$(grep " gc --keep-latest 3$" "${TMPDIR}/x86-success/cf-ssh.log")
 [[ "$gc_command" != *"R2_"* ]] || fail "gc should not receive R2 credentials"
 build_command=$(grep " build --profile vm0/default$" "${TMPDIR}/x86-success/cf-ssh.log")
@@ -163,7 +164,7 @@ start_line=$(grep -n " service start " "${TMPDIR}/x86-success/cf-ssh.log" | cut 
 readiness_line=$(grep -n " service wait-running " "${TMPDIR}/x86-success/cf-ssh.log" | cut -d: -f1)
 [ "$start_line" -lt "$readiness_line" ] || fail "readiness should follow service start"
 grep -q "\[runner\] Waiting for Runner readiness..." "${TMPDIR}/x86-success.err" || fail "expected readiness progress"
-grep -q "\[runner\] Done! Runner local-test deployed to dev-host" "${TMPDIR}/x86-success.err" || fail "expected completion after readiness"
+grep -q "\[runner\] Done! Runner service local-test deployed to dev-host" "${TMPDIR}/x86-success.err" || fail "expected completion after readiness"
 if grep -q '^4$' "${TMPDIR}/x86-success.out"; then
   fail "readiness capacity should not be printed"
 fi

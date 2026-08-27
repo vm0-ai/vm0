@@ -90,10 +90,10 @@ fi
 
 read_host_capacity() {
   local HOST=$1
-  local RUNNER_NAME=$2
+  local RUNNER_SERVICE_SUFFIX=$2
   local REMOTE="${METAL_USER}@${HOST}"
   # shellcheck disable=SC2029
-  ssh "$REMOTE" "sudo ${BIN_DIR}/runner service wait-running --name ${RUNNER_NAME} --timeout-secs 120"
+  ssh "$REMOTE" "sudo ${BIN_DIR}/runner service wait-running --name ${RUNNER_SERVICE_SUFFIX} --timeout-secs 120"
 }
 
 start_on_host() {
@@ -101,11 +101,11 @@ start_on_host() {
 
   local HOST=$1
   local HOST_INDEX=$2
-  local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
+  local RUNNER_SERVICE_SUFFIX="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
   local RUNNER_DIRNAME="${RUNNER_DIR##*/}"
   local REMOTE="${METAL_USER}@${HOST}"
   local MC
-  echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
+  echo "=== Starting runner service ${RUNNER_SERVICE_SUFFIX} on ${HOST} ==="
 
   local ROOTFS_HASH SNAPSHOT_HASH
   ROOTFS_HASH=$(echo "$ROOTFS_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
@@ -137,24 +137,24 @@ start_on_host() {
     --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
   # shellcheck disable=SC2029
-  timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start"
+  timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_SERVICE_SUFFIX}' --force --cleanup partial-start"
   # shellcheck disable=SC2029
   ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
 
   # shellcheck disable=SC2029
   ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
-    --name ${RUNNER_NAME} \
+    --name ${RUNNER_SERVICE_SUFFIX} \
     --config ${RUNNER_DIR}/runner.yaml \
     --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
     --env USE_MOCK_CLAUDE=true \
     --env USE_MOCK_CODEX=true"
 
-  if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
+  if ! MC=$(read_host_capacity "$HOST" "$RUNNER_SERVICE_SUFFIX"); then
     return 1
   fi
   echo "Runner ready on ${HOST}: max_concurrent=${MC}"
   # shellcheck disable=SC2029
-  ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
+  ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_SERVICE_SUFFIX}"
   echo "=== Runner started on ${HOST} ==="
 }
 
@@ -234,12 +234,12 @@ stop_started_hosts() {
   local HOST_INDEX=0
   for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
     HOST_INDEX=$((HOST_INDEX + 1))
-    local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
+    local RUNNER_SERVICE_SUFFIX="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
     local REMOTE="${METAL_USER}@${HOST}"
-    echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
+    echo "::warning::Requesting stop for partially started runner service ${RUNNER_SERVICE_SUFFIX} on ${HOST}"
     (
       # shellcheck disable=SC2029
-      timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start" >/dev/null || true
+      timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_SERVICE_SUFFIX}' --force --cleanup partial-start" >/dev/null || true
     ) &
     STOP_PIDS+=($!)
   done
