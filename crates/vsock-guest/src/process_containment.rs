@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
+use std::net::Shutdown;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -107,7 +108,80 @@ pub(crate) struct WorkloadPlacementBootstrap {
     tool_endpoint: String,
     cancel: Arc<AtomicBool>,
     cancel_wake_writer: Option<OwnedFd>,
+    active_tool_placement: Arc<ActiveToolPlacement>,
     workers: Vec<JoinHandle<()>>,
+}
+
+#[derive(Default)]
+struct ActiveToolPlacement {
+    stream: Mutex<Option<Arc<UnixStream>>>,
+}
+
+struct ActiveToolPlacementStream {
+    active: Arc<ActiveToolPlacement>,
+    stream: Arc<UnixStream>,
+}
+
+impl ActiveToolPlacement {
+    fn register(
+        self: &Arc<Self>,
+        stream: UnixStream,
+        cancel: &AtomicBool,
+    ) -> io::Result<Option<ActiveToolPlacementStream>> {
+        let mut active = self
+            .stream
+            .lock()
+            .map_err(|_| io::Error::other("active tool placement state is unavailable"))?;
+        if cancel.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        let stream = Arc::new(stream);
+        *active = Some(Arc::clone(&stream));
+        Ok(Some(ActiveToolPlacementStream {
+            active: Arc::clone(self),
+            stream,
+        }))
+    }
+
+    fn clear(&self) -> io::Result<()> {
+        let mut active = self
+            .stream
+            .lock()
+            .map_err(|_| io::Error::other("active tool placement state is unavailable"))?;
+        *active = None;
+        Ok(())
+    }
+
+    fn shutdown(&self) -> io::Result<()> {
+        let stream = {
+            let mut active = self
+                .stream
+                .lock()
+                .map_err(|_| io::Error::other("active tool placement state is unavailable"))?;
+            active.take()
+        };
+        match stream {
+            Some(stream) => stream.shutdown(Shutdown::Both),
+            None => Ok(()),
+        }
+    }
+}
+
+impl AsRef<UnixStream> for ActiveToolPlacementStream {
+    fn as_ref(&self) -> &UnixStream {
+        &self.stream
+    }
+}
+
+impl Drop for ActiveToolPlacementStream {
+    fn drop(&mut self) {
+        if let Err(error) = self.active.clear() {
+            log(
+                "WARN",
+                &format!("active tool placement cleanup failed: {error}"),
+            );
+        }
+    }
 }
 
 impl WorkloadPlacementBootstrap {
@@ -125,6 +199,12 @@ impl Drop for WorkloadPlacementBootstrap {
         self.cancel.store(true, Ordering::Release);
         // Closing the sole pipe writer wakes every worker poll through POLLHUP.
         drop(self.cancel_wake_writer.take());
+        if let Err(error) = self.active_tool_placement.shutdown() {
+            log(
+                "WARN",
+                &format!("active tool placement shutdown failed: {error}"),
+            );
+        }
         for worker in self.workers.drain(..) {
             if let Err(error) = worker.join() {
                 log(
@@ -444,6 +524,8 @@ impl CgroupGuard {
         let cancel_reader = Arc::new(cancel_reader);
         let workload_cancel_reader = Arc::clone(&cancel_reader);
         let tool_cancel_reader = Arc::clone(&cancel_reader);
+        let active_tool_placement = Arc::new(ActiveToolPlacement::default());
+        let worker_active_tool_placement = Arc::clone(&active_tool_placement);
         let mut cancel_wake_writer = Some(cancel_wake_writer);
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = Arc::clone(&cancel);
@@ -471,6 +553,7 @@ impl CgroupGuard {
                     expected_uid,
                     &expected_runtime_cgroup,
                     &tools_path,
+                    &worker_active_tool_placement,
                     &tool_cancel,
                     tool_cancel_reader.as_raw_fd(),
                 );
@@ -491,6 +574,7 @@ impl CgroupGuard {
             tool_endpoint,
             cancel,
             cancel_wake_writer,
+            active_tool_placement,
             workers: vec![workload_worker, tool_worker],
         })
     }
@@ -1018,6 +1102,7 @@ fn serve_tool_placement(
     expected_uid: libc::uid_t,
     expected_runtime_cgroup: &Path,
     tools_path: &Path,
+    active_tool_placement: &Arc<ActiveToolPlacement>,
     cancel: &AtomicBool,
     cancel_fd: RawFd,
 ) {
@@ -1031,14 +1116,31 @@ fn serve_tool_placement(
                 return;
             }
         };
-        if let Err(error) = stream.set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT)) {
+        let stream = match active_tool_placement.register(stream, cancel) {
+            Ok(Some(stream)) => stream,
+            Ok(None) => return,
+            Err(error) => {
+                log(
+                    "WARN",
+                    &format!("tool placement stream registration failed: {error}"),
+                );
+                return;
+            }
+        };
+        if let Err(error) = stream
+            .as_ref()
+            .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+        {
             log(
                 "WARN",
                 &format!("tool placement read timeout setup failed: {error}"),
             );
             continue;
         }
-        if let Err(error) = stream.set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT)) {
+        if let Err(error) = stream
+            .as_ref()
+            .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+        {
             log(
                 "WARN",
                 &format!("tool placement write timeout setup failed: {error}"),
@@ -1047,7 +1149,7 @@ fn serve_tool_placement(
         }
 
         let placement = place_tool_peer(
-            &stream,
+            stream.as_ref(),
             expected_uid,
             expected_runtime_cgroup,
             tools_path,
@@ -1055,6 +1157,9 @@ fn serve_tool_placement(
         );
         next_tool_id = next_tool_id.saturating_add(1);
         if let Err(error) = placement {
+            if cancel.load(Ordering::Acquire) {
+                return;
+            }
             log("WARN", &format!("tool placement rejected: {error}"));
         }
     }
@@ -1696,6 +1801,7 @@ mod tests {
             tool_endpoint,
             cancel,
             cancel_wake_writer: Some(cancel_writer),
+            active_tool_placement: Arc::new(ActiveToolPlacement::default()),
             workers: vec![workload_worker, tool_worker],
         };
 
@@ -1714,6 +1820,197 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .expect("bootstrap drop should actively wake and join the idle worker");
         drop_worker.join().unwrap();
+        assert!(cancel_after_drop.load(Ordering::Acquire));
+        assert_eq!(worker_done.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn placement_bootstrap_drop_interrupts_accepted_tool_handshake() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint_base = format!(
+            "vm0-test-placement-active-cancel-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let endpoint = format!("{endpoint_base}-workload");
+        let tool_endpoint = format!("{endpoint_base}-tool");
+        let workload_listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let tool_listener = process_control_ipc::bind_abstract_listener(&tool_endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel_reader = Arc::new(cancel_reader);
+        let workload_cancel_reader = Arc::clone(&cancel_reader);
+        let tool_cancel_reader = Arc::clone(&cancel_reader);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let tool_cancel = Arc::clone(&cancel);
+        let cancel_after_drop = Arc::clone(&cancel);
+        let active_tool_placement = Arc::new(ActiveToolPlacement::default());
+        let worker_active_tool_placement = Arc::clone(&active_tool_placement);
+        let active_after_success = Arc::clone(&active_tool_placement);
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let workload_ready_tx = ready_tx.clone();
+        let (successful_done_tx, successful_done_rx) = mpsc::channel();
+        let (stalled_error_tx, stalled_error_rx) = mpsc::channel();
+        let worker_done = Arc::new(AtomicU64::new(0));
+        let workload_done = Arc::clone(&worker_done);
+        let tool_done = Arc::clone(&worker_done);
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        let expected_uid = unsafe { libc::geteuid() };
+        let current_cgroup = fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative_cgroup = current_cgroup
+            .lines()
+            .find_map(|line| line.strip_prefix("0::/"))
+            .unwrap();
+        let expected_cgroup = Path::new(CGROUP_V2_MOUNT_PATH).join(relative_cgroup);
+
+        let workload_worker = thread::Builder::new()
+            .name("test-workload-placement-active-cancel".to_owned())
+            .spawn(move || {
+                workload_ready_tx.send(()).unwrap();
+                match wait_for_placement_or_cancelled(
+                    &workload_listener,
+                    workload_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                {
+                    PlacementWaitOutcome::Cancelled => {}
+                    PlacementWaitOutcome::ListenerReady => {
+                        panic!("idle workload placement listener unexpectedly became ready");
+                    }
+                }
+                workload_done.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
+        let tool_worker = thread::Builder::new()
+            .name("test-tool-placement-active-cancel".to_owned())
+            .spawn(move || {
+                ready_tx.send(()).unwrap();
+                let placement = std::fs::File::open("/dev/null").unwrap();
+
+                let successful_stream = accept_placement_or_cancelled(
+                    &tool_listener,
+                    &tool_cancel,
+                    tool_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                .unwrap();
+                let successful_stream = worker_active_tool_placement
+                    .register(successful_stream, &tool_cancel)
+                    .unwrap()
+                    .unwrap();
+                successful_stream
+                    .as_ref()
+                    .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+                    .unwrap();
+                successful_stream
+                    .as_ref()
+                    .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+                    .unwrap();
+                assert!(
+                    peer_matches(successful_stream.as_ref(), expected_uid, &expected_cgroup)
+                        .unwrap()
+                );
+                process_control_ipc::send_tool_placement(
+                    successful_stream.as_ref(),
+                    placement.as_fd(),
+                )
+                .unwrap();
+                process_control_ipc::read_tool_placement_confirmation(successful_stream.as_ref())
+                    .unwrap();
+                process_control_ipc::write_tool_placement_ack(successful_stream.as_ref()).unwrap();
+                drop(successful_stream);
+                successful_done_tx.send(()).unwrap();
+
+                let stalled_stream = accept_placement_or_cancelled(
+                    &tool_listener,
+                    &tool_cancel,
+                    tool_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                .unwrap();
+                let stalled_stream = worker_active_tool_placement
+                    .register(stalled_stream, &tool_cancel)
+                    .unwrap()
+                    .unwrap();
+                stalled_stream
+                    .as_ref()
+                    .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+                    .unwrap();
+                stalled_stream
+                    .as_ref()
+                    .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+                    .unwrap();
+                assert!(
+                    peer_matches(stalled_stream.as_ref(), expected_uid, &expected_cgroup).unwrap()
+                );
+                process_control_ipc::send_tool_placement(
+                    stalled_stream.as_ref(),
+                    placement.as_fd(),
+                )
+                .unwrap();
+                let error =
+                    process_control_ipc::read_tool_placement_confirmation(stalled_stream.as_ref())
+                        .expect_err("bootstrap drop should interrupt the confirmation read");
+                stalled_error_tx.send(error.kind()).unwrap();
+                tool_done.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
+        let bootstrap = WorkloadPlacementBootstrap {
+            endpoint,
+            tool_endpoint: tool_endpoint.clone(),
+            cancel,
+            cancel_wake_writer: Some(cancel_writer),
+            active_tool_placement,
+            workers: vec![workload_worker, tool_worker],
+        };
+
+        for _ in 0..2 {
+            ready_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("placement worker should enter its wait");
+        }
+        let successful_client = process_control_ipc::connect_abstract(&tool_endpoint).unwrap();
+        successful_client
+            .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+            .unwrap();
+        successful_client
+            .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+            .unwrap();
+        let successful_placement =
+            process_control_ipc::receive_tool_placement(&successful_client).unwrap();
+        drop(successful_placement);
+        process_control_ipc::write_tool_placement_confirmation(&successful_client).unwrap();
+        process_control_ipc::read_tool_placement_ack(&successful_client).unwrap();
+        successful_done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("successful placement should clear its active stream");
+        assert!(active_after_success.stream.lock().unwrap().is_none());
+
+        let stalled_client = process_control_ipc::connect_abstract(&tool_endpoint).unwrap();
+        stalled_client
+            .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+            .unwrap();
+        stalled_client
+            .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+            .unwrap();
+        let stalled_placement =
+            process_control_ipc::receive_tool_placement(&stalled_client).unwrap();
+        drop(stalled_placement);
+
+        let (drop_done_tx, drop_done_rx) = mpsc::channel();
+        let drop_worker = thread::spawn(move || {
+            drop(bootstrap);
+            drop_done_tx.send(()).unwrap();
+        });
+
+        drop_done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("bootstrap drop should interrupt and join the accepted handshake");
+        drop_worker.join().unwrap();
+        let stalled_error = stalled_error_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("accepted handshake should report interrupted I/O");
+        assert_ne!(stalled_error, io::ErrorKind::TimedOut);
+        process_control_ipc::read_tool_placement_ack(&stalled_client)
+            .expect_err("cancelled placement must not receive an acknowledgement");
         assert!(cancel_after_drop.load(Ordering::Acquire));
         assert_eq!(worker_done.load(Ordering::Acquire), 2);
     }
