@@ -50,14 +50,18 @@ source "$ENV_FILE"
 HOST="${RUNNER_LOCAL_HOST:?RUNNER_LOCAL_HOST not set in $ENV_FILE}"
 SSH_USER="${RUNNER_LOCAL_USER:-ubuntu}"
 
-# --- Opaque local service suffix from RUNNER_DEFAULT_GROUP ---
+# --- Opaque local selectors from RUNNER_DEFAULT_GROUP ---
 RUNNER_GROUP="${RUNNER_DEFAULT_GROUP:?RUNNER_DEFAULT_GROUP not set in $ENV_FILE}"
 # vm0/local-alice-macbook -> alice-macbook
+# The current dev convention gives all three selectors the same text, but they
+# remain separate service, binary-directory, and Runner-directory inputs.
 RUNNER_SERVICE_SUFFIX="${RUNNER_GROUP##*/}"
+RUNNER_BIN_DIRNAME="${RUNNER_GROUP##*/}"
+RUNNER_DIRNAME="${RUNNER_GROUP##*/}"
 
-REMOTE_BIN_DIR="/var/lib/vm0-runner/bin/${RUNNER_SERVICE_SUFFIX}"
+REMOTE_BIN_DIR="/var/lib/vm0-runner/bin/${RUNNER_BIN_DIRNAME}"
 RUNNER_BIN="sudo $REMOTE_BIN_DIR/runner"
-RUNNER_DIR="/var/lib/vm0-runner/runners/$RUNNER_SERVICE_SUFFIX"
+RUNNER_DIR="/var/lib/vm0-runner/runners/$RUNNER_DIRNAME"
 
 CF_SSH="$SCRIPT_DIR/cf-ssh.sh"
 SSH_KEY="$PROJECT_ROOT/.certs/vm0-metal-local.pem"
@@ -157,8 +161,8 @@ cmd_deploy() {
     R2_SECRET_ACCESS_KEY "${R2_SECRET_ACCESS_KEY:-}" \
     R2_USER_STORAGES_BUCKET_NAME "${R2_USER_STORAGES_BUCKET_NAME:-}")"
 
-  # Clean up old images and installed deployments while retaining this deployment.
-  ssh_cmd "sudo flock --exclusive /var/lib/vm0-runner/locks/deployment-gc.lock $REMOTE_BIN_DIR/runner gc --keep-latest 3 --keep-service-suffix $RUNNER_SERVICE_SUFFIX --keep-bin-dirname $RUNNER_SERVICE_SUFFIX --keep-runner-dirname $RUNNER_SERVICE_SUFFIX"
+  # Clean up old images, services, and managed directories while retaining each selected object.
+  ssh_cmd "sudo flock --exclusive /var/lib/vm0-runner/locks/deployment-gc.lock $REMOTE_BIN_DIR/runner gc --keep-latest 3 --keep-service-suffix $RUNNER_SERVICE_SUFFIX --keep-bin-dirname $RUNNER_BIN_DIRNAME --keep-runner-dirname $RUNNER_DIRNAME"
 
   # Build unified image (rootfs + snapshot)
   PROFILES=("vm0/default")
@@ -187,7 +191,7 @@ cmd_deploy() {
     $CONFIG_ARGS \
     --hostname $HOST \
     --group $RUNNER_GROUP \
-    --runner-dirname $RUNNER_SERVICE_SUFFIX \
+    --runner-dirname $RUNNER_DIRNAME \
     --api-url $API_URL \
     --token vm0_official_${RUNNER_SECRET}"
 

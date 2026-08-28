@@ -3,7 +3,7 @@
 # This playbook prepares a new version of the Rust-based VM0 runner on
 # production metal instances **without starting the service**. It copies the
 # binary, downloads dependencies, builds the default rootfs/snapshot, and
-# writes the per-version config file. The systemd service is installed by
+# writes the selected Runner config file. The systemd service is installed by
 # the companion `promote-runner.yml` in the promote phase — this lets the
 # heavy `runner build` step run in parallel with other production builds
 # without cutting traffic over.
@@ -36,11 +36,14 @@
   become: true
 
   vars:
-    runner_release: "v{{ runner_version }}"
+    # These selectors currently render the same release value, but they name
+    # independent filesystem namespaces and must remain independently declared.
+    runner_bin_dirname: "v{{ runner_version }}"
+    runner_dirname: "v{{ runner_version }}"
     runner_group: vm0/production
     data_dir: /var/lib/vm0-runner
-    bin_dir: "{{ data_dir }}/bin/{{ runner_release }}"
-    runner_dir: "{{ data_dir }}/runners/{{ runner_release }}"
+    bin_dir: "{{ data_dir }}/bin/{{ runner_bin_dirname }}"
+    runner_dir: "{{ data_dir }}/runners/{{ runner_dirname }}"
 
   tasks:
     - name: Validate runner architecture
@@ -106,7 +109,7 @@
     # ========================================
     # Phase 3a: Configure (no service install)
     # ========================================
-    # Writes runner.yaml to a per-version directory. Does not touch any
+# Writes runner.yaml to the selected Runner directory. Does not touch any
     # running service — the promote phase is responsible for systemd install.
     - name: Generate runner config
       command: >
@@ -116,7 +119,7 @@
         --snapshot-hash {{ default_snapshot_hash }}
         --hostname {{ inventory_hostname | quote }}
         --group {{ runner_group }}
-        --runner-dirname {{ runner_release }}
+        --runner-dirname {{ runner_dirname }}
         --api-url {{ api_url }}
         --token vm0_official_{{ official_runner_secret }}
       tags:

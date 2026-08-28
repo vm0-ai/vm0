@@ -1,18 +1,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use futures_util::{StreamExt, stream};
 use tracing::warn;
 
-use crate::cmd::service;
 use crate::config;
 use crate::image_hash;
 
-use super::filesystem::{GcDirEntryReader, read_dir_or_missing};
-
 type ProtectedImageRefMap = HashMap<String, HashSet<String>>;
-
-const ENABLED_SERVICE_QUERY_CONCURRENCY: usize = 4;
 
 pub(super) enum ProtectedImageRefs {
     Complete(ProtectedImageRefMap),
@@ -86,224 +80,77 @@ pub(super) fn is_protected_image_ref(
 
 pub(super) async fn protected_image_refs_for_gc(
     retained_config_paths: &[PathBuf],
-    deployment_inventory_complete: bool,
+    resource_inventory_complete: bool,
 ) -> ProtectedImageRefs {
-    if !deployment_inventory_complete {
-        warn!("runner image refs: deployment inventory incomplete, skipping image GC");
+    if !resource_inventory_complete {
+        warn!("runner image refs: managed resource inventory incomplete, skipping image GC");
         return ProtectedImageRefs::Incomplete;
     }
 
     let mut refs = ProtectedImageRefs::new();
-    collect_retained_deployment_image_refs(retained_config_paths, &mut refs).await;
-    if !collect_enabled_service_image_refs(&mut refs).await {
+    if !collect_retained_config_image_refs(retained_config_paths, &mut refs).await {
         return ProtectedImageRefs::Incomplete;
     }
     refs
 }
 
-async fn collect_retained_deployment_image_refs(
+async fn collect_retained_config_image_refs(
     retained_config_paths: &[PathBuf],
     refs: &mut ProtectedImageRefs,
-) {
-    for config_path in retained_config_paths {
-        collect_config_image_refs(config_path, "retained deployment", refs).await;
-    }
-}
-
-async fn collect_enabled_service_image_refs(refs: &mut ProtectedImageRefs) -> bool {
-    collect_enabled_service_image_refs_from_dir(Path::new("/etc/systemd/system"), refs).await
-}
-
-async fn collect_enabled_service_image_refs_from_dir(
-    system_dir: &Path,
-    refs: &mut ProtectedImageRefs,
 ) -> bool {
-    let scan = enabled_runner_service_config_paths(system_dir).await;
-    for config_path in scan.paths {
-        collect_config_image_refs(&config_path, "enabled service", refs).await;
+    let mut complete = true;
+    for config_path in retained_config_paths {
+        complete &= collect_config_image_refs(config_path, refs).await;
     }
-    scan.inventory_complete
+    complete
 }
 
-struct EnabledRunnerServiceConfigPaths {
-    paths: Vec<PathBuf>,
-    inventory_complete: bool,
-}
-
-struct EnabledRunnerServiceConfigPathResult {
-    path: Option<PathBuf>,
-    inventory_complete: bool,
-}
-
-async fn enabled_runner_service_config_paths(system_dir: &Path) -> EnabledRunnerServiceConfigPaths {
-    let mut entry_reader = GcDirEntryReader::new();
-    enabled_runner_service_config_paths_with_reader(system_dir, &mut entry_reader).await
-}
-
-async fn enabled_runner_service_config_paths_with_reader(
-    system_dir: &Path,
-    entry_reader: &mut GcDirEntryReader,
-) -> EnabledRunnerServiceConfigPaths {
-    let Some(mut entries) = (match read_dir_or_missing(system_dir).await {
-        Ok(entries) => entries,
-        Err(e) => {
-            warn!(
-                "runner service image refs: cannot read {} ({e}), skipping service-derived refs",
-                system_dir.display()
-            );
-            return EnabledRunnerServiceConfigPaths {
-                paths: Vec::new(),
-                inventory_complete: false,
-            };
-        }
-    }) else {
-        return EnabledRunnerServiceConfigPaths {
-            paths: Vec::new(),
-            inventory_complete: true,
-        };
-    };
-
-    let mut units = Vec::new();
-    let mut inventory_complete = true;
-    loop {
-        let entry = match entry_reader
-            .next_entry_warn(&mut entries, "runner_service_config_refs", system_dir)
-            .await
-        {
-            Ok(Some(entry)) => entry,
-            Ok(None) => break,
-            Err(_) => {
-                inventory_complete = false;
-                break;
-            }
-        };
-        let file_name = entry.file_name();
-        let Some(file_name) = file_name.to_str() else {
-            continue;
-        };
-        let Some(unit) = service::RunnerServiceUnit::from_file_name(file_name) else {
-            continue;
-        };
-        units.push(unit);
-    }
-
-    let results = stream::iter(units)
-        .map(enabled_runner_service_config_path)
-        .buffered(ENABLED_SERVICE_QUERY_CONCURRENCY)
-        .collect::<Vec<_>>()
-        .await;
-    let mut paths = Vec::new();
-    for result in results {
-        if let Some(path) = result.path {
-            paths.push(path);
-        }
-        inventory_complete &= result.inventory_complete;
-    }
-    EnabledRunnerServiceConfigPaths {
-        paths,
-        inventory_complete,
-    }
-}
-
-async fn enabled_runner_service_config_path(
-    unit: service::RunnerServiceUnit,
-) -> EnabledRunnerServiceConfigPathResult {
-    match service::is_unit_enabled(&unit).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return EnabledRunnerServiceConfigPathResult {
-                path: None,
-                inventory_complete: true,
-            };
-        }
-        Err(e) => {
-            warn!(
-                "runner service image refs: cannot check whether {} is enabled ({e}), protection inventory incomplete",
-                unit.service_name()
-            );
-            return EnabledRunnerServiceConfigPathResult {
-                path: None,
-                inventory_complete: false,
-            };
-        }
-    }
-    match service::read_unit_config_path(&unit).await {
-        Ok(Some(path)) => EnabledRunnerServiceConfigPathResult {
-            path: Some(path),
-            inventory_complete: true,
-        },
-        Ok(None) => {
-            warn!(
-                "runner service image refs: enabled service {} has no parseable config path, skipping",
-                unit.service_name()
-            );
-            EnabledRunnerServiceConfigPathResult {
-                path: None,
-                inventory_complete: true,
-            }
-        }
-        Err(e) => {
-            warn!(
-                "runner service image refs: cannot read effective config for enabled service {} ({e}), protection inventory incomplete",
-                unit.service_name()
-            );
-            EnabledRunnerServiceConfigPathResult {
-                path: None,
-                inventory_complete: false,
-            }
-        }
-    }
-}
-
-async fn collect_config_image_refs(
-    config_path: &Path,
-    source: &str,
-    refs: &mut ProtectedImageRefs,
-) {
+async fn collect_config_image_refs(config_path: &Path, refs: &mut ProtectedImageRefs) -> bool {
     let Some(content) = (match config::read_diagnostic_config_to_string(config_path).await {
         Ok(content) => content,
         Err(e) => {
             warn!(
-                "runner image refs: cannot read {source} config {} ({e}), skipping",
+                "runner image refs: cannot read retained config {} ({e}), skipping image GC",
                 config_path.display()
             );
-            return;
+            return false;
         }
     }) else {
         warn!(
-            "runner image refs: {source} config {} is missing, skipping",
+            "runner image refs: retained config {} is missing, skipping path",
             config_path.display()
         );
-        return;
+        return true;
     };
 
     let config = match serde_yaml_ng::from_str::<ConfigImageRefs>(&content) {
         Ok(config) => config,
         Err(_) => {
             warn!(
-                "runner image refs: cannot parse {source} config {}, skipping",
+                "runner image refs: cannot parse retained config {}, skipping image GC",
                 config_path.display()
             );
-            return;
+            return false;
         }
     };
     for (_, profile_ref) in config.profiles {
         if image_hash::validate_or_err(&profile_ref.rootfs_hash).is_err() {
             warn!(
-                "runner image refs: {source} config {} has a profile with an invalid rootfs hash, skipping profile",
+                "runner image refs: retained config {} has a profile with an invalid rootfs hash, skipping image GC",
                 config_path.display()
             );
-            continue;
+            return false;
         }
         if image_hash::validate_or_err(&profile_ref.snapshot_hash).is_err() {
             warn!(
-                "runner image refs: {source} config {} has a profile with an invalid snapshot hash, skipping profile",
+                "runner image refs: retained config {} has a profile with an invalid snapshot hash, skipping image GC",
                 config_path.display()
             );
-            continue;
+            return false;
         }
         insert_protected_image_ref(refs, profile_ref.rootfs_hash, profile_ref.snapshot_hash);
     }
+    true
 }
 
 #[cfg(test)]

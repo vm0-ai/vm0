@@ -32,10 +32,14 @@
     # Connection failures can replay the current task. Keep remote tasks
     # convergent or protect their complete operation with a stable lock.
     ansible_ssh_retries: 1
-    runner_release: "v{{ runner_version }}"
+    # These selectors currently render the same release value, but service,
+    # binary, and Runner config identities are independent.
+    runner_service_suffix: "v{{ runner_version }}"
+    runner_bin_dirname: "v{{ runner_version }}"
+    runner_dirname: "v{{ runner_version }}"
     data_dir: /var/lib/vm0-runner
-    bin_dir: "{{ data_dir }}/bin/{{ runner_release }}"
-    runner_dir: "{{ data_dir }}/runners/{{ runner_release }}"
+    bin_dir: "{{ data_dir }}/bin/{{ runner_bin_dirname }}"
+    runner_dir: "{{ data_dir }}/runners/{{ runner_dirname }}"
     runner_host_env_file: /etc/vm0-runner/host.env
 
   tasks:
@@ -61,7 +65,7 @@
         - name: Install and start runner service
           command: >
             {{ bin_dir }}/runner service install
-            --name {{ runner_release }}
+            --name {{ runner_service_suffix }}
             --config {{ runner_dir }}/runner.yaml
             {% if sentry_dsn is defined and sentry_dsn %}
             --env SENTRY_DSN={{ sentry_dsn }}
@@ -77,14 +81,14 @@
         # Phase 4: Readiness + health check
         # ========================================
         - name: Wait for target runner readiness
-          command: "{{ bin_dir }}/runner service wait-running --name {{ runner_release }} --timeout-secs 120"
+          command: "{{ bin_dir }}/runner service wait-running --name {{ runner_service_suffix }} --timeout-secs 120"
           changed_when: false
 
         - name: Verify runner health
-          command: "{{ bin_dir }}/runner doctor --name {{ runner_release }}"
+          command: "{{ bin_dir }}/runner doctor --name {{ runner_service_suffix }}"
       rescue:
         - name: Stop failed target runner service with runner cleanup
-          command: "{{ bin_dir }}/runner service stop --name {{ runner_release }} --force --cleanup failed-start"
+          command: "{{ bin_dir }}/runner service stop --name {{ runner_service_suffix }} --force --cleanup failed-start"
           failed_when: false
 
         - name: Restore runner host tuning aliases after target failure
@@ -101,7 +105,7 @@
         - name: Fail promote after target runner readiness failure
           fail:
             msg: >-
-              Runner {{ runner_release }} failed readiness or health checks and
+              Runner {{ runner_service_suffix }} failed readiness or health checks and
               the exact pre-promotion host configuration was restored.
 
     - name: Finalize runner host tuning alias migration
@@ -131,7 +135,7 @@
     - name: Drain old runner services
       command: "{{ bin_dir }}/runner service drain --name {{ item }}"
       loop: "{{ runner_service_candidates.stdout_lines | default([]) }}"
-      when: item != runner_release
+      when: item != runner_service_suffix
       ignore_errors: true
 
     - name: Garbage collect old artifacts
@@ -141,4 +145,4 @@
     # Phase 6: Final health check
     # ========================================
     - name: Verify runner health after cleanup
-      command: "{{ bin_dir }}/runner doctor --name {{ runner_release }}"
+      command: "{{ bin_dir }}/runner doctor --name {{ runner_service_suffix }}"

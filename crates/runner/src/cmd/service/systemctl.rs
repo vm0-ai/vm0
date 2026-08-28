@@ -14,6 +14,7 @@ use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
 
 const SYSTEMCTL_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
+const RUNNER_UNIT_PATTERN: &str = "vm0-runner-*.service";
 
 pub(super) fn journalctl_logs_status(svc: &str, status: ExitStatus) -> RunnerResult<()> {
     if status.success() {
@@ -95,6 +96,55 @@ pub(super) async fn run_systemctl_output_bounded(
         BoundedSystemctlQuery::Completed(output) => Ok(output),
         BoundedSystemctlQuery::TimedOut => Err(systemctl_timeout_error(duration)),
     }
+}
+
+/// List every Runner unit currently loaded by systemd, including transient units.
+pub(crate) async fn loaded_runner_service_units() -> RunnerResult<Vec<RunnerServiceUnit>> {
+    let output = run_systemctl_output_bounded(
+        &[
+            "list-units",
+            "--all",
+            "--full",
+            "--no-legend",
+            "--plain",
+            RUNNER_UNIT_PATTERN,
+        ],
+        SYSTEMCTL_QUERY_TIMEOUT,
+    )
+    .await?;
+    loaded_runner_service_units_from_output(&output)
+}
+
+fn loaded_runner_service_units_from_output(
+    output: &Output,
+) -> RunnerResult<Vec<RunnerServiceUnit>> {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(RunnerError::Internal(format!(
+            "systemctl list-units {RUNNER_UNIT_PATTERN} exited with {}: {}",
+            output.status,
+            status_field_preview(stderr.trim())
+        )));
+    }
+    let stdout = std::str::from_utf8(&output.stdout).map_err(|error| {
+        RunnerError::Internal(format!(
+            "systemctl list-units {RUNNER_UNIT_PATTERN} returned non-UTF-8 output: {error}"
+        ))
+    })?;
+    let mut units = BTreeMap::new();
+    for line in stdout.lines().filter(|line| !line.trim().is_empty()) {
+        let file_name = line.split_whitespace().next().ok_or_else(|| {
+            RunnerError::Internal("systemctl list-units returned an empty Runner row".into())
+        })?;
+        let unit = RunnerServiceUnit::from_file_name(file_name).ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "systemctl list-units returned invalid Runner unit name {:?}",
+                status_field_preview(file_name)
+            ))
+        })?;
+        units.entry(unit.suffix().to_string()).or_insert(unit);
+    }
+    Ok(units.into_values().collect())
 }
 
 async fn run_systemctl_output_bounded_query(
@@ -502,17 +552,6 @@ pub(super) async fn restore_unit_enablement(
         }
     }
     Ok(())
-}
-
-/// Check whether systemd reports a unit file as enabled.
-///
-/// Returns `true` for both the persistent `enabled` state and the transient
-/// `enabled-runtime` state. This does not indicate whether the unit is active
-/// or whether it will remain enabled after a reboot.
-pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
-    read_unit_enablement(unit)
-        .await
-        .map(SystemdUnitEnablement::is_enabled)
 }
 
 /// Check whether systemd reports a unit file as enabled.
@@ -1028,6 +1067,54 @@ mod tests {
             stdout: stdout.to_vec(),
             stderr: stderr.to_vec(),
         }
+    }
+
+    #[test]
+    fn loaded_runner_units_are_validated_deduplicated_and_sorted() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"vm0-runner-z.service loaded active running z\nvm0-runner-a.service loaded inactive dead a\nvm0-runner-z.service loaded active running z\n",
+            b"",
+        );
+
+        let units = loaded_runner_service_units_from_output(&output).unwrap();
+
+        assert_eq!(
+            units
+                .iter()
+                .map(RunnerServiceUnit::suffix)
+                .collect::<Vec<_>>(),
+            ["a", "z"]
+        );
+    }
+
+    #[test]
+    fn loaded_runner_units_reject_invalid_names() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"vm0-runner-UPPER.service loaded active running invalid\n",
+            b"",
+        );
+
+        let error = loaded_runner_service_units_from_output(&output).unwrap_err();
+
+        assert!(error.to_string().contains("invalid Runner unit name"));
+    }
+
+    #[test]
+    fn loaded_runner_units_reject_failed_systemctl_query() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output =
+            systemctl_show_output(ExitStatus::from_raw(0x100), b"", b"systemd unavailable");
+
+        let error = loaded_runner_service_units_from_output(&output).unwrap_err();
+
+        assert!(error.to_string().contains("systemd unavailable"));
     }
 
     #[test]

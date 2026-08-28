@@ -19,11 +19,11 @@
       - --keep-latest
       - "6"
       - --keep-service-suffix
-      - "{{ runner_release }}"
+      - "{{ runner_service_suffix }}"
       - --keep-bin-dirname
-      - "{{ runner_release }}"
+      - "{{ runner_bin_dirname }}"
       - --keep-runner-dirname
-      - "{{ runner_release }}"
+      - "{{ runner_dirname }}"
   when:
     - runner_gc_help.rc == 0
     - "'--keep-service-suffix' in runner_gc_help.stdout"

@@ -1,93 +1,9 @@
-use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use super::*;
 use crate::cmd::gc::images::gc_nested_images_with_protected_refs;
 use crate::cmd::gc::test_support::{old_gc_time, set_mtime, test_home};
 use crate::paths::HomePaths;
-use crate::test_fixtures::ignored_child::{
-    ignored_child_test_env_guard_enabled, run_ignored_child_test,
-};
-
-const ENABLED_SERVICE_SCENARIO_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO";
-const ENABLED_SERVICE_CONFIG_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_CONFIG";
-const ENABLED_SERVICE_HOME_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_HOME";
-const ENABLED_SERVICE_SYSTEM_DIR_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_SYSTEM_DIR";
-const ENABLED_SERVICE_STATE_DIR_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_STATE_DIR";
-const ENABLED_SERVICE_INVOCATIONS_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_INVOCATIONS";
-const ENABLED_SERVICE_CHILD_TEST: &str =
-    "cmd::gc::image_refs::tests::enabled_service_systemctl_child";
-const FAKE_SYSTEMCTL: &str = r#"#!/bin/sh
-printf '%s\n' "$*" >> "$OKOU_RUN_GC_ENABLED_SERVICE_INVOCATIONS"
-
-if [ "$1" = "is-enabled" ]; then
-  unit="$2"
-  if [ "$OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO" = "bounded" ]; then
-    : > "$OKOU_RUN_GC_ENABLED_SERVICE_STATE_DIR/$unit.started"
-    while [ ! -f "$OKOU_RUN_GC_ENABLED_SERVICE_STATE_DIR/$unit.release" ]; do :; done
-    if [ "$unit" = "vm0-runner-disabled.service" ]; then
-      printf '%s\n' 'disabled'
-      exit 1
-    fi
-  fi
-  if [ "$OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO" = "enablement-error" ]; then
-    printf '%s\n' 'cannot determine unit file state' >&2
-    exit 1
-  fi
-  printf '%s\n' 'enabled'
-  exit 0
-fi
-
-if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
-  case "$OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO" in
-    cat-error)
-      printf '%s\n' 'cannot read selected drop-in' >&2
-      exit 1
-      ;;
-    cat-warning)
-      printf '%s\n' '[Service]' 'ExecStart=/usr/bin/runner start --config /etc/stale.yaml'
-      printf '%s\n' 'unit files changed on disk; daemon-reload required' >&2
-      exit 0
-      ;;
-    unparseable)
-      printf '%s\n' '[Service]' 'ExecStart=/usr/bin/true'
-      exit 0
-      ;;
-    bounded)
-      unit="$4"
-      if [ "$unit" = "vm0-runner-failure.service" ]; then
-        printf '%s\n' 'cannot read selected drop-in' >&2
-        exit 1
-      fi
-      suffix=${unit#vm0-runner-}
-      suffix=${suffix%.service}
-      printf '%s\n' \
-        '[Service]' \
-        "ExecStart=/usr/bin/runner start --config /configs/$suffix.yaml"
-      exit 0
-      ;;
-    effective)
-      printf '%s\n' \
-        '# /etc/systemd/system/vm0-runner-test.service' \
-        '[Service]' \
-        'ExecStart=/usr/bin/runner start --config /etc/base.yaml' \
-        '# /usr/lib/systemd/system/vm0-runner-.service.d/10-vendor.conf' \
-        '[Service]' \
-        'ExecStart=' \
-        'ExecStart=/usr/bin/runner start --config /etc/vendor.yaml' \
-        '# /run/systemd/system/vm0-runner-test.service.d/20-runtime.conf' \
-        '[Service]' \
-        'ExecStart=' \
-        "ExecStart=/usr/bin/runner start --config $OKOU_RUN_GC_ENABLED_SERVICE_CONFIG"
-      exit 0
-      ;;
-  esac
-fi
-
-printf '%s\n' "unexpected fake systemctl invocation: $*" >&2
-exit 2
-"#;
 
 fn test_hash(ch: char) -> String {
     std::iter::repeat_n(ch, 64).collect()
@@ -147,9 +63,7 @@ fn create_old_test_snapshot(home: &HomePaths, rootfs_hash: &str, snapshot_hash: 
 }
 
 async fn protected_refs_from_configs(config_paths: &[PathBuf]) -> ProtectedImageRefs {
-    let mut refs = ProtectedImageRefs::new();
-    collect_retained_deployment_image_refs(config_paths, &mut refs).await;
-    refs
+    protected_image_refs_for_gc(config_paths, true).await
 }
 
 fn protected_refs_from_pairs(pairs: &[(&str, &str)]) -> ProtectedImageRefs {
@@ -165,7 +79,7 @@ fn protected_refs_from_pairs(pairs: &[(&str, &str)]) -> ProtectedImageRefs {
 }
 
 #[tokio::test]
-async fn retained_deployment_config_ref_keeps_image_snapshot() {
+async fn retained_config_ref_keeps_image_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let rootfs_hash = test_hash('a');
@@ -181,7 +95,7 @@ async fn retained_deployment_config_ref_keeps_image_snapshot() {
     assert_eq!(freed.freed_bytes, 0);
     assert!(
         snapshot_dir.exists(),
-        "retained deployment config refs must keep the referenced snapshot"
+        "retained config refs must keep the referenced snapshot"
     );
     assert!(home.images_dir().join(&rootfs_hash).exists());
 }
@@ -283,7 +197,7 @@ async fn protected_image_ref_keeps_only_exact_snapshot_pair() {
 }
 
 #[tokio::test]
-async fn unretained_deployment_config_does_not_protect_image_snapshot() {
+async fn unretained_config_does_not_protect_image_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let rootfs_hash = test_hash('a');
@@ -299,12 +213,12 @@ async fn unretained_deployment_config_does_not_protect_image_snapshot() {
     assert!(freed.freed_bytes > 0);
     assert!(
         !snapshot_dir.exists(),
-        "unretained deployment config should not pin image artifacts"
+        "unretained config should not pin image artifacts"
     );
 }
 
 #[tokio::test]
-async fn malformed_retained_deployment_config_is_ignored_for_image_refs() {
+async fn malformed_retained_config_makes_image_protection_incomplete() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let config_dir = home.runners_dir().join("release-blue");
@@ -316,282 +230,33 @@ async fn malformed_retained_deployment_config_is_ignored_for_image_refs() {
     .unwrap();
     let refs = protected_refs_from_configs(&[config_dir.join("runner.yaml")]).await;
 
-    assert!(
-        refs.is_empty(),
-        "malformed retained config should be skipped instead of protecting images"
-    );
+    assert!(!refs.is_complete());
 }
 
 #[tokio::test]
-async fn service_config_image_ref_keeps_image_snapshot() {
+async fn missing_retained_config_does_not_make_protection_incomplete() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
-    let rootfs_hash = test_hash('a');
-    let snapshot_hash = test_hash('b');
-    let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
+    let refs = protected_refs_from_configs(&[home.runners_dir().join("missing/runner.yaml")]).await;
+
+    assert!(refs.is_complete());
+    assert!(refs.is_empty());
+}
+
+#[tokio::test]
+async fn invalid_hash_in_retained_config_makes_image_protection_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
     let config_path =
-        write_test_runner_config(&home, "service-config", &rootfs_hash, &snapshot_hash);
-    let mut refs = ProtectedImageRefs::new();
-    collect_config_image_refs(&config_path, "enabled service", &mut refs).await;
+        write_test_runner_config(&home, "release-blue", "not-a-rootfs-hash", &test_hash('b'));
 
-    let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
-        .await
-        .unwrap();
+    let refs = protected_refs_from_configs(&[config_path]).await;
 
-    assert_eq!(freed.freed_bytes, 0);
-    assert!(
-        snapshot_dir.exists(),
-        "enabled service config refs must keep the referenced snapshot"
-    );
+    assert!(!refs.is_complete());
 }
 
 #[tokio::test]
-async fn enabled_service_directory_scan_reports_iteration_error() {
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("unrelated-a.service"), "").unwrap();
-    std::fs::write(dir.path().join("unrelated-b.service"), "").unwrap();
-    let mut entry_reader = GcDirEntryReader::failing_after(1);
-
-    let scan = enabled_runner_service_config_paths_with_reader(dir.path(), &mut entry_reader).await;
-
-    assert!(!scan.inventory_complete);
-    assert!(scan.paths.is_empty());
-}
-
-#[tokio::test]
-async fn enabled_service_discovery_overlaps_with_a_fixed_bound() {
-    let invocations = run_enabled_service_scenario("bounded").await;
-
-    assert_eq!(
-        invocations
-            .iter()
-            .filter(|invocation| invocation.starts_with("is-enabled "))
-            .count(),
-        5
-    );
-    assert_eq!(
-        invocations
-            .iter()
-            .filter(|invocation| invocation.starts_with("--no-pager cat -- "))
-            .count(),
-        4
-    );
-    for suffix in ["alpha", "beta", "failure", "gamma"] {
-        let unit = format!("vm0-runner-{suffix}.service");
-        let enablement = format!("is-enabled {unit}");
-        let config = format!("--no-pager cat -- {unit}");
-        let enablement_position = invocations
-            .iter()
-            .position(|invocation| invocation == &enablement)
-            .unwrap();
-        let config_position = invocations
-            .iter()
-            .position(|invocation| invocation == &config)
-            .unwrap();
-        assert!(enablement_position < config_position);
-    }
-    assert!(
-        !invocations
-            .iter()
-            .any(|invocation| invocation == "--no-pager cat -- vm0-runner-disabled.service")
-    );
-}
-
-#[tokio::test]
-async fn effective_enabled_service_config_ref_keeps_image_snapshot() {
-    let invocations = run_enabled_service_scenario("effective").await;
-
-    assert_eq!(
-        invocations,
-        vec![
-            "is-enabled vm0-runner-test.service",
-            "--no-pager cat -- vm0-runner-test.service",
-        ]
-    );
-}
-
-#[tokio::test]
-async fn enabled_service_discovery_failures_make_inventory_incomplete() {
-    for scenario in ["enablement-error", "cat-error", "cat-warning"] {
-        run_enabled_service_scenario(scenario).await;
-    }
-}
-
-#[tokio::test]
-async fn readable_unit_without_runner_config_remains_best_effort() {
-    run_enabled_service_scenario("unparseable").await;
-}
-
-async fn run_enabled_service_scenario(scenario: &str) -> Vec<String> {
-    let dir = tempfile::tempdir().unwrap();
-    let fake_systemctl = dir.path().join("systemctl");
-    std::fs::write(&fake_systemctl, FAKE_SYSTEMCTL).unwrap();
-    let mut permissions = std::fs::metadata(&fake_systemctl).unwrap().permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&fake_systemctl, permissions).unwrap();
-
-    let system_dir = dir.path().join("system");
-    std::fs::create_dir(&system_dir).unwrap();
-    let suffixes: &[&str] = if scenario == "bounded" {
-        &["alpha", "beta", "disabled", "failure", "gamma"]
-    } else {
-        &["test"]
-    };
-    for suffix in suffixes {
-        std::fs::write(system_dir.join(format!("vm0-runner-{suffix}.service")), "").unwrap();
-    }
-
-    let home_root = dir.path().join("home");
-    let home = test_home(&home_root);
-    let rootfs_hash = test_hash('a');
-    let snapshot_hash = test_hash('b');
-    create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
-    let config_path = write_test_runner_config(&home, "effective", &rootfs_hash, &snapshot_hash);
-
-    let invocations_path = dir.path().join("invocations");
-    let state_dir = dir.path().join("state");
-    std::fs::create_dir(&state_dir).unwrap();
-    run_ignored_child_test(
-        ENABLED_SERVICE_CHILD_TEST,
-        (ENABLED_SERVICE_SCENARIO_ENV, scenario),
-        &[
-            ("PATH", Some(utf8_path(dir.path()))),
-            (ENABLED_SERVICE_CONFIG_ENV, Some(utf8_path(&config_path))),
-            (ENABLED_SERVICE_HOME_ENV, Some(utf8_path(&home_root))),
-            (ENABLED_SERVICE_SYSTEM_DIR_ENV, Some(utf8_path(&system_dir))),
-            (ENABLED_SERVICE_STATE_DIR_ENV, Some(utf8_path(&state_dir))),
-            (
-                ENABLED_SERVICE_INVOCATIONS_ENV,
-                Some(utf8_path(&invocations_path)),
-            ),
-        ],
-        Duration::from_secs(10),
-    )
-    .await;
-
-    std::fs::read_to_string(invocations_path)
-        .unwrap()
-        .lines()
-        .map(str::to_string)
-        .collect()
-}
-
-fn utf8_path(path: &Path) -> &str {
-    path.to_str().expect("temporary path must be UTF-8")
-}
-
-#[tokio::test]
-#[ignore = "spawned by enabled service image ref systemctl tests"]
-async fn enabled_service_systemctl_child() {
-    let Ok(scenario) = std::env::var(ENABLED_SERVICE_SCENARIO_ENV) else {
-        return;
-    };
-    if !ignored_child_test_env_guard_enabled((ENABLED_SERVICE_SCENARIO_ENV, &scenario)) {
-        return;
-    }
-
-    let system_dir = PathBuf::from(std::env::var(ENABLED_SERVICE_SYSTEM_DIR_ENV).unwrap());
-    match scenario.as_str() {
-        "bounded" => assert_bounded_enabled_service_discovery(&system_dir).await,
-        "effective" => {
-            let home = test_home(Path::new(&std::env::var(ENABLED_SERVICE_HOME_ENV).unwrap()));
-            let rootfs_hash = test_hash('a');
-            let snapshot_hash = test_hash('b');
-            let snapshot_dir = home
-                .images_dir()
-                .join(&rootfs_hash)
-                .join("snapshots")
-                .join(&snapshot_hash);
-            let mut refs = ProtectedImageRefs::new();
-
-            assert!(collect_enabled_service_image_refs_from_dir(&system_dir, &mut refs).await);
-            let report = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
-                .await
-                .unwrap();
-
-            assert_eq!(report.freed_bytes, 0);
-            assert!(
-                snapshot_dir.exists(),
-                "effective enabled-service config must protect its image pair"
-            );
-        }
-        "enablement-error" | "cat-error" | "cat-warning" => {
-            let scan = enabled_runner_service_config_paths(&system_dir).await;
-
-            assert!(!scan.inventory_complete);
-            assert!(scan.paths.is_empty());
-        }
-        "unparseable" => {
-            let scan = enabled_runner_service_config_paths(&system_dir).await;
-
-            assert!(scan.inventory_complete);
-            assert!(scan.paths.is_empty());
-        }
-        unexpected => panic!("unexpected enabled service scenario: {unexpected}"),
-    }
-}
-
-async fn assert_bounded_enabled_service_discovery(system_dir: &Path) {
-    let state_dir = PathBuf::from(std::env::var(ENABLED_SERVICE_STATE_DIR_ENV).unwrap());
-    let system_dir = system_dir.to_path_buf();
-    let discovery =
-        tokio::spawn(async move { enabled_runner_service_config_paths(&system_dir).await });
-
-    wait_for_started_enabled_service_queries(&state_dir, ENABLED_SERVICE_QUERY_CONCURRENCY).await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    let first_batch = started_enabled_service_queries(&state_dir);
-    assert_eq!(first_batch.len(), ENABLED_SERVICE_QUERY_CONCURRENCY);
-    release_enabled_service_queries(&state_dir, &first_batch);
-
-    wait_for_started_enabled_service_queries(&state_dir, ENABLED_SERVICE_QUERY_CONCURRENCY + 1)
-        .await;
-    release_enabled_service_queries(&state_dir, &started_enabled_service_queries(&state_dir));
-
-    let mut scan = tokio::time::timeout(Duration::from_secs(5), discovery)
-        .await
-        .expect("bounded enabled-service discovery should finish after releases")
-        .unwrap();
-    scan.paths.sort();
-    assert_eq!(
-        scan.paths,
-        vec![
-            PathBuf::from("/configs/alpha.yaml"),
-            PathBuf::from("/configs/beta.yaml"),
-            PathBuf::from("/configs/gamma.yaml"),
-        ]
-    );
-    assert!(!scan.inventory_complete);
-}
-
-async fn wait_for_started_enabled_service_queries(state_dir: &Path, expected: usize) {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if started_enabled_service_queries(state_dir).len() >= expected {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("fake systemctl enablement queries should reach the gate");
-}
-
-fn started_enabled_service_queries(state_dir: &Path) -> Vec<String> {
-    std::fs::read_dir(state_dir)
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .filter_map(|name| name.strip_suffix(".started").map(str::to_string))
-        .collect()
-}
-
-fn release_enabled_service_queries(state_dir: &Path, units: &[String]) {
-    for unit in units {
-        std::fs::write(state_dir.join(format!("{unit}.release")), "").unwrap();
-    }
-}
-
-#[tokio::test]
-async fn incomplete_deployment_inventory_makes_protection_inventory_incomplete() {
+async fn incomplete_managed_resource_inventory_makes_image_protection_incomplete() {
     let refs = protected_image_refs_for_gc(&[], false).await;
     assert!(!refs.is_complete());
 }

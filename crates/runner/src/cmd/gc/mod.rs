@@ -23,7 +23,7 @@ mod workspaces;
 mod test_support;
 
 use debootstrap::gc_debootstrap;
-use deployments::gc_deployments;
+use deployments::gc_managed_resources;
 use image_refs::protected_image_refs_for_gc;
 use images::gc_nested_images_with_protected_refs;
 use job_logs::gc_job_logs;
@@ -44,14 +44,14 @@ pub struct GcArgs {
     #[arg(long)]
     dry_run: bool,
     /// Keep the N newest eligible items in each independent retention policy:
-    /// installed runner deployments (by modification time), image snapshots (by modification time), and stable
-    /// debootstrap tarballs (by modification time). Recent, active, locked, referenced, incomplete,
-    /// and temporary artifacts follow their own safety rules; temporary debootstrap tarballs do not
-    /// consume a stable retention slot.
+    /// persistent Runner services, managed binary directories, managed Runner configuration
+    /// directories, image snapshots, and stable debootstrap tarballs (each by modification time).
+    /// Recent, active, locked, referenced, incomplete, and temporary artifacts follow their own
+    /// safety rules; temporary debootstrap tarballs do not consume a stable retention slot.
     /// Omit this option or set it to 0 to disable top-N retention.
     #[arg(long)]
     keep_latest: Option<usize>,
-    /// Systemd service suffix to retain while garbage collecting installed runner services.
+    /// Persistent systemd service suffix to retain.
     #[arg(long)]
     keep_service_suffix: Vec<String>,
     /// Binary directory name to retain under the managed binary root.
@@ -61,7 +61,7 @@ pub struct GcArgs {
     #[arg(long)]
     keep_runner_dirname: Vec<String>,
     /// Deprecated compatibility alias that retains the same suffix or dirname in all three
-    /// deployment namespaces.
+    /// service and managed-directory namespaces.
     #[arg(long, hide = true)]
     protect_version: Option<String>,
 }
@@ -75,10 +75,11 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
         args.protect_version,
     );
 
-    // Deployment cleanup holds the complete installed service-lock set while it
-    // resolves exact ownership and mutates directories. Image protection then
-    // consumes only the final retained config paths, after those locks release.
-    let deployment_outcome = gc_deployments(
+    // Managed-resource cleanup holds the complete persistent and loaded
+    // service-lock set while it resolves exact references and mutates
+    // directories. Image protection then consumes only the final retained
+    // config paths, after those locks release.
+    let resource_outcome = gc_managed_resources(
         &home,
         &keep_service_suffixes,
         &keep_bin_dirnames,
@@ -87,16 +88,16 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
         args.dry_run,
     )
     .await?;
-    let (deployment_report, retained_config_paths, deployment_inventory_complete) =
-        deployment_outcome.into_parts();
+    let (resource_report, retained_config_paths, resource_inventory_complete) =
+        resource_outcome.into_parts();
     let protected_image_refs =
-        protected_image_refs_for_gc(&retained_config_paths, deployment_inventory_complete).await;
+        protected_image_refs_for_gc(&retained_config_paths, resource_inventory_complete).await;
 
     let mut report = GcReport::default();
     record_gc_phase(
         &mut report,
-        "runner deployments",
-        deployment_report,
+        "runner services and managed resources",
+        resource_report,
         args.dry_run,
     );
     let images_report = gc_nested_images_with_protected_refs(
@@ -120,7 +121,7 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     );
 
     // General lock GC preserves the service-lock namespace for lifecycle and
-    // rolling-version compatibility; deployment GC removes only exact locks
+    // rolling-version compatibility; managed-resource GC removes only exact locks
     // whose installed units were successfully removed.
     let lock_report = gc_orphaned_locks(&home, args.dry_run).await?;
     record_gc_phase(&mut report, "orphaned locks", lock_report, args.dry_run);
@@ -242,7 +243,9 @@ mod tests {
             .to_ascii_lowercase();
         for phrase in [
             "each independent retention policy",
-            "installed runner deployments",
+            "persistent runner services",
+            "managed binary directories",
+            "managed runner configuration directories",
             "image snapshots",
             "stable debootstrap tarballs",
             "modification time",

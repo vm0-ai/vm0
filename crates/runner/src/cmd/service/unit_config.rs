@@ -5,13 +5,10 @@ use crate::error::RunnerResult;
 
 use super::target::RunnerServiceUnit;
 
-pub(super) const DEPLOYMENT_SOURCE_CONFIG_FLAG: &str = "--deployment-source-config";
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RunnerUnitCommandPaths {
     executable_path: PathBuf,
     activation_config_path: PathBuf,
-    deployment_source_config_path: Option<PathBuf>,
 }
 
 impl RunnerUnitCommandPaths {
@@ -21,10 +18,6 @@ impl RunnerUnitCommandPaths {
 
     pub(crate) fn activation_config_path(&self) -> &std::path::Path {
         &self.activation_config_path
-    }
-
-    pub(crate) fn deployment_source_config_path(&self) -> Option<&std::path::Path> {
-        self.deployment_source_config_path.as_deref()
     }
 }
 
@@ -158,33 +151,10 @@ fn parse_exec_start_command_paths(line: &str) -> Option<RunnerUnitCommandPaths> 
         .first()
         .and_then(|value| command_path_from_arg(value))?;
     let activation_config_path = config_path_from_tokens(&tokens)?;
-    let deployment_source_config_path = deployment_source_config_path_from_tokens(&tokens).ok()?;
     Some(RunnerUnitCommandPaths {
         executable_path,
         activation_config_path,
-        deployment_source_config_path,
     })
-}
-
-fn deployment_source_config_path_from_tokens(tokens: &[String]) -> Result<Option<PathBuf>, ()> {
-    let mut path = None;
-    for (index, token) in tokens.iter().enumerate() {
-        let value = if token == DEPLOYMENT_SOURCE_CONFIG_FLAG {
-            Some(tokens.get(index + 1).ok_or(())?.as_str())
-        } else {
-            token
-                .strip_prefix(DEPLOYMENT_SOURCE_CONFIG_FLAG)
-                .and_then(|rest| rest.strip_prefix('='))
-        };
-        let Some(value) = value else {
-            continue;
-        };
-        let next_path = config_path_from_arg(value).ok_or(())?;
-        if path.replace(next_path).is_some() {
-            return Err(());
-        }
-    }
-    Ok(path)
 }
 
 fn config_path_from_tokens(tokens: &[String]) -> Option<PathBuf> {
@@ -298,7 +268,6 @@ fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
 
     use super::*;
 
@@ -477,72 +446,6 @@ ExecStart="/var/lib/vm0-runner/bin/binary-blue/runner" start --config "/var/lib/
         assert_eq!(
             paths.activation_config_path(),
             PathBuf::from("/var/lib/vm0-runner/runners/config-green/runner.yaml")
-        );
-        assert_eq!(paths.deployment_source_config_path(), None);
-    }
-
-    #[test]
-    fn parse_unit_command_paths_reads_exact_deployment_source_config() {
-        let content = r#"
-[Service]
-ExecStart="/var/lib/vm0-runner/bin/binary-blue/runner" start --config "/run/vm0/snapshots/runner.yaml" --deployment-source-config "/var/lib/vm0-runner/runners/config-green/runner.yaml"
-"#;
-
-        let paths = parse_unit_command_paths(content).unwrap();
-        assert_eq!(
-            paths.activation_config_path(),
-            PathBuf::from("/run/vm0/snapshots/runner.yaml")
-        );
-        assert_eq!(
-            paths.deployment_source_config_path(),
-            Some(Path::new(
-                "/var/lib/vm0-runner/runners/config-green/runner.yaml"
-            ))
-        );
-    }
-
-    #[test]
-    fn parse_unit_command_paths_rejects_ambiguous_deployment_source_config() {
-        let content = r#"
-[Service]
-ExecStart="/var/lib/vm0-runner/bin/binary-blue/runner" start --config "/run/vm0/snapshots/runner.yaml" --deployment-source-config "/first/runner.yaml" --deployment-source-config "/second/runner.yaml"
-"#;
-
-        assert_eq!(parse_unit_command_paths(content), None);
-    }
-
-    #[test]
-    fn parse_unit_command_paths_does_not_fall_back_past_malformed_override() {
-        let content = r#"
-[Service]
-ExecStart="/usr/bin/runner" start --config "/run/base.yaml" --deployment-source-config "/source/base.yaml"
-ExecStart="/usr/bin/runner" start --config "/run/override.yaml" --deployment-source-config "/source/first.yaml" --deployment-source-config "/source/second.yaml"
-"#;
-
-        assert_eq!(parse_unit_command_paths(content), None);
-        assert_eq!(
-            parse_unit_config_path(content),
-            Some(PathBuf::from("/run/override.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_unit_command_paths_accepts_valid_override_after_resetting_malformed_base() {
-        let content = r#"
-[Service]
-ExecStart="/usr/bin/runner" start --config "/run/base.yaml" --deployment-source-config "/source/first.yaml" --deployment-source-config "/source/second.yaml"
-ExecStart=
-ExecStart="/usr/bin/runner" start --config "/run/override.yaml" --deployment-source-config "/source/override.yaml"
-"#;
-
-        let paths = parse_unit_command_paths(content).unwrap();
-        assert_eq!(
-            paths.activation_config_path(),
-            Path::new("/run/override.yaml")
-        );
-        assert_eq!(
-            paths.deployment_source_config_path(),
-            Some(Path::new("/source/override.yaml"))
         );
     }
 

@@ -7,7 +7,8 @@ ansible_config="$repo_root/ansible/ansible.cfg"
 inventory="$script_dir/fixtures/runner-promotion-local.ini"
 build_playbook="$repo_root/ansible/playbooks/build-runner.yml"
 rollback_playbook="$repo_root/ansible/playbooks/rollback-runner.yml"
-runner_release=v999.0.0
+runner_bin_dirname=v999.0.0
+runner_dirname=v999.0.0
 
 if ! command -v ansible-playbook >/dev/null; then
   echo "ansible-playbook is required" >&2
@@ -43,7 +44,7 @@ mkdir -p "$test_home"
 prepare_fake_runners() {
   local hostname
   for hostname in runner-promotion-a runner-promotion-b; do
-    local bin_dir="$tmp/$hostname/bin/$runner_release"
+    local bin_dir="$tmp/$hostname/bin/$runner_bin_dirname"
     mkdir -p "$bin_dir"
     cp "$tmp/fake-runner" "$bin_dir/runner"
   done
@@ -52,7 +53,7 @@ prepare_fake_runners() {
 verify_configs() {
   local hostname
   for hostname in runner-promotion-a runner-promotion-b; do
-    local config="$tmp/$hostname/runners/$runner_release/runner.yaml"
+    local config="$tmp/$hostname/runners/$runner_dirname/runner.yaml"
     assert_line_count "$config" 1 "hostname: \"$hostname\""
   done
 }

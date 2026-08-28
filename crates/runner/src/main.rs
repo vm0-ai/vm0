@@ -580,27 +580,6 @@ mod tests {
     }
 
     #[test]
-    fn start_accepts_hidden_deployment_source_config_metadata() {
-        assert!(
-            Cli::try_parse_from([
-                "runner",
-                "start",
-                "--config",
-                "/run/vm0/runner.yaml",
-                "--deployment-source-config",
-                "/var/lib/vm0-runner/runners/production/runner.yaml",
-            ])
-            .is_ok()
-        );
-
-        let help = Cli::try_parse_from(["runner", "start", "--help"])
-            .err()
-            .expect("start --help should exit through clap")
-            .to_string();
-        assert!(!help.contains("--deployment-source-config"));
-    }
-
-    #[test]
     fn service_drain_help_describes_bounded_coordination() {
         let error = Cli::try_parse_from(["runner", "service", "--help"])
             .err()

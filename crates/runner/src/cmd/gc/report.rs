@@ -5,7 +5,7 @@ use tracing::info;
 pub(super) struct GcReport {
     pub(super) freed_bytes: u64,
     pub(super) activity_count: u64,
-    removed_deployments: Vec<String>,
+    removed_services: Vec<String>,
 }
 
 impl GcReport {
@@ -17,10 +17,10 @@ impl GcReport {
         }
     }
 
-    pub(super) fn removed_deployments(removed_deployments: Vec<String>) -> Self {
+    pub(super) fn removed_services(removed_services: Vec<String>) -> Self {
         Self {
-            activity_count: removed_deployments.len() as u64,
-            removed_deployments,
+            activity_count: removed_services.len() as u64,
+            removed_services,
             ..Self::default()
         }
     }
@@ -34,8 +34,7 @@ impl std::ops::AddAssign for GcReport {
     fn add_assign(&mut self, mut rhs: Self) {
         self.freed_bytes += rhs.freed_bytes;
         self.activity_count += rhs.activity_count;
-        self.removed_deployments
-            .append(&mut rhs.removed_deployments);
+        self.removed_services.append(&mut rhs.removed_services);
     }
 }
 
@@ -56,12 +55,12 @@ pub(super) fn log_gc_summary(report: &GcReport, dry_run: bool) {
                 human_bytes(report.freed_bytes)
             );
         }
-        if !report.removed_deployments.is_empty() {
-            let list = report.removed_deployments.join(", ");
+        if !report.removed_services.is_empty() {
+            let list = report.removed_services.join(", ");
             if dry_run {
-                info!("deployments that would be removed: {list}");
+                info!("Runner services that would be removed: {list}");
             } else {
-                info!("deployments removed: {list}");
+                info!("Runner services removed: {list}");
             }
         }
     }
@@ -120,12 +119,12 @@ mod tests {
     #[test]
     fn gc_report_composition_preserves_all_summary_fields() {
         let mut report = GcReport::cleanup(2, 512);
-        report += GcReport::removed_deployments(vec!["production-a".into(), "production-b".into()]);
+        report += GcReport::removed_services(vec!["production-a".into(), "production-b".into()]);
         report += GcReport::cleanup(1, 1024);
 
         assert_eq!(report.freed_bytes, 1536);
         assert_eq!(report.activity_count, 5);
-        assert_eq!(report.removed_deployments, ["production-a", "production-b"]);
+        assert_eq!(report.removed_services, ["production-a", "production-b"]);
         assert!(!report.is_empty());
     }
 
@@ -157,21 +156,20 @@ mod tests {
 
     #[test]
     fn gc_summary_reports_typed_details_in_real_and_dry_run_modes() {
-        let report =
-            GcReport::removed_deployments(vec!["production-a".into(), "production-b".into()]);
+        let report = GcReport::removed_services(vec!["production-a".into(), "production-b".into()]);
 
         assert_eq!(
             capture_gc_summary(&report, false),
             [
                 "total: cleaned=2, freed=0 B",
-                "deployments removed: production-a, production-b",
+                "Runner services removed: production-a, production-b",
             ]
         );
         assert_eq!(
             capture_gc_summary(&report, true),
             [
                 "total: would_clean=2, would_free=0 B",
-                "deployments that would be removed: production-a, production-b",
+                "Runner services that would be removed: production-a, production-b",
             ]
         );
     }

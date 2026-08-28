@@ -24,6 +24,16 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local file=$1
+  local unexpected=$2
+  if grep -Fq -- "$unexpected" "$file"; then
+    echo "expected ${file} not to contain: ${unexpected}" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
 assert_line_count() {
   local file=$1
   local expected=$2
@@ -59,15 +69,17 @@ trap cleanup EXIT
 test_home="$tmp/home"
 data_dir="$tmp/vm0-runner"
 test_bin="$tmp/bin"
-runner_release=v999.0.0
-runner_bin_dir="$data_dir/bin/$runner_release"
+runner_service_suffix=v999.0.0
+runner_bin_dirname=v999.0.0
+runner_dirname=v999.0.0
+runner_bin_dir="$data_dir/bin/$runner_bin_dirname"
 invocation_log="$data_dir/runner-invocations"
 gc_arrivals="$data_dir/gc-arrivals"
 mkdir -p \
   "$test_home" \
   "$test_bin" \
   "$data_dir/locks" \
-  "$data_dir/runners/$runner_release" \
+  "$data_dir/runners/$runner_dirname" \
   "$gc_arrivals" \
   "$runner_bin_dir"
 
@@ -161,6 +173,12 @@ done
 assert_contains "$promote_playbook" "include_tasks: ../tasks/garbage-collect-runner.yml"
 assert_contains "$rollback_playbook" "include_tasks: ../tasks/garbage-collect-runner.yml"
 assert_contains "$gc_task" "{{ data_dir }}/locks/deployment-gc.lock"
+assert_contains "$gc_task" "{{ runner_service_suffix }}"
+assert_contains "$gc_task" "{{ runner_bin_dirname }}"
+assert_contains "$gc_task" "{{ runner_dirname }}"
+for file in "$promote_playbook" "$rollback_playbook" "$gc_task"; do
+  assert_not_contains "$file" "{{ runner_release }}"
+done
 
 if ! PATH="$test_bin:$PATH" \
   HOME="$test_home" \
@@ -179,10 +197,10 @@ if ! PATH="$test_bin:$PATH" \
 fi
 
 assert_line_count "$invocation_log" 2 \
-  "gc --keep-latest 6 --keep-service-suffix $runner_release --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release"
-assert_line_count "$invocation_log" 4 "doctor --name $runner_release"
+  "gc --keep-latest 6 --keep-service-suffix $runner_service_suffix --keep-bin-dirname $runner_bin_dirname --keep-runner-dirname $runner_dirname"
+assert_line_count "$invocation_log" 4 "doctor --name $runner_service_suffix"
 assert_line_count "$invocation_log" 2 \
-  "service wait-running --name $runner_release --timeout-secs 120"
+  "service wait-running --name $runner_service_suffix --timeout-secs 120"
 
 if ! RUNNER_GC_KEEP_SUPPORT=false \
   PATH="$test_bin:$PATH" \
@@ -201,6 +219,6 @@ if ! RUNNER_GC_KEEP_SUPPORT=false \
 fi
 
 assert_line_count "$invocation_log" 2 \
-  "gc --keep-latest 6 --keep-service-suffix $runner_release --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release"
+  "gc --keep-latest 6 --keep-service-suffix $runner_service_suffix --keep-bin-dirname $runner_bin_dirname --keep-runner-dirname $runner_dirname"
 
 echo "runner-promotion-ansible-test: ok"
