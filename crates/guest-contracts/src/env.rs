@@ -37,16 +37,16 @@ pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 /// file path resolution.
 pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
 
-/// Sensitive backend API bearer token for guest-agent calls.
+/// Legacy backend API bearer token alias retained by guest readers for rollback.
 ///
 /// This value is runner-owned and must not be exposed through user-provided
 /// environment or CLI child env.
 pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
 
-/// Canonical API token alias accepted by guest readers during migration.
+/// Canonical backend API bearer token alias written by the runner.
 ///
-/// Runner writers keep using [`API_TOKEN_ENV`] until the deployed reader floor,
-/// sandbox drain, rollback window, and legacy-read-zero gates are complete.
+/// Guest readers retain [`API_TOKEN_ENV`] as the rollback fallback. This value
+/// has the same runner-owned isolation contract as the legacy alias.
 pub const CANONICAL_API_TOKEN_ENV: &str = "OKOU_API_TOKEN";
 
 /// Sandbox identifier assigned by the runner.

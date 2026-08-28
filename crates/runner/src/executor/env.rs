@@ -591,7 +591,7 @@ fn build_env_json_with_host_env_inner(
         context.run_id.to_string(),
     );
     env.insert(
-        guest_contracts::env::API_TOKEN_ENV.into(),
+        guest_contracts::env::CANONICAL_API_TOKEN_ENV.into(),
         context.sandbox_token.clone(),
     );
     env.insert(

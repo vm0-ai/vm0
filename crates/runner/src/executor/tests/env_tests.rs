@@ -445,7 +445,12 @@ fn build_env_json_required_keys() {
         &RunId::nil().to_string()
     );
     assert!(!env.contains_key("VM0_RUN_ID"));
-    assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
+            .unwrap(),
+        "tok"
+    );
+    assert!(!env.contains_key(guest_contracts::env::API_TOKEN_ENV));
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV)
             .unwrap(),
@@ -784,7 +789,13 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         build_run_payload_for_run(&ctx).unwrap().prompt,
         "test prompt"
     );
-    assert_eq!(bootstrap_env.get("VM0_API_TOKEN").unwrap(), "tok");
+    assert_eq!(
+        bootstrap_env
+            .get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
+            .unwrap(),
+        "tok"
+    );
+    assert!(!bootstrap_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
     assert_eq!(
         bootstrap_env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &ctx.run_id.to_string()
@@ -1647,11 +1658,17 @@ fn build_env_json_environment_cannot_override_system() {
     // System variables take precedence over user environment
     assert!(!env.contains_key("VM0_PROMPT"));
     assert_eq!(payload.prompt, "test prompt");
-    assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
+            .unwrap(),
+        "tok"
+    );
+    assert!(!env.contains_key(guest_contracts::env::API_TOKEN_ENV));
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert!(!user_env.contains_key("VM0_PROMPT"));
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
+    assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
 }
 
 #[test]
