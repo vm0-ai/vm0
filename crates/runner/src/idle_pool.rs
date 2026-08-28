@@ -127,6 +127,11 @@ impl IdlePool {
         entry
     }
 
+    pub(crate) fn take_reserved(&mut self, reuse_key: &str) -> Option<ReservedIdleSandbox> {
+        self.take(reuse_key)
+            .map(|entry| ReservedIdleSandbox { entry })
+    }
+
     pub fn has_reusable(
         &self,
         reuse_key: &str,

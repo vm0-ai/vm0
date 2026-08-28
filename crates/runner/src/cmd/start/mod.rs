@@ -336,7 +336,12 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
             }
             resources.kmsg_handle.stop().await;
             resources.memory_prefetch.drain().await;
-            resources.status.set_mode(RunnerMode::Stopped).await;
+            if let Err(status_error) = resources.status.set_mode(RunnerMode::Stopped).await {
+                warn!(
+                    error = %status_error,
+                    "failed to persist stopped status after live runner publication failure"
+                );
+            }
             Err(e)
         }
     }
@@ -357,7 +362,9 @@ async fn shutdown_startup_resources_after_startup_failure(
     }
     resources.kmsg_handle.stop().await;
     resources.memory_prefetch.drain().await;
-    resources.status.set_mode(RunnerMode::Stopped).await;
+    if let Err(error) = resources.status.set_mode(RunnerMode::Stopped).await {
+        warn!(%error, context, "failed to persist stopped status after startup failure");
+    }
 }
 
 async fn abort_signal_handler_task(handler_task: SignalHandlerTask, context: &'static str) {
@@ -1049,6 +1056,7 @@ enum StartLoopEvent {
     DestroyTasksDrainEntered,
     DestroyTasksDrainCompleted,
     FinalizingCapacityWaitEntered { run_id: RunId },
+    ReservedPreparingCommitted { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
     SandboxParkedForReuse { run_id: RunId, reuse_key: String },
@@ -1095,6 +1103,7 @@ struct StartLoopTestObserver {
 struct StartLoopTestObserverInner {
     events: std::sync::Mutex<Vec<StartLoopEvent>>,
     notify: tokio::sync::Notify,
+    reserved_preparing_gate: std::sync::Mutex<Option<StartLoopTestGate>>,
 }
 
 #[cfg(test)]
@@ -1213,6 +1222,29 @@ impl StartLoopTestObserver {
 
     fn notify_active_run_status_published(&self, run_id: RunId) {
         self.record(StartLoopEvent::ActiveRunStatusPublished { run_id });
+    }
+
+    fn gate_reserved_preparing_commit(&self) -> StartLoopTestGate {
+        let gate = StartLoopTestGate::default();
+        *self
+            .inner
+            .reserved_preparing_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(gate.clone());
+        gate
+    }
+
+    async fn notify_reserved_preparing_committed(&self, run_id: RunId) {
+        self.record(StartLoopEvent::ReservedPreparingCommitted { run_id });
+        let gate = self
+            .inner
+            .reserved_preparing_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        if let Some(gate) = gate {
+            gate.enter_and_wait().await;
+        }
     }
 
     fn active_run_status_was_published(&self, run_id: RunId) -> bool {
@@ -1431,6 +1463,7 @@ mod start_loop_observer_tests {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OuterJobPanicPoint {
     ClaimedWithoutSandbox,
+    ClaimedActivation,
     ActiveOrUnknown,
     IdlePoolOwned,
     HandoffOwned,
@@ -1579,7 +1612,27 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let lifecycle = signal.lifecycle;
     let mut signal_handler_task = signal.handler_task;
 
-    shared.status.write_initial().await;
+    if let Err(error) = shared.status.write_initial().await {
+        shutdown_startup_resources_after_startup_failure(
+            StartupFailureResources {
+                provider: provider_state.provider.as_ref(),
+                runtime: Some(runtime.as_mut()),
+                mitm: &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                memory_prefetch: &mut memory_prefetch,
+                status: shared.status.as_ref(),
+            },
+            "initial_status_persistence_failure",
+        )
+        .await;
+        if let Some(handler_task) = signal_handler_task.take() {
+            abort_signal_handler_task(handler_task, "initial_status_persistence_failure").await;
+        }
+        return Err(RunnerError::Internal(format!(
+            "persist initial runner status: {error}"
+        )));
+    }
 
     if let Err(e) = provider_state.provider.prepare_startup_readiness().await {
         let startup_readiness_cancelled = provider_state.cancel.is_cancelled();
@@ -1641,7 +1694,40 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         }
     };
     let startup_mode = lifecycle.mark_startup_ready();
-    shared.status.set_mode(startup_mode).await;
+    if let Err(error) = shared.status.set_mode(startup_mode).await {
+        handle_stopping_signal(
+            "startup status persistence failure",
+            &provider_state.cancel,
+            &provider_state.cancel_tokens,
+            &lifecycle,
+        )
+        .await;
+        if let Err(factory_error) = shutdown_factory_instances(&mut factories, None).await {
+            warn!(
+                error = %factory_error,
+                "failed to shut down factories after startup status persistence failure"
+            );
+        }
+        shutdown_startup_resources_after_startup_failure(
+            StartupFailureResources {
+                provider: provider_state.provider.as_ref(),
+                runtime: Some(runtime.as_mut()),
+                mitm: &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                memory_prefetch: &mut memory_prefetch,
+                status: shared.status.as_ref(),
+            },
+            "startup_status_persistence_failure",
+        )
+        .await;
+        if let Some(handler_task) = signal_handler_task.take() {
+            abort_signal_handler_task(handler_task, "startup_status_persistence_failure").await;
+        }
+        return Err(RunnerError::Internal(format!(
+            "persist ready runner status: {error}"
+        )));
+    }
 
     let mut jobs: JoinSet<RunCancellationRegistration> = JoinSet::new();
 
@@ -1826,7 +1912,19 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
-            shared.status.set_mode(mode).await;
+            if let Err(error) = shared.status.set_mode(mode).await {
+                handle_stopping_signal(
+                    "status persistence failure",
+                    &provider_state.cancel,
+                    &provider_state.cancel_tokens,
+                    &lifecycle,
+                )
+                .await;
+                terminal_error = Some(RunnerError::Internal(format!(
+                    "persist runner mode {mode:?}: {error}"
+                )));
+                break;
+            }
         }
         if mode != RunnerMode::Running {
             pending_finalizing_candidate = None;
@@ -2428,7 +2526,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.phase_complete("memory_prefetch_drain", phase);
 
     let phase = teardown.phase_start("status_stopped");
-    shared.status.set_mode(RunnerMode::Stopped).await;
+    if let Err(error) = shared.status.set_mode(RunnerMode::Stopped).await {
+        warn!(%error, "failed to persist final stopped runner status");
+    }
     teardown.phase_complete("status_stopped", phase);
     info!(total_teardown_ms = teardown.elapsed_ms(), "runner stopped");
 

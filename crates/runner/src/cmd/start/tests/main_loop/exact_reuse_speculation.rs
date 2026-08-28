@@ -855,7 +855,7 @@ async fn cancellation_wins_when_speculative_cleanup_is_uncertain() {
     overrides.push_destroy_panic("simulated speculative destroy panic");
     let reuse_key = RunId::new_v4().to_string();
     let generation_run_id = RunId::new_v4();
-    seed_idle_pool_with_speculative_timezone(
+    let sandbox_id = seed_idle_pool_with_speculative_timezone(
         &env.idle_pool,
         &budget,
         &overrides,
@@ -906,9 +906,15 @@ async fn cancellation_wins_when_speculative_cleanup_is_uncertain() {
     );
     wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
-    let (_, active_runs) =
-        status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
-    assert!(active_runs.is_empty());
+    let status_path = env._temp_dir.path().join("status.json");
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert_eq!(active_runs, vec![run_id.to_string()]);
+    let status: serde_json::Value =
+        serde_json::from_str(&tokio::fs::read_to_string(status_path).await.unwrap()).unwrap();
+    assert_eq!(
+        status["active_runs"][0]["sandbox_id"],
+        sandbox_id.to_string()
+    );
     assert!(!env.start_observer.active_run_status_was_published(run_id));
     assert!(overrides.start_agent_process_calls().is_empty());
     assert_eq!(overrides.destroy_call_count(), 1);

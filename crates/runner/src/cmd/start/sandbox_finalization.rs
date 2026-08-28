@@ -1369,7 +1369,7 @@ mod tests {
                 None,
                 None,
             ));
-            status.write_initial().await;
+            status.write_initial().await.unwrap();
             let parking_gate = ParkingGate::new_open();
             let idle_pool: SharedIdlePool = Arc::new(tokio::sync::Mutex::new(
                 IdlePool::new_with_parking_gate(IdlePoolConfig { max_idle }, parking_gate.clone()),

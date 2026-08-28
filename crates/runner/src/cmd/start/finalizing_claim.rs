@@ -10,11 +10,12 @@ use tracing::info;
 use super::active_runs::{ActiveRunHandoffRequest, ActiveRunReuseState};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
-    IdlePressureRequest, IdlePressureSelection, select_idle_entry_for_pressure,
+    IdlePressureRequest, IdlePressureSelection, ReservedIdleActivation,
+    select_idle_entry_for_pressure,
 };
 use super::job_discovery::{
-    ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource, ReservedActivation,
-    ReservedActivationRequest, activate_reserved_idle, build_spawn_job_request,
+    ClaimedActivationGuard, ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource,
+    ReservedActivation, ReservedActivationRequest, activate_reserved_idle, build_spawn_job_request,
     reserve_reusable_idle_for_spawn, rollback_reserved_idle_for_spawn,
 };
 use super::job_spawn::{SpawnContext, run_job};
@@ -24,7 +25,7 @@ use crate::executor::{
     ExecutionFailure, FinalizingHandoffOutcome, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
     validate_resume_session_id,
 };
-use crate::idle_pool::{FinalizingHandoffCandidate, ReservedIdleSandbox};
+use crate::idle_pool::FinalizingHandoffCandidate;
 use crate::ids::RunId;
 use crate::provider::ClaimedJob;
 use crate::resource_budget::{BudgetLease, ResourceBudget};
@@ -50,7 +51,7 @@ pub(super) struct FinalizingClaimRequest {
 
 enum FinalizingWaitOutcome {
     Handoff(Box<FinalizingHandoffCandidate>),
-    Exact(Box<ReservedIdleSandbox>),
+    Exact(ReservedIdleActivation),
     Fallback {
         reason: &'static str,
         handoff_outcome: FinalizingHandoffOutcome,
@@ -73,7 +74,7 @@ impl FinalizingWaitOutcome {
 
 enum FinalizingResource {
     Handoff(Box<FinalizingHandoffCandidate>),
-    Exact(Box<ReservedIdleSandbox>),
+    Exact(ReservedIdleActivation),
     Fresh(BudgetLease),
 }
 
@@ -169,7 +170,7 @@ async fn run_finalizing_claim(
         Ok(Ok(resource)) => resource,
         Ok(Err(failure)) => {
             if let Some(reservation) = reserved_exact.take() {
-                rollback_reserved_idle_for_spawn(*reservation, &ctx).await;
+                rollback_reserved_idle_for_spawn(reservation, &ctx).await;
             }
             return complete_claimed_without_sandbox(
                 claimed,
@@ -183,7 +184,7 @@ async fn run_finalizing_claim(
         }
         Err(payload) => {
             if let Some(reservation) = reserved_exact.take() {
-                rollback_reserved_idle_for_spawn(*reservation, &ctx).await;
+                rollback_reserved_idle_for_spawn(reservation, &ctx).await;
             }
             let cancellation = complete_claimed_without_sandbox(
                 claimed,
@@ -206,6 +207,8 @@ async fn run_finalizing_claim(
         claimed.context().reuse_key().map(str::to_owned),
         profile_name.clone(),
     );
+    let cancellation_handle = cancellation.handle();
+    let mut activation_transfer_guard = None;
     let ready = match resource {
         FinalizingResource::Fresh(active_lease) => ReadyClaimedResource {
             reuse_entry: None,
@@ -214,8 +217,26 @@ async fn run_finalizing_claim(
             idle_snapshot: None,
         },
         FinalizingResource::Exact(reservation) => {
+            let transfer_guard = cancellation_handle.transfer_guard().await;
+            if cancellation_handle.is_cancelled() {
+                drop(transfer_guard);
+                drop(active_run_guard);
+                rollback_reserved_idle_for_spawn(reservation, &ctx).await;
+                pre_spawn_timing
+                    .record_finalizing_handoff_outcome(FinalizingHandoffOutcome::ActivationFailed);
+                return complete_claimed_without_sandbox(
+                    claimed,
+                    cancellation,
+                    ExecutionFailure::cancelled(),
+                    None,
+                    pre_spawn_timing.finalizing_handoff_outcome(),
+                    &ctx,
+                )
+                .await;
+            }
+            activation_transfer_guard = Some(transfer_guard);
             match activate_reserved_idle(
-                *reservation,
+                reservation,
                 ReservedActivationRequest {
                     run_id,
                     profile_name: &profile_name,
@@ -251,6 +272,7 @@ async fn run_finalizing_claim(
                     reuse_result,
                     error,
                 } => {
+                    drop(activation_transfer_guard.take());
                     drop(active_run_guard);
                     pre_spawn_timing.record_finalizing_handoff_outcome(
                         FinalizingHandoffOutcome::ActivationFailed,
@@ -296,6 +318,26 @@ async fn run_finalizing_claim(
                         .await;
                     }
                 };
+            let idle_snapshot = ctx.idle_pool.lock().await.status_snapshot();
+            let reservation = ReservedIdleActivation::new(reservation, idle_snapshot);
+            let transfer_guard = cancellation_handle.transfer_guard().await;
+            if cancellation_handle.is_cancelled() {
+                drop(transfer_guard);
+                drop(active_run_guard);
+                rollback_reserved_idle_for_spawn(reservation, &ctx).await;
+                pre_spawn_timing
+                    .record_finalizing_handoff_outcome(FinalizingHandoffOutcome::ActivationFailed);
+                return complete_claimed_without_sandbox(
+                    claimed,
+                    cancellation,
+                    ExecutionFailure::cancelled(),
+                    None,
+                    pre_spawn_timing.finalizing_handoff_outcome(),
+                    &ctx,
+                )
+                .await;
+            }
+            activation_transfer_guard = Some(transfer_guard);
             match activate_reserved_idle(
                 reservation,
                 ReservedActivationRequest {
@@ -333,6 +375,7 @@ async fn run_finalizing_claim(
                     reuse_result,
                     error,
                 } => {
+                    drop(activation_transfer_guard.take());
                     drop(active_run_guard);
                     pre_spawn_timing.record_finalizing_handoff_outcome(
                         FinalizingHandoffOutcome::ActivationFailed,
@@ -352,7 +395,7 @@ async fn run_finalizing_claim(
             }
         }
     };
-    let request = build_spawn_job_request(
+    let mut activation = ClaimedActivationGuard::new(
         ClaimedJobSetup {
             claimed,
             cancellation,
@@ -368,14 +411,38 @@ async fn run_finalizing_claim(
             active_run_guard,
         },
         &ctx,
-    )
-    .await;
+    );
+    let request = match AssertUnwindSafe(build_spawn_job_request(&mut activation, &ctx))
+        .catch_unwind()
+        .await
+    {
+        Ok(Ok(request)) => request,
+        Ok(Err(error)) => {
+            return activation
+                .recover(
+                    "active_status_persistence_failed",
+                    format!("persist active runner ownership: {error}"),
+                )
+                .await;
+        }
+        Err(panic) => {
+            let cancellation = activation
+                .recover(
+                    "activation_setup_panicked",
+                    "claimed activation setup panicked".to_owned(),
+                )
+                .await;
+            cancellation.unregister().await;
+            std::panic::resume_unwind(panic);
+        }
+    };
+    drop(activation_transfer_guard);
     run_job(request, ctx).await
 }
 
 async fn prepare_finalizing_resource(
     request: FinalizingPreparation<'_>,
-    reserved_exact: &mut Option<Box<ReservedIdleSandbox>>,
+    reserved_exact: &mut Option<ReservedIdleActivation>,
 ) -> Result<FinalizingResource, Box<ExecutionFailure>> {
     let FinalizingPreparation {
         claimed,
@@ -464,7 +531,7 @@ async fn prepare_finalizing_resource(
 
 async fn wait_for_finalizing_resource(
     request: FinalizingWait<'_>,
-    reserved_exact: &mut Option<Box<ReservedIdleSandbox>>,
+    reserved_exact: &mut Option<ReservedIdleActivation>,
 ) -> FinalizingWaitOutcome {
     let FinalizingWait {
         run_id,
@@ -522,11 +589,10 @@ async fn wait_for_finalizing_resource(
                 Some(admission.history_generation_run_id),
                 ctx,
             )
-            .await
-            .map(Box::new);
+            .await;
             if cancel.is_cancelled() {
                 if let Some(reservation) = reserved_exact.take() {
-                    rollback_reserved_idle_for_spawn(*reservation, ctx).await;
+                    rollback_reserved_idle_for_spawn(reservation, ctx).await;
                     ctx.reuse_state_notify.notify_one();
                 }
                 return FinalizingWaitOutcome::cancelled(None);
@@ -754,7 +820,7 @@ async fn reserve_fallback_exact(
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     history_generation_run_id: RunId,
     ctx: &SpawnContext,
-) -> Result<Option<Box<ReservedIdleSandbox>>, Box<ExecutionFailure>> {
+) -> Result<Option<ReservedIdleActivation>, Box<ExecutionFailure>> {
     let Some(reservation) = reserve_reusable_idle_for_spawn(
         reuse_key,
         profile_name,
@@ -766,18 +832,18 @@ async fn reserve_fallback_exact(
     else {
         return Ok(None);
     };
-    accept_fallback_exact(cancellation, Box::new(reservation), ctx)
+    accept_fallback_exact(cancellation, reservation, ctx)
         .await
         .map(Some)
 }
 
 async fn accept_fallback_exact(
     cancellation: &RunCancellationRegistration,
-    reservation: Box<ReservedIdleSandbox>,
+    reservation: ReservedIdleActivation,
     ctx: &SpawnContext,
-) -> Result<Box<ReservedIdleSandbox>, Box<ExecutionFailure>> {
+) -> Result<ReservedIdleActivation, Box<ExecutionFailure>> {
     if cancellation.token().is_cancelled() {
-        rollback_reserved_idle_for_spawn(*reservation, ctx).await;
+        rollback_reserved_idle_for_spawn(reservation, ctx).await;
         ctx.reuse_state_notify.notify_one();
         return Err(ExecutionFailure::cancelled().into());
     }

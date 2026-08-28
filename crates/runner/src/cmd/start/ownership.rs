@@ -6,6 +6,7 @@
 //! the right pool context. Slow sandbox operations stay outside this module.
 
 use sandbox::SandboxId;
+use tracing::warn;
 
 use super::idle_lifecycle::set_idle_status_snapshot;
 use super::orphan_reap::OrphanedActiveRuns;
@@ -131,9 +132,22 @@ impl<'a> OwnershipTransitions<'a> {
     }
 
     async fn remove_matching_active(&self, run: RunSandbox) -> bool {
-        self.status
+        match self
+            .status
             .remove_run_if_matching(run.run_id, run.sandbox_id)
             .await
+        {
+            Ok(removed) => removed,
+            Err(error) => {
+                warn!(
+                    run_id = %run.run_id,
+                    sandbox_id = %run.sandbox_id,
+                    %error,
+                    "failed to persist active run removal after ownership recovery"
+                );
+                false
+            }
+        }
     }
 }
 
@@ -205,7 +219,7 @@ mod tests {
         let transitions = OwnershipTransitions::new(&status);
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
+        status.add_run(run_id, sandbox_id).await.unwrap();
 
         assert!(
             transitions
@@ -231,8 +245,8 @@ mod tests {
         let run_id = RunId::new_v4();
         let stale_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, stale_sandbox_id).await;
-        status.add_run(run_id, current_sandbox_id).await;
+        status.add_run(run_id, stale_sandbox_id).await.unwrap();
+        status.add_run(run_id, current_sandbox_id).await.unwrap();
 
         assert!(
             !transitions
@@ -261,7 +275,7 @@ mod tests {
         let orphans = OrphanedActiveRuns::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
+        status.add_run(run_id, sandbox_id).await.unwrap();
 
         transitions.active_ownership_unknown(&orphans, RunSandbox::new(run_id, sandbox_id));
 
@@ -284,9 +298,9 @@ mod tests {
         let run_id = RunId::new_v4();
         let stale_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, stale_sandbox_id).await;
+        status.add_run(run_id, stale_sandbox_id).await.unwrap();
         orphans.insert(run_id, stale_sandbox_id);
-        status.add_run(run_id, current_sandbox_id).await;
+        status.add_run(run_id, current_sandbox_id).await.unwrap();
         orphans.insert(run_id, current_sandbox_id);
 
         let reconciled = transitions
@@ -318,9 +332,9 @@ mod tests {
         let run_id = RunId::new_v4();
         let stale_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, stale_sandbox_id).await;
+        status.add_run(run_id, stale_sandbox_id).await.unwrap();
         orphans.insert(run_id, stale_sandbox_id);
-        status.add_run(run_id, current_sandbox_id).await;
+        status.add_run(run_id, current_sandbox_id).await.unwrap();
 
         assert!(
             !transitions
@@ -347,7 +361,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let idle_sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
+        status.add_run(run_id, sandbox_id).await.unwrap();
         orphans.insert(run_id, sandbox_id);
 
         let reconciled = transitions
