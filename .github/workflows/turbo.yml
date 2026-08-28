@@ -1480,6 +1480,14 @@ jobs:
             "$R2_BUCKET_NAME" \
             "$CANONICAL_ASSETS"
 
+      - name: Verify immutable app assets on CDN
+        env:
+          CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
+        run: |
+          bash .github/scripts/verify-okou-app-assets.sh \
+            "https://static.okou.io/okou-app/assets" \
+            "$CANONICAL_ASSETS"
+
       - name: Deploy Cloudflare Pages preview
         id: pages-deploy
         env:
@@ -1528,151 +1536,58 @@ jobs:
 
       - name: Wait for Cloudflare Pages deployment readiness
         env:
-          PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
           PAGES_URL: ${{ steps.pages-deploy.outputs.url }}
         run: |
           set -euo pipefail
 
-          mapfile -t probe_files < <(
-            node --input-type=module - "$PAGES_DIST/assets" <<'NODE'
-          import { readdir, readFile } from "node:fs/promises";
-          import path from "node:path";
-
-          const assetsDirectory = process.argv[2];
-          const assetNames = await readdir(assetsDirectory);
-          const javascriptAssets = new Set(
-            assetNames.filter((assetName) => assetName.endsWith(".js")),
-          );
-          const rootPrefixes = ["index-", "Route-", "SignIn-", "SignUp-"];
-          const roots = [...javascriptAssets].filter((assetName) =>
-            rootPrefixes.some((prefix) => assetName.startsWith(prefix)),
-          );
-
-          for (const prefix of rootPrefixes) {
-            if (!roots.some((assetName) => assetName.startsWith(prefix))) {
-              throw new Error(`Could not identify ${prefix} preview assets`);
-            }
-          }
-
-          const queuedAssets = [...roots];
-          const reachableAssets = new Set();
-          const relativeImportPattern =
-            /["']\.\/([^"'?#]+\.js)(?:[?#][^"']*)?["']/g;
-
-          while (queuedAssets.length > 0) {
-            const assetName = queuedAssets.pop();
-            if (!assetName || reachableAssets.has(assetName)) {
-              continue;
-            }
-            reachableAssets.add(assetName);
-
-            const source = await readFile(
-              path.join(assetsDirectory, assetName),
-              "utf8",
-            );
-            for (const match of source.matchAll(relativeImportPattern)) {
-              const dependencyName = match[1];
-              if (
-                javascriptAssets.has(dependencyName) &&
-                !reachableAssets.has(dependencyName)
-              ) {
-                queuedAssets.push(dependencyName);
-              }
-            }
-          }
-
-          for (const assetName of [...reachableAssets].sort()) {
-            console.log(path.join(assetsDirectory, assetName));
-          }
-          NODE
-          )
-          echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
-
           document_body="$(mktemp)"
           trap 'rm -f "$document_body"' EXIT
           application_url="${PAGES_URL%/}/sign-up"
-          probe_curl_args=(
-            --output "$document_body"
-            --url "$application_url"
-          )
-          for probe_file in "${probe_files[@]}"; do
-            relative_path="${probe_file#"$PAGES_DIST"/}"
-            probe_curl_args+=(
-              --output /dev/null
-              --url "${PAGES_URL%/}/${relative_path}"
-            )
-          done
-
-          expected_probe_result_count=$((${#probe_files[@]} + 1))
           ready_passes=0
           for attempt in {1..60}; do
-            probe_succeeded=false
-            if probe_results="$(curl \
-              --silent \
+            if curl --fail --silent --show-error \
               --max-time 10 \
-              --parallel \
-              --parallel-immediate \
-              --parallel-max 16 \
-              --write-out $'%{http_code}|%{content_type}|%{url_effective}\n' \
-              "${probe_curl_args[@]}" 2>/dev/null)"; then
-              probe_succeeded=true
-            fi
-            probe_result_count=0
-            not_ready_files=""
-            document_ready=false
-            while IFS= read -r probe_result; do
-              if [[ "$probe_result" != *"|"* ]]; then
-                continue
-              fi
-              ((probe_result_count += 1))
-              IFS='|' read -r status content_type resource_url <<< "$probe_result"
-              if [[ "$resource_url" == "$application_url" ]]; then
-                if [[ \
-                  "$status" == 2?? &&
-                  "$content_type" == *text/html* \
-                ]] && grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
-                  document_ready=true
-                fi
-              elif [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
-                not_ready_files+="${not_ready_files:+$'\n'}${resource_url#"${PAGES_URL%/}/"}"
-              fi
-            done <<< "$probe_results"
-            if (( probe_result_count != expected_probe_result_count )); then
-              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness response"
-            fi
-            if [[ "$probe_succeeded" != true ]]; then
-              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness transfer"
-            fi
-            if [[ "$document_ready" != true ]]; then
-              not_ready_files+="${not_ready_files:+$'\n'}application document"
-            fi
-
-            if [[ -z "$not_ready_files" ]]; then
+              --output "$document_body" \
+              "$application_url" && \
+              grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
               ((ready_passes += 1))
             else
               ready_passes=0
-              first_not_ready="${not_ready_files%%$'\n'*}"
-              not_ready_count="$(wc -l <<< "$not_ready_files")"
-              echo "::warning::${not_ready_count} preview resources are not ready (attempt ${attempt}/60); first: ${first_not_ready}"
+              echo "::warning::Cloudflare Pages shell is not ready (attempt ${attempt}/60)"
             fi
 
             if (( ready_passes >= 2 )); then
-              echo "Cloudflare Pages deployment is ready"
+              echo "Cloudflare Pages shell is ready"
               exit 0
             fi
             sleep 2
           done
 
-          echo "::error::Cloudflare Pages deployment did not become ready"
+          echo "::error::Cloudflare Pages shell did not become ready"
           exit 1
 
       - name: Smoke test app preview gateway
         if: steps.app-preview.outputs.url != ''
         env:
           APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
+          CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
         run: |
           set -euo pipefail
+          mapfile -t shared_worker_files < <(
+            find "$CANONICAL_ASSETS" \
+              -maxdepth 1 \
+              -type f \
+              -name 'shared-database-worker-*.js' \
+              -print
+          )
+          if (( ${#shared_worker_files[@]} != 1 )); then
+            echo "::error::Expected exactly one SharedWorker asset, found ${#shared_worker_files[@]}"
+            exit 1
+          fi
+          shared_worker_path="${shared_worker_files[0]#"$CANONICAL_ASSETS"/}"
+          shared_worker_url="${APP_PREVIEW_URL}/okou-app/assets/${shared_worker_path}"
           response_headers="$(mktemp)"
+          trap 'rm -f "$response_headers"' EXIT
           for attempt in {1..12}; do
             if curl --fail --silent --show-error \
               --dump-header "$response_headers" \
@@ -1680,13 +1595,23 @@ jobs:
               "${APP_PREVIEW_URL}/" && \
               grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
                 "$response_headers"; then
-              echo "App preview gateway is ready"
-              exit 0
+              if shared_worker_status="$(curl \
+                --fail \
+                --silent \
+                --show-error \
+                --range 0-0 \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                "$shared_worker_url")" && \
+                [[ "$shared_worker_status" == "206" ]]; then
+                echo "App preview gateway and SharedWorker proxy are ready"
+                exit 0
+              fi
             fi
-            echo "::warning::App preview gateway is not ready (attempt ${attempt}/12)"
+            echo "::warning::App preview gateway or SharedWorker proxy is not ready (attempt ${attempt}/12)"
             sleep 5
           done
-          echo "::error::${APP_PREVIEW_URL} did not use vm0-preview-gateway"
+          echo "::error::${APP_PREVIEW_URL} gateway or SharedWorker proxy did not become ready"
           exit 1
 
       - name: Record Cloudflare Pages preview

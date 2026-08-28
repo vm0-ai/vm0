@@ -1617,6 +1617,14 @@ jobs:
           echo "canonical-dist=$canonical_dist" >> "$GITHUB_OUTPUT"
           echo "pages-dist=$pages_dist" >> "$GITHUB_OUTPUT"
 
+      - name: Verify immutable app assets on CDN
+        env:
+          CANONICAL_ASSETS: ${{ steps.pages-production.outputs.canonical-dist }}/assets
+        run: |
+          bash .github/scripts/verify-okou-app-assets.sh \
+            "https://static.okou.io/okou-app/assets" \
+            "$CANONICAL_ASSETS"
+
       - name: Upload Cloudflare Pages source maps to Sentry
         env:
           CANONICAL_DIST: ${{ steps.pages-production.outputs.canonical-dist }}
