@@ -6,12 +6,14 @@ export function stubTestTimezone(
   vi.stubEnv("TZ", timezone);
 }
 
-export function stubTestWebUrlEnvironment(
-  canonical: string | undefined,
-  legacy: string | undefined,
+export function stubTestWebUrlEnvironment(webUrl: string | undefined): void {
+  vi.stubEnv("OKOU_WEB_URL", webUrl);
+}
+
+export function stubRetiredTestWebUrlEnvironment(
+  webUrl: string | undefined,
 ): void {
-  vi.stubEnv("OKOU_WEB_URL", canonical);
-  vi.stubEnv("VM0_WEB_URL", legacy);
+  vi.stubEnv("VM0_WEB_URL", webUrl);
 }
 
 function stubTestDatabaseUrl(): void {
@@ -69,7 +71,7 @@ vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 // still reads this legacy process variable outside the API backend contract.
 vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 vi.stubEnv("FEISHU_CALLBACK_BASE_URL", "http://localhost:3000");
-stubTestWebUrlEnvironment(undefined, "http://localhost:3001");
+stubTestWebUrlEnvironment("http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
 vi.stubEnv(
   "CLI_PKG_URL",

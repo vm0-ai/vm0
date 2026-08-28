@@ -4852,7 +4852,7 @@ describe.sequential("Official Workflow Run admission", () => {
 
   it("routes enabled result email through explicit, scheduled, once, and webhook Official admission", async () => {
     installCatalogStorageFixture();
-    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-producers-${suffix}`;
     await syncCatalog(
@@ -5625,7 +5625,7 @@ describe.sequential("Official Workflow Run admission", () => {
 
   it("creates no Run-family rows for unresolved explicit, schedule, once, or webhook admission", async () => {
     installCatalogStorageFixture();
-    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-unresolved-producers-${suffix}`;
     await syncCatalog(

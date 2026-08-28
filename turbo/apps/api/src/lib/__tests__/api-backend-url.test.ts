@@ -61,14 +61,14 @@ describe("OAuth API origin", () => {
   it("keeps OAuth configured-origin normalization and sibling/web fallbacks", () => {
     const request = new Request("https://request.example.test/oauth");
     configureApiBackendUrl("https://api.vm0.ai/configured/path");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     expect(getOAuthApiOrigin(request)).toBe("https://api.vm0.ai");
 
     configureApiBackendUrl(undefined);
-    mockEnv("VM0_WEB_URL", "https://www.vm6.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm6.ai");
     expect(getOAuthApiOrigin(request)).toBe("https://api.vm6.ai");
 
-    mockEnv("VM0_WEB_URL", "https://external.example.test/path");
+    mockEnv("OKOU_WEB_URL", "https://external.example.test/path");
     expect(getOAuthApiOrigin(request)).toBe("https://external.example.test");
   });
 });

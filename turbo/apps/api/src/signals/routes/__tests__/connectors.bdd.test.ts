@@ -6186,7 +6186,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
   });
 
   it("routes callbacks through canonical and trusted web origins", async () => {
-    mockEnv("VM0_WEB_URL", "https://app.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://app.vm0.test");
 
     const canonical = await requestOauthCallbackRaw(context, {
       origin: "https://api.vm0.ai",
@@ -6229,7 +6229,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
 
 describe("CONN-02: test-oauth auth-code journey", () => {
   it("persists reported and normalized effective scopes through auth-code callbacks", async () => {
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     const bdd = createBddApi(context);
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
@@ -6340,7 +6340,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
   });
 
   it("replaces a manual-grant connection through the auth-code callback with method-scoped state cleanup", async () => {
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     const provider = mockTestOAuthAuthCodeProvider({
       refreshToken: "bdd-test-oauth-refresh",
     });

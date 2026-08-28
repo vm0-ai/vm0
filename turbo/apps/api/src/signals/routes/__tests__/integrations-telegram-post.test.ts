@@ -879,7 +879,7 @@ describe("POST /api/telegram/register", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("OKOU_API_BACKEND_URL", "https://api.example.test");
-    mockEnv("VM0_WEB_URL", "https://www.example.test");
+    mockEnv("OKOU_WEB_URL", "https://www.example.test");
     mockEnv("APP_URL", "https://app.example.test");
     mockTelegramGetMe({ botId: telegramBotId, username: "registered_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
@@ -928,7 +928,7 @@ describe("POST /api/telegram/register", () => {
       seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
     mockEnv("APP_URL", "https://app.vm0.ai");
     mockTelegramGetMe({ botId: telegramBotId, username: "owner_named_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
