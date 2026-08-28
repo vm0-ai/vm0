@@ -417,7 +417,7 @@ async function readCurrentCatalog(args: {
     args.timing,
     "api_dispatch_connector_catalog_validate_compatibility",
     () => {
-      if (!compatibilityEvaluationExists) {
+      if (!validationAuthorityIsCurrent) {
         return evaluateConnectorCatalogCompatibility({
           artifact: decoded.artifact,
           capability: args.capability,

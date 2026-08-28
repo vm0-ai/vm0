@@ -2054,6 +2054,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
   it("fully validates a different catalog authority before caching it", async () => {
     const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
       "test-run-lifecycle-different-catalog-authority",
@@ -2078,6 +2079,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       warmRun.runId,
       [200],
     );
+    await fw.seedTestConnector(differentAuthorityActor.actor, {
+      connectorSlug: "x",
+      authMethod: "oauth",
+      accessToken: "x-different-authority-access",
+      refreshToken: "x-different-authority-refresh",
+    });
 
     const differentCatalogVersion = `api-test-different-validation-${randomUUID()}`;
     await installApiTestConnectorCatalog({
@@ -2096,6 +2103,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await setApiTestConnectorCatalogValidationAuthority(
       differentValidationAuthority,
     );
+    await replaceApiTestConnectorCatalogFilteredAuthMethods([
+      {
+        connectorSlug: "x",
+        authMethodId: "oauth",
+        reasons: ["missing-grant-provider"],
+      },
+    ]);
     const differentAuthorityPrompt =
       "different connector catalog validation authority";
     const differentAuthorityRun = await api.createDirectRun(
@@ -2142,6 +2156,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
+    await api.heartbeatRunner(differentAuthorityActor.runnerGroup);
+    const differentAuthorityClaim = await api.claimRunnerJob(
+      differentAuthorityRun.runId,
+    );
+    expect(
+      findFirewallEntry(differentAuthorityClaim.firewalls, "x"),
+    ).toBeDefined();
 
     const cachedActor = await entitledRunActor();
     const cachedPrompt = "cached connector catalog fallback";
