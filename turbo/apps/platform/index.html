@@ -1232,10 +1232,14 @@
           opacity: 0;
         }
         .app-bootstrap-skeleton__content {
+          position: fixed;
+          top: var(--app-bootstrap-skeleton-center-y, 50dvh);
+          left: 50%;
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 20px;
+          transform: translate(-50%, -50%);
         }
         .app-bootstrap-skeleton__avatar {
           position: relative;
@@ -1346,6 +1350,19 @@
         if (window.__vm0BrowserSupported !== true) return;
 
         var skeleton = document.getElementById("app-bootstrap-skeleton");
+        // iOS standalone can expand the fixed containing viewport one frame
+        // after launch. Pin the content to the initially reachable viewport
+        // so that later geometry resolution cannot visibly recenter it.
+        var viewportHeight =
+          window.visualViewport && window.visualViewport.height > 0
+            ? window.visualViewport.height
+            : window.innerHeight;
+        if (viewportHeight > 0) {
+          skeleton.style.setProperty(
+            "--app-bootstrap-skeleton-center-y",
+            viewportHeight / 2 + "px",
+          );
+        }
         var loadingCopy = window.__vm0PreBundleCopy.loading;
         var messages = loadingCopy.messages;
         skeleton.setAttribute("aria-label", loadingCopy.ariaLabel);
