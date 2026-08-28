@@ -173,6 +173,9 @@
         mode: "0644"
       become: true
 
+    # Temporary bare-metal monitoring rollout cleanup for hosts provisioned
+    # before #30137. Remove through #30144 after every managed host uses the
+    # new timer and live checks confirm the retired artifacts are absent.
     - name: Check for legacy VM0 runner status collector timer
       stat:
         path: /etc/systemd/system/vm0-runner-status-collect.timer
