@@ -17,11 +17,17 @@ pub(crate) struct FioResult {
     pub(crate) vm_iops: u64,
     pub(crate) lat_p50_us: u64,
     pub(crate) lat_p99_us: u64,
-    /// Actual IOPS on the host disk during the test
+    /// Read-plus-write completion IOPS observed on the selected host device.
+    /// This is a whole-device counter delta and can include unrelated host I/O.
     pub(crate) host_disk_iops: u64,
 }
 
-/// Run fio while sampling /proc/diskstats before and after to measure actual host disk IOPS.
+/// Run fio while sampling `/proc/diskstats` before and after.
+///
+/// The host metric is the selected whole device's completed-read plus
+/// completed-write counter delta divided by the fio interval. It can include
+/// unrelated host I/O on that device and is not limited to requests issued by
+/// fio.
 pub(crate) async fn run_fio_with_iostat(
     device: &str,
     workload: &FioWorkload,
@@ -63,7 +69,7 @@ pub(crate) async fn run_fio_with_iostat(
     result.host_disk_iops = calculate_host_disk_iops(&before, &after, elapsed_secs)?;
 
     eprintln!(
-        "    VM IOPS: {}, Host disk IOPS: {}, Duration: {:.1}s",
+        "    VM IOPS: {}, Selected host-device IOPS: {}, Duration: {:.1}s",
         result.vm_iops, result.host_disk_iops, elapsed_secs
     );
 
