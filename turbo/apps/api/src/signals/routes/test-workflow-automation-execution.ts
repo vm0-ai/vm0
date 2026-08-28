@@ -1,5 +1,6 @@
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -20,6 +21,9 @@ import {
 } from "./test-endpoint-helpers";
 
 const body$ = bodyResultOf(testWorkflowAutomationExecutionContract.execute);
+const agentBody$ = bodyResultOf(
+  testWorkflowAutomationExecutionContract.executeForAgent,
+);
 const dispatchBody$ = bodyResultOf(
   testWorkflowAutomationExecutionContract.dispatchCallbacks,
 );
@@ -79,6 +83,44 @@ const executeTestWorkflowAutomation$ = command(
           stripe.failed +
           stripe.retried,
       },
+    };
+  },
+);
+
+const executeTestWorkflowAutomationsForAgent$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+
+    const bodyResult = await get(agentBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const db = set(writeDb$);
+    const rows = await db
+      .select({ id: workflowAutomations.id })
+      .from(workflowAutomations)
+      .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))
+      .where(eq(workflows.agentId, bodyResult.data.agent_id));
+    signal.throwIfAborted();
+
+    let executed = 0;
+    let skipped = 0;
+    for (const row of rows) {
+      const result = await set(
+        executeDueWorkflowAutomationsForAutomation$,
+        row.id,
+        signal,
+      );
+      executed += result.executed;
+      skipped += result.skipped;
+    }
+    return {
+      status: 200 as const,
+      body: { success: true as const, executed, skipped },
     };
   },
 );
@@ -190,6 +232,10 @@ export const testWorkflowAutomationExecutionRoutes: readonly RouteEntry[] = [
   {
     route: testWorkflowAutomationExecutionContract.execute,
     handler: executeTestWorkflowAutomation$,
+  },
+  {
+    route: testWorkflowAutomationExecutionContract.executeForAgent,
+    handler: executeTestWorkflowAutomationsForAgent$,
   },
   {
     route: testWorkflowAutomationExecutionContract.dispatchCallbacks,

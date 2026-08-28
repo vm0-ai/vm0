@@ -8,6 +8,10 @@ export const testWorkflowAutomationExecutionRequestSchema = z.object({
   automation_id: z.string().uuid(),
 });
 
+export const testWorkflowAutomationAgentExecutionRequestSchema = z.object({
+  agent_id: z.string().uuid(),
+});
+
 export const testWorkflowAutomationExecutionResponseSchema = z.object({
   success: z.literal(true),
   executed: z.number().int().nonnegative(),
@@ -65,6 +69,16 @@ export const testWorkflowAutomationExecutionContract = c.router({
     },
     summary: "Execute one workflow automation in API tests",
   },
+  executeForAgent: {
+    method: "POST",
+    path: "/api/test/workflow-automation-execution/execute-for-agent",
+    body: testWorkflowAutomationAgentExecutionRequestSchema,
+    responses: {
+      200: testWorkflowAutomationExecutionResponseSchema,
+      404: z.string(),
+    },
+    summary: "Execute visible workflow automations for one agent in API tests",
+  },
   dispatchCallbacks: {
     method: "POST",
     path: "/api/test/workflow-automation-execution/dispatch-callbacks",
@@ -90,6 +104,9 @@ export const testWorkflowAutomationExecutionContract = c.router({
 
 export type TestWorkflowAutomationExecutionRequest = z.infer<
   typeof testWorkflowAutomationExecutionRequestSchema
+>;
+export type TestWorkflowAutomationAgentExecutionRequest = z.infer<
+  typeof testWorkflowAutomationAgentExecutionRequestSchema
 >;
 export type TestWorkflowAutomationExecutionResponse = z.infer<
   typeof testWorkflowAutomationExecutionResponseSchema
