@@ -128,6 +128,7 @@ describe("bootstrap phase telemetry", () => {
         local_thread_metadata_ms: expect.any(Number),
         remote_thread_metadata_ms: expect.any(Number),
         route_setup_ms: expect.any(Number),
+        skeleton_duration_ms: expect.any(Number),
         standalone_pwa: false,
         thread_metadata_source:
           "not_found" satisfies BootstrapThreadMetadataSource,
@@ -135,6 +136,12 @@ describe("bootstrap phase telemetry", () => {
         was_hidden: false,
       }),
     );
+    const skeletonDurationMs = properties?.skeleton_duration_ms;
+    if (typeof skeletonDurationMs !== "number") {
+      throw new TypeError("expected a numeric skeleton duration");
+    }
+    expect(Number.isFinite(skeletonDurationMs)).toBeTruthy();
+    expect(skeletonDurationMs).toBeGreaterThanOrEqual(0);
     expect(JSON.stringify(properties)).not.toContain(THREAD_ID);
   });
 
@@ -153,6 +160,9 @@ describe("bootstrap phase telemetry", () => {
           : [];
       }),
     ).toStrictEqual(["app_first_skeleton_hide", BOOTSTRAP_PHASE_TIMING_EVENT]);
+    expect(timingEvents()[0]).toStrictEqual(
+      expect.objectContaining({ skeleton_duration_ms: expect.any(Number) }),
+    );
   });
 
   it("discards thread timing from an aborted navigation", async () => {
@@ -206,6 +216,7 @@ describe("bootstrap phase telemetry", () => {
 
     expect(timingEvents()).toHaveLength(1);
     expect(timingEvents()[0]).not.toHaveProperty("entry_module_ready_ms");
+    expect(timingEvents()[0]).not.toHaveProperty("skeleton_duration_ms");
     expect(timingEvents()[0]).toStrictEqual(
       expect.objectContaining({
         final_route: ROUTES.error,
@@ -214,5 +225,24 @@ describe("bootstrap phase telemetry", () => {
         route_setup_ms: expect.any(Number),
       }),
     );
+    expect(
+      posthog.capture.mock.calls.filter(([eventName]) => {
+        return eventName === "app_first_skeleton_hide";
+      }),
+    ).toHaveLength(0);
+  });
+
+  it("omits an invalid skeleton timing without changing the total event", async () => {
+    window.__appBootstrapStart = Number.NaN;
+
+    await setupPage({ context, path: ROUTES.error, withoutRender: true });
+
+    expect(timingEvents()).toHaveLength(1);
+    expect(timingEvents()[0]).not.toHaveProperty("skeleton_duration_ms");
+    expect(
+      posthog.capture.mock.calls.filter(([eventName]) => {
+        return eventName === "app_first_skeleton_hide";
+      }),
+    ).toHaveLength(1);
   });
 });

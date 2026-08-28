@@ -528,6 +528,8 @@ function elapsedDuration(
   if (
     startedAt === undefined ||
     completedAt === undefined ||
+    !Number.isFinite(startedAt) ||
+    !Number.isFinite(completedAt) ||
     completedAt < startedAt
   ) {
     return undefined;
@@ -583,6 +585,11 @@ export const captureBootstrapPhaseTiming$ = command(({ get, set }) => {
       properties,
       "entry_module_ready_ms",
       entryModuleReadyDurationMs,
+    );
+    setDurationProperty(
+      properties,
+      "skeleton_duration_ms",
+      elapsedDuration(window.__appBootstrapStart, capturedAt),
     );
     setDurationProperty(
       properties,
