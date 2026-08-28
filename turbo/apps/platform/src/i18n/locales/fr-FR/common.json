@@ -1934,6 +1934,7 @@
       "selectedModelUnavailable": "Le modèle sélectionné n'est pas disponible. Configurez-le avant d'envoyer.",
       "selectedModelUnavailableToast": "Le modèle sélectionné n'est pas disponible",
       "selectModel": "Sélectionner le modèle",
+      "temporarily": "Temporairement",
       "threadSuggestions": "Conversations",
       "useForFutureChats": "Utiliser pour les prochaines discussions",
       "videoModelForThisChat": "Modèle vidéo pour cette discussion",

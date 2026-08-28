@@ -1901,6 +1901,7 @@
       "selectedModelUnavailable": "선택한 모델을 사용할 수 없습니다. 전송 전에 구성하세요.",
       "selectedModelUnavailableToast": "선택한 모델을 사용할 수 없습니다",
       "selectModel": "모델 선택",
+      "temporarily": "일시적으로",
       "threadSuggestions": "채팅 스레드",
       "useForFutureChats": "향후 채팅에 사용",
       "videoModelForThisChat": "이 채팅의 동영상 모델",

@@ -10255,14 +10255,18 @@ function ComposerModelScopeCard({
         aria-atomic="true"
       >
         <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-muted-foreground">{label}</span>
+          <span className="text-muted-foreground">
+            {t(($) => {
+              return $.chat.composer.temporarily;
+            })}
+          </span>
           <span className="font-medium text-foreground">{model}</span>
         </div>
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="ml-auto shrink-0 text-foreground"
+          className="ml-auto shrink-0 text-xs text-foreground"
           disabled={updating}
           aria-busy={updating}
           onClick={onUseForFutureChats}
