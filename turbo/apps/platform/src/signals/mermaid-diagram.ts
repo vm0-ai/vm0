@@ -7,7 +7,7 @@ import { createObjectUrlResource } from "./object-url-resource.ts";
 import { theme$ } from "./theme.ts";
 import { onRejection, settle } from "./utils.ts";
 
-export type MermaidModule = typeof import("mermaid");
+export type MermaidModule = typeof import("@okouai/mermaid-flowchart");
 export type MermaidImporter = () => Promise<MermaidModule>;
 
 declare global {
@@ -18,7 +18,7 @@ declare global {
 
 const mermaidModule = createRetryableLazyModule(() => {
   const testImporter = IN_VITEST ? window.vm0MermaidImporterForTest : undefined;
-  return testImporter?.() ?? import("mermaid");
+  return testImporter?.() ?? import("@okouai/mermaid-flowchart");
 });
 
 /**
@@ -46,7 +46,7 @@ export interface MermaidDiagramImage {
 
 export interface MermaidDiagramSignals {
   readonly code: string;
-  /** Resolves `null` when the source is not a valid mermaid diagram. */
+  /** Resolves `null` when the source is not a supported Mermaid flowchart. */
   readonly diagram$: Computed<Promise<MermaidDiagramImage | null>>;
   /** Retries the current theme after a transient module or render failure. */
   readonly retry$: Command<void, []>;
@@ -99,14 +99,21 @@ function diagramRenderId(seed: string): string {
   return `mermaid-diagram-${(hash >>> 0).toString(36)}`;
 }
 
-/** Returns the diagram SVG, or undefined when the source is not valid mermaid. */
+// `flowchart-v2` is Mermaid's internal ID for its modern Flowchart renderer,
+// not a separate user-facing diagram syntax.
+const FLOWCHART_DIAGRAM_TYPES: ReadonlySet<string> = new Set([
+  "flowchart",
+  "flowchart-v2",
+]);
+
+/** Returns the diagram SVG, or undefined when the source is not a flowchart. */
 async function renderDiagramSvg(
-  mermaid: (typeof import("mermaid"))["default"],
+  mermaid: (typeof import("@okouai/mermaid-flowchart"))["default"],
   id: string,
   code: string,
 ): Promise<string | undefined> {
   const parsed = await mermaid.parse(code, { suppressErrors: true });
-  if (!parsed) {
+  if (!parsed || !FLOWCHART_DIAGRAM_TYPES.has(parsed.diagramType)) {
     return undefined;
   }
   const { svg } = await mermaid.render(id, code);
