@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::{RunnerError, RunnerResult};
 
 use super::target::RunnerServiceUnit;
+use super::unit_config::DEPLOYMENT_SOURCE_CONFIG_FLAG;
 
 const UNIT_STAGING_MARKER: &str = ".tmp@";
 const UNIT_STAGING_MAX_ATTEMPTS: u64 = 32;
@@ -64,7 +65,8 @@ fn escape_systemd_value(input: &str) -> String {
 pub(super) fn generate_unit_file(
     unit: &RunnerServiceUnit,
     exe_path: &Path,
-    config_path: &Path,
+    activation_config_path: &Path,
+    deployment_source_config_path: &Path,
     env_vars: &[String],
     local: bool,
 ) -> String {
@@ -75,7 +77,9 @@ pub(super) fn generate_unit_file(
     }
     let local_flag = if local { " --local" } else { "" };
     let exe = escape_systemd_value(&exe_path.display().to_string());
-    let config = escape_systemd_value(&config_path.display().to_string());
+    let activation_config = escape_systemd_value(&activation_config_path.display().to_string());
+    let deployment_source_config =
+        escape_systemd_value(&deployment_source_config_path.display().to_string());
     let unit_name = unit.unit_name();
     format!(
         "\
@@ -86,7 +90,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=\"{exe}\" start --config \"{config}\"{local_flag}
+ExecStart=\"{exe}\" start --config \"{activation_config}\" {DEPLOYMENT_SOURCE_CONFIG_FLAG} \"{deployment_source_config}\"{local_flag}
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
@@ -448,13 +452,23 @@ mod tests {
             &service_unit("v0.1.0"),
             Path::new("/var/lib/vm0-runner/bin/v0.1.0/vm0-runner"),
             Path::new("/home/ubuntu/runner.yaml"),
+            Path::new("/var/lib/vm0-runner/runners/v0.1.0/runner.yaml"),
             &[],
             false,
         );
         assert!(content.contains("Description=VM0 Runner (vm0-runner-v0.1.0)"));
         assert!(content.contains(
-            "ExecStart=\"/var/lib/vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\"\n"
+            "ExecStart=\"/var/lib/vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\" --deployment-source-config \"/var/lib/vm0-runner/runners/v0.1.0/runner.yaml\"\n"
         ));
+        let command_paths = super::super::unit_config::parse_unit_command_paths(&content).unwrap();
+        assert_eq!(
+            command_paths.activation_config_path(),
+            Path::new("/home/ubuntu/runner.yaml")
+        );
+        assert_eq!(
+            command_paths.deployment_source_config_path(),
+            Some(Path::new("/var/lib/vm0-runner/runners/v0.1.0/runner.yaml"))
+        );
         assert!(!content.contains("User="));
         assert!(content.contains("SyslogIdentifier=vm0-runner-v0.1.0"));
         assert!(!content.contains("EnvironmentFile="));
@@ -478,6 +492,7 @@ mod tests {
             &service_unit("v0.1.0"),
             Path::new("/var/lib/vm0-runner/bin/v0.1.0/vm0-runner"),
             Path::new("/home/ubuntu/runner.yaml"),
+            Path::new("/var/lib/vm0-runner/runners/v0.1.0/runner.yaml"),
             &env,
             false,
         );
@@ -499,11 +514,12 @@ mod tests {
             &service_unit("v0.1.0"),
             Path::new("/opt/my runner/vm0-runner"),
             Path::new("/opt/my config/runner.yaml"),
+            Path::new("/opt/my source config/runner.yaml"),
             &[],
             false,
         );
         assert!(content.contains(
-            "ExecStart=\"/opt/my runner/vm0-runner\" start --config \"/opt/my config/runner.yaml\""
+            "ExecStart=\"/opt/my runner/vm0-runner\" start --config \"/opt/my config/runner.yaml\" --deployment-source-config \"/opt/my source config/runner.yaml\""
         ));
         assert!(!content.contains("User="));
     }
@@ -514,11 +530,12 @@ mod tests {
             &service_unit("v0.1.0"),
             Path::new("/usr/bin/runner"),
             Path::new("/etc/runner.yaml"),
+            Path::new("/var/lib/vm0-runner/runners/v0.1.0/runner.yaml"),
             &[],
             true,
         );
         assert!(content.contains(
-            "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --local\n"
+            "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --deployment-source-config \"/var/lib/vm0-runner/runners/v0.1.0/runner.yaml\" --local\n"
         ));
     }
 
@@ -595,6 +612,7 @@ mod tests {
             &service_unit("v0.1.0"),
             Path::new("/usr/bin/runner"),
             Path::new("/etc/runner.yaml"),
+            Path::new("/var/lib/vm0-runner/runners/v0.1.0/runner.yaml"),
             &env,
             false,
         );
@@ -613,11 +631,12 @@ mod tests {
             &service_unit("v0.1.0"),
             Path::new("/opt/runner-v1%2.0/bin/runner"),
             Path::new("/etc/cache%20.yaml"),
+            Path::new("/var/lib/vm0-runner/runners/config%20/runner.yaml"),
             &[],
             false,
         );
         assert!(content.contains(
-            r#"ExecStart="/opt/runner-v1%%2.0/bin/runner" start --config "/etc/cache%%20.yaml""#
+            r#"ExecStart="/opt/runner-v1%%2.0/bin/runner" start --config "/etc/cache%%20.yaml" --deployment-source-config "/var/lib/vm0-runner/runners/config%%20/runner.yaml""#
         ));
     }
 

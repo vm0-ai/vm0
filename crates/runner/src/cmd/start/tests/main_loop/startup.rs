@@ -566,6 +566,7 @@ server:
     let error = run_start_with_home(
         StartArgs {
             config: config_path,
+            deployment_source_config: None,
             api_url: None,
             token: None,
             local: true,

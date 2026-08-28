@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::future::Future;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
 use std::time::SystemTime;
@@ -55,8 +56,9 @@ impl DeploymentGcOutcome {
 struct Deployment {
     unit: service::RunnerServiceUnit,
     bin_dir: PathBuf,
-    runner_dir: PathBuf,
-    config_path: PathBuf,
+    runner_dir: Option<PathBuf>,
+    activation_config_path: PathBuf,
+    source_config_path: Option<PathBuf>,
     newest_mtime: SystemTime,
     retain_record: bool,
 }
@@ -130,11 +132,15 @@ async fn discover_installed_service_suffixes_with_reader(
         };
         let file_name = entry.file_name();
         let Some(file_name) = file_name.to_str() else {
-            warn!(
-                "runner deployments: installed service entry {} is not valid UTF-8; retaining all deployments",
-                entry.path().display()
-            );
-            complete = false;
+            let file_name_bytes = file_name.as_bytes();
+            if file_name_bytes.starts_with(b"vm0-runner-") && file_name_bytes.ends_with(b".service")
+            {
+                warn!(
+                    "runner deployments: installed runner service entry {} is not valid UTF-8; retaining all deployments",
+                    entry.path().display()
+                );
+                complete = false;
+            }
             continue;
         };
         if !file_name.starts_with("vm0-runner-") || !file_name.ends_with(".service") {
@@ -259,7 +265,7 @@ async fn gc_deployments_with_operations(
     for deployment in &deployments {
         if deployment.retain_record {
             retained_bin_dirs.insert(deployment.bin_dir.clone());
-            retained_runner_dirs.insert(deployment.runner_dir.clone());
+            retained_runner_dirs.extend(deployment.runner_dir.iter().cloned());
         }
     }
 
@@ -278,7 +284,11 @@ async fn gc_deployments_with_operations(
     let mut failed_paths = HashSet::new();
     let mut removed_runner_dirs = HashSet::new();
 
-    for runner_dir in unique_paths(deployments.iter().map(|item| &item.runner_dir)) {
+    for runner_dir in unique_paths(
+        deployments
+            .iter()
+            .filter_map(|item| item.runner_dir.as_ref()),
+    ) {
         if retained_runner_dirs.contains(&runner_dir) {
             continue;
         }
@@ -290,7 +300,12 @@ async fn gc_deployments_with_operations(
     }
     let bin_dirs_blocked_by_runner_failure = deployments
         .iter()
-        .filter(|deployment| failed_paths.contains(&deployment.runner_dir))
+        .filter(|deployment| {
+            deployment
+                .runner_dir
+                .as_ref()
+                .is_some_and(|runner_dir| failed_paths.contains(runner_dir))
+        })
         .map(|deployment| deployment.bin_dir.clone())
         .collect::<HashSet<_>>();
     for bin_dir in unique_paths(deployments.iter().map(|item| &item.bin_dir)) {
@@ -313,7 +328,10 @@ async fn gc_deployments_with_operations(
     for deployment in &deployments {
         if deployment.retain_record
             || failed_paths.contains(&deployment.bin_dir)
-            || failed_paths.contains(&deployment.runner_dir)
+            || deployment
+                .runner_dir
+                .as_ref()
+                .is_some_and(|runner_dir| failed_paths.contains(runner_dir))
         {
             continue;
         }
@@ -351,10 +369,17 @@ async fn gc_deployments_with_operations(
         removed.push(deployment.unit.suffix().to_string());
     }
 
+    let removed_suffixes = removed.iter().map(String::as_str).collect::<HashSet<_>>();
     let mut retained_config_paths = explicit_config_paths;
     for deployment in &deployments {
-        if !removed_runner_dirs.contains(&deployment.runner_dir) {
-            retained_config_paths.push(deployment.config_path.clone());
+        if !removed_suffixes.contains(deployment.unit.suffix()) {
+            retained_config_paths.push(deployment.activation_config_path.clone());
+        }
+        if let (Some(runner_dir), Some(source_config_path)) =
+            (&deployment.runner_dir, &deployment.source_config_path)
+            && !removed_runner_dirs.contains(runner_dir)
+        {
+            retained_config_paths.push(source_config_path.clone());
         }
     }
     retained_config_paths.sort();
@@ -402,42 +427,79 @@ async fn resolve_deployment(
         );
         return None;
     };
-    let Some(runner_dirname) = managed_dirname(
-        command_paths.config_path(),
-        &home.runners_dir(),
-        RUNNER_CONFIG_NAME,
-    ) else {
+    let activation_config_path = command_paths.activation_config_path();
+    if !activation_config_path.is_absolute() {
         warn!(
-            "runner deployment {}: config {} is outside the managed runner layout; retaining all deployments",
+            "runner deployment {}: activation config {} is not absolute; retaining all deployments",
             locked.unit.suffix(),
-            command_paths.config_path().display()
+            activation_config_path.display()
         );
         return None;
+    }
+    let source_config_path = command_paths
+        .deployment_source_config_path()
+        .or_else(|| {
+            managed_dirname(
+                activation_config_path,
+                &home.runners_dir(),
+                RUNNER_CONFIG_NAME,
+            )
+            .map(|_| activation_config_path)
+        })
+        .map(Path::to_path_buf);
+    if source_config_path.is_none() {
+        info!(
+            "runner deployment {}: unit does not expose a managed deployment source config; no runner directory will be associated",
+            locked.unit.suffix()
+        );
+    }
+    let runner_path = if let Some(source_config_path) = &source_config_path {
+        let Some(runner_dirname) =
+            managed_dirname(source_config_path, &home.runners_dir(), RUNNER_CONFIG_NAME)
+        else {
+            warn!(
+                "runner deployment {}: source config {} is outside the managed runner layout; retaining all deployments",
+                locked.unit.suffix(),
+                source_config_path.display()
+            );
+            return None;
+        };
+        Some((home.runners_dir().join(runner_dirname), source_config_path))
+    } else {
+        None
     };
 
     let bin_dir = home.bin_dir().join(&bin_dirname);
-    let runner_dir = home.runners_dir().join(&runner_dirname);
     if !managed_paths_are_safe(
         locked.unit.suffix(),
         &bin_dir,
         command_paths.executable_path(),
-        &runner_dir,
-        command_paths.config_path(),
+        activation_config_path,
+        runner_path
+            .as_ref()
+            .map(|(runner_dir, source_config_path)| {
+                (runner_dir.as_path(), source_config_path.as_path())
+            }),
     )
     .await
     {
         return None;
     }
 
-    let deployment_mtime =
-        newest_mtime([command_paths.executable_path(), command_paths.config_path()])
+    let mut deployment_mtime =
+        newest_mtime([command_paths.executable_path(), activation_config_path])
             .await
-            .max(newest_mtime([home.bin_dir().join(&bin_dirname), runner_dir.clone()]).await);
+            .max(newest_mtime([bin_dir.as_path()]).await);
+    if let Some((runner_dir, source_config_path)) = &runner_path {
+        deployment_mtime = deployment_mtime
+            .max(newest_mtime([runner_dir.as_path(), source_config_path.as_path()]).await);
+    }
     Some(Deployment {
         unit: locked.unit.clone(),
         bin_dir,
-        runner_dir,
-        config_path: command_paths.config_path().to_path_buf(),
+        runner_dir: runner_path.map(|(runner_dir, _)| runner_dir),
+        activation_config_path: activation_config_path.to_path_buf(),
+        source_config_path,
         newest_mtime: deployment_mtime,
         retain_record: keep_service_suffixes.contains(locked.unit.suffix()),
     })
@@ -577,10 +639,14 @@ async fn managed_paths_are_safe(
     suffix: &str,
     bin_dir: &Path,
     executable_path: &Path,
-    runner_dir: &Path,
-    config_path: &Path,
+    activation_config_path: &Path,
+    runner_path: Option<(&Path, &Path)>,
 ) -> bool {
-    for (label, path) in [("binary", bin_dir), ("runner", runner_dir)] {
+    let mut directories = vec![("binary", bin_dir)];
+    if let Some((runner_dir, _)) = runner_path {
+        directories.push(("runner", runner_dir));
+    }
+    for (label, path) in directories {
         match gc_path_dir_status(path).await {
             Ok(GcDirStatus::RealDir(_) | GcDirStatus::Missing) => {}
             Ok(GcDirStatus::NotDirectory) => {
@@ -599,7 +665,16 @@ async fn managed_paths_are_safe(
             }
         }
     }
-    for (label, path) in [("executable", executable_path), ("config", config_path)] {
+    let mut files = vec![
+        ("executable", executable_path),
+        ("activation config", activation_config_path),
+    ];
+    if let Some((_, source_config_path)) = runner_path
+        && source_config_path != activation_config_path
+    {
+        files.push(("source config", source_config_path));
+    }
+    for (label, path) in files {
         match tokio::fs::symlink_metadata(path).await {
             Ok(metadata) if metadata.file_type().is_file() => {}
             Ok(_) => {
@@ -707,7 +782,7 @@ async fn mark_newly_active_deployments(
         if active {
             deployment.retain_record = true;
             retained_bin_dirs.insert(deployment.bin_dir.clone());
-            retained_runner_dirs.insert(deployment.runner_dir.clone());
+            retained_runner_dirs.extend(deployment.runner_dir.iter().cloned());
         }
     }
     true

@@ -374,6 +374,10 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
 async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
+    // Deployment GC callers hold this same host-wide lock before taking the
+    // discovered service locks. Join that order before publishing a new unit
+    // so a previously unseen suffix cannot add a path reference mid-pass.
+    let _deployment_gc_lock = crate::lock::acquire(home.deployment_gc_lock()).await?;
     let _service_lock = acquire_service_lock(&unit, &home).await?;
 
     let config_path = resolve_config_path(&args.config)?;
@@ -386,6 +390,7 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit_for_activation = unit.clone();
     let upath = unit.unit_file_path().to_path_buf();
     let prior_enablement = read_unit_enablement(&unit).await?;
+    let deployment_source_config_path = config_path.clone();
 
     with_service_activation_image_artifacts(
         &unit,
@@ -396,6 +401,7 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
                 &unit_for_activation,
                 &exe_path,
                 &snapshot_path,
+                &deployment_source_config_path,
                 &args.env,
                 args.local,
             );

@@ -15,9 +15,9 @@ use super::workspaces::is_base_dir_lock_name;
 /// because deployment lifecycle and rolling-version compatibility rely on
 /// those lock paths to coordinate with concurrent service install/uninstall
 /// commands. Deployment GC removes an exact service lock only after its
-/// installed unit is removed successfully. The
-/// systemd reload lock is also retained because non-runner lifecycle owners use
-/// the same stable path with plain `flock`.
+/// installed unit is removed successfully. The deployment GC and systemd
+/// reload locks are also retained because lifecycle and external automation
+/// owners use those stable paths with plain `flock`.
 pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
@@ -39,6 +39,7 @@ pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> Runner
         // Workspace GC owns base-dir lock lifecycle because those locks carry
         // the base_dir metadata needed to rediscover dead-runner workspaces.
         if RunnerServiceUnit::is_reserved_lock_file_name(name)
+            || entry.path() == home.deployment_gc_lock()
             || entry.path() == home.systemd_daemon_reload_lock()
             || is_base_dir_lock_name(name)
         {
@@ -115,6 +116,31 @@ mod tests {
         assert!(
             reload_lock.exists(),
             "the shared systemd reload lock must keep a stable inode"
+        );
+        assert!(
+            !stale_lock.exists(),
+            "ordinary free locks should still be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_locks_preserves_deployment_gc_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+        let deployment_gc_lock = home.deployment_gc_lock();
+        let stale_lock = locks_dir.join("workspace-image-cache-test.lock");
+        std::fs::write(&deployment_gc_lock, "").unwrap();
+        std::fs::write(&stale_lock, "").unwrap();
+
+        let report = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(report.activity_count, 1);
+        assert_eq!(report.freed_bytes, 0);
+        assert!(
+            deployment_gc_lock.exists(),
+            "the shared deployment GC lock must keep a stable inode"
         );
         assert!(
             !stale_lock.exists(),

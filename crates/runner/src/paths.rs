@@ -267,6 +267,10 @@ impl HomePaths {
         self.locks_dir().join("systemd-daemon-reload.lock")
     }
 
+    pub fn deployment_gc_lock(&self) -> PathBuf {
+        self.locks_dir().join("deployment-gc.lock")
+    }
+
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
         self.locks_dir().join(base_dir_lock_name(base_dir))
     }
@@ -571,6 +575,15 @@ mod tests {
         assert_eq!(
             home.systemd_daemon_reload_lock(),
             PathBuf::from("/test/locks/systemd-daemon-reload.lock")
+        );
+    }
+
+    #[test]
+    fn deployment_gc_lock_path() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        assert_eq!(
+            home.deployment_gc_lock(),
+            PathBuf::from("/test/locks/deployment-gc.lock")
         );
     }
 

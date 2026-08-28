@@ -1,3 +1,4 @@
+use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
@@ -17,6 +18,18 @@ printf '%s\n' "$*" >> "$OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS"
 
 if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
   case "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" in
+    snapshot-metadata)
+      printf '%s\n' \
+        '[Service]' \
+        "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/bin/binary-opaque/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runtime/runner.yaml --deployment-source-config $OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/runner.yaml"
+      exit 0
+      ;;
+    legacy-snapshot)
+      printf '%s\n' \
+        '[Service]' \
+        "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/bin/binary-opaque/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runtime/runner.yaml"
+      exit 0
+      ;;
     opaque-paths|keep-service|partial-runner-failure|uninstall-failure)
       binary_dirname=binary-opaque
       runner_dirname=config-opaque
@@ -296,6 +309,41 @@ async fn invalid_installed_runner_service_makes_inventory_incomplete() {
 }
 
 #[tokio::test]
+async fn unrelated_non_utf8_service_entry_does_not_invalidate_inventory() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("vm0-runner-production.service"), "").unwrap();
+    std::fs::write(
+        dir.path().join(std::ffi::OsString::from_vec(
+            b"unrelated-\xff.service".to_vec(),
+        )),
+        "",
+    )
+    .unwrap();
+
+    let inventory = discover_installed_service_suffixes(dir.path()).await;
+
+    assert_eq!(inventory.suffixes, ["production".to_string()]);
+    assert!(inventory.complete);
+}
+
+#[tokio::test]
+async fn matching_non_utf8_runner_service_entry_makes_inventory_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join(std::ffi::OsString::from_vec(
+            b"vm0-runner-production-\xff.service".to_vec(),
+        )),
+        "",
+    )
+    .unwrap();
+
+    let inventory = discover_installed_service_suffixes(dir.path()).await;
+
+    assert!(inventory.suffixes.is_empty());
+    assert!(!inventory.complete);
+}
+
+#[tokio::test]
 async fn installed_service_iteration_failure_makes_inventory_incomplete() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("vm0-runner-production.service"), "").unwrap();
@@ -344,6 +392,64 @@ async fn installed_service_resolves_independent_opaque_dirnames() {
             "show vm0-runner-service-blue.service --property=LoadState --property=ActiveState",
         ]
     );
+}
+
+#[tokio::test]
+async fn installed_snapshot_service_uses_exact_source_config_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home_root = dir.path().join("home");
+    create_test_deployment(
+        &home_root,
+        "binary-opaque",
+        "config-opaque",
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+    );
+
+    let invocations_path = dir.path().join("invocations");
+    run_ignored_child_test(
+        DEPLOYMENT_CHILD_TEST,
+        (DEPLOYMENT_SCENARIO_ENV, "snapshot-metadata"),
+        &[
+            ("PATH", Some(dir.path().to_str().unwrap())),
+            (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+            (
+                DEPLOYMENT_INVOCATIONS_ENV,
+                Some(invocations_path.to_str().unwrap()),
+            ),
+        ],
+        Duration::from_secs(10),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn legacy_snapshot_service_leaves_runner_directory_unregistered() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home_root = dir.path().join("home");
+    create_test_deployment(
+        &home_root,
+        "binary-opaque",
+        "config-opaque",
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+    );
+
+    let invocations_path = dir.path().join("invocations");
+    run_ignored_child_test(
+        DEPLOYMENT_CHILD_TEST,
+        (DEPLOYMENT_SCENARIO_ENV, "legacy-snapshot"),
+        &[
+            ("PATH", Some(dir.path().to_str().unwrap())),
+            (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+            (
+                DEPLOYMENT_INVOCATIONS_ENV,
+                Some(invocations_path.to_str().unwrap()),
+            ),
+        ],
+        Duration::from_secs(10),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -590,7 +696,7 @@ async fn installed_deployment_systemctl_child() {
     }
     let home = HomePaths::with_root(PathBuf::from(std::env::var(DEPLOYMENT_HOME_ENV).unwrap()));
     match scenario.as_str() {
-        "opaque-paths" => {
+        "opaque-paths" | "snapshot-metadata" => {
             let outcome = gc_deployments_with_operations(
                 &home,
                 DeploymentGcRequest {
@@ -622,6 +728,33 @@ async fn installed_deployment_systemctl_child() {
                     .lock_path(&home)
                     .exists()
             );
+        }
+        "legacy-snapshot" => {
+            let outcome = gc_deployments_with_operations(
+                &home,
+                DeploymentGcRequest {
+                    service_suffixes: &["service-blue".to_string()],
+                    keep_service_suffixes: &BTreeSet::new(),
+                    keep_bin_dirnames: &BTreeSet::new(),
+                    keep_runner_dirnames: &BTreeSet::new(),
+                    keep_latest: Some(0),
+                    service_inventory_complete: true,
+                    dry_run: false,
+                },
+                DeploymentGcOperations {
+                    uninstall_service: successful_fake_uninstall_service_unit,
+                    remove_dir_all: real_remove_dir_all,
+                },
+            )
+            .await
+            .unwrap();
+            let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+            assert_eq!(report.activity_count, 1);
+            assert!(retained_config_paths.is_empty());
+            assert!(inventory_complete);
+            assert!(!home.bin_dir().join("binary-opaque").exists());
+            assert!(home.runners_dir().join("config-opaque").exists());
         }
         "keep-service" => {
             let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
@@ -798,7 +931,10 @@ async fn installed_deployment_systemctl_child() {
             let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
 
             assert!(report.is_empty());
-            assert!(retained_config_paths.is_empty());
+            assert_eq!(
+                retained_config_paths,
+                [home.runners_dir().join("config-opaque/runner.yaml")]
+            );
             assert!(!inventory_complete);
             assert!(!home.bin_dir().join("binary-opaque").exists());
             assert!(!home.runners_dir().join("config-opaque").exists());
