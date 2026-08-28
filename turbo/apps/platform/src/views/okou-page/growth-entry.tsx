@@ -295,16 +295,13 @@ function AdminGrowthEntryHeader() {
 export function GrowthEntryHeader() {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
-  if (!isAdmin) {
-    return null;
-  }
   return (
     <>
       {/* Match the former in-flow header's 16px + 32px + 8px height. The
-          controls stay absolute, but the home content keeps its established
-          desktop position before and after the async entry resolves. */}
+          slot exists from the first render so async role and entry resolution
+          cannot move the home content. The admin controls stay absolute. */}
       <div aria-hidden className="hidden h-14 shrink-0 md:block" />
-      <AdminGrowthEntryHeader />
+      {isAdmin ? <AdminGrowthEntryHeader /> : null}
     </>
   );
 }
