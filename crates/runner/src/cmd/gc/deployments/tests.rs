@@ -46,10 +46,16 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
       binary_dirname=shared-bin
       config="$OKOU_RUN_GC_DEPLOYMENT_HOME/runners/shared-runner/runner.yaml"
       ;;
-    out-of-root)
+    external-executable)
       printf '%s\n' \
         '[Service]' \
         "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/outside/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/runner.yaml"
+      exit 0
+      ;;
+    invalid-managed-executable)
+      printf '%s\n' \
+        '[Service]' \
+        "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/bin/binary-opaque/nested/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/runner.yaml"
       exit 0
       ;;
     *)
@@ -808,13 +814,28 @@ async fn directories_that_become_recent_after_inventory_are_retained() {
 }
 
 #[tokio::test]
-async fn out_of_root_service_paths_make_inventory_incomplete() {
+async fn external_executable_does_not_claim_a_managed_binary() {
     let dir = tempfile::tempdir().unwrap();
     install_fake_systemctl(dir.path());
     let home = HomePaths::with_root(dir.path().join("home"));
     create_managed_resources(&home, "unregistered", "config-opaque", old_mtime(1_000_000));
 
-    run_systemctl_scenario(dir.path(), &home, "out-of-root").await;
+    run_systemctl_scenario(dir.path(), &home, "external-executable").await;
+}
+
+#[tokio::test]
+async fn invalid_managed_executable_layout_makes_inventory_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home = HomePaths::with_root(dir.path().join("home"));
+    create_managed_resources(
+        &home,
+        "binary-opaque",
+        "config-opaque",
+        old_mtime(1_000_000),
+    );
+
+    run_systemctl_scenario(dir.path(), &home, "invalid-managed-executable").await;
 }
 
 #[tokio::test]
@@ -851,7 +872,27 @@ async fn managed_resource_gc_systemctl_child() {
             assert!(!home.bin_dir().join("binary-opaque").exists());
             assert!(!home.runners_dir().join("config-opaque").exists());
         }
-        "invalid-snapshot" | "invalid-base-dir" | "out-of-root" => {
+        "external-executable" => {
+            let outcome = gc_managed_resources(
+                &home,
+                (&persistent, &[]),
+                &empty,
+                &empty,
+                &empty,
+                Some(0),
+                false,
+            )
+            .await
+            .unwrap();
+            let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+            assert_eq!(report.activity_count, 3);
+            assert!(retained_config_paths.is_empty());
+            assert!(inventory_complete);
+            assert!(!home.bin_dir().join("unregistered").exists());
+            assert!(!home.runners_dir().join("config-opaque").exists());
+        }
+        "invalid-snapshot" | "invalid-base-dir" | "invalid-managed-executable" => {
             let outcome = gc_managed_resources(
                 &home,
                 (&persistent, &[]),

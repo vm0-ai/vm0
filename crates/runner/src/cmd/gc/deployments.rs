@@ -67,7 +67,7 @@ enum ServiceInventoryKind {
 struct ServiceRecord {
     unit: service::RunnerServiceUnit,
     kind: ServiceInventoryKind,
-    bin_dir: PathBuf,
+    bin_dir: Option<PathBuf>,
     runner_dir: Option<PathBuf>,
     activation_config_path: PathBuf,
     newest_mtime: SystemTime,
@@ -396,7 +396,7 @@ async fn gc_managed_resources_with_operations(
         .collect::<HashSet<_>>();
     for record in &records {
         if !removed_suffixes.contains(record.unit.suffix()) {
-            retained_bin_dirs.insert(record.bin_dir.clone());
+            retained_bin_dirs.extend(record.bin_dir.iter().cloned());
             retained_runner_dirs.extend(record.runner_dir.iter().cloned());
         }
     }
@@ -584,17 +584,21 @@ async fn resolve_service_record(
         }
     };
 
-    let Ok(Some(bin_dirname)) = managed_file_dirname(
+    let bin_dir = match managed_file_dirname(
         command_paths.executable_path(),
         &home.bin_dir(),
         RUNNER_BINARY_NAME,
-    ) else {
-        warn!(
-            "runner service {}: executable {} is outside the managed binary layout; retaining all resources",
-            locked.unit.suffix(),
-            command_paths.executable_path().display()
-        );
-        return None;
+    ) {
+        Ok(Some(dirname)) => Some(home.bin_dir().join(dirname)),
+        Ok(None) => None,
+        Err(()) => {
+            warn!(
+                "runner service {}: executable {} has an invalid managed binary layout; retaining all resources",
+                locked.unit.suffix(),
+                command_paths.executable_path().display()
+            );
+            return None;
+        }
     };
     let activation_config_path = command_paths.activation_config_path();
     if !activation_config_path.is_absolute() {
@@ -643,10 +647,9 @@ async fn resolve_service_record(
         Err(()) => return None,
     };
 
-    let bin_dir = home.bin_dir().join(bin_dirname);
     if !managed_service_paths_are_safe(
         locked.unit.suffix(),
-        &bin_dir,
+        bin_dir.as_deref(),
         command_paths.executable_path(),
         activation_config_path,
         runner_dir.as_deref(),
@@ -1199,12 +1202,12 @@ async fn managed_roots_are_safe(home: &HomePaths) -> bool {
 
 async fn managed_service_paths_are_safe(
     suffix: &str,
-    bin_dir: &Path,
+    bin_dir: Option<&Path>,
     executable_path: &Path,
     activation_config_path: &Path,
     runner_dir: Option<&Path>,
 ) -> bool {
-    for (label, path) in [("binary", Some(bin_dir)), ("Runner", runner_dir)] {
+    for (label, path) in [("binary", bin_dir), ("Runner", runner_dir)] {
         let Some(path) = path else {
             continue;
         };
