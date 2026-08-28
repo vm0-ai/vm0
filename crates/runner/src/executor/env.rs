@@ -648,7 +648,7 @@ fn build_env_json_with_host_env_inner(
                 session.cli_agent_session_id.clone()
             };
         env.insert(
-            guest_contracts::env::RESUME_SESSION_ID_ENV.into(),
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV.into(),
             session_id,
         );
     }

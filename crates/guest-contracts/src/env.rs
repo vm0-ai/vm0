@@ -93,13 +93,12 @@ pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 /// Optional CLI session or thread identifier used when resuming a prior agent
 /// session.
 ///
-/// The runner normalizes Codex thread ids before emitting this key.
+/// Guest readers retain this legacy alias as a rollback fallback.
 pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
 
-/// Canonical resume-session alias accepted by guest readers during migration.
+/// Canonical resume-session alias written by the runner.
 ///
-/// Runner writers keep using [`RESUME_SESSION_ID_ENV`] until the deployed reader
-/// floor, sandbox drain, rollback window, and legacy-read-zero gates are complete.
+/// The runner normalizes Codex thread ids before emitting this key.
 pub const CANONICAL_RESUME_SESSION_ID_ENV: &str = "OKOU_RESUME_SESSION_ID";
 
 /// Optional Unix epoch millisecond timestamp for when the API accepted the
