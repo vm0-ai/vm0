@@ -721,6 +721,10 @@ describe("chat composer models", () => {
           `chatThreadWorkflowsChanged:${THREAD_ID}`,
         ),
       ).toBeTruthy();
+      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
     });
     const editor = await findComposerEditor();
     await user.click(editor);
