@@ -213,11 +213,11 @@ fn env_or_empty(name: &str) -> String {
 }
 
 /// Resolve the Runner-to-Guest Agent API URL at the single process-env capture
-/// boundary. The canonical alias is reader-only during #28914 Stage 1; Runner
-/// writers and managed CLI-child exposure remain [`guest_contracts::env::API_URL_ENV`].
-/// Remove the legacy reader only after the exact production Runner plus
-/// embedded-Guest reader floor, complete pre-reader service and reusable-sandbox
-/// drain, supported rollback window, and value-free legacy-source-zero gates.
+/// boundary. The production Runner writer is canonical-only, while managed
+/// CLI-child exposure remains [`guest_contracts::env::API_URL_ENV`]. Retain this
+/// fail-closed legacy reader until the exact canonical writer production release,
+/// complete legacy-writer service and reusable-sandbox drain, supported rollback
+/// window, and value-free legacy-source-zero gates.
 fn api_url_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<String, String> {
     let canonical_key = guest_contracts::env::CANONICAL_API_URL_ENV;
     let legacy_key = guest_contracts::env::API_URL_ENV;

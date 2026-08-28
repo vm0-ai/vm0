@@ -26,14 +26,47 @@ Design:
   Overrides may raise OR lower the price — the goal is accuracy, not
   one-sided safety.
 
-  **Important**: X's public pricing page lists bucket names and prices
-  but does NOT publish an endpoint → bucket mapping.  The overrides
-  here are semantic inferences from the bucket names (e.g. DELETE of
-  your own content → ``content.manage``).  A handful of overrides
-  lower price by 10–40× based on name semantics alone.  Validate
-  against Developer Console billing data or empirical live calls
-  before relying on the numbers; drift from X's actual classification
-  will cause under- or over-charging until an override is corrected.
+- **Provider-documented pricing**: X's public pricing page lists named
+  pricing buckets and prices, but it does not publish a comprehensive
+  endpoint → bucket mapping.  It does document a separate **Owned Reads**
+  exception: requests for the authenticated user's own data are priced at
+  ``$0.001`` per resource when ``{id}`` matches the authenticated user and
+  that user owns the developer app.  The documented Owned Reads endpoints
+  are:
+
+  - ``GET /2/users/{id}/tweets``
+  - ``GET /2/users/{id}/mentions``
+  - ``GET /2/users/{id}/liked_tweets``
+  - ``GET /2/users/{id}/bookmarks``
+  - ``GET /2/users/{id}/followers``
+  - ``GET /2/users/{id}/following``
+  - ``GET /2/users/{id}/blocking``
+  - ``GET /2/users/{id}/muting``
+  - ``GET /2/users/{id}/owned_lists``
+  - ``GET /2/users/{id}/followed_lists``
+  - ``GET /2/users/{id}/list_memberships``
+  - ``GET /2/users/{id}/pinned_lists``
+
+  This endpoint-specific provider documentation does not define how a
+  qualifying request maps to one of vm0's ordinary pricing buckets.
+
+- **Current vm0 treatment**: ``classify_bucket`` receives only the firewall
+  permission, HTTP method, and query-free request path.  It has no
+  authenticated-user or developer-app ownership input and no separate
+  ``Owned Reads`` category.  The listed paths therefore continue through
+  the existing permission defaults and path overrides; this documentation
+  must not be read as saying that vm0 applies the provider's conditional
+  ``$0.001`` rate.
+
+- **Semantic inferences**: For the current path-to-bucket mapping beyond
+  provider-documented exceptions, X's pricing page does not publish a
+  comprehensive endpoint → bucket mapping.  The overrides here are
+  semantic inferences from the bucket names (e.g. DELETE of your own
+  content → ``content.manage``).  A handful of overrides lower the price
+  by 10–40× based on name semantics alone.  Validate against Developer
+  Console billing data or empirical live calls before relying on the
+  numbers; drift from X's actual classification will cause under- or
+  over-charging until an override is corrected.
 
 - ``_INCLUDES_TO_BUCKET`` maps X v2 ``includes.<key>`` resource types
   to buckets.  Unknown keys return ``None`` and the caller routes them
