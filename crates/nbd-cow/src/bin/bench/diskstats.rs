@@ -107,7 +107,21 @@ fn diskstats_contains_device(content: &str, device_name: &str) -> bool {
     })
 }
 
-/// Auto-detect the host disk by finding the block device backing /tmp.
+/// Select the host device whose `/proc/diskstats` counters will be sampled.
+///
+/// The direct lookup runs `df /tmp`. If its device can be normalized and found
+/// in `/proc/diskstats`, that device is selected. If `df` cannot be started or
+/// its output has no usable mapped device, including an unmappable filesystem
+/// such as `overlay` or the special `/dev/root` result, selection falls back to
+/// the following order:
+///
+/// 1. The first available device among `nvme0n1`, `xvda`, `sda`, and `vda`.
+/// 2. The first likely whole-disk entry in `/proc/diskstats` whose name starts
+///    with `nvme`, `mmcblk`, `xvd`, `sd`, or `vd`.
+///
+/// A fallback is heuristic. It does not prove that the selected device backs
+/// `/tmp` or the benchmark work directory, which is created under the process
+/// temp-directory configuration and may use a different path.
 pub(crate) fn detect_host_disk() -> Result<String, String> {
     let stats =
         std::fs::read_to_string("/proc/diskstats").map_err(|e| format!("read diskstats: {e}"))?;
