@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
 use std::time::SystemTime;
 
+use futures_util::{StreamExt, stream};
 use nix::fcntl::Flock;
 use tracing::{info, warn};
 
@@ -20,6 +21,7 @@ use super::report::GcReport;
 const RUNNER_BINARY_NAME: &str = "runner";
 const RUNNER_CONFIG_NAME: &str = "runner.yaml";
 const SYSTEMD_SYSTEM_DIR: &str = "/etc/systemd/system";
+const DEPLOYMENT_QUERY_CONCURRENCY: usize = 4;
 
 type ServiceUninstallFuture<'a> = Pin<Box<dyn Future<Output = RunnerResult<()>> + 'a>>;
 type ServiceUninstallFn = for<'a> fn(&'a service::RunnerServiceUnit) -> ServiceUninstallFuture<'a>;
@@ -231,78 +233,14 @@ async fn gc_deployments_with_operations(
         None => return Ok(incomplete_outcome()),
     };
 
-    let mut deployments = Vec::with_capacity(locked_units.len());
-    for locked in &locked_units {
-        let command_paths = match service::read_unit_command_paths(&locked.unit).await {
-            Ok(Some(paths)) => paths,
-            Ok(None) => {
-                warn!(
-                    "runner deployment {}: effective ExecStart does not contain parseable runner paths; retaining all deployments",
-                    locked.unit.suffix()
-                );
-                return Ok(incomplete_outcome());
-            }
-            Err(error) => {
-                warn!(
-                    "runner deployment {}: cannot read effective ExecStart ({error}); retaining all deployments",
-                    locked.unit.suffix()
-                );
-                return Ok(incomplete_outcome());
-            }
-        };
-
-        let Some(bin_dirname) = managed_dirname(
-            command_paths.executable_path(),
-            &home.bin_dir(),
-            RUNNER_BINARY_NAME,
-        ) else {
-            warn!(
-                "runner deployment {}: executable {} is outside the managed binary layout; retaining all deployments",
-                locked.unit.suffix(),
-                command_paths.executable_path().display()
-            );
-            return Ok(incomplete_outcome());
-        };
-        let Some(runner_dirname) = managed_dirname(
-            command_paths.config_path(),
-            &home.runners_dir(),
-            RUNNER_CONFIG_NAME,
-        ) else {
-            warn!(
-                "runner deployment {}: config {} is outside the managed runner layout; retaining all deployments",
-                locked.unit.suffix(),
-                command_paths.config_path().display()
-            );
-            return Ok(incomplete_outcome());
-        };
-
-        let bin_dir = home.bin_dir().join(&bin_dirname);
-        let runner_dir = home.runners_dir().join(&runner_dirname);
-        if !managed_paths_are_safe(
-            locked.unit.suffix(),
-            &bin_dir,
-            command_paths.executable_path(),
-            &runner_dir,
-            command_paths.config_path(),
-        )
-        .await
-        {
-            return Ok(incomplete_outcome());
-        }
-
-        let deployment_mtime =
-            newest_mtime([command_paths.executable_path(), command_paths.config_path()])
-                .await
-                .max(newest_mtime([home.bin_dir().join(&bin_dirname), runner_dir.clone()]).await);
-        deployments.push(Deployment {
-            unit: locked.unit.clone(),
-            bin_dir,
-            runner_dir,
-            config_path: command_paths.config_path().to_path_buf(),
-            newest_mtime: deployment_mtime,
-            retain_record: keep_service_suffixes.contains(locked.unit.suffix()),
-        });
-    }
+    let deployments = stream::iter(&locked_units)
+        .map(|locked| resolve_deployment(home, locked, keep_service_suffixes))
+        .buffered(DEPLOYMENT_QUERY_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+    let Some(mut deployments) = deployments.into_iter().collect::<Option<Vec<_>>>() else {
+        return Ok(incomplete_outcome());
+    };
 
     if !mark_active_deployments(&mut deployments).await {
         return Ok(incomplete_outcome());
@@ -325,9 +263,8 @@ async fn gc_deployments_with_operations(
         }
     }
 
-    // The complete installed service-lock set stays held through this final activity
-    // check and every mutation, preventing install/uninstall from changing the
-    // exact ownership graph after it has authorized deletion.
+    // Keep every discovered service lock held through the final activity check and
+    // all mutations so the installed records used for this decision stay stable.
     if !mark_newly_active_deployments(
         &mut deployments,
         &mut retained_bin_dirs,
@@ -427,6 +364,82 @@ async fn gc_deployments_with_operations(
         report: GcReport::removed_deployments(removed),
         retained_config_paths,
         image_inventory_complete,
+    })
+}
+
+async fn resolve_deployment(
+    home: &HomePaths,
+    locked: &LockedUnit,
+    keep_service_suffixes: &BTreeSet<String>,
+) -> Option<Deployment> {
+    let command_paths = match service::read_unit_command_paths(&locked.unit).await {
+        Ok(Some(paths)) => paths,
+        Ok(None) => {
+            warn!(
+                "runner deployment {}: effective ExecStart does not contain parseable runner paths; retaining all deployments",
+                locked.unit.suffix()
+            );
+            return None;
+        }
+        Err(error) => {
+            warn!(
+                "runner deployment {}: cannot read effective ExecStart ({error}); retaining all deployments",
+                locked.unit.suffix()
+            );
+            return None;
+        }
+    };
+
+    let Some(bin_dirname) = managed_dirname(
+        command_paths.executable_path(),
+        &home.bin_dir(),
+        RUNNER_BINARY_NAME,
+    ) else {
+        warn!(
+            "runner deployment {}: executable {} is outside the managed binary layout; retaining all deployments",
+            locked.unit.suffix(),
+            command_paths.executable_path().display()
+        );
+        return None;
+    };
+    let Some(runner_dirname) = managed_dirname(
+        command_paths.config_path(),
+        &home.runners_dir(),
+        RUNNER_CONFIG_NAME,
+    ) else {
+        warn!(
+            "runner deployment {}: config {} is outside the managed runner layout; retaining all deployments",
+            locked.unit.suffix(),
+            command_paths.config_path().display()
+        );
+        return None;
+    };
+
+    let bin_dir = home.bin_dir().join(&bin_dirname);
+    let runner_dir = home.runners_dir().join(&runner_dirname);
+    if !managed_paths_are_safe(
+        locked.unit.suffix(),
+        &bin_dir,
+        command_paths.executable_path(),
+        &runner_dir,
+        command_paths.config_path(),
+    )
+    .await
+    {
+        return None;
+    }
+
+    let deployment_mtime =
+        newest_mtime([command_paths.executable_path(), command_paths.config_path()])
+            .await
+            .max(newest_mtime([home.bin_dir().join(&bin_dirname), runner_dir.clone()]).await);
+    Some(Deployment {
+        unit: locked.unit.clone(),
+        bin_dir,
+        runner_dir,
+        config_path: command_paths.config_path().to_path_buf(),
+        newest_mtime: deployment_mtime,
+        retain_record: keep_service_suffixes.contains(locked.unit.suffix()),
     })
 }
 
@@ -622,19 +635,33 @@ async fn newest_mtime<const N: usize>(paths: [impl AsRef<Path>; N]) -> SystemTim
 }
 
 async fn mark_active_deployments(deployments: &mut [Deployment]) -> bool {
-    for deployment in deployments {
-        match service::cleanup_unit_is_active(&deployment.unit).await {
-            Ok(active) => deployment.retain_record |= active,
-            Err(error) => {
-                warn!(
-                    "runner deployment {}: cannot check service activity ({error}); retaining all deployments",
-                    deployment.unit.suffix()
-                );
-                return false;
-            }
-        }
+    let Some(active_states) = deployment_active_states(deployments).await else {
+        return false;
+    };
+    for (deployment, active) in deployments.iter_mut().zip(active_states) {
+        deployment.retain_record |= active;
     }
     true
+}
+
+async fn deployment_active_states(deployments: &[Deployment]) -> Option<Vec<bool>> {
+    let states = stream::iter(deployments)
+        .map(|deployment| async move {
+            match service::cleanup_unit_is_active(&deployment.unit).await {
+                Ok(active) => Some(active),
+                Err(error) => {
+                    warn!(
+                        "runner deployment {}: cannot check service activity ({error}); retaining all deployments",
+                        deployment.unit.suffix()
+                    );
+                    None
+                }
+            }
+        })
+        .buffered(DEPLOYMENT_QUERY_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+    states.into_iter().collect()
 }
 
 fn mark_recent_deployments(deployments: &mut [Deployment]) {
@@ -673,21 +700,14 @@ async fn mark_newly_active_deployments(
     retained_bin_dirs: &mut HashSet<PathBuf>,
     retained_runner_dirs: &mut HashSet<PathBuf>,
 ) -> bool {
-    for deployment in deployments {
-        match service::cleanup_unit_is_active(&deployment.unit).await {
-            Ok(true) => {
-                deployment.retain_record = true;
-                retained_bin_dirs.insert(deployment.bin_dir.clone());
-                retained_runner_dirs.insert(deployment.runner_dir.clone());
-            }
-            Ok(false) => {}
-            Err(error) => {
-                warn!(
-                    "runner deployment {}: cannot recheck service activity ({error}); retaining all deployments",
-                    deployment.unit.suffix()
-                );
-                return false;
-            }
+    let Some(active_states) = deployment_active_states(deployments).await else {
+        return false;
+    };
+    for (deployment, active) in deployments.iter_mut().zip(active_states) {
+        if active {
+            deployment.retain_record = true;
+            retained_bin_dirs.insert(deployment.bin_dir.clone());
+            retained_runner_dirs.insert(deployment.runner_dir.clone());
         }
     }
     true

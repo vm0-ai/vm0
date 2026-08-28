@@ -11,6 +11,7 @@ const DEPLOYMENT_CHILD_TEST: &str =
 const DEPLOYMENT_SCENARIO_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_SCENARIO";
 const DEPLOYMENT_HOME_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_HOME";
 const DEPLOYMENT_INVOCATIONS_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS";
+const DEPLOYMENT_STATE_DIR_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_STATE_DIR";
 const FAKE_SYSTEMCTL: &str = r#"#!/bin/sh
 printf '%s\n' "$*" >> "$OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS"
 
@@ -22,6 +23,15 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
       ;;
     keep-latest)
       suffix=${4#vm0-runner-}
+      suffix=${suffix%.service}
+      binary_dirname=${suffix}-bin
+      runner_dirname=${suffix}-config
+      ;;
+    bounded)
+      unit=$4
+      : > "$OKOU_RUN_GC_DEPLOYMENT_STATE_DIR/cat-$unit.started"
+      while [ ! -f "$OKOU_RUN_GC_DEPLOYMENT_STATE_DIR/cat-$unit.release" ]; do :; done
+      suffix=${unit#vm0-runner-}
       suffix=${suffix%.service}
       binary_dirname=${suffix}-bin
       runner_dirname=${suffix}-config
@@ -60,6 +70,11 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
 fi
 
 if [ "$1" = "show" ]; then
+  if [ "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" = "bounded" ]; then
+    unit=$2
+    : > "$OKOU_RUN_GC_DEPLOYMENT_STATE_DIR/show-$unit.started"
+    while [ ! -f "$OKOU_RUN_GC_DEPLOYMENT_STATE_DIR/show-$unit.release" ]; do :; done
+  fi
   if [ "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" = "shared-paths" ] && \
      [ "$2" = "vm0-runner-service-a.service" ]; then
     printf '%s\n' 'LoadState=loaded' 'ActiveState=deactivating'
@@ -418,6 +433,41 @@ async fn exact_keep_service_suffix_retains_the_resolved_deployment() {
 }
 
 #[tokio::test]
+async fn deployment_systemctl_queries_use_fixed_concurrency() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home_root = dir.path().join("home");
+    let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    for suffix in ["alpha", "beta", "delta", "epsilon", "gamma"] {
+        create_test_deployment(
+            &home_root,
+            &format!("{suffix}-bin"),
+            &format!("{suffix}-config"),
+            old,
+        );
+    }
+
+    let invocations_path = dir.path().join("invocations");
+    let state_dir = dir.path().join("state");
+    std::fs::create_dir(&state_dir).unwrap();
+    run_ignored_child_test(
+        DEPLOYMENT_CHILD_TEST,
+        (DEPLOYMENT_SCENARIO_ENV, "bounded"),
+        &[
+            ("PATH", Some(dir.path().to_str().unwrap())),
+            (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+            (DEPLOYMENT_STATE_DIR_ENV, Some(state_dir.to_str().unwrap())),
+            (
+                DEPLOYMENT_INVOCATIONS_ENV,
+                Some(invocations_path.to_str().unwrap()),
+            ),
+        ],
+        Duration::from_secs(10),
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn shared_paths_are_retained_by_a_deactivating_deployment() {
     let dir = tempfile::tempdir().unwrap();
     install_fake_systemctl(dir.path());
@@ -605,6 +655,7 @@ async fn installed_deployment_systemctl_child() {
             assert!(home.runners_dir().join("config-opaque").exists());
             assert!(unit.lock_path(&home).exists());
         }
+        "bounded" => assert_bounded_deployment_queries(&home).await,
         "keep-latest" => {
             let outcome = gc_discovered_deployments(
                 &home,
@@ -773,5 +824,75 @@ async fn installed_deployment_systemctl_child() {
             assert!(home.bin_dir().join("unregistered").exists());
         }
         unexpected => panic!("unexpected deployment scenario: {unexpected}"),
+    }
+}
+
+async fn assert_bounded_deployment_queries(home: &HomePaths) {
+    let state_dir = PathBuf::from(std::env::var(DEPLOYMENT_STATE_DIR_ENV).unwrap());
+    let suffixes = ["alpha", "beta", "delta", "epsilon", "gamma"]
+        .map(str::to_string)
+        .to_vec();
+    let empty_keep_set = BTreeSet::new();
+    let control = async {
+        release_bounded_query_batches(&state_dir, "cat").await;
+        release_bounded_query_batches(&state_dir, "show").await;
+    };
+    let gc = gc_discovered_deployments(
+        home,
+        &suffixes,
+        &empty_keep_set,
+        &empty_keep_set,
+        &empty_keep_set,
+        Some(0),
+        true,
+    );
+
+    let ((), outcome) =
+        tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(control, gc) })
+            .await
+            .expect("bounded deployment queries should finish after releases");
+    let outcome = outcome.unwrap();
+    let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+    assert_eq!(report.activity_count, 5);
+    assert!(retained_config_paths.is_empty());
+    assert!(inventory_complete);
+}
+
+async fn release_bounded_query_batches(state_dir: &Path, stage: &str) {
+    wait_for_started_bounded_queries(state_dir, stage, DEPLOYMENT_QUERY_CONCURRENCY).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let first_batch = started_bounded_queries(state_dir, stage);
+    assert_eq!(first_batch.len(), DEPLOYMENT_QUERY_CONCURRENCY);
+    release_bounded_queries(state_dir, &first_batch);
+
+    wait_for_started_bounded_queries(state_dir, stage, DEPLOYMENT_QUERY_CONCURRENCY + 1).await;
+    release_bounded_queries(state_dir, &started_bounded_queries(state_dir, stage));
+}
+
+async fn wait_for_started_bounded_queries(state_dir: &Path, stage: &str, expected: usize) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if started_bounded_queries(state_dir, stage).len() >= expected {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("fake systemctl deployment queries should reach the gate");
+}
+
+fn started_bounded_queries(state_dir: &Path, stage: &str) -> Vec<String> {
+    std::fs::read_dir(state_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| name.starts_with(&format!("{stage}-")) && name.ends_with(".started"))
+        .map(|name| name.strip_suffix(".started").unwrap().to_string())
+        .collect()
+}
+
+fn release_bounded_queries(state_dir: &Path, queries: &[String]) {
+    for query in queries {
+        std::fs::write(state_dir.join(format!("{query}.release")), "").unwrap();
     }
 }
