@@ -161,7 +161,10 @@ fn meta_contains_path_attribute(tokens: &[TokenTree]) -> bool {
     };
     let next = tokens.next();
 
-    match name.to_string().as_str() {
+    let name = name.to_string();
+    let name = name.strip_prefix("r#").unwrap_or(&name);
+
+    match name {
         "path" => {
             matches!(next, Some(TokenTree::Punct(punctuation)) if punctuation.as_char() == '=')
         }

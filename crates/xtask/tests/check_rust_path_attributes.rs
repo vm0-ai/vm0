@@ -35,6 +35,8 @@ fn rejects_direct_and_conditional_path_attributes() -> Result<(), Box<dyn Error>
 mod legacy;
 #[cfg_attr(unix, path = "conditional.rs")]
 mod conditional;
+#[r#path = "raw-identifier.rs"]
+mod raw_identifier;
 "#,
     )?;
 
@@ -45,6 +47,7 @@ mod conditional;
     assert!(stderr.contains("Rust #[path] attributes are forbidden"));
     assert!(stderr.contains("src/lib.rs:1"));
     assert!(stderr.contains("src/lib.rs:3"));
+    assert!(stderr.contains("src/lib.rs:5"));
 
     Ok(())
 }
