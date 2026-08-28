@@ -946,7 +946,7 @@ def test_tweet_create_repeated_unicode_labels_reuse_classification(x_usage, tmp_
 def test_tweet_create_distinct_unicode_labels_stop_at_body_work_limit(x_usage, tmp_path, real_flow):
     """Distinct labels across candidates stop at one body-wide work limit."""
     unicode_labels = [chr(0x4E00 + index) for index in range(10_000)]
-    labels_per_candidate = x_billing._MAX_BILLING_DOMAIN_LABEL_CLASSIFICATIONS // 2
+    labels_per_candidate = 128
     text = " ".join(
         "a." + ".".join(unicode_labels[start : start + labels_per_candidate]) + ".notatld"
         for start in range(0, len(unicode_labels), labels_per_candidate)
@@ -983,11 +983,8 @@ def test_tweet_create_distinct_unicode_labels_stop_at_body_work_limit(x_usage, t
     ):
         p = x_usage.call_and_get_single_billing(flow)
 
-    assert normalize_idna_label.call_count == x_billing._MAX_BILLING_DOMAIN_LABEL_CLASSIFICATIONS
-    assert (
-        label_has_tld_prefix_before_unicode.call_count
-        == x_billing._MAX_BILLING_DOMAIN_LABEL_CLASSIFICATIONS - 1
-    )
+    assert normalize_idna_label.call_count == 256
+    assert label_has_tld_prefix_before_unicode.call_count == 255
     assert p["category"] == "content.create_with_url"
     assert p["quantity"] == 1
 
