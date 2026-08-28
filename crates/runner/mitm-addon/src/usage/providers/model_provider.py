@@ -152,21 +152,32 @@ def report_model_provider_usage(
 ) -> bool:
     """Buffer billable token usage for model-provider responses if available.
 
-    Accepted reporting requires all universal gates to pass:
+    The function returns ``False`` when any of these gates fails:
 
     - ``firewall_name`` starts with ``model-provider:``.
     - ``run_id`` is non-empty.
     - ``firewall_billable`` is truthy.
-    - At least one model-provider usage source is available.
-    - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
-      quantity.
+    - At least one billable event is built from the available model-provider
+      usage sources, including a positive integer quantity in
+      ``MODEL_USAGE_CATEGORIES``.
     - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
 
-    Returns whether usage was accepted into the reporting path. When provided,
-    the caller-owned set accumulates source payload keys accepted by the
-    process-local buffer. All failed gates are silent by design except missing
-    sandbox token or API URL, which writes an underbilling signal because
-    billable usage cannot be reported.
+    It returns ``True`` when all gates pass, at least one event is built, and
+    the complete reporting context allows the process-local buffer to be
+    invoked. This boolean indicates that the reporting path was reached; it
+    does not indicate how many events the buffer admitted or that webhook
+    delivery completed. Process-local source-key deduplication can therefore
+    admit zero events even when this function returns ``True``.
+
+    When provided, ``accepted_source_keys`` receives only source payload keys
+    newly admitted by the buffer during this call. It is the per-call source
+    of truth for which payload keys were admitted. This reporting-path status
+    is consumed by ``terminal_usage.report_model_provider_usage_once``
+    separately from those per-call admission keys.
+
+    All failed gates are silent by design except missing sandbox token or API
+    URL, which writes an underbilling signal because billable usage cannot be
+    reported.
     """
     if not run_id:
         return False
@@ -201,24 +212,37 @@ def report_model_provider_usage_observation(
 
     Observations are sent to
     ``/api/webhooks/agent/model-usage-observation`` and are separate from
-    billable ``/api/webhooks/agent/usage-event`` rows. Accepted observation
-    reporting requires all gates to pass:
+    billable ``/api/webhooks/agent/usage-event`` rows. The function returns
+    ``False`` when any of these gates fails:
 
     - ``run_id`` is non-empty.
     - ``firewall_name`` starts with ``model-provider:``.
     - The flow is model-provider observable: ``MODEL_USAGE_PROVIDER`` is a
       non-empty string.
-    - At least one model-provider usage source is available.
-    - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
-      quantity.
+    - At least one observation is built from the available model-provider
+      usage sources, including a positive integer quantity in
+      ``MODEL_USAGE_CATEGORIES``.
     - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
+
+    It returns ``True`` when all gates pass, at least one observation is built,
+    and the complete reporting context allows the process-local buffer to be
+    invoked. This boolean indicates that the reporting path was reached; it
+    does not indicate how many observations the buffer admitted or that
+    webhook delivery completed. Process-local source-key deduplication can
+    therefore admit zero observations even when this function returns
+    ``True``.
+
+    When provided, ``accepted_source_keys`` receives only source payload keys
+    newly admitted by the buffer during this call. It is the per-call source
+    of truth for which payload keys were admitted. This reporting-path status
+    is consumed by ``terminal_usage.report_model_provider_usage_once``
+    separately from those per-call admission keys.
 
     Non-billable BYOK model-provider flows with ``MODEL_USAGE_PROVIDER`` are
     expected to report observations without reporting billable usage events.
-    When provided, the caller-owned set accumulates source payload keys
-    accepted by the process-local buffer. All failed gates are silent by design
-    except missing sandbox token or API URL, which writes a proxy warning
-    because that indicates an environment/reporting setup problem.
+    All failed gates are silent by design except missing sandbox token or API
+    URL, which writes a proxy warning because that indicates an
+    environment/reporting setup problem.
     """
     if not run_id:
         return False
