@@ -471,20 +471,12 @@ impl ExecStreamPermit {
         }
     }
 
-    pub(in crate::exec_operation) fn send(
-        self,
-        output: vsock_proto::DecodedExecOutput<'_>,
-    ) -> ExecStreamSender {
+    pub(in crate::exec_operation) fn send(self, output: ExecOutputEvent) -> ExecStreamSender {
         match self {
-            Self::Events(permit) => ExecStreamSender::Events(permit.send(ExecOutputEvent {
-                stream: output.stream,
-                output_seq: output.output_seq,
-                chunk: output.chunk.to_vec(),
-                truncated: output.truncated,
-            })),
+            Self::Events(permit) => ExecStreamSender::Events(permit.send(output)),
             Self::ProcessOutput(permit) => {
                 ExecStreamSender::ProcessOutput(permit.send(ProcessOutputChunk {
-                    bytes: output.chunk.to_vec(),
+                    bytes: output.chunk,
                     truncated: output.truncated,
                 }))
             }
