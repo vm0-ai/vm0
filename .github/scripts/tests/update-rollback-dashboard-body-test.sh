@@ -354,12 +354,12 @@ if PATH="${fake_bin}:$PATH" \
   GITHUB_REPOSITORY=vm0-ai/vm0 \
   MOCK_RELEASES_FILE="$releases_file" \
   "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
-  '["missing-v1.0.0"]' \
+  '["app-v1.2.3","missing-v1.0.0"]' \
   >"${tmp_dir}/unavailable.out" 2>"${tmp_dir}/unavailable.err"; then
-  fail "unavailable release tag should fail"
+  fail "partially unavailable release tags should fail"
 fi
 if [ -s "${tmp_dir}/unavailable.out" ]; then
-  fail "unavailable release tag produced a partial dashboard"
+  fail "partially unavailable release tags produced a partial dashboard"
 fi
 
 echo "update-rollback-dashboard-body tests passed"
