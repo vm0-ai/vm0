@@ -83,23 +83,31 @@ function createConnectorCatalogRejectionIdentity(
   return identity;
 }
 
+function currentBuildCommitSha(): string | null {
+  const environment = env("ENV");
+  if (environment === "production") {
+    return null;
+  }
+  const buildCommitSha = normalizeBuildCommitSha(env("GIT_COMMIT_SHA"));
+  if (environment === "preview" && buildCommitSha === null) {
+    throw new Error(
+      "Preview connector catalog authority requires a commit SHA",
+    );
+  }
+  return buildCommitSha;
+}
+
 export function currentConnectorCatalogValidatorIdentity(): ConnectorCatalogValidatorIdentity {
   return createConnectorCatalogValidatorIdentity({
     validatorVersion: CONNECTOR_CATALOG_VALIDATOR_VERSION,
-    buildCommitSha:
-      env("ENV") === "production"
-        ? null
-        : normalizeBuildCommitSha(env("GIT_COMMIT_SHA")),
+    buildCommitSha: currentBuildCommitSha(),
   });
 }
 
 export function currentConnectorCatalogRejectionIdentity(): ConnectorCatalogRejectionValidatorIdentity {
   return createConnectorCatalogRejectionIdentity({
     backendVersion: getBuildVersion(),
-    buildCommitSha:
-      env("ENV") === "production"
-        ? null
-        : normalizeBuildCommitSha(env("GIT_COMMIT_SHA")),
+    buildCommitSha: currentBuildCommitSha(),
   });
 }
 

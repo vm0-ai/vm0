@@ -66,6 +66,15 @@ describe("connector catalog validator authority", () => {
     });
   });
 
+  it("fails closed when preview commit authority is unavailable", () => {
+    mockEnv("ENV", "preview");
+    mockEnv("GIT_COMMIT_SHA", "invalid-commit");
+
+    expect(() => {
+      currentConnectorCatalogValidatorIdentity();
+    }).toThrow("Preview connector catalog authority requires a commit SHA");
+  });
+
   it.each([
     { stored: "2.0.0", current: "1.999.999", reusable: true },
     { stored: "2.0.1", current: "2.0.0", reusable: true },
