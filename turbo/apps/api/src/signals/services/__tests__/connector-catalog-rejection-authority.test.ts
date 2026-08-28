@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, it } from "vitest";
 
 import { connectorCatalogValidationRevision } from "../../../build-config/connector-catalog-validation-revision";
@@ -37,13 +35,15 @@ function validator(args: {
 describe("connector catalog rejection authority", () => {
   it("uses the injected validation revision in production", () => {
     mockEnv("ENV", "production");
-    const expectedRevision = createHash("sha256")
-      .update("validation-source\0", "utf8")
-      .update(connectorCatalogValidationRevision(), "utf8")
-      .update("\0runtime-node\0", "utf8")
-      .update(process.versions.node, "utf8")
-      .digest("hex")
-      .slice(0, 40);
+    const nodeVersionPrefix = process.versions.node
+      .split(".")
+      .map((component) => {
+        return Number.parseInt(component, 10).toString(16).padStart(4, "0");
+      })
+      .join("");
+    const expectedRevision =
+      `cc01${connectorCatalogValidationRevision().slice(0, 24)}` +
+      nodeVersionPrefix;
 
     expect(currentConnectorCatalogValidatorIdentity().validationRevision).toBe(
       expectedRevision,
@@ -165,6 +165,57 @@ describe("connector catalog rejection authority", () => {
       connectorCatalogValidationAuthorityIsCurrentOrNewer({
         authority: authority("1.318.0", "a".repeat(40)),
         validator: current,
+      }),
+    ).toBeFalsy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrentOrNewer({
+        authority: authority("999.0.0"),
+        validator: current,
+      }),
+    ).toBeFalsy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrentOrNewer({
+        authority: authority("1.0.0", "a".repeat(40)),
+        validator: validator({ backendVersion: "999.0.0" }),
+      }),
+    ).toBeTruthy();
+  });
+
+  it("converges same-backend writers without trusting different revisions", () => {
+    const sourceRevision = "a".repeat(24);
+    const lowerRevision = `cc01${sourceRevision}001600130000`;
+    const higherRevision = `cc01${sourceRevision}001600140000`;
+    const lower = validator({
+      backendVersion: "1.319.0",
+      validationRevision: lowerRevision,
+    });
+    const higher = validator({
+      backendVersion: "1.319.0",
+      validationRevision: higherRevision,
+    });
+
+    expect(
+      connectorCatalogValidationAuthorityIsCurrentOrNewer({
+        authority: authority("1.319.0", higherRevision),
+        validator: lower,
+      }),
+    ).toBeTruthy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrentOrNewer({
+        authority: authority("1.319.0", lowerRevision),
+        validator: higher,
+      }),
+    ).toBeFalsy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrent({
+        authority: authority("1.319.0", higherRevision),
+        validator: lower,
+      }),
+    ).toBeFalsy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrentOrNewer({
+        authority: authority("1.319.0", `cc01${"b".repeat(24)}001600140000`),
+        validator: lower,
       }),
     ).toBeFalsy();
   });

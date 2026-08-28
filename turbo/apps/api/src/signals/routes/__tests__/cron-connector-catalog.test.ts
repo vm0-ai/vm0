@@ -63,6 +63,7 @@ import {
   readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionAuthority,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import {
@@ -5931,6 +5932,62 @@ describe("connector catalog executable compatibility", () => {
       backendVersion: DEFAULT_API_VERSION,
       validationRevision: secondCommit,
     });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual({
+      backendVersion: DEFAULT_API_VERSION,
+      validationRevision: secondCommit,
+    });
+  });
+
+  it("converges same-source production runtime authorities", async () => {
+    configureSource();
+    mockEnv("ENV", "production");
+    const release = buildRelease({
+      version: "2026-07-27.validation-runtime-rollout",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    const currentAuthority = apiTestConnectorCatalogValidationAuthority();
+    const currentRevision = currentAuthority.validationRevision;
+    if (currentRevision === null || !currentRevision.startsWith("cc01")) {
+      throw new Error("Expected a production validation revision");
+    }
+    const sourceRevision = currentRevision.slice(0, 28);
+    const lowerRuntimeAuthority = {
+      ...currentAuthority,
+      validationRevision: `${sourceRevision}${"0".repeat(12)}`,
+    };
+    const higherRuntimeAuthority = {
+      ...currentAuthority,
+      validationRevision: `${sourceRevision}${"f".repeat(12)}`,
+    };
+
+    await setApiTestConnectorCatalogValidationAuthority(lowerRuntimeAuthority);
+    await setApiTestConnectorCatalogRuntimeProjectionAuthority(
+      lowerRuntimeAuthority,
+    );
+    mockNow(new Date("2026-07-27T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(currentAuthority);
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual(currentAuthority);
+
+    await setApiTestConnectorCatalogValidationAuthority(higherRuntimeAuthority);
+    await setApiTestConnectorCatalogRuntimeProjectionAuthority(
+      higherRuntimeAuthority,
+    );
+    mockNow(new Date("2026-07-27T08:02:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogValidationAuthority(),
+    ).resolves.toStrictEqual(higherRuntimeAuthority);
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual(higherRuntimeAuthority);
   });
 
   it("accepts inline confidential test clients and applies rollout at request time", async () => {

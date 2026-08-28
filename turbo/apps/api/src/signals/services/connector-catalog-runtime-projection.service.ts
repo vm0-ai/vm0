@@ -29,6 +29,7 @@ import type { ExternalCatalogIdentity } from "./connector-catalog-external-reade
 import { connectorCatalogSource } from "./connector-catalog-source";
 import {
   connectorCatalogValidationAuthorityIsCurrent,
+  connectorCatalogValidationAuthorityIsCurrentOrNewer,
   currentConnectorCatalogValidatorIdentity,
   type ConnectorCatalogValidationAuthority,
   type ConnectorCatalogValidatorIdentity,
@@ -623,12 +624,20 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
           backendVersion: ready.validationBackendVersion,
           validationRevision: ready.validationBuildCommitSha,
         });
+        // Legacy null revisions remain exact-release scoped. Non-null
+        // authorities additionally preserve a newer overlapping writer.
         if (
           authority !== null &&
-          connectorCatalogValidationAuthorityIsCurrent({
-            authority,
-            validator,
-          })
+          (authority.validationRevision === null &&
+          validator.validationRevision === null
+            ? connectorCatalogValidationAuthorityIsCurrent({
+                authority,
+                validator,
+              })
+            : connectorCatalogValidationAuthorityIsCurrentOrNewer({
+                authority,
+                validator,
+              }))
         ) {
           const actualCount = await countConnectorCatalogRuntimeProjectionRows({
             db: tx,
