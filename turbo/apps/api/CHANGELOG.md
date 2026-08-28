@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.508.0](https://github.com/vm0-ai/vm0/compare/api-v1.507.0...api-v1.508.0) (2026-08-28)
+
+
+### Features
+
+* publish Morning Brief official workflow ([#30154](https://github.com/vm0-ai/vm0/issues/30154)) ([fe17b6d](https://github.com/vm0-ai/vm0/commit/fe17b6d6cc0d48ac7b9adf3960c26241a6b8bdae)), closes [#30151](https://github.com/vm0-ai/vm0/issues/30151)
+
 ## [1.507.0](https://github.com/vm0-ai/vm0/compare/api-v1.506.2...api-v1.507.0) (2026-08-28)
 
 

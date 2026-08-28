@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.808.1](https://github.com/vm0-ai/vm0/compare/app-v0.808.0...app-v0.808.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **platform:** anchor bootstrap skeleton to visible viewport ([#30156](https://github.com/vm0-ai/vm0/issues/30156)) ([1c738e9](https://github.com/vm0-ai/vm0/commit/1c738e9e2aa611616dbd947243e9ab8f8f1b2404))
+* **platform:** clarify chat model scope ([#30127](https://github.com/vm0-ai/vm0/issues/30127)) ([da26576](https://github.com/vm0-ai/vm0/commit/da265761edfd2d0c29ee3da7bd45cba0622c46d3))
+
 ## [0.808.0](https://github.com/vm0-ai/vm0/compare/app-v0.807.1...app-v0.808.0) (2026-08-28)
 
 
