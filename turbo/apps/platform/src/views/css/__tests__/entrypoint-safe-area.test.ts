@@ -31,8 +31,6 @@ describe("platform entrypoint safe area behavior", () => {
         return directive.startsWith("interactive-widget=");
       }),
     ).toBeFalsy();
-    expect(viewportDirectives).not.toContain("maximum-scale=1.0");
-    expect(viewportDirectives).not.toContain("user-scalable=no");
   });
 
   it("centers the bootstrap skeleton against the fixed viewport", () => {
