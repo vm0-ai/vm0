@@ -12,8 +12,7 @@ const previousMigration = "1015_canonical_built_in_provider_schema";
 const resultEmailMigration = "1016_short_korvac";
 const upgradeDatabase = "migration_official_automation_result_email";
 
-const officialBindingConstraint =
-  "zero_workflow_automations_official_binding_check";
+const officialBindingConstraint = "workflow_automations_official_binding_check";
 
 function databaseErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) {
