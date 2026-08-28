@@ -502,7 +502,7 @@ async fn queued_start_process_errors_are_consumed_fifo() {
         SandboxOperationReason::Timeout,
         "second start failed",
     );
-    sandbox.start_process(&request).await.unwrap();
+    drop(sandbox.start_process(&request).await.unwrap());
 
     assert_eq!(overrides.start_process_calls().len(), 3);
 }
@@ -543,16 +543,18 @@ async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() 
     assert!(blocked_start_error.is_cancelled());
     overrides.clear_start_process_lifecycle_gate();
 
-    sandbox
-        .start_process(&StartProcessRequest {
-            cmd: "next-agent",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-        })
-        .await
-        .unwrap();
+    drop(
+        sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "next-agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            })
+            .await
+            .unwrap(),
+    );
     assert!(result_cancel.is_cancelled());
     assert_eq!(overrides.start_process_calls().len(), 1);
 }
