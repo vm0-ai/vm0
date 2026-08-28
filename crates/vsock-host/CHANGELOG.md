@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.104](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.103...vsock-host-v0.17.104) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
 ## [0.17.103](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.102...vsock-host-v0.17.103) (2026-08-28)
 
 ## [0.17.102](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.101...vsock-host-v0.17.102) (2026-08-27)

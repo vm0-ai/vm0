@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.82.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.8...guest-agent-v0.82.9) (2026-08-28)
+
+
+### Refactoring
+
+* **guest:** cut managed tool placement writer to canonical alias ([#30001](https://github.com/vm0-ai/vm0/issues/30001)) ([e8e1294](https://github.com/vm0-ai/vm0/commit/e8e129417a3e77e507f2892854f8291d71d97d8e)), closes [#29995](https://github.com/vm0-ai/vm0/issues/29995) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **test:** cut guest runtime directory writers to canonical alias ([#30000](https://github.com/vm0-ai/vm0/issues/30000)) ([89c3cdc](https://github.com/vm0-ai/vm0/commit/89c3cdc8c5c7abd4cade63cc0debe62cbd909ca4))
+* **test:** cut process-control prerequisites to canonical alias ([#29997](https://github.com/vm0-ai/vm0/issues/29997)) ([366cc0b](https://github.com/vm0-ai/vm0/commit/366cc0b28080d9c67c5ba029f9686a362c8493e0))
+
 ## [0.82.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.7...guest-agent-v0.82.8) (2026-08-28)
 
 

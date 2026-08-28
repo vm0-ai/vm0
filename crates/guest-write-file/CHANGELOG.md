@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.101](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.100...guest-write-file-v0.1.101) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
 ## [0.1.100](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.99...guest-write-file-v0.1.100) (2026-08-28)
 
 ## [0.1.99](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.98...guest-write-file-v0.1.99) (2026-08-27)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.119](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.118...vsock-guest-v0.19.119) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
 ## [0.19.118](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.117...vsock-guest-v0.19.118) (2026-08-28)
 
 

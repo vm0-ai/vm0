@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.57](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.56...sandbox-v0.19.57) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
 ## [0.19.56](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.55...sandbox-v0.19.56) (2026-08-27)
 
 
