@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 
 import { captureAuthV2DiagnosticEvent } from "../../lib/posthog.ts";
 import {
@@ -18,6 +18,7 @@ import { resetSignal } from "../utils.ts";
 
 export interface AuthV2AddAccountDialogModel {
   readonly continuationSignals: AuthV2ContinuationSignals;
+  readonly operationSignal$: Computed<AbortSignal>;
   readonly platformContext: AuthV2PlatformContext;
   readonly signInSignals: AuthV2SignInSignals;
 }
@@ -63,8 +64,9 @@ export const openAuthV2AddAccountDialog$ = command(
       isContinuationRoute: false,
       mode: "sign-in",
       navigation: platformContext.navigation,
+      presentation: "inline",
     });
-    const continuationSignals = diagnostics.instrumentContinuation(
+    const instrumentedContinuationSignals = diagnostics.instrumentContinuation(
       continuationController,
     );
     const signInSignals = diagnostics.instrumentSignIn(
@@ -81,9 +83,21 @@ export const openAuthV2AddAccountDialog$ = command(
       },
     );
     set(signInSignals.useAnotherAccount$);
+    const continuationSignals: AuthV2ContinuationSignals = {
+      ...instrumentedContinuationSignals,
+      restart$: command(async ({ set }, signal: AbortSignal): Promise<void> => {
+        await set(instrumentedContinuationSignals.restart$, signal);
+        signal.throwIfAborted();
+        set(signInSignals.restart$);
+      }),
+    };
+    const operationSignal$ = computed(() => {
+      return dialogSignal;
+    });
 
     set(internalDialogModel$, {
       continuationSignals,
+      operationSignal$,
       platformContext,
       signInSignals,
     });

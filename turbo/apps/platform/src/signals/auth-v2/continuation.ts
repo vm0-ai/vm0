@@ -77,6 +77,7 @@ export interface AuthV2ContinuationDependencies {
   readonly isContinuationRoute: boolean;
   readonly mode: AuthV2RouteMode;
   readonly navigation: AuthV2Navigation;
+  readonly presentation: "inline" | "route";
 }
 
 type ContinuationSessionSource = "organization" | "recovery" | "session";
@@ -209,7 +210,10 @@ function createApplySessionCommand(
             status: "incomplete",
             task: "choose-organization",
           });
-          if (!dependencies.isContinuationRoute) {
+          if (
+            dependencies.presentation === "route" &&
+            !dependencies.isContinuationRoute
+          ) {
             set(
               navigateToTask$,
               decorateUrl(
@@ -409,7 +413,7 @@ function createRestartCommand(
   runtime: ContinuationRuntime,
   dependencies: AuthV2ContinuationDependencies,
 ): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get }, signal: AbortSignal): Promise<void> => {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const current = get(runtime.inFlight$);
     if (current) {
       await current;
@@ -424,6 +428,15 @@ function createRestartCommand(
       if (!signedOut.ok) {
         return;
       }
+    }
+    if (dependencies.presentation === "inline") {
+      set(atoms.sessionId$, null);
+      set(runtime.activatedOrganizationId$, null);
+      set(runtime.handledSessionId$, null);
+      set(runtime.redirected$, false);
+      set(runtime.taskNavigated$, false);
+      set(atoms.state$, { status: "inactive" });
+      return;
     }
     window.location.href = dependencies.navigation.href(dependencies.mode);
   });

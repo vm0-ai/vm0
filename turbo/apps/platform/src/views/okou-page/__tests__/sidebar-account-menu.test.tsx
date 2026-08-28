@@ -26,11 +26,15 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import {
+  mockedClerk,
+  mockSignInResource,
+} from "../../../__tests__/mock-auth.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { foregroundReady$ } from "../../../signals/auth-retry.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -128,8 +132,11 @@ function prepareDefaultAgent(): void {
   ]);
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
   });
   if (!button) {
@@ -159,6 +166,14 @@ function buttonByLabel(
     throw new Error(`${label} button not found`);
   }
   return button;
+}
+
+function containingForm(element: HTMLElement): HTMLFormElement {
+  const form = element.closest("form");
+  if (!(form instanceof HTMLFormElement)) {
+    throw new Error("Expected element to be inside a form");
+  }
+  return form;
 }
 
 function formatResetInTimeZone(resetAt: string, timeZone: string): string {
@@ -202,6 +217,26 @@ async function openAccountMenu(): Promise<HTMLElement> {
   }
   click(accountButton);
   return screen.findByRole("menu");
+}
+
+function setupAuthV2AddAccountPage(): void {
+  prepareDefaultAgent();
+  detachedSetupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    user: {
+      id: "test-user-123",
+      fullName: "Alex Rivera",
+      email: "alex.rivera@example.test",
+    },
+    featureSwitches: { [FeatureSwitchKey.AuthV2AddAccount]: true },
+  });
+}
+
+async function openAuthV2AddAccountDialog(): Promise<HTMLElement> {
+  const menu = await openAccountMenu();
+  click(within(menu).getByText("Add account"));
+  return screen.findByTestId("auth-v2-add-account-dialog");
 }
 
 interface MockAdminBillingStatusOptions {
@@ -1449,24 +1484,9 @@ describe("zero sidebar account menu", () => {
   });
 
   it("opens the custom v2 add-account dialog at identifier entry", async () => {
-    prepareDefaultAgent();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.AuthV2AddAccount]: true },
-    });
-
-    const menu = await openAccountMenu();
+    setupAuthV2AddAccountPage();
     const originalUrl = window.location.href;
-    click(within(menu).getByText("Add account"));
-
-    const dialog = await screen.findByTestId("auth-v2-add-account-dialog");
+    const dialog = await openAuthV2AddAccountDialog();
     expect(dialog).toHaveAttribute("role", "dialog");
     expect(within(dialog).getByTestId("app-auth-v2")).toBeVisible();
     await expect(
@@ -1481,6 +1501,129 @@ describe("zero sidebar account menu", () => {
         screen.queryByTestId("auth-v2-add-account-dialog"),
       ).not.toBeInTheDocument();
     });
+    expect(window.location.href).toBe(originalUrl);
+  });
+
+  it("keeps add-account organization continuation and restart in the dialog", async () => {
+    setupAuthV2AddAccountPage();
+    const originalUrl = window.location.href;
+    const dialog = await openAuthV2AddAccountDialog();
+    const organizationMembership = {
+      id: "membership_target",
+      organization: {
+        id: "org_target",
+        imageUrl: null,
+        name: "Target Organization",
+      },
+    };
+
+    mockedClerk.setActive.mockImplementation(async (params) => {
+      await params.navigate?.({
+        decorateUrl: (url) => {
+          return url;
+        },
+        session: {
+          currentTask: { key: "choose-organization" },
+          id: "session_pending",
+          status: "pending",
+          user: { organizationMemberships: [organizationMembership] },
+        },
+      });
+    });
+
+    mockSignInResource({
+      status: "needs_first_factor",
+      supportedFirstFactors: [{ strategy: "password" }],
+    });
+    mockedClerk.clientSignInCreate.mockResolvedValue(mockedClerk.client.signIn);
+    const identifier = await within(dialog).findByLabelText("Email address");
+    fireEvent.change(identifier, {
+      target: { value: "second.account@example.test" },
+    });
+    fireEvent.submit(containingForm(identifier));
+
+    const password = await within(dialog).findByLabelText("Password");
+    mockSignInResource({
+      createdSessionId: "session_pending",
+      status: "complete",
+    });
+    mockedClerk.signInAttemptFirstFactor.mockResolvedValue(
+      mockedClerk.client.signIn,
+    );
+    fireEvent.change(password, { target: { value: "correct-password" } });
+    fireEvent.submit(containingForm(password));
+
+    await expect(
+      within(dialog).findByRole("heading", {
+        name: "Choose an organization",
+      }),
+    ).resolves.toBeVisible();
+    expect(window.location.href).toBe(originalUrl);
+
+    await waitFor(() => {
+      expect(
+        buttonByLabel("Continue with Target Organization", dialog),
+      ).toBeVisible();
+    });
+    click(buttonByLabel("Continue with Target Organization", dialog));
+    await waitFor(() => {
+      expect(buttonByText("Start over", dialog)).toBeVisible();
+    });
+    expect(window.location.href).toBe(originalUrl);
+
+    click(buttonByText("Start over", dialog));
+    await expect(
+      within(dialog).findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    expect(mockedClerk.signOut).toHaveBeenCalledWith({
+      sessionId: "session_pending",
+    });
+    expect(window.location.href).toBe(originalUrl);
+  });
+
+  it("cancels an in-flight add-account attempt when the dialog closes", async () => {
+    setupAuthV2AddAccountPage();
+    const originalUrl = window.location.href;
+    const dialog = await openAuthV2AddAccountDialog();
+
+    mockSignInResource({
+      status: "needs_first_factor",
+      supportedFirstFactors: [{ strategy: "password" }],
+    });
+    mockedClerk.clientSignInCreate.mockResolvedValue(mockedClerk.client.signIn);
+    const identifier = await within(dialog).findByLabelText("Email address");
+    fireEvent.change(identifier, {
+      target: { value: "second.account@example.test" },
+    });
+    fireEvent.submit(containingForm(identifier));
+
+    const attempt = createDeferredPromise<typeof mockedClerk.client.signIn>(
+      context.signal,
+    );
+    mockedClerk.signInAttemptFirstFactor.mockReturnValue(attempt.promise);
+    const password = await within(dialog).findByLabelText("Password");
+    fireEvent.change(password, { target: { value: "correct-password" } });
+    fireEvent.submit(containingForm(password));
+    await waitFor(() => {
+      expect(mockedClerk.signInAttemptFirstFactor).toHaveBeenCalledTimes(1);
+    });
+
+    click(buttonByLabel("Close", dialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("auth-v2-add-account-dialog"),
+      ).not.toBeInTheDocument();
+    });
+
+    await act(async () => {
+      mockSignInResource({
+        createdSessionId: "session_after_close",
+        status: "complete",
+      });
+      attempt.resolve(mockedClerk.client.signIn);
+      await attempt.promise;
+    });
+    expect(mockedClerk.setActive).not.toHaveBeenCalled();
     expect(window.location.href).toBe(originalUrl);
   });
 

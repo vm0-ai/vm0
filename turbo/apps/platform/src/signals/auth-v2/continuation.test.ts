@@ -72,6 +72,7 @@ async function setupContinuation(options: {
     ),
     mode,
     navigation: platformContext.navigation,
+    presentation: "route",
   });
 }
 
