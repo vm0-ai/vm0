@@ -125,6 +125,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.BuiltInWelcomeThread]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -156,6 +157,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BuiltInWelcomeThread]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,

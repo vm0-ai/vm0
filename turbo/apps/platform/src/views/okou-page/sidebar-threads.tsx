@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import { timeout } from "signal-timers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   useGet,
   useSet,
@@ -93,6 +94,9 @@ import {
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import { equalArrays } from "../../lib/equality.ts";
+import { activeRoute$ } from "../../signals/active-route.ts";
+import { assistantName$ } from "../../signals/branding.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 const CHAT_THREAD_ROW_ICON_CLASS = "[&_svg]:size-[17px] [&_svg]:opacity-70";
 
@@ -428,6 +432,35 @@ function ChatThreadItem({
     <div className="group relative">
       <ChatThreadItemLink signals={signals} />
       <ChatThreadSideDecorator signals={signals} />
+    </div>
+  );
+}
+
+function BuiltInWelcomeThreadItem() {
+  const { t } = useTranslation();
+  const assistantName = useGet(assistantName$);
+  const isCurrentPage = useGet(activeRoute$) === "welcomeThread";
+  const title = t(
+    ($) => {
+      return $.chat.welcomeThread.title;
+    },
+    { assistantName },
+  );
+
+  return (
+    <div className="group relative" data-testid="built-in-welcome-thread-row">
+      <Link
+        pathname="/chats/welcome"
+        aria-current={isCurrentPage ? "page" : undefined}
+        data-sidebar-built-in-thread
+        className={`flex h-8 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+          isCurrentPage
+            ? "bg-state-selected text-sidebar-foreground font-medium"
+            : "text-sidebar-foreground hover:bg-state-hover"
+        }`}
+      >
+        <span className="zero-nav-copy min-w-0 flex-1 truncate">{title}</span>
+      </Link>
     </div>
   );
 }
@@ -1013,12 +1046,18 @@ function AgentChatThreadsContent({
   const chatThreadsLoading = threadCountLoadable.state === "loading";
   const currentMainThreadListed =
     useLastResolved(currentChatThreadListed$) ?? false;
+  const unreadOnly = useGet(chatThreadOnlyUnread$);
+  const featureSwitches = useGet(featureSwitch$);
+  const showBuiltInWelcomeThread =
+    !unreadOnly &&
+    (featureSwitches[FeatureSwitchKey.BuiltInWelcomeThread] ?? false);
   const scrollCurrentChatThreadOnRef = useSet(
     scrollSignals.scrollCurrentChatThreadOnRef$,
   );
 
   return (
     <div className="flex flex-col gap-1">
+      {showBuiltInWelcomeThread ? <BuiltInWelcomeThreadItem /> : null}
       {currentMainThreadId && currentMainThreadListed ? (
         <span
           ref={scrollCurrentChatThreadOnRef}
@@ -1028,7 +1067,7 @@ function AgentChatThreadsContent({
       ) : null}
       {chatThreadsLoading ? (
         <ChatThreadsSkeleton />
-      ) : (
+      ) : threadCount === 0 && showBuiltInWelcomeThread ? null : (
         <ChatThreads scrollSignals={scrollSignals} threadCount={threadCount} />
       )}
     </div>

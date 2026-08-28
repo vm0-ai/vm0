@@ -378,6 +378,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.BuiltInWelcomeThread]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show a built-in welcome chat that introduces Okou through native rich-text deliverables and team collaboration education.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",
     description:

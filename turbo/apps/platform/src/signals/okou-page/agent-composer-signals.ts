@@ -371,11 +371,11 @@ export const setAgentComposerContext$ = command(
 );
 
 export const agentChatComposerSignals$ = computed((get) => {
-  const agentId = get(currentAgentId$);
+  const context = get(internalAgentComposerContext$);
+  const agentId = get(currentAgentId$) ?? context?.agentId;
   if (!agentId) {
     throw new Error("Chat composer requires an active agent");
   }
-  const context = get(internalAgentComposerContext$);
   return context?.agentId === agentId
     ? createAgentComposerSignalsWithDraft(agentId, context.agentDraft)
     : createAgentComposerSignals(agentId);

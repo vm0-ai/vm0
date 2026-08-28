@@ -56,6 +56,7 @@ export enum FeatureSwitchKey {
   ChatToolActivity = "chatToolActivity",
   BuiltInModelProviderFallback = "builtInModelProviderFallback",
   ChatForward = "chatForward",
+  BuiltInWelcomeThread = "builtInWelcomeThread",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   ConnectorCatalogCount = "connectorCatalogCount",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
