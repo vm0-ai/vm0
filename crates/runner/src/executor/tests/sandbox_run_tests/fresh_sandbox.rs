@@ -1106,22 +1106,24 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert!(!start_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
     assert_eq!(start_env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
     assert_eq!(
-        start_env.get(USER_ENV_FILE_ENV_KEY).map(String::as_str),
+        start_env
+            .get(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV)
+            .map(String::as_str),
         Some(expected_user_env_file.as_str())
     );
     assert_eq!(
         start_env
-            .get(guest_contracts::env::RUN_PAYLOAD_FILE_ENV)
+            .get(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV)
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
-    for canonical_key in [
-        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+    for legacy_key in [
+        USER_ENV_FILE_ENV_KEY,
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
     ] {
         assert!(
-            !start_env.contains_key(canonical_key),
-            "reader Stage 1 must not emit canonical key {canonical_key}"
+            !start_env.contains_key(legacy_key),
+            "canonical writer must not emit legacy key {legacy_key}"
         );
     }
     for key in [
@@ -1256,14 +1258,27 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
         private_writes[0].path,
         guest_connector_account_context_file_path(context.run_id).unwrap()
     );
-    assert_eq!(
-        private_writes[1].path,
-        guest_run_payload_file_path(context.run_id).unwrap()
-    );
+    let expected_run_payload_file = guest_run_payload_file_path(context.run_id).unwrap();
+    assert_eq!(private_writes[1].path, expected_run_payload_file);
     let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
-    assert!(!start_env.contains_key(USER_ENV_FILE_ENV_KEY));
+    for user_env_key in [
+        USER_ENV_FILE_ENV_KEY,
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+    ] {
+        assert!(
+            !start_env.contains_key(user_env_key),
+            "absent user environment must not emit {user_env_key}"
+        );
+    }
+    assert_eq!(
+        start_env
+            .get(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV)
+            .map(String::as_str),
+        Some(expected_run_payload_file.as_str())
+    );
+    assert!(!start_env.contains_key(guest_contracts::env::RUN_PAYLOAD_FILE_ENV));
 }
 
 #[tokio::test]
