@@ -76,6 +76,7 @@ jobs:
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       release_target: ${{ steps.release-target.outputs.sha }}
+      release_tags: ${{ steps.release-tags.outputs.tags }}
       api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
       core_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] }}
       api_contracts_release_created: ${{ steps.release.outputs['turbo/packages/api-contracts--release_created'] }}
@@ -174,6 +175,90 @@ jobs:
           )
 
           echo "sha=$release_target" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve current release tags
+        id: release-tags
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        env:
+          RELEASE_TAGS: >-
+            [
+              ${{ toJSON(steps.release.outputs['crates/ably-subscriber--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/api-contracts--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-agent--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-common--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-contracts--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-download--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-init--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-reseed--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-write-file--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/nbd-cow--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/process-control-ipc--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-mock--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/shell-quote--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/tracing-test-support--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-guest--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-host--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-proto--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-test--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/api--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/cli--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/desktop--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/platform--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/connectors--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/connector-catalog-validation--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/core--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/db--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/pi-agent-runtime--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/ui--tag_name']) }}
+            ]
+          DESKTOP_RELEASE_CREATED: ${{ steps.release.outputs['turbo/apps/desktop--release_created'] }}
+          DESKTOP_VERSION: ${{ steps.release.outputs['turbo/apps/desktop--version'] }}
+        run: |
+          set -euo pipefail
+
+          derived_release_tags='[]'
+          if [ "$DESKTOP_RELEASE_CREATED" = "true" ]; then
+            derived_release_tags=$(jq -nc \
+              --arg tag "okou-desktop-v${DESKTOP_VERSION}" \
+              '[$tag]')
+          fi
+
+          release_tags=$(
+            jq -ce --argjson derived_release_tags "$derived_release_tags" '
+              (. + $derived_release_tags)
+              | map(select(. != null and . != ""))
+              | map(
+                  if type != "string" then
+                    error("release-please returned non-string release tag: " + tostring)
+                  elif test("^.+-v[0-9]") then
+                    .
+                  else
+                    error("release-please returned invalid release tag: " + .)
+                  end
+                )
+              | if length == 0 then
+                  error("release-please returned no release tag")
+                elif length != (unique | length) then
+                  error(
+                    "release-please returned duplicate release tags: " +
+                    (group_by(.) | map(select(length > 1) | .[0]) | join(", "))
+                  )
+                else
+                  .
+                end
+            ' <<<"$RELEASE_TAGS"
+          )
+
+          echo "tags=$release_tags" >> "$GITHUB_OUTPUT"
 
   # Refreshing the release pull request is a separate job so that a failure here
   # cannot skip the release and deployment jobs above. release-please recomputes
@@ -1720,6 +1805,7 @@ jobs:
         release-please,
         promote-api-production,
         promote-app-production,
+        promote-desktop-release,
         promote-runner-production,
       ]
     if: >-
@@ -1728,6 +1814,8 @@ jobs:
       needs.promote-api-production.result == 'success' &&
       (needs.release-please.outputs.app_release_created != 'true' ||
        needs.promote-app-production.result == 'success') &&
+      (needs.release-please.outputs.desktop_release_created != 'true' ||
+       needs.promote-desktop-release.result == 'success') &&
       (needs.release-please.outputs.runner_rs_release_created != 'true' ||
        needs.promote-runner-production.result == 'success')
     runs-on: ubuntu-latest
@@ -1744,6 +1832,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ vars.ROLLBACK_ISSUE_NUMBER }}
           RELEASE_TARGET: ${{ needs.release-please.outputs.release_target }}
+          RELEASE_TAGS: ${{ needs.release-please.outputs.release_tags }}
           ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-production.yml
         run: |
           set -euo pipefail
@@ -1758,7 +1847,8 @@ jobs:
           updated_body=$(bash .github/scripts/update-rollback-dashboard-body.sh \
             /tmp/rollback-dashboard.md \
             "$RELEASE_TARGET" \
-            "$ROLLBACK_URL")
+            "$ROLLBACK_URL" \
+            "$RELEASE_TAGS")
 
           gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" \
             -X PATCH \
