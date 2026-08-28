@@ -157,8 +157,8 @@ cmd_deploy() {
     R2_SECRET_ACCESS_KEY "${R2_SECRET_ACCESS_KEY:-}" \
     R2_USER_STORAGES_BUCKET_NAME "${R2_USER_STORAGES_BUCKET_NAME:-}")"
 
-  # Clean up old images (keep 3 most recent deploys)
-  ssh_cmd "sudo $REMOTE_BIN_DIR/runner gc --keep-latest 3"
+  # Clean up old images and only the explicitly owned local deployment.
+  ssh_cmd "sudo $REMOTE_BIN_DIR/runner gc --keep-latest 3 --deployment-service-suffix $RUNNER_SERVICE_SUFFIX --keep-bin-dirname $RUNNER_SERVICE_SUFFIX --keep-runner-dirname $RUNNER_SERVICE_SUFFIX"
 
   # Build unified image (rootfs + snapshot)
   PROFILES=("vm0/default")
