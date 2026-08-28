@@ -9,7 +9,7 @@ use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use guest_contracts::connector_account_context::{
     RunConnectorAccountContext, RunConnectorAccountTarget,
 };
-use sandbox::Sandbox;
+use sandbox::{Sandbox, WriteFileEntry};
 
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
@@ -480,34 +480,49 @@ pub(super) async fn write_connector_account_context_file(
     Ok(file_path)
 }
 
-pub(super) async fn write_user_env_file(
+pub(super) struct RequiredAgentFiles {
+    pub(super) user_env_file: Option<String>,
+    pub(super) run_payload_file: String,
+}
+
+pub(super) async fn write_required_agent_files(
     sandbox: &dyn Sandbox,
     run_id: RunId,
     user_env: &HashMap<String, String>,
-) -> RunnerResult<Option<String>> {
-    if user_env.is_empty() {
-        return Ok(None);
-    }
-
-    let file_path = guest_user_env_file_path(run_id)?;
-    let payload = serde_json::to_vec(user_env)
-        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
-    sandbox.write_private_file(&file_path, &payload).await?;
-
-    Ok(Some(file_path))
-}
-
-pub(super) async fn write_run_payload_file(
-    sandbox: &dyn Sandbox,
-    run_id: RunId,
     run_payload: &guest_contracts::env::RunPayload,
-) -> RunnerResult<String> {
-    let file_path = guest_run_payload_file_path(run_id)?;
-    let payload = serde_json::to_vec(run_payload)
+) -> RunnerResult<RequiredAgentFiles> {
+    let run_payload_file = guest_run_payload_file_path(run_id)?;
+    let run_payload_bytes = serde_json::to_vec(run_payload)
         .map_err(|e| RunnerError::Internal(format!("serialize run payload: {e}")))?;
-    sandbox.write_private_file(&file_path, &payload).await?;
 
-    Ok(file_path)
+    let user_env_file = if user_env.is_empty() {
+        sandbox
+            .write_private_file(&run_payload_file, &run_payload_bytes)
+            .await?;
+        None
+    } else {
+        let user_env_file = guest_user_env_file_path(run_id)?;
+        let user_env_bytes = serde_json::to_vec(user_env)
+            .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
+        sandbox
+            .write_private_files(&[
+                WriteFileEntry {
+                    path: &user_env_file,
+                    content: &user_env_bytes,
+                },
+                WriteFileEntry {
+                    path: &run_payload_file,
+                    content: &run_payload_bytes,
+                },
+            ])
+            .await?;
+        Some(user_env_file)
+    };
+
+    Ok(RequiredAgentFiles {
+        user_env_file,
+        run_payload_file,
+    })
 }
 
 pub(super) fn build_env_json_with_host_env(

@@ -82,14 +82,20 @@ fn handle_write_files(
     payload: &[u8],
     file_count: usize,
     content_bytes: usize,
+    private: bool,
     connection_cancel: &AtomicBool,
 ) -> (bool, String) {
+    let operation = if private {
+        "write_private_files"
+    } else {
+        "write_files"
+    };
     log(
         "INFO",
-        &format!("write_files: files={file_count} content_bytes={content_bytes}"),
+        &format!("{operation}: files={file_count} content_bytes={content_bytes}"),
     );
 
-    let child = match spawn_write_files_command() {
+    let child = match spawn_write_files_command(private) {
         Ok(c) => c,
         Err(e) => return (false, format!("Failed to spawn batch write command: {e}")),
     };
@@ -279,10 +285,13 @@ fn spawn_write_file_command(
     spawn_in_own_process_group(&mut command)
 }
 
-fn spawn_write_files_command() -> io::Result<Child> {
+fn spawn_write_files_command(private: bool) -> io::Result<Child> {
     let mut command = Command::new(guest_write_file_path());
+    command.arg("--batch");
+    if private {
+        command.arg("--private");
+    }
     command
-        .arg("--batch")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
@@ -358,12 +367,14 @@ pub(crate) fn handle_decoded_write_file_message(
 pub(crate) fn handle_decoded_write_files_message(
     seq: u32,
     decoded: DecodedWriteFilesMessage<'_>,
+    private: bool,
     connection_cancel: &AtomicBool,
 ) -> io::Result<Vec<u8>> {
     let (success, error) = handle_write_files(
         decoded.payload,
         decoded.file_count,
         decoded.content_bytes,
+        private,
         connection_cancel,
     );
     let payload = vsock_proto::encode_write_files_result(success, &error);

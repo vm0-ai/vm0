@@ -41,7 +41,7 @@ use super::diagnostics::{
 use super::effective_cli_framework;
 use super::env::{
     PreparedRunPayload, build_env_json_for_run, build_user_env_json,
-    write_connector_account_context_file, write_run_payload_file, write_user_env_file,
+    write_connector_account_context_file, write_required_agent_files,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_cpu::{SessionHistoryCpuJob, SessionHistoryPrefixOutcome};
@@ -2037,28 +2037,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             );
         }
     }
-    let user_env_started = Instant::now();
-    let user_env_file = match write_user_env_file(sandbox, context.run_id, &user_env_map).await {
-        Ok(user_env_file) => {
-            telemetry.record(
-                "runner_user_env_write",
-                user_env_started.elapsed(),
-                true,
-                None,
-            );
-            user_env_file
-        }
-        Err(error) => {
-            telemetry.record_with_outcome(
-                "runner_user_env_write",
-                user_env_started.elapsed(),
-                false,
-                None,
-                private_write_timeout_stage(&error),
-            );
-            return Err(error);
-        }
-    };
     let env_build_started = Instant::now();
     let run_payload = match prepared_run_payload.into_run_payload(context) {
         Ok(run_payload) => run_payload,
@@ -2084,29 +2062,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         feature_flags_bytes = run_payload.feature_flags.len(),
         "guest-agent run payload prepared"
     );
-    let run_payload_write_started = Instant::now();
-    let run_payload_file = match write_run_payload_file(sandbox, context.run_id, &run_payload).await
-    {
-        Ok(path) => {
-            telemetry.record(
-                "runner_run_payload_write",
-                run_payload_write_started.elapsed(),
-                true,
-                None,
-            );
-            path
-        }
-        Err(error) => {
-            telemetry.record_with_outcome(
-                "runner_run_payload_write",
-                run_payload_write_started.elapsed(),
-                false,
-                None,
-                private_write_timeout_stage(&error),
-            );
-            return Err(error);
-        }
-    };
     let mut env_map = match build_env_json_for_run(
         context,
         &config.api_url,
@@ -2125,6 +2080,38 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             return Err(error);
         }
     };
+    telemetry.record(
+        "runner_agent_env_build",
+        env_build_started.elapsed(),
+        true,
+        None,
+    );
+
+    let required_private_files_started = Instant::now();
+    let required_files =
+        match write_required_agent_files(sandbox, context.run_id, &user_env_map, &run_payload).await {
+            Ok(required_files) => {
+                telemetry.record(
+                    "runner_required_private_files_write",
+                    required_private_files_started.elapsed(),
+                    true,
+                    None,
+                );
+                required_files
+            }
+            Err(error) => {
+                telemetry.record_with_outcome(
+                    "runner_required_private_files_write",
+                    required_private_files_started.elapsed(),
+                    false,
+                    None,
+                    private_write_timeout_stage(&error),
+                );
+                return Err(error);
+            }
+        };
+    let user_env_file = required_files.user_env_file;
+    let run_payload_file = required_files.run_payload_file;
     if let Some(path) = user_env_file {
         env_map.insert(USER_ENV_FILE_ENV_KEY.into(), path);
     }
@@ -2138,12 +2125,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    telemetry.record(
-        "runner_agent_env_build",
-        env_build_started.elapsed(),
-        true,
-        None,
-    );
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
     // Spawn guest-agent with stdout streamed to the host via vsock. Its stderr

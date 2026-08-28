@@ -41,11 +41,10 @@ pub const EXEC_OUTPUT_LIMIT_1_MIB: ExecOutputLimits = ExecOutputLimits::same(102
 /// Larger output budget used by interactive runner exec-style tooling.
 pub const EXEC_OUTPUT_LIMIT_7_MIB: ExecOutputLimits = ExecOutputLimits::same(7 * 1024 * 1024);
 
-/// One ordinary guest file write entry for a multi-file write operation.
+/// One guest file entry for a typed multi-file write operation.
 ///
-/// Entries use the same semantics as [`crate::Sandbox::write_file`]: create
-/// missing parent directories, create or truncate the target file, and write
-/// the provided bytes without private runtime-file semantics.
+/// The selected [`crate::Sandbox`] method defines whether entries use ordinary
+/// or private runtime-file semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WriteFileEntry<'a> {
     /// Guest path to create or replace.

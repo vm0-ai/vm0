@@ -11,7 +11,7 @@ use vsock_proto::{
     MSG_GUEST_DNS_READINESS, MSG_GUEST_STATE_RESTORE, MSG_GUEST_STORAGE_MANIFEST,
     MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
-    MSG_WRITE_FILE, MSG_WRITE_FILES,
+    MSG_WRITE_FILE, MSG_WRITE_FILES, MSG_WRITE_PRIVATE_FILES,
 };
 
 use crate::error::to_io_error;
@@ -138,6 +138,7 @@ fn is_real_host_work_message(msg_type: u8) -> bool {
             | MSG_EXEC_CONTROL
             | MSG_WRITE_FILE
             | MSG_WRITE_FILES
+            | MSG_WRITE_PRIVATE_FILES
             | MSG_GUEST_DNS_READINESS
             | MSG_GUEST_STATE_RESTORE
             | MSG_GUEST_STORAGE_MANIFEST
@@ -365,6 +366,7 @@ impl ConnectionDispatcher {
             MSG_EXEC_CONTROL => self.handle_exec_control(msg)?,
             MSG_WRITE_FILE => self.handle_file_write(msg, FileWriteKind::File)?,
             MSG_WRITE_FILES => self.handle_file_write(msg, FileWriteKind::Files)?,
+            MSG_WRITE_PRIVATE_FILES => self.handle_file_write(msg, FileWriteKind::PrivateFiles)?,
             MSG_GUEST_DNS_READINESS => self.handle_guest_dns_readiness(msg)?,
             MSG_GUEST_STATE_RESTORE => self.handle_guest_state_restore(msg)?,
             MSG_GUEST_STORAGE_MANIFEST => self.handle_guest_storage_manifest(msg)?,
@@ -1180,6 +1182,7 @@ mod tests {
             MSG_EXEC_CONTROL,
             MSG_WRITE_FILE,
             MSG_WRITE_FILES,
+            MSG_WRITE_PRIVATE_FILES,
             MSG_GUEST_DNS_READINESS,
             MSG_GUEST_STORAGE_MANIFEST,
             MSG_QUIESCE_OPERATIONS,

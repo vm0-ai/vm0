@@ -14,7 +14,8 @@ use vsock_proto::{
     MSG_GUEST_DNS_READINESS_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
     MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, RawMessage,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, MSG_WRITE_PRIVATE_FILES,
+    RawMessage,
 };
 
 use crate::operation_tracker::NormalOperationReadiness;
@@ -153,6 +154,7 @@ fn message_type_name(msg_type: u8) -> &'static str {
         MSG_WRITE_FILE_RESULT => "write_file_result",
         MSG_WRITE_FILES => "write_files",
         MSG_WRITE_FILES_RESULT => "write_files_result",
+        MSG_WRITE_PRIVATE_FILES => "write_private_files",
         MSG_EXEC_START => "exec_start",
         MSG_EXEC_STARTED => "exec_started",
         MSG_EXEC_AGENT_READY => "exec_agent_ready",

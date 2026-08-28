@@ -13,15 +13,14 @@ use super::super::cli_framework::{
 };
 use super::super::env::{
     HostEnv, build_env_json_with_host_env, build_run_payload_for_run, build_user_env_json,
-    guest_connector_account_context_file_path, guest_run_payload_file_path,
-    guest_user_env_file_path, is_runner_owned_env_key, validate_execution_context_before_sandbox,
-    validate_model_provider_env_placeholders, write_connector_account_context_file,
-    write_run_payload_file, write_user_env_file,
+    guest_connector_account_context_file_path, is_runner_owned_env_key,
+    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
+    write_connector_account_context_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
     api_artifact, api_storage, build_env_for_test, build_env_for_test_result,
-    build_env_for_test_with_host_env, context_with_env, minimal_context, sandbox_write_file_error,
+    build_env_for_test_with_host_env, context_with_env, minimal_context,
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
@@ -1167,97 +1166,6 @@ fn build_env_json_user_vars_cannot_override_system() {
 }
 
 #[tokio::test]
-async fn write_user_env_file_skips_empty_env() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-
-    let path = write_user_env_file(&sandbox, run_id, &HashMap::new())
-        .await
-        .unwrap();
-
-    assert!(path.is_none());
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    assert!(sandbox.private_write_file_calls().is_empty());
-}
-
-#[tokio::test]
-async fn write_user_env_file_uses_private_write_for_small_env() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([
-        ("CUSTOM_ENV".to_string(), "value".to_string()),
-        ("TZ".to_string(), "Asia/Shanghai".to_string()),
-    ]);
-
-    let path = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
-    assert!(
-        path.ends_with(&format!(
-            "/{}/{}",
-            guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME,
-            guest_contracts::env::USER_ENV_FILENAME
-        )),
-        "got: {path}"
-    );
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    let decoded: HashMap<String, String> = serde_json::from_slice(&writes[0].content).unwrap();
-    assert_eq!(decoded, user_env);
-}
-
-#[tokio::test]
-async fn write_user_env_file_uses_private_write_for_large_env() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([(
-        "CUSTOM_ENV".to_string(),
-        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-    )]);
-    let payload = serde_json::to_vec(&user_env).unwrap();
-    assert!(payload.len() > vsock_proto::MAX_EXEC_STDIN_BYTES);
-
-    let path = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    assert_eq!(writes[0].content, payload);
-}
-
-#[tokio::test]
-async fn write_user_env_file_returns_private_write_error() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_private_write_file_result(Err(sandbox_write_file_error("private write failed")));
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([("CUSTOM_ENV".to_string(), "value".to_string())]);
-
-    let err = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap_err();
-    let message = err.to_string();
-
-    assert!(message.contains("private write failed"), "got: {message}");
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-}
-
-#[tokio::test]
 async fn write_connector_account_context_file_projects_only_target_and_source() {
     let sandbox = MockSandbox::new("test");
     let mut context = minimal_context();
@@ -1332,53 +1240,6 @@ async fn write_connector_account_context_file_writes_known_empty_projection() {
             targets: Vec::new(),
         }
     );
-}
-
-#[tokio::test]
-async fn write_run_payload_file_uses_private_write_for_large_payload() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let payload = guest_contracts::env::RunPayload {
-        prompt: "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-        append_system_prompt: "system".to_string(),
-        secret_values: "secret".to_string(),
-        ..guest_contracts::env::RunPayload::default()
-    };
-
-    let path = write_run_payload_file(&sandbox, run_id, &payload)
-        .await
-        .unwrap();
-
-    assert_eq!(path, guest_run_payload_file_path(run_id).unwrap());
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    let decoded: guest_contracts::env::RunPayload =
-        serde_json::from_slice(&writes[0].content).unwrap();
-    assert_eq!(decoded, payload);
-}
-
-#[tokio::test]
-async fn write_run_payload_file_returns_private_write_error() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_private_write_file_result(Err(sandbox_write_file_error("private write failed")));
-    let run_id = RunId::nil();
-    let payload = guest_contracts::env::RunPayload {
-        prompt: "test prompt".to_string(),
-        ..guest_contracts::env::RunPayload::default()
-    };
-
-    let err = write_run_payload_file(&sandbox, run_id, &payload)
-        .await
-        .unwrap_err();
-    let message = err.to_string();
-
-    assert!(message.contains("private write failed"), "got: {message}");
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    assert_eq!(sandbox.private_write_file_calls().len(), 1);
 }
 
 #[test]
