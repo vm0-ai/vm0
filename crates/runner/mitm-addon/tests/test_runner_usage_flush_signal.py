@@ -18,7 +18,7 @@ import runner_flush_lifecycle
 import usage
 from tests.pending_helpers import assert_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
-from tests.usage_buffer_helpers import RecordingEnqueue, event, observation
+from tests.usage_buffer_helpers import RecordingEnqueue, event
 from tests.usage_helpers import install_recording_usage_timer
 
 _RUNNER_USAGE_STATE_ID = "runner-state"
@@ -277,95 +277,6 @@ class TestRunnerUsageFlushSignal:
             flush_request_id="request-1",
         )
 
-    def test_unmarked_signal_keeps_model_observations_for_later_aggregation(
-        self, runner_usage_flush_files: RunnerUsageFlushFiles
-    ) -> None:
-        enqueue = RecordingEnqueue()
-        install_recording_usage_timer(enqueue_webhook=enqueue)
-        proxy_log_path = str(runner_usage_flush_files.proxy_log_path)
-        usage.buffer_usage_events(
-            "https://api.test/api/webhooks/agent/usage-event",
-            "token-a",
-            "run-1",
-            [event(source_key="billing-source")],
-            proxy_log_path,
-        )
-        usage.buffer_model_usage_observations(
-            "https://api.test/api/webhooks/agent/model-usage-observation",
-            "token-a",
-            "run-1",
-            [observation(source_key="aggregate-source-1", input_tokens=1)],
-            proxy_log_path,
-        )
-        usage.buffer_source_model_usage_observations(
-            "https://api.test/api/webhooks/agent/model-usage-observation",
-            "token-a",
-            "source-run",
-            [observation(source_key="preserved-source-1", output_tokens=2)],
-            proxy_log_path,
-        )
-
-        runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-        wait_for_usage_flush_worker_to_stop()
-
-        assert [call.log_type for call in enqueue.calls] == ["usage_event"]
-        assert_pending(
-            runner_usage_flush_files.pending_path,
-            flows=0,
-            buffered=2,
-            reports=0,
-        )
-
-        usage.buffer_model_usage_observations(
-            "https://api.test/api/webhooks/agent/model-usage-observation",
-            "token-a",
-            "run-1",
-            [observation(source_key="aggregate-source-2", input_tokens=3)],
-            proxy_log_path,
-        )
-        usage.buffer_source_model_usage_observations(
-            "https://api.test/api/webhooks/agent/model-usage-observation",
-            "token-a",
-            "source-run",
-            [
-                observation(source_key="preserved-source-1", output_tokens=2),
-                observation(source_key="preserved-source-2", output_tokens=5),
-            ],
-            proxy_log_path,
-        )
-
-        runner_usage_flush_files.write_usage_flush_request()
-        runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-        wait_for_usage_flush_worker_to_stop()
-
-        assert [call.log_type for call in enqueue.calls] == [
-            "usage_event",
-            "model_usage_observation",
-            "model_usage_observation",
-        ]
-        aggregate_payload = next(
-            call.payload
-            for call in enqueue.calls
-            if call.log_type == "model_usage_observation" and call.payload["runId"] == "run-1"
-        )
-        assert len(aggregate_payload["events"]) == 1
-        assert aggregate_payload["events"][0]["inputTokens"] == 4
-        source_payload = next(
-            call.payload for call in enqueue.calls if call.payload["runId"] == "source-run"
-        )
-        assert [event["idempotencyKey"] for event in source_payload["events"]] == [
-            "preserved-source-1",
-            "preserved-source-2",
-        ]
-        assert [event["outputTokens"] for event in source_payload["events"]] == [2, 5]
-        assert_pending(
-            runner_usage_flush_files.pending_path,
-            flows=0,
-            buffered=0,
-            reports=0,
-            flush_request_id="request-1",
-        )
-
     def test_signal_worker_start_handoff_to_closed_shutdown_does_not_spawn_worker(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ) -> None:
@@ -510,7 +421,7 @@ class TestRunnerUsageFlushSignal:
             patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
             patch.object(
                 usage,
-                "flush_billable_usage_events",
+                "flush_usage_events",
                 side_effect=RuntimeError("secret-token"),
             ),
         ):
@@ -751,11 +662,7 @@ class TestRunnerUsageFlushSignal:
                 second_flush_completed.set()
             return 0
 
-        with patch.object(
-            usage,
-            "flush_billable_usage_events",
-            side_effect=flush_usage_events,
-        ):
+        with patch.object(usage, "flush_usage_events", side_effect=flush_usage_events):
             runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             assert first_flush_started.wait(timeout=1)
 
@@ -867,11 +774,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             mitm_ctx() as log,
-            patch.object(
-                usage,
-                "flush_billable_usage_events",
-                side_effect=flush_usage_events,
-            ),
+            patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
         ):
             runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_usage_flush_worker_to_stop()

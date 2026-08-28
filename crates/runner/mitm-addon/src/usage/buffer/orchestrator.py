@@ -14,7 +14,6 @@ from .logging import _elapsed_ms, _log_dropped_batches, _log_flush_summaries
 from .models import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
     DEFAULT_FLUSH_JITTER_RATIO,
-    MAX_BUFFERED_WEBHOOK_BATCHES,
     MAX_RETAINED_USAGE_BATCH_RETRIES,
     ModelUsageObservation,
     ResourceFieldName,
@@ -46,7 +45,6 @@ class _TimerHandle(Protocol):
 _TimerFactory = Callable[[float, Callable[[], None]], _TimerHandle]
 _DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
 _EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
-_BufferedCountSetter = Callable[[int], None]
 
 
 def _log_shutdown_retained_batches(
@@ -84,8 +82,6 @@ class UsageEventBuffer:
         timer_factory: _TimerFactory | None = None,
         enqueue_webhook: _EnqueueWebhook | None = None,
         flush_owner_lock: _FlushOwnerLock | None = None,
-        buffered_count_setter: _BufferedCountSetter = set_buffered_usage_events,
-        max_buffered_webhook_batches: int = MAX_BUFFERED_WEBHOOK_BATCHES,
         max_retained_batch_retries: int = MAX_RETAINED_USAGE_BATCH_RETRIES,
     ) -> None:
         self._lock = threading.Lock()
@@ -96,11 +92,7 @@ class UsageEventBuffer:
             flush_owner_lock if flush_owner_lock is not None else threading.Lock()
         )
         self._enqueue_webhook = enqueue_webhook
-        self._buffered_count_setter = buffered_count_setter
-        self._state = _UsageBufferState(
-            max_buffered_webhook_batches=max_buffered_webhook_batches,
-            max_retained_batch_retries=max_retained_batch_retries,
-        )
+        self._state = _UsageBufferState(max_retained_batch_retries=max_retained_batch_retries)
         self._flush_interval_seconds = max(1.0, flush_interval_seconds)
         self._jitter_ratio = max(0.0, jitter_ratio)
         self._timer_enabled = timer_enabled
@@ -507,7 +499,7 @@ class UsageEventBuffer:
             raise
 
     def _sync_buffered_counter_locked(self) -> None:
-        self._buffered_count_setter(self._state.buffered_source_event_count())
+        set_buffered_usage_events(self._state.buffered_source_event_count())
 
     def _schedule_timer_locked(self) -> _TimerHandle | None:
         if not self._timer_enabled or self._timer is not None:

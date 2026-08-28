@@ -25,7 +25,6 @@ from .underbilling import log_usage_underbilling
 _counter_lock = threading.Lock()
 _pending_write_lock = threading.Lock()
 _buffered_usage_events = 0
-_buffered_model_usage_observations = 0
 _pending_path = ""
 _usage_state_id = str(uuid.uuid4())
 # One-shot guard: sustained pending snapshot write failure makes the runner
@@ -55,14 +54,12 @@ _pending_reports = _PendingCounter("reports")
 
 def reset_for_tests() -> None:
     """Reset mutable counter state between tests."""
-    global _buffered_model_usage_observations
     global _buffered_usage_events, _pending_path, _usage_state_id, _pending_write_error_logged
     with _counter_lock:
         for counter in (_in_flight_flows, _buffered_reports, _pending_reports):
             counter.value = 0
             counter.underflow_logged = False
         _buffered_usage_events = 0
-        _buffered_model_usage_observations = 0
         _pending_path = ""
         _usage_state_id = str(uuid.uuid4())
         _pending_write_error_logged = False
@@ -91,9 +88,7 @@ def _pending_snapshot_locked(flush_request_id: str | None = None) -> tuple[str, 
         "usageStateId": _usage_state_id,
         "updatedAtMs": int(time.time() * 1000),
         "flows": _in_flight_flows.value,
-        "buffered": (
-            _buffered_usage_events + _buffered_model_usage_observations + _buffered_reports.value
-        ),
+        "buffered": _buffered_usage_events + _buffered_reports.value,
         "reports": _pending_reports.value,
     }
     if flush_request_id:
@@ -269,12 +264,6 @@ def set_buffered_usage_events(count: int) -> None:
     global _buffered_usage_events
     with _counter_lock:
         _buffered_usage_events = max(0, count)
-
-
-def set_buffered_model_usage_observations(count: int) -> None:
-    global _buffered_model_usage_observations
-    with _counter_lock:
-        _buffered_model_usage_observations = max(0, count)
 
 
 def _mark_counter_underflow(counter: _PendingCounter) -> bool:

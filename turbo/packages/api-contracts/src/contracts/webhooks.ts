@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
+import { modelUsageObservationEventsSchema } from "./model-usage-observations";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -1095,51 +1096,12 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-const webhookModelUsageObservationItemSchema = z
-  .object({
-    idempotencyKey: z.uuid(),
-    model: z.string().min(1).max(255),
-    inputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    outputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    cacheReadInputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    cacheCreationInputTokens: z
-      .number()
-      .int()
-      .min(0)
-      .max(Number.MAX_SAFE_INTEGER),
-  })
-  .strict()
-  .refine(
-    (event) => {
-      return (
-        event.inputTokens > 0 ||
-        event.outputTokens > 0 ||
-        event.cacheReadInputTokens > 0 ||
-        event.cacheCreationInputTokens > 0
-      );
-    },
-    { message: "At least one token counter must be positive" },
-  );
-
 const webhookModelUsageObservationBodySchema = z
   .object({
     runId: z.string().min(1, "runId is required"),
-    events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
+    events: modelUsageObservationEventsSchema,
   })
-  .strict()
-  .superRefine((body, ctx) => {
-    const idempotencyKeys = new Set<string>();
-    body.events.forEach((event, index) => {
-      if (idempotencyKeys.has(event.idempotencyKey)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["events", index, "idempotencyKey"],
-          message: "Idempotency keys must be unique within a request",
-        });
-      }
-      idempotencyKeys.add(event.idempotencyKey);
-    });
-  });
+  .strict();
 
 /**
  * Compact model usage observation contract for

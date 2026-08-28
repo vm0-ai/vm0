@@ -11,6 +11,7 @@ import {
 } from "@okouai/connectors/firewall-types";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
+import { modelUsageObservationEventsSchema } from "./model-usage-observations";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
 import { eventSequenceNumberSchema } from "./runs";
 
@@ -1234,6 +1235,29 @@ export const runnersModelProviderFailuresContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Report a built-in model provider failure for a run",
+  },
+});
+
+export const runnersModelUsageObservationsContract = c.router({
+  report: {
+    method: "POST",
+    path: "/api/runners/model-usage-observations",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        events: modelUsageObservationEventsSchema,
+      })
+      .strict(),
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive compact model usage observations from official runner",
   },
 });
 

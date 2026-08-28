@@ -36,14 +36,12 @@ from .anthropic_messages import (
 )
 from .buffer import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
-    MODEL_USAGE_OBSERVATION_FLUSH_INTERVAL_SECONDS,
     buffer_model_usage_observations,
     buffer_source_model_usage_observations,
     buffer_source_usage_events,
     buffer_usage_events,
     configure_usage_buffer,
     drain_usage_events_after_executor_shutdown,
-    flush_billable_usage_events,
     flush_usage_events,
     reset_usage_buffer_for_tests,
 )
@@ -104,7 +102,6 @@ from .providers.model_provider import (
 
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
-    "MODEL_USAGE_OBSERVATION_FLUSH_INTERVAL_SECONDS",
     "OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR",
     "BufferedReportLease",
     "ModelJsonResponseInspection",
@@ -137,7 +134,6 @@ __all__ = [
     "extract_openai_chat_completions_usage_with_error_from_json",
     "extract_openai_responses_usage_from_event",
     "extract_openai_responses_usage_with_error_from_json",
-    "flush_billable_usage_events",
     "flush_usage_events",
     "has_connector_response_parser",
     "has_positive_model_provider_usage",

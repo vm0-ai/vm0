@@ -787,7 +787,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
                 [event(source_key="usage-source-2")],
                 path,
             )
-            assert len(timers) == 4
+            assert len(timers) == 3
         return True
 
     enqueue.side_effect = enqueue_and_buffer_later_usage
@@ -1042,30 +1042,6 @@ def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
     assert enqueue.last_call.payload["events"][0]["quantity"] == 10
 
 
-def test_model_observation_timer_uses_longer_aggregation_window(tmp_path):
-    enqueue = RecordingEnqueue()
-    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
-
-    usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
-        "token-a",
-        "run-1",
-        [observation(source_key="source-1", input_tokens=10)],
-        str(tmp_path / "proxy.jsonl"),
-    )
-
-    assert len(timers) == 1
-    assert timers[0].started is True
-    assert 240 <= timers[0].delay <= 360
-    enqueue.assert_not_called()
-
-    timers[0].callback()
-
-    enqueue.assert_called_once()
-    assert timers[0].cancelled is True
-    assert enqueue.last_call.log_type == "model_usage_observation"
-
-
 def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
     pending_path = tmp_path / "usage-pending"
 
@@ -1104,49 +1080,14 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
     )
 
 
-def test_model_observation_threshold_allows_more_webhook_batches(tmp_path):
-    enqueue = RecordingEnqueue()
-    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
-
-    for index in range(usage_buffer.MAX_BUFFERED_MODEL_USAGE_OBSERVATION_WEBHOOK_BATCHES - 1):
-        usage.buffer_model_usage_observations(
-            "https://api.test/api/webhooks/agent/model-usage-observation",
-            "token-a",
-            f"run-{index}",
-            [observation(source_key=f"source-{index}", input_tokens=1)],
-            str(tmp_path / "proxy.jsonl"),
-        )
-
-    assert len(timers) == 1
-    assert timers[0].started is True
-    enqueue.assert_not_called()
-
-    final_index = usage_buffer.MAX_BUFFERED_MODEL_USAGE_OBSERVATION_WEBHOOK_BATCHES - 1
-    usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
-        "token-a",
-        f"run-{final_index}",
-        [observation(source_key=f"source-{final_index}", input_tokens=1)],
-        str(tmp_path / "proxy.jsonl"),
-    )
-
-    assert timers[0].cancelled is True
-    assert enqueue.call_count == (usage_buffer.MAX_BUFFERED_MODEL_USAGE_OBSERVATION_WEBHOOK_BATCHES)
-    assert {call.log_type for call in enqueue.calls} == {"model_usage_observation"}
-
-
-@pytest.mark.parametrize(
-    "log_type",
-    ["usage_event", "model_usage_observation"],
-)
-def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path, log_type: str):
+def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
     callbacks: list[Callable[[usage.webhook.WebhookDeliveryOutcome], None]] = []
     enqueued_keys: list[str] = []
     pending_path = tmp_path / "usage-pending"
 
-    def enqueue_webhook(url, sandbox_token, payload, path, delivery_log_type, delivery_callback):
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type, delivery_callback):
         del url, sandbox_token, path
-        assert delivery_log_type == log_type
+        assert log_type == "usage_event"
         enqueued_keys.append(payload["events"][0]["idempotencyKey"])
         if len(enqueued_keys) == 1:
             callbacks.append(delivery_callback)
@@ -1156,22 +1097,13 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path, log_ty
 
     timers = install_recording_usage_timer(enqueue_webhook=enqueue_webhook)
     usage.set_pending_path(str(pending_path))
-    if log_type == "usage_event":
-        usage.buffer_usage_events(
-            "https://api.test/api/webhooks/agent/usage-event",
-            "token-a",
-            "run-1",
-            [event(source_key="source-1", quantity=10)],
-            str(tmp_path / "proxy.jsonl"),
-        )
-    else:
-        usage.buffer_model_usage_observations(
-            "https://api.test/api/webhooks/agent/model-usage-observation",
-            "token-a",
-            "run-1",
-            [observation(source_key="source-1", input_tokens=10)],
-            str(tmp_path / "proxy.jsonl"),
-        )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
 
     timers[0].callback()
 

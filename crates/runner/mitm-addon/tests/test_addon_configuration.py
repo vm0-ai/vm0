@@ -20,7 +20,6 @@ import runner_flush_lifecycle
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
-from tests.usage_buffer_helpers import observation
 from tests.usage_helpers import install_recording_usage_timer
 
 
@@ -308,7 +307,7 @@ class TestAddonConfiguration:
         assert normalized_headers["x-client-session-id"] == "runner-session-configured"
         assert normalized_headers["x-client-version"] == "runner-version-configured"
 
-    def test_configure_updates_only_billing_usage_flush_interval(self, tmp_path):
+    def test_configure_updates_usage_flush_interval(self, tmp_path):
         timers = install_recording_usage_timer()
         flush_interval_seconds = 15.0
         jitter_seconds = flush_interval_seconds * usage_buffer.DEFAULT_FLUSH_JITTER_RATIO
@@ -328,17 +327,8 @@ class TestAddonConfiguration:
             [_usage_event("source-1")],
             str(tmp_path / "proxy.jsonl"),
         )
-        usage.buffer_model_usage_observations(
-            "https://api.test/api/webhooks/agent/model-usage-observation",
-            "token-a",
-            "run-1",
-            [observation(source_key="observation-source-1", input_tokens=1)],
-            str(tmp_path / "proxy.jsonl"),
-        )
 
-        assert len(timers) == 2
+        assert len(timers) == 1
         assert timers[0].started is True
         assert max(0.001, flush_interval_seconds - jitter_seconds) <= timers[0].delay
         assert timers[0].delay <= flush_interval_seconds + jitter_seconds
-        assert timers[1].started is True
-        assert 240 <= timers[1].delay <= 360
