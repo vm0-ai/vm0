@@ -121,7 +121,6 @@ function buildGoalAppendSystemPrompt(goal: {
     "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state; only then run `okou goal complete`.",
     "- If the same blocker stops you for 3 consecutive turns, run `okou goal block` and explain why.",
     "- Inspect goal state anytime with `okou goal get`.",
-    "- Do not create, edit, pause, resume, or clear goals from an autonomous goal continuation run.",
     "- Do not stop to ask the user and wait; act on the best available information.",
   );
   return lines.join("\n");
