@@ -57,7 +57,6 @@ impl GuestRuntime {
         let guest_runtime_dir =
             guest_contracts::runtime_paths::guest_runtime_dir_env_from_process_env()
                 .map_err(|error| format!("failed to resolve guest runtime paths: {error}"))?;
-        let guest_runtime_dir_source = guest_runtime_dir.source();
         let (process_control_endpoint, process_control_source) =
             process_control_endpoint_from_process_env()?;
         let workload_containment =
@@ -67,14 +66,6 @@ impl GuestRuntime {
         let paths = paths_from_raw(&raw)?;
         guest_common::log::set_system_log_file(paths.system_log_file());
         guest_common::telemetry::set_sandbox_ops_log_file(paths.sandbox_ops_file());
-        if let Some(source) = guest_runtime_dir_source {
-            guest_common::log_info!(
-                LOG_TAG,
-                "guest_runtime_dir_env_source key={} source={}",
-                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-                source.label()
-            );
-        }
         if let Some(source) = process_control_source {
             guest_common::log_info!(
                 LOG_TAG,

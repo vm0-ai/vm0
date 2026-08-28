@@ -50,7 +50,6 @@ impl BinaryLoggingFixture {
         let mut command = guest_download_command();
         command
             .env(guest_contracts::env::RUN_ID_ENV, &self.run_id)
-            .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .env(
                 guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &self.logs.runtime_dir,
@@ -102,9 +101,7 @@ impl BinaryLoggingFixture {
 
 pub(super) fn guest_download_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-download"));
-    command
-        .env_remove(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
-        .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
+    command.env_remove(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV);
     command
 }
 

@@ -6,7 +6,8 @@
 //! bootstrap controls directly.
 //!
 //! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
-//! in sibling modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`].
+//! in sibling modules such as
+//! [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
 //! User env filtering should treat current and future `OKOU_` keys plus current,
 //! future, and retired `VM0_` keys as protected. Bootstrap keys outside those
 //! namespaces are listed explicitly below.
