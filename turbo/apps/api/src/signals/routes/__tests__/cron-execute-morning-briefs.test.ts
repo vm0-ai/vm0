@@ -967,7 +967,6 @@ describe("cron execute morning briefs", () => {
 
   it("delivers an Okou brief from persisted schedule context when no connectors are connected", async () => {
     mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("VM0_API_BACKEND_URL", undefined);
     context.mocks.resend.send.mockResolvedValue({
       data: { id: "resend-threads-only-brief" },
       error: null,

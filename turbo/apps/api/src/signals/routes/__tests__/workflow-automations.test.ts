@@ -394,7 +394,7 @@ function configureGoogleCalendarWatchMock(args?: {
     channelIds: [],
   };
   const calendarId = args?.calendarId ?? "primary";
-  mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",

@@ -471,7 +471,7 @@ async function orgCredits(fixture: VideoFixture): Promise<number> {
 
 describe("POST /api/video-io/generate", () => {
   beforeEach(() => {
-    mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
+    mockEnv("OKOU_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     server.use(
       http.get(CLOUDFLARE_MEDIA_FRAME_URL, () => {

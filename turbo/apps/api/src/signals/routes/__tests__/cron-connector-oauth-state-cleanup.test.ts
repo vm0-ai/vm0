@@ -72,7 +72,7 @@ function registerFixtureCleanup(marker: string): void {
 
 describe("connector OAuth state cleanup cron", () => {
   beforeEach(() => {
-    mockEnv("VM0_API_BACKEND_URL", API_ORIGIN);
+    mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");

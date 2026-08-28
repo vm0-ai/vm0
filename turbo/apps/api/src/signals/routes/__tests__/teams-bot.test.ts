@@ -918,7 +918,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
-    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     context.mocks.axiom.query.mockResolvedValue([]);
     teamsOutboundHandlers(SERVICE_URL);

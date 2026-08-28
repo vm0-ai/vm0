@@ -103,7 +103,6 @@ beforeEach(() => {
   mockEnv("RESEND_WEBHOOK_SECRET", INBOUND_SECRET);
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
   mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-  mockEnv("VM0_API_BACKEND_URL", undefined);
   // Resend pacing is not part of these transactional delivery assertions.
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
 });
