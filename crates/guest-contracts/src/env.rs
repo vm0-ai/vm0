@@ -162,7 +162,8 @@ pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
 /// this exact name.
 pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 
-/// Path to the private user environment JSON file written by the runner.
+/// Legacy private user-environment file pointer retained by guest readers as a
+/// rollback fallback.
 ///
 /// The guest-agent validates that the path points at its per-run private
 /// runtime directory, parses it as a `HashMap<String, String>`, and removes the
@@ -170,11 +171,11 @@ pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 /// payload.
 pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 
-/// Canonical user-environment file pointer accepted by guest readers.
+/// Canonical user-environment file pointer written by the runner.
 ///
-/// Runners keep writing [`USER_ENV_FILE_ENV`] until the deployed reader floor,
-/// sandbox drain, rollback window, and legacy-read-zero gates in #28914 are
-/// complete.
+/// Guest readers retain [`USER_ENV_FILE_ENV`] until the canonical writer
+/// deployment, supported rollback window, and legacy-read-zero gates in #28914
+/// are complete.
 pub const CANONICAL_USER_ENV_FILE_ENV: &str = "OKOU_USER_ENV_FILE";
 
 /// Private runtime subdirectory used by [`USER_ENV_FILE_ENV`].
@@ -196,17 +197,18 @@ pub const CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME: &str = "connector-account-
 /// Private runtime filename used by [`CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV`].
 pub const CONNECTOR_ACCOUNT_CONTEXT_FILENAME: &str = "context.json";
 
-/// Path to the private runner-owned run payload JSON file.
+/// Legacy private runner-owned run-payload file pointer retained by guest
+/// readers as a rollback fallback.
 ///
 /// Large prompt-like and configuration payloads use this file instead of
 /// bootstrap environment values so guest-agent startup does not hit Linux
-/// argv/env limits. Production guest-agent startup requires this key.
+/// argv/env limits. Production guest-agent startup requires one pointer alias.
 pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
 
-/// Canonical run-payload file pointer accepted by guest readers.
+/// Canonical run-payload file pointer written by the runner.
 ///
-/// Runners keep writing [`RUN_PAYLOAD_FILE_ENV`] until the deployed reader
-/// floor, sandbox drain, rollback window, and legacy-read-zero gates in #28914
+/// Guest readers retain [`RUN_PAYLOAD_FILE_ENV`] until the canonical writer
+/// deployment, supported rollback window, and legacy-read-zero gates in #28914
 /// are complete.
 pub const CANONICAL_RUN_PAYLOAD_FILE_ENV: &str = "OKOU_RUN_PAYLOAD_FILE";
 

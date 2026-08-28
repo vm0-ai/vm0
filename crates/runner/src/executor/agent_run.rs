@@ -2112,11 +2112,19 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
     let user_env_file = required_files.user_env_file;
     let run_payload_file = required_files.run_payload_file;
+    debug_assert!(
+        !env_map.contains_key(USER_ENV_FILE_ENV_KEY)
+            && !env_map.contains_key(guest_contracts::env::RUN_PAYLOAD_FILE_ENV),
+        "legacy private payload pointers must be absent before canonical insertion"
+    );
     if let Some(path) = user_env_file {
-        env_map.insert(USER_ENV_FILE_ENV_KEY.into(), path);
+        env_map.insert(
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV.into(),
+            path,
+        );
     }
     env_map.insert(
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV.into(),
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV.into(),
         run_payload_file,
     );
     let env_diagnostics = build_agent_env_diagnostics(&env_map, &user_env_map);
