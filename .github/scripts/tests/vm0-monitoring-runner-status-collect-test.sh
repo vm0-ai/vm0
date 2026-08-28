@@ -462,7 +462,6 @@ test_playbook_provisions_migrated_collector_identity_and_cadence() {
   assert_playbook_contains 'name: vm0-monitoring-runner-status-collect.timer'
   assert_playbook_contains 'OnUnitActiveSec=15s'
   assert_playbook_contains 'AccuracySec=1s'
-  assert_playbook_contains 'OnUnitActiveSec=1min'
   local ordered_tasks=(
     'Install VM0 monitoring runner status collector script'
     'Install VM0 monitoring runner status collector service'

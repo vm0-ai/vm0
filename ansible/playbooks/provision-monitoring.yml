@@ -85,10 +85,10 @@
         mode: "0755"
       become: true
 
-    - name: Install VM0 monitoring collector script
+    - name: Install VM0 monitoring workspace image cache collector script
       copy:
-        src: ../files/vm0-monitoring-collect.sh
-        dest: /usr/local/bin/vm0-monitoring-collect
+        src: ../files/vm0-monitoring-workspace-image-cache-collect.sh
+        dest: /usr/local/bin/vm0-monitoring-workspace-image-cache-collect
         owner: root
         group: root
         mode: "0755"
@@ -103,16 +103,16 @@
         mode: "0755"
       become: true
 
-    - name: Install VM0 monitoring collector service
+    - name: Install VM0 monitoring workspace image cache collector service
       copy:
         content: |
           [Unit]
-          Description=Collect VM0 host monitoring metrics
+          Description=Collect VM0 workspace image cache metrics
 
           [Service]
           Type=oneshot
-          ExecStart=/usr/local/bin/vm0-monitoring-collect
-        dest: /etc/systemd/system/vm0-monitoring-collect.service
+          ExecStart=/usr/local/bin/vm0-monitoring-workspace-image-cache-collect
+        dest: /etc/systemd/system/vm0-monitoring-workspace-image-cache-collect.service
         owner: root
         group: root
         mode: "0644"
@@ -133,11 +133,11 @@
         mode: "0644"
       become: true
 
-    - name: Install VM0 monitoring collector timer
+    - name: Install VM0 monitoring workspace image cache collector timer
       copy:
         content: |
           [Unit]
-          Description=Collect VM0 host monitoring metrics every minute
+          Description=Collect VM0 workspace image cache metrics every minute
 
           [Timer]
           OnBootSec=1min
@@ -147,7 +147,7 @@
 
           [Install]
           WantedBy=timers.target
-        dest: /etc/systemd/system/vm0-monitoring-collect.timer
+        dest: /etc/systemd/system/vm0-monitoring-workspace-image-cache-collect.timer
         owner: root
         group: root
         mode: "0644"
@@ -174,13 +174,27 @@
       become: true
 
     # Temporary bare-metal monitoring rollout cleanup for hosts provisioned
-    # before #30137. Remove through #30144 after every managed host uses the
-    # new timer and live checks confirm the retired artifacts are absent.
+    # before #30137. Remove through #30144 after every managed host uses both
+    # new timers and live checks confirm the retired artifacts are absent.
+    - name: Check for legacy VM0 workspace image cache collector timer
+      stat:
+        path: /etc/systemd/system/vm0-monitoring-collect.timer
+      register: legacy_workspace_image_cache_collector_timer
+      become: true
+
     - name: Check for legacy VM0 runner status collector timer
       stat:
         path: /etc/systemd/system/vm0-runner-status-collect.timer
       register: legacy_runner_status_collector_timer
       become: true
+
+    - name: Disable legacy VM0 workspace image cache collector timer
+      systemd:
+        name: vm0-monitoring-collect.timer
+        state: stopped
+        enabled: false
+      become: true
+      when: legacy_workspace_image_cache_collector_timer.stat.exists
 
     - name: Disable legacy VM0 runner status collector timer
       systemd:
@@ -190,12 +204,29 @@
       become: true
       when: legacy_runner_status_collector_timer.stat.exists
 
+    - name: Stop legacy VM0 workspace image cache collector service
+      systemd:
+        name: vm0-monitoring-collect.service
+        state: stopped
+      become: true
+      when: legacy_workspace_image_cache_collector_timer.stat.exists
+
     - name: Stop legacy VM0 runner status collector service
       systemd:
         name: vm0-runner-status-collect.service
         state: stopped
       become: true
       when: legacy_runner_status_collector_timer.stat.exists
+
+    - name: Remove legacy VM0 workspace image cache collector artifacts
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/vm0-monitoring-collect.timer
+        - /etc/systemd/system/vm0-monitoring-collect.service
+        - /usr/local/bin/vm0-monitoring-collect
+      become: true
 
     - name: Remove legacy VM0 runner status collector artifacts
       file:
@@ -207,9 +238,9 @@
         - /usr/local/bin/vm0-runner-status-collect
       become: true
 
-    - name: Generate initial VM0 host monitoring metrics
+    - name: Generate initial VM0 workspace image cache metrics
       systemd:
-        name: vm0-monitoring-collect.service
+        name: vm0-monitoring-workspace-image-cache-collect.service
         state: started
         daemon_reload: true
       become: true
@@ -223,9 +254,9 @@
       become: true
       changed_when: false
 
-    - name: Enable VM0 monitoring collector timer
+    - name: Enable VM0 monitoring workspace image cache collector timer
       systemd:
-        name: vm0-monitoring-collect.timer
+        name: vm0-monitoring-workspace-image-cache-collect.timer
         state: started
         enabled: true
         daemon_reload: true
