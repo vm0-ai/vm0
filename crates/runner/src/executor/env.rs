@@ -585,7 +585,10 @@ fn build_env_json_with_host_env_inner(
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
 
-    env.insert(guest_contracts::env::API_URL_ENV.into(), api_url.into());
+    env.insert(
+        guest_contracts::env::CANONICAL_API_URL_ENV.into(),
+        api_url.into(),
+    );
     env.insert(
         guest_contracts::env::RUN_ID_ENV.into(),
         context.run_id.to_string(),
