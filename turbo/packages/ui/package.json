@@ -19,7 +19,7 @@
   "devDependencies": {
     "@okouai/eslint-config": "workspace:*",
     "@okouai/typescript-config": "workspace:*",
-    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.7.0",
     "@testing-library/react": "^16.1.0",
