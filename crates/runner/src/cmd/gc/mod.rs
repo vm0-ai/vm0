@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use clap::Args;
@@ -6,6 +7,7 @@ use crate::error::RunnerResult;
 use crate::paths::HomePaths;
 
 mod debootstrap;
+mod deployments;
 mod filesystem;
 mod image_refs;
 mod images;
@@ -15,14 +17,13 @@ mod nbd;
 mod orphaned_locks;
 mod report;
 mod storage;
-mod version_service_locks;
-mod versions;
 mod workspaces;
 
 #[cfg(test)]
 mod test_support;
 
 use debootstrap::gc_debootstrap;
+use deployments::gc_deployments;
 use image_refs::protected_image_refs_for_gc;
 use images::gc_nested_images_with_protected_refs;
 use job_logs::gc_job_logs;
@@ -30,8 +31,6 @@ use nbd::gc_nbd_orphans;
 use orphaned_locks::gc_orphaned_locks;
 use report::{GcReport, log_gc_phase_summary, log_gc_summary};
 use storage::gc_storage_cache;
-use version_service_locks::gc_orphaned_version_service_locks;
-use versions::{analyze_version_gc, gc_versions_with_analysis};
 use workspaces::gc_workspace_orphans;
 
 /// Artifacts younger than this are unconditionally kept, regardless of lock
@@ -44,29 +43,67 @@ pub struct GcArgs {
     /// Show what would be deleted without actually deleting
     #[arg(long)]
     dry_run: bool,
-    /// Keep the N newest eligible items in each independent retention policy: managed runner
-    /// versions (by semantic version), image snapshots (by modification time), and stable
+    /// Keep the N newest eligible items in each independent retention policy: explicitly
+    /// nominated runner deployments (by modification time), image snapshots (by modification time), and stable
     /// debootstrap tarballs (by modification time). Recent, active, locked, referenced, incomplete,
     /// and temporary artifacts follow their own safety rules; temporary debootstrap tarballs do not
     /// consume a stable retention slot.
     /// Omit this option or set it to 0 to disable top-N retention.
     #[arg(long)]
     keep_latest: Option<usize>,
-    /// Version name to protect from GC (e.g. "v0.78.3").
-    /// Used during deployment to prevent deleting the version being deployed.
+    /// Systemd service suffix whose effective ExecStart identifies one managed deployment.
     #[arg(long)]
+    deployment_service_suffix: Vec<String>,
+    /// Binary directory name to retain under the managed binary root.
+    #[arg(long)]
+    keep_bin_dirname: Vec<String>,
+    /// Runner configuration directory name to retain under the managed runner root.
+    #[arg(long)]
+    keep_runner_dirname: Vec<String>,
+    /// Deprecated compatibility alias that retains the same dirname in both managed roots.
+    #[arg(long, hide = true)]
     protect_version: Option<String>,
 }
 
 pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let home = HomePaths::new()?;
-    // Retained version and service configs protect their image pairs before
-    // version cleanup consumes the same retention analysis.
-    let version_analysis =
-        analyze_version_gc(&home, args.protect_version.as_deref(), args.keep_latest).await?;
-    let protected_image_refs = protected_image_refs_for_gc(&home, &version_analysis).await;
+    let mut keep_bin_dirnames = args.keep_bin_dirname.into_iter().collect::<BTreeSet<_>>();
+    let mut keep_runner_dirnames = args
+        .keep_runner_dirname
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    if let Some(legacy_dirname) = &args.protect_version {
+        keep_bin_dirnames.insert(legacy_dirname.clone());
+        keep_runner_dirnames.insert(legacy_dirname.clone());
+    }
+    let legacy_inventory_missing =
+        args.protect_version.is_some() && args.deployment_service_suffix.is_empty();
+
+    // Deployment cleanup holds the complete explicit service-lock set while it
+    // resolves exact ownership and mutates directories. Image protection then
+    // consumes only the final retained config paths, after those locks release.
+    let deployment_outcome = gc_deployments(
+        &home,
+        &args.deployment_service_suffix,
+        &keep_bin_dirnames,
+        &keep_runner_dirnames,
+        args.keep_latest,
+        legacy_inventory_missing,
+        args.dry_run,
+    )
+    .await?;
+    let (deployment_report, retained_config_paths, deployment_inventory_complete) =
+        deployment_outcome.into_parts();
+    let protected_image_refs =
+        protected_image_refs_for_gc(&retained_config_paths, deployment_inventory_complete).await;
 
     let mut report = GcReport::default();
+    record_gc_phase(
+        &mut report,
+        "runner deployments",
+        deployment_report,
+        args.dry_run,
+    );
     let images_report = gc_nested_images_with_protected_refs(
         &home,
         args.keep_latest,
@@ -87,24 +124,14 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
         args.dry_run,
     );
 
-    // General lock GC preserves service locks needed by version cleanup.
+    // General lock GC preserves the service-lock namespace for lifecycle and
+    // rolling-version compatibility; deployment GC removes only exact locks
+    // whose explicitly nominated units were successfully removed.
     let lock_report = gc_orphaned_locks(&home, args.dry_run).await?;
     record_gc_phase(&mut report, "orphaned locks", lock_report, args.dry_run);
 
     let job_log_report = gc_job_logs(&home, args.dry_run).await?;
     record_gc_phase(&mut report, "job logs", job_log_report, args.dry_run);
-
-    let version_report = gc_versions_with_analysis(&home, args.dry_run, version_analysis).await?;
-    record_gc_phase(&mut report, "versions", version_report, args.dry_run);
-
-    // Version service locks become orphaned only after version cleanup.
-    let version_lock_report = gc_orphaned_version_service_locks(&home, args.dry_run).await?;
-    record_gc_phase(
-        &mut report,
-        "version service locks",
-        version_lock_report,
-        args.dry_run,
-    );
 
     let debootstrap_report = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
     record_gc_phase(
@@ -151,6 +178,35 @@ mod tests {
     }
 
     #[test]
+    fn gc_explicit_deployment_flags_are_repeatable_and_independent() {
+        let cli = GcCli::try_parse_from([
+            "gc",
+            "--deployment-service-suffix",
+            "production-blue",
+            "--deployment-service-suffix",
+            "production-green",
+            "--keep-bin-dirname",
+            "binary-blue",
+            "--keep-runner-dirname",
+            "config-green",
+        ])
+        .unwrap();
+
+        assert_eq!(
+            cli.args.deployment_service_suffix,
+            ["production-blue", "production-green"]
+        );
+        assert_eq!(cli.args.keep_bin_dirname, ["binary-blue"]);
+        assert_eq!(cli.args.keep_runner_dirname, ["config-green"]);
+    }
+
+    #[test]
+    fn gc_legacy_protect_version_is_hidden_from_help() {
+        let help = GcCli::command().render_help().to_string();
+        assert!(!help.contains("--protect-version"));
+    }
+
+    #[test]
     fn gc_keep_latest_help_describes_retention_policy() {
         let help = GcCli::command()
             .render_help()
@@ -158,8 +214,7 @@ mod tests {
             .to_ascii_lowercase();
         for phrase in [
             "each independent retention policy",
-            "managed runner versions",
-            "semantic version",
+            "explicitly nominated runner deployments",
             "image snapshots",
             "stable debootstrap tarballs",
             "modification time",

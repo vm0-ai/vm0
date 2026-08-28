@@ -1,12 +1,48 @@
-- name: Run serialized runner garbage collection
+- name: Inspect runner garbage collection capabilities
   ansible.builtin.command:
     argv:
-      - flock
-      - --exclusive
-      - "{{ data_dir }}/locks/deployment-gc.lock"
       - "{{ bin_dir }}/runner"
       - gc
-      - --keep-latest
-      - "6"
-      - --protect-version
-      - "{{ runner_release }}"
+      - --help
+  register: runner_gc_help
+  changed_when: false
+  failed_when: false
+
+- name: Discover explicitly managed runner service units
+  ansible.builtin.find:
+    paths: "{{ runner_systemd_unit_dir | default('/etc/systemd/system') }}"
+    patterns: vm0-runner-*.service
+    file_type: file
+  register: runner_gc_service_units
+  when:
+    - runner_gc_help.rc == 0
+    - "'--deployment-service-suffix' in runner_gc_help.stdout"
+
+- name: Run serialized runner garbage collection
+  ansible.builtin.command:
+    argv: >-
+      {{
+        [
+          'flock',
+          '--exclusive',
+          data_dir ~ '/locks/deployment-gc.lock',
+          bin_dir ~ '/runner',
+          'gc',
+          '--keep-latest',
+          '6',
+          '--keep-bin-dirname',
+          runner_release,
+          '--keep-runner-dirname',
+          runner_release
+        ]
+        + (
+          runner_gc_service_units.files
+          | map(attribute='path')
+          | map('basename')
+          | map('regex_replace', '^vm0-runner-(.*)\.service$', '--deployment-service-suffix=\1')
+          | list
+        )
+      }}
+  when:
+    - runner_gc_help.rc == 0
+    - "'--deployment-service-suffix' in runner_gc_help.stdout"

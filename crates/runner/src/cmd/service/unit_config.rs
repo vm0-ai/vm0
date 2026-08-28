@@ -5,12 +5,37 @@ use crate::error::RunnerResult;
 
 use super::target::RunnerServiceUnit;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RunnerUnitCommandPaths {
+    executable_path: PathBuf,
+    config_path: PathBuf,
+}
+
+impl RunnerUnitCommandPaths {
+    pub(crate) fn executable_path(&self) -> &std::path::Path {
+        &self.executable_path
+    }
+
+    pub(crate) fn config_path(&self) -> &std::path::Path {
+        &self.config_path
+    }
+}
+
+/// Read systemd's selected unit content and extract the exact Runner command paths.
+pub(crate) async fn read_unit_command_paths(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<Option<RunnerUnitCommandPaths>> {
+    let content = super::systemctl::cat_unit_content(unit).await?;
+    Ok(parse_unit_command_paths(&content))
+}
+
 /// Read systemd's selected unit content and extract the runner `--config` path.
 pub(crate) async fn read_unit_config_path(
     unit: &RunnerServiceUnit,
 ) -> RunnerResult<Option<PathBuf>> {
-    let content = super::systemctl::cat_unit_content(unit).await?;
-    Ok(parse_unit_config_path(&content))
+    Ok(read_unit_command_paths(unit)
+        .await?
+        .map(|paths| paths.config_path))
 }
 
 pub(super) async fn read_unit_config_path_bounded(
@@ -28,7 +53,11 @@ pub(super) async fn read_unit_config_path_bounded(
 }
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
-    let mut config_path = None;
+    parse_unit_command_paths(content).map(|paths| paths.config_path)
+}
+
+pub(crate) fn parse_unit_command_paths(content: &str) -> Option<RunnerUnitCommandPaths> {
+    let mut command_paths = None;
     let mut in_service_section = false;
     for line in logical_unit_lines(content) {
         let trimmed = line.trim();
@@ -46,14 +75,14 @@ pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
             continue;
         }
         if rest.trim().is_empty() {
-            config_path = None;
+            command_paths = None;
             continue;
         }
-        if let Some(next_config_path) = parse_exec_start_config(rest) {
-            config_path = Some(next_config_path);
+        if let Some(next_command_paths) = parse_exec_start_command_paths(rest) {
+            command_paths = Some(next_command_paths);
         }
     }
-    config_path
+    command_paths
 }
 
 fn unit_section_name(line: &str) -> Option<&str> {
@@ -99,15 +128,26 @@ fn logical_unit_lines(content: &str) -> Vec<String> {
 ///
 /// Handles both quoted (`--config "/path with spaces/f.yaml"`) and unquoted
 /// (`--config /simple/path.yaml`) forms. Only the argument value is extracted.
+#[cfg(test)]
 pub(crate) fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
+    parse_exec_start_command_paths(line).map(|paths| paths.config_path)
+}
+
+fn parse_exec_start_command_paths(line: &str) -> Option<RunnerUnitCommandPaths> {
     let tokens = tokenize_systemd_exec_start(line)?;
+    let executable_path = tokens
+        .first()
+        .and_then(|value| command_path_from_arg(value))?;
     for (idx, token) in tokens.iter().enumerate() {
         if token == "--config" || token == "-c" {
             if let Some(config_path) = tokens
                 .get(idx + 1)
                 .and_then(|value| config_path_from_arg(value))
             {
-                return Some(config_path);
+                return Some(RunnerUnitCommandPaths {
+                    executable_path: executable_path.clone(),
+                    config_path,
+                });
             }
             continue;
         }
@@ -116,10 +156,20 @@ pub(crate) fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
             .or_else(|| token.strip_prefix("-c="))
             .and_then(config_path_from_arg)
         {
-            return Some(value);
+            return Some(RunnerUnitCommandPaths {
+                executable_path,
+                config_path: value,
+            });
         }
     }
     None
+}
+
+fn command_path_from_arg(value: &str) -> Option<PathBuf> {
+    if value.is_empty() || value.starts_with('-') {
+        return None;
+    }
+    Some(PathBuf::from(value))
 }
 
 fn config_path_from_arg(value: &str) -> Option<PathBuf> {
@@ -363,6 +413,24 @@ ExecStart="/usr/bin/runner" start --config "/etc/runner.yaml"
         assert_eq!(
             parse_unit_config_path(content),
             Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_unit_command_paths_preserves_independent_exact_paths() {
+        let content = r#"
+[Service]
+ExecStart="/var/lib/vm0-runner/bin/binary-blue/runner" start --config "/var/lib/vm0-runner/runners/config-green/runner.yaml"
+"#;
+
+        let paths = parse_unit_command_paths(content).unwrap();
+        assert_eq!(
+            paths.executable_path(),
+            PathBuf::from("/var/lib/vm0-runner/bin/binary-blue/runner")
+        );
+        assert_eq!(
+            paths.config_path(),
+            PathBuf::from("/var/lib/vm0-runner/runners/config-green/runner.yaml")
         );
     }
 

@@ -12,11 +12,12 @@ use super::workspaces::is_base_dir_lock_name;
 /// Most lock files that can be exclusively locked are safe to delete:
 /// `open_lock_file` will recreate them on next use, and the inode recheck in
 /// `lock.rs` prevents stale-fd races. Service locks are intentionally retained
-/// because this GC pass runs before version GC, which relies on those lock paths
-/// to coordinate with concurrent service install/uninstall commands. The
+/// because deployment lifecycle and rolling-version compatibility rely on
+/// those lock paths to coordinate with concurrent service install/uninstall
+/// commands. Deployment GC removes an exact service lock only after its
+/// explicitly nominated unit is removed successfully. The
 /// systemd reload lock is also retained because non-runner lifecycle owners use
-/// the same stable path with plain `flock`. Stale version service locks are
-/// cleaned by a post-version-GC pass.
+/// the same stable path with plain `flock`.
 pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
@@ -33,8 +34,8 @@ pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> Runner
         if !name.ends_with(".lock") {
             continue;
         }
-        // Version GC later in this same command uses service locks to avoid
-        // deleting a version that another process is installing or uninstalling.
+        // Deployment lifecycle uses service locks to prevent concurrent
+        // install, uninstall, and explicitly owned deployment cleanup.
         // Workspace GC owns base-dir lock lifecycle because those locks carry
         // the base_dir metadata needed to rediscover dead-runner workspaces.
         if RunnerServiceUnit::is_reserved_lock_file_name(name)

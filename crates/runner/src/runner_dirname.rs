@@ -1,10 +1,8 @@
 //! Validation for runner instance names.
 //!
-//! The same name is used as both a directory name (joined against
-//! `HomePaths::runners_dir()`) and a systemd service name suffix
-//! (e.g. `vm0-runner-<name>`). Service locks and unit staging files also
-//! derive filenames from the service name, so this module is the single
-//! source of truth for what counts as a valid runner instance name.
+//! Runner directory names and systemd service suffixes are independent
+//! concepts, but both use the same safe path-segment character rules. Service
+//! locks and unit staging files derive filenames only from the service suffix.
 //!
 //! Without validation, an absolute path (`/etc`) replaces the base via
 //! `Path::join`, and a bare `..` segment escapes once the kernel resolves
@@ -70,8 +68,8 @@ pub(crate) fn invalid_name_diagnostic(name: &str) -> String {
 
 /// Validate that `name` is a safe runner instance identifier.
 ///
-/// Used for both runner directory names and systemd service name suffixes
-/// to ensure a single validation rule across the codebase.
+/// Used independently for runner directory names and systemd service suffixes
+/// to keep their shared path-segment validation rule consistent.
 ///
 /// Accepts `[a-z0-9.-]+` with these guards:
 /// - non-empty

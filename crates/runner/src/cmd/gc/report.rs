@@ -5,8 +5,7 @@ use tracing::info;
 pub(super) struct GcReport {
     pub(super) freed_bytes: u64,
     pub(super) activity_count: u64,
-    removed_versions: Vec<String>,
-    pub(super) version_service_locks_removed: u64,
+    removed_deployments: Vec<String>,
 }
 
 impl GcReport {
@@ -18,18 +17,10 @@ impl GcReport {
         }
     }
 
-    pub(super) fn removed_versions(removed_versions: Vec<String>) -> Self {
+    pub(super) fn removed_deployments(removed_deployments: Vec<String>) -> Self {
         Self {
-            activity_count: removed_versions.len() as u64,
-            removed_versions,
-            ..Self::default()
-        }
-    }
-
-    pub(super) fn version_service_locks_removed(version_service_locks_removed: u64) -> Self {
-        Self {
-            activity_count: version_service_locks_removed,
-            version_service_locks_removed,
+            activity_count: removed_deployments.len() as u64,
+            removed_deployments,
             ..Self::default()
         }
     }
@@ -43,8 +34,8 @@ impl std::ops::AddAssign for GcReport {
     fn add_assign(&mut self, mut rhs: Self) {
         self.freed_bytes += rhs.freed_bytes;
         self.activity_count += rhs.activity_count;
-        self.removed_versions.append(&mut rhs.removed_versions);
-        self.version_service_locks_removed += rhs.version_service_locks_removed;
+        self.removed_deployments
+            .append(&mut rhs.removed_deployments);
     }
 }
 
@@ -65,25 +56,12 @@ pub(super) fn log_gc_summary(report: &GcReport, dry_run: bool) {
                 human_bytes(report.freed_bytes)
             );
         }
-        if !report.removed_versions.is_empty() {
-            let list = report.removed_versions.join(", ");
+        if !report.removed_deployments.is_empty() {
+            let list = report.removed_deployments.join(", ");
             if dry_run {
-                info!("versions that would be removed: {list}");
+                info!("deployments that would be removed: {list}");
             } else {
-                info!("versions removed: {list}");
-            }
-        }
-        if report.version_service_locks_removed > 0 {
-            if dry_run {
-                info!(
-                    "version service locks that would be removed: {}",
-                    report.version_service_locks_removed
-                );
-            } else {
-                info!(
-                    "version service locks removed: {}",
-                    report.version_service_locks_removed
-                );
+                info!("deployments removed: {list}");
             }
         }
     }
@@ -142,14 +120,12 @@ mod tests {
     #[test]
     fn gc_report_composition_preserves_all_summary_fields() {
         let mut report = GcReport::cleanup(2, 512);
-        report += GcReport::removed_versions(vec!["v1.0.0".into(), "v2.0.0".into()]);
-        report += GcReport::version_service_locks_removed(3);
+        report += GcReport::removed_deployments(vec!["production-a".into(), "production-b".into()]);
         report += GcReport::cleanup(1, 1024);
 
         assert_eq!(report.freed_bytes, 1536);
-        assert_eq!(report.activity_count, 8);
-        assert_eq!(report.removed_versions, ["v1.0.0", "v2.0.0"]);
-        assert_eq!(report.version_service_locks_removed, 3);
+        assert_eq!(report.activity_count, 5);
+        assert_eq!(report.removed_deployments, ["production-a", "production-b"]);
         assert!(!report.is_empty());
     }
 
@@ -181,23 +157,21 @@ mod tests {
 
     #[test]
     fn gc_summary_reports_typed_details_in_real_and_dry_run_modes() {
-        let mut report = GcReport::removed_versions(vec!["v1.0.0".into(), "v2.0.0".into()]);
-        report += GcReport::version_service_locks_removed(2);
+        let report =
+            GcReport::removed_deployments(vec!["production-a".into(), "production-b".into()]);
 
         assert_eq!(
             capture_gc_summary(&report, false),
             [
-                "total: cleaned=4, freed=0 B",
-                "versions removed: v1.0.0, v2.0.0",
-                "version service locks removed: 2",
+                "total: cleaned=2, freed=0 B",
+                "deployments removed: production-a, production-b",
             ]
         );
         assert_eq!(
             capture_gc_summary(&report, true),
             [
-                "total: would_clean=4, would_free=0 B",
-                "versions that would be removed: v1.0.0, v2.0.0",
-                "version service locks that would be removed: 2",
+                "total: would_clean=2, would_free=0 B",
+                "deployments that would be removed: production-a, production-b",
             ]
         );
     }

@@ -2,10 +2,10 @@
 #
 # This playbook switches a host from its currently-active runner version to a
 # target version. The target version's per-version bin dir and config are
-# typically already on disk — preserved by `runner gc --keep-latest 6` that
-# runs at the tail of every promote (the `--protect-version` flag pins the
-# version being promoted; older versions stay until they're pushed out of
-# the 6-slot window):
+# typically already on disk — preserved by the explicit deployment inventory
+# and keep-dirname arguments passed to `runner gc --keep-latest 6` at the tail
+# of every promote. Older inactive deployments stay until they're pushed out
+# of the 6-slot window:
 #
 #   /var/lib/vm0-runner/bin/v{runner_version}/runner
 #   /var/lib/vm0-runner/runners/v{runner_version}/runner.yaml
@@ -505,7 +505,7 @@
     # Phase 8: Garbage collect + final health check
     # ========================================
     #
-    # gc respects `--protect-version` so the rollback target is never swept.
+    # GC receives separate keep-dirname arguments so the rollback target is never swept.
     - name: Garbage collect old artifacts
       include_tasks: ../tasks/garbage-collect-runner.yml
 

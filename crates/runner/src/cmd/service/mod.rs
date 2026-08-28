@@ -27,7 +27,7 @@ mod unit_file;
 
 pub(crate) use systemctl::{is_unit_active, is_unit_enabled};
 pub(crate) use target::RunnerServiceUnit;
-pub(crate) use unit_config::read_unit_config_path;
+pub(crate) use unit_config::{read_unit_command_paths, read_unit_config_path};
 
 use drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use drain_override_cleanup::{DrainOverrideReloadPolicy, reconcile_drain_restart_override_removal};
@@ -43,6 +43,12 @@ use unit_file::{
     remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
     validate_systemd_path, write_unit_file,
 };
+
+pub(crate) async fn cleanup_unit_is_active(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+    systemctl::cleanup_unit_active_state_bounded(unit, TokioDuration::from_secs(10))
+        .await
+        .map(|state| state.is_active_like())
+}
 
 const SERVICE_CONFIG_SNAPSHOT_DIR: &str = "service-config-snapshots";
 

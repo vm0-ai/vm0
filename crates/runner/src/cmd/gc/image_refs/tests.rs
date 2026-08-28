@@ -3,13 +3,9 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use super::*;
-use crate::cmd::gc::GC_MIN_AGE;
 use crate::cmd::gc::images::gc_nested_images_with_protected_refs;
 use crate::cmd::gc::test_support::{old_gc_time, set_mtime, test_home};
-use crate::cmd::gc::versions::{
-    analyze_version_gc, analyze_version_gc_with_injected_config_scan_error,
-    analyze_version_gc_with_injected_scan_error,
-};
+use crate::paths::HomePaths;
 use crate::test_fixtures::ignored_child::{
     ignored_child_test_env_guard_enabled, run_ignored_child_test,
 };
@@ -93,23 +89,6 @@ printf '%s\n' "unexpected fake systemctl invocation: $*" >&2
 exit 2
 "#;
 
-fn age_version_past_gc_min_age(home: &HomePaths, name: &str) {
-    let old_time = SystemTime::now() - Duration::from_secs(GC_MIN_AGE.as_secs() + 60);
-    for path in [
-        home.bin_dir().join(name),
-        home.bin_dir().join(name).join("runner"),
-        home.runners_dir().join(name),
-        home.runners_dir().join(name).join("runner.yaml"),
-    ] {
-        if path.exists() {
-            std::fs::File::open(path)
-                .unwrap()
-                .set_times(std::fs::FileTimes::new().set_modified(old_time))
-                .unwrap();
-        }
-    }
-}
-
 fn test_hash(ch: char) -> String {
     std::iter::repeat_n(ch, 64).collect()
 }
@@ -151,18 +130,6 @@ server:
     config_path
 }
 
-fn create_test_version_with_config(
-    home: &HomePaths,
-    version: &str,
-    rootfs_hash: &str,
-    snapshot_hash: &str,
-) -> PathBuf {
-    std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
-    let config_path = write_test_runner_config(home, version, rootfs_hash, snapshot_hash);
-    age_version_past_gc_min_age(home, version);
-    config_path
-}
-
 fn create_old_test_snapshot(home: &HomePaths, rootfs_hash: &str, snapshot_hash: &str) -> PathBuf {
     let rootfs_dir = home.images_dir().join(rootfs_hash);
     let snapshot_dir = rootfs_dir.join("snapshots").join(snapshot_hash);
@@ -179,16 +146,9 @@ fn create_old_test_snapshot(home: &HomePaths, rootfs_hash: &str, snapshot_hash: 
     snapshot_dir
 }
 
-async fn protected_refs_from_versions(
-    home: &HomePaths,
-    protect: Option<&str>,
-    keep_latest: Option<usize>,
-) -> ProtectedImageRefs {
-    let analysis = analyze_version_gc(home, protect, keep_latest)
-        .await
-        .unwrap();
+async fn protected_refs_from_configs(config_paths: &[PathBuf]) -> ProtectedImageRefs {
     let mut refs = ProtectedImageRefs::new();
-    collect_retained_version_image_refs(home, &analysis, &mut refs).await;
+    collect_retained_deployment_image_refs(config_paths, &mut refs).await;
     refs
 }
 
@@ -205,14 +165,14 @@ fn protected_refs_from_pairs(pairs: &[(&str, &str)]) -> ProtectedImageRefs {
 }
 
 #[tokio::test]
-async fn protected_version_config_ref_keeps_image_snapshot() {
+async fn retained_deployment_config_ref_keeps_image_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let rootfs_hash = test_hash('a');
     let snapshot_hash = test_hash('b');
     let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
-    create_test_version_with_config(&home, "v1.0.0", &rootfs_hash, &snapshot_hash);
-    let refs = protected_refs_from_versions(&home, Some("v1.0.0"), None).await;
+    let config_path = write_test_runner_config(&home, "release-blue", &rootfs_hash, &snapshot_hash);
+    let refs = protected_refs_from_configs(&[config_path]).await;
 
     let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
         .await
@@ -221,35 +181,13 @@ async fn protected_version_config_ref_keeps_image_snapshot() {
     assert_eq!(freed.freed_bytes, 0);
     assert!(
         snapshot_dir.exists(),
-        "protect-version config refs must keep the referenced snapshot"
+        "retained deployment config refs must keep the referenced snapshot"
     );
     assert!(home.images_dir().join(&rootfs_hash).exists());
 }
 
 #[tokio::test]
-async fn protected_config_only_version_ref_keeps_image_snapshot() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = test_home(dir.path());
-    let version = "v1.0.0";
-    let rootfs_hash = test_hash('a');
-    let snapshot_hash = test_hash('b');
-    let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
-    write_test_runner_config(&home, version, &rootfs_hash, &snapshot_hash);
-    let refs = protected_refs_from_versions(&home, Some(version), None).await;
-
-    let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
-        .await
-        .unwrap();
-
-    assert_eq!(freed.freed_bytes, 0);
-    assert!(
-        snapshot_dir.exists(),
-        "retained config-only version must protect its referenced snapshot"
-    );
-}
-
-#[tokio::test]
-async fn keep_latest_version_config_ref_keeps_image_snapshot() {
+async fn only_exact_retained_config_paths_protect_images() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let old_rootfs = test_hash('a');
@@ -258,9 +196,10 @@ async fn keep_latest_version_config_ref_keeps_image_snapshot() {
     let new_snapshot = test_hash('d');
     let old_snapshot_dir = create_old_test_snapshot(&home, &old_rootfs, &old_snapshot);
     let new_snapshot_dir = create_old_test_snapshot(&home, &new_rootfs, &new_snapshot);
-    create_test_version_with_config(&home, "v1.0.0", &old_rootfs, &old_snapshot);
-    create_test_version_with_config(&home, "v2.0.0", &new_rootfs, &new_snapshot);
-    let refs = protected_refs_from_versions(&home, None, Some(1)).await;
+    write_test_runner_config(&home, "release-old", &old_rootfs, &old_snapshot);
+    let retained_config =
+        write_test_runner_config(&home, "release-new", &new_rootfs, &new_snapshot);
+    let refs = protected_refs_from_configs(&[retained_config]).await;
 
     let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
         .await
@@ -269,11 +208,11 @@ async fn keep_latest_version_config_ref_keeps_image_snapshot() {
     assert!(freed.freed_bytes > 0);
     assert!(
         new_snapshot_dir.exists(),
-        "newest retained version should protect its config snapshot"
+        "the explicitly retained config should protect its snapshot"
     );
     assert!(
         !old_snapshot_dir.exists(),
-        "removable version config should not protect its snapshot"
+        "a config absent from the retained exact-path set should not protect its snapshot"
     );
 }
 
@@ -344,14 +283,14 @@ async fn protected_image_ref_keeps_only_exact_snapshot_pair() {
 }
 
 #[tokio::test]
-async fn removable_version_config_does_not_protect_image_snapshot() {
+async fn unretained_deployment_config_does_not_protect_image_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let rootfs_hash = test_hash('a');
     let snapshot_hash = test_hash('b');
     let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
-    create_test_version_with_config(&home, "v1.0.0", &rootfs_hash, &snapshot_hash);
-    let refs = protected_refs_from_versions(&home, None, None).await;
+    write_test_runner_config(&home, "release-old", &rootfs_hash, &snapshot_hash);
+    let refs = protected_refs_from_configs(&[]).await;
 
     let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
         .await
@@ -360,26 +299,22 @@ async fn removable_version_config_does_not_protect_image_snapshot() {
     assert!(freed.freed_bytes > 0);
     assert!(
         !snapshot_dir.exists(),
-        "old removable version config should not pin image artifacts"
+        "unretained deployment config should not pin image artifacts"
     );
 }
 
 #[tokio::test]
-async fn malformed_retained_version_config_is_ignored_for_image_refs() {
+async fn malformed_retained_deployment_config_is_ignored_for_image_refs() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
-    let version = "v1.0.0";
-    std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
-    let config_dir = home.runners_dir().join(version);
+    let config_dir = home.runners_dir().join("release-blue");
     std::fs::create_dir_all(&config_dir).unwrap();
     std::fs::write(
         config_dir.join("runner.yaml"),
         "server:\n  token: should-not-appear-in-errors\nprofiles: [",
     )
     .unwrap();
-    age_version_past_gc_min_age(&home, version);
-
-    let refs = protected_refs_from_versions(&home, Some(version), None).await;
+    let refs = protected_refs_from_configs(&[config_dir.join("runner.yaml")]).await;
 
     assert!(
         refs.is_empty(),
@@ -656,33 +591,8 @@ fn release_enabled_service_queries(state_dir: &Path, units: &[String]) {
 }
 
 #[tokio::test]
-async fn incomplete_version_scan_makes_protection_inventory_incomplete() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = test_home(dir.path());
-    for version in ["v1.0.0", "v2.0.0"] {
-        std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
-    }
-    let analysis = analyze_version_gc_with_injected_scan_error(&home, None, None, 1)
-        .await
-        .unwrap();
-
-    let refs = protected_image_refs_for_gc(&home, &analysis).await;
-
-    assert!(!refs.is_complete());
-}
-
-#[tokio::test]
-async fn incomplete_config_scan_makes_protection_inventory_incomplete() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = test_home(dir.path());
-    std::fs::create_dir_all(home.runners_dir()).unwrap();
-    let analysis = analyze_version_gc_with_injected_config_scan_error(&home, None, None, 0)
-        .await
-        .unwrap();
-
-    let refs = protected_image_refs_for_gc(&home, &analysis).await;
-
-    assert!(!analysis.directory_scan_complete());
+async fn incomplete_deployment_inventory_makes_protection_inventory_incomplete() {
+    let refs = protected_image_refs_for_gc(&[], false).await;
     assert!(!refs.is_complete());
 }
 

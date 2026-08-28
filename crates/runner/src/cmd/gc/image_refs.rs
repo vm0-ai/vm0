@@ -7,10 +7,8 @@ use tracing::warn;
 use crate::cmd::service;
 use crate::config;
 use crate::image_hash;
-use crate::paths::HomePaths;
 
 use super::filesystem::{GcDirEntryReader, read_dir_or_missing};
-use super::versions::VersionGcAnalysis;
 
 type ProtectedImageRefMap = HashMap<String, HashSet<String>>;
 
@@ -87,30 +85,28 @@ pub(super) fn is_protected_image_ref(
 }
 
 pub(super) async fn protected_image_refs_for_gc(
-    home: &HomePaths,
-    version_analysis: &VersionGcAnalysis,
+    retained_config_paths: &[PathBuf],
+    deployment_inventory_complete: bool,
 ) -> ProtectedImageRefs {
-    if !version_analysis.directory_scan_complete() {
-        warn!("runner image refs: version directory scan incomplete, skipping image GC");
+    if !deployment_inventory_complete {
+        warn!("runner image refs: deployment inventory incomplete, skipping image GC");
         return ProtectedImageRefs::Incomplete;
     }
 
     let mut refs = ProtectedImageRefs::new();
-    collect_retained_version_image_refs(home, version_analysis, &mut refs).await;
+    collect_retained_deployment_image_refs(retained_config_paths, &mut refs).await;
     if !collect_enabled_service_image_refs(&mut refs).await {
         return ProtectedImageRefs::Incomplete;
     }
     refs
 }
 
-async fn collect_retained_version_image_refs(
-    home: &HomePaths,
-    version_analysis: &VersionGcAnalysis,
+async fn collect_retained_deployment_image_refs(
+    retained_config_paths: &[PathBuf],
     refs: &mut ProtectedImageRefs,
 ) {
-    for name in version_analysis.retained_names() {
-        let config_path = home.runners_dir().join(name).join("runner.yaml");
-        collect_config_image_refs(&config_path, "retained version", refs).await;
+    for config_path in retained_config_paths {
+        collect_config_image_refs(config_path, "retained deployment", refs).await;
     }
 }
 

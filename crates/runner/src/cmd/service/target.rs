@@ -76,6 +76,7 @@ impl RunnerServiceUnit {
     /// the same validation as [`Self::from_suffix`]. Historical lock names
     /// that use the reserved wrapper but fail current validation remain
     /// classified by [`Self::is_reserved_lock_file_name`] for rolling compatibility.
+    #[cfg(test)]
     pub(crate) fn from_lock_file_name(file_name: &str) -> Option<Self> {
         let unit_name = file_name
             .strip_prefix(LOCK_PREFIX)?
