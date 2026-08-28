@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.82.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.11...guest-agent-v0.82.12) (2026-08-28)
+
+
+### Performance Improvements
+
+* **guest-agent:** reuse metrics log handle ([#30067](https://github.com/vm0-ai/vm0/issues/30067)) ([59c6902](https://github.com/vm0-ai/vm0/commit/59c6902e5185016fd49b51bc6609ea372380e501))
+
 ## [0.82.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.10...guest-agent-v0.82.11) (2026-08-28)
 
 ## [0.82.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.9...guest-agent-v0.82.10) (2026-08-28)
