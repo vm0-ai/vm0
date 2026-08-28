@@ -614,6 +614,36 @@ describe("okou social command", () => {
     expect(errorOutput()).toContain("repeated pagination state");
   });
 
+  it("rejects a collection response without page metadata", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json(
+          socialResponse("tiktok_search", null, {
+            results: [],
+            hasMore: false,
+          }),
+        );
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "call",
+        "tiktok_search",
+        "--input",
+        '{"query":"launch"}',
+        "--all",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(
+      "Okou Social collection response has no page metadata",
+    );
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
+  });
+
   it.each([
     {
       caseName: "an unknown tool",
@@ -738,6 +768,95 @@ describe("okou social command", () => {
     );
     expect(errorOutput()).not.toMatch(/socialkit/iu);
     expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("uses public branding for a malformed API error", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json({}, { status: 502 });
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "call",
+        "linkedin_profile",
+        "--input",
+        '{"url":"https://linkedin.com/in/example"}',
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain("502: Okou Social request failed");
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
+  });
+
+  it("sanitizes download creation API errors", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/downloads", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "SocialKit could not start the download",
+              code: "SOCIALKIT_DOWNLOAD_FAILED",
+            },
+          },
+          { status: 502 },
+        );
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "download",
+        "youtube",
+        "https://youtu.be/public-video",
+        "--max-duration",
+        "600",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(
+      "502: Okou Social could not start the download",
+    );
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
+  });
+
+  it("sanitizes download status API errors", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/social/downloads/6bdc3449-41ef-4624-a525-45bce09c67f0",
+        () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "SocialKit download status is unavailable",
+                code: "SOCIALKIT_DOWNLOAD_FAILED",
+              },
+            },
+            { status: 500 },
+          );
+        },
+      ),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "download",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(
+      "500: Okou Social download status is unavailable",
+    );
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
   });
 
   it("starts a download and prints its durable artifact", async () => {
