@@ -63,6 +63,7 @@ import {
   readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionAuthority,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import {
@@ -1787,7 +1788,7 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
     ).resolves.toStrictEqual({
-      validatorVersion: "999.0.0",
+      validatorVersion: "1.0.0",
       buildCommitSha: null,
     });
     mockNow(new Date("2026-07-15T08:02:00.000Z"));
@@ -1799,6 +1800,19 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
     ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
+
+    const newerProjectionAuthority = {
+      validatorVersion: "999.0.0",
+      buildCommitSha: null,
+    };
+    await setApiTestConnectorCatalogRuntimeProjectionAuthority(
+      newerProjectionAuthority,
+    );
+    mockNow(new Date("2026-07-15T08:03:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual(newerProjectionAuthority);
 
     serveObjects(catalogObjects([first, second], second));
     expect((await syncCatalog()).body).toMatchObject({

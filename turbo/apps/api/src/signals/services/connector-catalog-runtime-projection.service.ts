@@ -467,16 +467,10 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
         // Preserve an attestation from the same or a newer validator package.
         if (
           authority !== null &&
-          (authority.buildCommitSha === null &&
-          validator.buildCommitSha === null
-            ? connectorCatalogValidationAuthorityIsCurrent({
-                authority,
-                validator,
-              })
-            : connectorCatalogValidationAuthorityIsCurrentOrNewer({
-                authority,
-                validator,
-              }))
+          connectorCatalogValidationAuthorityIsCurrentOrNewer({
+            authority,
+            validator,
+          })
         ) {
           const actualCount = await countConnectorCatalogRuntimeProjectionRows({
             db: tx,

@@ -717,12 +717,12 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionPayload(
 
 export async function expireApiTestConnectorCatalogRuntimeProjectionAuthority(): Promise<void> {
   await setApiTestConnectorCatalogRuntimeProjectionAuthority({
-    validatorVersion: "999.0.0",
+    validatorVersion: "1.0.0",
     buildCommitSha: null,
   });
 }
 
-async function setApiTestConnectorCatalogRuntimeProjectionAuthority(
+export async function setApiTestConnectorCatalogRuntimeProjectionAuthority(
   authority: ConnectorCatalogValidationAuthority,
 ): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
