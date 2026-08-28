@@ -765,6 +765,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("exchanges one Google One Tap credential only on the exact base route", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -808,6 +809,7 @@ describe("auth v2 sign-in flow", () => {
   it.each(["dismissed", "skipped"] as const)(
     "settles a FedCM %s moment without legacy notification methods",
     async (momentType) => {
+      context.mocks.browser.fedCm();
       mockAuthV2Capabilities({
         googleOAuth: true,
         googleOneTapClientId: "google-client-id",
@@ -832,6 +834,7 @@ describe("auth v2 sign-in flow", () => {
   );
 
   it("ignores a legacy display moment until a terminal moment arrives", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -860,6 +863,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("cancels an aborted FedCM prompt and ignores late credential events", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -899,6 +903,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("does not start Google One Tap on a nested sign-in route", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -919,6 +924,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("retries Google One Tap after a script failure and back navigation", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -970,6 +976,62 @@ describe("auth v2 sign-in flow", () => {
       });
       expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it.each([
+    {
+      fedCm: { secureContext: false },
+      name: "an insecure context",
+    },
+    {
+      fedCm: { identityCredential: false },
+      name: "a missing IdentityCredential API",
+    },
+    {
+      fedCm: { credentials: false },
+      name: "a missing credentials container",
+    },
+  ] as const)("does not start Google One Tap for $name", async ({ fedCm }) => {
+    context.mocks.browser.fedCm(fedCm);
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+
+    setupSignInPage({ status: "needs_identifier" });
+
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    expect(
+      document.querySelector("script[data-auth-v2-google-one-tap]"),
+    ).toBeNull();
+    expect(mockedGoogleOneTap.initialize).not.toHaveBeenCalled();
+    expect(mockedGoogleOneTap.prompt).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("silently falls back when the FedCM runtime is unavailable", async () => {
+    context.mocks.browser.fedCm();
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+    mockGoogleOneTapCredential(null);
+    mockedGoogleOneTap.prompt.mockImplementation(() => {
+      throw new Error("Error connecting to Web Authentication service.");
+    });
+
+    setupSignInPage({ status: "needs_identifier" });
+
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    await waitFor(() => {
+      expect(mockedGoogleOneTap.prompt).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it.each([

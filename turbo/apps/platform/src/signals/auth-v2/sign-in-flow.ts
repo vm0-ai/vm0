@@ -499,6 +499,21 @@ function passkeyErrorCode(
   return null;
 }
 
+function isGoogleOneTapUnavailableError(error: unknown): boolean {
+  if (!isRecord(error)) {
+    return false;
+  }
+  const apiError = Array.isArray(error.errors)
+    ? error.errors.find(isRecord)
+    : null;
+  const normalizedError = apiError ?? error;
+  return (
+    stringProperty(normalizedError, "name") === "NotSupportedError" ||
+    stringProperty(normalizedError, "message") ===
+      "Error connecting to Web Authentication service."
+  );
+}
+
 function normalizeClerkError(
   error: unknown,
   fallbackField: AuthV2SignInErrorField,
@@ -1560,6 +1575,9 @@ function createGoogleOneTapCommand(
         signal,
       );
       if (!credential.ok) {
+        if (isGoogleOneTapUnavailableError(credential.error)) {
+          return;
+        }
         set(atoms.error$, normalizeClerkError(credential.error, "general"));
         return;
       }

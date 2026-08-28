@@ -67,6 +67,12 @@ interface BrowserUrlOptions {
   readonly apiOriginMarker?: string | null;
 }
 
+interface BrowserFedCmOptions {
+  readonly credentials?: boolean;
+  readonly identityCredential?: boolean;
+  readonly secureContext?: boolean;
+}
+
 interface BrowserWebAuthnOptions {
   readonly credentials?: boolean;
   readonly platformAuthenticatorResult?: boolean | "error";
@@ -291,6 +297,48 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       userAgent: (ua: string): void => {
         vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+      },
+      fedCm: (options: BrowserFedCmOptions = {}): void => {
+        const secureContextDescriptor = defineWindowProperty(
+          window,
+          "isSecureContext",
+          options.secureContext ?? true,
+        );
+        const credentialsDescriptor = defineWindowProperty(
+          navigator,
+          "credentials",
+          options.credentials === false
+            ? undefined
+            : {
+                get: () => {
+                  return Promise.resolve(null);
+                },
+              },
+        );
+        const identityCredentialDescriptor = defineWindowProperty(
+          window,
+          "IdentityCredential",
+          options.identityCredential === false
+            ? undefined
+            : class TestIdentityCredential {},
+        );
+        restoreOnAbort(getSignal(), () => {
+          restoreWindowProperty(
+            window,
+            "isSecureContext",
+            secureContextDescriptor,
+          );
+          restoreWindowProperty(
+            navigator,
+            "credentials",
+            credentialsDescriptor,
+          );
+          restoreWindowProperty(
+            window,
+            "IdentityCredential",
+            identityCredentialDescriptor,
+          );
+        });
       },
       webAuthn: (options: BrowserWebAuthnOptions = {}): void => {
         const platformAuthenticatorResult = options.platformAuthenticatorResult;
