@@ -373,7 +373,7 @@ async function persistConnectorCatalogCompatibilityEvaluation(args: {
       catalogDigest: args.identity.catalogDigest,
       executableCapabilityDigest: args.capabilityDigest,
       catalogValidationBackendVersion: args.validator.backendVersion,
-      catalogValidationBuildCommitSha: args.validator.buildCommitSha,
+      catalogValidationBuildCommitSha: args.validator.validationRevision,
       evaluatedAt: args.evaluatedAt,
       filteredAuthMethods: args.payload,
     })
@@ -387,7 +387,7 @@ async function persistConnectorCatalogCompatibilityEvaluation(args: {
       ],
       set: {
         catalogValidationBackendVersion: args.validator.backendVersion,
-        catalogValidationBuildCommitSha: args.validator.buildCommitSha,
+        catalogValidationBuildCommitSha: args.validator.validationRevision,
         evaluatedAt: args.evaluatedAt,
         filteredAuthMethods: args.payload,
       },
@@ -540,7 +540,7 @@ async function reconcileCompatibility(args: {
     connectorCatalogValidationAuthorityIsCurrentOrNewer({
       authority: {
         backendVersion: existing.catalogValidationBackendVersion,
-        buildCommitSha: existing.catalogValidationBuildCommitSha,
+        validationRevision: existing.catalogValidationBuildCommitSha,
       },
       validator: args.validator,
     })

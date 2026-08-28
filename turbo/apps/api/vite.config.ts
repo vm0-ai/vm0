@@ -1,9 +1,15 @@
 import build from "@hono/vite-build/vercel";
 import { defineConfig } from "vite";
 
+import { connectorCatalogValidationRevision } from "./src/build-config/connector-catalog-validation-revision";
 import vercelConfig from "./vercel.json";
 
 export default defineConfig({
+  define: {
+    __CONNECTOR_CATALOG_VALIDATION_REVISION__: JSON.stringify(
+      connectorCatalogValidationRevision(),
+    ),
+  },
   build: {
     copyPublicDir: false,
     rollupOptions: {

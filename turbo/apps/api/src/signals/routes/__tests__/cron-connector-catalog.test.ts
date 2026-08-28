@@ -1788,7 +1788,7 @@ describe("connector catalog valid lifecycle", () => {
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
     ).resolves.toStrictEqual({
       backendVersion: "999.0.0",
-      buildCommitSha: null,
+      validationRevision: null,
     });
     mockNow(new Date("2026-07-15T08:02:00.000Z"));
     expect((await syncCatalog()).body).toMatchObject({
@@ -5816,7 +5816,7 @@ describe("connector catalog executable compatibility", () => {
     ).resolves.toStrictEqual(newerAuthority);
   });
 
-  it("repairs accepted validation authority after an API release", async () => {
+  it("preserves accepted authority across an unchanged validator release", async () => {
     configureSource();
     mockEnv("ENV", "production");
     setApiVersion("1.318.0");
@@ -5825,11 +5825,13 @@ describe("connector catalog executable compatibility", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
+    const validationRevision =
+      apiTestConnectorCatalogValidationAuthority().validationRevision;
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
       backendVersion: "1.318.0",
-      buildCommitSha: null,
+      validationRevision,
     });
 
     setApiVersion("1.319.0");
@@ -5838,8 +5840,8 @@ describe("connector catalog executable compatibility", () => {
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
-      backendVersion: "1.319.0",
-      buildCommitSha: null,
+      backendVersion: "1.318.0",
+      validationRevision,
     });
     const evaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
@@ -5848,7 +5850,7 @@ describe("connector catalog executable compatibility", () => {
       evaluations.map((evaluation) => {
         return evaluation.validationAuthority;
       }),
-    ).toStrictEqual([{ backendVersion: "1.319.0", buildCommitSha: null }]);
+    ).toStrictEqual([{ backendVersion: "1.318.0", validationRevision }]);
   });
 
   it("prevents a draining older API release from downgrading validation authority", async () => {
@@ -5884,7 +5886,8 @@ describe("connector catalog executable compatibility", () => {
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
       backendVersion: "1.319.0",
-      buildCommitSha: null,
+      validationRevision:
+        apiTestConnectorCatalogValidationAuthority().validationRevision,
     });
     const evaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
@@ -5892,7 +5895,13 @@ describe("connector catalog executable compatibility", () => {
       evaluations.map((evaluation) => {
         return evaluation.validationAuthority;
       }),
-    ).toStrictEqual([{ backendVersion: "1.319.0", buildCommitSha: null }]);
+    ).toStrictEqual([
+      {
+        backendVersion: "1.319.0",
+        validationRevision:
+          apiTestConnectorCatalogValidationAuthority().validationRevision,
+      },
+    ]);
   });
 
   it("repairs accepted validation authority after a preview build", async () => {
@@ -5910,7 +5919,7 @@ describe("connector catalog executable compatibility", () => {
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
       backendVersion: DEFAULT_API_VERSION,
-      buildCommitSha: firstCommit,
+      validationRevision: firstCommit,
     });
 
     mockEnv("GIT_COMMIT_SHA", secondCommit);
@@ -5920,7 +5929,7 @@ describe("connector catalog executable compatibility", () => {
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
       backendVersion: DEFAULT_API_VERSION,
-      buildCommitSha: secondCommit,
+      validationRevision: secondCommit,
     });
   });
 

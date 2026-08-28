@@ -72,6 +72,7 @@ import {
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionAuthority,
   setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook,
   setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
   setApiTestConnectorCatalogValidationAuthority,
@@ -2768,6 +2769,124 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+  });
+
+  it("reuses unchanged validation authority across API backend versions", async () => {
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    mockEnv("GIT_COMMIT_SHA", "a".repeat(40));
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-reusable-projection-authority-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-reusable-projection-authority-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    const currentAuthority = apiTestConnectorCatalogValidationAuthority();
+    if (currentAuthority.validationRevision === null) {
+      throw new Error("Expected a catalog validation revision");
+    }
+    const priorBackendAuthority = {
+      ...currentAuthority,
+      backendVersion: "1.0.0",
+    };
+    await setApiTestConnectorCatalogValidationAuthority(priorBackendAuthority);
+    await setApiTestConnectorCatalogRuntimeProjectionAuthority(
+      priorBackendAuthority,
+    );
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "x",
+      authMethod: "oauth",
+      accessToken: "x-reusable-authority-access",
+      refreshToken: "x-reusable-authority-refresh",
+    });
+
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "reuse unchanged catalog validation authority",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectProjectionRowReadActionCounts(timingEvents, 1);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_connector_catalog_query_identity",
+      ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+      ...API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "projection",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_readiness: "ready",
+      }),
+    );
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+      sourceId: expect.any(String),
+    });
+    expectClaimNetworkPolicyRefreshPath(run.runId, "baseline");
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("keeps missing projection compatibility on the full fallback", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-missing-projection-compatibility-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-missing-projection-compatibility-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await deleteApiTestConnectorCatalogCompatibility();
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "missing projection compatibility fallback",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectProjectionRowReadActionCounts(timingEvents, 0);
+    expectApiDispatchActions(timingEvents, [
+      ...API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+      ...API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "not_applicable",
+        connector_catalog_projection_readiness: "compatibility_not_ready",
+        connector_catalog_projection_fallback_reason: "compatibility_not_ready",
+      }),
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("falls back for an incomplete projection and observes reconciliation", async () => {

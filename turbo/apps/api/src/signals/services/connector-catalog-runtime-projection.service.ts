@@ -129,13 +129,13 @@ function authMethodKey(connectorSlug: string, authMethodId: string): string {
 
 function persistedConnectorCatalogValidationAuthority(args: {
   readonly backendVersion: string | null;
-  readonly buildCommitSha: string | null;
+  readonly validationRevision: string | null;
 }): ConnectorCatalogValidationAuthority | null {
   return args.backendVersion === null
     ? null
     : {
         backendVersion: args.backendVersion,
-        buildCommitSha: args.buildCommitSha,
+        validationRevision: args.validationRevision,
       };
 }
 
@@ -202,7 +202,7 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
       projectionVersion: CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
       connectorCount: args.artifact.connectors.length,
       catalogValidationBackendVersion: args.validator.backendVersion,
-      catalogValidationBuildCommitSha: args.validator.buildCommitSha,
+      catalogValidationBuildCommitSha: args.validator.validationRevision,
     })
     .returning({ id: connectorCatalogRuntimeProjectionSets.id });
   if (projectionSet === undefined) {
@@ -335,7 +335,7 @@ async function readProjectionIdentity(
   }
   const compatibilityAuthority = persistedConnectorCatalogValidationAuthority({
     backendVersion: row.compatibilityValidationBackendVersion,
-    buildCommitSha: row.compatibilityValidationBuildCommitSha,
+    validationRevision: row.compatibilityValidationBuildCommitSha,
   });
   if (
     row.evaluatedCapabilityDigest === null ||
@@ -353,7 +353,7 @@ async function readProjectionIdentity(
   }
   const projectionAuthority = persistedConnectorCatalogValidationAuthority({
     backendVersion: row.projectionValidationBackendVersion,
-    buildCommitSha: row.projectionValidationBuildCommitSha,
+    validationRevision: row.projectionValidationBuildCommitSha,
   });
   if (
     projectionAuthority === null ||
@@ -621,7 +621,7 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
       if (ready !== undefined) {
         const authority = persistedConnectorCatalogValidationAuthority({
           backendVersion: ready.validationBackendVersion,
-          buildCommitSha: ready.validationBuildCommitSha,
+          validationRevision: ready.validationBuildCommitSha,
         });
         if (
           authority !== null &&

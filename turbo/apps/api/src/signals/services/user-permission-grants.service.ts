@@ -385,7 +385,10 @@ function baselineStaticIdentityIsCurrent(
       SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION &&
     baseline.catalogIdentity.capabilityDigest === current.capabilityDigest &&
     connectorCatalogValidationAuthorityIsCurrent({
-      authority: baseline.validationAuthority,
+      authority: {
+        backendVersion: baseline.validationAuthority.backendVersion,
+        validationRevision: baseline.validationAuthority.buildCommitSha,
+      },
       validator: current.validator,
     })
   );

@@ -1,0 +1,1 @@
+declare const __CONNECTOR_CATALOG_VALIDATION_REVISION__: string;

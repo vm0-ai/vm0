@@ -360,7 +360,7 @@ function rejectionAuthorityFromState(
   }
   return {
     backendVersion: state.lastRejectedBackendVersion,
-    buildCommitSha: state.lastRejectedBuildCommitSha,
+    validationRevision: state.lastRejectedBuildCommitSha,
   };
 }
 
@@ -558,7 +558,7 @@ function rejectedCandidateValues(
     lastRejectedPointerEtag: candidate.pointerEtag,
     lastRejectedFailureCode: candidate.failureCode,
     lastRejectedBackendVersion: validator.backendVersion,
-    lastRejectedBuildCommitSha: validator.buildCommitSha,
+    lastRejectedBuildCommitSha: validator.validationRevision,
   };
 }
 

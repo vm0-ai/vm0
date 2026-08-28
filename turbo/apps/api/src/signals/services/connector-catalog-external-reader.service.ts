@@ -194,13 +194,13 @@ function identityLogFields(identity: ExternalCatalogIdentity) {
 
 function persistedCatalogValidationAuthority(args: {
   readonly backendVersion: string | null;
-  readonly buildCommitSha: string | null;
+  readonly validationRevision: string | null;
 }): ConnectorCatalogValidationAuthority | null {
   return args.backendVersion === null
     ? null
     : {
         backendVersion: args.backendVersion,
-        buildCommitSha: args.buildCommitSha,
+        validationRevision: args.validationRevision,
       };
 }
 
@@ -388,7 +388,7 @@ async function readCurrentCatalog(args: {
   };
   const validationAuthority = persistedCatalogValidationAuthority({
     backendVersion: row.catalogValidationBackendVersion,
-    buildCommitSha: row.catalogValidationBuildCommitSha,
+    validationRevision: row.catalogValidationBuildCommitSha,
   });
   const compatibilityEvaluationExists = row.executableCapabilityDigest !== null;
   const validationAuthorityIsCurrent =
