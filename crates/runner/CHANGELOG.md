@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.178.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.1...runner-rs-v0.178.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* **runner:** recover stalled exact-reuse activation ([#30152](https://github.com/vm0-ai/vm0/issues/30152)) ([6ec9789](https://github.com/vm0-ai/vm0/commit/6ec978965ad26902ca425e6eb665c819a8f61477))
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
 ## [0.178.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.0...runner-rs-v0.178.1) (2026-08-28)
 
 

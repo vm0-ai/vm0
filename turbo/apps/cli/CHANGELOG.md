@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.297.1](https://github.com/vm0-ai/vm0/compare/cli-v9.297.0...cli-v9.297.1) (2026-08-28)
+
+
+### Refactoring
+
+* remove introVideoTemplates feature switch ([#30158](https://github.com/vm0-ai/vm0/issues/30158)) ([5797b76](https://github.com/vm0-ai/vm0/commit/5797b76de0daad39916c79d72714b043da8cb03b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.0
+    * @okouai/core bumped to 8.601.1
+
 ## [9.297.0](https://github.com/vm0-ai/vm0/compare/cli-v9.296.1...cli-v9.297.0) (2026-08-28)
 
 
