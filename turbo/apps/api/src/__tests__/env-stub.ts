@@ -65,6 +65,9 @@ vi.stubEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
 vi.stubEnv("ZERO_HOST_DOMAIN", "sites.example.com");
 vi.stubEnv("ZERO_HOST_SCHEME", "https");
 vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
+// Retained for the independently owned synthetic test-oauth connector, which
+// still reads this legacy process variable outside the API backend contract.
+vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 vi.stubEnv("FEISHU_CALLBACK_BASE_URL", "http://localhost:3000");
 stubTestWebUrlEnvironment(undefined, "http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
