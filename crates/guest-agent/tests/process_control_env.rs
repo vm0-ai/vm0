@@ -16,48 +16,49 @@ const ISOLATED_CHILD_MOCK_PATH: &str = "OKOU_PROCESS_CONTROL_ENV_ISOLATED_MOCK_P
 const ISOLATED_CHILD_MARKER: &str = "vm0 process-control env isolated child active";
 const ISOLATED_CHILD_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 const PROCESS_CONTROL_CHILD_TIMEOUT: Duration = Duration::from_secs(30);
+const RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
 
 #[tokio::test]
-async fn process_control_endpoint_aliases_without_workload_capability_fail_closed()
+async fn canonical_process_control_without_workload_capability_fails_closed()
 -> Result<(), Box<dyn std::error::Error>> {
-    for bootstrap_env in [
-        process_control_ipc::BOOTSTRAP_ENV,
-        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-    ] {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
-        command
-            .env_remove(process_control_ipc::BOOTSTRAP_ENV)
-            .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
-            .env(bootstrap_env, "missing-capability")
-            .env_remove(guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV)
-            .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
-            .env_remove(guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV)
-            .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
-            .env_remove("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
-        let output = common::command_output_with_timeout(
-            &mut command,
-            PROCESS_CONTROL_CHILD_TIMEOUT,
-            "missing-workload-capability guest-agent scenario did not finish",
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    command
+        .env_remove(RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV)
+        .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
+        .env(
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+            "missing-capability",
         )
-        .await?;
+        .env_remove(guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV)
+        .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
+        .env_remove(guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV)
+        .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
+        .env_remove("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
+    let output = common::command_output_with_timeout(
+        &mut command,
+        PROCESS_CONTROL_CHILD_TIMEOUT,
+        "missing-workload-capability guest-agent scenario did not finish",
+    )
+    .await?;
 
-        assert_eq!(output.status.code(), Some(1));
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains(
-                guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV
-            ),
-            "{bootstrap_env} stderr: {stderr}"
-        );
-        assert!(
-            stderr.contains("are required with"),
-            "{bootstrap_env} stderr: {stderr}"
-        );
-        assert!(
-            !stderr.contains("missing-capability"),
-            "{bootstrap_env} stderr exposed endpoint material"
-        );
-    }
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("are required with OKOU_PROCESS_CONTROL_ENDPOINT"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains(RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV),
+        "stderr retained the retired process-control prerequisite"
+    );
+    assert!(
+        !stderr.contains("missing-capability"),
+        "stderr exposed endpoint material"
+    );
     Ok(())
 }
 
@@ -84,11 +85,12 @@ async fn workload_capability_is_received_over_scm_rights_and_validated()
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
+        .env_remove(RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV)
         .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
         .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
         .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
         .env(
-            process_control_ipc::BOOTSTRAP_ENV,
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             "process-control-present",
         )
         .env(
@@ -183,7 +185,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
     let runtime = common::guest_runtime_from_process_env()?;
     unsafe {
         std::env::set_var(
-            process_control_ipc::BOOTSTRAP_ENV,
+            RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV,
             "stale-legacy-process-control-endpoint",
         );
         std::env::set_var(

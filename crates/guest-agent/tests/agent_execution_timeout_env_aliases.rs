@@ -498,7 +498,6 @@ fn process_env_dual_reads_agent_execution_timeout_aliases_without_value_leaks() 
         LEGACY_CONFLICT_TIMEOUT,
     );
     for key in [
-        process_control_ipc::BOOTSTRAP_ENV,
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,

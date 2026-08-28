@@ -38,7 +38,6 @@ fn unique_endpoint() -> String {
 fn guest_agent_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     for key in [
-        process_control_ipc::BOOTSTRAP_ENV,
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
@@ -263,7 +262,7 @@ async fn guest_agent_rejects_invalid_canonical_input_before_capability_consumpti
     .await?;
     assert_rejected_before_workload_connection(
         "cgroup-endpoints-without-process-control",
-        "require OKOU_PROCESS_CONTROL_ENDPOINT or VM0_PROCESS_CONTROL_ENDPOINT",
+        "require OKOU_PROCESS_CONTROL_ENDPOINT",
         |command, endpoint| {
             command
                 .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)

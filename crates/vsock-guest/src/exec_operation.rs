@@ -100,6 +100,7 @@ const EXEC_CAPTURED_OUTPUT_OVERHEAD: usize = 1 + 1 + 4;
 const EXEC_DISCARDED_OUTPUT_LEN: usize = 1;
 const EXEC_OPERATION_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 const AGENT_READY_OBSERVATION_INTERVAL: Duration = Duration::from_millis(10);
+const RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
 
 #[derive(Clone, Default)]
 pub(crate) struct ExecOperationRegistry {
@@ -2053,7 +2054,7 @@ fn append_exec_control_environment<'a>(
     workload_endpoints: Option<(&'a str, &'a str)>,
 ) {
     env.retain(|(key, _)| {
-        *key != process_control_ipc::BOOTSTRAP_ENV
+        *key != RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV
             && *key != process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             && *key != WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV
             && *key != CANONICAL_WORKLOAD_CGROUP_PROCS_ENV
@@ -2305,7 +2306,7 @@ mod tests {
                 "stale-legacy-workload-endpoint",
             ),
             (
-                process_control_ipc::BOOTSTRAP_ENV,
+                RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV,
                 "stale-legacy-process-control-endpoint",
             ),
             ("SECOND_USER_KEY", "second-user-value"),
@@ -2356,7 +2357,7 @@ mod tests {
             );
         }
         for legacy_key in [
-            process_control_ipc::BOOTSTRAP_ENV,
+            RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV,
             WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             TOOL_CGROUP_PROCS_ENDPOINT_ENV,
         ] {

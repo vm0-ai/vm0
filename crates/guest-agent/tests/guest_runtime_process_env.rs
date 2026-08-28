@@ -13,7 +13,6 @@ fn runtime_bootstrap_scrubs_runner_env_and_installs_explicit_paths() {
     let runtime_dir = tmp.path().join("runtime");
 
     unsafe {
-        std::env::remove_var(process_control_ipc::BOOTSTRAP_ENV);
         std::env::remove_var(
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         );
