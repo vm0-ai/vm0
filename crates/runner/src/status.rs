@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use sandbox::SandboxId;
 use serde::Serialize;
 use tokio::sync::Mutex;
+use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
@@ -112,12 +114,98 @@ struct PersistenceState {
     published_generation: u64,
 }
 
+struct SerializedStatusSnapshot {
+    generation: u64,
+    json: String,
+}
+
+struct DelayedPersistenceState {
+    active: bool,
+    pending: Option<SerializedStatusSnapshot>,
+}
+
+struct PersistenceCoordinator {
+    ordering: Arc<Mutex<PersistenceState>>,
+    delayed: std::sync::Mutex<DelayedPersistenceState>,
+    #[cfg(test)]
+    settled: tokio::sync::Notify,
+}
+
+impl PersistenceCoordinator {
+    fn new() -> Self {
+        Self {
+            ordering: Arc::new(Mutex::new(PersistenceState {
+                published_generation: 0,
+            })),
+            delayed: std::sync::Mutex::new(DelayedPersistenceState {
+                active: false,
+                pending: None,
+            }),
+            #[cfg(test)]
+            settled: tokio::sync::Notify::new(),
+        }
+    }
+
+    fn defer_if_delayed(
+        &self,
+        snapshot: SerializedStatusSnapshot,
+    ) -> Option<SerializedStatusSnapshot> {
+        let mut delayed = self
+            .delayed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !delayed.active {
+            return Some(snapshot);
+        }
+        let replace = delayed
+            .pending
+            .as_ref()
+            .is_none_or(|pending| pending.generation < snapshot.generation);
+        if replace {
+            delayed.pending = Some(snapshot);
+        }
+        None
+    }
+
+    fn begin_delayed_write(&self) {
+        let mut delayed = self
+            .delayed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        delayed.active = true;
+    }
+
+    fn take_pending_or_finish(&self) -> Option<SerializedStatusSnapshot> {
+        let mut delayed = self
+            .delayed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match delayed.pending.take() {
+            Some(snapshot) => Some(snapshot),
+            None => {
+                delayed.active = false;
+                #[cfg(test)]
+                self.settled.notify_waiters();
+                None
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[derive(Clone)]
 struct StatusWriteGate {
     generation: u64,
+    phase: StatusWriteGatePhase,
     started: std::sync::Arc<tokio::sync::Notify>,
     release: std::sync::Arc<tokio::sync::Semaphore>,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StatusWriteGatePhase {
+    BeforeWrite,
+    AtomicWrite,
 }
 
 /// Serialize as ISO 8601 with millisecond precision, matching JS `Date.toISOString()`.
@@ -135,7 +223,7 @@ pub struct StatusTracker {
     dns_port: Option<u16>,
     path: PathBuf,
     state: Mutex<MutableState>,
-    persistence: Mutex<PersistenceState>,
+    persistence: Arc<PersistenceCoordinator>,
     #[cfg(test)]
     write_gate: Option<StatusWriteGate>,
 }
@@ -188,9 +276,7 @@ impl StatusTracker {
                 idle_revision: 0,
                 idle_sandboxes: Vec::new(),
             }),
-            persistence: Mutex::new(PersistenceState {
-                published_generation: 0,
-            }),
+            persistence: Arc::new(PersistenceCoordinator::new()),
             #[cfg(test)]
             write_gate: None,
         }
@@ -206,6 +292,24 @@ impl StatusTracker {
         let mut tracker = Self::new(path, 4, None, None);
         tracker.write_gate = Some(StatusWriteGate {
             generation,
+            phase: StatusWriteGatePhase::BeforeWrite,
+            started,
+            release,
+        });
+        tracker
+    }
+
+    #[cfg(test)]
+    fn new_with_atomic_write_gate(
+        path: PathBuf,
+        generation: u64,
+        started: std::sync::Arc<tokio::sync::Notify>,
+        release: std::sync::Arc<tokio::sync::Semaphore>,
+    ) -> Self {
+        let mut tracker = Self::new(path, 4, None, None);
+        tracker.write_gate = Some(StatusWriteGate {
+            generation,
+            phase: StatusWriteGatePhase::AtomicWrite,
             started,
             release,
         });
@@ -443,48 +547,153 @@ impl StatusTracker {
     /// Publish an owned snapshot through same-directory atomic replacement.
     async fn persist_snapshot(&self, snapshot: StatusSnapshot) -> StatusResult<()> {
         let path = self.path.clone();
-        let persist = async {
-            let json = serde_json::to_string_pretty(&snapshot.status).map_err(|source| {
-                StatusPersistenceError::Serialize {
-                    path: path.clone(),
-                    source,
-                }
-            })?;
-
-            let mut persistence = self.persistence.lock().await;
-            if persistence.published_generation >= snapshot.generation {
-                return Ok(());
+        let deadline = tokio::time::Instant::now() + STATUS_PERSISTENCE_TIMEOUT;
+        let json = serde_json::to_string_pretty(&snapshot.status).map_err(|source| {
+            StatusPersistenceError::Serialize {
+                path: path.clone(),
+                source,
             }
+        })?;
+        if tokio::time::Instant::now() >= deadline {
+            return Err(StatusPersistenceError::Timeout {
+                path,
+                timeout: STATUS_PERSISTENCE_TIMEOUT,
+            });
+        }
 
-            #[cfg(test)]
-            if let Some(gate) = &self.write_gate
-                && gate.generation == snapshot.generation
-            {
-                gate.started.notify_one();
+        let persistence = Arc::clone(&self.persistence);
+        let mut serialized = SerializedStatusSnapshot {
+            generation: snapshot.generation,
+            json,
+        };
+        let Some(ready) = persistence.defer_if_delayed(serialized) else {
+            return Err(StatusPersistenceError::Timeout {
+                path,
+                timeout: STATUS_PERSISTENCE_TIMEOUT,
+            });
+        };
+        serialized = ready;
+
+        #[cfg(test)]
+        if let Some(gate) = &self.write_gate
+            && gate.generation == serialized.generation
+            && gate.phase == StatusWriteGatePhase::BeforeWrite
+        {
+            gate.started.notify_one();
+            let wait_for_gate = async {
                 let permit = gate
                     .release
                     .acquire()
                     .await
                     .expect("status write gate closed");
                 permit.forget();
+            };
+            if tokio::time::timeout_at(deadline, wait_for_gate)
+                .await
+                .is_err()
+            {
+                return Err(StatusPersistenceError::Timeout {
+                    path,
+                    timeout: STATUS_PERSISTENCE_TIMEOUT,
+                });
             }
+        }
 
-            crate::private_fs::write_private_file(&path, json.as_bytes())
+        let Some(ready) = persistence.defer_if_delayed(serialized) else {
+            return Err(StatusPersistenceError::Timeout {
+                path,
+                timeout: STATUS_PERSISTENCE_TIMEOUT,
+            });
+        };
+        serialized = ready;
+        let ordering = Arc::clone(&persistence.ordering);
+        let mut ordering = match tokio::time::timeout_at(deadline, ordering.lock_owned()).await {
+            Ok(ordering) => ordering,
+            Err(_) => {
+                drop(persistence.defer_if_delayed(serialized));
+                return Err(StatusPersistenceError::Timeout {
+                    path,
+                    timeout: STATUS_PERSISTENCE_TIMEOUT,
+                });
+            }
+        };
+        if ordering.published_generation >= serialized.generation {
+            return Ok(());
+        }
+
+        let generation = serialized.generation;
+        let write_path = path.clone();
+        #[cfg(test)]
+        let atomic_write_gate = self.write_gate.clone();
+        let mut write = Box::pin(async move {
+            #[cfg(test)]
+            if let Some(gate) = &atomic_write_gate
+                && gate.generation == generation
+                && gate.phase == StatusWriteGatePhase::AtomicWrite
+            {
+                gate.started.notify_one();
+                let permit = gate
+                    .release
+                    .acquire()
+                    .await
+                    .expect("atomic status write gate closed");
+                permit.forget();
+            }
+            crate::private_fs::write_private_file(&write_path, serialized.json.as_bytes())
                 .await
                 .map_err(|source| StatusPersistenceError::Write {
-                    path: path.clone(),
+                    path: write_path,
                     source,
-                })?;
-            persistence.published_generation = snapshot.generation;
-            Ok(())
-        };
+                })
+        });
 
-        tokio::time::timeout(STATUS_PERSISTENCE_TIMEOUT, persist)
-            .await
-            .map_err(|_| StatusPersistenceError::Timeout {
-                path: self.path.clone(),
-                timeout: STATUS_PERSISTENCE_TIMEOUT,
-            })?
+        match tokio::time::timeout_at(deadline, write.as_mut()).await {
+            Ok(result) => {
+                result?;
+                ordering.published_generation = generation;
+                Ok(())
+            }
+            Err(_) => {
+                // Tokio filesystem operations run on the blocking pool. Once
+                // started, dropping their async wrapper cannot cancel the
+                // underlying write or rename. Keep the ordered future alive so
+                // a late older generation cannot replace a newer publication.
+                persistence.begin_delayed_write();
+                drop(tokio::spawn(async move {
+                    if let Err(error) = write.await {
+                        warn!(generation, %error, "timed-out status persistence later failed");
+                    } else {
+                        ordering.published_generation = generation;
+                    }
+                    while let Some(pending) = persistence.take_pending_or_finish() {
+                        let pending_generation = pending.generation;
+                        if ordering.published_generation >= pending_generation {
+                            continue;
+                        }
+                        if let Err(source) =
+                            crate::private_fs::write_private_file(&path, pending.json.as_bytes())
+                                .await
+                        {
+                            let error = StatusPersistenceError::Write {
+                                path: path.clone(),
+                                source,
+                            };
+                            warn!(
+                                generation = pending_generation,
+                                %error,
+                                "deferred status persistence failed"
+                            );
+                        } else {
+                            ordering.published_generation = pending_generation;
+                        }
+                    }
+                }));
+                Err(StatusPersistenceError::Timeout {
+                    path: self.path.clone(),
+                    timeout: STATUS_PERSISTENCE_TIMEOUT,
+                })
+            }
+        }
     }
 }
 
@@ -591,9 +800,9 @@ mod tests {
             assert_eq!(active.phase, ActiveRunPhase::Preparing);
         }
 
-        release.add_permits(2);
-        first.await.unwrap();
+        release.add_permits(1);
         second.await.unwrap();
+        first.await.unwrap();
 
         let status = read_status(&path);
         assert_eq!(status["mode"], "draining");
@@ -605,16 +814,15 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn blocked_status_write_times_out_and_releases_persistence_ordering() {
+    async fn pre_write_timeout_releases_persistence_ordering() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let started = Arc::new(Notify::new());
-        let release = Arc::new(Semaphore::new(0));
         let tracker = Arc::new(StatusTracker::new_with_write_gate(
             path.clone(),
             1,
             Arc::clone(&started),
-            release,
+            Arc::new(Semaphore::new(0)),
         ));
 
         let write_started = started.notified();
@@ -625,8 +833,56 @@ mod tests {
 
         let error = write.await.unwrap().unwrap_err();
         assert!(matches!(error, StatusPersistenceError::Timeout { .. }));
+        assert!(
+            tracker.persistence.ordering.try_lock().is_ok(),
+            "a timeout before atomic I/O starts must release persistence ordering"
+        );
 
         tracker.set_mode(RunnerMode::Running).await.unwrap();
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "running");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn atomic_write_timeout_keeps_ordering_and_coalesces_newer_generation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let tracker = Arc::new(StatusTracker::new_with_atomic_write_gate(
+            path.clone(),
+            1,
+            Arc::clone(&started),
+            Arc::clone(&release),
+        ));
+
+        let write_started = started.notified();
+        let write_tracker = Arc::clone(&tracker);
+        let write = tokio::spawn(async move { write_tracker.write_initial().await });
+        write_started.await;
+        tokio::time::advance(STATUS_PERSISTENCE_TIMEOUT).await;
+
+        let error = write.await.unwrap().unwrap_err();
+        assert!(matches!(error, StatusPersistenceError::Timeout { .. }));
+        assert!(
+            tracker.persistence.ordering.try_lock().is_err(),
+            "the timed-out write must keep ordering ownership until it finishes"
+        );
+
+        let error = tracker.set_mode(RunnerMode::Running).await.unwrap_err();
+        assert!(matches!(error, StatusPersistenceError::Timeout { .. }));
+        let settled = tracker.persistence.settled.notified();
+        release.add_permits(1);
+        settled.await;
+        assert!(
+            !tracker
+                .persistence
+                .delayed
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .active,
+            "the timed-out writer should publish the coalesced snapshot"
+        );
         let status = read_status(&path);
         assert_eq!(status["mode"], "running");
     }
