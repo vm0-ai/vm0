@@ -3018,14 +3018,17 @@ describe("chat composer models", () => {
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
-    const connectorButton = within(composer).getByLabelText("Connectors");
+    const connectorButton = () => {
+      return within(composer).getByLabelText("Connectors");
+    };
+    click(connectorButton());
 
     await waitFor(() => {
       expect(
-        connectorButton.querySelectorAll(":scope > span > span"),
+        connectorButton().querySelectorAll(":scope > span > span"),
       ).toHaveLength(3);
       expect(
-        connectorButton.querySelector(".lucide-globe"),
+        connectorButton().querySelector(".lucide-globe"),
       ).toBeInTheDocument();
     });
   });
@@ -3092,11 +3095,12 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const initialConnectorButton = within(
-      await screen.findByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
+    const initialThread = await screen.findByLabelText("Chat thread");
+    click(within(initialThread).getByLabelText("Connectors"));
     await waitFor(() => {
-      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+      expect(
+        within(initialThread).getByLabelText("Connectors").querySelector("img"),
+      ).not.toBeNull();
     });
     const settledAgentRequestCount = agentRequestCount;
 
@@ -3110,10 +3114,14 @@ describe("chat composer models", () => {
     });
     expect(agentRequestCount).toBe(settledAgentRequestCount);
 
-    const nextConnectorButton = within(
-      screen.getByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
-    expect(nextConnectorButton.querySelector("img")).not.toBeNull();
+    const nextThread = screen.getByLabelText("Chat thread");
+    click(within(nextThread).getByLabelText("Connectors"));
+    await waitFor(() => {
+      expect(
+        within(nextThread).getByLabelText("Connectors").querySelector("img"),
+      ).not.toBeNull();
+    });
+    expect(agentRequestCount).toBe(settledAgentRequestCount);
   });
 
   it("keeps connector catalog and access resolved across same-agent chat navigation", async () => {
@@ -3217,10 +3225,11 @@ describe("chat composer models", () => {
     });
 
     const initialThread = await screen.findByLabelText("Chat thread");
-    const initialConnectorButton =
-      within(initialThread).getByLabelText("Connectors");
+    click(within(initialThread).getByLabelText("Connectors"));
     await waitFor(() => {
-      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+      expect(
+        within(initialThread).getByLabelText("Connectors").querySelector("img"),
+      ).not.toBeNull();
       expect(authorizationRequestCount).toBe(1);
       expect(customAuthorizationRequestCount).toBe(1);
       expect(discoveryRequestCount).toBe(1);
@@ -3235,12 +3244,11 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
     });
 
-    const nextConnectorButton = within(
-      screen.getByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
-    click(nextConnectorButton);
-    const connectorStatusStayedResolved =
-      screen.queryByLabelText("Remove GitHub") !== null;
+    const nextThread = screen.getByLabelText("Chat thread");
+    click(within(nextThread).getByLabelText("Connectors"));
+    await expect(
+      screen.findByLabelText("Remove GitHub"),
+    ).resolves.toBeInTheDocument();
     const requestCountAfterNavigation = authorizationRequestCount;
     const customRequestCountAfterNavigation = customAuthorizationRequestCount;
     const discoveryRequestCountAfterNavigation = discoveryRequestCount;
@@ -3248,11 +3256,12 @@ describe("chat composer models", () => {
     unexpectedCustomReload.resolve();
     unexpectedDiscoveryReload.resolve();
 
-    expect(connectorStatusStayedResolved).toBeTruthy();
     expect(requestCountAfterNavigation).toBe(1);
     expect(customRequestCountAfterNavigation).toBe(1);
     expect(discoveryRequestCountAfterNavigation).toBe(1);
-    expect(nextConnectorButton.querySelector("img")).not.toBeNull();
+    expect(
+      within(nextThread).getByLabelText("Connectors").querySelector("img"),
+    ).not.toBeNull();
   });
 
   it("does not expose previous-agent connector access while navigation resolves", async () => {
@@ -3285,18 +3294,18 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const initialConnectorButton = within(
-      await screen.findByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
+    const initialThread = await screen.findByLabelText("Chat thread");
+    click(within(initialThread).getByLabelText("Connectors"));
     await waitFor(() => {
-      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+      expect(
+        within(initialThread).getByLabelText("Connectors").querySelector("img"),
+      ).not.toBeNull();
     });
 
     act(() => {
       context.store.set(loadLeftThread$, OTHER_AGENT_THREAD_ID);
     });
     await waitFor(() => {
-      expect(authorizationAgentIds).toContain(OTHER_AGENT_ID);
       expect(
         within(screen.getByLabelText("Chat thread")).getByText(
           "Other agent thread",
@@ -3304,12 +3313,15 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
     });
 
-    const nextConnectorButton = within(
-      screen.getByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
-    click(nextConnectorButton);
+    const nextThread = screen.getByLabelText("Chat thread");
+    click(within(nextThread).getByLabelText("Connectors"));
+    await waitFor(() => {
+      expect(authorizationAgentIds).toContain(OTHER_AGENT_ID);
+    });
     expect(screen.queryByLabelText("Remove GitHub")).not.toBeInTheDocument();
-    expect(nextConnectorButton.querySelector("img")).toBeNull();
+    expect(
+      within(nextThread).getByLabelText("Connectors").querySelector("img"),
+    ).toBeNull();
 
     otherAgentAuthorization.resolve();
     await expect(
@@ -3370,32 +3382,36 @@ describe("chat composer models", () => {
       expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
     });
     const threadRegions = screen.getAllByLabelText("Chat thread");
+    const mainThread = threadRegions[0];
+    const sideThread = threadRegions[1];
+    if (!mainThread || !sideThread) {
+      throw new Error("Split chat threads not found");
+    }
+    const connectorButtonFor = (thread: HTMLElement) => {
+      return within(thread).getByLabelText("Connectors");
+    };
+
+    await user.click(connectorButtonFor(mainThread));
+    await user.click(connectorButtonFor(mainThread));
+    await user.click(connectorButtonFor(sideThread));
     await waitFor(() => {
       expect(authorizationRequestCount).toBe(1);
     });
 
     initialAuthorization.resolve();
-    const connectorButtons = threadRegions.map((thread) => {
-      return within(thread).getByLabelText("Connectors");
-    });
     await waitFor(() => {
-      for (const button of connectorButtons) {
-        expect(button.querySelector("img")).not.toBeNull();
+      for (const thread of threadRegions) {
+        expect(connectorButtonFor(thread).querySelector("img")).not.toBeNull();
       }
     });
 
-    const sideConnectorButton = connectorButtons[1];
-    if (!sideConnectorButton) {
-      throw new Error("Side connector button not found");
-    }
-    await user.click(sideConnectorButton);
     await user.click(await screen.findByLabelText("Remove Slack"));
 
     await waitFor(() => {
       expect(updatedAuthorizationAgentId).toBe(AGENT_ID);
       expect(authorizationRequestCount).toBe(2);
-      for (const button of connectorButtons) {
-        expect(button.querySelector("img")).toBeNull();
+      for (const thread of threadRegions) {
+        expect(connectorButtonFor(thread).querySelector("img")).toBeNull();
       }
     });
   });
@@ -3484,15 +3500,19 @@ describe("chat composer models", () => {
       expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
     });
     const threadRegions = screen.getAllByLabelText("Chat thread");
+    const mainThread = threadRegions[0];
     const sideThread = threadRegions[1];
-    if (!sideThread) {
-      throw new Error("Side chat thread not found");
+    if (!mainThread || !sideThread) {
+      throw new Error("Split chat threads not found");
     }
     const sideComposer = sideThread.querySelector("[data-chat-composer]");
     if (!(sideComposer instanceof HTMLElement)) {
       throw new Error("Side chat composer not found");
     }
 
+    await user.click(within(mainThread).getByLabelText("Connectors"));
+    await user.click(within(mainThread).getByLabelText("Connectors"));
+    await user.click(within(sideComposer).getByLabelText("Connectors"));
     await waitFor(() => {
       expect(new Set(authorizationAgentIds)).toStrictEqual(
         new Set([AGENT_ID, OTHER_AGENT_ID]),
@@ -3523,7 +3543,6 @@ describe("chat composer models", () => {
     });
     expect(authorizationAgentIds).toHaveLength(authorizationRequestCount);
     expect(workflowAgentIds).toHaveLength(workflowRequestCount);
-    await user.click(within(sideComposer).getByLabelText("Connectors"));
     await user.click(
       await screen.findByLabelText("Configure Slack permissions"),
     );
