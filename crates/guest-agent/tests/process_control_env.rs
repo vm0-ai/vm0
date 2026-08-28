@@ -44,8 +44,9 @@ async fn process_control_endpoint_aliases_without_workload_capability_fail_close
         assert_eq!(output.status.code(), Some(1));
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            stderr
-                .contains(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV),
+            stderr.contains(
+                guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV
+            ),
             "{bootstrap_env} stderr: {stderr}"
         );
         assert!(
@@ -84,18 +85,18 @@ async fn workload_capability_is_received_over_scm_rights_and_validated()
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
         .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
-        .env_remove(guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV)
-        .env_remove(guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV)
+        .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
+        .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
         .env(
             process_control_ipc::BOOTSTRAP_ENV,
             "process-control-present",
         )
         .env(
-            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+            guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
             endpoint,
         )
         .env(
-            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
             "test-tool-placement",
         )
         .env_remove("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");

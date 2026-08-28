@@ -93,6 +93,8 @@ describe("platform entrypoint safe area behavior", () => {
         return directive.startsWith("interactive-widget=");
       }),
     ).toBeFalsy();
+    expect(viewportDirectives).not.toContain("maximum-scale=1.0");
+    expect(viewportDirectives).not.toContain("user-scalable=no");
 
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100lvh;/);

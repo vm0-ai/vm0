@@ -34,10 +34,17 @@ import {
   isAuthV2OAuthStrategy,
   type AuthV2OAuthStrategy,
 } from "./oauth-strategies.ts";
+import {
+  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
+  createAuthV2ResendCooldownStorage,
+} from "./resend-cooldown.ts";
 
 export const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS = 30;
 const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS =
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS * 1000;
+const signInResendCooldownStorage = createAuthV2ResendCooldownStorage(
+  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
+);
 
 export type AuthV2SignInFactor =
   | {
@@ -864,13 +871,12 @@ function createSignInFlowRuntime(): SignInFlowRuntime {
 function createStartCooldownCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
-): Command<void, [AbortSignal]> {
-  return command(({ set }, signal: AbortSignal): void => {
+): Command<void, [string, AbortSignal]> {
+  return command(({ set }, identity: string, signal: AbortSignal): void => {
     signal.throwIfAborted();
-    set(
-      runtime.cooldownDeadlineMs$,
-      now() + AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS,
-    );
+    const deadlineMs = now() + AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS;
+    set(signInResendCooldownStorage.save$, identity, deadlineMs);
+    set(runtime.cooldownDeadlineMs$, deadlineMs);
     set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS);
   });
 }
@@ -900,6 +906,7 @@ function createResendCooldownLifecycleRef(
             if (remainingSeconds > 0) {
               return false;
             }
+            set(signInResendCooldownStorage.clear$);
             set(runtime.cooldownDeadlineMs$, null);
             return true;
           },
@@ -948,8 +955,26 @@ function createCommitResourceCommand(
             ? snapshot.secondFactorVerificationStatus
             : snapshot.firstFactorVerificationStatus;
         if (verificationStatus === "expired") {
+          set(signInResendCooldownStorage.clear$);
+          set(runtime.cooldownDeadlineMs$, null);
+          set(atoms.resendRemainingSeconds$, 0);
           set(atoms.error$, { code: "code-expired", field: "code" });
+        } else {
+          const deadlineMs = set(
+            signInResendCooldownStorage.restore$,
+            preparedFactor.id,
+          );
+          set(runtime.cooldownDeadlineMs$, deadlineMs);
+          set(
+            atoms.resendRemainingSeconds$,
+            deadlineMs === null ? 0 : Math.ceil((deadlineMs - now()) / 1000),
+          );
         }
+      }
+      if (snapshot.clerkStatus === "complete") {
+        set(signInResendCooldownStorage.clear$);
+        set(runtime.cooldownDeadlineMs$, null);
+        set(atoms.resendRemainingSeconds$, 0);
       }
       if (snapshot.clerkStatus === "needs_second_factor") {
         set(dependencies.continuation.failClosed$, "second-factor");
@@ -979,7 +1004,7 @@ function createCommitResourceCommand(
 function createResourceCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
-  startCooldown$: Command<void, [AbortSignal]>,
+  startCooldown$: Command<void, [string, AbortSignal]>,
   dependencies: AuthV2SignInFlowDependencies,
 ): {
   readonly applyResource$: ApplySignInResourceCommand;
@@ -1031,7 +1056,7 @@ function createResourceCommands(
       set(runtime.preparedFactorId$, clientTrustFactor.id);
       await set(commitResource$, prepared.value, signal);
       signal.throwIfAborted();
-      set(startCooldown$, signal);
+      set(startCooldown$, clientTrustFactor.id, signal);
     },
   );
 
@@ -1306,7 +1331,7 @@ function createFactorSelectionCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
-  startCooldown$: Command<void, [AbortSignal]>,
+  startCooldown$: Command<void, [string, AbortSignal]>,
   dependencies: AuthV2SignInFlowDependencies,
 ): Command<Promise<void>, [string, AbortSignal]> {
   const prepareFactorOperation$ = command(
@@ -1394,7 +1419,7 @@ function createFactorSelectionCommand(
       set(atoms.methodChooser$, false);
       set(atoms.passwordRecovery$, false);
       set(atoms.selectedFactor$, factor);
-      set(startCooldown$, signal);
+      set(startCooldown$, factor.id, signal);
     },
   );
 
@@ -1595,7 +1620,7 @@ function createResendCodeOperation$(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
-  startCooldown$: Command<void, [AbortSignal]>,
+  startCooldown$: Command<void, [string, AbortSignal]>,
 ): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const factor = get(atoms.selectedFactor$);
@@ -1630,7 +1655,7 @@ function createResendCodeOperation$(
     set(atoms.code$, "");
     await set(applyResource$, prepared.value, signal);
     signal.throwIfAborted();
-    set(startCooldown$, signal);
+    set(startCooldown$, factor.id, signal);
   });
 }
 
@@ -1639,6 +1664,7 @@ function createEntryNavigationCommands(
   runtime: SignInFlowRuntime,
 ) {
   const clearCooldown$ = command(({ set }): void => {
+    set(signInResendCooldownStorage.clear$);
     set(runtime.cooldownDeadlineMs$, null);
     set(atoms.resendRemainingSeconds$, 0);
   });
