@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.124](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.123...vsock-guest-v0.19.124) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy process-control endpoint reader ([#30130](https://github.com/vm0-ai/vm0/issues/30130)) ([57157de](https://github.com/vm0-ai/vm0/commit/57157de35208c779837373ce8cca6baf601d605b))
+
 ## [0.19.123](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.122...vsock-guest-v0.19.123) (2026-08-28)
 
 ## [0.19.122](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.121...vsock-guest-v0.19.122) (2026-08-28)

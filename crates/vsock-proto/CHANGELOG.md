@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.41](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.40...vsock-proto-v0.18.41) (2026-08-28)
+
+
+### Documentation
+
+* **rust:** document exec-start process contracts ([#30083](https://github.com/vm0-ai/vm0/issues/30083)) ([598b61b](https://github.com/vm0-ai/vm0/commit/598b61b22a54af2f711ab05c7ed09431d0924ceb))
+
 ## [0.18.40](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.39...vsock-proto-v0.18.40) (2026-08-28)
 
 
