@@ -12,10 +12,10 @@ use super::super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::super::env::{
-    HostEnv, build_env_json_with_host_env, build_run_payload_for_run, build_user_env_json,
-    guest_connector_account_context_file_path, is_runner_owned_env_key,
-    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
-    write_connector_account_context_file,
+    HostEnv, build_env_json_with_host_env, build_env_json_with_host_env_for_run,
+    build_run_payload_for_run, build_user_env_json, guest_connector_account_context_file_path,
+    is_runner_owned_env_key, validate_execution_context_before_sandbox,
+    validate_model_provider_env_placeholders, write_connector_account_context_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
@@ -32,6 +32,7 @@ use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 use crate::types::{
     ConnectorRuntimeTargetRegistration, ExecutionContext, ResumeSession, SandboxReuseResult,
+    WorkspaceReuseResult,
 };
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
@@ -434,7 +435,16 @@ fn model_provider_env_placeholder_validation_accepts_codex_oauth_placeholders() 
 #[test]
 fn build_env_json_required_keys() {
     let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "https://api.example.com");
+    let sandbox_id = "00000000-0000-4000-8000-000000000abc";
+    let env = build_env_json_with_host_env_for_run(
+        &ctx,
+        "https://api.example.com",
+        sandbox_id,
+        SandboxReuseResult::Reused,
+        WorkspaceReuseResult::SandboxReused,
+        &HostEnv::default(),
+    )
+    .expect("test env should build");
 
     assert_eq!(
         env.get("VM0_API_BACKEND_URL").unwrap(),
@@ -467,17 +477,20 @@ fn build_env_json_required_keys() {
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
     // checkpoint lands before sandbox teardown.
-    assert!(
-        env.get("VM0_SANDBOX_ID")
-            .unwrap()
-            .parse::<uuid::Uuid>()
-            .is_ok()
-    );
-    assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), "reused");
     assert_eq!(
-        env.get(guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV)
-            .unwrap(),
-        "sandboxReused"
+        env.get(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV)
+            .map(String::as_str),
+        Some(sandbox_id)
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV)
+            .map(String::as_str),
+        Some("reused")
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV)
+            .map(String::as_str),
+        Some("sandboxReused")
     );
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_API_START_TIME_ENV)
@@ -485,14 +498,14 @@ fn build_env_json_required_keys() {
         ""
     );
     assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
-    for canonical_key in [
-        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+    for legacy_key in [
+        guest_contracts::env::SANDBOX_ID_ENV,
+        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
     ] {
         assert!(
-            !env.contains_key(canonical_key),
-            "reader Stage 1 must not emit canonical key {canonical_key}"
+            !env.contains_key(legacy_key),
+            "canonical writer emitted legacy key {legacy_key}"
         );
     }
 }
@@ -536,7 +549,30 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
             &HostEnv::default(),
         )
         .expect("test env should build");
-        assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), expected);
+        assert_eq!(
+            env.get(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV)
+                .map(String::as_str),
+            Some(sid.as_str())
+        );
+        assert_eq!(
+            env.get(guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV)
+                .map(String::as_str),
+            Some(expected)
+        );
+        assert!(
+            !env.contains_key(guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV),
+            "no-workspace builder emitted canonical workspace reuse metadata"
+        );
+        for legacy_key in [
+            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+        ] {
+            assert!(
+                !env.contains_key(legacy_key),
+                "canonical writer emitted legacy key {legacy_key}"
+            );
+        }
     }
 }
 
