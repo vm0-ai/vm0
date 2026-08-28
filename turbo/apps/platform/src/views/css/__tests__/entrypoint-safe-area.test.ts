@@ -33,8 +33,11 @@ describe("platform entrypoint safe area behavior", () => {
     ).toBeFalsy();
   });
 
-  it("centers the bootstrap skeleton against the fixed viewport", () => {
+  it("pins the bootstrap skeleton to the initial reachable viewport", () => {
     const rule = /#app-bootstrap-skeleton\s*{([^}]*)}/.exec(indexHtml)?.[1];
+    const contentRule = /\.app-bootstrap-skeleton__content\s*{([^}]*)}/.exec(
+      indexHtml,
+    )?.[1];
 
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100lvh;/);
@@ -42,13 +45,15 @@ describe("platform entrypoint safe area behavior", () => {
     expect(rule).toMatch(/position:\s*fixed;/);
     expect(rule).toMatch(/inset:\s*0;/);
     expect(rule).not.toMatch(/(?:^|[;\s])(?:min-)?height\s*:/);
-  });
-
-  it("reveals the next loading message without an empty handoff frame", () => {
-    expect(indexHtml).toContain("var typeDelay = Math.max(0, delay - 50);");
-    expect(indexHtml).toMatch(
-      /app-bootstrap-skeleton-type 1\.5s steps\("\s*\+\s*message\.length\s*\+\s*", jump-start\)/,
+    expect(contentRule).toBeDefined();
+    expect(contentRule).toMatch(/position:\s*fixed;/);
+    expect(contentRule).toMatch(
+      /top:\s*var\(--app-bootstrap-skeleton-center-y,\s*50dvh\);/,
     );
+    expect(contentRule).toMatch(/left:\s*50%;/);
+    expect(contentRule).toMatch(/transform:\s*translate\(-50%,\s*-50%\);/);
+    expect(indexHtml).toContain("window.visualViewport.height");
+    expect(indexHtml).toContain('viewportHeight / 2 + "px"');
   });
 
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {

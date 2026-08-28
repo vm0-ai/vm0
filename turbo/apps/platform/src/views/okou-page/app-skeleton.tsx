@@ -92,15 +92,15 @@ export function AppSkeleton({
               {staticCopy}
             </p>
           )}
-          {/* First cycle pre-rolls typing while hidden for 50ms before handoff. */}
+          {/* Typewriter: delayed 800ms on first cycle, immediate on subsequent */}
           <p
             className="absolute inset-0 text-base font-medium text-foreground/70 overflow-hidden whitespace-nowrap border-r-2 border-current"
             style={{
               visibility: "hidden",
               width: 0,
               animation: isFirst
-                ? `sk-show-typewriter 800ms forwards, sk-typing 1.5s steps(${charCount}, jump-start) 750ms forwards, sk-blink 0.6s step-end 800ms infinite`
-                : `sk-show-typewriter 0s forwards, sk-typing 1.5s steps(${charCount}, jump-start) forwards, sk-blink 0.6s step-end infinite`,
+                ? `sk-show-typewriter 800ms forwards, sk-typing 1.5s steps(${charCount}) 800ms forwards, sk-blink 0.6s step-end 800ms infinite`
+                : `sk-show-typewriter 0s forwards, sk-typing 1.5s steps(${charCount}) forwards, sk-blink 0.6s step-end infinite`,
             }}
           >
             {typewriterCopy}
