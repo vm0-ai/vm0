@@ -53,11 +53,15 @@ pub(super) async fn read_unit_config_path_bounded(
 }
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
-    parse_unit_command_paths(content).map(|paths| paths.config_path)
+    parse_unit_exec_start(content, parse_exec_start_config)
 }
 
 pub(crate) fn parse_unit_command_paths(content: &str) -> Option<RunnerUnitCommandPaths> {
-    let mut command_paths = None;
+    parse_unit_exec_start(content, parse_exec_start_command_paths)
+}
+
+fn parse_unit_exec_start<T>(content: &str, parse: impl Fn(&str) -> Option<T>) -> Option<T> {
+    let mut value = None;
     let mut in_service_section = false;
     for line in logical_unit_lines(content) {
         let trimmed = line.trim();
@@ -75,14 +79,14 @@ pub(crate) fn parse_unit_command_paths(content: &str) -> Option<RunnerUnitComman
             continue;
         }
         if rest.trim().is_empty() {
-            command_paths = None;
+            value = None;
             continue;
         }
-        if let Some(next_command_paths) = parse_exec_start_command_paths(rest) {
-            command_paths = Some(next_command_paths);
+        if let Some(next_value) = parse(rest) {
+            value = Some(next_value);
         }
     }
-    command_paths
+    value
 }
 
 fn unit_section_name(line: &str) -> Option<&str> {
@@ -128,9 +132,9 @@ fn logical_unit_lines(content: &str) -> Vec<String> {
 ///
 /// Handles both quoted (`--config "/path with spaces/f.yaml"`) and unquoted
 /// (`--config /simple/path.yaml`) forms. Only the argument value is extracted.
-#[cfg(test)]
 pub(crate) fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
-    parse_exec_start_command_paths(line).map(|paths| paths.config_path)
+    let tokens = tokenize_systemd_exec_start(line)?;
+    config_path_from_tokens(&tokens)
 }
 
 fn parse_exec_start_command_paths(line: &str) -> Option<RunnerUnitCommandPaths> {
@@ -138,16 +142,21 @@ fn parse_exec_start_command_paths(line: &str) -> Option<RunnerUnitCommandPaths> 
     let executable_path = tokens
         .first()
         .and_then(|value| command_path_from_arg(value))?;
+    let config_path = config_path_from_tokens(&tokens)?;
+    Some(RunnerUnitCommandPaths {
+        executable_path,
+        config_path,
+    })
+}
+
+fn config_path_from_tokens(tokens: &[String]) -> Option<PathBuf> {
     for (idx, token) in tokens.iter().enumerate() {
         if token == "--config" || token == "-c" {
             if let Some(config_path) = tokens
                 .get(idx + 1)
                 .and_then(|value| config_path_from_arg(value))
             {
-                return Some(RunnerUnitCommandPaths {
-                    executable_path: executable_path.clone(),
-                    config_path,
-                });
+                return Some(config_path);
             }
             continue;
         }
@@ -156,10 +165,7 @@ fn parse_exec_start_command_paths(line: &str) -> Option<RunnerUnitCommandPaths> 
             .or_else(|| token.strip_prefix("-c="))
             .and_then(config_path_from_arg)
         {
-            return Some(RunnerUnitCommandPaths {
-                executable_path,
-                config_path: value,
-            });
+            return Some(value);
         }
     }
     None
@@ -432,6 +438,20 @@ ExecStart="/var/lib/vm0-runner/bin/binary-blue/runner" start --config "/var/lib/
             paths.config_path(),
             PathBuf::from("/var/lib/vm0-runner/runners/config-green/runner.yaml")
         );
+    }
+
+    #[test]
+    fn parse_unit_config_path_does_not_require_supported_executable_syntax() {
+        let content = r#"
+[Service]
+ExecStart=-/usr/bin/runner start --config "/etc/runner.yaml"
+"#;
+
+        assert_eq!(
+            parse_unit_config_path(content),
+            Some(PathBuf::from("/etc/runner.yaml"))
+        );
+        assert_eq!(parse_unit_command_paths(content), None);
     }
 
     #[test]
