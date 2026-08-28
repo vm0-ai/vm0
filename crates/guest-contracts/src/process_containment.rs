@@ -71,9 +71,11 @@ pub const TOOL_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_TOOL_CGROUP_PROCS_ENDPOINT
 /// root-writer cutover release, observation window, rollback window, and
 /// legacy-read-zero gates in #28914 are complete.
 ///
-/// Guest Agent keeps writing the legacy alias to managed CLI children until
-/// the deployed reader floor, sandbox drain, rollback window, and
-/// legacy-read-zero gates in #28914 are complete.
+/// Guest Agent also writes only this canonical alias to managed CLI children.
+/// `guest-tool-exec` retains [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`] as a rollback
+/// fallback until the downstream-writer cutover is released, pre-cutover Guest
+/// runtimes and reusable sandboxes are drained, the observation and rollback
+/// windows are complete, and legacy reads are zero under #28914.
 pub const CANONICAL_TOOL_CGROUP_PROCS_ENV: &str = "OKOU_TOOL_CGROUP_PROCS_ENDPOINT";
 
 /// Smallest Runner profile vCPU count validated for workload containment.

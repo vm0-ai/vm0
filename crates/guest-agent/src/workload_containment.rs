@@ -185,7 +185,7 @@ impl WorkloadContainment {
     /// Runner-owned endpoint injected into managed CLI environments.
     pub(crate) fn tool_placement_env(&self) -> (&'static str, String) {
         (
-            TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            CANONICAL_TOOL_CGROUP_PROCS_ENV,
             self.tool_placement_endpoint.to_string(),
         )
     }
@@ -550,13 +550,13 @@ mod tests {
         assert_eq!(
             containment.tool_placement_env(),
             (
-                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+                CANONICAL_TOOL_CGROUP_PROCS_ENV,
                 "runner-tool-endpoint".to_string()
             )
         );
         assert_ne!(
             containment.tool_placement_env().0,
-            CANONICAL_TOOL_CGROUP_PROCS_ENV
+            TOOL_CGROUP_PROCS_ENDPOINT_ENV
         );
         assert_eq!(
             containment.env_source_evidence(),

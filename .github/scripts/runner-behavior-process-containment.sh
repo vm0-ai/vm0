@@ -159,9 +159,9 @@ grep -qw memory "$parent/workload/tools/cgroup.subtree_control"
 test "$(cat "/sys/fs/cgroup$relative/memory.oom.group")" = 1
 test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}"
 test -z "${OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}"
-test -z "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT+x}"
-test "${VM0_TOOL_CGROUP_PROCS_ENDPOINT+x}" = x
-test -n "$VM0_TOOL_CGROUP_PROCS_ENDPOINT"
+test -z "${VM0_TOOL_CGROUP_PROCS_ENDPOINT+x}"
+test "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT+x}" = x
+test -n "$OKOU_TOOL_CGROUP_PROCS_ENDPOINT"
 control_member_count=$(wc -l < "$parent/control/cgroup.procs")
 if [ "$control_member_count" -ne 1 ]; then
   echo "control cgroup must contain only Guest Agent; members=$(tr '\n' ' ' < "$parent/control/cgroup.procs")" >&2
