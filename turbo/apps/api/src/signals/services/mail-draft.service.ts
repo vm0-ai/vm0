@@ -452,7 +452,7 @@ function mailDraftRow(
     !row.gmailThreadId ||
     !row.gmailMessageId ||
     !row.senderAddress ||
-    !row.subject
+    row.subject === null
   ) {
     return null;
   }
