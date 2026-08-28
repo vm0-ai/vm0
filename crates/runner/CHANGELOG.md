@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.177.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.3...runner-rs-v0.177.4) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
 ## [0.177.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.2...runner-rs-v0.177.3) (2026-08-28)
 
 

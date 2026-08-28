@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.4...guest-contracts-v0.12.5) (2026-08-28)
+
+
+### Refactoring
+
+* **guest:** cut managed tool placement writer to canonical alias ([#30001](https://github.com/vm0-ai/vm0/issues/30001)) ([e8e1294](https://github.com/vm0-ai/vm0/commit/e8e129417a3e77e507f2892854f8291d71d97d8e)), closes [#29995](https://github.com/vm0-ai/vm0/issues/29995) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
 ## [0.12.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.3...guest-contracts-v0.12.4) (2026-08-28)
 
 

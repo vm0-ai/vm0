@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.261](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.260...sandbox-fc-v0.37.261) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
 ## [0.37.260](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.259...sandbox-fc-v0.37.260) (2026-08-28)
 
 ## [0.37.259](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.258...sandbox-fc-v0.37.259) (2026-08-27)

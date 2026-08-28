@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.505.2](https://github.com/vm0-ai/vm0/compare/api-v1.505.1...api-v1.505.2) (2026-08-28)
+
+
+### Refactoring
+
+* **api:** require connection failure sources ([#29951](https://github.com/vm0-ai/vm0/issues/29951)) ([e8a3522](https://github.com/vm0-ai/vm0/commit/e8a35220b66d63e17cdbbe5c930962be0ec692a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.378.1
+    * @okouai/core bumped to 8.599.5
+    * @okouai/db bumped to 1.227.1
+
 ## [1.505.1](https://github.com/vm0-ai/vm0/compare/api-v1.505.0...api-v1.505.1) (2026-08-28)
 
 
