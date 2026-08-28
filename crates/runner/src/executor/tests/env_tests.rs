@@ -280,7 +280,7 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
 }
 
 #[test]
-fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
+fn execution_context_validation_rejects_translated_tuning_env_nul_before_sandbox() {
     let secret = "3\0";
     let ctx = context_with_env(HashMap::from([(
         "VM0_STUCK_TOOL_TIMEOUT_SECS".into(),
@@ -291,7 +291,7 @@ fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
 
     assert!(error.contains("bootstrap environment"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    assert!(error.contains(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV));
     assert!(!error.contains(secret));
 }
 
@@ -949,44 +949,64 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
 }
 
 #[test]
-fn build_env_json_keeps_guest_agent_tuning_writer_legacy_only() {
+fn build_env_json_translates_guest_agent_tuning_inputs_to_canonical_outputs() {
     let mut ctx = minimal_context();
-    ctx.environment = Some(HashMap::from([
-        ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
-        ("VM0_POST_RESULT_SIGTERM_GRACE_SECS".into(), "1".into()),
-        ("VM0_POST_RESULT_TOTAL_CAP_SECS".into(), "4".into()),
-        ("VM0_POST_RESULT_SIGKILL_GRACE_SECS".into(), "2".into()),
-        (
-            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-    ]));
+    let expected_values = ["3", "", " 4 ", "not-a-duration"];
+    let mut environment = HashMap::new();
+    for ((legacy_input, canonical_bootstrap_output), expected_value) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+            .into_iter()
+            .zip(expected_values)
+    {
+        environment.insert(legacy_input.into(), expected_value.into());
+        environment.insert(
+            canonical_bootstrap_output.into(),
+            "hostile-canonical-must-not-override".into(),
+        );
+    }
+    ctx.environment = Some(environment);
 
     let env = build_env_for_test(&ctx, "http://localhost");
 
-    assert_eq!(env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
-    assert_eq!(env.get("VM0_POST_RESULT_SIGTERM_GRACE_SECS").unwrap(), "1");
-    assert_eq!(env.get("VM0_POST_RESULT_TOTAL_CAP_SECS").unwrap(), "4");
-    assert_eq!(env.get("VM0_POST_RESULT_SIGKILL_GRACE_SECS").unwrap(), "2");
-    for key in [
-        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    ] {
-        assert!(!env.contains_key(key), "runner writer emitted {key}");
+    for ((legacy_input, canonical_bootstrap_output), expected_value) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+            .into_iter()
+            .zip(expected_values)
+    {
+        assert_eq!(
+            env.get(canonical_bootstrap_output).map(String::as_str),
+            Some(expected_value)
+        );
+        assert!(
+            !env.contains_key(legacy_input),
+            "runner writer emitted legacy output {legacy_input}"
+        );
+    }
+}
+
+#[test]
+fn build_env_json_does_not_author_guest_agent_tuning_output_without_legacy_inputs() {
+    let canonical_only_environment = guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+        .into_iter()
+        .map(|(_, canonical_bootstrap_output)| {
+            (
+                canonical_bootstrap_output.into(),
+                "hostile-canonical-must-not-author".into(),
+            )
+        })
+        .collect();
+
+    for environment in [None, Some(canonical_only_environment)] {
+        let mut ctx = minimal_context();
+        ctx.environment = environment;
+        let env = build_env_for_test(&ctx, "http://localhost");
+
+        for (legacy_input, canonical_bootstrap_output) in
+            guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+        {
+            assert!(!env.contains_key(legacy_input));
+            assert!(!env.contains_key(canonical_bootstrap_output));
+        }
     }
 }
 
