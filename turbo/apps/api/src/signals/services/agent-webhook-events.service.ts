@@ -13,6 +13,7 @@ import type { SandboxAuth } from "../../types/auth";
 import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphone-typing.service";
 import { ingestAxiomEvents } from "./agent-event-consumer-axiom.service";
 import {
+  AgentEventRunNotFoundError,
   materializeRunOutputEvents$,
   publishMaterializedChatProjection,
   type MaterializedChatProjection,
@@ -178,7 +179,10 @@ export const receiveAgentEvents$ = command(
     );
     signal.throwIfAborted();
     if (!projectionResult.ok) {
-      if (isForeignKeyViolation(projectionResult.error)) {
+      if (
+        projectionResult.error instanceof AgentEventRunNotFoundError ||
+        isForeignKeyViolation(projectionResult.error)
+      ) {
         L.debug("Ignored events for deleted run", {
           runId: payload.runId,
           ...range,

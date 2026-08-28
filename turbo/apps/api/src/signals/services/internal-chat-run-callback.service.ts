@@ -245,8 +245,6 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_prepare_completed"
   | "api_dispatch_pre_create_zero_chat_callback_prepare_failed"
   | "api_dispatch_pre_create_zero_chat_callback_load_db_output_state"
-  | "api_dispatch_pre_create_zero_chat_callback_db_output_complete"
-  | "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete"
   | "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items"
   | "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker"
   | "api_dispatch_pre_create_zero_chat_callback_load_followup_context"
@@ -454,8 +452,7 @@ interface ResultEventItem {
   readonly content: string;
 }
 
-interface DbCompletedChatOutputState {
-  readonly kind: "complete" | "incomplete";
+interface DbCompletedChatOutput {
   readonly latestAssistant: AssistantEventItem | null;
   readonly resultFallback: ResultEventItem | null;
 }
@@ -1076,14 +1073,13 @@ async function latestEventBackedAssistantEvent(
   };
 }
 
-async function loadDbCompletedChatOutputState(args: {
+async function loadDbCompletedChatOutput(args: {
   readonly db: Db;
   readonly runId: string;
   readonly lastEventSequence: number | null;
-}): Promise<DbCompletedChatOutputState> {
+}): Promise<DbCompletedChatOutput> {
   if (args.lastEventSequence === null) {
     return {
-      kind: "complete",
       latestAssistant: null,
       resultFallback: null,
     };
@@ -1091,8 +1087,6 @@ async function loadDbCompletedChatOutputState(args: {
 
   const [state] = await args.db
     .select({
-      processedThroughSequence:
-        runOutputMaterializations.processedThroughSequence,
       latestResultSequence: runOutputMaterializations.latestResultSequence,
       latestResultText: runOutputMaterializations.latestResultText,
     })
@@ -1116,27 +1110,9 @@ async function loadDbCompletedChatOutputState(args: {
         }
       : null;
   return {
-    kind:
-      state && state.processedThroughSequence >= args.lastEventSequence
-        ? "complete"
-        : "incomplete",
     latestAssistant,
     resultFallback,
   };
-}
-
-async function recordDbOutputStateTiming(
-  timing: ChatCallbackPreCreateTimingCollector,
-  state: DbCompletedChatOutputState,
-): Promise<void> {
-  await measureChatCallbackPreCreateTiming(
-    timing,
-    state.kind === "complete"
-      ? "api_dispatch_pre_create_zero_chat_callback_db_output_complete"
-      : "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete",
-    "nested",
-    () => {},
-  );
 }
 
 async function loadCompletedChatOutput(
@@ -1148,12 +1124,12 @@ async function loadCompletedChatOutput(
   },
   signal: AbortSignal,
 ): Promise<CompletedChatOutputLoad> {
-  const dbOutputState = await measureChatCallbackPreCreateTiming(
+  const dbOutput = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
     "nested",
     () => {
-      return loadDbCompletedChatOutputState({
+      return loadDbCompletedChatOutput({
         db: args.db,
         runId: args.runId,
         lastEventSequence: args.lastEventSequence,
@@ -1162,20 +1138,10 @@ async function loadCompletedChatOutput(
   );
   signal.throwIfAborted();
 
-  await recordDbOutputStateTiming(args.timing, dbOutputState);
-  signal.throwIfAborted();
-
-  if (dbOutputState.kind === "incomplete") {
-    log.warn("Run output projection is incomplete at terminal callback", {
-      runId: args.runId,
-      lastEventSequence: args.lastEventSequence,
-    });
-  }
-
   return {
     assistantItemsToInsert: [],
-    latestAssistant: dbOutputState.latestAssistant,
-    resultFallback: dbOutputState.resultFallback,
+    latestAssistant: dbOutput.latestAssistant,
+    resultFallback: dbOutput.resultFallback,
   };
 }
 
