@@ -18,6 +18,7 @@ const ENABLED_SERVICE_SCENARIO_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO
 const ENABLED_SERVICE_CONFIG_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_CONFIG";
 const ENABLED_SERVICE_HOME_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_HOME";
 const ENABLED_SERVICE_SYSTEM_DIR_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_SYSTEM_DIR";
+const ENABLED_SERVICE_STATE_DIR_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_STATE_DIR";
 const ENABLED_SERVICE_INVOCATIONS_ENV: &str = "OKOU_RUN_GC_ENABLED_SERVICE_INVOCATIONS";
 const ENABLED_SERVICE_CHILD_TEST: &str =
     "cmd::gc::image_refs::tests::enabled_service_systemctl_child";
@@ -25,6 +26,15 @@ const FAKE_SYSTEMCTL: &str = r#"#!/bin/sh
 printf '%s\n' "$*" >> "$OKOU_RUN_GC_ENABLED_SERVICE_INVOCATIONS"
 
 if [ "$1" = "is-enabled" ]; then
+  unit="$2"
+  if [ "$OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO" = "bounded" ]; then
+    : > "$OKOU_RUN_GC_ENABLED_SERVICE_STATE_DIR/$unit.started"
+    while [ ! -f "$OKOU_RUN_GC_ENABLED_SERVICE_STATE_DIR/$unit.release" ]; do :; done
+    if [ "$unit" = "vm0-runner-disabled.service" ]; then
+      printf '%s\n' 'disabled'
+      exit 1
+    fi
+  fi
   if [ "$OKOU_RUN_GC_ENABLED_SERVICE_SCENARIO" = "enablement-error" ]; then
     printf '%s\n' 'cannot determine unit file state' >&2
     exit 1
@@ -46,6 +56,19 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
       ;;
     unparseable)
       printf '%s\n' '[Service]' 'ExecStart=/usr/bin/true'
+      exit 0
+      ;;
+    bounded)
+      unit="$4"
+      if [ "$unit" = "vm0-runner-failure.service" ]; then
+        printf '%s\n' 'cannot read selected drop-in' >&2
+        exit 1
+      fi
+      suffix=${unit#vm0-runner-}
+      suffix=${suffix%.service}
+      printf '%s\n' \
+        '[Service]' \
+        "ExecStart=/usr/bin/runner start --config /configs/$suffix.yaml"
       exit 0
       ;;
     effective)
@@ -401,6 +424,45 @@ async fn enabled_service_directory_scan_reports_iteration_error() {
 }
 
 #[tokio::test]
+async fn enabled_service_discovery_overlaps_with_a_fixed_bound() {
+    let invocations = run_enabled_service_scenario("bounded").await;
+
+    assert_eq!(
+        invocations
+            .iter()
+            .filter(|invocation| invocation.starts_with("is-enabled "))
+            .count(),
+        5
+    );
+    assert_eq!(
+        invocations
+            .iter()
+            .filter(|invocation| invocation.starts_with("--no-pager cat -- "))
+            .count(),
+        4
+    );
+    for suffix in ["alpha", "beta", "failure", "gamma"] {
+        let unit = format!("vm0-runner-{suffix}.service");
+        let enablement = format!("is-enabled {unit}");
+        let config = format!("--no-pager cat -- {unit}");
+        let enablement_position = invocations
+            .iter()
+            .position(|invocation| invocation == &enablement)
+            .unwrap();
+        let config_position = invocations
+            .iter()
+            .position(|invocation| invocation == &config)
+            .unwrap();
+        assert!(enablement_position < config_position);
+    }
+    assert!(
+        !invocations
+            .iter()
+            .any(|invocation| invocation == "--no-pager cat -- vm0-runner-disabled.service")
+    );
+}
+
+#[tokio::test]
 async fn effective_enabled_service_config_ref_keeps_image_snapshot() {
     let invocations = run_enabled_service_scenario("effective").await;
 
@@ -435,7 +497,14 @@ async fn run_enabled_service_scenario(scenario: &str) -> Vec<String> {
 
     let system_dir = dir.path().join("system");
     std::fs::create_dir(&system_dir).unwrap();
-    std::fs::write(system_dir.join("vm0-runner-test.service"), "").unwrap();
+    let suffixes: &[&str] = if scenario == "bounded" {
+        &["alpha", "beta", "disabled", "failure", "gamma"]
+    } else {
+        &["test"]
+    };
+    for suffix in suffixes {
+        std::fs::write(system_dir.join(format!("vm0-runner-{suffix}.service")), "").unwrap();
+    }
 
     let home_root = dir.path().join("home");
     let home = test_home(&home_root);
@@ -445,6 +514,8 @@ async fn run_enabled_service_scenario(scenario: &str) -> Vec<String> {
     let config_path = write_test_runner_config(&home, "effective", &rootfs_hash, &snapshot_hash);
 
     let invocations_path = dir.path().join("invocations");
+    let state_dir = dir.path().join("state");
+    std::fs::create_dir(&state_dir).unwrap();
     run_ignored_child_test(
         ENABLED_SERVICE_CHILD_TEST,
         (ENABLED_SERVICE_SCENARIO_ENV, scenario),
@@ -453,6 +524,7 @@ async fn run_enabled_service_scenario(scenario: &str) -> Vec<String> {
             (ENABLED_SERVICE_CONFIG_ENV, Some(utf8_path(&config_path))),
             (ENABLED_SERVICE_HOME_ENV, Some(utf8_path(&home_root))),
             (ENABLED_SERVICE_SYSTEM_DIR_ENV, Some(utf8_path(&system_dir))),
+            (ENABLED_SERVICE_STATE_DIR_ENV, Some(utf8_path(&state_dir))),
             (
                 ENABLED_SERVICE_INVOCATIONS_ENV,
                 Some(utf8_path(&invocations_path)),
@@ -485,6 +557,7 @@ async fn enabled_service_systemctl_child() {
 
     let system_dir = PathBuf::from(std::env::var(ENABLED_SERVICE_SYSTEM_DIR_ENV).unwrap());
     match scenario.as_str() {
+        "bounded" => assert_bounded_enabled_service_discovery(&system_dir).await,
         "effective" => {
             let home = test_home(Path::new(&std::env::var(ENABLED_SERVICE_HOME_ENV).unwrap()));
             let rootfs_hash = test_hash('a');
@@ -520,6 +593,65 @@ async fn enabled_service_systemctl_child() {
             assert!(scan.paths.is_empty());
         }
         unexpected => panic!("unexpected enabled service scenario: {unexpected}"),
+    }
+}
+
+async fn assert_bounded_enabled_service_discovery(system_dir: &Path) {
+    let state_dir = PathBuf::from(std::env::var(ENABLED_SERVICE_STATE_DIR_ENV).unwrap());
+    let system_dir = system_dir.to_path_buf();
+    let discovery =
+        tokio::spawn(async move { enabled_runner_service_config_paths(&system_dir).await });
+
+    wait_for_started_enabled_service_queries(&state_dir, ENABLED_SERVICE_QUERY_CONCURRENCY).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let first_batch = started_enabled_service_queries(&state_dir);
+    assert_eq!(first_batch.len(), ENABLED_SERVICE_QUERY_CONCURRENCY);
+    release_enabled_service_queries(&state_dir, &first_batch);
+
+    wait_for_started_enabled_service_queries(&state_dir, ENABLED_SERVICE_QUERY_CONCURRENCY + 1)
+        .await;
+    release_enabled_service_queries(&state_dir, &started_enabled_service_queries(&state_dir));
+
+    let mut scan = tokio::time::timeout(Duration::from_secs(5), discovery)
+        .await
+        .expect("bounded enabled-service discovery should finish after releases")
+        .unwrap();
+    scan.paths.sort();
+    assert_eq!(
+        scan.paths,
+        vec![
+            PathBuf::from("/configs/alpha.yaml"),
+            PathBuf::from("/configs/beta.yaml"),
+            PathBuf::from("/configs/gamma.yaml"),
+        ]
+    );
+    assert!(!scan.inventory_complete);
+}
+
+async fn wait_for_started_enabled_service_queries(state_dir: &Path, expected: usize) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if started_enabled_service_queries(state_dir).len() >= expected {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("fake systemctl enablement queries should reach the gate");
+}
+
+fn started_enabled_service_queries(state_dir: &Path) -> Vec<String> {
+    std::fs::read_dir(state_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter_map(|name| name.strip_suffix(".started").map(str::to_string))
+        .collect()
+}
+
+fn release_enabled_service_queries(state_dir: &Path, units: &[String]) {
+    for unit in units {
+        std::fs::write(state_dir.join(format!("{unit}.release")), "").unwrap();
     }
 }
 
