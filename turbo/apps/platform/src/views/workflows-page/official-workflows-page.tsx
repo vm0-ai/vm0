@@ -287,13 +287,17 @@ function InstallDialog({
   const [installLoadable, install] = useLoadableSet(installOfficialWorkflow$);
   const installing = installLoadable.state === "loading";
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const open = form?.definitionName === definition.name;
-  const complete = form
-    ? officialWorkflowConfigurationComplete(form, definition.blueprints)
+  const activeForm =
+    form?.target.operation === "install" &&
+    form.definitionName === definition.name
+      ? form
+      : null;
+  const complete = activeForm
+    ? officialWorkflowConfigurationComplete(activeForm, definition.blueprints)
     : false;
   return (
     <Dialog
-      open={open}
+      open={activeForm !== null}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
           setForm(null);
@@ -316,9 +320,9 @@ function InstallDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        {form ? (
+        {activeForm ? (
           <OfficialWorkflowConfigurationFields
-            form={form}
+            form={activeForm}
             blueprints={definition.blueprints}
             agents={agents}
             agentsLoaded={agentsLoadable.state === "hasData"}
@@ -355,9 +359,9 @@ function InstallDialog({
           </Button>
           <Button
             type="button"
-            disabled={!form || !complete || installing}
+            disabled={!activeForm || !complete || installing}
             onClick={() => {
-              if (!form) {
+              if (!activeForm) {
                 return;
               }
               detach(
@@ -365,8 +369,8 @@ function InstallDialog({
                   const result = await install(
                     {
                       definitionName: definition.name,
-                      agentId: form.agentId,
-                      blueprints: form.blueprints,
+                      agentId: activeForm.agentId,
+                      blueprints: activeForm.blueprints,
                     },
                     pageSignal,
                   );
@@ -404,7 +408,6 @@ function OfficialWorkflowDefinitionPage() {
   const reload = useSet(reloadOfficialWorkflows$);
   const definition =
     definitionLoadable.state === "hasData" ? definitionLoadable.data : null;
-  const lifecycle = definition?.lifecycle ?? "active";
   const userTimezone =
     preferences?.timezone ??
     new Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -435,13 +438,14 @@ function OfficialWorkflowDefinitionPage() {
                   definition.description}
               </p>
             </div>
-            {lifecycle === "active" ? (
+            {definition.lifecycle === "active" ? (
               <Button
                 type="button"
                 className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg"
                 onClick={() => {
                   setForm(
                     createOfficialWorkflowConfigurationForm({
+                      target: { operation: "install" },
                       definitionName: definition.name,
                       agentId: defaultAgentId,
                       blueprints: definition.blueprints,
@@ -475,7 +479,7 @@ function OfficialWorkflowDefinitionPage() {
         ) : null}
         {definition ? (
           <div className="mx-auto flex max-w-[900px] flex-col gap-4">
-            {lifecycle === "retired" ? (
+            {definition.lifecycle === "retired" ? (
               <Alert>
                 <AlertTitle>
                   {i18n.t(($) => {

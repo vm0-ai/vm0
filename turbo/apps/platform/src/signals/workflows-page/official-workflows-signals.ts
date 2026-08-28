@@ -148,6 +148,12 @@ export const uninstallOfficialWorkflow$ = command(
 );
 
 export interface OfficialWorkflowConfigurationForm {
+  readonly target:
+    | { readonly operation: "install" }
+    | {
+        readonly operation: "reconfigure";
+        readonly workflowId: string;
+      };
   readonly definitionName: string;
   readonly agentId: string;
   readonly blueprints: readonly OfficialWorkflowBlueprintBindings[];

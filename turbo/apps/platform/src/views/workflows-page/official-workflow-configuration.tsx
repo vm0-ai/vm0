@@ -62,6 +62,7 @@ function initialBlueprintBindings(
 }
 
 export function createOfficialWorkflowConfigurationForm(args: {
+  readonly target: OfficialWorkflowConfigurationForm["target"];
   readonly definitionName: string;
   readonly agentId: string;
   readonly blueprints: readonly OfficialWorkflowAcceptedBlueprint[];
@@ -76,6 +77,7 @@ export function createOfficialWorkflowConfigurationForm(args: {
     }),
   );
   return {
+    target: args.target,
     definitionName: args.definitionName,
     agentId: args.agentId,
     blueprints: args.blueprints.map((blueprint) => {

@@ -2673,6 +2673,165 @@ describe("workflow detail page", () => {
     });
   });
 
+  it("discards an open Official reconfiguration draft when Installation identity changes", async () => {
+    const definition = officialCatalogDetail("retired");
+    const firstWorkflow = officialSalesResearch("retired");
+    const secondFixture = officialSalesResearch("retired");
+    const [secondAutomation] = secondFixture.automations;
+    if (!secondAutomation?.official) {
+      throw new Error("Expected the second Official Workflow automation");
+    }
+    const secondWorkflow: WorkflowDetailResponse = {
+      ...secondFixture,
+      id: OTHER_WORKFLOW_ID,
+      agentId: OTHER_AGENT_ID,
+      agentName: "support-bot",
+      agentDisplayName: "Support Bot",
+      displayName: "Support Sales Research",
+      automations: [
+        {
+          ...secondAutomation,
+          id: "workflow-automation-official-support",
+          official: {
+            ...secondAutomation.official,
+            parameterBindings: [
+              { key: "time-zone", value: "America/New_York" },
+              { key: "interval-seconds", value: 7200 },
+              { key: "include-weekends", value: true },
+            ],
+          },
+        },
+      ],
+    };
+    const workflows = [firstWorkflow, secondWorkflow];
+    const installationReads: string[] = [];
+    const reconfigureRequests: unknown[] = [];
+    mockAgentPageApis();
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis(workflows);
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ params, respond }) => {
+        installationReads.push(params.workflowId);
+        const workflow = workflows.find((candidate) => {
+          return candidate.id === params.workflowId;
+        });
+        if (!workflow) {
+          return respond(404, {
+            error: { code: "NOT_FOUND", message: "missing" },
+          });
+        }
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "retired",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      officialWorkflowInstallationsContract.reconfigure,
+      ({ params, body, respond }) => {
+        reconfigureRequests.push({ workflowId: params.workflowId, body });
+        return respond(200, {
+          workflow: secondWorkflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "retired",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage("/workflows");
+    click(
+      await waitFor(() => {
+        return linkByAriaLabel("Open Sales Research");
+      }),
+    );
+    click(
+      await waitFor(() => {
+        return buttonByText("Settings");
+      }),
+    );
+    click(
+      await waitFor(() => {
+        return buttonByText("Reconfigure");
+      }),
+    );
+    const firstDialog = await screen.findByRole("dialog");
+    fireEvent.change(
+      within(firstDialog).getByLabelText("time-zone (required)"),
+      { target: { value: "Asia/Shanghai" } },
+    );
+    fireEvent.change(
+      within(firstDialog).getByLabelText("interval-seconds (required)"),
+      { target: { value: "1800" } },
+    );
+
+    window.history.back();
+    await waitFor(() => {
+      expect(pathname()).toBe("/workflows");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(linkByAriaLabel("Open Support Sales Research"));
+    click(
+      await waitFor(() => {
+        return buttonByText("Settings");
+      }),
+    );
+    await waitFor(() => {
+      expect(installationReads.at(-1)).toBe(OTHER_WORKFLOW_ID);
+      expect(pathname()).toBe(`/workflows/${OTHER_WORKFLOW_ID}/info`);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByText("Reconfigure"));
+    const secondDialog = await screen.findByRole("dialog");
+    expect(
+      within(secondDialog).getByLabelText("time-zone (required)"),
+    ).toHaveValue("America/New_York");
+    expect(
+      within(secondDialog).getByLabelText("interval-seconds (required)"),
+    ).toHaveValue(7200);
+    expect(
+      within(secondDialog).getByRole("combobox", {
+        name: "include-weekends (required)",
+      }),
+    ).toHaveTextContent("Yes");
+    fireEvent.change(
+      within(secondDialog).getByLabelText("time-zone (required)"),
+      { target: { value: "Europe/London" } },
+    );
+    click(buttonByText("Reconfigure", secondDialog));
+
+    await waitFor(() => {
+      expect(reconfigureRequests).toStrictEqual([
+        {
+          workflowId: OTHER_WORKFLOW_ID,
+          body: {
+            blueprints: [
+              {
+                blueprintKey: "daily",
+                bindings: [
+                  { key: "interval-seconds", value: 7200 },
+                  { key: "include-weekends", value: true },
+                  { key: "time-zone", value: "Europe/London" },
+                ],
+              },
+            ],
+          },
+        },
+      ]);
+    });
+  });
+
   it("uses Official uninstall after a completed remix and preserves the copy when uninstall fails", async () => {
     const workflow = officialSalesResearch();
     const copiedWorkflow: WorkflowDetailResponse = {

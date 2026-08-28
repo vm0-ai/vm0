@@ -1645,6 +1645,10 @@ function OfficialWorkflowReconfigureCard({
               }
               setForm(
                 createOfficialWorkflowConfigurationForm({
+                  target: {
+                    operation: "reconfigure",
+                    workflowId: detail.id,
+                  },
                   definitionName: definition.name,
                   agentId: detail.agentId,
                   blueprints: definition.blueprints,
@@ -1712,17 +1716,23 @@ function OfficialWorkflowReconfigureDialog({
     reconfigureOfficialWorkflow$,
   );
   const reconfiguring = reconfigureLoadable.state === "loading";
-  const complete = form
-    ? officialWorkflowConfigurationComplete(form, definition.blueprints)
+  const activeForm =
+    form?.target.operation === "reconfigure" &&
+    form.target.workflowId === detail.id &&
+    form.definitionName === definition.name
+      ? form
+      : null;
+  const complete = activeForm
+    ? officialWorkflowConfigurationComplete(activeForm, definition.blueprints)
     : false;
   const submit = () => {
-    if (!form) {
+    if (!activeForm) {
       return;
     }
     detach(
       (async () => {
         await reconfigure(
-          { workflowId: detail.id, blueprints: form.blueprints },
+          { workflowId: detail.id, blueprints: activeForm.blueprints },
           pageSignal,
         );
         setForm(null);
@@ -1738,7 +1748,7 @@ function OfficialWorkflowReconfigureDialog({
   };
   return (
     <Dialog
-      open={form?.definitionName === definition.name}
+      open={activeForm !== null}
       onOpenChange={(open) => {
         if (!open) {
           setForm(null);
@@ -1758,9 +1768,9 @@ function OfficialWorkflowReconfigureDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        {form ? (
+        {activeForm ? (
           <OfficialWorkflowConfigurationFields
-            form={form}
+            form={activeForm}
             blueprints={definition.blueprints}
             agents={[]}
             agentsLoaded
@@ -1783,7 +1793,7 @@ function OfficialWorkflowReconfigureDialog({
           </Alert>
         ) : null}
         <OfficialWorkflowReconfigureDialogFooter
-          disabled={!form || !complete || reconfiguring}
+          disabled={!activeForm || !complete || reconfiguring}
           loading={reconfiguring}
           onCancel={() => {
             setForm(null);
