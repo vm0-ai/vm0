@@ -58,6 +58,20 @@ assert_playbook_contains() {
   grep -qF "$expected" "$playbook" || fail "playbook is missing: $expected"
 }
 
+assert_playbook_order() {
+  local earlier="$1"
+  local later="$2"
+  local earlier_line
+  local later_line
+
+  earlier_line="$(grep -nF "$earlier" "$playbook" | head -n 1 | cut -d: -f1)"
+  later_line="$(grep -nF "$later" "$playbook" | head -n 1 | cut -d: -f1)"
+  [ -n "$earlier_line" ] || fail "playbook is missing: $earlier"
+  [ -n "$later_line" ] || fail "playbook is missing: $later"
+  [ "$earlier_line" -lt "$later_line" ] ||
+    fail "playbook task order is invalid: $earlier must precede $later"
+}
+
 assert_stderr_excludes_values() {
   local value
   for value in "$@"; do
@@ -449,6 +463,20 @@ test_playbook_provisions_migrated_collector_identity_and_cadence() {
   assert_playbook_contains 'OnUnitActiveSec=15s'
   assert_playbook_contains 'AccuracySec=1s'
   assert_playbook_contains 'OnUnitActiveSec=1min'
+  local ordered_tasks=(
+    'Install VM0 monitoring runner status collector script'
+    'Install VM0 monitoring runner status collector service'
+    'Install VM0 monitoring runner status collector timer'
+    'Disable legacy VM0 runner status collector timer'
+    'Stop legacy VM0 runner status collector service'
+    'Remove legacy VM0 runner status collector artifacts'
+    'Generate initial VM0 runner lifecycle monitoring metrics'
+    'Enable VM0 monitoring runner status collector timer'
+  )
+  local index
+  for ((index = 1; index < ${#ordered_tasks[@]}; index++)); do
+    assert_playbook_order "${ordered_tasks[index - 1]}" "${ordered_tasks[index]}"
+  done
 }
 
 test_missing_and_empty_runner_roots_emit_zero_metrics
