@@ -8,6 +8,7 @@ interface ChunkingContext {
 
 const PNPM_PACKAGE_PREFIX =
   /\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?/u;
+const WORKSPACE_PACKAGE_PREFIX = "/packages/";
 
 const chunkGroups = [
   {
@@ -41,7 +42,7 @@ const chunkGroups = [
       "highlight.js",
       "katex",
       "lowlight",
-      "mermaid",
+      "mermaid-flowchart",
       "micromark-util-sanitize-uri",
       "rehype-attr",
       "rehype-autolink-headings",
@@ -75,7 +76,17 @@ function normalizeModuleId(moduleId: string): string {
 function packagePath(moduleId: string): string | null {
   const normalizedId = normalizeModuleId(moduleId);
   const match = PNPM_PACKAGE_PREFIX.exec(normalizedId);
-  return match ? normalizedId.slice(match.index + match[0].length) : null;
+  if (match) {
+    return normalizedId.slice(match.index + match[0].length);
+  }
+  const workspacePackageIndex = normalizedId.lastIndexOf(
+    WORKSPACE_PACKAGE_PREFIX,
+  );
+  return workspacePackageIndex === -1
+    ? null
+    : normalizedId.slice(
+        workspacePackageIndex + WORKSPACE_PACKAGE_PREFIX.length,
+      );
 }
 
 function matchesPackage(path: string, packageName: string): boolean {

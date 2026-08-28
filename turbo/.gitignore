@@ -26,6 +26,8 @@ coverage
 out/
 build
 dist
+!packages/mermaid-flowchart/dist/
+!packages/mermaid-flowchart/dist/**
 *.tsbuildinfo
 /apps/api/.typecheck/
 

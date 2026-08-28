@@ -1,6 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
-import mermaid from "mermaid";
+import mermaid from "@okouai/mermaid-flowchart";
 
 import { createObjectUrlResource } from "./object-url-resource.ts";
 import { theme$ } from "./theme.ts";
@@ -31,7 +31,7 @@ export interface MermaidDiagramImage {
 
 export interface MermaidDiagramSignals {
   readonly code: string;
-  /** Resolves `null` when the source is not a valid mermaid diagram. */
+  /** Resolves `null` when the source is not a supported Mermaid flowchart. */
   readonly diagram$: Computed<Promise<MermaidDiagramImage | null>>;
 }
 
@@ -82,13 +82,18 @@ function diagramRenderId(seed: string): string {
   return `mermaid-diagram-${(hash >>> 0).toString(36)}`;
 }
 
-/** Returns the diagram SVG, or undefined when the source is not valid mermaid. */
+const FLOWCHART_DIAGRAM_TYPES: ReadonlySet<string> = new Set([
+  "flowchart",
+  "flowchart-v2",
+]);
+
+/** Returns the diagram SVG, or undefined when the source is not a flowchart. */
 async function renderDiagramSvg(
   id: string,
   code: string,
 ): Promise<string | undefined> {
   const parsed = await mermaid.parse(code, { suppressErrors: true });
-  if (!parsed) {
+  if (!parsed || !FLOWCHART_DIAGRAM_TYPES.has(parsed.diagramType)) {
     return undefined;
   }
   const { svg } = await mermaid.render(id, code);

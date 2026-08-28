@@ -1,18 +1,19 @@
 /**
  * Mermaid stub for tests.
  *
- * Parsing is delegated to the real mermaid module (through the `mermaid-real`
- * alias), so source validity in tests is decided by the same parser as in
- * production. Rendering lays text out with the SVG measurement APIs of a real
- * browser layout engine (`getBBox`), which happy-dom does not implement, so
- * `render` returns a stub SVG carrying the active theme.
+ * Parsing is delegated to the real flowchart-only module (through the
+ * `mermaid-flowchart-real` alias), so source validity in tests is decided by
+ * the same parser as in production. Rendering lays text out with the SVG
+ * measurement APIs of a real browser layout engine (`getBBox`), which
+ * happy-dom does not implement, so `render` returns a stub SVG carrying the
+ * active theme.
  */
 
 type MermaidInitializeConfig = { readonly theme?: string };
 
 let activeTheme = "";
 
-const realMermaid = import("mermaid-real");
+const realMermaid = import("mermaid-flowchart-real");
 
 const mermaid = {
   initialize: (config: MermaidInitializeConfig) => {

@@ -13,17 +13,23 @@ await test("groups cyclic startup vendors without absorbing lazy-only modules", 
   const entryModuleId = path.join(root, "src/main.js");
   const startupA = path.join(root, "node_modules/react/a.js");
   const startupB = path.join(root, "node_modules/react-dom/b.js");
+  const workspaceMermaid = path.join(
+    root,
+    "packages/mermaid-flowchart/dist/index.mjs",
+  );
   const lazyRoute = path.join(root, "src/lazy-route.js");
   const lazyVendor = path.join(root, "node_modules/lucide-react/lazy.js");
   const fixtureModules = new Map([
     [startupA, 'import "fixture-startup-b"; console.log("startup-a");'],
     [startupB, 'import "fixture-startup-a"; console.log("startup-b");'],
+    [workspaceMermaid, 'console.log("workspace-mermaid");'],
     [lazyRoute, 'import "fixture-lazy-vendor"; console.log("lazy-route");'],
     [lazyVendor, 'console.log("lazy-vendor");'],
   ]);
   const fixtureIds = new Map([
     ["fixture-startup-a", startupA],
     ["fixture-startup-b", startupB],
+    ["fixture-workspace-mermaid", workspaceMermaid],
     ["fixture-lazy-route", lazyRoute],
     ["fixture-lazy-vendor", lazyVendor],
   ]);
@@ -36,7 +42,7 @@ await test("groups cyclic startup vendors without absorbing lazy-only modules", 
     );
     await writeFile(
       entryModuleId,
-      'import "fixture-startup-a"; import("fixture-lazy-route");',
+      'import "fixture-startup-a"; import "fixture-workspace-mermaid"; import("fixture-lazy-route");',
     );
 
     const result = await build({
@@ -81,6 +87,11 @@ await test("groups cyclic startup vendors without absorbing lazy-only modules", 
     assert.ok(vendorChunk.moduleIds.includes(startupA));
     assert.ok(vendorChunk.moduleIds.includes(startupB));
     assert.ok(!vendorChunk.moduleIds.includes(lazyVendor));
+    const contentChunk = chunks.find((chunk) => {
+      return chunk.name === "vendor-content";
+    });
+    assert.ok(contentChunk, "expected the stable content chunk");
+    assert.ok(contentChunk.moduleIds.includes(workspaceMermaid));
     assert.ok(
       chunks.some((chunk) => {
         return (

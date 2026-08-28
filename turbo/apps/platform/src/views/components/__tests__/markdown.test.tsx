@@ -670,6 +670,26 @@ describe("assistant markdown", () => {
     expect(screen.queryByAltText("Diagram")).toBeNull();
   });
 
+  it("keeps unsupported mermaid diagram types as ordinary code blocks", async () => {
+    context.mocks.browser.blobDownload();
+    const source = "sequenceDiagram\n  Alice->>Bob: Hello";
+    mockThread(`\`\`\`mermaid\n${source}\n\`\`\``);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("code.language-mermaid")).not.toBeNull();
+    });
+    expect(document.querySelector("code.language-mermaid")?.textContent).toBe(
+      source,
+    );
+    expect(document.querySelector(".mermaid-block")).toBeNull();
+    expect(screen.queryByAltText("Diagram")).toBeNull();
+  });
+
   it("keeps external links safe", async () => {
     mockThread("[example](https://example.com)");
 
