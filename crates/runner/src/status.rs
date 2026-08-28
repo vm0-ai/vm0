@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use sandbox::SandboxId;
 use serde::Serialize;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -131,6 +133,24 @@ struct PersistenceCoordinator {
     settled: tokio::sync::Notify,
 }
 
+type StatusWriteFuture = Pin<Box<dyn Future<Output = StatusResult<()>> + Send + 'static>>;
+
+enum InFlightStatusWriteState {
+    Active {
+        write: StatusWriteFuture,
+        ordering: OwnedMutexGuard<PersistenceState>,
+    },
+    Complete,
+}
+
+struct InFlightStatusWrite {
+    state: InFlightStatusWriteState,
+    persistence: Arc<PersistenceCoordinator>,
+    path: PathBuf,
+    generation: u64,
+    started: bool,
+}
+
 impl PersistenceCoordinator {
     fn new() -> Self {
         Self {
@@ -188,6 +208,101 @@ impl PersistenceCoordinator {
                 self.settled.notify_waiters();
                 None
             }
+        }
+    }
+}
+
+impl InFlightStatusWrite {
+    fn new(
+        write: StatusWriteFuture,
+        ordering: OwnedMutexGuard<PersistenceState>,
+        persistence: Arc<PersistenceCoordinator>,
+        path: PathBuf,
+        generation: u64,
+    ) -> Self {
+        Self {
+            state: InFlightStatusWriteState::Active { write, ordering },
+            persistence,
+            path,
+            generation,
+            started: false,
+        }
+    }
+
+    async fn finish(&mut self) -> StatusResult<()> {
+        self.started = true;
+        let result = match &mut self.state {
+            InFlightStatusWriteState::Active { write, .. } => write.as_mut().await,
+            InFlightStatusWriteState::Complete => return Ok(()),
+        };
+        if result.is_ok()
+            && let InFlightStatusWriteState::Active { ordering, .. } = &mut self.state
+        {
+            ordering.published_generation = self.generation;
+        }
+        self.state = InFlightStatusWriteState::Complete;
+        result
+    }
+}
+
+impl Drop for InFlightStatusWrite {
+    fn drop(&mut self) {
+        if !self.started || std::thread::panicking() {
+            return;
+        }
+        let InFlightStatusWriteState::Active { write, ordering } =
+            std::mem::replace(&mut self.state, InFlightStatusWriteState::Complete)
+        else {
+            return;
+        };
+        let persistence = Arc::clone(&self.persistence);
+        let path = self.path.clone();
+        let generation = self.generation;
+        // The caller can disappear independently of the five-second timeout.
+        // Keep any polled atomic replacement and its ordering guard alive so
+        // an older generation cannot finish after a recovery write.
+        persistence.begin_delayed_write();
+        drop(tokio::spawn(continue_in_flight_status_write(
+            write,
+            ordering,
+            persistence,
+            path,
+            generation,
+        )));
+    }
+}
+
+async fn continue_in_flight_status_write(
+    write: StatusWriteFuture,
+    mut ordering: OwnedMutexGuard<PersistenceState>,
+    persistence: Arc<PersistenceCoordinator>,
+    path: PathBuf,
+    generation: u64,
+) {
+    if let Err(error) = write.await {
+        warn!(generation, %error, "in-flight status persistence later failed");
+    } else {
+        ordering.published_generation = generation;
+    }
+    while let Some(pending) = persistence.take_pending_or_finish() {
+        let pending_generation = pending.generation;
+        if ordering.published_generation >= pending_generation {
+            continue;
+        }
+        if let Err(source) =
+            crate::private_fs::write_private_file(&path, pending.json.as_bytes()).await
+        {
+            let error = StatusPersistenceError::Write {
+                path: path.clone(),
+                source,
+            };
+            warn!(
+                generation = pending_generation,
+                %error,
+                "deferred status persistence failed"
+            );
+        } else {
+            ordering.published_generation = pending_generation;
         }
     }
 }
@@ -607,7 +722,7 @@ impl StatusTracker {
         };
         serialized = ready;
         let ordering = Arc::clone(&persistence.ordering);
-        let mut ordering = match tokio::time::timeout_at(deadline, ordering.lock_owned()).await {
+        let ordering = match tokio::time::timeout_at(deadline, ordering.lock_owned()).await {
             Ok(ordering) => ordering,
             Err(_) => {
                 drop(persistence.defer_if_delayed(serialized));
@@ -625,7 +740,7 @@ impl StatusTracker {
         let write_path = path.clone();
         #[cfg(test)]
         let atomic_write_gate = self.write_gate.clone();
-        let mut write = Box::pin(async move {
+        let write: StatusWriteFuture = Box::pin(async move {
             #[cfg(test)]
             if let Some(gate) = &atomic_write_gate
                 && gate.generation == generation
@@ -647,52 +762,14 @@ impl StatusTracker {
                 })
         });
 
-        match tokio::time::timeout_at(deadline, write.as_mut()).await {
-            Ok(result) => {
-                result?;
-                ordering.published_generation = generation;
-                Ok(())
-            }
-            Err(_) => {
-                // Tokio filesystem operations run on the blocking pool. Once
-                // started, dropping their async wrapper cannot cancel the
-                // underlying write or rename. Keep the ordered future alive so
-                // a late older generation cannot replace a newer publication.
-                persistence.begin_delayed_write();
-                drop(tokio::spawn(async move {
-                    if let Err(error) = write.await {
-                        warn!(generation, %error, "timed-out status persistence later failed");
-                    } else {
-                        ordering.published_generation = generation;
-                    }
-                    while let Some(pending) = persistence.take_pending_or_finish() {
-                        let pending_generation = pending.generation;
-                        if ordering.published_generation >= pending_generation {
-                            continue;
-                        }
-                        if let Err(source) =
-                            crate::private_fs::write_private_file(&path, pending.json.as_bytes())
-                                .await
-                        {
-                            let error = StatusPersistenceError::Write {
-                                path: path.clone(),
-                                source,
-                            };
-                            warn!(
-                                generation = pending_generation,
-                                %error,
-                                "deferred status persistence failed"
-                            );
-                        } else {
-                            ordering.published_generation = pending_generation;
-                        }
-                    }
-                }));
-                Err(StatusPersistenceError::Timeout {
-                    path: self.path.clone(),
-                    timeout: STATUS_PERSISTENCE_TIMEOUT,
-                })
-            }
+        let mut in_flight =
+            InFlightStatusWrite::new(write, ordering, persistence, path, generation);
+        match tokio::time::timeout_at(deadline, in_flight.finish()).await {
+            Ok(result) => result,
+            Err(_) => Err(StatusPersistenceError::Timeout {
+                path: self.path.clone(),
+                timeout: STATUS_PERSISTENCE_TIMEOUT,
+            }),
         }
     }
 }
@@ -882,6 +959,48 @@ mod tests {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .active,
             "the timed-out writer should publish the coalesced snapshot"
+        );
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "running");
+    }
+
+    #[tokio::test]
+    async fn atomic_write_task_abort_keeps_ordering_and_coalesces_newer_generation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let tracker = Arc::new(StatusTracker::new_with_atomic_write_gate(
+            path.clone(),
+            1,
+            Arc::clone(&started),
+            Arc::clone(&release),
+        ));
+
+        let write_started = started.notified();
+        let write_tracker = Arc::clone(&tracker);
+        let write = tokio::spawn(async move { write_tracker.write_initial().await });
+        write_started.await;
+        write.abort();
+        assert!(write.await.unwrap_err().is_cancelled());
+        assert!(
+            tracker.persistence.ordering.try_lock().is_err(),
+            "an aborted caller must not release ordering for a started write"
+        );
+
+        let error = tracker.set_mode(RunnerMode::Running).await.unwrap_err();
+        assert!(matches!(error, StatusPersistenceError::Timeout { .. }));
+        let settled = tracker.persistence.settled.notified();
+        release.add_permits(1);
+        settled.await;
+        assert!(
+            !tracker
+                .persistence
+                .delayed
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .active,
+            "the continued writer should publish the coalesced snapshot"
         );
         let status = read_status(&path);
         assert_eq!(status["mode"], "running");
