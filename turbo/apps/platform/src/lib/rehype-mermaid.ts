@@ -2,12 +2,9 @@
  * Rehype plugin that replaces ```mermaid fenced code blocks with a placeholder
  * `<div class="mermaid-block" data-mermaid-code="...">` element.
  *
- * It has to run before `rehype-prism-plus`, which rewrites code content into
- * one `<span>` per line even for languages it does not know — after that the
- * original fence text can no longer be read reliably. Passing the plugin
- * through the `rehypePlugins` prop of `<Markdown>` gives exactly that position:
- * `@uiw/react-markdown-preview` appends its prism plugin after caller-provided
- * plugins.
+ * It runs last in the shared Markdown pipeline, after raw HTML and attributes
+ * have settled, so it can recognize the final fenced-code node without a view
+ * component needing to inspect Markdown source.
  *
  * The placeholder must use a plain HTML tag name: react-markdown drops
  * elements whose tag name does not match `/^[A-Za-z0-9]+$/`.

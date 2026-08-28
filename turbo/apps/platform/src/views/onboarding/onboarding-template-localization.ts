@@ -1,8 +1,6 @@
-import type {
-  IllustrationTemplateItem,
-  PresentationTemplateItem,
-  VideoTemplateItem,
-} from "@okouai/core";
+import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
+import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import type { VideoTemplateItem } from "@okouai/core/video-template-items";
 import type { TFunction } from "i18next";
 import enUSCommon from "../../i18n/locales/en-US/common.json";
 import {

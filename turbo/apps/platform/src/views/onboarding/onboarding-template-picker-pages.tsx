@@ -1,12 +1,10 @@
 import type { SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { ChevronLeft, ChevronRight, CircleCheckBig, Eye } from "lucide-react";
-import {
-  r2ImageTransformUrl,
-  type IllustrationTemplateItem,
-  type PresentationTemplateItem,
-  type VideoTemplateItem,
-} from "@okouai/core";
+import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
+import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
+import type { VideoTemplateItem } from "@okouai/core/video-template-items";
 import { Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {

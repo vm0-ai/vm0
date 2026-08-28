@@ -772,9 +772,6 @@ export {
 } from "./connector-schemas";
 
 export {
-  parseBasicAuthTemplates,
-  replaceBasicAuthTemplates,
-  extractSecretNamesFromApis,
   firewallPermissionSchema,
   firewallApiSchema,
   firewallSchema,
@@ -789,7 +786,6 @@ export {
   firewallPolicySchema,
   networkPolicySchema,
   type FirewallConfig,
-  type ExpandedFirewallConfig,
   type FirewallApi,
   type Firewall,
   type Firewalls,
@@ -801,12 +797,19 @@ export {
   type FirewallPolicy,
   type FirewallPolicies,
   type NetworkPolicy,
+  networkPoliciesSchema,
+  type NetworkPolicies,
+} from "@okouai/connectors/firewall-contracts";
+
+export {
+  parseBasicAuthTemplates,
+  replaceBasicAuthTemplates,
+  extractSecretNamesFromApis,
+  type ExpandedFirewallConfig,
   type FirewallTemplateReferenceNamespace,
   type FirewallTemplateReferences,
   type BasicAuthTemplateArg,
   type BasicAuthTemplateMatch,
-  networkPoliciesSchema,
-  type NetworkPolicies,
   hasBaseUrlParams,
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,

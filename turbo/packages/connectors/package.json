@@ -24,6 +24,10 @@
       "import": "./src/firewall-rule-matcher.ts",
       "types": "./src/firewall-rule-matcher.ts"
     },
+    "./firewall-contracts": {
+      "import": "./src/firewall-contracts.ts",
+      "types": "./src/firewall-contracts.ts"
+    },
     "./firewall-types": {
       "import": "./src/firewall-types.ts",
       "types": "./src/firewall-types.ts"

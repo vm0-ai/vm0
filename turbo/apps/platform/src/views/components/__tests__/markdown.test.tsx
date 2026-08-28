@@ -210,35 +210,32 @@ describe("assistant markdown", () => {
     expect(screen.queryByTestId("rich-content-loading")).toBeNull();
   });
 
-  it("retries a failed rich message import from the message", async () => {
-    let importAttempt = 0;
-    const richMarkdownImport = context.mocks.browser.richMarkdownImport(() => {
-      importAttempt += 1;
-      if (importAttempt === 1) {
-        throw new Error("rich content chunk unavailable");
-      }
-    });
-    mockThread("Retry the **rich response**.");
+  it("renders code fences without syntax token decoration", async () => {
+    mockThread("```ts\nconst value = 1;\n```");
 
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
     });
 
-    const retry = await waitFor(() => {
-      return getButtonByText(document, "Try again");
+    const code = await screen.findByText("const value = 1;", {
+      selector: "code",
     });
-    expect(richMarkdownImport).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("rich response")).toBeNull();
+    expect(code).toBeInTheDocument();
+    expect(code.querySelector(".token")).toBeNull();
+  });
 
-    click(retry);
+  it("keeps math source visible as plain text", async () => {
+    const source = "$$a^2 + b^2 = c^2$$";
+    mockThread(source);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("rich response", { selector: "strong, b" }),
-      ).toBeInTheDocument();
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
     });
-    expect(richMarkdownImport).toHaveBeenCalledTimes(2);
+
+    await expect(screen.findByText(source)).resolves.toBeInTheDocument();
+    expect(document.querySelector(".katex")).toBeNull();
   });
 
   it("renders formatted text and follows theme changes", async () => {
@@ -748,7 +745,7 @@ describe("assistant markdown", () => {
 
   it("keeps unsupported mermaid diagram types as ordinary code blocks", async () => {
     context.mocks.browser.blobDownload();
-    const source = "sequenceDiagram\n  Alice->>Bob: Hello";
+    const source = "classDiagram\n  A <|-- B";
     mockThread(`\`\`\`mermaid\n${source}\n\`\`\``);
 
     detachedSetupPage({

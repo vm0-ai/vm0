@@ -1,5 +1,5 @@
 diff --git a/.build/common.ts b/.build/common.ts
-index 2497d44..42a8da4 100644
+index 2497d443f..42a8da45d 100644
 --- a/.build/common.ts
 +++ b/.build/common.ts
 @@ -8,39 +8,9 @@ export interface PackageOptions {
@@ -43,7 +43,7 @@ index 2497d44..42a8da4 100644
 -  },
  } as const satisfies Record<string, PackageOptions>;
 diff --git a/.esbuild/build.ts b/.esbuild/build.ts
-index ae1e770..9d3f2b0 100644
+index ae1e77002..9d3f2b09b 100644
 --- a/.esbuild/build.ts
 +++ b/.esbuild/build.ts
 @@ -1,7 +1,6 @@
@@ -78,10 +78,10 @@ index ae1e770..9d3f2b0 100644
    const packageNames = Object.keys(packageOptions) as (keyof typeof packageOptions)[];
    // it should build `parser` before `mermaid` because it's a dependency
 diff --git a/packages/mermaid/src/diagram-api/diagram-orchestration.ts b/packages/mermaid/src/diagram-api/diagram-orchestration.ts
-index ece82f2..c092788 100644
+index ece82f2f9..cdbbcc39e 100644
 --- a/packages/mermaid/src/diagram-api/diagram-orchestration.ts
 +++ b/packages/mermaid/src/diagram-api/diagram-orchestration.ts
-@@ -1,44 +1,8 @@
+@@ -1,44 +1,9 @@
 -import c4 from '../diagrams/c4/c4Detector.js';
  import flowchart from '../diagrams/flowchart/flowDetector.js';
  import flowchartV2 from '../diagrams/flowchart/flowDetector-v2.js';
@@ -94,7 +94,7 @@ index ece82f2..c092788 100644
 -import quadrantChart from '../diagrams/quadrant-chart/quadrantDetector.js';
 -import xychart from '../diagrams/xychart/xychartDetector.js';
 -import requirement from '../diagrams/requirement/requirementDetector.js';
--import sequence from '../diagrams/sequence/sequenceDetector.js';
+ import sequence from '../diagrams/sequence/sequenceDetector.js';
 -import classDiagram from '../diagrams/class/classDetector.js';
 -import classDiagramV2 from '../diagrams/class/classDetector-V2.js';
 -import state from '../diagrams/state/stateDetector.js';
@@ -126,7 +126,7 @@ index ece82f2..c092788 100644
  import '../type.d.ts';
  
  let hasLoadedDiagrams = false;
-@@ -83,46 +47,6 @@ export const addDiagrams = () => {
+@@ -83,46 +48,6 @@ export const addDiagrams = () => {
      }
    );
  
@@ -172,10 +172,10 @@ index ece82f2..c092788 100644
 -    wardley,
 -    cynefin
 -  );
-+  registerLazyLoadedDiagrams(flowchartV2, flowchart);
++  registerLazyLoadedDiagrams(sequence, flowchartV2, flowchart);
  };
 diff --git a/packages/mermaid/src/rendering-util/render.ts b/packages/mermaid/src/rendering-util/render.ts
-index 33b3817..683aa1c 100644
+index 33b381708..683aa1c7b 100644
 --- a/packages/mermaid/src/rendering-util/render.ts
 +++ b/packages/mermaid/src/rendering-util/render.ts
 @@ -43,18 +43,6 @@ const registerDefaultLayoutLoaders = () => {

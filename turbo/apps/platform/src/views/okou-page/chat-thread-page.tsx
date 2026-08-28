@@ -5088,7 +5088,6 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
             <Markdown
               source={goal.objective}
               escapeHtml
-              mathEnabled
               style={{ fontSize: "inherit", lineHeight: "inherit" }}
             />
           ) : (

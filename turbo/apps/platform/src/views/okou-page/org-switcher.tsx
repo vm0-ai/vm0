@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@okouai/ui";
-import type { Clerk } from "@clerk/clerk-js";
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import { ChevronDown, Plus, Mail } from "lucide-react";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import {

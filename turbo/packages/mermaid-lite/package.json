@@ -1,13 +1,13 @@
 {
-  "name": "@okouai/mermaid-flowchart",
-  "version": "11.16.1-vm0.1",
+  "name": "@okouai/mermaid-lite",
+  "version": "11.16.1-vm0.3",
   "private": true,
-  "description": "A flowchart-only Mermaid build for the vm0 web platform",
+  "description": "A Flowchart and Sequence Diagram Mermaid build for the vm0 web platform",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/mermaid.esm.tiny.min.mjs"
+      "default": "./dist/mermaid.esm.min.mjs"
     }
   },
   "types": "./dist/index.d.ts",
@@ -20,7 +20,7 @@
     "upstream"
   ],
   "scripts": {
-    "test": "node --test scripts/check-flowchart-only.node.mjs"
+    "test": "node --test scripts/check-supported-diagrams.node.mjs"
   },
   "license": "MIT",
   "engines": {

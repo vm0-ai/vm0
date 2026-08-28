@@ -100,11 +100,15 @@ function ForwardTargetPicker({
   const threads =
     threadResult.query === normalizedQuery ? threadResult.chatThreads : [];
   return (
-    <Command shouldFilter={false} loop className="min-h-0">
+    <Command
+      shouldFilter={false}
+      loop
+      value={query}
+      onValueChange={setQuery}
+      className="min-h-0"
+    >
       <div className="relative px-5 pb-4 pt-3">
         <CommandInput
-          value={query}
-          onValueChange={setQuery}
           autoFocus
           placeholder={t(($) => {
             return $.chat.forward.search;

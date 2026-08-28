@@ -1,5 +1,4 @@
 import type { Root } from "hast";
-import { useLoadable, useSet } from "ccstate-react";
 import type { CSSProperties } from "react";
 
 import { i18n } from "../../i18n/index.ts";
@@ -9,17 +8,15 @@ import {
 } from "../../lib/markdown/plain-markdown.ts";
 import { MarkdownFrame } from "./markdown-frame.tsx";
 import {
-  getLoadedRichMarkdown,
-  richMarkdownModule$,
-  retryRichMarkdownModule$,
-} from "../../signals/rich-markdown-module.ts";
+  Markdown as RichMarkdown,
+  MarkdownEventBody as RichMarkdownEventBody,
+} from "./rich-markdown.tsx";
 
 interface MarkdownProps {
   readonly source: string;
   readonly className?: string;
   readonly style?: CSSProperties;
   readonly mediaPreview?: boolean;
-  readonly mathEnabled?: boolean;
   readonly escapeHtml?: boolean;
 }
 
@@ -58,16 +55,14 @@ function RichContentLoading({
 }
 
 function RichContentError({
-  className,
   onRetry,
   style,
 }: {
-  readonly className?: string;
   readonly onRetry: () => void;
   readonly style?: CSSProperties;
 }) {
   return (
-    <MarkdownFrame className={className} style={style}>
+    <MarkdownFrame style={style}>
       <button
         type="button"
         className="rounded-md border border-border px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
@@ -81,37 +76,7 @@ function RichContentError({
   );
 }
 
-function LoadedMarkdownEventBody({
-  tree,
-  mediaPreview,
-}: {
-  readonly tree: Root;
-  readonly mediaPreview: boolean;
-}) {
-  const loadable = useLoadable(richMarkdownModule$);
-  const retry = useSet(retryRichMarkdownModule$);
-  const module =
-    getLoadedRichMarkdown() ??
-    (loadable.state === "hasData" ? loadable.data : undefined);
-  if (module !== undefined) {
-    return <module.MarkdownEventBody tree={tree} mediaPreview={mediaPreview} />;
-  }
-  if (loadable.state === "hasError") {
-    return (
-      <RichContentError
-        onRetry={retry}
-        style={{ fontSize: "inherit", lineHeight: "inherit" }}
-      />
-    );
-  }
-  return (
-    <RichContentLoading
-      style={{ fontSize: "inherit", lineHeight: "inherit" }}
-    />
-  );
-}
-
-/** Renders prepared plain trees immediately and suspends only a rich body. */
+/** Renders prepared plain trees immediately and rich trees synchronously. */
 export function MarkdownEventBody({
   onRetry,
   tree,
@@ -145,41 +110,16 @@ export function MarkdownEventBody({
       />
     );
   }
-  return <LoadedMarkdownEventBody tree={tree} mediaPreview={mediaPreview} />;
+  return <RichMarkdownEventBody tree={tree} mediaPreview={mediaPreview} />;
 }
 
-function LoadedMarkdown(props: MarkdownProps) {
-  const loadable = useLoadable(richMarkdownModule$);
-  const retry = useSet(retryRichMarkdownModule$);
-  const module =
-    getLoadedRichMarkdown() ??
-    (loadable.state === "hasData" ? loadable.data : undefined);
-  if (module !== undefined) {
-    return <module.Markdown {...props} />;
-  }
-  if (loadable.state === "hasError") {
-    return (
-      <RichContentError
-        className={props.className}
-        onRetry={retry}
-        style={props.style}
-      />
-    );
-  }
-  return <RichContentLoading className={props.className} style={props.style} />;
-}
-
-/**
- * One-off Markdown entry point. Syntax-free text stays synchronous; the local
- * Markdown surface owns the loading state for every richer document.
- */
+/** One-off Markdown entry point. */
 export function Markdown({
   mediaPreview = false,
-  mathEnabled = false,
   escapeHtml = false,
   ...props
 }: MarkdownProps) {
-  const tree = createPlainMarkdownTree(props.source, { mathEnabled });
+  const tree = createPlainMarkdownTree(props.source, { mathEnabled: false });
   if (tree !== null && !escapeHtml) {
     return (
       <PlainMarkdown
@@ -189,6 +129,11 @@ export function Markdown({
       />
     );
   }
-  const richProps = { mediaPreview, mathEnabled, escapeHtml, ...props };
-  return <LoadedMarkdown {...richProps} />;
+  return (
+    <RichMarkdown
+      {...props}
+      mediaPreview={mediaPreview}
+      escapeHtml={escapeHtml}
+    />
+  );
 }

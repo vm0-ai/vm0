@@ -50,7 +50,6 @@ import {
   resetMockClerkAuthComponentMounted,
   setMockClerkAuthComponentMounted,
 } from "../../test/mocks/clerk-react.ts";
-import type { RichMarkdownModule } from "../rich-markdown-module.ts";
 import type { MermaidModule } from "../mermaid-diagram.ts";
 import { createDeferredPromise } from "../utils.ts";
 
@@ -449,28 +448,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       ): ImageDimensionsMock => {
         return mockImageDimensions(getSignal(), results);
       },
-      richMarkdownImport: (
-        beforeImport: () => void | Promise<void> = () => {},
-      ) => {
-        const mockedImport = vi.fn<() => Promise<RichMarkdownModule>>(
-          async () => {
-            await beforeImport();
-            return import("../../views/components/rich-markdown.tsx");
-          },
-        );
-        const previousImporter = window.vm0RichMarkdownImporterForTest;
-        window.vm0RichMarkdownImporterForTest = mockedImport;
-        restoreOnAbort(getSignal(), () => {
-          if (window.vm0RichMarkdownImporterForTest === mockedImport) {
-            window.vm0RichMarkdownImporterForTest = previousImporter;
-          }
-        });
-        return mockedImport;
-      },
       mermaidImport: (beforeImport: () => void | Promise<void> = () => {}) => {
         const mockedImport = vi.fn<() => Promise<MermaidModule>>(async () => {
           await beforeImport();
-          return import("@okouai/mermaid-flowchart");
+          return import("@okouai/mermaid-lite");
         });
         const previousImporter = window.vm0MermaidImporterForTest;
         window.vm0MermaidImporterForTest = mockedImport;

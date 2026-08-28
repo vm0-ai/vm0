@@ -11,6 +11,7 @@ const context = testContext();
 warmMermaidParser();
 
 const FLOWCHART = "flowchart TD\n  A --> B";
+const SEQUENCE_DIAGRAM = "sequenceDiagram\n  Alice->>Bob: Hello";
 
 function diagramMarkup(
   image: MermaidDiagramImage | null,
@@ -27,6 +28,20 @@ function diagramMarkup(
 }
 
 describe("mermaid diagram rendering", () => {
+  it("renders sequence diagrams", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
+    const signals = createMermaidDiagramSignals(
+      SEQUENCE_DIAGRAM,
+      context.signal,
+    );
+
+    const markup = await diagramMarkup(
+      await context.store.get(signals.diagram$),
+      objectUrls,
+    );
+    expect(markup).toContain('data-testid="mermaid-svg"');
+  });
+
   // mermaid.initialize mutates module-global configuration. When a theme flip
   // starts a second render while the first is still parsing, the second
   // initialize must not leak its theme into the first render — the first

@@ -20,7 +20,7 @@ import {
   setAblyPayloadLoop$,
   subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
-import { setupClerk$ } from "../auth.ts";
+import { initAuthRecovery$, initClerkRuntime$, setupClerk$ } from "../auth.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
@@ -33,6 +33,8 @@ const context = testContext();
 
 beforeEach(() => {
   context.store.set(setRootSignal$, context.signal);
+  context.store.set(initClerkRuntime$, context.signal);
+  context.store.set(initAuthRecovery$, context.signal);
 });
 
 const finishLoop$ = command((_ctx, _signal: AbortSignal) => {

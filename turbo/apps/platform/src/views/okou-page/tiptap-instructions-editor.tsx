@@ -4,11 +4,8 @@ import type { ReactNode } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { StarterKit } from "@tiptap/starter-kit";
-import { Extension, findChildren } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Extension } from "@tiptap/core";
 import { Markdown } from "@tiptap/markdown";
-import { common, createLowlight } from "lowlight";
 import {
   Bold,
   Italic,
@@ -23,89 +20,6 @@ import {
 } from "lucide-react";
 import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
-import "highlight.js/styles/github.css";
-
-function getLowlight() {
-  return createLowlight(common);
-}
-
-function flattenNodes(
-  nodes: {
-    properties?: { className?: string[] };
-    children?: unknown[];
-    value?: string;
-  }[],
-  className: string[] = [],
-): { text: string; classes: string[] }[] {
-  return nodes.flatMap((node) => {
-    const classes = [...className, ...(node.properties?.className ?? [])];
-    if (node.children) {
-      return flattenNodes(node.children as typeof nodes, classes);
-    }
-    return { text: node.value ?? "", classes };
-  });
-}
-
-function buildDecorations(
-  doc: Parameters<typeof findChildren>[0],
-): DecorationSet {
-  const decorations: Decoration[] = [];
-  for (const block of findChildren(doc, (node) => {
-    return node.type.name === "codeBlock";
-  })) {
-    let from = block.pos + 1;
-    const language: string | null = block.node.attrs.language;
-    const result =
-      language && getLowlight().listLanguages().includes(language)
-        ? getLowlight().highlight(language, block.node.textContent)
-        : getLowlight().highlightAuto(block.node.textContent);
-
-    for (const flatNode of flattenNodes(
-      (result.children ?? []) as Parameters<typeof flattenNodes>[0],
-    )) {
-      const to = from + flatNode.text.length;
-      if (flatNode.classes.length) {
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: flatNode.classes.join(" "),
-          }),
-        );
-      }
-      from = to;
-    }
-  }
-  return DecorationSet.create(doc, decorations);
-}
-
-function createLowlightPlugin() {
-  return Extension.create({
-    name: "lowlightHighlight",
-    addProseMirrorPlugins() {
-      const pluginKey = new PluginKey("lowlight");
-      return [
-        new Plugin({
-          key: pluginKey,
-          state: {
-            init(_, { doc }) {
-              return buildDecorations(doc);
-            },
-            apply(tr, set) {
-              if (tr.docChanged) {
-                return buildDecorations(tr.doc);
-              }
-              return set.map(tr.mapping, tr.doc);
-            },
-          },
-          props: {
-            decorations(state) {
-              return pluginKey.getState(state) as DecorationSet;
-            },
-          },
-        }),
-      ];
-    },
-  });
-}
 
 interface TiptapInstructionsEditorProps {
   initialContent: string;
@@ -269,12 +183,7 @@ export function TiptapInstructionsEditor({
     surface === "canvas" ? "min-h-[calc(100vh-10rem)] px-0 py-3" : "",
   );
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      createLowlightPlugin(),
-      Markdown,
-      createBaselineExtension(onChange),
-    ],
+    extensions: [StarterKit, Markdown, createBaselineExtension(onChange)],
     content: initialContent,
     contentType: "markdown",
     editable: !disabled,

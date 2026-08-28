@@ -7,21 +7,33 @@ import { defineConfig } from "vite";
 
 import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
-import { createStableChunkName } from "./src/lib/stable-chunks.ts";
+import {
+  applicationJavaScriptBundlePlugin,
+  singleWorkerJavaScriptBundlePlugin,
+} from "./scripts/single-bundle.ts";
 
 process.env.VITE_APP_VERSION = platformPackage.version;
-
-const stableChunkName = createStableChunkName(
-  fileURLToPath(new URL("./src/main.ts", import.meta.url)),
-);
 
 export default defineConfig({
   base: "/",
   envPrefix: ["VITE_", "PUBLIC_"],
+  resolve: {
+    alias: {
+      "virtual:shared-database-worker": `${fileURLToPath(
+        new URL("./src/shared-database-worker.ts", import.meta.url),
+      )}?sharedworker`,
+    },
+  },
+  worker: {
+    plugins: () => {
+      return [singleWorkerJavaScriptBundlePlugin()];
+    },
+  },
   plugins: [
     tailwindcss(),
     react(),
     devArtifactFetchProxy(),
+    applicationJavaScriptBundlePlugin(),
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&
       sentryVitePlugin({
@@ -47,9 +59,10 @@ export default defineConfig({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        codeSplitting: {
-          groups: [{ name: stableChunkName }],
-        },
+        // Browser application modules are one deployment unit. The
+        // SharedWorker is emitted and validated separately, while locale JSON
+        // remains external and is fetched only for the active language.
+        codeSplitting: false,
         // Mangle identifiers for smaller bundles while preserving runtime
         // function and class names for framework semantics and diagnostics.
         keepNames: true,
