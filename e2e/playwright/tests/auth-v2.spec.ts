@@ -19,7 +19,7 @@ import {
 
 const ORGANIZATION_ALPHA = "Auth v2 Browser Alpha";
 const ORGANIZATION_BETA = "Auth v2 Browser Beta";
-const AUTH_V2_PRIMARY_COLOR = "rgb(239, 80, 1)";
+const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(239, 80, 1)";
 const SUPPORTED_AUTH_V2_LOCALES = [
   { locale: "en-US", title: "Create your account" },
   { locale: "pt-BR", title: "Criar sua conta" },
@@ -32,6 +32,59 @@ const SUPPORTED_AUTH_V2_LOCALES = [
   { locale: "fr-FR", title: "Créer votre compte" },
   { locale: "hi-IN", title: "अपना खाता बनाएं" },
 ] as const;
+
+function relativeLuminance(color: string): number {
+  const channels = color
+    .match(/[0-9.]+/g)
+    ?.slice(0, 3)
+    .map(Number);
+  if (
+    channels?.length !== 3 ||
+    channels.some((channel) => !Number.isFinite(channel))
+  ) {
+    throw new Error(`Expected an RGB color, received ${color}`);
+  }
+  const [red = 0, green = 0, blue = 0] = channels.map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  );
+}
+
+async function renderedLinkContrast(
+  linkAction: Locator,
+  surface: Locator,
+): Promise<number> {
+  const linkForeground = await linkAction.evaluate((element) => {
+    return getComputedStyle(element).color;
+  });
+  const surfaceBackground = await surface.evaluate((element) => {
+    return getComputedStyle(element).backgroundColor;
+  });
+  return contrastRatio(linkForeground, surfaceBackground);
+}
+
+async function expectAccessibleLinkContrast(
+  linkAction: Locator,
+  surface: Locator,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      return renderedLinkContrast(linkAction, surface);
+    })
+    .toBeGreaterThanOrEqual(4.5);
+}
 
 test("base, nested, refreshed, and legacy auth routes coexist on desktop", async ({
   page,
@@ -61,7 +114,7 @@ test("base, nested, refreshed, and legacy auth routes coexist on desktop", async
   }
 });
 
-test("primary and link actions retain accessible brand colors in both themes", async ({
+test("primary actions retain brand styling while links remain accessible", async ({
   page,
 }) => {
   await openAuthV2(page, "/v2/sign-up");
@@ -82,20 +135,23 @@ test("primary and link actions retain accessible brand colors in both themes", a
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(continueButton).toHaveCSS(
     "background-color",
-    AUTH_V2_PRIMARY_COLOR,
+    AUTH_V2_PRIMARY_BACKGROUND_COLOR,
   );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(signInLink).toHaveCSS("color", AUTH_V2_PRIMARY_COLOR);
+  await expect(continueButton).toHaveClass(/\bbg-primary\b/);
+  await expect(continueButton).toHaveClass(/\btext-primary-foreground\b/);
+  await expect(signInLink).toHaveClass(/\btext-primary-900\b/);
+  await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(21, 24, 30)");
 
   await page.getByRole("button", { name: "Toggle theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(continueButton).toHaveCSS(
     "background-color",
-    AUTH_V2_PRIMARY_COLOR,
+    AUTH_V2_PRIMARY_BACKGROUND_COLOR,
   );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(signInLink).toHaveCSS("color", AUTH_V2_PRIMARY_COLOR);
+  await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS(
     "color",
     "rgb(233, 234, 236)",
