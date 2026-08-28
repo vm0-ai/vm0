@@ -1,4 +1,4 @@
-import type { Clerk } from "@clerk/clerk-js";
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import type {
   SessionResource,
   SignedInSessionResource,

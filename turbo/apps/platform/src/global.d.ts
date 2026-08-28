@@ -25,9 +25,6 @@ interface VM0PreBundleCopy {
     ariaLabel: string;
     messages: string[];
   };
-  preloadRecovery: {
-    message: string;
-  };
   metadata: {
     description: string;
     title: string;
@@ -35,6 +32,9 @@ interface VM0PreBundleCopy {
 }
 
 declare global {
+  const __OKOU_APP_GIT_COMMIT_SHA__: string;
+  const __OKOU_APP_VERSION__: string;
+
   interface Window {
     _vm0: VM0Global | undefined;
     __vm0BrowserSupported?: boolean;

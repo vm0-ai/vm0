@@ -1336,7 +1336,7 @@ jobs:
         env:
           VITE_CLERK_PUBLISHABLE_KEY_PREVIEW: ${{ vars.CLERK_PUBLISHABLE_KEY_PREVIEW }}
           VITE_CLERK_PUBLISHABLE_KEY_PROD: ${{ vars.CLERK_PUBLISHABLE_KEY_PROD }}
-          VITE_GIT_COMMIT_SHA: ${{ steps.artifact.outputs.sha }}
+          OKOU_APP_GIT_COMMIT_SHA: ${{ steps.artifact.outputs.sha }}
           VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW: ${{ vars.PLAUSIBLE_SCRIPT_URL }}
           VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION: ${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
           VITE_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
@@ -1345,7 +1345,7 @@ jobs:
           VITE_VAPID_PUBLIC_KEY_PROD: ${{ vars.VAPID_PUBLIC_KEY_PROD }}
         run: |
           cd turbo
-          pnpm --filter @okouai/app exec vite build --sourcemap
+          pnpm --filter @okouai/app run build:verify-hashes -- --sourcemap
           pnpm --filter @okouai/app exec sentry-cli sourcemaps inject dist
 
       - name: Create artifact manifest
@@ -1536,6 +1536,7 @@ jobs:
 
       - name: Wait for Cloudflare Pages deployment readiness
         env:
+          CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
           PAGES_URL: ${{ steps.pages-deploy.outputs.url }}
         run: |
           set -euo pipefail
@@ -1562,6 +1563,10 @@ jobs:
 
             if (( ready_passes >= 2 )); then
               echo "Cloudflare Pages shell is ready"
+              bash .github/scripts/verify-okou-app-runtime.sh \
+                "$PAGES_URL" \
+                "https://static.okou.io/okou-app/assets" \
+                "$CANONICAL_ASSETS"
               exit 0
             fi
             sleep 2
@@ -1577,19 +1582,6 @@ jobs:
           CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
         run: |
           set -euo pipefail
-          mapfile -t shared_worker_files < <(
-            find "$CANONICAL_ASSETS" \
-              -maxdepth 1 \
-              -type f \
-              -name 'shared-database-worker-*.js' \
-              -print
-          )
-          if (( ${#shared_worker_files[@]} != 1 )); then
-            echo "::error::Expected exactly one SharedWorker asset, found ${#shared_worker_files[@]}"
-            exit 1
-          fi
-          shared_worker_path="${shared_worker_files[0]#"$CANONICAL_ASSETS"/}"
-          shared_worker_url="${APP_PREVIEW_URL}/okou-app/assets/${shared_worker_path}"
           response_headers="$(mktemp)"
           trap 'rm -f "$response_headers"' EXIT
           for attempt in {1..12}; do
@@ -1599,15 +1591,10 @@ jobs:
               "${APP_PREVIEW_URL}/" && \
               grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
                 "$response_headers"; then
-              if shared_worker_status="$(curl \
-                --fail \
-                --silent \
-                --show-error \
-                --range 0-0 \
-                --output /dev/null \
-                --write-out '%{http_code}' \
-                "$shared_worker_url")" && \
-                [[ "$shared_worker_status" == "206" ]]; then
+              if bash .github/scripts/verify-okou-app-runtime.sh \
+                "$APP_PREVIEW_URL" \
+                "https://static.okou.io/okou-app/assets" \
+                "$CANONICAL_ASSETS"; then
                 echo "App preview gateway and SharedWorker proxy are ready"
                 exit 0
               fi

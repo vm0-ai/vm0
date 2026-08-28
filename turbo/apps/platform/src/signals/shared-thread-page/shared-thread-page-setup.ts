@@ -38,7 +38,7 @@ export const setupSharedThreadPage$ = command(
           continue;
         }
         const tree = createPlainMarkdownTree(message.content, {
-          mathEnabled: true,
+          mathEnabled: false,
         });
         if (tree === null) {
           richMessages.push(message);

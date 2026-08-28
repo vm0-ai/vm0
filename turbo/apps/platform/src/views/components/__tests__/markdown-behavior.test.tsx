@@ -11,7 +11,7 @@ const context = testContext();
 function html(source: string): string {
   const { container } = render(
     <StoreProvider value={context.store}>
-      <Markdown source={source} mediaPreview mathEnabled />
+      <Markdown source={source} mediaPreview />
     </StoreProvider>,
   );
   return container.innerHTML;
@@ -68,12 +68,26 @@ describe("parse-in-render markdown", () => {
   });
 
   // Only command-prepared trees turn mermaid fences into diagrams; a surface
-  // that parses during render keeps the fence as a highlighted code block.
+  // that parses during render keeps the fence as a plain code block.
   it("keeps mermaid fences as code without a preparing command", () => {
     const rendered = html("```mermaid\ngraph TD; A-->B;\n```");
 
     expect(rendered).toContain("language-mermaid");
     expect(rendered).not.toContain("mermaid-block");
+  });
+
+  it("renders code fences without syntax token decoration", () => {
+    const rendered = html("```ts\nconst value = 1;\n```");
+
+    expect(rendered).toContain("const value = 1;");
+    expect(rendered).not.toContain('class="token');
+  });
+
+  it("keeps math source as plain text", () => {
+    const rendered = html("$$a^2 + b^2 = c^2$$");
+
+    expect(rendered).toContain("$$a^2 + b^2 = c^2$$");
+    expect(rendered).not.toContain("katex");
   });
 
   // A surface's registry is keyed by source, so the same fence shares one

@@ -297,7 +297,6 @@ export function Markdown({
   className,
   style,
   mediaPreview = false,
-  mathEnabled = false,
   escapeHtml = false,
   source,
 }: {
@@ -305,12 +304,12 @@ export function Markdown({
   readonly className?: string;
   readonly style?: CSSProperties;
   readonly mediaPreview?: boolean;
-  readonly mathEnabled?: boolean;
   readonly escapeHtml?: boolean;
 }) {
-  const tree = parseMarkdownTree(escapeHtml ? escapeHtmlTags(source) : source, {
-    mathEnabled,
-  });
+  const tree = parseMarkdownTree(
+    escapeHtml ? escapeHtmlTags(source) : source,
+    {},
+  );
   return (
     <MarkdownTreeFrame
       className={className}

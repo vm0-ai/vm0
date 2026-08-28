@@ -1,9 +1,9 @@
-import { useGet, useLoadable } from "ccstate-react";
+import { useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@okouai/ui/components/ui/button";
 import {
-  clerkInstance$,
+  clerk$,
   currentUserInfo$,
   resolveClerkSatelliteConfig,
 } from "../../../../../signals/auth.ts";
@@ -14,12 +14,14 @@ const CLERK_PRIMARY_USER_PROFILE_URL = "https://accounts.vm0.ai/user";
 
 export function AccountSection() {
   const { t } = useTranslation();
-  const clerk = useGet(clerkInstance$);
+  const clerkLoadable = useLoadable(clerk$);
+  const clerk =
+    clerkLoadable.state === "hasData" ? clerkLoadable.data : undefined;
   const userLoadable = useLoadable(currentUserInfo$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const userProfileUrl = resolveClerkSatelliteConfig()
     ? CLERK_PRIMARY_USER_PROFILE_URL
-    : clerk.buildUrlWithAuth(clerk.buildUserProfileUrl());
+    : clerk?.buildUrlWithAuth(clerk.buildUserProfileUrl());
 
   const displayName = user?.fullName ?? user?.firstName ?? "";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
@@ -43,14 +45,16 @@ export function AccountSection() {
           <div className="text-sm text-muted-foreground truncate">{email}</div>
         )}
       </div>
-      <Button asChild className="shrink-0">
-        <a href={userProfileUrl} target="_blank" rel="noreferrer">
-          <ExternalLink size={14} />
-          {t(($) => {
-            return $.settings.preferences.account.manage;
-          })}
-        </a>
-      </Button>
+      {userProfileUrl && (
+        <Button asChild className="shrink-0">
+          <a href={userProfileUrl} target="_blank" rel="noreferrer">
+            <ExternalLink size={14} />
+            {t(($) => {
+              return $.settings.preferences.account.manage;
+            })}
+          </a>
+        </Button>
+      )}
     </div>
   );
 }

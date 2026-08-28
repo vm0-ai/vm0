@@ -272,6 +272,11 @@ export default [
             "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states.",
         },
         {
+          selector: "ImportExpression",
+          message:
+            "Dynamic JavaScript imports are not allowed. Keep application code in the single bundle; locale resources remain separate JSON assets.",
+        },
+        {
           selector: "CallExpression[callee.property.name='then']",
           message:
             "Promise.then is not allowed. Use await, or one of the helpers in signals/utils.ts (bestEffort, tapError, onRejection, settle, toVoid).",
@@ -347,6 +352,51 @@ export default [
         "error",
         {
           paths: [
+            {
+              name: "ably",
+              allowTypeImports: true,
+              message:
+                "Use src/lib/ably-realtime.ts for the modular runtime; direct imports are type-only.",
+            },
+            {
+              name: "@clerk/clerk-js",
+              message:
+                "Use src/lib/clerk-runtime.ts so Clerk loads the official browser runtime without bundled wallet adapters.",
+            },
+            {
+              name: "@clerk/ui",
+              message:
+                "Use ensureClerkUiLoaded() so hosted Clerk UI stays route-scoped.",
+            },
+            {
+              name: "@solana/web3.js",
+              message:
+                "Wallet support is not part of the platform auth surface.",
+            },
+            {
+              name: "highlight.js",
+              message: "Code syntax highlighting is intentionally disabled.",
+            },
+            {
+              name: "katex",
+              message: "Markdown math rendering is intentionally disabled.",
+            },
+            {
+              name: "lowlight",
+              message: "Code syntax highlighting is intentionally disabled.",
+            },
+            {
+              name: "rehype-katex",
+              message: "Markdown math rendering is intentionally disabled.",
+            },
+            {
+              name: "rehype-prism-plus",
+              message: "Code syntax highlighting is intentionally disabled.",
+            },
+            {
+              name: "remark-math",
+              message: "Markdown math rendering is intentionally disabled.",
+            },
             {
               name: "@tabler/icons-react",
               message:

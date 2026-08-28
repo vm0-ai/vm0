@@ -1,6 +1,6 @@
 import { command, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { clerk$ } from "./auth.ts";
+import { clerk$, ensureClerkUiLoaded$ } from "./auth.ts";
 import { replaceSearchParams$, searchParams$ } from "./route.ts";
 import { jsonParseOr, onDomEventFn } from "./utils.ts";
 import { i18n } from "../i18n/index.ts";
@@ -141,6 +141,7 @@ export const handleInvitationRedirect$ = command(
             return $.invitationRedirect.actions.switchAccount;
           }),
           onClick: onDomEventFn(async () => {
+            await set(ensureClerkUiLoaded$, signal);
             await clerk.openSignIn({
               fallbackRedirectUrl: "/",
               forceRedirectUrl: "/",

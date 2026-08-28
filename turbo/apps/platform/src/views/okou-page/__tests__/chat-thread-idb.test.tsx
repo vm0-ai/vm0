@@ -12,17 +12,13 @@ import {
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   CHAT_EVENT_CURSOR_STORE,
   CHAT_EVENT_ROWS_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "../../../signals/external/chat-idb-schema.ts";
-import {
-  chatIdb$,
-  openChatIdb,
-} from "../../../signals/external/chat-idb-store.ts";
+import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
 import { setLogErrorHandler } from "../../../signals/log.ts";
 import { navigateToChat$ } from "../../../signals/okou-page/nav.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -76,15 +72,11 @@ function idbOrgId(): string {
   return `zero-chat-thread-idb-org-${context.resourceId}`;
 }
 
-async function primeRuntimeChatDb(): Promise<
-  Awaited<ReturnType<typeof openChatIdb>>
-> {
-  mockUser({ id: idbUserId(), fullName: "Test User" }, { token: "test-token" });
-  mockOrganization({
-    activeOrg: { id: idbOrgId(), name: "Default Org" },
-    memberships: [{ id: idbOrgId() }],
-  });
-  const db = await context.store.get(chatIdb$);
+async function primeChatDb(): Promise<Awaited<ReturnType<typeof openChatIdb>>> {
+  // Seed the same user/org-scoped database that production opens after
+  // bootstrap. Opening it directly keeps pre-render fixture setup from
+  // reading auth signals before setupPage has run the bootstrap lifecycle.
+  const db = await openChatIdb(idbUserId(), idbOrgId());
   context.signal.addEventListener(
     "abort",
     () => {
@@ -208,7 +200,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         },
       });
     });
-    await primeRuntimeChatDb();
+    await primeChatDb();
     const snapshotRequested = context.mocks.deferred<void>();
     const releaseSnapshot = context.mocks.deferred<void>();
     const activeAgentErrorLogged = trackActiveAgentError();
@@ -243,7 +235,7 @@ describe("okou chat thread IndexedDB fallback", () => {
   });
 
   it("shows chat thread not found after remote metadata sync confirms a miss", async () => {
-    await primeRuntimeChatDb();
+    await primeChatDb();
     const snapshotRequested = context.mocks.deferred<void>();
     const releaseSnapshot = context.mocks.deferred<void>();
     const activeAgentErrorLogged = trackActiveAgentError();
@@ -295,7 +287,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         },
       });
     });
-    await primeRuntimeChatDb();
+    await primeChatDb();
     let notificationThreadAvailable = false;
     let snapshotRequests = 0;
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -409,7 +401,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         },
       });
     });
-    const runtimeDb = await primeRuntimeChatDb();
+    const runtimeDb = await primeChatDb();
     await runtimeDb.put(CHAT_THREAD_SNAPSHOT_STORE, {
       id: "current",
       ...currentThreadSnapshot(),
@@ -452,7 +444,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         },
       });
     });
-    const runtimeDb = await primeRuntimeChatDb();
+    const runtimeDb = await primeChatDb();
     await runtimeDb.put(CHAT_THREAD_SNAPSHOT_STORE, {
       id: "current",
       ...currentThreadSnapshot(),
@@ -508,7 +500,7 @@ describe("okou chat thread IndexedDB fallback", () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
-    const runtimeDb = await primeRuntimeChatDb();
+    const runtimeDb = await primeChatDb();
     const runId = "run-cached-mark-read";
     const cachedMessage = "Cached while mark-read is pending";
     const cachedRows = [
@@ -586,7 +578,7 @@ describe("okou chat thread IndexedDB fallback", () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
-    await primeRuntimeChatDb();
+    await primeChatDb();
     const snapshotUrl =
       "https://r2.example.com/chat-events/loading-handoff.ndjson.gz";
     const snapshotBodyRequested = context.mocks.deferred<void>();

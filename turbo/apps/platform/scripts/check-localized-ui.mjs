@@ -123,22 +123,6 @@ function getInternalAllowedLiterals() {
       "SharedWorker browser identifier, not user-visible UI copy",
     ],
     [
-      "src/lib/stable-chunks.ts\u0000vendor-foundation",
-      "Rolldown output chunk identifier, not user-visible UI copy",
-    ],
-    [
-      "src/lib/stable-chunks.ts\u0000vendor-auth",
-      "Rolldown output chunk identifier, not user-visible UI copy",
-    ],
-    [
-      "src/lib/stable-chunks.ts\u0000vendor-content",
-      "Rolldown output chunk identifier, not user-visible UI copy",
-    ],
-    [
-      "src/lib/stable-chunks.ts\u0000vendor-services",
-      "Rolldown output chunk identifier, not user-visible UI copy",
-    ],
-    [
       "src/signals/okou-page/tiptap-workflow-composer.ts\u0000paragraph+",
       "Tiptap document schema expression",
     ],
@@ -149,10 +133,6 @@ function getInternalAllowedLiterals() {
     [
       "src/views/okou-page/tiptap-instructions-editor.tsx\u0000baselineMarkdown",
       "Tiptap storage plugin identifier",
-    ],
-    [
-      "src/views/okou-page/tiptap-instructions-editor.tsx\u0000lowlightHighlight",
-      "Tiptap extension identifier",
     ],
   ];
 }

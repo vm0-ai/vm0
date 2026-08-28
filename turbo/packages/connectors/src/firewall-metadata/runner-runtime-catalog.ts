@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { Firewall, FirewallBaseHostPolicy } from "../firewall-types";
+import type { Firewall, FirewallBaseHostPolicy } from "../firewall-contracts";
 
 interface RunnerRuntimePermissionSource {
   readonly name: string;

@@ -152,7 +152,10 @@ import {
 import type { ChatActionContext } from "./chat-action-context.ts";
 import type { Root } from "hast";
 import { createPlainMarkdownTree } from "../../lib/markdown/plain-markdown.ts";
-import { loadRichMarkdown } from "../rich-markdown-module.ts";
+import {
+  markdownCardKey,
+  parseMarkdownTree,
+} from "../../lib/markdown/pipeline.ts";
 import type { MarkdownCardRef } from "./markdown-card-ref.ts";
 import {
   createArtifactCardSignalsRegistry,
@@ -1918,7 +1921,7 @@ function planEventTreeUpdates(
       continue;
     }
     const plainTree = createPlainMarkdownTree(plan.treeSource, {
-      mathEnabled: true,
+      mathEnabled: false,
     });
     next ??= new Map(current);
     if (plainTree !== null) {
@@ -1990,7 +1993,8 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
       richPlans: readonly RichEventTreePlan[],
       signal: AbortSignal,
     ): Promise<void> => {
-      const richMarkdown = await loadRichMarkdown();
+      // Keep parser failures on the promise consumed by `settle` below.
+      await Promise.resolve();
       signal.throwIfAborted();
       const pending = get(internalEventTrees$);
       let parsed: Map<string, EventTree> | undefined;
@@ -2006,12 +2010,11 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         const cards = new Map<string, MarkdownCardRef>();
         for (const descriptor of plan.descriptors) {
           cards.set(
-            richMarkdown.markdownCardKey(cardSlotUrl(descriptor)),
+            markdownCardKey(cardSlotUrl(descriptor)),
             set(registerCardRef$, descriptor),
           );
         }
-        const tree = richMarkdown.parseMarkdownTree(plan.treeSource, {
-          mathEnabled: true,
+        const tree = parseMarkdownTree(plan.treeSource, {
           mermaid: true,
           cards,
         });

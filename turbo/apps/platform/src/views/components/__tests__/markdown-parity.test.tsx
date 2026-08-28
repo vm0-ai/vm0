@@ -1,10 +1,8 @@
 import MarkdownPreview from "@uiw/react-markdown-preview/common";
 import { render } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
-import rehypeKatex from "rehype-katex";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
-import remarkMath from "remark-math";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -111,12 +109,7 @@ function legacyHtml(source: string): string {
             remarkCjkFriendlyStrikethrough,
           ];
         }}
-        remarkPlugins={[
-          [remarkMath, { singleDollarTextMath: false }],
-          remarkCjkFriendly,
-          remarkCjkFriendlyStrikethrough,
-        ]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={[remarkCjkFriendly, remarkCjkFriendlyStrikethrough]}
         components={MEDIA_MARKDOWN_COMPONENTS}
         source={source}
       />
@@ -128,7 +121,7 @@ function legacyHtml(source: string): string {
 function currentHtml(source: string): string {
   const { container } = render(
     <StoreProvider value={context.store}>
-      <Markdown source={source} mediaPreview mathEnabled />
+      <Markdown source={source} mediaPreview />
     </StoreProvider>,
   );
   return htmlWithoutCopyControls(container);
@@ -145,18 +138,10 @@ const CASES: Readonly<Record<string, string>> = {
     "| `r0c0` | plain | **bold** |",
     "| `r1c0` | 中文 | [link](https://example.com) |",
   ].join("\n"),
-  fencedCode: "```ts\nconst value: number = 1;\nconsole.log(value);\n```",
-  fencedCodeUnknownLanguage: "```wat\nnot a real language\n```",
-  fencedCodeMeta: "```js showLineNumbers\nconst a = 1;\n```",
-  // Standalone surfaces render mermaid fences as plain code blocks; only
-  // command-prepared trees (chat, shared threads) turn them into diagrams.
-  mermaid: "```mermaid\ngraph TD; A-->B;\n```",
-  mermaidUnclosed: "```mermaid\ngraph TD; A-->B;",
   blockquote: "> quoted passage\n>\n> second line",
   alert: "> [!NOTE]\n> An alert body",
   lists: "- one\n- two\n  - nested\n\n1. first\n2. second",
   taskList: "- [ ] todo\n- [x] done",
-  math: "$$a^2 + b^2 = c^2$$",
   autolink: "See https://example.com/auto-link for details",
   image: "![alt text](https://example.com/picture.png)",
   imageUnsafe: "![alt text](file:///etc/passwd)",

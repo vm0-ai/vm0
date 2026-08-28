@@ -7,17 +7,21 @@ import { defineConfig } from "vite";
 
 import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
-import { createStableChunkName } from "./src/lib/stable-chunks.ts";
+import {
+  applicationJavaScriptBundlePlugin,
+  singleWorkerJavaScriptBundlePlugin,
+} from "./scripts/single-bundle.ts";
 
-process.env.VITE_APP_VERSION = platformPackage.version;
-
-const stableChunkName = createStableChunkName(
-  fileURLToPath(new URL("./src/main.ts", import.meta.url)),
-);
 const APP_ASSET_BASE = "https://static.okou.io/okou-app/";
+const APP_GIT_COMMIT_SHA = process.env.OKOU_APP_GIT_COMMIT_SHA ?? "";
+const APP_VERSION = process.env.OKOU_APP_VERSION ?? platformPackage.version;
 
 export default defineConfig(({ command }) => ({
   base: command === "build" ? APP_ASSET_BASE : "/",
+  define: {
+    __OKOU_APP_GIT_COMMIT_SHA__: JSON.stringify(APP_GIT_COMMIT_SHA),
+    __OKOU_APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   experimental: {
     renderBuiltUrl(filename, { hostType, type }) {
       if (
@@ -31,10 +35,23 @@ export default defineConfig(({ command }) => ({
     },
   },
   envPrefix: ["VITE_", "PUBLIC_"],
+  resolve: {
+    alias: {
+      "virtual:shared-database-worker": `${fileURLToPath(
+        new URL("./src/shared-database-worker.ts", import.meta.url),
+      )}?sharedworker`,
+    },
+  },
+  worker: {
+    plugins: () => {
+      return [singleWorkerJavaScriptBundlePlugin()];
+    },
+  },
   plugins: [
     tailwindcss(),
     react(),
     devArtifactFetchProxy(),
+    applicationJavaScriptBundlePlugin(),
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&
       sentryVitePlugin({
@@ -60,8 +77,16 @@ export default defineConfig(({ command }) => ({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
+        // Keep all third-party modules in one cache-stable vendor chunk. The
+        // application entry and Rolldown runtime remain separate generated
+        // chunks, while the SharedWorker is emitted as its own asset.
         codeSplitting: {
-          groups: [{ name: stableChunkName }],
+          groups: [
+            {
+              name: "vendor",
+              test: /[\\/]node_modules[\\/]/u,
+            },
+          ],
         },
         // Mangle identifiers for smaller bundles while preserving runtime
         // function and class names for framework semantics and diagnostics.

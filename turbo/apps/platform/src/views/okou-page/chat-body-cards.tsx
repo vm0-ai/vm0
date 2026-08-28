@@ -42,8 +42,8 @@ import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contrac
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
-} from "@okouai/connectors/firewall-types";
-import { r2ImageTransformUrl } from "@okouai/core";
+} from "@okouai/connectors/firewall-contracts";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import { Skeleton, cn } from "@okouai/ui";
 import {
   useGet,

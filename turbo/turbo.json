@@ -25,6 +25,8 @@
     "VITE_CLERK_PUBLISHABLE_KEY_PROD",
     "VITE_VAPID_PUBLIC_KEY_PREVIEW",
     "VITE_VAPID_PUBLIC_KEY_PROD",
+    "OKOU_APP_GIT_COMMIT_SHA",
+    "OKOU_APP_VERSION",
     "OKOU_DESKTOP_PLATFORM_URL",
     "OKOU_COMPUTER_OUTPUT_DIR",
     "OKOU_TOKEN",
@@ -301,7 +303,7 @@
     },
     "@okouai/app#build": {
       "dependsOn": ["^build"],
-      "env": ["VITE_GIT_COMMIT_SHA"],
+      "env": ["OKOU_APP_GIT_COMMIT_SHA", "OKOU_APP_VERSION"],
       "inputs": [
         "$TURBO_DEFAULT$",
         ".env*",

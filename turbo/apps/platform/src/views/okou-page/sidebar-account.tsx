@@ -33,7 +33,11 @@ import {
   DropdownMenuSubContent,
   cn,
 } from "@okouai/ui";
-import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
+import {
+  clerk$,
+  currentUserInfo$,
+  ensureClerkUiLoaded$,
+} from "../../signals/auth.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,
   type AccountMenuSubscriptionUsageRowsCacheKey,
@@ -764,6 +768,7 @@ export function AccountDropdown({
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
   const openAuthV2AddAccountDialog = useSet(openAuthV2AddAccountDialog$);
+  const ensureClerkUiLoaded = useSet(ensureClerkUiLoaded$);
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -825,11 +830,17 @@ export function AccountDropdown({
       );
       return;
     }
+    if (!clerk) {
+      return;
+    }
     detach(
-      clerk?.openSignIn({
-        fallbackRedirectUrl: "/",
-        forceRedirectUrl: "/",
-      }),
+      (async () => {
+        await ensureClerkUiLoaded(pageSignal);
+        await clerk.openSignIn({
+          fallbackRedirectUrl: "/",
+          forceRedirectUrl: "/",
+        });
+      })(),
       Reason.DomCallback,
     );
   };

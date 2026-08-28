@@ -7,12 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  clearMockedAuthOnAbort,
-  mockOrganization,
-  mockUser,
-} from "../../../__tests__/mock-auth.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { setupBootstrap, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
@@ -111,19 +106,20 @@ const newRow = assistantRow(
   3,
 );
 
-function mockSignedInUser(): void {
-  clearMockedAuthOnAbort(context.signal);
-  mockUser(
-    {
+async function setupAuthenticatedBootstrap(): Promise<void> {
+  await setupBootstrap({
+    context,
+    path: "/error",
+    user: {
       id: userId(),
       fullName: "Background Sync User",
       email: "background-sync@example.com",
     },
-    { token: "test-token" },
-  );
-  mockOrganization({
-    activeOrg: { id: orgId(), name: "Background Sync Org" },
-    memberships: [{ id: orgId() }],
+    session: { token: "test-token" },
+    org: {
+      activeOrg: { id: orgId(), name: "Background Sync Org" },
+      memberships: [{ id: orgId() }],
+    },
   });
 }
 
@@ -275,7 +271,7 @@ describe("chat event background sync", () => {
   });
 
   it("fills only rows after the cached thread end", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const appDb = await openTestChatDb();
     await context.store.set(
       writeIndexedDbChatEventRows$,
@@ -331,7 +327,7 @@ describe("chat event background sync", () => {
   });
 
   it("skips a delayed created event whose sequence is already cached", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     await context.store.set(
       writeIndexedDbChatEventRows$,
       {

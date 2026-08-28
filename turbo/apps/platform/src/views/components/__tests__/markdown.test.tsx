@@ -210,37 +210,6 @@ describe("assistant markdown", () => {
     expect(screen.queryByTestId("rich-content-loading")).toBeNull();
   });
 
-  it("retries a failed rich message import from the message", async () => {
-    let importAttempt = 0;
-    const richMarkdownImport = context.mocks.browser.richMarkdownImport(() => {
-      importAttempt += 1;
-      if (importAttempt === 1) {
-        throw new Error("rich content chunk unavailable");
-      }
-    });
-    mockThread("Retry the **rich response**.");
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const retry = await waitFor(() => {
-      return getButtonByText(document, "Try again");
-    });
-    expect(richMarkdownImport).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("rich response")).toBeNull();
-
-    click(retry);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("rich response", { selector: "strong, b" }),
-      ).toBeInTheDocument();
-    });
-    expect(richMarkdownImport).toHaveBeenCalledTimes(2);
-  });
-
   it("renders formatted text and follows theme changes", async () => {
     mockThread("**bold text**");
 
@@ -748,7 +717,7 @@ describe("assistant markdown", () => {
 
   it("keeps unsupported mermaid diagram types as ordinary code blocks", async () => {
     context.mocks.browser.blobDownload();
-    const source = "sequenceDiagram\n  Alice->>Bob: Hello";
+    const source = "classDiagram\n  A <|-- B";
     mockThread(`\`\`\`mermaid\n${source}\n\`\`\``);
 
     detachedSetupPage({

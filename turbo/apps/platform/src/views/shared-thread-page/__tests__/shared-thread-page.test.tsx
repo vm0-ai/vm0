@@ -1,5 +1,5 @@
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
-import { act, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -16,16 +16,6 @@ describe("shared thread page", () => {
   it("renders the immutable public DTO without owner or agent identity", async () => {
     const user = userEvent.setup({ delay: null });
     const clipboard = context.mocks.browser.clipboardWriteText();
-    const firstImport = context.mocks.deferred<void>();
-    let importAttempt = 0;
-    const richMarkdownImport = context.mocks.browser.richMarkdownImport(
-      async () => {
-        importAttempt += 1;
-        if (importAttempt === 1) {
-          await firstImport.promise;
-        }
-      },
-    );
     context.mocks.api(sharedThreadsContract.get, ({ params, respond }) => {
       expect(params.id).toBe(SHARED_THREAD_ID);
       return respond(200, {
@@ -79,33 +69,13 @@ describe("shared thread page", () => {
     expect(screen.getByText("What should we launch?")).toBeInTheDocument();
     expect(screen.getByText("Keep it concise.")).toBeInTheDocument();
     expect(screen.getByText("The plain status is ready.")).toBeInTheDocument();
-    expect(screen.queryByText("public preview")).not.toBeInTheDocument();
-    expect(screen.getAllByTestId("rich-content-loading")).toHaveLength(2);
-    expect(richMarkdownImport).toHaveBeenCalledTimes(1);
-
-    act(() => {
-      firstImport.reject(new Error("rich content chunk unavailable"));
-    });
-    const retryButtons = await waitFor(() => {
-      const buttons = queryAllByRoleFast("button").filter((button) => {
-        return button.textContent?.trim() === "Try again";
-      });
-      expect(buttons).toHaveLength(2);
-      return buttons;
-    });
-    expect(screen.getByText("The plain status is ready.")).toBeInTheDocument();
-
-    await user.click(retryButtons[0] as HTMLElement);
-    await waitFor(() => {
-      expect(richMarkdownImport).toHaveBeenCalledTimes(2);
-      expect(screen.getByRole("heading", { name: "Primary" }).tagName).toBe(
-        "H1",
-      );
-      expect(screen.getByRole("heading", { name: "Secondary" }).tagName).toBe(
-        "H2",
-      );
-      expect(screen.getByText("public preview").tagName).toBe("STRONG");
-    });
+    await expect(
+      screen.findByRole("heading", { name: "Primary" }),
+    ).resolves.toHaveProperty("tagName", "H1");
+    expect(screen.getByRole("heading", { name: "Secondary" }).tagName).toBe(
+      "H2",
+    );
+    expect(screen.getByText("public preview").tagName).toBe("STRONG");
     expect(
       screen.queryByTestId("rich-content-loading"),
     ).not.toBeInTheDocument();

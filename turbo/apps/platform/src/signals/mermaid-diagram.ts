@@ -1,5 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
+import * as bundledMermaid from "@okouai/mermaid-lite";
 
 import { IN_VITEST } from "../env.ts";
 import { createRetryableLazyModule } from "./retryable-lazy-module.ts";
@@ -7,7 +8,7 @@ import { createObjectUrlResource } from "./object-url-resource.ts";
 import { theme$ } from "./theme.ts";
 import { onRejection, settle } from "./utils.ts";
 
-export type MermaidModule = typeof import("@okouai/mermaid-flowchart");
+export type MermaidModule = typeof bundledMermaid;
 export type MermaidImporter = () => Promise<MermaidModule>;
 
 declare global {
@@ -18,7 +19,7 @@ declare global {
 
 const mermaidModule = createRetryableLazyModule(() => {
   const testImporter = IN_VITEST ? window.vm0MermaidImporterForTest : undefined;
-  return testImporter?.() ?? import("@okouai/mermaid-flowchart");
+  return testImporter?.() ?? Promise.resolve(bundledMermaid);
 });
 
 /**
@@ -46,7 +47,7 @@ export interface MermaidDiagramImage {
 
 export interface MermaidDiagramSignals {
   readonly code: string;
-  /** Resolves `null` when the source is not a supported Mermaid flowchart. */
+  /** Resolves `null` when the source is not a supported Mermaid diagram. */
   readonly diagram$: Computed<Promise<MermaidDiagramImage | null>>;
   /** Retries the current theme after a transient module or render failure. */
   readonly retry$: Command<void, []>;
@@ -101,19 +102,20 @@ function diagramRenderId(seed: string): string {
 
 // `flowchart-v2` is Mermaid's internal ID for its modern Flowchart renderer,
 // not a separate user-facing diagram syntax.
-const FLOWCHART_DIAGRAM_TYPES: ReadonlySet<string> = new Set([
+const SUPPORTED_DIAGRAM_TYPES: ReadonlySet<string> = new Set([
   "flowchart",
   "flowchart-v2",
+  "sequence",
 ]);
 
-/** Returns the diagram SVG, or undefined when the source is not a flowchart. */
+/** Returns the diagram SVG, or undefined when the diagram type is unsupported. */
 async function renderDiagramSvg(
-  mermaid: (typeof import("@okouai/mermaid-flowchart"))["default"],
+  mermaid: MermaidModule["default"],
   id: string,
   code: string,
 ): Promise<string | undefined> {
   const parsed = await mermaid.parse(code, { suppressErrors: true });
-  if (!parsed || !FLOWCHART_DIAGRAM_TYPES.has(parsed.diagramType)) {
+  if (!parsed || !SUPPORTED_DIAGRAM_TYPES.has(parsed.diagramType)) {
     return undefined;
   }
   const { svg } = await mermaid.render(id, code);
