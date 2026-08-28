@@ -167,10 +167,10 @@ status writer, and the independently deployed host monitoring collector scans
 every versioned runner directory. Status schema changes must cover those
 old/new combinations rather than treating the file as process-private state.
 
-Current status writers, maintenance readers, and the host monitoring collector
-use `idle_sandboxes` and omit the field when the collection is empty. A status
-file without the canonical collection is treated as containing no idle
-sandboxes by current consumers.
+Current status writers publish `idle_sandboxes` and omit the field when the
+collection is empty. Current maintenance readers and the host monitoring
+collector read only `idle_sandboxes`; a status file without the canonical
+collection is treated as containing no idle sandboxes.
 
 The proxy registry and embedded mitm-addon are also a runner-private contract.
 The runner binary embeds the addon sources, recreates the addon directory and

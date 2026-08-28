@@ -177,8 +177,9 @@ mod tests {
             .map(|idle_sandboxes| {
                 idle_sandboxes
                     .iter()
-                    .filter_map(|vm| {
-                        vm.get("reuse_key")
+                    .filter_map(|sandbox| {
+                        sandbox
+                            .get("reuse_key")
                             .and_then(|reuse_key| reuse_key.as_str())
                             .map(str::to_string)
                     })

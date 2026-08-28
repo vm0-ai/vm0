@@ -1288,7 +1288,7 @@ async fn selected_finalizing_candidate_claims_while_predecessor_is_running() {
 }
 
 #[tokio::test]
-async fn finalizing_fallback_starts_fresh_vm_before_idle_destroy_finishes() {
+async fn finalizing_fallback_starts_fresh_sandbox_before_idle_destroy_finishes() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -1367,7 +1367,7 @@ async fn finalizing_fallback_starts_fresh_vm_before_idle_destroy_finishes() {
 }
 
 #[tokio::test]
-async fn finalizing_capacity_wait_rechecks_when_an_active_vm_parks_idle() {
+async fn finalizing_capacity_wait_rechecks_when_an_active_sandbox_parks_idle() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -1439,7 +1439,7 @@ async fn finalizing_capacity_wait_rechecks_when_an_active_vm_parks_idle() {
     wait_gate.release_one();
     let parked_reuse_key = env
         .start_observer
-        .wait_vm_parked_for_reuse(capacity_source_run_id, Duration::from_secs(5))
+        .wait_sandbox_parked_for_reuse(capacity_source_run_id, Duration::from_secs(5))
         .await;
     assert_eq!(parked_reuse_key, capacity_source_reuse_key);
     destroy_gate
@@ -1466,7 +1466,7 @@ async fn finalizing_capacity_wait_rechecks_when_an_active_vm_parks_idle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn finalizing_immediate_handoff_reuses_matching_vm_past_preference_deadline() {
+async fn finalizing_immediate_handoff_reuses_matching_sandbox_past_preference_deadline() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());

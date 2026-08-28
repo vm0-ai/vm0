@@ -37,7 +37,7 @@ pub(in super::super) async fn status_idle_reuse_keys_and_active_runs(
     let mut reuse_keys: Vec<String> = status
         .idle_sandboxes
         .into_iter()
-        .map(|vm| vm.reuse_key)
+        .map(|sandbox| sandbox.reuse_key)
         .collect();
     reuse_keys.sort_unstable();
     let mut run_ids: Vec<String> = status

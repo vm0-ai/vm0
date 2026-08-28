@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Deserializer};
 
 use crate::error::RunnerError;
 use crate::ids::RunId;
@@ -87,8 +87,8 @@ pub(crate) struct StatusForDoctor {
     #[serde(default)]
     pub(crate) active_runs: Vec<StatusActiveRun>,
     pub(crate) started_at: String,
-    #[serde(default, deserialize_with = "deserialize_present_idle_sandboxes")]
-    idle_sandboxes: Option<Vec<StatusIdleSandbox>>,
+    #[serde(default)]
+    idle_sandboxes: Vec<StatusIdleSandbox>,
     #[serde(default)]
     pub(crate) proxy_port: Option<u16>,
     #[serde(default)]
@@ -97,17 +97,8 @@ pub(crate) struct StatusForDoctor {
 
 impl StatusForDoctor {
     pub(crate) fn idle_sandboxes(&self) -> &[StatusIdleSandbox] {
-        self.idle_sandboxes.as_deref().unwrap_or(&[])
+        &self.idle_sandboxes
     }
-}
-
-fn deserialize_present_idle_sandboxes<'de, D>(
-    deserializer: D,
-) -> Result<Option<Vec<StatusIdleSandbox>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Vec::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Deserialize)]

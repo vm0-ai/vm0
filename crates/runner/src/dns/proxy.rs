@@ -214,7 +214,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dnsmasq_args_use_wildcard_sockets_with_vm_interface_access_control() {
+    fn dnsmasq_args_use_wildcard_sockets_with_sandbox_interface_access_control() {
         let args = dnsmasq_args(5353, "vm0-ve-0a-*");
 
         assert!(args.contains(&"--interface=vm0-ve-0a-*".to_string()));
