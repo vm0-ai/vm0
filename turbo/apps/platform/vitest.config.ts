@@ -33,7 +33,7 @@ export default defineConfig({
         __dirname,
         "../../packages/mermaid-flowchart/dist/mermaid.esm.tiny.min.mjs",
       ),
-      "virtual:shared-database-worker-inline": `${path.resolve(
+      "virtual:shared-database-worker": `${path.resolve(
         __dirname,
         "./src/shared-database-worker.ts",
       )}?sharedworker&inline`,

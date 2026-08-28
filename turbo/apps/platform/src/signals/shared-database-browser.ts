@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import SharedDatabaseWorker from "virtual:shared-database-worker-inline";
+import SharedDatabaseWorker from "virtual:shared-database-worker";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
