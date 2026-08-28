@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  INTRO_VIDEO_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
@@ -416,41 +415,6 @@ describe("buildGenerationTemplatePrompt", () => {
       "read its SKILL.md before final generation",
     );
     expect(result.prompt).toContain("without `--template`");
-  });
-
-  it("gates and resolves an intro-video template through its implementation", () => {
-    const item = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
-    const selection = {
-      type: "intro-video" as const,
-      selection: { templateId: item.id },
-    };
-
-    expect(buildGenerationTemplatePrompt(selection)).toStrictEqual({
-      status: "invalid",
-      message: "Unknown intro-video template",
-    });
-
-    const result = buildGenerationTemplatesPrompt([selection], {
-      introVideoTemplatesEnabled: true,
-    });
-    expect(result.status).toBe("resolved");
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain("## Template #1 (intro-video)");
-    expect(result.prompt).toContain(`Template: ${item.title} (${item.id})`);
-    expect(result.prompt).toContain("Implementation: HyperFrames");
-    expect(result.prompt).toContain("Official workflow: faceless-explainer");
-    expect(result.prompt).toContain(
-      "heygen-com/hyperframes@6eaa2cb64b280c51cadb3843ce190f6f0b7493cc",
-    );
-    expect(result.prompt).toContain("Pinned runtime: hyperframes@0.8.14");
-    expect(result.prompt).toContain(
-      `okou generate intro-video --template ${item.id}`,
-    );
-    expect(result.prompt).toContain(
-      "Do not substitute direct built-in text-to-video generation",
-    );
   });
 
   it("reads avatar options from the flat fields older bundles wrote", () => {
