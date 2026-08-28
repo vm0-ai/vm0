@@ -114,6 +114,73 @@ fn supervised_exec_control_spawn_failure_releases_registration() {
 }
 
 #[test]
+fn controlled_agent_spawn_failure_returns_start_failed_and_releases_registration() {
+    let agent_path = unique_tmp_path("controlled-agent-missing", ".secret");
+    let target_seq = 212;
+    let control_nonce = unique_exec_control_nonce(u64::from(target_seq));
+    let (handle, mut host_stream) =
+        start_guest_connection_with_guest_agent_program(PathBuf::from(agent_path.as_str()));
+
+    send_exec_start_request(
+        &mut host_stream,
+        target_seq,
+        ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            role: vsock_proto::ExecProcessRole::Agent,
+            timeout: ExecTimeoutPolicy::None,
+            command: "",
+            env: &[],
+            sudo: false,
+            label: "controlled-agent-start-failure",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Enabled {
+                control_nonce,
+                sink: true,
+            },
+            stdin_bytes: None,
+        },
+    );
+
+    let msg = read_message(&mut host_stream);
+    assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
+    assert_eq!(msg.seq, target_seq);
+    let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+    assert_eq!(result.termination, ExecTermination::StartFailed);
+    assert_eq!(
+        result.diagnostic,
+        "Failed to execute controlled Agent: agent bootstrap failed: guest-agent is missing"
+    );
+    assert!(!result.diagnostic.contains(agent_path.as_str()));
+
+    send_exec_control(
+        &mut host_stream,
+        320,
+        target_seq,
+        control_nonce,
+        "message-after-agent-start-failed",
+    );
+    assert_exec_control_result(
+        &mut host_stream,
+        320,
+        target_seq,
+        control_nonce,
+        "message-after-agent-start-failed",
+        ExecControlStatus::Inactive,
+        "exec operation is not active",
+    );
+
+    send_quiesce_operations(&mut host_stream, 321);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 321);
+    assert!(quiesced.payload.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn supervised_exec_control_forwards_to_bootstrap_sink() {
     let pid_path = unique_pid_path("supervised-exec-bootstrap-sink");
     let agent_path = unique_tmp_path("supervised-exec-bootstrap-agent", ".sh");
