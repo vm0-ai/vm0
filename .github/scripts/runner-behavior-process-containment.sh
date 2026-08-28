@@ -767,7 +767,6 @@ after = snapshot(workload, control)
 for event in ("max", "oom", "oom_kill", "oom_group_kill"):
     if after["workload_events"].get(event, 0) != before["workload_events"].get(event, 0):
         raise RuntimeError(f"memory pressure triggered workload-local {event}")
-marker_dir.joinpath("memory-reclaim-sandbox").write_text("ready\n")
 print(
     json.dumps(
         {
