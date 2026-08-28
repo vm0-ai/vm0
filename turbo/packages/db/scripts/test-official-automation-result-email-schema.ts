@@ -183,7 +183,7 @@ export async function validateOfficialAutomationResultEmailSchema(
     );
     await client.query(
       `
-        INSERT INTO "zero_workflows" (
+        INSERT INTO "workflows" (
           "id", "org_id", "name", "created_by", "owner_user_id",
           "agent_id", "updated_by", "official_definition_name",
           "official_installation_state"
@@ -193,7 +193,7 @@ export async function validateOfficialAutomationResultEmailSchema(
     );
     await client.query(
       `
-        INSERT INTO "zero_workflow_automations" (
+        INSERT INTO "workflow_automations" (
           "id", "org_id", "workflow_id", "owner_user_id",
           "kind", "schedule_type", "interval_seconds"
         ) VALUES
@@ -208,7 +208,7 @@ export async function validateOfficialAutomationResultEmailSchema(
     }>(
       `
         SELECT "official_result_email_enabled" AS "resultEmailEnabled"
-        FROM "zero_workflow_automations"
+        FROM "workflow_automations"
         WHERE "id" = $1
       `,
       [ordinaryAutomationId],
@@ -217,7 +217,7 @@ export async function validateOfficialAutomationResultEmailSchema(
 
     await client.query(
       `
-        UPDATE "zero_workflow_automations"
+        UPDATE "workflow_automations"
         SET
           "official_blueprint_key" = 'pulse',
           "official_applied_fingerprint" = $1,
@@ -234,7 +234,7 @@ export async function validateOfficialAutomationResultEmailSchema(
     }>(
       `
         SELECT "official_result_email_enabled" AS "resultEmailEnabled"
-        FROM "zero_workflow_automations"
+        FROM "workflow_automations"
         WHERE "id" = $1
       `,
       [officialAutomationId],
@@ -243,7 +243,7 @@ export async function validateOfficialAutomationResultEmailSchema(
 
     await client.query(
       `
-        UPDATE "zero_workflow_automations"
+        UPDATE "workflow_automations"
         SET "official_result_email_enabled" = true
         WHERE "id" = $1
       `,
@@ -254,7 +254,7 @@ export async function validateOfficialAutomationResultEmailSchema(
     }>(
       `
         SELECT "official_result_email_enabled" AS "resultEmailEnabled"
-        FROM "zero_workflow_automations"
+        FROM "workflow_automations"
         WHERE "id" = $1
       `,
       [officialAutomationId],
@@ -264,7 +264,7 @@ export async function validateOfficialAutomationResultEmailSchema(
     await assert.rejects(
       client.query(
         `
-          UPDATE "zero_workflow_automations"
+          UPDATE "workflow_automations"
           SET "official_result_email_enabled" = true
           WHERE "id" = $1
         `,
