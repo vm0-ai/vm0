@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.6...guest-contracts-v0.12.7) (2026-08-28)
+
+
+### Refactoring
+
+* **runner:** cut private payload writers to canonical aliases ([#30055](https://github.com/vm0-ai/vm0/issues/30055)) ([edbdda3](https://github.com/vm0-ai/vm0/commit/edbdda3db6a2553bdf047181becbf2f9a170b997))
+
 ## [0.12.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.5...guest-contracts-v0.12.6) (2026-08-28)
 
 
