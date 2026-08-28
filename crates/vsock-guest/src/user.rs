@@ -13,6 +13,9 @@ static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
 static SANDBOX_USER_CREDENTIALS_INIT: Mutex<()> = Mutex::new(());
 
 #[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
+const SANDBOX_USER_BASE_PATH: &str = "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games";
+
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct UserCredentials {
     username: String,
@@ -73,6 +76,32 @@ pub(crate) fn apply_command_identity(command: &mut Command, sudo: bool) -> io::R
         #[cfg(not(any(debug_assertions, feature = "test-support")))]
         TargetIdentity::User(credentials) => apply_credentials(command, credentials),
     }
+}
+
+/// Preserve the trusted PATH produced by the rootfs system profile without
+/// sourcing sandbox-owned shell state during fixed Agent launch.
+pub(crate) fn configure_agent_command_environment(command: &mut Command) -> io::Result<()> {
+    #[cfg(any(debug_assertions, feature = "test-support"))]
+    {
+        let _ = command;
+        Ok(())
+    }
+
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
+    {
+        let home = sandbox_user_home()?;
+        command.env("PATH", sandbox_user_path(&home));
+        Ok(())
+    }
+}
+
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
+fn sandbox_user_path(home: &std::path::Path) -> String {
+    format!(
+        "{SANDBOX_USER_BASE_PATH}:{}/go/bin:{}/.cargo/bin",
+        home.display(),
+        home.display()
+    )
 }
 
 fn target_identity(sudo: bool) -> io::Result<TargetIdentity> {
@@ -273,6 +302,15 @@ fn parse_required_u32(value: Option<&str>, field: &str) -> io::Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn sandbox_user_path_matches_trusted_rootfs_profile() {
+        assert_eq!(
+            sandbox_user_path(Path::new("/home/user")),
+            "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/user/go/bin:/home/user/.cargo/bin"
+        );
+    }
 
     #[test]
     fn parse_user_credentials_includes_primary_and_supplementary_groups() {

@@ -115,6 +115,16 @@ rm -rf "$marker"
 mkdir -p "$marker"
 touch "$marker/vm-reuse-marker"
 
+expected_path="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:$HOME/go/bin:$HOME/.cargo/bin"
+if [ "$PATH" != "$expected_path" ]; then
+  echo "Guest Agent CLI child PATH changed: expected=$expected_path actual=$PATH" >&2
+  exit 1
+fi
+if sudo find /run/vm0-exec -mindepth 1 -maxdepth 2 -print -quit | grep -q .; then
+  echo "Guest Agent startup left a generic environment script" >&2
+  exit 1
+fi
+
 base=/sys/fs/cgroup/vm0-exec
 relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
 case "$relative" in
@@ -264,8 +274,9 @@ verify_live_identity user 14
 verify_live_identity root 15
 
 # Persist adversarial login profiles for the next reuse turn. Production
-# Guest Agent bootstrap must use a non-login shell and SCM_RIGHTS, so neither
-# profile can run before the trusted binary or retain a placement capability.
+# Guest Agent bootstrap executes the fixed binary directly and uses SCM_RIGHTS,
+# so no profile can run before the trusted binary or retain a placement
+# capability.
 cat > "$HOME/.profile" <<'PROFILE'
 touch /tmp/vm0-process-containment/profile-executed
 for descriptor in /proc/self/fd/*; do

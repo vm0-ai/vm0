@@ -117,6 +117,17 @@ pub struct StartProcessCall {
     pub output: ProcessOutputMode,
 }
 
+/// Captured controlled-Agent request fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartAgentProcessCall {
+    /// Timeout passed to `StartAgentProcessRequest.timeout`.
+    pub timeout: Duration,
+    /// Environment variable names and values from `StartAgentProcessRequest.env`.
+    pub env: Vec<(String, String)>,
+    /// Output mode requested for the Guest Agent.
+    pub output: ProcessOutputMode,
+}
+
 /// Captured `wait_process` request fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WaitProcessCall {

@@ -2396,13 +2396,9 @@ async fn start_agent_process_maps_to_agent_role_and_control_sink() {
     let sandbox = test_sandbox_with_state(SandboxState::Running);
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;
     let request = StartAgentProcessRequest {
-        process: StartProcessRequest {
-            cmd: "agent",
-            timeout: Duration::from_secs(5),
-            env: &[],
-            sudo: false,
-            output: ProcessOutputMode::buffered(sandbox::EXEC_OUTPUT_LIMIT_1_MIB),
-        },
+        timeout: Duration::from_secs(5),
+        env: &[],
+        output: ProcessOutputMode::buffered(sandbox::EXEC_OUTPUT_LIMIT_1_MIB),
     };
 
     let start_agent = sandbox.start_agent_process(&request);
@@ -2410,6 +2406,8 @@ async fn start_agent_process_maps_to_agent_role_and_control_sink() {
         let start = read_vsock_message(&mut guest).await;
         let decoded = vsock_proto::decode_exec_start(&start.payload).unwrap();
         assert_eq!(decoded.role, vsock_proto::ExecProcessRole::Agent);
+        assert!(decoded.command.is_empty());
+        assert!(!decoded.sudo);
         assert!(matches!(
             decoded.control,
             vsock_proto::ExecControlPolicy::Enabled { sink: true, .. }

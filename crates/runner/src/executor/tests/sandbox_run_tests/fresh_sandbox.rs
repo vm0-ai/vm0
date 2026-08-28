@@ -239,7 +239,6 @@ async fn execute_inner_carries_early_codex_catalog_prefetch_into_agent_run() {
     assert!(start_calls[0].cmd.contains("codex --version"));
     let agent_calls = overrides.start_agent_process_calls();
     assert_eq!(agent_calls.len(), 1);
-    assert!(!agent_calls[0].cmd.contains("codex --version"));
     assert_proxy_registry_empty(dir.path()).await;
 }
 

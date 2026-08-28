@@ -125,6 +125,61 @@ fn exec_operation_rejects_invalid_one_shot_start_policies() {
 }
 
 #[test]
+fn controlled_agent_rejects_command_sudo_and_stdin_authority() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    for (seq, command, sudo, stdin_bytes, expected) in [
+        (
+            130,
+            "printf should-not-run",
+            false,
+            None,
+            "Agent process cannot select a command",
+        ),
+        (
+            131,
+            "",
+            true,
+            None,
+            "Agent process cannot select sudo execution",
+        ),
+        (
+            132,
+            "",
+            false,
+            Some(b"stdin".as_slice()),
+            "Agent process cannot provide stdin",
+        ),
+    ] {
+        send_exec_start_request(
+            &mut host_stream,
+            seq,
+            vsock_proto::ExecStartEncodeRequest {
+                lifecycle: ExecLifecyclePolicy::Supervised,
+                role: vsock_proto::ExecProcessRole::Agent,
+                timeout: ExecTimeoutPolicy::None,
+                command,
+                env: &[],
+                sudo,
+                label: "controlled-agent-authority-test",
+                stdout: ExecOutputPolicy::Discard,
+                stderr: ExecOutputPolicy::Discard,
+                expected_exit_codes: &[],
+                control: ExecControlPolicy::Enabled {
+                    control_nonce: [seq as u8; 16],
+                    sink: true,
+                },
+                stdin_bytes,
+            },
+        );
+        assert_eq!(read_error_response(&mut host_stream, seq), expected);
+    }
+
+    assert_ping_pong(&mut host_stream, 133);
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn exec_operation_rejects_output_policies_that_cannot_fit_protocol_frames_without_running() {
     let capture_marker = unique_tmp_path("exec-operation-huge-capture-policy", ".marker");
     let stream_marker = unique_tmp_path("exec-operation-huge-stream-policy", ".marker");
