@@ -10,9 +10,11 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration = "1003_rich_yellow_claw";
 const expansionMigration = "1004_workflow_compatibility_views";
+const refreshPreviousMigration = "1019_sturdy_firestar";
+const refreshMigration = "1020_refresh_workflow_compatibility_views";
 const testDatabase = "migration_workflow_compatibility_views";
 
-const relationDefinitions = [
+const historicalRelationDefinitions = [
   {
     canonical: "workflows",
     legacy: "zero_workflows",
@@ -110,6 +112,33 @@ const relationDefinitions = [
   },
 ] as const;
 
+const relationDefinitions = [
+  {
+    ...historicalRelationDefinitions[0],
+    columns: [
+      ...historicalRelationDefinitions[0].columns,
+      "official_definition_name",
+      "official_installation_state",
+    ],
+  },
+  {
+    ...historicalRelationDefinitions[1],
+    columns: [
+      ...historicalRelationDefinitions[1].columns,
+      "official_blueprint_key",
+      "official_applied_fingerprint",
+      "official_reconciliation_status",
+      "official_parameter_bindings",
+      "official_intended_enabled",
+      "official_result_email_enabled",
+    ],
+  },
+  historicalRelationDefinitions[2],
+  historicalRelationDefinitions[3],
+  historicalRelationDefinitions[4],
+  historicalRelationDefinitions[5],
+] as const;
+
 const legacyRelationNames = relationDefinitions.map(({ legacy }) => {
   return legacy;
 });
@@ -139,6 +168,11 @@ const expectedExplicitIndexNames = [
   "idx_zero_workflows_public_agent_name_unique",
 ] as const;
 
+const expectedCurrentExplicitIndexNames = [
+  ...expectedExplicitIndexNames,
+  "idx_zero_workflow_automations_official_blueprint_unique",
+] as const;
+
 const expectedForeignKeyNames = [
   "agent_runs_workflow_automation_id_zero_workflow_automations_id_fk",
   "gmail_processed_events_automation_id_zero_workflow_automations_id_fk",
@@ -159,9 +193,30 @@ const expectedForeignKeyNames = [
   "zero_workflows_agent_id_agents_id_fk",
 ] as const;
 
+const expectedCurrentForeignKeyNames = [
+  ...expectedForeignKeyNames,
+  "official_workflow_automation_identity_automation_fk",
+  "official_workflow_automation_identity_workflow_fk",
+] as const;
+
 const expectedCheckNames = [
   "zero_workflow_automations_autonomy_budget_check",
   "zero_workflow_automations_schedule_config_check",
+] as const;
+
+const expectedCurrentCheckNames = [
+  ...expectedCheckNames,
+  "zero_workflow_automations_official_binding_check",
+  "zero_workflows_official_installation_check",
+] as const;
+
+const expectedPrimaryKeyNames = [
+  "zero_workflow_automations_pkey",
+  "zero_workflow_github_processed_events_pkey",
+  "zero_workflow_strapi_automations_pkey",
+  "zero_workflow_webhook_automations_pkey",
+  "zero_workflow_webhook_deliveries_pkey",
+  "zero_workflows_pkey",
 ] as const;
 
 const strapiIntegrationForeignKey =
@@ -191,6 +246,7 @@ interface JournalEntry {
 }
 
 interface RelationIdentity {
+  readonly relationAcl: string;
   readonly relationFileNode: string;
   readonly relationKind: string;
   readonly relationName: string;
@@ -309,6 +365,18 @@ async function expectUniqueViolation(
   });
 }
 
+async function expectCheckViolation(
+  operation: Promise<unknown>,
+  constraint: string,
+): Promise<void> {
+  await assert.rejects(operation, (error: unknown) => {
+    return (
+      databaseErrorCode(error) === "23514" &&
+      databaseErrorConstraint(error) === constraint
+    );
+  });
+}
+
 async function expectRestrictViolation(
   client: Client,
   operation: () => Promise<unknown>,
@@ -359,6 +427,17 @@ function expectedCreateViewStatement(definition: {
   )} FROM "${definition.legacy}";`;
 }
 
+function expectedCreateOrReplaceViewStatement(definition: {
+  readonly canonical: string;
+  readonly columns: readonly string[];
+  readonly legacy: string;
+}): string {
+  return expectedCreateViewStatement(definition).replace(
+    "CREATE VIEW",
+    "CREATE OR REPLACE VIEW",
+  );
+}
+
 function validateMigrationJournalEntries(
   entries: readonly JournalEntry[],
 ): void {
@@ -393,7 +472,7 @@ async function validateMigrationArtifacts(): Promise<void> {
     });
   assert.deepEqual(
     statements,
-    relationDefinitions.map(expectedCreateViewStatement),
+    historicalRelationDefinitions.map(expectedCreateViewStatement),
   );
 
   const previousSnapshot = JSON.parse(
@@ -413,7 +492,7 @@ async function validateMigrationArtifacts(): Promise<void> {
     snapshotSchema(expansionSnapshot),
     snapshotSchema(previousSnapshot),
   );
-  for (const { canonical, legacy } of relationDefinitions) {
+  for (const { canonical, legacy } of historicalRelationDefinitions) {
     assert.ok(`public.${legacy}` in expansionSnapshot.tables);
     assert.ok(!(`public.${canonical}` in expansionSnapshot.tables));
     assert.ok(!(`public.${canonical}` in expansionSnapshot.views));
@@ -433,10 +512,90 @@ async function validateMigrationArtifacts(): Promise<void> {
   ]);
 }
 
+async function validateRefreshMigrationArtifacts(): Promise<void> {
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${refreshMigration}.sql`),
+    "utf8",
+  );
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map(normalizedSql)
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  assert.equal(statements.length, 3);
+  const [guard, workflowView, automationView] = statements;
+  assert.ok(guard);
+  assert.ok(guard.startsWith("DO $$ DECLARE"));
+  assert.ok(
+    guard.includes("workflow compatibility relation identity mismatch"),
+  );
+  assert.ok(guard.includes("workflows compatibility view shape mismatch"));
+  assert.ok(
+    guard.includes("workflow_automations compatibility view shape mismatch"),
+  );
+  assert.ok(guard.includes("expected.relation_position"));
+  assert.ok(guard.includes('COLLATE "C"'));
+  assert.ok(guard.includes("zero_workflows physical table shape mismatch"));
+  assert.ok(
+    guard.includes("zero_workflow_automations physical table shape mismatch"),
+  );
+  assert.deepEqual(
+    [workflowView, automationView],
+    relationDefinitions.slice(0, 2).map(expectedCreateOrReplaceViewStatement),
+  );
+
+  const previousSnapshot = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/1019_snapshot.json"),
+      "utf8",
+    ),
+  ) as MigrationSnapshot;
+  const refreshSnapshot = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/1020_snapshot.json"),
+      "utf8",
+    ),
+  ) as MigrationSnapshot;
+  assert.equal(refreshSnapshot.prevId, previousSnapshot.id);
+  assert.deepEqual(
+    snapshotSchema(refreshSnapshot),
+    snapshotSchema(previousSnapshot),
+  );
+  for (const { canonical, legacy } of relationDefinitions) {
+    assert.ok(`public.${legacy}` in refreshSnapshot.tables);
+    assert.ok(!(`public.${canonical}` in refreshSnapshot.tables));
+    assert.ok(!(`public.${canonical}` in refreshSnapshot.views));
+  }
+
+  const journal = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/_journal.json"),
+      "utf8",
+    ),
+  ) as { entries: JournalEntry[] };
+  const previousPosition = journal.entries.findIndex(({ tag }) => {
+    return tag === refreshPreviousMigration;
+  });
+  const refreshPosition = journal.entries.findIndex(({ tag }) => {
+    return tag === refreshMigration;
+  });
+  assert.notEqual(previousPosition, -1);
+  assert.equal(refreshPosition, previousPosition + 1);
+  assert.equal(journal.entries[previousPosition]?.idx, 1019);
+  assert.equal(
+    journal.entries[previousPosition]?.tag,
+    refreshPreviousMigration,
+  );
+  assert.equal(journal.entries[refreshPosition]?.idx, 1020);
+  assert.equal(journal.entries[refreshPosition]?.tag, refreshMigration);
+}
+
 async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
   const relations = await client.query<RelationIdentity>(
     `
       SELECT
+        COALESCE("pg_class"."relacl"::text, '') AS "relationAcl",
         "pg_relation_filenode"("pg_class"."oid")::text AS "relationFileNode",
         "pg_class"."relkind"::text AS "relationKind",
         "pg_class"."relname" AS "relationName",
@@ -447,7 +606,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname"
+      ORDER BY "pg_class"."relname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -487,7 +646,9 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
         AND "pg_class"."relname" = ANY($1::text[])
         AND "pg_attribute"."attnum" > 0
         AND NOT "pg_attribute"."attisdropped"
-      ORDER BY "pg_class"."relname", "pg_attribute"."attnum"
+      ORDER BY
+        "pg_class"."relname" COLLATE "C",
+        "pg_attribute"."attnum"
     `,
     [legacyRelationNames],
   );
@@ -521,9 +682,10 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
         ON "pg_namespace"."oid" = "table_relation"."relnamespace"
       LEFT JOIN "pg_constraint"
         ON "pg_constraint"."conindid" = "pg_index"."indexrelid"
+        AND "pg_constraint"."contype" IN ('p', 'u', 'x')
       WHERE "pg_namespace"."nspname" = 'public'
         AND "table_relation"."relname" = ANY($1::text[])
-      ORDER BY "index_relation"."relname"
+      ORDER BY "index_relation"."relname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -566,7 +728,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
           "source_relation"."relname" = ANY($1::text[])
           OR "referenced_relation"."relname" = ANY($1::text[])
         )
-      ORDER BY "pg_constraint"."conname"
+      ORDER BY "pg_constraint"."conname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -593,7 +755,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
       WHERE "pg_constraint"."contype" = 'c'
         AND "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_constraint"."conname"
+      ORDER BY "pg_constraint"."conname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -601,6 +763,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
   const sequences = await client.query<RelationIdentity>(
     `
       SELECT
+        COALESCE("sequence_relation"."relacl"::text, '') AS "relationAcl",
         "pg_relation_filenode"("sequence_relation"."oid")::text AS "relationFileNode",
         "sequence_relation"."relkind"::text AS "relationKind",
         "sequence_relation"."relname" AS "relationName",
@@ -621,7 +784,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
       WHERE "sequence_relation"."relkind" = 'S'
         AND "pg_namespace"."nspname" = 'public'
         AND "table_relation"."relname" = ANY($1::text[])
-      ORDER BY "sequence_relation"."relname"
+      ORDER BY "sequence_relation"."relname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -636,7 +799,42 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
   };
 }
 
-function validateExpectedPhysicalInventory(catalog: PhysicalCatalog): void {
+async function readCanonicalRelationIdentities(
+  client: Client,
+): Promise<RelationIdentity[]> {
+  const relations = await client.query<RelationIdentity>(
+    `
+      SELECT
+        COALESCE("pg_class"."relacl"::text, '') AS "relationAcl",
+        "pg_relation_filenode"("pg_class"."oid")::text AS "relationFileNode",
+        "pg_class"."relkind"::text AS "relationKind",
+        "pg_class"."relname" AS "relationName",
+        "pg_class"."oid"::text AS "relationOid",
+        "pg_get_userbyid"("pg_class"."relowner") AS "relationOwner"
+      FROM "pg_class"
+      INNER JOIN "pg_namespace"
+        ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+      WHERE "pg_namespace"."nspname" = 'public'
+        AND "pg_class"."relname" = ANY($1::text[])
+      ORDER BY "pg_class"."relname" COLLATE "C"
+    `,
+    [canonicalRelationNames],
+  );
+  return relations.rows;
+}
+
+function validateExpectedPhysicalInventory(
+  catalog: PhysicalCatalog,
+  expected: {
+    readonly checkNames: readonly string[];
+    readonly explicitIndexNames: readonly string[];
+    readonly foreignKeyNames: readonly string[];
+  } = {
+    checkNames: expectedCheckNames,
+    explicitIndexNames: expectedExplicitIndexNames,
+    foreignKeyNames: expectedForeignKeyNames,
+  },
+): void {
   assert.deepEqual(
     catalog.relations.map(({ relationKind, relationName }) => {
       return { relationKind, relationName };
@@ -658,9 +856,9 @@ function validateExpectedPhysicalInventory(catalog: PhysicalCatalog): void {
     explicitIndexes.map(({ indexName }) => {
       return indexName;
     }),
-    [...expectedExplicitIndexNames].sort(),
+    [...expected.explicitIndexNames].sort(),
   );
-  assert.equal(explicitIndexes.length, 14);
+  assert.equal(explicitIndexes.length, expected.explicitIndexNames.length);
   assert.ok(
     catalog.indexes.every(
       ({
@@ -689,17 +887,28 @@ function validateExpectedPhysicalInventory(catalog: PhysicalCatalog): void {
     ),
   );
 
+  const primaryIndexes = catalog.indexes.filter(({ isPrimary }) => {
+    return isPrimary;
+  });
+  assert.deepEqual(
+    primaryIndexes.map(({ indexName }) => {
+      return indexName;
+    }),
+    [...expectedPrimaryKeyNames].sort(),
+  );
+  assert.equal(primaryIndexes.length, expectedPrimaryKeyNames.length);
+
   assert.deepEqual(
     catalog.foreignKeys.map(({ constraintName }) => {
       return constraintName;
     }),
-    expectedForeignKeyNames
+    expected.foreignKeyNames
       .map((constraintName) => {
         return constraintName.slice(0, 63);
       })
       .sort(),
   );
-  assert.equal(catalog.foreignKeys.length, 17);
+  assert.equal(catalog.foreignKeys.length, expected.foreignKeyNames.length);
   assert.ok(
     catalog.foreignKeys.every(
       ({
@@ -723,9 +932,9 @@ function validateExpectedPhysicalInventory(catalog: PhysicalCatalog): void {
     catalog.checks.map(({ checkName }) => {
       return checkName;
     }),
-    [...expectedCheckNames].sort(),
+    [...expected.checkNames].sort(),
   );
-  assert.equal(catalog.checks.length, 2);
+  assert.equal(catalog.checks.length, expected.checkNames.length);
   assert.ok(
     catalog.checks.every(({ checkOid, relationOid, relationOwner }) => {
       return (
@@ -738,13 +947,26 @@ function validateExpectedPhysicalInventory(catalog: PhysicalCatalog): void {
   assert.deepEqual(catalog.sequences, []);
 }
 
+function validateExpectedCurrentPhysicalInventory(
+  catalog: PhysicalCatalog,
+): void {
+  validateExpectedPhysicalInventory(catalog, {
+    checkNames: expectedCurrentCheckNames,
+    explicitIndexNames: expectedCurrentExplicitIndexNames,
+    foreignKeyNames: expectedCurrentForeignKeyNames,
+  });
+}
+
 async function readRelationRows(
   client: Client,
   relationName: RelationName,
 ): Promise<string> {
   const rows = await client.query<{ rows: string }>(`
     SELECT COALESCE(
-      jsonb_agg(to_jsonb("relation_row") ORDER BY to_jsonb("relation_row")::text),
+      jsonb_agg(
+        to_jsonb("relation_row")
+        ORDER BY to_jsonb("relation_row")::text COLLATE "C"
+      ),
       '[]'::jsonb
     )::text AS "rows"
     FROM "${relationName}" AS "relation_row"
@@ -997,7 +1219,15 @@ async function seedPreExpansionFixtures(client: Client): Promise<void> {
   );
 }
 
-async function validateExpandedCatalog(client: Client): Promise<void> {
+async function validateExpandedCatalog(
+  client: Client,
+  definitions: readonly {
+    readonly canonical: string;
+    readonly columns: readonly string[];
+    readonly legacy: string;
+  }[] = relationDefinitions,
+  allowAdditionalLegacyColumns = false,
+): Promise<void> {
   const relations = await client.query<{
     relationKind: string;
     relationName: string;
@@ -1011,7 +1241,7 @@ async function validateExpandedCatalog(client: Client): Promise<void> {
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname"
+      ORDER BY "pg_class"."relname" COLLATE "C"
     `,
     [allRelationNames],
   );
@@ -1025,26 +1255,81 @@ async function validateExpandedCatalog(client: Client): Promise<void> {
         return { relationKind: "v", relationName };
       }),
     ].sort((left, right) => {
-      return left.relationName.localeCompare(right.relationName);
+      if (left.relationName < right.relationName) {
+        return -1;
+      }
+      if (left.relationName > right.relationName) {
+        return 1;
+      }
+      return 0;
     }),
   );
 
-  for (const { canonical, columns, legacy } of relationDefinitions) {
-    const viewColumns = await client.query<{ columnName: string }>(
+  for (const { canonical, columns, legacy } of definitions) {
+    const viewColumns = await client.query<{
+      columnName: string;
+      type: string;
+    }>(
       `
-        SELECT "column_name" AS "columnName"
-        FROM "information_schema"."columns"
-        WHERE "table_schema" = 'public'
-          AND "table_name" = $1
-        ORDER BY "ordinal_position"
+        SELECT
+          "pg_attribute"."attname" AS "columnName",
+          "format_type"(
+            "pg_attribute"."atttypid",
+            "pg_attribute"."atttypmod"
+          ) AS "type"
+        FROM "pg_attribute"
+        WHERE "pg_attribute"."attrelid" = $1::regclass
+          AND "pg_attribute"."attnum" > 0
+          AND NOT "pg_attribute"."attisdropped"
+        ORDER BY "pg_attribute"."attnum"
       `,
-      [canonical],
+      [`public.${canonical}`],
     );
     assert.deepEqual(
       viewColumns.rows.map(({ columnName }) => {
         return columnName;
       }),
       columns,
+    );
+    const legacyColumns = await client.query<{
+      columnName: string;
+      type: string;
+    }>(
+      `
+        SELECT
+          "pg_attribute"."attname" AS "columnName",
+          "format_type"(
+            "pg_attribute"."atttypid",
+            "pg_attribute"."atttypmod"
+          ) AS "type"
+        FROM "pg_attribute"
+        WHERE "pg_attribute"."attrelid" = $1::regclass
+          AND "pg_attribute"."attnum" > 0
+          AND NOT "pg_attribute"."attisdropped"
+        ORDER BY "pg_attribute"."attnum"
+      `,
+      [`public.${legacy}`],
+    );
+    const legacyTypes = new Map(
+      legacyColumns.rows.map(({ columnName, type }) => {
+        return [columnName, type];
+      }),
+    );
+    if (!allowAdditionalLegacyColumns) {
+      assert.deepEqual(
+        legacyColumns.rows
+          .map(({ columnName }) => {
+            return columnName;
+          })
+          .sort(),
+        [...columns].sort(),
+      );
+    }
+    assert.deepEqual(
+      viewColumns.rows,
+      columns.map((columnName) => {
+        return { columnName, type: legacyTypes.get(columnName) };
+      }),
     );
 
     const viewMetadata = await client.query<{
@@ -1068,7 +1353,7 @@ async function validateExpandedCatalog(client: Client): Promise<void> {
     const dependencies = await client.query<{ relationName: string }>(
       `
         SELECT DISTINCT
-          "referenced_relation"."relname" AS "relationName"
+          "referenced_relation"."relname" COLLATE "C" AS "relationName"
         FROM "pg_rewrite"
         INNER JOIN "pg_depend"
           ON "pg_depend"."objid" = "pg_rewrite"."oid"
@@ -1079,7 +1364,7 @@ async function validateExpandedCatalog(client: Client): Promise<void> {
         WHERE "pg_rewrite"."ev_class" = $1::regclass
           AND "pg_namespace"."nspname" = 'public'
           AND "referenced_relation"."relkind" = 'r'
-        ORDER BY "referenced_relation"."relname"
+        ORDER BY "relationName"
       `,
       [`public.${canonical}`],
     );
@@ -1117,7 +1402,9 @@ async function validateExpandedCatalog(client: Client): Promise<void> {
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname", "pg_rewrite"."rulename"
+      ORDER BY
+        "pg_class"."relname" COLLATE "C",
+        "pg_rewrite"."rulename" COLLATE "C"
     `,
     [canonicalRelationNames],
   );
@@ -2414,6 +2701,486 @@ async function validateTransactionRollback(client: Client): Promise<void> {
   await assertClusterRowsAbsent(client, { automationId, workflowId });
 }
 
+async function validateRefreshGuardFailure(client: Client): Promise<void> {
+  await client.query(
+    `ALTER VIEW "workflows" RENAME COLUMN "description" TO "unexpected_description"`,
+  );
+  try {
+    await assert.rejects(
+      applyMigrationsFromDirectoryUpToTag(
+        client,
+        migrationsDirectory,
+        refreshMigration,
+      ),
+      /workflows compatibility view shape mismatch/u,
+    );
+  } finally {
+    await client.query(
+      `ALTER VIEW "workflows" RENAME COLUMN "unexpected_description" TO "description"`,
+    );
+  }
+  const applied = await client.query<{ count: string }>(
+    `
+      SELECT count(*)::text AS "count"
+      FROM "drizzle"."__drizzle_migrations"
+      WHERE "hash" = $1
+    `,
+    [refreshMigration],
+  );
+  assert.deepEqual(applied.rows, [{ count: "0" }]);
+}
+
+async function validateOfficialColumnBehavior(client: Client): Promise<void> {
+  const workflowId = "00000000-0000-4000-8000-000000296450";
+  const automationId = "00000000-0000-4000-8000-000000296451";
+  const fingerprint = "a".repeat(64);
+  await client.query("BEGIN");
+  try {
+    const workflow = onlyRow(
+      (
+        await client.query<{
+          definitionName: string;
+          installationState: string;
+        }>(
+          `
+            INSERT INTO "workflows" (
+              "id",
+              "org_id",
+              "agent_id",
+              "name",
+              "visibility",
+              "owner_user_id",
+              "created_by",
+              "updated_by",
+              "official_definition_name",
+              "official_installation_state"
+            )
+            VALUES ($1, $2, $3, $4, 'private', $5, $5, $5, $4, 'installed')
+            RETURNING
+              "official_definition_name" AS "definitionName",
+              "official_installation_state" AS "installationState"
+          `,
+          [
+            workflowId,
+            "compat-official-org",
+            supportAgentId,
+            "compat-official-workflow",
+            "compat-official-owner",
+          ],
+        )
+      ).rows,
+    );
+    assert.deepEqual(workflow, {
+      definitionName: "compat-official-workflow",
+      installationState: "installed",
+    });
+
+    const automation = onlyRow(
+      (
+        await client.query<{
+          blueprintKey: string;
+          intendedEnabled: boolean;
+          resultEmailEnabled: boolean;
+          status: string;
+        }>(
+          `
+            INSERT INTO "workflow_automations" (
+              "id",
+              "org_id",
+              "workflow_id",
+              "owner_user_id",
+              "kind",
+              "schedule_type",
+              "interval_seconds",
+              "official_blueprint_key",
+              "official_applied_fingerprint",
+              "official_reconciliation_status",
+              "official_parameter_bindings",
+              "official_intended_enabled",
+              "official_result_email_enabled"
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              'schedule',
+              'loop',
+              300,
+              'daily-report',
+              $5,
+              'current',
+              '[{"name":"recipient","value":"owner@example.invalid"}]'::jsonb,
+              true,
+              true
+            )
+            RETURNING
+              "official_blueprint_key" AS "blueprintKey",
+              "official_reconciliation_status" AS "status",
+              "official_intended_enabled" AS "intendedEnabled",
+              "official_result_email_enabled" AS "resultEmailEnabled"
+          `,
+          [
+            automationId,
+            "compat-official-org",
+            workflowId,
+            "compat-official-owner",
+            fingerprint,
+          ],
+        )
+      ).rows,
+    );
+    assert.deepEqual(automation, {
+      blueprintKey: "daily-report",
+      intendedEnabled: true,
+      resultEmailEnabled: true,
+      status: "current",
+    });
+
+    const updated = onlyRow(
+      (
+        await client.query<{
+          intendedEnabled: boolean;
+          resultEmailEnabled: boolean;
+          status: string;
+        }>(
+          `
+            UPDATE "workflow_automations"
+            SET
+              "official_reconciliation_status" = 'reconciling',
+              "official_intended_enabled" = false,
+              "official_result_email_enabled" = false
+            WHERE "id" = $1
+            RETURNING
+              "official_reconciliation_status" AS "status",
+              "official_intended_enabled" AS "intendedEnabled",
+              "official_result_email_enabled" AS "resultEmailEnabled"
+          `,
+          [automationId],
+        )
+      ).rows,
+    );
+    assert.deepEqual(updated, {
+      intendedEnabled: false,
+      resultEmailEnabled: false,
+      status: "reconciling",
+    });
+    await validateCompatibleReads(client);
+  } finally {
+    await client.query("ROLLBACK");
+  }
+
+  await expectCheckViolation(
+    client.query(
+      `
+        INSERT INTO "workflows" (
+          "id",
+          "org_id",
+          "agent_id",
+          "name",
+          "visibility",
+          "instruction",
+          "owner_user_id",
+          "created_by",
+          "updated_by",
+          "official_definition_name",
+          "official_installation_state"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000296452',
+          'compat-invalid-official-org',
+          $1,
+          'compat-invalid-official-workflow',
+          'private',
+          'instructions are forbidden for official installations',
+          'compat-owner',
+          'compat-owner',
+          'compat-owner',
+          'compat-invalid-official-workflow',
+          'installed'
+        )
+      `,
+      [supportAgentId],
+    ),
+    "zero_workflows_official_installation_check",
+  );
+  await expectCheckViolation(
+    client.query(
+      `
+        INSERT INTO "workflow_automations" (
+          "id",
+          "org_id",
+          "workflow_id",
+          "owner_user_id",
+          "kind",
+          "schedule_type",
+          "interval_seconds",
+          "official_blueprint_key",
+          "official_applied_fingerprint",
+          "official_reconciliation_status",
+          "official_parameter_bindings",
+          "official_intended_enabled"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000296453',
+          'compat-invalid-official-org',
+          $1,
+          'compat-owner',
+          'schedule',
+          'loop',
+          60,
+          'missing-result-email-setting',
+          $2,
+          'current',
+          '[]'::jsonb,
+          true
+        )
+      `,
+      [historicalWorkflowId, fingerprint],
+    ),
+    "zero_workflow_automations_official_binding_check",
+  );
+}
+
+async function validateLegacyWritesAfterRefresh(client: Client): Promise<void> {
+  const workflowId = "00000000-0000-4000-8000-000000296460";
+  const automationId = "00000000-0000-4000-8000-000000296461";
+  const deliveryId = "00000000-0000-4000-8000-000000296462";
+  const githubEventId = "00000000-0000-4000-8000-000000296463";
+  await client.query("BEGIN");
+  try {
+    await client.query(
+      `
+        INSERT INTO "zero_workflows" (
+          "id",
+          "org_id",
+          "agent_id",
+          "name",
+          "owner_user_id",
+          "created_by",
+          "updated_by"
+        )
+        VALUES ($1, 'compat-legacy-org', $2, 'compat-legacy-workflow', 'compat-owner', 'compat-owner', 'compat-owner')
+      `,
+      [workflowId, supportAgentId],
+    );
+    await client.query(
+      `
+        INSERT INTO "zero_workflow_automations" (
+          "id",
+          "org_id",
+          "workflow_id",
+          "owner_user_id",
+          "kind",
+          "schedule_type",
+          "interval_seconds"
+        )
+        VALUES ($1, 'compat-legacy-org', $2, 'compat-owner', 'schedule', 'loop', 60)
+      `,
+      [automationId, workflowId],
+    );
+    await client.query(
+      `
+        INSERT INTO "zero_workflow_webhook_automations" (
+          "automation_id",
+          "token_hash",
+          "encrypted_token",
+          "encrypted_secret",
+          "secret_last_four"
+        )
+        VALUES ($1, 'compat-legacy-token-hash', 'compat-legacy-token', 'compat-legacy-secret', 'leg1')
+      `,
+      [automationId],
+    );
+    await client.query(
+      `
+        INSERT INTO "zero_workflow_webhook_deliveries" (
+          "id",
+          "automation_id",
+          "delivery_key",
+          "body_sha256",
+          "status"
+        )
+        VALUES ($1, $2, 'compat-legacy-delivery', 'compat-legacy-body', 'accepted')
+      `,
+      [deliveryId, automationId],
+    );
+    await client.query(
+      `
+        INSERT INTO "zero_workflow_github_processed_events" (
+          "id",
+          "automation_id",
+          "github_delivery_id",
+          "repo",
+          "action"
+        )
+        VALUES ($1, $2, 'compat-legacy-github', 'vm0-ai/vm0', 'opened')
+      `,
+      [githubEventId, automationId],
+    );
+    await client.query(
+      `
+        INSERT INTO "zero_workflow_strapi_automations" (
+          "automation_id",
+          "integration_id"
+        )
+        VALUES ($1, $2)
+      `,
+      [automationId, supportIntegrationId],
+    );
+    await validateCompatibleReads(client);
+
+    await client.query(
+      `
+        UPDATE "zero_workflows"
+        SET "description" = 'updated through the legacy table'
+        WHERE "id" = $1
+      `,
+      [workflowId],
+    );
+    await client.query(
+      `
+        UPDATE "zero_workflow_automations"
+        SET "enabled" = false
+        WHERE "id" = $1
+      `,
+      [automationId],
+    );
+    const canonical = onlyRow(
+      (
+        await client.query<{ description: string; enabled: boolean }>(
+          `
+            SELECT
+              "workflows"."description" AS "description",
+              "workflow_automations"."enabled" AS "enabled"
+            FROM "workflows"
+            INNER JOIN "workflow_automations"
+              ON "workflow_automations"."workflow_id" = "workflows"."id"
+            WHERE "workflows"."id" = $1
+          `,
+          [workflowId],
+        )
+      ).rows,
+    );
+    assert.deepEqual(canonical, {
+      description: "updated through the legacy table",
+      enabled: false,
+    });
+
+    await client.query(`DELETE FROM "zero_workflows" WHERE "id" = $1`, [
+      workflowId,
+    ]);
+    await assertClusterRowsAbsent(client, { automationId, workflowId });
+  } finally {
+    await client.query("ROLLBACK");
+  }
+  await validateCompatibleReads(client);
+}
+
+async function validatePhysicalOnConflictDedupeStatements(
+  client: Client,
+): Promise<void> {
+  const workflowId = "00000000-0000-4000-8000-000000296470";
+  const automationId = "00000000-0000-4000-8000-000000296471";
+  await createWorkflowAutomation(client, {
+    automationId,
+    prefix: "compat-physical-dedupe",
+    workflowId,
+  });
+  try {
+    const webhookSql = `
+      INSERT INTO "zero_workflow_webhook_deliveries" (
+        "automation_id",
+        "delivery_key",
+        "body_sha256",
+        "status",
+        "received_at",
+        "created_at"
+      )
+      VALUES ($1, $2, $3, 'accepted', $4::timestamp, $4::timestamp)
+      ON CONFLICT DO NOTHING
+      RETURNING "id"::text AS "id"
+    `;
+    const webhookFirst = await client.query<{ id: string }>(webhookSql, [
+      automationId,
+      "compat-physical-webhook-delivery",
+      "compat-physical-webhook-body",
+      "2026-08-26 11:00:00",
+    ]);
+    assert.equal(webhookFirst.rows.length, 1);
+    const webhookDuplicate = await client.query<{ id: string }>(webhookSql, [
+      automationId,
+      "compat-physical-webhook-delivery",
+      "compat-physical-webhook-body",
+      "2026-08-26 11:00:00",
+    ]);
+    assert.deepEqual(webhookDuplicate.rows, []);
+
+    const githubEventSql = `
+      INSERT INTO "zero_workflow_github_processed_events" (
+        "automation_id",
+        "github_delivery_id",
+        "repo",
+        "subject_type",
+        "subject_number",
+        "action",
+        "label_name_normalized",
+        "created_at"
+      )
+      VALUES ($1, $2, 'vm0-ai/vm0', 'issue', 30022, 'opened', NULL, $3::timestamp)
+      ON CONFLICT DO NOTHING
+      RETURNING "id"::text AS "id"
+    `;
+    const githubEventFirst = await client.query<{ id: string }>(
+      githubEventSql,
+      [automationId, "compat-physical-github-event", "2026-08-26 11:01:00"],
+    );
+    assert.equal(githubEventFirst.rows.length, 1);
+    const githubEventDuplicate = await client.query<{ id: string }>(
+      githubEventSql,
+      [automationId, "compat-physical-github-event", "2026-08-26 11:01:00"],
+    );
+    assert.deepEqual(githubEventDuplicate.rows, []);
+
+    const githubWorkflowRunSql = `
+      INSERT INTO "zero_workflow_github_processed_events" (
+        "automation_id",
+        "github_delivery_id",
+        "repo",
+        "subject_type",
+        "subject_number",
+        "action",
+        "label_name_normalized",
+        "created_at"
+      )
+      VALUES ($1, $2, 'vm0-ai/vm0', NULL, NULL, 'completed', NULL, $3::timestamp)
+      ON CONFLICT DO NOTHING
+      RETURNING "id"::text AS "id"
+    `;
+    const githubWorkflowRunFirst = await client.query<{ id: string }>(
+      githubWorkflowRunSql,
+      [
+        automationId,
+        "compat-physical-github-workflow-run",
+        "2026-08-26 11:02:00",
+      ],
+    );
+    assert.equal(githubWorkflowRunFirst.rows.length, 1);
+    const githubWorkflowRunDuplicate = await client.query<{ id: string }>(
+      githubWorkflowRunSql,
+      [
+        automationId,
+        "compat-physical-github-workflow-run",
+        "2026-08-26 11:02:00",
+      ],
+    );
+    assert.deepEqual(githubWorkflowRunDuplicate.rows, []);
+  } finally {
+    await client.query(`DELETE FROM "workflows" WHERE "id" = $1`, [workflowId]);
+  }
+  await assertClusterRowsAbsent(client, { automationId, workflowId });
+}
+
 async function validatePreExpansionCatalog(client: Client): Promise<void> {
   const relations = await client.query<{
     relationKind: string;
@@ -2428,7 +3195,7 @@ async function validatePreExpansionCatalog(client: Client): Promise<void> {
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname"
+      ORDER BY "pg_class"."relname" COLLATE "C"
     `,
     [allRelationNames],
   );
@@ -2451,6 +3218,7 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
   testUrl.pathname = `/${testDatabase}`;
 
   await validateMigrationArtifacts();
+  await validateRefreshMigrationArtifacts();
 
   const admin = new Client({ connectionString: adminUrl.toString() });
   await admin.connect();
@@ -2477,7 +3245,7 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
       migrationsDirectory,
       expansionMigration,
     );
-    await validateExpandedCatalog(client);
+    await validateExpandedCatalog(client, historicalRelationDefinitions);
 
     const physicalCatalogAfter = await readPhysicalCatalog(client);
     validateExpectedPhysicalInventory(physicalCatalogAfter);
@@ -2496,17 +3264,94 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
     await validateCompatibleReads(client);
     assert.deepEqual(await readPhysicalRows(client), physicalRowsBefore);
 
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      refreshPreviousMigration,
+    );
+    await validateExpandedCatalog(client, historicalRelationDefinitions, true);
+
+    await client.query(
+      `
+        GRANT SELECT, INSERT, UPDATE, DELETE
+        ON "workflows", "workflow_automations"
+        TO PUBLIC
+      `,
+    );
+    const currentViewIdentitiesBefore =
+      await readCanonicalRelationIdentities(client);
+    assert.equal(currentViewIdentitiesBefore.length, 6);
+    assert.ok(
+      currentViewIdentitiesBefore.every(
+        ({ relationKind, relationOid, relationOwner }) => {
+          return (
+            relationKind === "v" &&
+            relationOid.length > 0 &&
+            relationOwner.length > 0
+          );
+        },
+      ),
+    );
+    assert.ok(
+      currentViewIdentitiesBefore
+        .filter(({ relationName }) => {
+          return ["workflows", "workflow_automations"].includes(relationName);
+        })
+        .every(({ relationAcl }) => {
+          return relationAcl.includes("=arwd/");
+        }),
+    );
+
+    const currentPhysicalCatalogBefore = await readPhysicalCatalog(client);
+    validateExpectedCurrentPhysicalInventory(currentPhysicalCatalogBefore);
+    const currentPhysicalRowsBefore = await readPhysicalRows(client);
+
+    await validateRefreshGuardFailure(client);
+    await validateExpandedCatalog(client, historicalRelationDefinitions, true);
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      refreshMigration,
+    );
+    await validateExpandedCatalog(client);
+
+    const currentViewIdentitiesAfter =
+      await readCanonicalRelationIdentities(client);
+    assert.deepEqual(currentViewIdentitiesAfter, currentViewIdentitiesBefore);
+    const currentPhysicalCatalogAfter = await readPhysicalCatalog(client);
+    validateExpectedCurrentPhysicalInventory(currentPhysicalCatalogAfter);
+    assert.deepEqual(currentPhysicalCatalogAfter, currentPhysicalCatalogBefore);
+    assert.deepEqual(await readPhysicalRows(client), currentPhysicalRowsBefore);
+    await validateCompatibleReads(client);
+
+    const refreshedBehaviorFixture = await insertBehaviorFixture(client);
+    await updateBehaviorFixture(client, refreshedBehaviorFixture);
+    await validateAllViewRowLocks(
+      client,
+      testUrl.toString(),
+      refreshedBehaviorFixture,
+    );
+    await deleteBehaviorFixture(client, refreshedBehaviorFixture);
+    await validateOfficialColumnBehavior(client);
+    await validateLegacyWritesAfterRefresh(client);
+    await validateConstraintAndCascadeBehavior(client);
+    await validateDedupeArbitration(client, testUrl.toString());
+    await validatePhysicalOnConflictDedupeStatements(client);
+    await validateTransactionRollback(client);
+    await validateCompatibleReads(client);
+    assert.deepEqual(await readPhysicalRows(client), currentPhysicalRowsBefore);
+
     console.log(
-      "   ✅ six exact canonical views depend on unchanged legacy physical tables",
+      "   ✅ historical 1004 coverage and exact current 1020 view shapes pass",
     );
     console.log(
-      "   ✅ relation, column, default, index, foreign-key, check, and row catalogs are unchanged",
+      "   ✅ six physical identities, rows, defaults, indexes, PKs, FKs, checks, owners, and grants are unchanged",
     );
     console.log(
-      "   ✅ canonical reads, DML, defaults, returning, locks, cascades, constraints, and rollback pass",
+      "   ✅ canonical and legacy reads, DML, defaults, returning, locks, cascades, constraints, and rollback pass",
     );
     console.log(
-      "   ✅ both delivery dedupe indexes arbitrate sequential and concurrent inserts with exact 23505\n",
+      "   ✅ Official fields and three physical ON CONFLICT dedupe statements pass\n",
     );
   } finally {
     await client.end();
