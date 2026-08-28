@@ -81,9 +81,9 @@ struct ProcessSnapshot {
 }
 
 #[cfg(test)]
-struct TestEnvironmentRead {
+struct TestEnvironmentReadError {
     pid: u32,
-    read: Box<dyn FnOnce() -> std::io::Result<Vec<u8>> + Send>,
+    error: Box<dyn FnOnce() -> std::io::Error + Send>,
 }
 
 /// Serializes owners of the runner-local proxy resources and scopes every
@@ -92,7 +92,7 @@ pub(super) struct MitmdumpRuntime {
     root: PathBuf,
     _lock: Flock<File>,
     #[cfg(test)]
-    test_environment_read: std::sync::Mutex<Option<TestEnvironmentRead>>,
+    test_environment_read_error: std::sync::Mutex<Option<TestEnvironmentReadError>>,
 }
 
 impl MitmdumpRuntime {
@@ -116,7 +116,7 @@ impl MitmdumpRuntime {
             root,
             _lock: runtime_lock,
             #[cfg(test)]
-            test_environment_read: std::sync::Mutex::new(None),
+            test_environment_read_error: std::sync::Mutex::new(None),
         });
         runtime.reconcile().await?;
         Ok(runtime)
@@ -283,32 +283,35 @@ impl MitmdumpRuntime {
     async fn read_process_environment(&self, pid: u32) -> std::io::Result<Vec<u8>> {
         #[cfg(test)]
         {
-            let test_read = {
-                let mut test_read = self.test_environment_read.lock().unwrap();
-                if test_read.as_ref().is_some_and(|read| read.pid == pid) {
-                    test_read.take()
+            let test_error = {
+                let mut test_error = self.test_environment_read_error.lock().unwrap();
+                if test_error.as_ref().is_some_and(|error| error.pid == pid) {
+                    test_error.take()
                 } else {
                     None
                 }
             };
-            if let Some(test_read) = test_read {
-                return (test_read.read)();
+            if let Some(test_error) = test_error {
+                return Err((test_error.error)());
             }
         }
         tokio::fs::read(format!("/proc/{pid}/environ")).await
     }
 
     #[cfg(test)]
-    fn set_test_environment_read(
+    fn set_test_environment_read_error(
         &self,
         pid: u32,
-        read: impl FnOnce() -> std::io::Result<Vec<u8>> + Send + 'static,
+        error: impl FnOnce() -> std::io::Error + Send + 'static,
     ) {
-        let mut test_read = self.test_environment_read.lock().unwrap();
-        assert!(test_read.is_none(), "test environment read is already set");
-        *test_read = Some(TestEnvironmentRead {
+        let mut test_error = self.test_environment_read_error.lock().unwrap();
+        assert!(
+            test_error.is_none(),
+            "test environment read error is already set"
+        );
+        *test_error = Some(TestEnvironmentReadError {
             pid,
-            read: Box::new(read),
+            error: Box::new(error),
         });
     }
 }
@@ -978,7 +981,7 @@ mod tests {
         let child = ProbeChild::spawn(Some(&launch), None);
         let pid = child.pid();
 
-        runtime.set_test_environment_read(pid, move || {
+        runtime.set_test_environment_read_error(pid, move || {
             let pid = nix::unistd::Pid::from_raw(i32::try_from(pid).unwrap());
             nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL).unwrap();
             let deadline = std::time::Instant::now() + Duration::from_secs(1);
@@ -998,7 +1001,7 @@ mod tests {
                 );
                 std::thread::sleep(Duration::from_millis(1));
             }
-            Err(std::io::Error::from_raw_os_error(nix::libc::EACCES))
+            std::io::Error::from_raw_os_error(nix::libc::EACCES)
         });
 
         runtime.close_launch_path(launch.clone()).await.unwrap();
@@ -1015,8 +1018,8 @@ mod tests {
         std::fs::create_dir(&launch).unwrap();
         let mut child = ProbeChild::spawn(Some(&launch), None);
         let pid = child.pid();
-        runtime.set_test_environment_read(pid, || {
-            Err(std::io::Error::from_raw_os_error(nix::libc::EACCES))
+        runtime.set_test_environment_read_error(pid, || {
+            std::io::Error::from_raw_os_error(nix::libc::EACCES)
         });
 
         let error = runtime
