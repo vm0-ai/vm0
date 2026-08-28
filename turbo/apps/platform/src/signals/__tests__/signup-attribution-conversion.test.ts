@@ -3,14 +3,10 @@ import {
   acquisitionAttributionContract,
   type AdAttributionMetadata,
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
+import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 
 import indexHtml from "../../../index.html?raw";
-import {
-  clearMockedAuthOnAbort,
-  mockOrganization,
-  mockUser,
-} from "../../__tests__/mock-auth.ts";
-import { setupPage } from "../../__tests__/page-helper.ts";
+import { setupBootstrap, setupPage } from "../../__tests__/page-helper.ts";
 import {
   dateFromIso,
   isoFromNowMs,
@@ -67,7 +63,6 @@ function executeMarketingEntrypoint(): WindowWithMarketingQueue {
   context.signal.addEventListener(
     "abort",
     () => {
-      timeout.mockRestore();
       if (originalDataLayer === undefined) {
         Reflect.deleteProperty(marketingWindow, "dataLayer");
       } else {
@@ -90,27 +85,40 @@ function executeMarketingEntrypoint(): WindowWithMarketingQueue {
     `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
   ) as MarketingEntrypointScript;
   executeEntrypointScript(window, document);
+  // The marketing entrypoint has already attempted to schedule its external
+  // script load. Restore real timers before bootstrapping Clerk and routes.
+  timeout.mockRestore();
   return marketingWindow;
 }
 
-function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
+async function setupSignedInBootstrap(
+  options: { readonly createdAt?: Date } = {},
+): Promise<void> {
   mockNow(context.signal);
-  mockUser(
-    {
+  const bootstrapThreadId = "00000000-0000-4000-8000-000000000001";
+  context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+    return respond(404, {
+      error: { code: "NOT_FOUND", message: "Not found" },
+    });
+  });
+  await setupBootstrap({
+    context,
+    // Public shared-thread routes skip attribution recording, which lets these
+    // tests invoke recordSignupAttribution$ at the exact point under test while
+    // still initializing auth through the real bootstrap lifecycle.
+    path: `/share/threads/${bootstrapThreadId}`,
+    user: {
       id: "test-user-123",
       fullName: "Test User",
       email: "test@example.com",
       createdAt: options.createdAt ?? nowDate(),
     },
-    {
-      token: "test-token",
+    session: { token: "test-token" },
+    org: {
+      activeOrg: { id: "org_default", name: "Default Org" },
+      memberships: [{ id: "org_default" }],
     },
-  );
-  mockOrganization({
-    activeOrg: { id: "org_default", name: "Default Org" },
-    memberships: [{ id: "org_default" }],
   });
-  clearMockedAuthOnAbort(context.signal);
 }
 
 function installGtagMock() {
@@ -168,7 +176,7 @@ describe("signup attribution Google Ads conversion", () => {
       ["config", "AW-18407336975"],
     ]);
 
-    mockSignedInUser();
+    await setupSignedInBootstrap();
     storePaidSignupAttribution();
     context.mocks.api(
       acquisitionAttributionContract.recordSignup,
@@ -198,7 +206,7 @@ describe("signup attribution Google Ads conversion", () => {
     const gtag = installGtagMock();
     let recordedAttribution: AdAttributionMetadata | undefined;
     let attributionRequests = 0;
-    mockSignedInUser();
+    await setupSignedInBootstrap();
     storePaidSignupAttribution();
     setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
     context.mocks.api(
@@ -286,7 +294,7 @@ describe("signup attribution Google Ads conversion", () => {
   it("records the GA4 client ID for a recent signup without stored ad attribution", async () => {
     const gtag = installGtagMock();
     let recordedAttribution: AdAttributionMetadata | undefined;
-    mockSignedInUser();
+    await setupSignedInBootstrap();
     setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
     context.mocks.api(
       acquisitionAttributionContract.recordSignup,
@@ -314,7 +322,9 @@ describe("signup attribution Google Ads conversion", () => {
 
   it("records attribution without firing the Signup conversion for older users", async () => {
     const gtag = installGtagMock();
-    mockSignedInUser({ createdAt: dateFromIso(isoFromNowMs(-31 * 60 * 1000)) });
+    await setupSignedInBootstrap({
+      createdAt: dateFromIso(isoFromNowMs(-31 * 60 * 1000)),
+    });
     storePaidSignupAttribution();
 
     await context.store.set(recordSignupAttribution$, context.signal);
@@ -325,7 +335,9 @@ describe("signup attribution Google Ads conversion", () => {
   it("ignores a malformed analytics cookie when no other attribution exists", async () => {
     const gtag = installGtagMock();
     let attributionRequests = 0;
-    mockSignedInUser({ createdAt: dateFromIso(isoFromNowMs(-31 * 60 * 1000)) });
+    await setupSignedInBootstrap({
+      createdAt: dateFromIso(isoFromNowMs(-31 * 60 * 1000)),
+    });
     setGoogleAnalyticsCookie("not-a-ga-cookie");
     context.mocks.api(
       acquisitionAttributionContract.recordSignup,
@@ -343,7 +355,7 @@ describe("signup attribution Google Ads conversion", () => {
 
   it("does not fire the Signup conversion when attribution was already recorded server-side", async () => {
     const gtag = installGtagMock();
-    mockSignedInUser();
+    await setupSignedInBootstrap();
     storePaidSignupAttribution();
     context.mocks.api(
       acquisitionAttributionContract.recordSignup,
