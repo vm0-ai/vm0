@@ -41,27 +41,39 @@ export const SUPPORTED_USER_LOCALES = [
 export const userLocaleSchema = z.enum(SUPPORTED_USER_LOCALES);
 export type UserLocale = z.infer<typeof userLocaleSchema>;
 
-export const userPreferencesResponseSchema = z.object({
-  timezone: z.string().nullable(),
-  locale: userLocaleSchema.nullable(),
-  supportedLocales: z.array(userLocaleSchema),
-  // Pinned agents are exposed as membership only. The API returns a stable
-  // canonical order and ignores client-provided order on writes.
-  pinnedAgentIds: z.array(z.string()),
-  sendMode: sendModeSchema,
-  // Optional during the frontend/backend compatibility window. A current API
-  // always returns the key; null means the local preference has not been
-  // migrated to server storage yet.
-  theme: themePreferenceSchema.nullable().optional(),
-  colorTheme: colorThemeSchema.nullable().optional(),
-  morningBriefEnabled: z.boolean(),
-  /**
-   * Next scheduled Morning Brief send (ISO instant), or null when no run is
-   * scheduled (preference off, timezone missing, or schedule not synced).
-   */
-  morningBriefNextRunAt: z.string().nullable(),
-  captureNetworkBodiesRemaining: z.number().int().min(0),
-});
+export const userPreferencesResponseSchema = z
+  .object({
+    timezone: z.string().nullable(),
+    locale: userLocaleSchema.nullable(),
+    supportedLocales: z.array(userLocaleSchema),
+    // Pinned agents are exposed as membership only. The API returns a stable
+    // canonical order and ignores client-provided order on writes.
+    pinnedAgentIds: z.array(z.string()),
+    sendMode: sendModeSchema,
+    // New web/app -> old API compatibility for the GA theme preference: APIs
+    // from before #30051 omit both appearance keys. Remove these optional
+    // fields once that API is neither serving nor retained for rollback;
+    // follow-up #30076. The refinement prevents an independent color-theme
+    // missing-field shape while that feature remains non-GA.
+    theme: themePreferenceSchema.nullable().optional(),
+    colorTheme: colorThemeSchema.nullable().optional(),
+    morningBriefEnabled: z.boolean(),
+    /**
+     * Next scheduled Morning Brief send (ISO instant), or null when no run is
+     * scheduled (preference off, timezone missing, or schedule not synced).
+     */
+    morningBriefNextRunAt: z.string().nullable(),
+    captureNetworkBodiesRemaining: z.number().int().min(0),
+  })
+  .refine(
+    ({ theme, colorTheme }) => {
+      return (theme === undefined) === (colorTheme === undefined);
+    },
+    {
+      message: "Appearance preferences must be present or absent together",
+      path: ["colorTheme"],
+    },
+  );
 
 export type UserPreferencesResponse = z.infer<
   typeof userPreferencesResponseSchema

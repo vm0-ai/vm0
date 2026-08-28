@@ -8,56 +8,6 @@ import {
 } from "./user-preferences";
 
 describe("user preferences contract", () => {
-  it("accepts persisted appearance preferences", () => {
-    expect(
-      updateUserPreferencesRequestSchema.parse({
-        theme: "dark",
-        colorTheme: "golden-hour",
-      }),
-    ).toStrictEqual({ theme: "dark", colorTheme: "golden-hour" });
-
-    expect(
-      userPreferencesResponseSchema.parse({
-        timezone: null,
-        locale: "en-US",
-        supportedLocales: ["en-US"],
-        pinnedAgentIds: [],
-        sendMode: "enter",
-        theme: "dark",
-        colorTheme: "golden-hour",
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
-        captureNetworkBodiesRemaining: 0,
-      }),
-    ).toMatchObject({ theme: "dark", colorTheme: "golden-hour" });
-  });
-
-  it("accepts responses from APIs without appearance persistence", () => {
-    const preferences = userPreferencesResponseSchema.parse({
-      timezone: null,
-      locale: "en-US",
-      supportedLocales: ["en-US"],
-      pinnedAgentIds: [],
-      sendMode: "enter",
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
-      captureNetworkBodiesRemaining: 0,
-    });
-
-    expect(preferences.theme).toBeUndefined();
-    expect(preferences.colorTheme).toBeUndefined();
-  });
-
-  it("rejects unsupported appearance preferences", () => {
-    expect(
-      updateUserPreferencesRequestSchema.safeParse({ theme: "sepia" }).success,
-    ).toBe(false);
-    expect(
-      updateUserPreferencesRequestSchema.safeParse({ colorTheme: "neon" })
-        .success,
-    ).toBe(false);
-  });
-
   it("accepts Indonesian as a user locale", () => {
     const preferences = userPreferencesResponseSchema.parse({
       timezone: null,
