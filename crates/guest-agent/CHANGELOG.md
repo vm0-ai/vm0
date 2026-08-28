@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.82.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.14...guest-agent-v0.82.15) (2026-08-28)
+
+
+### Refactoring
+
+* **rust:** forbid path attributes ([#30129](https://github.com/vm0-ai/vm0/issues/30129)) ([c46da3e](https://github.com/vm0-ai/vm0/commit/c46da3ea8fb48b7595bc582036a1f28a0d676f5f))
+
 ## [0.82.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.13...guest-agent-v0.82.14) (2026-08-28)
 
 

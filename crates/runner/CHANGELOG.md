@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.178.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.0...runner-rs-v0.178.1) (2026-08-28)
+
+
+### Documentation
+
+* **runner:** document lock helper semantics ([#30148](https://github.com/vm0-ai/vm0/issues/30148)) ([e9cb031](https://github.com/vm0-ai/vm0/commit/e9cb0311ea76799d8d61df9642735f029dfc4a64))
+* **runner:** document storage baseline telemetry semantics ([#30145](https://github.com/vm0-ai/vm0/issues/30145)) ([7389b5c](https://github.com/vm0-ai/vm0/commit/7389b5c4ab12f94b06485b802a255e318ea2d4b8))
+
+
+### Refactoring
+
+* **rust:** forbid path attributes ([#30129](https://github.com/vm0-ai/vm0/issues/30129)) ([c46da3e](https://github.com/vm0-ai/vm0/commit/c46da3ea8fb48b7595bc582036a1f28a0d676f5f))
+
 ## [0.178.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.8...runner-rs-v0.178.0) (2026-08-28)
 
 
