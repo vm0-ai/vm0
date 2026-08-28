@@ -506,8 +506,11 @@ describe("chat composer models", () => {
     expect(
       within(scopeCard).getByText("Claude Sonnet 4.6"),
     ).toBeInTheDocument();
+    expect(
+      within(scopeCard).getByText("Temporarily switch to"),
+    ).toBeInTheDocument();
     const useForFutureChatsButton = buttonContainingText(
-      "Use for future chats",
+      "Use this for future chats",
       scopeCard,
     );
 
@@ -534,7 +537,7 @@ describe("chat composer models", () => {
       expect(queryModelScope("Model for this chat")).toBeNull();
       expect(
         queryAllByRoleFast("button").some((button) => {
-          return button.textContent === "Use for future chats";
+          return button.textContent === "Use this for future chats";
         }),
       ).toBeFalsy();
     });
@@ -630,7 +633,7 @@ describe("chat composer models", () => {
         ).toBeInTheDocument();
       });
       await user.click(
-        buttonContainingText("Use for future chats", document.body),
+        buttonContainingText("Use this for future chats", document.body),
       );
 
       await waitFor(() => {
@@ -709,7 +712,7 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
     });
     await user.click(
-      buttonContainingText("Use for future chats", document.body),
+      buttonContainingText("Use this for future chats", document.body),
     );
 
     await waitFor(() => {
@@ -3904,7 +3907,7 @@ describe("chat composer image model", () => {
       updatedAt: "2026-08-18T00:01:00Z",
     };
     const useForFutureChats = buttonContainingText(
-      "Use for future chats",
+      "Use this for future chats",
       document.body,
     );
     await user.click(useForFutureChats);
@@ -4848,7 +4851,7 @@ describe("chat composer video model", () => {
     expect(updates).toStrictEqual([]);
 
     await user.click(
-      buttonContainingText("Use for future chats", document.body),
+      buttonContainingText("Use this for future chats", document.body),
     );
 
     await waitFor(() => {
@@ -4942,7 +4945,7 @@ describe("chat composer video model", () => {
 
     // Setting the default in video mode writes the video model only.
     await user.click(
-      buttonContainingText("Use for future chats", document.body),
+      buttonContainingText("Use this for future chats", document.body),
     );
 
     await waitFor(() => {
@@ -4983,7 +4986,7 @@ describe("chat composer video model", () => {
       ).toBeInTheDocument();
     });
     await user.click(
-      buttonContainingText("Use for future chats", document.body),
+      buttonContainingText("Use this for future chats", document.body),
     );
     await waitFor(() => {
       expect(updates).toHaveLength(1);
@@ -4999,7 +5002,7 @@ describe("chat composer video model", () => {
       ).toBeInTheDocument();
     });
     await user.click(
-      buttonContainingText("Use for future chats", document.body),
+      buttonContainingText("Use this for future chats", document.body),
     );
 
     await waitFor(() => {

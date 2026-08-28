@@ -1901,9 +1901,9 @@
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
-      "temporarily": "一時的に",
+      "temporarilySwitchTo": "一時的な切り替え先",
       "threadSuggestions": "チャットスレッド",
-      "useForFutureChats": "今後のチャットで使用",
+      "useForFutureChats": "今後のチャットでも使用",
       "videoModelForThisChat": "このチャットの動画モデル",
       "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {

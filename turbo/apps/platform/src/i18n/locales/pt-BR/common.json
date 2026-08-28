@@ -1934,9 +1934,9 @@
       "selectedModelUnavailable": "O modelo selecionado não está disponível. Configure-o antes de enviar.",
       "selectedModelUnavailableToast": "O modelo selecionado não está disponível",
       "selectModel": "Selecionar modelo",
-      "temporarily": "Temporariamente",
+      "temporarilySwitchTo": "Mudar temporariamente para",
       "threadSuggestions": "Conversas",
-      "useForFutureChats": "Usar em chats futuros",
+      "useForFutureChats": "Usar este modelo em chats futuros",
       "videoModelForThisChat": "Modelo de vídeo para este chat",
       "visualAttachmentsUnsupported": "{{modelName}} não reconhece imagens nem vídeos. Troque para um modelo com visão para anexá-los.",
       "workflows": {

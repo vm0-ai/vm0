@@ -96,7 +96,7 @@ const setVideoModel$ = command(
     const explicitDefaultActionEnabled =
       get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
     if (explicitDefaultActionEnabled) {
-      // The composer card carries an explicit "Use for future chats" action,
+      // The composer card carries an explicit "Use this for future chats" action,
       // so picking a video model only scopes the next new chat.
       return;
     }

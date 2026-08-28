@@ -10257,7 +10257,7 @@ function ComposerModelScopeCard({
         <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="text-muted-foreground">
             {t(($) => {
-              return $.chat.composer.temporarily;
+              return $.chat.composer.temporarilySwitchTo;
             })}
           </span>
           <span className="font-medium text-foreground">{model}</span>
