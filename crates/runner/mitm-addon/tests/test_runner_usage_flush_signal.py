@@ -294,7 +294,14 @@ class TestRunnerUsageFlushSignal:
             "https://api.test/api/webhooks/agent/model-usage-observation",
             "token-a",
             "run-1",
-            [observation(source_key="observation-source", input_tokens=1)],
+            [observation(source_key="aggregate-source-1", input_tokens=1)],
+            proxy_log_path,
+        )
+        usage.buffer_source_model_usage_observations(
+            "https://api.test/api/webhooks/agent/model-usage-observation",
+            "token-a",
+            "source-run",
+            [observation(source_key="preserved-source-1", output_tokens=2)],
             proxy_log_path,
         )
 
@@ -305,8 +312,26 @@ class TestRunnerUsageFlushSignal:
         assert_pending(
             runner_usage_flush_files.pending_path,
             flows=0,
-            buffered=1,
+            buffered=2,
             reports=0,
+        )
+
+        usage.buffer_model_usage_observations(
+            "https://api.test/api/webhooks/agent/model-usage-observation",
+            "token-a",
+            "run-1",
+            [observation(source_key="aggregate-source-2", input_tokens=3)],
+            proxy_log_path,
+        )
+        usage.buffer_source_model_usage_observations(
+            "https://api.test/api/webhooks/agent/model-usage-observation",
+            "token-a",
+            "source-run",
+            [
+                observation(source_key="preserved-source-1", output_tokens=2),
+                observation(source_key="preserved-source-2", output_tokens=5),
+            ],
+            proxy_log_path,
         )
 
         runner_usage_flush_files.write_usage_flush_request()
@@ -316,7 +341,23 @@ class TestRunnerUsageFlushSignal:
         assert [call.log_type for call in enqueue.calls] == [
             "usage_event",
             "model_usage_observation",
+            "model_usage_observation",
         ]
+        aggregate_payload = next(
+            call.payload
+            for call in enqueue.calls
+            if call.log_type == "model_usage_observation" and call.payload["runId"] == "run-1"
+        )
+        assert len(aggregate_payload["events"]) == 1
+        assert aggregate_payload["events"][0]["inputTokens"] == 4
+        source_payload = next(
+            call.payload for call in enqueue.calls if call.payload["runId"] == "source-run"
+        )
+        assert [event["idempotencyKey"] for event in source_payload["events"]] == [
+            "preserved-source-1",
+            "preserved-source-2",
+        ]
+        assert [event["outputTokens"] for event in source_payload["events"]] == [2, 5]
         assert_pending(
             runner_usage_flush_files.pending_path,
             flows=0,
