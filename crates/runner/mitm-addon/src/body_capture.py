@@ -507,9 +507,12 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                     max_output=BODY_CAPTURE_LIMIT + 1,
                 )
                 if request_body is None:
-                    if request_stream_body.truncated or request_stream_incomplete:
-                        log_entry["request_body_truncated"] = True
-                    log_entry["request_body_encoding"] = "binary"
+                    _set_body_capture_failure(
+                        log_entry,
+                        "request",
+                        raw_request_body,
+                        truncated=request_stream_body.truncated or request_stream_incomplete,
+                    )
                 else:
                     _set_body_fields(
                         log_entry,
