@@ -8,7 +8,7 @@ import remarkMath from "remark-math";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { Markdown, MEDIA_MARKDOWN_COMPONENTS } from "../markdown.tsx";
+import { Markdown, MEDIA_MARKDOWN_COMPONENTS } from "../rich-markdown.tsx";
 
 type RewriteArgs = Parameters<
   NonNullable<React.ComponentProps<typeof MarkdownPreview>["rehypeRewrite"]>

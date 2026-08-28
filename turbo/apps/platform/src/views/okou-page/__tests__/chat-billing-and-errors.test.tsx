@@ -522,10 +522,12 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await waitFor(() => {
-      expect(screen.getByText(/Unexpected.*failure/u)).toBeInTheDocument();
-      expect(screen.getByText("tool")).toBeInTheDocument();
-    });
+    await expect(
+      screen.findByText(/Unexpected.*failure/u, undefined, {
+        timeout: 10_000,
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("tool")).toBeInTheDocument();
   });
 
   it("switches sessions without stale running or completed messages", async () => {

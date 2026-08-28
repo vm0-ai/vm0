@@ -17,7 +17,7 @@ import {
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
-import { Markdown } from "../markdown.tsx";
+import { Markdown as RichMarkdown } from "../rich-markdown.tsx";
 import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
@@ -170,7 +170,7 @@ describe("assistant markdown", () => {
   it("escapes html-like source when requested", () => {
     const { container } = render(
       <StoreProvider value={context.store}>
-        <Markdown source="<span> 123 </span>" escapeHtml />
+        <RichMarkdown source="<span> 123 </span>" escapeHtml />
       </StoreProvider>,
     );
 
@@ -181,7 +181,7 @@ describe("assistant markdown", () => {
   it("keeps blockquotes rendering when html is escaped", () => {
     const { container } = render(
       <StoreProvider value={context.store}>
-        <Markdown
+        <RichMarkdown
           source={"Feedback on this part of your reply:\n\n> quoted passage"}
           escapeHtml
         />
@@ -194,6 +194,51 @@ describe("assistant markdown", () => {
     // The leading `>` must be consumed as the blockquote marker, not shown as
     // literal text alongside the passage.
     expect(blockquote?.textContent).not.toContain(">");
+  });
+
+  it("renders syntax-free assistant text without a rich loading state", async () => {
+    mockThread("Plain response with punctuation: ready (now).");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await expect(
+      screen.findByText("Plain response with punctuation: ready (now)."),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByTestId("rich-content-loading")).toBeNull();
+  });
+
+  it("retries a failed rich message import from the message", async () => {
+    let importAttempt = 0;
+    const richMarkdownImport = context.mocks.browser.richMarkdownImport(() => {
+      importAttempt += 1;
+      if (importAttempt === 1) {
+        throw new Error("rich content chunk unavailable");
+      }
+    });
+    mockThread("Retry the **rich response**.");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const retry = await waitFor(() => {
+      return getButtonByText(document, "Try again");
+    });
+    expect(richMarkdownImport).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("rich response")).toBeNull();
+
+    click(retry);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("rich response", { selector: "strong, b" }),
+      ).toBeInTheDocument();
+    });
+    expect(richMarkdownImport).toHaveBeenCalledTimes(2);
   });
 
   it("renders formatted text and follows theme changes", async () => {
@@ -336,6 +381,37 @@ describe("assistant markdown", () => {
         "Copy to clipboard",
       );
     });
+  });
+
+  it("retries a transient mermaid import for the same diagram", async () => {
+    let importAttempt = 0;
+    const mermaidImport = context.mocks.browser.mermaidImport(() => {
+      importAttempt += 1;
+      if (importAttempt === 1) {
+        throw new Error("mermaid chunk unavailable");
+      }
+    });
+    const objectUrls = context.mocks.browser.blobDownload();
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const retry = await waitFor(() => {
+      return getButtonByText(document, "Try again");
+    });
+    expect(mermaidImport).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("code.language-mermaid")).not.toBeNull();
+
+    click(retry);
+
+    const diagram = await screen.findByAltText("Diagram");
+    await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
+      'data-testid="mermaid-svg"',
+    );
+    expect(mermaidImport).toHaveBeenCalledTimes(2);
   });
 
   it("renders mermaid code blocks as diagrams", async () => {

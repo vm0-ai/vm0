@@ -5,6 +5,7 @@ import type {
 import { DEFAULT_AGENT_AVATAR_URL } from "@okouai/core/agent-avatar";
 import { Button, Card, CardContent, cn } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
+import { useGet, useSet } from "ccstate-react";
 import type { Root } from "hast";
 import { Copy, Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -14,6 +15,7 @@ import {
 } from "@okouai/core/public-brand";
 
 import type { BrandName } from "../../signals/branding.ts";
+import type { SharedThreadRichContentSignals } from "../../signals/shared-thread-page/shared-thread-rich-content.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
@@ -44,6 +46,7 @@ export type SharedDisplayMessage = SharedMessage & { readonly tree?: Root };
 
 export type SharedDisplayThread = Omit<SharedThreadResponse, "messages"> & {
   readonly messages: readonly SharedDisplayMessage[];
+  readonly richContent?: SharedThreadRichContentSignals;
 };
 
 interface SharedMessageGroup {
@@ -191,9 +194,11 @@ function SharedUserGroup({ group }: { readonly group: SharedMessageGroup }) {
 function SharedAssistantGroup({
   assistantName,
   group,
+  richContent,
 }: {
   readonly assistantName: string;
   readonly group: SharedMessageGroup;
+  readonly richContent?: SharedThreadRichContentSignals;
 }) {
   const content = group.messages
     .map((message) => {
@@ -209,12 +214,19 @@ function SharedAssistantGroup({
         <SharedAssistantAvatar assistantName={assistantName} />
         <div className="relative flex min-w-0 flex-col gap-2">
           {group.messages.map((message, index) => {
-            return message.tree === undefined ? null : (
+            return (
               <ChatAssistantMessageBody
                 key={message.messageIndex}
                 compactTop={index > 0}
               >
-                <MarkdownEventBody tree={message.tree} mediaPreview />
+                {message.tree === undefined && richContent !== undefined ? (
+                  <SharedRichMessageBody
+                    messageIndex={message.messageIndex}
+                    richContent={richContent}
+                  />
+                ) : (
+                  <MarkdownEventBody tree={message.tree} mediaPreview />
+                )}
               </ChatAssistantMessageBody>
             );
           })}
@@ -233,6 +245,29 @@ function SharedAssistantGroup({
       </div>
     </div>
   );
+}
+
+function SharedRichMessageBody({
+  messageIndex,
+  richContent,
+}: {
+  readonly messageIndex: number;
+  readonly richContent: SharedThreadRichContentSignals;
+}) {
+  const state = useGet(richContent.state$);
+  const retry = useSet(richContent.retry$);
+  const tree = state.trees.get(messageIndex);
+  const onRetry =
+    state.status === "error"
+      ? () => {
+          detach(
+            retry(),
+            Reason.DomCallback,
+            "retry shared thread rich content",
+          );
+        }
+      : undefined;
+  return <MarkdownEventBody tree={tree} mediaPreview onRetry={onRetry} />;
 }
 
 function SharedThreadHandoff({
@@ -396,9 +431,11 @@ function SharedThreadHeader({
 function SharedThreadTranscript({
   assistantName,
   groups,
+  richContent,
 }: {
   readonly assistantName: string;
   readonly groups: readonly SharedMessageGroup[];
+  readonly richContent?: SharedThreadRichContentSignals;
 }) {
   return (
     <div className="relative min-h-0 flex-1 isolate">
@@ -420,6 +457,7 @@ function SharedThreadTranscript({
                   key={group.key}
                   assistantName={assistantName}
                   group={group}
+                  richContent={richContent}
                 />
               );
             })}
@@ -488,6 +526,7 @@ export function SharedThreadPage({
           <SharedThreadTranscript
             assistantName={presentation.assistantName}
             groups={groups}
+            richContent={sharedThread.richContent}
           />
           <SharedThreadHandoff
             assistantName={presentation.assistantName}

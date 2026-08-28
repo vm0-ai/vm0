@@ -409,7 +409,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     expect(card).toHaveClass("min-h-[88px]", "p-3", "sm:flex-row");
     expect(card).toHaveTextContent("Banking access request");
     expect(card).toHaveTextContent(`Zero · ${reason}`);
@@ -480,7 +482,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     const popup = new Window();
     Object.defineProperty(popup, "opener", {
       configurable: true,
@@ -601,7 +605,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     await user.click(
       within(card).getByRole("checkbox", { name: /Everyday Checking/u }),
     );

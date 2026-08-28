@@ -18,7 +18,7 @@ import {
   embedMermaidSignals,
 } from "../../../../signals/mermaid-diagram.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
-import { Markdown, MarkdownEventBody } from "../../markdown.tsx";
+import { Markdown, MarkdownEventBody } from "../../rich-markdown.tsx";
 
 // ---------------------------------------------------------------------------
 // Chat markdown pipeline benchmarks.
