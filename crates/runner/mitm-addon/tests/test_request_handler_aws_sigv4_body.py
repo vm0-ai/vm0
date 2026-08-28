@@ -1211,6 +1211,37 @@ def test_payload_dependent_sigv4_rejects_saturated_admission_before_auth(
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
+def test_payload_dependent_sigv4_releases_new_admission_after_attach_failure(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        content_length="4",
+    )
+    original_admission = aws_sigv4_body_admission.reserve(4)
+    aws_sigv4_body_admission.attach_to_flow(flow, original_admission)
+
+    try:
+        with (
+            mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+            pytest.raises(RuntimeError, match="already attached"),
+        ):
+            mitm_addon.requestheaders(flow)
+
+        assert flow.metadata[metadata_keys.AWS_SIGV4_BODY_ADMISSION] is original_admission
+        assert aws_sigv4_body_admission.state_for_tests() == (1, 4)
+    finally:
+        aws_sigv4_body_admission.release_from_flow(flow)
+
+    assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
 async def test_payload_dependent_sigv4_cancellation_releases_admission(
     tmp_path,
     real_flow,
