@@ -31,7 +31,7 @@ export default defineConfig({
       ),
       "mermaid-flowchart-real": path.resolve(
         __dirname,
-        "../../packages/mermaid-flowchart/dist/mermaid.esm.tiny.min.mjs",
+        "../../packages/mermaid-flowchart/dist/mermaid.esm.min.mjs",
       ),
       "virtual:shared-database-worker": `${path.resolve(
         __dirname,

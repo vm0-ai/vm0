@@ -1,7 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
 import * as bundledMermaid from "@okouai/mermaid-flowchart";
-import * as bundledMermaid from "mermaid";
 
 import { IN_VITEST } from "../env.ts";
 import { createRetryableLazyModule } from "./retryable-lazy-module.ts";
