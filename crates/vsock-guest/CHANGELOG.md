@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.118](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.117...vsock-guest-v0.19.118) (2026-08-28)
+
+
+### Refactoring
+
+* **runtime:** cut process-control writer to canonical alias ([#29915](https://github.com/vm0-ai/vm0/issues/29915)) ([d24888e](https://github.com/vm0-ai/vm0/commit/d24888e360664ac892d1be16788f5b75abd2a26a))
+
 ## [0.19.117](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.116...vsock-guest-v0.19.117) (2026-08-27)
 
 

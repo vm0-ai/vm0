@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.295.0](https://github.com/vm0-ai/vm0/compare/cli-v9.294.6...cli-v9.295.0) (2026-08-28)
+
+
+### Features
+
+* migrate chat event snapshots to v7 ([#29950](https://github.com/vm0-ai/vm0/issues/29950)) ([6746a51](https://github.com/vm0-ai/vm0/commit/6746a519009477e95d6ed6e3d3cab093d19db04e))
+
+
+### Refactoring
+
+* **cli:** remove legacy computer-use output directory fallback ([#29974](https://github.com/vm0-ai/vm0/issues/29974)) ([7598521](https://github.com/vm0-ai/vm0/commit/7598521abc05b24bd435ec81075b435ff8941652)), closes [#29970](https://github.com/vm0-ai/vm0/issues/29970)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.378.0
+    * @okouai/core bumped to 8.599.4
+
 ## [9.294.6](https://github.com/vm0-ai/vm0/compare/cli-v9.294.5...cli-v9.294.6) (2026-08-27)
 
 

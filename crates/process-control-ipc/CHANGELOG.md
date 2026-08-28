@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.8](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.7...process-control-ipc-v0.3.8) (2026-08-28)
+
+
+### Refactoring
+
+* **runtime:** cut process-control writer to canonical alias ([#29915](https://github.com/vm0-ai/vm0/issues/29915)) ([d24888e](https://github.com/vm0-ai/vm0/commit/d24888e360664ac892d1be16788f5b75abd2a26a))
+
 ## [0.3.7](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.6...process-control-ipc-v0.3.7) (2026-08-27)
 
 

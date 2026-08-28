@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.177.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.2...runner-rs-v0.177.3) (2026-08-28)
+
+
+### Refactoring
+
+* **guest:** remove legacy mock binary path readers ([#29977](https://github.com/vm0-ai/vm0/issues/29977)) ([95df1fc](https://github.com/vm0-ai/vm0/commit/95df1fce63080ef61656f9d5e76b2c763fd2afdc)), closes [#29973](https://github.com/vm0-ai/vm0/issues/29973) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **runner:** cut mitmdump runtime marker writer to canonical alias ([#29944](https://github.com/vm0-ai/vm0/issues/29944)) ([5c160a8](https://github.com/vm0-ai/vm0/commit/5c160a8e361e06cf6587f37ba9c4ae061dc2f139))
+
 ## [0.177.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.1...runner-rs-v0.177.2) (2026-08-27)
 
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.806.0](https://github.com/vm0-ai/vm0/compare/app-v0.805.3...app-v0.806.0) (2026-08-28)
+
+
+### Features
+
+* migrate chat event snapshots to v7 ([#29950](https://github.com/vm0-ai/vm0/issues/29950)) ([6746a51](https://github.com/vm0-ai/vm0/commit/6746a519009477e95d6ed6e3d3cab093d19db04e))
+
+
+### Bug Fixes
+
+* **platform:** clarify connector account and agent summaries ([#29883](https://github.com/vm0-ai/vm0/issues/29883)) ([d690729](https://github.com/vm0-ai/vm0/commit/d690729f348a79b6d1b117a656a6b4c9d0a8c161))
+
+
+### Refactoring
+
+* **db:** canonicalize built-in provider writes ([#29938](https://github.com/vm0-ai/vm0/issues/29938)) ([aad55f4](https://github.com/vm0-ai/vm0/commit/aad55f424b8a4b72c2b06e25335e06de53e10c7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.378.0
+    * @okouai/core bumped to 8.599.4
+
 ## [0.805.3](https://github.com/vm0-ai/vm0/compare/app-v0.805.2...app-v0.805.3) (2026-08-27)
 
 
