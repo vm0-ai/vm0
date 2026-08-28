@@ -172,6 +172,28 @@ class TestResponseEncodingInspectionRisk:
         upstream_chunk = b"non-billable-brotli"
         assert response_stream(flow)(upstream_chunk) == upstream_chunk
 
+    def test_unsuccessful_billable_model_sse_keeps_pass_through(
+        self, real_flow, tmp_path, mitm_ctx
+    ) -> None:
+        flow = self._model_flow(
+            real_flow,
+            tmp_path,
+            content_encoding="br",
+            content_type="text/event-stream",
+        )
+        assert flow.response is not None
+        flow.response.status_code = 429
+
+        with mitm_ctx():
+            mitm_addon.responseheaders(flow)
+
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+        assert entry["reason"] == "response_encoding_not_stream_decodable"
+        assert entry["status_code"] == 429
+        assert flow.response.status_code == 429
+        upstream_chunk = b"upstream-error-brotli"
+        assert response_stream(flow)(upstream_chunk) == upstream_chunk
+
     def test_non_observable_model_response_does_not_log_encoding_risk(
         self, real_flow, tmp_path, mitm_ctx
     ) -> None:
