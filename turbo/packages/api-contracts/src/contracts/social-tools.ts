@@ -68,7 +68,7 @@ const cacheInputShape = {
   cache: z
     .boolean()
     .optional()
-    .describe("Whether SocialKit may cache the result"),
+    .describe("Whether the provider may cache the result"),
   cache_ttl: z
     .number()
     .int()

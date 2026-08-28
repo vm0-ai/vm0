@@ -77,6 +77,19 @@ function socialResponse(
   };
 }
 
+function publicSocialResponseFixture(
+  response: ReturnType<typeof socialResponse>,
+) {
+  return {
+    tool: response.tool,
+    billingCategory: response.billingCategory,
+    billingQuantity: response.billingQuantity,
+    creditsCharged: response.creditsCharged,
+    collection: response.collection,
+    result: response.result,
+  };
+}
+
 function failedDownloadResponse(status: "provider_failed" | "artifact_failed") {
   const billed = status === "artifact_failed";
   return {
@@ -201,7 +214,10 @@ describe("okou social command", () => {
       properties: {
         query: { type: "string" },
         limit: { type: "integer", minimum: 1, maximum: 100 },
-        cache: { type: "boolean" },
+        cache: {
+          type: "boolean",
+          description: "Whether the provider may cache the result",
+        },
       },
     });
     expect(search?.outputSchema).toMatchObject({
@@ -274,7 +290,9 @@ describe("okou social command", () => {
       tool: "youtube_search",
       input: { query: "typed tools", limit: 10, cache: false },
     });
-    expect(mockConsoleLog).toHaveBeenCalledWith(JSON.stringify(response));
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      JSON.stringify(publicSocialResponseFixture(response)),
+    );
   });
 
   it("keeps custom response objects typed in the request", async () => {
@@ -309,7 +327,9 @@ describe("okou social command", () => {
         custom_response: { title: "Video title" },
       },
     });
-    expect(output()).toBe(JSON.stringify(response, null, 2));
+    expect(output()).toBe(
+      JSON.stringify(publicSocialResponseFixture(response), null, 2),
+    );
   });
 
   it("retrieves typed cursor pages with provider-max page size", async () => {
@@ -370,8 +390,37 @@ describe("okou social command", () => {
     const records = mockConsoleLog.mock.calls.map(([value]) => {
       return JSON.parse(String(value)) as unknown;
     });
-    expect(records[0]).toMatchObject({ kind: "page", pageNumber: 1 });
-    expect(records[1]).toMatchObject({ kind: "page", pageNumber: 2 });
+    expect(records[0]).toStrictEqual({
+      kind: "page",
+      pageNumber: 1,
+      response: {
+        tool: "instagram_comments",
+        billingCategory: "request",
+        billingQuantity: 1,
+        creditsCharged: 3,
+        collection: {
+          state: "more",
+          itemsReturned: 2,
+          nextInput: { cursor: "next-page" },
+        },
+        result: {
+          comments: [{ id: "1" }, { id: "2" }],
+          hasMore: true,
+        },
+      },
+    });
+    expect(records[1]).toStrictEqual({
+      kind: "page",
+      pageNumber: 2,
+      response: {
+        tool: "instagram_comments",
+        billingCategory: "request",
+        billingQuantity: 1,
+        creditsCharged: 3,
+        collection: { state: "complete", itemsReturned: 1 },
+        result: { comments: [{ id: "3" }], hasMore: false },
+      },
+    });
     expect(records[2]).toStrictEqual({
       kind: "summary",
       completion: "complete",
@@ -591,11 +640,40 @@ describe("okou social command", () => {
     expect(errorOutput()).toContain("repeated pagination state");
   });
 
+  it("rejects a collection response without page metadata", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json(
+          socialResponse("tiktok_search", null, {
+            results: [],
+            hasMore: false,
+          }),
+        );
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "call",
+        "tiktok_search",
+        "--input",
+        '{"query":"launch"}',
+        "--all",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(
+      "Okou Social collection response has no page metadata",
+    );
+  });
+
   it.each([
     {
       caseName: "an unknown tool",
       args: ["call", "youtube_unknown", "--input", "{}"],
-      message: "Unknown managed SocialKit tool",
+      message: "Unknown Okou Social tool",
     },
     {
       caseName: "malformed JSON",
@@ -636,7 +714,7 @@ describe("okou social command", () => {
         '{"url":"https://youtu.be/id"}',
         "--all",
       ],
-      message: "requires a SocialKit collection tool",
+      message: "requires an Okou Social collection tool",
     },
     {
       caseName: "a caller bound without full retrieval",
@@ -689,7 +767,7 @@ describe("okou social command", () => {
         return HttpResponse.json(
           {
             error: {
-              message: "The requested social content is unavailable",
+              message: "SocialKit could not read the requested content",
               code: "SOCIALKIT_CONTENT_UNAVAILABLE",
             },
           },
@@ -710,9 +788,95 @@ describe("okou social command", () => {
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(
-      "404: The requested social content is unavailable",
+      "404: Okou Social could not read the requested content",
     );
     expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("uses public branding for a malformed API error", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json({}, { status: 502 });
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "call",
+        "linkedin_profile",
+        "--input",
+        '{"url":"https://linkedin.com/in/example"}',
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain("502: Okou Social request failed");
+  });
+
+  it("sanitizes download creation API errors", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/downloads", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "SocialKit could not start the download",
+              code: "SOCIALKIT_DOWNLOAD_FAILED",
+            },
+          },
+          { status: 502 },
+        );
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "download",
+        "youtube",
+        "https://youtu.be/public-video",
+        "--max-duration",
+        "600",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(
+      "502: Okou Social could not start the download",
+    );
+  });
+
+  it("sanitizes download status API errors", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/social/downloads/6bdc3449-41ef-4624-a525-45bce09c67f0",
+        () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message: "SocialKit download status is unavailable",
+                code: "SOCIALKIT_DOWNLOAD_FAILED",
+              },
+            },
+            { status: 500 },
+          );
+        },
+      ),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "download",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(
+      "500: Okou Social download status is unavailable",
+    );
   });
 
   it("starts a download and prints its durable artifact", async () => {
@@ -905,6 +1069,11 @@ describe("okou social command", () => {
     const download = socialCommand.commands.find((command) => {
       return command.name() === "download";
     });
+    expect(socialHelp).toContain("Use Okou Social public data services");
+    expect(tools?.helpInformation()).toContain(
+      "List typed Okou Social tools and their schemas",
+    );
+    expect(call?.helpInformation()).toContain("Call a typed Okou Social tool");
     expect(download?.helpInformation()).toContain("--max-duration");
     expect(download?.helpInformation()).toContain("--resume");
     expect(socialHelp).toContain("38 typed tools");
