@@ -4001,7 +4001,7 @@ describe("zero sidebar", () => {
     });
 
     // The user temporarily switched the landing composer image model without
-    // pressing "Set as default". A blank thread must not pin that pick; it
+    // pressing "Use this for future chats". A blank thread must not pin that pick; it
     // stays unpinned (null) so it follows the live member default.
     context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
 
