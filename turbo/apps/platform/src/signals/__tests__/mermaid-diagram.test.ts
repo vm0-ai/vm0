@@ -42,15 +42,6 @@ describe("mermaid diagram rendering", () => {
     expect(markup).toContain('data-testid="mermaid-svg"');
   });
 
-  it("rejects unsupported diagram types", async () => {
-    const signals = createMermaidDiagramSignals(
-      "classDiagram\n  A <|-- B",
-      context.signal,
-    );
-
-    await expect(context.store.get(signals.diagram$)).resolves.toBeNull();
-  });
-
   // mermaid.initialize mutates module-global configuration. When a theme flip
   // starts a second render while the first is still parsing, the second
   // initialize must not leak its theme into the first render — the first

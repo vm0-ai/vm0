@@ -467,7 +467,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   await expect(searchDialog).toBeVisible();
   expect(
     await searchDialog.evaluate((element) => {
-      const command = element.querySelector("[cmdk-root]");
+      const command = element.querySelector('[data-slot="command"]');
       if (!(command instanceof HTMLElement)) {
         throw new Error("Search command surface is not rendered");
       }

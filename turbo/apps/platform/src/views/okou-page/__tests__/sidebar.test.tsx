@@ -2423,7 +2423,7 @@ describe("zero sidebar", () => {
     expect(
       within(dialog).queryByText("Planning deploy"),
     ).not.toBeInTheDocument();
-    const messageResult = highlighted.closest("[cmdk-item]");
+    const messageResult = highlighted.closest('[role="option"]');
     if (!(messageResult instanceof HTMLElement)) {
       throw new Error("Message search result not found");
     }
@@ -3753,7 +3753,7 @@ describe("zero sidebar", () => {
 
     const rowFor = async (title: string): Promise<HTMLElement> => {
       const row = (await within(dialog).findByText(title)).closest(
-        "[cmdk-item]",
+        '[role="option"]',
       );
       if (!(row instanceof HTMLElement)) {
         throw new Error(`no spotlight row for ${title}`);
