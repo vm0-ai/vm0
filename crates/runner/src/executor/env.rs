@@ -613,7 +613,7 @@ fn build_env_json_with_host_env_inner(
         );
     }
     env.insert(
-        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
+        guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
         JOB_TIMEOUT.as_secs().to_string(),
     );
     insert_guest_agent_tuning_env(&mut env, context);

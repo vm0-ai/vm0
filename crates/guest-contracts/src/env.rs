@@ -121,11 +121,11 @@ pub const CANONICAL_API_START_TIME_ENV: &str = "OKOU_API_START_TIME";
 /// local user-tuning key.
 pub const AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
 
-/// Canonical agent execution timeout alias accepted by guest readers.
+/// Canonical agent execution timeout alias written by the runner.
 ///
-/// Runner writers keep using [`AGENT_EXECUTION_TIMEOUT_SECS_ENV`] until the
-/// deployed reader floor, sandbox drain, rollback window, and legacy-read-zero
-/// gates are complete.
+/// Guest readers retain [`AGENT_EXECUTION_TIMEOUT_SECS_ENV`] as a rollback
+/// fallback until the canonical writer deployment, supported rollback window,
+/// and legacy-read-zero gates in #28914 are complete.
 pub const CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "OKOU_AGENT_EXECUTION_TIMEOUT_SECS";
 
 /// Logical run-payload field name for sensitive values used by the guest-agent
