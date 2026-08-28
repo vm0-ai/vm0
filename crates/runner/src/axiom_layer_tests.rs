@@ -25,6 +25,8 @@ use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
+use crate::host_env::HOST_ENV_ALIAS_SOURCE_TARGET;
+
 #[derive(Clone, Debug)]
 struct RecordedEvent {
     level: tracing::Level,
@@ -346,6 +348,76 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         !has_event_with_message(&events, "info is below threshold, should not be ingested"),
         "INFO event should not be ingested: {events:#?}",
     );
+}
+
+#[tokio::test]
+async fn only_dedicated_host_env_info_target_is_ingested() {
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let (layer, guard) = init_with_base_url_and_hostname(
+        &server.base_url(),
+        "test-token",
+        "test",
+        Some("runner-host-1".to_string()),
+    )
+    .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::info!(
+            target: HOST_ENV_ALIAS_SOURCE_TARGET,
+            concurrency_factor_alias_source = "canonical",
+            disk_bandwidth_mib_per_sec_alias_source = "legacy",
+            disk_iops_alias_source = "absent",
+            net_rx_mib_per_sec_alias_source = "canonical",
+            net_tx_mib_per_sec_alias_source = "legacy",
+            "runner host environment loaded"
+        );
+        tracing::info!(target: "runner::host_env", "unrelated host env info");
+        tracing::info!(
+            target: "runner::host_env::alias_sources::other",
+            "nearby target info"
+        );
+        tracing::warn!("ordinary warning");
+        tracing::warn!(target: INTERNAL_TARGET, "internal warning");
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    assert_eq!(events.len(), 2, "unexpected ingested events: {events:#?}");
+
+    let host_env = event_with_message(&events, "runner host environment loaded");
+    assert_eq!(host_env["level"], json!("info"));
+    assert_eq!(host_env["context"], json!(HOST_ENV_ALIAS_SOURCE_TARGET));
+    assert_eq!(host_env["runner_hostname"], json!("runner-host-1"));
+    assert_eq!(host_env["runner_version"], json!(env!("CARGO_PKG_VERSION")));
+    assert_eq!(
+        host_env["concurrency_factor_alias_source"],
+        json!("canonical")
+    );
+    assert_eq!(
+        host_env["disk_bandwidth_mib_per_sec_alias_source"],
+        json!("legacy")
+    );
+    assert_eq!(host_env["disk_iops_alias_source"], json!("absent"));
+    assert_eq!(
+        host_env["net_rx_mib_per_sec_alias_source"],
+        json!("canonical")
+    );
+    assert_eq!(host_env["net_tx_mib_per_sec_alias_source"], json!("legacy"));
+    event_with_message(&events, "ordinary warning");
+    for message in [
+        "unrelated host env info",
+        "nearby target info",
+        "internal warning",
+    ] {
+        assert!(
+            !has_event_with_message(&events, message),
+            "filtered event {message:?} reached ingest: {events:#?}",
+        );
+    }
 }
 
 #[tokio::test]

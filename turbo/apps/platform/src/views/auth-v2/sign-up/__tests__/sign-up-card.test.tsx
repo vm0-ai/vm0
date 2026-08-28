@@ -25,10 +25,15 @@ import {
   type MockedSignUpResourceState,
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
+import { AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY } from "../../../../signals/auth-v2/resend-cooldown.ts";
+import { sessionStorageSignals } from "../../../../signals/external/session-storage.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
 import { renderedCheckboxPresentation } from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
+const signUpResendCooldownStorage = sessionStorageSignals(
+  AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
+);
 
 function currentSignUpResource() {
   return mockedClerk.client.signUp;
@@ -649,6 +654,15 @@ describe("auth v2 sign-up flow", () => {
   });
 
   it("recovers a prepared progressive sign-up on a nested refresh without sending another code", async () => {
+    const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
+    mockNow(startedAt + 1000, context.signal);
+    context.store.set(
+      signUpResendCooldownStorage.set$,
+      JSON.stringify({
+        deadlineMs: startedAt + 30_000,
+        identity: "person@example.com",
+      }),
+    );
     setupSignUpPage(readyEmailVerificationState(), {
       path: "/v2/sign-up/verify-email-address",
     });
@@ -656,6 +670,9 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Verification code"),
     ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Didn't receive a code? Resend (29)"),
+    ).resolves.toBeDisabled();
     expect(
       mockedClerk.signUpPrepareEmailAddressVerification,
     ).not.toHaveBeenCalled();
@@ -821,6 +838,12 @@ describe("auth v2 sign-up flow", () => {
       "Didn't receive a code? Resend (30)",
     );
     expect(cooldownButton).toBeDisabled();
+    expect(context.store.get(signUpResendCooldownStorage.get$)).toBe(
+      JSON.stringify({
+        deadlineMs: startedAt + 30_000,
+        identity: "person@example.com",
+      }),
+    );
     mockNow(startedAt + 1000, context.signal);
     const advancingCooldownButton = await waitForRoleElement(
       "button",

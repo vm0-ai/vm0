@@ -31,6 +31,7 @@ import { conversations } from "@okouai/db/schema/conversation";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
   and,
@@ -2492,6 +2493,56 @@ export async function holdChatEventInsertTransactionFixture(args: {
     done,
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(pid);
+    },
+  };
+}
+
+/** Holds one existing run-output row to expose writes from later event batches. */
+export async function holdRunOutputMaterializationRowFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the run-output row lock holder pid");
+    }
+    const [row] = await tx
+      .select({ runId: runOutputMaterializations.runId })
+      .from(runOutputMaterializations)
+      .where(eq(runOutputMaterializations.runId, args.runId))
+      .for("update")
+      .limit(1);
+    if (!row) {
+      throw new Error("Expected an existing run-output materialization");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
     },
   };
 }

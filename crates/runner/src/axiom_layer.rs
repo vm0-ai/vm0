@@ -241,7 +241,8 @@ fn should_ingest(metadata: &Metadata<'_>) -> bool {
     metadata.target() != INTERNAL_TARGET
         && (*metadata.level() <= tracing::Level::WARN
             || (*metadata.level() == tracing::Level::INFO
-                && metadata.target() == MITMDUMP_RUNTIME_RECONCILIATION_TARGET))
+                && (metadata.target() == MITMDUMP_RUNTIME_RECONCILIATION_TARGET
+                    || metadata.target() == crate::host_env::HOST_ENV_ALIAS_SOURCE_TARGET)))
 }
 
 fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {

@@ -23,6 +23,8 @@ import {
   type MockedSignInResourceState,
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
+import { AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY } from "../../../../signals/auth-v2/resend-cooldown.ts";
+import { sessionStorageSignals } from "../../../../signals/external/session-storage.ts";
 import { ROUTES } from "../../../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../../../signals/route.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
@@ -34,6 +36,9 @@ import {
 } from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
+const signInResendCooldownStorage = sessionStorageSignals(
+  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
+);
 
 function passwordFactor(): MockedSignInFactor {
   return { strategy: "password" };
@@ -1477,6 +1482,12 @@ describe("auth v2 sign-in flow", () => {
       "Didn't receive a code? Resend (30)",
     );
     expect(coolingDownButton).toBeDisabled();
+    expect(context.store.get(signInResendCooldownStorage.get$)).toBe(
+      JSON.stringify({
+        deadlineMs: startedAt + 30_000,
+        identity: "email-code:email_primary",
+      }),
+    );
     fireEvent.click(coolingDownButton);
     fireEvent.click(coolingDownButton);
     expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(1);
@@ -1635,12 +1646,14 @@ describe("auth v2 sign-in flow", () => {
 
   it.each([
     {
+      cooldownIdentity: "email-code:email_primary",
       factor: emailCodeFactor(),
       name: "email-code",
       showsMethodChooser: true,
       strategy: "email_code" as const,
     },
     {
+      cooldownIdentity: "password-reset:email_primary",
       factor: passwordResetFactor(),
       name: "password-reset-code",
       showsMethodChooser: false,
@@ -1649,6 +1662,15 @@ describe("auth v2 sign-in flow", () => {
   ])(
     "restores a prepared $name step and its editable identifier without another initial dispatch",
     async (testCase) => {
+      const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
+      mockNow(startedAt + 1000, context.signal);
+      context.store.set(
+        signInResendCooldownStorage.set$,
+        JSON.stringify({
+          deadlineMs: startedAt + 30_000,
+          identity: testCase.cooldownIdentity,
+        }),
+      );
       mockPreparedFirstFactor(testCase.strategy);
       setupSignInPage({
         identifier: "person@example.com",
@@ -1659,6 +1681,9 @@ describe("auth v2 sign-in flow", () => {
       await expect(
         screen.findByLabelText("Verification code"),
       ).resolves.toBeVisible();
+      await expect(
+        waitForRoleElement("button", "Didn't receive a code? Resend (29)"),
+      ).resolves.toBeDisabled();
       expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getByLabelText("Toggle theme"));

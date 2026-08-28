@@ -43,35 +43,38 @@ pub const REQUIRED_CGROUP_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
 /// Value written to `cgroup.subtree_control` to enable required controllers.
 pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 
-/// Runner-owned bootstrap variable containing the nonce-authenticated local
-/// endpoint that transfers a workload `cgroup.procs` descriptor.
+/// Retired root-bootstrap spelling for the nonce-authenticated workload
+/// `cgroup.procs` descriptor endpoint.
 ///
 /// The root guest supervisor keeps the write-only descriptor out of the user
 /// launch chain and sends it with `SCM_RIGHTS` only after Guest Agent connects
-/// from the matching operation `control` cgroup. Guest Agent consumes this
-/// variable and uses cloned descriptors only from CLI-child `pre_exec` hooks.
+/// from the matching operation `control` cgroup. Guest Agent no longer reads
+/// this spelling, but still scrubs it after capturing the canonical pair.
 pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
 /// Canonical alias for [`WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV`].
 ///
-/// `vsock-guest` writes only this canonical alias. Guest readers retain
-/// [`WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV`] as a rollback fallback until the
-/// cutover release, observation window, rollback window, and legacy-read-zero
-/// gates in #28914 are complete.
+/// `vsock-guest` writes only this alias, and Guest Agent requires it at the root
+/// bootstrap boundary before receiving the placement descriptor. Guest Agent
+/// uses cloned descriptors only from CLI-child `pre_exec` hooks.
 pub const CANONICAL_WORKLOAD_CGROUP_PROCS_ENV: &str = "OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
-/// Runner-owned endpoint used by [`TOOL_EXEC_PATH`] to request a unique tool
-/// cgroup before it executes user code.
+/// Legacy tool-placement endpoint spelling retained for downstream rollback.
+///
+/// Guest Agent no longer reads this spelling from the root bootstrap, but
+/// still scrubs it after capturing the canonical pair. `guest-tool-exec` and
+/// the managed mock launcher continue reading it from rollback-retained managed
+/// CLI children until the downstream cleanup gates in #28914 are complete.
 pub const TOOL_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_TOOL_CGROUP_PROCS_ENDPOINT";
 
 /// Canonical alias for [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`].
 ///
-/// `vsock-guest` writes only this canonical alias to Guest Agent. Guest readers
-/// retain [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`] as a rollback fallback until the
-/// root-writer cutover release, observation window, rollback window, and
-/// legacy-read-zero gates in #28914 are complete.
+/// `vsock-guest` writes only this alias to Guest Agent, whose root bootstrap
+/// reader requires it and no longer reads [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`].
+/// Guest Agent also writes only this alias to managed CLI children, where it is
+/// used by [`TOOL_EXEC_PATH`] to request a unique tool cgroup before executing
+/// user code.
 ///
-/// Guest Agent also writes only this canonical alias to managed CLI children.
 /// `guest-tool-exec` retains [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`] as a rollback
 /// fallback until the downstream-writer cutover is released, pre-cutover Guest
 /// runtimes and reusable sandboxes are drained, the observation and rollback
@@ -313,7 +316,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cgroup_placement_environment_contracts_preserve_legacy_writers() {
+    fn cgroup_placement_environment_contracts_preserve_legacy_aliases() {
         assert_eq!(
             WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT"
