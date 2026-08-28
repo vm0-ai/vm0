@@ -77,6 +77,20 @@ function socialResponse(
   };
 }
 
+function publicSocialResponseFixture(
+  response: ReturnType<typeof socialResponse>,
+) {
+  return {
+    provider: "okou-social",
+    tool: response.tool,
+    billingCategory: response.billingCategory,
+    billingQuantity: response.billingQuantity,
+    creditsCharged: response.creditsCharged,
+    collection: response.collection,
+    result: response.result,
+  };
+}
+
 function failedDownloadResponse(status: "provider_failed" | "artifact_failed") {
   const billed = status === "artifact_failed";
   return {
@@ -181,6 +195,7 @@ describe("okou social command", () => {
 
     await socialCommand.parseAsync(["node", "cli", "tools", "--json"]);
 
+    expect(output()).not.toMatch(/socialkit/iu);
     const catalog = catalogSchema.parse(JSON.parse(output()) as unknown);
     expect(catalog.tools).toHaveLength(38);
     expect(
@@ -238,6 +253,7 @@ describe("okou social command", () => {
     expect(output()).toContain("Output schema:");
     expect(output()).toContain("instagram_comments");
     expect(output()).toContain("Collection: comments (cursor)");
+    expect(output()).not.toMatch(/socialkit/iu);
   });
 
   it("calls a tool with typed JSON input", async () => {
@@ -274,7 +290,10 @@ describe("okou social command", () => {
       tool: "youtube_search",
       input: { query: "typed tools", limit: 10, cache: false },
     });
-    expect(mockConsoleLog).toHaveBeenCalledWith(JSON.stringify(response));
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      JSON.stringify(publicSocialResponseFixture(response)),
+    );
+    expect(output()).not.toMatch(/socialkit/iu);
   });
 
   it("keeps custom response objects typed in the request", async () => {
@@ -309,7 +328,10 @@ describe("okou social command", () => {
         custom_response: { title: "Video title" },
       },
     });
-    expect(output()).toBe(JSON.stringify(response, null, 2));
+    expect(output()).toBe(
+      JSON.stringify(publicSocialResponseFixture(response), null, 2),
+    );
+    expect(output()).not.toMatch(/socialkit/iu);
   });
 
   it("retrieves typed cursor pages with provider-max page size", async () => {
@@ -595,7 +617,7 @@ describe("okou social command", () => {
     {
       caseName: "an unknown tool",
       args: ["call", "youtube_unknown", "--input", "{}"],
-      message: "Unknown managed SocialKit tool",
+      message: "Unknown Okou Social tool",
     },
     {
       caseName: "malformed JSON",
@@ -636,7 +658,7 @@ describe("okou social command", () => {
         '{"url":"https://youtu.be/id"}',
         "--all",
       ],
-      message: "requires a SocialKit collection tool",
+      message: "requires an Okou Social collection tool",
     },
     {
       caseName: "a caller bound without full retrieval",
@@ -679,6 +701,7 @@ describe("okou social command", () => {
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(message);
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
     expect(mockExit).toHaveBeenCalledWith(1);
     expect(apiRequests).toBe(0);
   });
@@ -689,7 +712,7 @@ describe("okou social command", () => {
         return HttpResponse.json(
           {
             error: {
-              message: "The requested social content is unavailable",
+              message: "SocialKit could not read the requested content",
               code: "SOCIALKIT_CONTENT_UNAVAILABLE",
             },
           },
@@ -710,8 +733,9 @@ describe("okou social command", () => {
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(
-      "404: The requested social content is unavailable",
+      "404: Okou Social could not read the requested content",
     );
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -878,6 +902,7 @@ describe("okou social command", () => {
     ).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain(message);
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -916,5 +941,13 @@ describe("okou social command", () => {
     expect(socialHelp).toContain(
       "Full retrieval bills and emits each successful provider page independently",
     );
+    expect(
+      [
+        socialHelp,
+        tools?.helpInformation() ?? "",
+        call?.helpInformation() ?? "",
+        download?.helpInformation() ?? "",
+      ].join("\n"),
+    ).not.toMatch(/socialkit/iu);
   });
 });

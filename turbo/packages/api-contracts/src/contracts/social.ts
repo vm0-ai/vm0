@@ -226,7 +226,7 @@ export const socialContract = c.router({
       502: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Call a typed managed SocialKit tool",
+    summary: "Call a typed Okou Social tool",
   },
   createDownload: {
     method: "POST",
@@ -244,7 +244,7 @@ export const socialContract = c.router({
       502: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Start a managed SocialKit artifact download",
+    summary: "Start an Okou Social artifact download",
   },
   getDownload: {
     method: "GET",
@@ -258,7 +258,7 @@ export const socialContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get a managed SocialKit artifact download",
+    summary: "Get an Okou Social artifact download",
   },
 });
 
