@@ -10,8 +10,6 @@ use tokio_util::sync::CancellationToken;
 const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 #[cfg(unix)]
 const WRITE_FAILURE_CHILD_ENV: &str = "VM0_TEST_METRICS_WRITE_FAILURE_CHILD";
-#[cfg(unix)]
-const WRITE_FAILURE_CHILD_TEST: &str = "metrics::metrics_loop_reopens_after_cached_write_failure";
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
@@ -122,10 +120,14 @@ async fn metrics_loop_reopens_after_cached_write_failure() -> TestResult {
         return run_cached_write_failure_scenario().await;
     }
 
+    let current_thread = std::thread::current();
+    let child_test_name = current_thread
+        .name()
+        .ok_or_else(|| std::io::Error::other("metrics parent test thread has no libtest name"))?;
     let output = Command::new(std::env::current_exe()?)
         .args([
             "--exact",
-            WRITE_FAILURE_CHILD_TEST,
+            child_test_name,
             "--nocapture",
             "--test-threads=1",
         ])
