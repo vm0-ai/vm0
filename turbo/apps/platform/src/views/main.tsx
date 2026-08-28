@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./error-boundary.tsx";
 import { AppSkeletonOverlay, Router } from "./router.tsx";
 import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
 import { ForceUpgradeDialog } from "./components/force-upgrade-dialog.tsx";
+import { AuthV2AddAccountDialog } from "./auth-v2/auth-v2-add-account-dialog.tsx";
 import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
 import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
@@ -73,6 +74,7 @@ export const setupRouter = (
           <AppSkeletonOverlay />
           <VM0ClerkProvider>
             <Router />
+            <AuthV2AddAccountDialog />
           </VM0ClerkProvider>
           <InspectLogFileInput />
           <ForceUpgradeDialog />

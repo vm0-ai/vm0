@@ -76,6 +76,7 @@ import {
   okouDebugRealtimeIndicator$,
   type OkouDebugRealtimeIndicator,
 } from "../../signals/okou-page/realtime-status.ts";
+import { openAuthV2AddAccountDialog$ } from "../../signals/okou-page/auth-v2-add-account-dialog.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -738,6 +739,8 @@ export function AccountDropdown({
     userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
+  const authV2AddAccountEnabled =
+    features?.[FeatureSwitchKey.AuthV2AddAccount] ?? false;
   const subscriptionsEnabled =
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   // The account mark aligns with the rounded-square workspace logo in the rail.
@@ -760,6 +763,7 @@ export function AccountDropdown({
   const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
+  const openAuthV2AddAccountDialog = useSet(openAuthV2AddAccountDialog$);
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -813,6 +817,14 @@ export function AccountDropdown({
   };
 
   const handleAddAccount = () => {
+    if (authV2AddAccountEnabled) {
+      detach(
+        openAuthV2AddAccountDialog(pageSignal),
+        Reason.DomCallback,
+        "open auth v2 add account dialog",
+      );
+      return;
+    }
     detach(
       clerk?.openSignIn({
         fallbackRedirectUrl: "/",

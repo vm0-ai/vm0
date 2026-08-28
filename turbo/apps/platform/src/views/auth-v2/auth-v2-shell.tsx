@@ -29,6 +29,7 @@ interface AuthV2ShellProps {
   readonly focusKey: string;
   readonly headerDetail?: ReactNode;
   readonly layout?: "choice" | "default";
+  readonly surface?: "dialog" | "page";
   readonly title: ReactNode;
 }
 
@@ -41,6 +42,7 @@ export function AuthV2Shell({
   focusKey,
   headerDetail,
   layout = "default",
+  surface = "page",
   title,
 }: AuthV2ShellProps) {
   const focusHeading = useSet(focusAuthV2HeadingRef$);
@@ -48,7 +50,12 @@ export function AuthV2Shell({
   const choiceLayout = layout === "choice";
 
   return (
-    <div className="w-[calc(100%+0.5rem)] max-w-[25rem] shrink-0 space-y-4">
+    <div
+      className={cn(
+        "max-w-[25rem] shrink-0 space-y-4",
+        surface === "dialog" ? "w-full" : "w-[calc(100%+0.5rem)]",
+      )}
+    >
       <Card
         aria-describedby={description ? AUTH_V2_DESCRIPTION_ID : undefined}
         aria-labelledby={AUTH_V2_TITLE_ID}

@@ -1,4 +1,5 @@
 import { Button, cn } from "@okouai/ui";
+import type { Computed } from "ccstate";
 import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2 } from "lucide-react";
@@ -79,14 +80,16 @@ function LoadingContent({ label }: { readonly label: string }) {
 
 function OrganizationContent({
   copy,
+  operationSignal$,
   signals,
   state,
 }: {
   readonly copy: AuthV2ContinuationCopy;
+  readonly operationSignal$: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
   readonly state: Extract<AuthV2ContinuationState, { status: "incomplete" }>;
 }) {
-  const pageSignal = useGet(pageSignal$);
+  const operationSignal = useGet(operationSignal$);
   const [selectionLoadable, selectOrganization] = useLoadableSet(
     signals.selectOrganization$,
   );
@@ -112,7 +115,7 @@ function OrganizationContent({
             }
             onSelect={() => {
               detach(
-                selectOrganization(organization.id, pageSignal),
+                selectOrganization(organization.id, operationSignal),
                 Reason.DomCallback,
                 "select auth v2 organization",
               );
@@ -128,13 +131,15 @@ function OrganizationContent({
 function OrganizationFooter({
   accountIdentifier,
   copy,
+  operationSignal$,
   signals,
 }: {
   readonly accountIdentifier: string;
   readonly copy: AuthV2ContinuationCopy;
+  readonly operationSignal$: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
 }) {
-  const pageSignal = useGet(pageSignal$);
+  const operationSignal = useGet(operationSignal$);
   const [restartLoadable, restart] = useLoadableSet(signals.restart$);
   const signingOut = restartLoadable.state === "loading";
   return (
@@ -152,7 +157,7 @@ function OrganizationFooter({
         disabled={signingOut}
         onClick={() => {
           detach(
-            restart(pageSignal),
+            restart(operationSignal),
             Reason.DomCallback,
             "sign out of auth v2 organization continuation",
           );
@@ -172,12 +177,14 @@ function OrganizationFooter({
 
 function RecoveryContent({
   copy,
+  operationSignal$,
   signals,
 }: {
   readonly copy: AuthV2ContinuationCopy;
+  readonly operationSignal$: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
 }) {
-  const pageSignal = useGet(pageSignal$);
+  const operationSignal = useGet(operationSignal$);
   const [restartLoadable, restart] = useLoadableSet(signals.restart$);
   const restarting = restartLoadable.state === "loading";
   return (
@@ -188,7 +195,7 @@ function RecoveryContent({
       disabled={restarting}
       onClick={() => {
         detach(
-          restart(pageSignal),
+          restart(operationSignal),
           Reason.DomCallback,
           "restart auth v2 after continuation failure",
         );
@@ -206,12 +213,16 @@ function RecoveryContent({
 
 export function AuthV2ContinuationCard({
   authBrand,
+  operationSignal$ = pageSignal$,
   signals,
   state,
+  surface = "page",
 }: {
   readonly authBrand: AuthBrandContext;
+  readonly operationSignal$?: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
   readonly state: AuthV2ContinuationState;
+  readonly surface?: "dialog" | "page";
 }) {
   const copy = useAuthV2ContinuationCopy(authBrand.brandName);
   if (state.status === "inactive") {
@@ -224,9 +235,18 @@ export function AuthV2ContinuationCard({
       : `continuation:${state.status}`;
   const content =
     state.status === "incomplete" ? (
-      <OrganizationContent copy={copy} signals={signals} state={state} />
+      <OrganizationContent
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
     ) : state.status === "failure" || state.status === "unknown" ? (
-      <RecoveryContent copy={copy} signals={signals} />
+      <RecoveryContent
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+      />
     ) : (
       <LoadingContent label={heading.description} />
     );
@@ -239,6 +259,7 @@ export function AuthV2ContinuationCard({
           <OrganizationFooter
             accountIdentifier={state.accountIdentifier}
             copy={copy}
+            operationSignal$={operationSignal$}
             signals={signals}
           />
         ) : null
@@ -246,6 +267,7 @@ export function AuthV2ContinuationCard({
       description={heading.description}
       focusKey={focusKey}
       layout={state.status === "incomplete" ? "choice" : "default"}
+      surface={surface}
       title={heading.title}
     >
       {content}

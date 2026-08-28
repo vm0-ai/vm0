@@ -152,3 +152,23 @@ describe("Auth v2 platform context", () => {
     expect(nestedUrl.searchParams.get("redirect_url")).toBe(redirectUrl);
   });
 });
+
+describe("Auth v2 app-owned platform context", () => {
+  it("does not inherit the current page URL", () => {
+    setBrowserUrl(
+      "https://app.vm0.ai/agents?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnector%2Fsuccess#private-page-state",
+    );
+
+    const { navigation } = resolveAuthV2PlatformContext("sign-in", {
+      authHash: "",
+      authSearch: "",
+    });
+    const signInUrl = absoluteNavigationUrl(navigation.href("sign-in"));
+
+    expect(navigation.completionRedirectUrl).toBe("https://app.vm0.ai");
+    expect(signInUrl.searchParams.get("redirect_url")).toBe(
+      "https://app.vm0.ai",
+    );
+    expect(signInUrl.hash).toBe("");
+  });
+});
