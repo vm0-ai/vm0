@@ -1,7 +1,8 @@
 import { computed, type Computed, type State } from "ccstate";
 import type { Root } from "hast";
 
-import { parseMarkdownTree } from "../lib/markdown/pipeline.ts";
+import { createPlainMarkdownTree } from "../lib/markdown/plain-markdown.ts";
+import { loadRichMarkdown } from "./rich-markdown-module.ts";
 import {
   createMermaidDiagramSignals,
   embedMermaidSignals,
@@ -25,7 +26,15 @@ export function createMarkdownPreviewTree(
 ): MarkdownPreviewTreeComputed {
   return computed(async (get): Promise<Root> => {
     const ownerSignal = "aborted" in owner ? owner : get(owner);
-    const tree = parseMarkdownTree(await get(text$), {
+    const source = await get(text$);
+    ownerSignal.throwIfAborted();
+    const plainTree = createPlainMarkdownTree(source, { mathEnabled: false });
+    if (plainTree !== null) {
+      return plainTree;
+    }
+    const richMarkdown = await loadRichMarkdown();
+    ownerSignal.throwIfAborted();
+    const tree = richMarkdown.parseMarkdownTree(source, {
       mathEnabled: false,
       mermaid: true,
     });

@@ -4,7 +4,8 @@ import { createElement } from "react";
 
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
-import { parseMarkdownTree } from "../../lib/markdown/pipeline.ts";
+import { createPlainMarkdownTree } from "../../lib/markdown/plain-markdown.ts";
+import { loadRichMarkdown } from "../rich-markdown-module.ts";
 import {
   SharedThreadPage,
   type SharedDisplayThread,
@@ -39,31 +40,38 @@ export const setupSharedThreadPage$ = command(
     // the page releases the diagrams it rendered.
     const mermaidDiagrams = createMermaidDiagramRegistry(signal);
     const imageLoads = createImageLoadRegistry();
-    const sharedThread: SharedDisplayThread | null =
-      result.status === 200
-        ? {
-            ...result.body,
-            // Assistant bodies parse once here, with their diagram signals
-            // embedded, so the page renders trees the same way the chat
-            // transcript does.
-            messages: result.body.messages.map((message) => {
-              if (message.role !== "assistant") {
-                return message;
-              }
-              const tree = parseMarkdownTree(message.content, {
-                mathEnabled: true,
-                mermaid: true,
-              });
-              embedMermaidSignals(tree, (code) => {
-                return set(mermaidDiagrams.register$, code);
-              });
-              embedImageLoadSignals(tree, (url) => {
-                return set(imageLoads.register$, url);
-              });
-              return { ...message, tree };
-            }),
-          }
-        : null;
+    let sharedThread: SharedDisplayThread | null = null;
+    if (result.status === 200) {
+      const messages: SharedDisplayThread["messages"][number][] = [];
+      let richMarkdown:
+        | Awaited<ReturnType<typeof loadRichMarkdown>>
+        | undefined;
+      for (const message of result.body.messages) {
+        if (message.role !== "assistant") {
+          messages.push(message);
+          continue;
+        }
+        let tree = createPlainMarkdownTree(message.content, {
+          mathEnabled: true,
+        });
+        if (tree === null) {
+          richMarkdown ??= await loadRichMarkdown();
+          signal.throwIfAborted();
+          tree = richMarkdown.parseMarkdownTree(message.content, {
+            mathEnabled: true,
+            mermaid: true,
+          });
+          embedMermaidSignals(tree, (code) => {
+            return set(mermaidDiagrams.register$, code);
+          });
+          embedImageLoadSignals(tree, (url) => {
+            return set(imageLoads.register$, url);
+          });
+        }
+        messages.push({ ...message, tree });
+      }
+      sharedThread = { ...result.body, messages };
+    }
     set(
       updateDocumentTitle$,
       sharedThread?.title ??

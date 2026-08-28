@@ -17,7 +17,7 @@ import {
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
-import { Markdown } from "../markdown.tsx";
+import { Markdown as RichMarkdown } from "../rich-markdown.tsx";
 import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
@@ -170,7 +170,7 @@ describe("assistant markdown", () => {
   it("escapes html-like source when requested", () => {
     const { container } = render(
       <StoreProvider value={context.store}>
-        <Markdown source="<span> 123 </span>" escapeHtml />
+        <RichMarkdown source="<span> 123 </span>" escapeHtml />
       </StoreProvider>,
     );
 
@@ -181,7 +181,7 @@ describe("assistant markdown", () => {
   it("keeps blockquotes rendering when html is escaped", () => {
     const { container } = render(
       <StoreProvider value={context.store}>
-        <Markdown
+        <RichMarkdown
           source={"Feedback on this part of your reply:\n\n> quoted passage"}
           escapeHtml
         />
@@ -194,6 +194,20 @@ describe("assistant markdown", () => {
     // The leading `>` must be consumed as the blockquote marker, not shown as
     // literal text alongside the passage.
     expect(blockquote?.textContent).not.toContain(">");
+  });
+
+  it("renders syntax-free assistant text without a rich loading state", async () => {
+    mockThread("Plain response with punctuation: ready (now).");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await expect(
+      screen.findByText("Plain response with punctuation: ready (now)."),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByTestId("rich-content-loading")).toBeNull();
   });
 
   it("renders formatted text and follows theme changes", async () => {

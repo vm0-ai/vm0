@@ -1,10 +1,14 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
-import mermaid from "mermaid";
 
+import { createRetryableLazyModule } from "./retryable-lazy-module.ts";
 import { createObjectUrlResource } from "./object-url-resource.ts";
 import { theme$ } from "./theme.ts";
 import { settle } from "./utils.ts";
+
+const mermaidModule = createRetryableLazyModule(() => {
+  return import("mermaid");
+});
 
 /**
  * Mermaid diagrams render through a pull model. Each diagram source owns one
@@ -84,6 +88,7 @@ function diagramRenderId(seed: string): string {
 
 /** Returns the diagram SVG, or undefined when the source is not valid mermaid. */
 async function renderDiagramSvg(
+  mermaid: (typeof import("mermaid"))["default"],
   id: string,
   code: string,
 ): Promise<string | undefined> {
@@ -186,6 +191,7 @@ export function createMermaidDiagramSignals(
       const previousRender = renderQueue.tail;
       const render = (async (): Promise<string | undefined> => {
         await settle(previousRender);
+        const { default: mermaid } = await mermaidModule.load();
         mermaid.initialize({
           startOnLoad: false,
           // "strict" makes mermaid sanitize the generated SVG with DOMPurify
@@ -208,7 +214,11 @@ export function createMermaidDiagramSignals(
           themeVariables: { fontSize: "14px" },
           flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
         });
-        return renderDiagramSvg(diagramRenderId(`${theme}:${code}`), code);
+        return renderDiagramSvg(
+          mermaid,
+          diagramRenderId(`${theme}:${code}`),
+          code,
+        );
       })();
       renderQueue.tail = render;
       const markup = await render;

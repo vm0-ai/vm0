@@ -7883,9 +7883,7 @@ function PagedAssistantEventItem({
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         )}
       >
-        {event.tree !== undefined ? (
-          <MarkdownEventBody tree={event.tree} mediaPreview />
-        ) : null}
+        <MarkdownEventBody tree={event.tree} mediaPreview />
       </div>
     );
   }
