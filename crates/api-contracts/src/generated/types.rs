@@ -204,27 +204,54 @@ pub mod runners {
 
         /// DTOs for reporting bounded built-in model provider failures.
         pub mod model_provider_failures {
-            /// Bounded provider-independent failure eligible for route cooldown.
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-            pub enum RequestFailureKind {
+            /// Request body for reporting a built-in model provider failure.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(tag = "failureKind", rename_all_fields = "camelCase")]
+            pub enum Request {
                 /// Provider authentication failed.
                 #[serde(rename = "authentication")]
-                Authentication,
+                Authentication {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
                 /// Provider billing rejected the request.
                 #[serde(rename = "billing")]
-                Billing,
+                Billing {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
                 /// Provider rate limiting rejected the request.
                 #[serde(rename = "rate_limit")]
-                RateLimit,
+                RateLimit {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
                 /// The provider route was unavailable or overloaded.
                 #[serde(rename = "provider_unavailable")]
-                ProviderUnavailable,
+                ProviderUnavailable {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
                 /// The provider inference request timed out.
                 #[serde(rename = "timeout")]
-                Timeout,
+                Timeout {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
                 /// The provider connection failed.
                 #[serde(rename = "connection")]
-                Connection,
+                Connection {
+                    /// Required source of the connection failure.
+                    connection_source: RequestConnectionSource,
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
             }
 
             /// Source of an eligible connection failure.
@@ -236,20 +263,6 @@ pub mod runners {
                 /// The runner observed an upstream transport failure.
                 #[serde(rename = "upstream_transport")]
                 UpstreamTransport,
-            }
-
-            /// Request body for reporting a built-in model provider failure.
-            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            pub struct Request {
-                /// Normalized eligible provider failure kind.
-                pub failure_kind: RequestFailureKind,
-                /// Optional source for connection failures; omitted by legacy runners.
-                #[serde(default, skip_serializing_if = "Option::is_none")]
-                pub connection_source: Option<RequestConnectionSource>,
-                /// Optional bounded provider retry delay in seconds.
-                #[serde(default, skip_serializing_if = "Option::is_none")]
-                pub retry_after_seconds: Option<i64>,
             }
         }
     }

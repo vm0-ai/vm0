@@ -1,7 +1,9 @@
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
+import type { runnersModelProviderFailuresContract } from "@okouai/api-contracts/contracts/runners";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
 import { and, eq } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { Db } from "../external/db";
 
@@ -15,17 +17,15 @@ const INACTIVE_COOLDOWN_DEADLINE_MS = 0;
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
+type BuiltInModelProviderFailureBody = z.infer<
+  (typeof runnersModelProviderFailuresContract.report)["body"]
+>;
 type BuiltInModelProviderFailureKind =
-  | "authentication"
-  | "billing"
-  | "rate_limit"
-  | "provider_unavailable"
-  | "timeout"
-  | "connection";
-
-type BuiltInModelProviderConnectionSource =
-  | "provider_response"
-  | "upstream_transport";
+  BuiltInModelProviderFailureBody["failureKind"];
+type BuiltInModelProviderConnectionSource = Extract<
+  BuiltInModelProviderFailureBody,
+  { readonly failureKind: "connection" }
+>["connectionSource"];
 
 interface BuiltInModelRouteIdentity {
   readonly selectedModel: string;
@@ -55,13 +55,20 @@ type BuiltInModelProviderFailureTransition =
       readonly cooldown: CooldownMutation | null;
     };
 
-interface BuiltInModelProviderFailureReport {
+interface BuiltInModelProviderFailureMetadata {
   readonly runId: string;
   readonly receivedAt: Date;
-  readonly failureKind: BuiltInModelProviderFailureKind;
-  readonly connectionSource?: BuiltInModelProviderConnectionSource;
-  readonly retryAfterSeconds?: number;
 }
+
+type BuiltInModelProviderConnectionFailureReport =
+  BuiltInModelProviderFailureMetadata &
+    Extract<
+      BuiltInModelProviderFailureBody,
+      { readonly failureKind: "connection" }
+    >;
+
+type BuiltInModelProviderFailureReport = BuiltInModelProviderFailureMetadata &
+  BuiltInModelProviderFailureBody;
 
 function routeCondition(route: BuiltInModelRouteIdentity) {
   return and(
@@ -201,7 +208,7 @@ async function activateCooldown(
 async function observeTransportFailure(
   tx: WriteTx,
   route: LockedBuiltInModelRoute,
-  report: BuiltInModelProviderFailureReport,
+  report: BuiltInModelProviderConnectionFailureReport,
 ): Promise<BuiltInModelProviderFailureTransition> {
   const interval = observationInterval(route);
   const receivedAtMs = report.receivedAt.getTime();
@@ -274,19 +281,21 @@ export async function reportBuiltInModelProviderFailure(
       return { outcome: "ignored" };
     }
     const lockedRoute = await materializeAndLockRoute(tx, route);
-    if (
-      report.failureKind === "connection" &&
-      report.connectionSource === "upstream_transport"
-    ) {
-      return await observeTransportFailure(tx, lockedRoute, report);
+    if (report.failureKind === "connection") {
+      if (report.connectionSource === "upstream_transport") {
+        return await observeTransportFailure(tx, lockedRoute, report);
+      }
+      return await activateCooldown(tx, lockedRoute, {
+        receivedAt: report.receivedAt,
+        failureKind: report.failureKind,
+        connectionSource: report.connectionSource,
+        retryAfterSeconds: immediateCooldownSeconds(report),
+        reason: report.failureKind,
+      });
     }
-    // Source-less connection reports can arrive from old runners during the
-    // #29672 rollout. Remove this immediate path after their two-hour sandbox
-    // drain plus bounded finalization; #29805 tracks that cleanup.
     return await activateCooldown(tx, lockedRoute, {
       receivedAt: report.receivedAt,
       failureKind: report.failureKind,
-      connectionSource: report.connectionSource,
       retryAfterSeconds: immediateCooldownSeconds(report),
       reason: report.failureKind,
     });

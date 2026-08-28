@@ -5,7 +5,7 @@ use api_contracts::generated::types::{
         runs::{
             CodexRuntimeConfig, PiLaunchConfig, PiLaunchConfigApiFirstTurn,
             PiLaunchConfigApiFirstTurnBaseSession, PiModelConfig, PiModelConfigApiKeyEnv,
-            PiModelConfigProvider,
+            PiModelConfigProvider, model_provider_failures,
         },
         storage as runner_storage,
     },
@@ -15,6 +15,28 @@ use api_contracts::generated::types::{
     },
 };
 use serde_json::json;
+
+#[test]
+fn generated_model_provider_failure_request_requires_connection_source() {
+    let request = model_provider_failures::Request::Connection {
+        connection_source: model_provider_failures::RequestConnectionSource::UpstreamTransport,
+        retry_after_seconds: None,
+    };
+
+    assert_eq!(
+        serde_json::to_value(request).unwrap(),
+        json!({
+            "failureKind": "connection",
+            "connectionSource": "upstream_transport",
+        })
+    );
+    assert!(
+        serde_json::from_value::<model_provider_failures::Request>(json!({
+            "failureKind": "connection",
+        }))
+        .is_err()
+    );
+}
 
 #[test]
 fn generated_codex_runtime_config_round_trips_full_wire_shape() {

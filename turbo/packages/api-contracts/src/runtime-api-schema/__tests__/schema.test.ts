@@ -21,6 +21,48 @@ function binding(id: string, path: string): RuntimeApiRouteBinding {
 }
 
 describe("runtime API schema namespaces", () => {
+  it("publishes the strict model provider failure report contract", () => {
+    const document = buildRuntimeApiSchemaDocument("2026-08-12T00:00:00.000Z");
+    const route = document.routes.find(({ id }) => {
+      return id === "runners.runs.modelProviderFailures";
+    });
+
+    expect(route).toMatchObject({
+      method: "POST",
+      owner: "mitm-addon",
+      path: "/api/runners/runs/:runId/model-provider-failures",
+    });
+    const body = route?.request.body;
+    if (!body || body.kind !== "json-schema") {
+      throw new Error("Expected the model provider failure request schema");
+    }
+    const alternatives = body.schema.oneOf;
+    if (!Array.isArray(alternatives)) {
+      throw new Error("Expected failure-kind request alternatives");
+    }
+    expect(alternatives).toHaveLength(6);
+    expect(alternatives).toContainEqual({
+      additionalProperties: false,
+      properties: {
+        connectionSource: {
+          enum: ["provider_response", "upstream_transport"],
+          type: "string",
+        },
+        failureKind: {
+          const: "connection",
+          type: "string",
+        },
+        retryAfterSeconds: {
+          exclusiveMinimum: 0,
+          maximum: 300,
+          type: "integer",
+        },
+      },
+      required: ["failureKind", "connectionSource"],
+      type: "object",
+    });
+  });
+
   it.each(["/api/zero/example", "/api/okou/example"] as const)(
     "publishes both branded namespaces from $sourcePath with schema parity",
     (sourcePath) => {

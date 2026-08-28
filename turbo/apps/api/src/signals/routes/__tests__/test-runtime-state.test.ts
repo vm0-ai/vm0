@@ -456,68 +456,52 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
   it.each([
     {
       caseName: "authentication intervention",
-      failureKind: "authentication",
-      connectionSource: undefined,
-      retryAfterSeconds: 1,
+      body: { failureKind: "authentication", retryAfterSeconds: 1 },
+      source: "unspecified",
       cooldownSeconds: 30 * 60,
     },
     {
       caseName: "billing intervention",
-      failureKind: "billing",
-      connectionSource: undefined,
-      retryAfterSeconds: 1,
+      body: { failureKind: "billing", retryAfterSeconds: 1 },
+      source: "unspecified",
       cooldownSeconds: 30 * 60,
     },
     {
       caseName: "rate limit default",
-      failureKind: "rate_limit",
-      connectionSource: undefined,
-      retryAfterSeconds: undefined,
+      body: { failureKind: "rate_limit" },
+      source: "unspecified",
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "provider unavailable default",
-      failureKind: "provider_unavailable",
-      connectionSource: undefined,
-      retryAfterSeconds: undefined,
+      body: { failureKind: "provider_unavailable" },
+      source: "unspecified",
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "timeout default",
-      failureKind: "timeout",
-      connectionSource: undefined,
-      retryAfterSeconds: undefined,
-      cooldownSeconds: 5 * 60,
-    },
-    {
-      caseName: "connection default",
-      failureKind: "connection",
-      connectionSource: undefined,
-      retryAfterSeconds: undefined,
+      body: { failureKind: "timeout" },
+      source: "unspecified",
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "provider-response connection default",
-      failureKind: "connection",
-      connectionSource: "provider_response",
-      retryAfterSeconds: undefined,
+      body: {
+        failureKind: "connection",
+        connectionSource: "provider_response",
+      },
+      source: "provider_response",
       cooldownSeconds: 5 * 60,
     },
     {
       caseName: "bounded provider retry delay",
-      failureKind: "rate_limit",
-      connectionSource: undefined,
-      retryAfterSeconds: 120,
+      body: { failureKind: "rate_limit", retryAfterSeconds: 120 },
+      source: "unspecified",
       cooldownSeconds: 120,
     },
   ] as const)(
     "records the $caseName cooldown for only the persisted built-in model route",
-    async ({
-      failureKind,
-      connectionSource,
-      retryAfterSeconds,
-      cooldownSeconds,
-    }) => {
+    async ({ body, source, cooldownSeconds }) => {
       const startedAt = Date.UTC(2026, 7, 21, 0, 0, 0);
       await withMockNowForTest(startedAt, async () => {
         const claimed = await createClaimedVm0Run();
@@ -536,11 +520,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         );
 
         await expect(
-          runs.reportRunnerModelProviderFailure(claimed.runId, {
-            failureKind,
-            ...(connectionSource === undefined ? {} : { connectionSource }),
-            ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
-          }),
+          runs.reportRunnerModelProviderFailure(claimed.runId, body),
         ).resolves.toStrictEqual({ outcome: "recorded" });
         expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
           "Built-in model provider failure report recorded",
@@ -551,9 +531,9 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
             selectedModel: claimed.selectedModel,
             providerType: primary.provider_type,
             upstreamModel: primary.upstream_model,
-            failureKind,
-            source: connectionSource ?? "unspecified",
-            reason: failureKind,
+            failureKind: body.failureKind,
+            source,
+            reason: body.failureKind,
             retryAfterSeconds: cooldownSeconds,
             unavailableUntil: new Date(
               startedAt + cooldownSeconds * 1000,
@@ -1247,6 +1227,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         [401],
         {
           failureKind: "connection",
+          connectionSource: "provider_response",
         },
       );
       expectApiError(missingAuth.body);
@@ -1257,6 +1238,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         [401],
         {
           failureKind: "connection",
+          connectionSource: "provider_response",
         },
       );
       expectApiError(sandboxAuth.body);
@@ -1268,6 +1250,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         [403],
         {
           failureKind: "connection",
+          connectionSource: "provider_response",
         },
       );
       expectApiError(patAuth.body);
@@ -1275,6 +1258,10 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       for (const body of [
         {
           failureKind: "connection",
+        },
+        {
+          failureKind: "connection",
+          connectionSource: "provider_response",
           selectedModel: claimed.selectedModel,
         },
         {
@@ -1282,6 +1269,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         },
         {
           failureKind: "connection",
+          connectionSource: "provider_response",
           retryAfterSeconds: 301,
         },
         {
