@@ -3,6 +3,68 @@ import { describe, expect, it } from "vitest";
 import indexHtml from "../../../../index.html?raw";
 import { readGlobalCss } from "./global-css.ts";
 
+type ViewportEntrypoint = (
+  windowObject: Pick<Window, "matchMedia"> & { CSS: typeof CSS },
+  documentObject: Document,
+  navigatorObject: Navigator & { standalone?: boolean },
+) => void;
+
+function getInlineScriptSource(marker: string): string {
+  const source = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/gi)]
+    .map((match) => {
+      return match[1];
+    })
+    .find((script) => {
+      return script?.includes(marker);
+    });
+
+  if (source === undefined) {
+    throw new Error(`Unable to find inline script containing ${marker}`);
+  }
+  return source;
+}
+
+function resolveStandaloneViewport({
+  displayModeStandalone,
+  navigatorStandalone,
+  supportsLargeViewport,
+}: {
+  displayModeStandalone: boolean;
+  navigatorStandalone: boolean;
+  supportsLargeViewport: boolean;
+}): string {
+  const testDocument = document.implementation.createHTMLDocument();
+  const executeEntrypoint = new Function(
+    "window",
+    "document",
+    "navigator",
+    getInlineScriptSource("navigator.standalone === true"),
+  ) as ViewportEntrypoint;
+
+  executeEntrypoint(
+    {
+      CSS: {
+        supports(property: string, value: string) {
+          return (
+            supportsLargeViewport && property === "height" && value === "100lvh"
+          );
+        },
+      } as typeof CSS,
+      matchMedia() {
+        return { matches: displayModeStandalone } as MediaQueryList;
+      },
+    },
+    testDocument,
+    { standalone: navigatorStandalone } as Navigator & {
+      standalone?: boolean;
+    },
+  );
+
+  return testDocument.documentElement.style.getPropertyValue(
+    "--zero-viewport-height",
+  );
+}
+
 function getViewportDirectives(): string[] {
   const match = /<meta\s+name="viewport"\s+content="([^"]+)"/.exec(indexHtml);
   return (
@@ -37,6 +99,44 @@ describe("platform entrypoint safe area behavior", () => {
     expect(indexHtml).toMatch(
       /#app-bootstrap-skeleton\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);/,
     );
+  });
+
+  it("locks the standalone viewport height before the skeleton can paint", () => {
+    const standaloneResolverIndex = indexHtml.indexOf(
+      "navigator.standalone === true",
+    );
+    const skeletonIndex = indexHtml.indexOf('id="app-bootstrap-skeleton"');
+
+    expect(standaloneResolverIndex).toBeGreaterThan(-1);
+    expect(standaloneResolverIndex).toBeLessThan(skeletonIndex);
+    expect(
+      resolveStandaloneViewport({
+        displayModeStandalone: false,
+        navigatorStandalone: true,
+        supportsLargeViewport: true,
+      }),
+    ).toBe("100lvh");
+    expect(
+      resolveStandaloneViewport({
+        displayModeStandalone: true,
+        navigatorStandalone: false,
+        supportsLargeViewport: true,
+      }),
+    ).toBe("100lvh");
+    expect(
+      resolveStandaloneViewport({
+        displayModeStandalone: false,
+        navigatorStandalone: false,
+        supportsLargeViewport: true,
+      }),
+    ).toBe("");
+    expect(
+      resolveStandaloneViewport({
+        displayModeStandalone: true,
+        navigatorStandalone: false,
+        supportsLargeViewport: false,
+      }),
+    ).toBe("");
   });
 
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {
