@@ -14,8 +14,9 @@ import {
 import userEvent from "@testing-library/user-event";
 import { logsListContract } from "@okouai/api-contracts/contracts/logs";
 import { HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { loadRichMarkdown } from "../../../signals/rich-markdown-module.ts";
 import {
   click,
   detachedSetupPage,
@@ -29,6 +30,10 @@ import { mockResizeObserver } from "./chat-lifecycle-test-helpers.ts";
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
+
+beforeAll(async () => {
+  await loadRichMarkdown();
+});
 
 /** Mirrors the presigned object URL the API signs for a private attachment. */
 function presignedFileUrl(fileId: string): string {
