@@ -60,8 +60,20 @@ interface GoogleIdentityServices {
 
 type GoogleWindow = Window & { readonly google?: GoogleIdentityServices };
 
+type FedCmWindow = Window & {
+  readonly IdentityCredential?: unknown;
+};
+
 function googleIdentityApi(): GoogleIdentityApi | null {
   return (window as GoogleWindow).google?.accounts?.id ?? null;
+}
+
+function supportsGoogleOneTapFedCm(): boolean {
+  return (
+    window.isSecureContext !== false &&
+    typeof (window as FedCmWindow).IdentityCredential === "function" &&
+    typeof navigator.credentials?.get === "function"
+  );
 }
 
 function loadGoogleIdentityApi(
@@ -158,9 +170,10 @@ export function discoverAuthV2ExternalCapabilities(
     passkeyAttribute?.enabled === true &&
     passkeyAttribute.used_for_first_factor === true &&
     settings?.passkeySettings.show_sign_in_button === true;
-  const googleOneTapClientId = oauthStrategies.includes("oauth_google")
-    ? (environment?.displayConfig.googleOneTapClientId ?? null)
-    : null;
+  const googleOneTapClientId =
+    oauthStrategies.includes("oauth_google") && supportsGoogleOneTapFedCm()
+      ? (environment?.displayConfig.googleOneTapClientId ?? null)
+      : null;
   const lastAuthenticationStrategy = clerk.client?.lastAuthenticationStrategy;
   const lastUsedOAuthStrategy =
     typeof lastAuthenticationStrategy === "string" &&
