@@ -356,7 +356,6 @@ fn assert_conflict_precedes_private_payload_consumption(tmp: &Path) -> TestResul
 
     for key in [
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
         guest_contracts::env::USER_ENV_FILE_ENV,
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,

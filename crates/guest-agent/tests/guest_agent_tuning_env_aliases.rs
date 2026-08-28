@@ -529,7 +529,6 @@ fn assert_conflict_precedes_private_file_consumption(
 
     for key in [
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
     ] {

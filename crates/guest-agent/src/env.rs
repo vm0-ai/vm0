@@ -603,12 +603,11 @@ impl GuestConfigRaw {
         Self::from_process_env_with_guest_runtime_dir(guest_runtime_dir)
     }
 
-    /// Capture all remaining startup values after the runtime-directory alias
-    /// pair was resolved at the outer single-threaded bootstrap boundary.
+    /// Capture all remaining startup values after the canonical runtime
+    /// directory was resolved at the outer single-threaded bootstrap boundary.
     pub(crate) fn from_process_env_with_guest_runtime_dir(
-        guest_runtime_dir: guest_contracts::runtime_paths::GuestRuntimeDirEnvResolution,
+        guest_runtime_dir: Option<PathBuf>,
     ) -> Result<Self, String> {
-        let (guest_runtime_dir, _source) = guest_runtime_dir.into_parts();
         let mut bootstrap_alias_sources = BootstrapAliasSourceEvents::default();
         let api_url = api_url_env_or_empty(&mut bootstrap_alias_sources)?;
 

@@ -89,7 +89,7 @@ fn guest_download_env_contains_run_identity_values() {
     );
     assert!(
         !env.iter()
-            .any(|(key, _)| { *key == guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV })
+            .any(|(key, _)| { *key == "VM0_GUEST_RUNTIME_DIR" })
     );
 }
 
