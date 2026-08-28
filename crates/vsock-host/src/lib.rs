@@ -100,7 +100,7 @@ pub use exec_operation::{
     ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest, SupervisedExecCancelHandle,
     SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest, SupervisedExecStartTiming,
 };
-pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
+pub use file::{COPY_FILE_STREAM_MAX_BYTES, CopyFileOptions, CopyFileResult, WriteFileEntry};
 pub use guest_dns_readiness::GuestDnsReadinessResult;
 pub use guest_state_restore::GuestStateRestoreResult;
 pub use guest_storage_manifest::GuestStorageManifestResult;
