@@ -16,11 +16,14 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const TEST_FRONTEND_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
 const TEST_FRONTEND_VERSION = "0.540.0";
+const themeStorage = localStorageSignals("theme");
+const colorThemeStorage = localStorageSignals("colorTheme");
 
 function createMockPreferences(
   overrides?: Partial<UserPreferencesResponse>,
@@ -31,6 +34,8 @@ function createMockPreferences(
     supportedLocales: [...SUPPORTED_USER_LOCALES],
     pinnedAgentIds: [],
     sendMode: "enter",
+    theme: "system",
+    colorTheme: "blue-horizon",
     morningBriefEnabled: false,
     morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
@@ -147,6 +152,116 @@ describe("preferences page", () => {
         "true",
       );
     });
+  });
+
+  it("restores and saves server-backed appearance preferences", async () => {
+    const capturedBodies: Record<string, unknown>[] = [];
+    let storedPreferences = createMockPreferences({
+      theme: "dark",
+      colorTheme: "golden-hour",
+    });
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+      return respond(200, storedPreferences);
+    });
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      storedPreferences = { ...storedPreferences, ...body };
+      return respond(200, storedPreferences);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/settings",
+      featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.getByText("Golden hour")).toBeInTheDocument();
+    });
+    const darkSegment = getSegmentByText("Dark");
+    await waitFor(() => {
+      expect(darkSegment).toHaveAttribute("aria-checked", "true");
+      expect(getButtonByText("Golden hour")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    click(getSegmentByText("Light"));
+    click(getButtonByText("Limelight"));
+
+    await waitFor(() => {
+      expect(capturedBodies).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ theme: "light" }),
+          expect.objectContaining({ colorTheme: "limelight" }),
+        ]),
+      );
+    });
+  });
+
+  it("migrates cached appearance choices when server preferences are unset", async () => {
+    const capturedBodies: Record<string, unknown>[] = [];
+    let storedPreferences = createMockPreferences({
+      theme: null,
+      colorTheme: null,
+    });
+    context.store.set(themeStorage.set$, "dark");
+    context.store.set(colorThemeStorage.set$, "daydream");
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+      return respond(200, storedPreferences);
+    });
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      storedPreferences = { ...storedPreferences, ...body };
+      return respond(200, storedPreferences);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/settings",
+      featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
+    });
+
+    await waitFor(() => {
+      expect(capturedBodies).toContainEqual({
+        theme: "dark",
+        colorTheme: "daydream",
+      });
+      expect(getSegmentByText("Dark")).toHaveAttribute("aria-checked", "true");
+      expect(getButtonByText("Daydream")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
+  it("keeps appearance choices local when served by an older API", async () => {
+    const capturedBodies: Record<string, unknown>[] = [];
+    const oldPreferences = createMockPreferences();
+    delete oldPreferences.theme;
+    delete oldPreferences.colorTheme;
+    context.store.set(themeStorage.set$, "system");
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+      return respond(200, oldPreferences);
+    });
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      return respond(200, { ...oldPreferences, ...body });
+    });
+
+    renderPreferencesPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+    click(getSegmentByText("Dark"));
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+    expect(capturedBodies).toStrictEqual([]);
   });
 
   it("saves send mode and time zone preference changes", async () => {
