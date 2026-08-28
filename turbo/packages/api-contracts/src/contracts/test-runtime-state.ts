@@ -315,10 +315,15 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     connector_id: z.uuid(),
     value_template: z.string(),
   }),
+  z.object({
+    action: z.literal("reconcile-socialkit-downloads"),
+    download_ids: z.array(z.uuid()).min(1).max(2),
+  }),
 ]);
 
 export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
+  processed: z.int().nonnegative().optional(),
   selected_model: z.string().optional(),
   built_in_model_route: builtInModelRuntimeRouteSchema.nullable().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),

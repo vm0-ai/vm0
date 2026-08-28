@@ -280,9 +280,10 @@ function resolveExactV2ArtifactObject(
   userId: string,
   id: string,
   filenameHint: string,
+  variant?: string,
 ): Computed<Promise<ResolvedArtifactObject | null>> {
   return computed(async (get): Promise<ResolvedArtifactObject | null> => {
-    const key = buildArtifactKeyV2(id, filenameHint);
+    const key = buildArtifactKeyV2(id, filenameHint, variant);
     const head = await get(s3ObjectHead(bucket, key));
     return resolvedV2ArtifactObjectFromHead({ userId, id, key, head });
   });
@@ -345,16 +346,20 @@ export function resolvedArtifactObject(
   userId: string,
   id: string,
   filenameHint?: string,
+  variant?: string,
 ): Computed<Promise<ResolvedArtifactObject | null>> {
   return computed(async (get): Promise<ResolvedArtifactObject | null> => {
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     if (filenameHint !== undefined) {
       const exact = await get(
-        resolveExactV2ArtifactObject(bucket, userId, id, filenameHint),
+        resolveExactV2ArtifactObject(bucket, userId, id, filenameHint, variant),
       );
       if (exact) {
         return exact;
       }
+    }
+    if (variant !== undefined) {
+      return null;
     }
     return (
       (await get(resolveV2ArtifactObject(bucket, userId, id))) ??
@@ -370,11 +375,17 @@ export const resolveArtifactObject$ = command(
       readonly userId: string;
       readonly id: string;
       readonly filenameHint?: string;
+      readonly variant?: string;
     },
     signal: AbortSignal,
   ): Promise<ResolvedArtifactObject | null> => {
     const resolved = await get(
-      resolvedArtifactObject(args.userId, args.id, args.filenameHint),
+      resolvedArtifactObject(
+        args.userId,
+        args.id,
+        args.filenameHint,
+        args.variant,
+      ),
     );
     signal.throwIfAborted();
     return resolved;

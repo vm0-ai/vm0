@@ -77,6 +77,36 @@ function socialResponse(
   };
 }
 
+function failedDownloadResponse(status: "provider_failed" | "artifact_failed") {
+  const billed = status === "artifact_failed";
+  return {
+    downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+    status,
+    platform: "youtube",
+    quality: "720p",
+    format: "mp4",
+    maxDuration: 600,
+    billingCategory: "request",
+    provider: billed
+      ? { durationSeconds: 61, fileSizeMB: 2, creditsCost: 2 }
+      : null,
+    billing: billed ? { quantity: 2, creditsCharged: 6 } : null,
+    artifact: null,
+    error: {
+      code: billed
+        ? "ARTIFACT_MATERIALIZATION_FAILED"
+        : "SOCIALKIT_DOWNLOAD_FAILED",
+      message: billed
+        ? "The artifact could not be materialized"
+        : "SocialKit could not prepare the download",
+      retryable: billed,
+      billed,
+    },
+    createdAt: "2026-08-27T00:00:00.000Z",
+    completedAt: billed ? null : "2026-08-27T00:01:00.000Z",
+  };
+}
+
 describe("okou social command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
@@ -101,6 +131,10 @@ describe("okou social command", () => {
       command.setOptionValue("maxPages", undefined);
       command.setOptionValue("maxItems", undefined);
       command.setOptionValue("json", undefined);
+      command.setOptionValue("maxDuration", undefined);
+      command.setOptionValue("quality", undefined);
+      command.setOptionValue("format", undefined);
+      command.setOptionValue("resume", undefined);
     }
   });
 
@@ -681,6 +715,172 @@ describe("okou social command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("starts a download and prints its durable artifact", async () => {
+    let submitted: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/downloads",
+        async ({ request }) => {
+          submitted = await request.json();
+          return HttpResponse.json(
+            {
+              downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+              status: "completed",
+              platform: "youtube",
+              quality: "1080p",
+              format: "mp4",
+              maxDuration: 600,
+              billingCategory: "request",
+              provider: {
+                durationSeconds: 61,
+                fileSizeMB: 2,
+                creditsCost: 2,
+                title: "Public video",
+              },
+              billing: { quantity: 2, creditsCharged: 6 },
+              artifact: {
+                id: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+                url: "https://cdn.vm7.io/artifacts/social-video.mp4",
+                filename: "Public video.mp4",
+                contentType: "video/mp4",
+                sizeBytes: 1024,
+              },
+              error: null,
+              createdAt: "2026-08-27T00:00:00.000Z",
+              completedAt: "2026-08-27T00:01:00.000Z",
+            },
+            { status: 202 },
+          );
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "cli",
+      "download",
+      "youtube",
+      "https://youtu.be/public-video",
+      "--max-duration",
+      "600",
+      "--quality",
+      "1080p",
+      "--json",
+    ]);
+
+    expect(submitted).toStrictEqual({
+      platform: "youtube",
+      url: "https://youtu.be/public-video",
+      maxDuration: 600,
+      quality: "1080p",
+      format: "mp4",
+    });
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      status: "completed",
+      billing: { quantity: 2, creditsCharged: 6 },
+      artifact: { filename: "Public video.mp4" },
+    });
+    expect(errorOutput()).toContain("completed");
+  });
+
+  it("resumes a billed artifact failure without creating a new job", async () => {
+    let createRequests = 0;
+    let statusRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/social/downloads", () => {
+        createRequests += 1;
+        return HttpResponse.error();
+      }),
+      http.get(
+        "http://localhost:3000/api/social/downloads/6bdc3449-41ef-4624-a525-45bce09c67f0",
+        () => {
+          statusRequests += 1;
+          if (statusRequests === 1) {
+            return HttpResponse.json(failedDownloadResponse("artifact_failed"));
+          }
+          return HttpResponse.json({
+            downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+            status: "completed",
+            platform: "youtube",
+            quality: "720p",
+            format: "mp4",
+            maxDuration: 600,
+            billingCategory: "request",
+            provider: {
+              durationSeconds: 60,
+              fileSizeMB: 1,
+              creditsCost: 1,
+            },
+            billing: { quantity: 1, creditsCharged: 3 },
+            artifact: {
+              id: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+              url: "https://cdn.vm7.io/artifacts/social-video.mp4",
+              filename: "Public video.mp4",
+              contentType: "video/mp4",
+              sizeBytes: 1024,
+            },
+            error: null,
+            createdAt: "2026-08-27T00:00:00.000Z",
+            completedAt: "2026-08-27T00:01:00.000Z",
+          });
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "cli",
+      "download",
+      "--resume",
+      "6bdc3449-41ef-4624-a525-45bce09c67f0",
+      "--json",
+    ]);
+
+    expect(createRequests).toBe(0);
+    expect(statusRequests).toBe(2);
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+      status: "completed",
+    });
+    expect(errorOutput()).toContain("artifact_failed");
+  });
+
+  it.each([
+    {
+      caseName: "a free provider failure",
+      status: "provider_failed" as const,
+      message: "failed before billing",
+    },
+    {
+      caseName: "a billed artifact failure",
+      status: "artifact_failed" as const,
+      message: "was billed but artifact materialization failed",
+    },
+  ])("reports $caseName accurately", async ({ status, message }) => {
+    server.use(
+      http.post("http://localhost:3000/api/social/downloads", () => {
+        return HttpResponse.json(failedDownloadResponse(status), {
+          status: 202,
+        });
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "download",
+        "youtube",
+        "https://youtu.be/public-video",
+        "--max-duration",
+        "600",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(message);
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("documents typed discovery, calls, billing, and security boundaries", () => {
     const tools = socialCommand.commands.find((command) => {
       return command.name() === "tools";
@@ -702,12 +902,17 @@ describe("okou social command", () => {
     expect(call?.helpInformation()).toContain("--max-pages");
     expect(call?.helpInformation()).toContain("--max-items");
     expect(call?.helpInformation()).toContain("--json");
+    const download = socialCommand.commands.find((command) => {
+      return command.name() === "download";
+    });
+    expect(download?.helpInformation()).toContain("--max-duration");
+    expect(download?.helpInformation()).toContain("--resume");
     expect(socialHelp).toContain("38 typed tools");
     expect(socialHelp).toContain("okou social tools --json");
     expect(socialHelp).toContain("youtube_summarize");
-    expect(socialHelp).toContain(
-      "download, bulk, and direct-video tools are rejected",
-    );
+    expect(socialHelp).toContain("okou social download youtube");
+    expect(socialHelp).toContain("durable Okou artifacts");
+    expect(socialHelp).toContain("Unknown bulk and direct-video tools");
     expect(socialHelp).toContain(
       "Full retrieval bills and emits each successful provider page independently",
     );
