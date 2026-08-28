@@ -42,7 +42,7 @@ _STREAM_ENDPOINTS = frozenset(
 )
 
 
-def _is_stream_path(path: str) -> bool:
+def is_stream_path(path: str) -> bool:
     """Return True when *path* is one of the X v2 NDJSON streaming endpoints.
 
     Exact match only — ``/2/tweets/search/stream/rules`` (rules management)
@@ -326,7 +326,7 @@ def create_response_parser(
         # Use the dispatcher-required original URL so parser registration and
         # final request metadata cannot diverge.
         stream_path = urllib.parse.urlparse(original_url).path
-        if _is_stream_path(stream_path):
+        if is_stream_path(stream_path):
             extractor = _NdjsonExtractor()
             # Deliberately NOT "model_provider_usage" — that key routes through
             # report_model_provider_usage and triggers the model-provider webhook.
