@@ -10,6 +10,7 @@ import {
   ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS,
   webhookCheckpointsContract,
   webhookCompleteContract,
+  webhookModelUsageObservationContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
@@ -17,6 +18,28 @@ import {
 
 const storageId = "00000000-0000-4000-8000-000000000000";
 const manifestHash = "a".repeat(64);
+
+describe("sandbox model usage observation contract", () => {
+  it("keeps the legacy run-partitioned payload", () => {
+    const body = {
+      runId: "00000000-0000-4000-8000-000000000001",
+      events: [
+        {
+          idempotencyKey: "00000000-0000-4000-8000-000000000002",
+          model: "gpt-5.6-sol",
+          inputTokens: 1,
+          outputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
+      ],
+    };
+
+    expect(
+      webhookModelUsageObservationContract.send.body.parse(body),
+    ).toStrictEqual(body);
+  });
+});
 
 describe("agent checkpoint session history", () => {
   const baseBody = {

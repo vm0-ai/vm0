@@ -27,6 +27,7 @@ import {
   runnersBuiltinFirewallsResolveContract,
   runnersConnectorRuntimeSyncContract,
   runnersJobClaimContract,
+  runnersModelUsageObservationsContract,
   runnersPollContract,
   storageMountEntrySchema,
   storageManifestSchema,
@@ -36,6 +37,52 @@ import {
 } from "../runners";
 import { runRunnerContract } from "../run-routes";
 import { MAX_EVENT_SEQUENCE_NUMBER } from "../runs";
+
+describe("runner model usage observations contract", () => {
+  const event = {
+    idempotencyKey: "00000000-0000-4000-8000-000000000000",
+    model: "gpt-5.6-sol",
+    inputTokens: 1,
+    outputTokens: 2,
+    cacheReadInputTokens: 3,
+    cacheCreationInputTokens: 4,
+  };
+
+  it("accepts an events-only cross-job payload", () => {
+    expect(
+      runnersModelUsageObservationsContract.report.body.parse({
+        events: [event],
+      }),
+    ).toStrictEqual({ events: [event] });
+  });
+
+  it("rejects invalid observation batches", () => {
+    const invalidBodies = [
+      { events: [] },
+      { events: [{ ...event, inputTokens: Number.MAX_SAFE_INTEGER + 1 }] },
+      {
+        events: [
+          {
+            ...event,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        ],
+      },
+      { events: [event, event] },
+      { events: [event], runId: "run-partition-is-not-accepted" },
+    ];
+
+    for (const body of invalidBodies) {
+      expect(
+        runnersModelUsageObservationsContract.report.body.safeParse(body)
+          .success,
+      ).toBe(false);
+    }
+  });
+});
 
 describe("agent execution timing contract", () => {
   it("keeps one run bounded to two hours", () => {
