@@ -268,7 +268,10 @@ async fn guest_agent_rejects_runtime_alias_conflict_before_capabilities_and_priv
         Some(legacy_dir.as_os_str()),
     );
     command
-        .env(process_control_ipc::BOOTSTRAP_ENV, &process_endpoint)
+        .env(
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+            &process_endpoint,
+        )
         .env(
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             &workload_endpoint,
@@ -322,7 +325,10 @@ async fn guest_agent_rejects_relative_runtime_alias_before_capability_connection
     let mut command = guest_agent_command(root.path(), "relative-runtime", &private_files);
     apply_runtime_aliases(&mut command, Some(OsStr::new("relative-runtime")), None);
     command
-        .env(process_control_ipc::BOOTSTRAP_ENV, "process-control")
+        .env(
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+            "process-control",
+        )
         .env(
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             &workload_endpoint,
