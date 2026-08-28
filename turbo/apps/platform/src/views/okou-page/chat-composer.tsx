@@ -10260,7 +10260,7 @@ function ComposerModelScopeCard({
               return $.chat.composer.temporarilySwitchTo;
             })}
           </span>
-          <span className="font-medium text-foreground">{model}</span>
+          <span className="text-foreground">{model}</span>
         </div>
         <Button
           type="button"
