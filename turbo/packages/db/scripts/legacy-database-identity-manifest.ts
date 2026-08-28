@@ -69,7 +69,7 @@ function physicalEntries(
 const workflowDisposition = {
   classification: "migrate",
   reason:
-    "The physical Workflow storage cluster and its compatibility views remain on the staged expand, switch, and contract path.",
+    "The six legacy Workflow compatibility views remain on the staged switch and contract path after canonical physical promotion.",
   ownerIssue: "#26896",
   writerStopCondition:
     "The #26896 canonical read/write switch is production-accepted and every supported rollback build addresses all six canonical Workflow relations.",
@@ -81,283 +81,33 @@ const workflowDisposition = {
 
 const workflowIdentities = [
   {
-    key: "relation:public.zero_workflow_automations",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflow_github_processed_events",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflow_strapi_automations",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflow_webhook_automations",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflow_webhook_deliveries",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflows",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "view:public.workflow_automations",
+    key: "view:public.zero_workflow_automations",
     kind: "view",
     sources: CATALOG_ONLY,
   },
   {
-    key: "view:public.workflow_github_processed_events",
+    key: "view:public.zero_workflow_github_processed_events",
     kind: "view",
     sources: CATALOG_ONLY,
   },
   {
-    key: "view:public.workflow_strapi_automations",
+    key: "view:public.zero_workflow_strapi_automations",
     kind: "view",
     sources: CATALOG_ONLY,
   },
   {
-    key: "view:public.workflow_webhook_automations",
+    key: "view:public.zero_workflow_webhook_automations",
     kind: "view",
     sources: CATALOG_ONLY,
   },
   {
-    key: "view:public.workflow_webhook_deliveries",
+    key: "view:public.zero_workflow_webhook_deliveries",
     kind: "view",
     sources: CATALOG_ONLY,
   },
   {
-    key: "view:public.workflows",
+    key: "view:public.zero_workflows",
     kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "index:public.idx_zero_workflow_automations_next_run",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_automations_official_blueprint_unique",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_automations_org",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_automations_workflow",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_github_processed_automation_delivery",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_github_processed_subject",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_strapi_automations_integration",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_webhook_automations_token_hash",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_webhook_deliveries_automation_key",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_webhook_deliveries_automation_received",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_agent",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_org",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_org_owner",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_private_owner_agent_name_unique",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_public_agent_name_unique",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.agent_runs.agent_runs_workflow_automation_id_zero_workflow_automations_id_",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.gmail_processed_events.gmail_processed_events_automation_id_zero_workflow_automations_",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.google_calendar_processed_events.google_calendar_processed_events_automation_id_zero_workflow_au",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.google_forms_automation_cursors.google_forms_automation_cursors_automation_id_zero_workflow_aut",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.google_forms_processed_events.google_forms_processed_events_automation_id_zero_workflow_autom",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.google_workspace_processed_events.google_workspace_processed_events_automation_id_zero_workflow_a",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.notion_workflow_pending_events.notion_workflow_pending_events_automation_id_zero_workflow_auto",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.official_workflow_automation_identities.official_workflow_automation_identity_automation_fk",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.official_workflow_automation_identities.official_workflow_automation_identity_workflow_fk",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.strapi_workflow_pending_events.strapi_workflow_pending_events_automation_id_zero_workflow_auto",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.stripe_workflow_automation_health.stripe_workflow_automation_health_automation_id_zero_workflow_a",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.workflow_user_automation_threads.workflow_user_automation_threads_workflow_id_zero_workflows_id_",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_autonomy_budget_check",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_official_binding_check",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_schedule_config_check",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_workflow_id_zero_workflows_id_fk",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_github_processed_events.zero_workflow_github_processed_events_automation_id_zero_workfl",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_strapi_automations.zero_workflow_strapi_automations_automation_id_zero_workflow_au",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_strapi_automations.zero_workflow_strapi_automations_integration_id_strapi_integrat",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_webhook_automations.zero_workflow_webhook_automations_automation_id_zero_workflow_a",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_webhook_deliveries.zero_workflow_webhook_deliveries_automation_id_zero_workflow_au",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflows.zero_workflows_agent_id_agents_id_fk",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflows.zero_workflows_official_installation_check",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflow_github_processed_events.zero_workflow_github_processed_events_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflow_strapi_automations.zero_workflow_strapi_automations_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflow_webhook_automations.zero_workflow_webhook_automations_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflow_webhook_deliveries.zero_workflow_webhook_deliveries_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflows.zero_workflows_pkey",
-    kind: "constraint",
     sources: CATALOG_ONLY,
   },
 ] as const satisfies readonly PhysicalIdentitySpec[];

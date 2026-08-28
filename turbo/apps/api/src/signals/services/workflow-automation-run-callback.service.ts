@@ -54,7 +54,7 @@ function parseWorkflowAutomationPayload(
  * the next occurrence from the completion time, loop by its interval; a
  * disabled automation (e.g. a claimed one-time automation) does not recur. Consecutive
  * failures auto-disable the automation after three. It is keyed on
- * `zero_workflow_automations`.
+ * `workflow_automations`.
  */
 export async function handleWorkflowAutomationInternalCallback(
   db: Db,

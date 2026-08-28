@@ -996,7 +996,7 @@ function canUseAgent(agent: UsableAgent, member: WorkflowMember): boolean {
 
 /**
  * Resolve the workflow's single owning agent for an automation. Under 1:N the agent
- * is derived from `zero_workflows.agent_id`, not from the automation row.
+ * is derived from `workflows.agent_id`, not from the automation row.
  */
 async function loadAutomationWorkflowAgentId(
   db: ReadonlyDb,
