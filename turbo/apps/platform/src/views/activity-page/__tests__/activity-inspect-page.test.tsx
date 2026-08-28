@@ -664,9 +664,9 @@ describe("activity inspect page", () => {
     expect(
       screen.getByText("Codex inspect assistant output remains visible."),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("[warning] Inspect adapter warning"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText("[warning] Inspect adapter warning"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByText((_, element) => {
         return (
