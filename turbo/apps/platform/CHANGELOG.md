@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.808.2](https://github.com/vm0-ai/vm0/compare/app-v0.808.1...app-v0.808.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* **platform:** prevent mobile input focus zoom ([#30159](https://github.com/vm0-ai/vm0/issues/30159)) ([aae87e4](https://github.com/vm0-ai/vm0/commit/aae87e417fd77ced9a24ea0917fe8250222948fd))
+
 ## [0.808.1](https://github.com/vm0-ai/vm0/compare/app-v0.808.0...app-v0.808.1) (2026-08-28)
 
 
