@@ -59,6 +59,30 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 - [Multi-architecture rollout](../docs/runner-multi-architecture.md): select,
   build, deploy, and validate architecture-specific runner artifacts.
 
+## nbd-cow Benchmark
+
+The `nbd-cow` benchmark compares NBD COW with dm-snapshot using fio workloads. It is an opt-in,
+feature-gated benchmark that must run as root on a host with the required device tooling.
+
+Run it from the repository root:
+
+```bash
+cargo run --manifest-path crates/Cargo.toml -p nbd-cow --features bench --bin bench -- [base-size-mb]
+```
+
+`base-size-mb` is optional. It specifies the base image size in MB, defaults to 1024 MB, and must
+be at least 1024 MB (inclusive).
+
+Before running the benchmark, ensure that:
+
+- the process runs as root;
+- `fio`, `losetup`, and `dmsetup` are available on `PATH`; and
+- the NBD kernel module is loaded:
+
+  ```bash
+  modprobe nbd nbds_max=4096
+  ```
+
 ## Logging
 
 Runner Rust logs are recorded to local files, stderr, and CI at `info` and
