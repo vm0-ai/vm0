@@ -22,7 +22,7 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
   suffix=${unit#vm0-runner-}
   suffix=${suffix%.service}
   case "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" in
-    direct|keep-service|transient|uninstall-failure|remove-failure|becomes-active|becomes-recent)
+    direct|keep-service|transient|uninstall-failure|unit-remains-installed|remove-failure|becomes-active|becomes-recent)
       binary_dirname=binary-opaque
       config="$OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/runner.yaml"
       ;;
@@ -126,6 +126,14 @@ fn touching_fake_uninstall_service_unit(
     })
 }
 
+fn no_fake_service_unit_file_exists(_unit: &service::RunnerServiceUnit) -> RunnerResult<bool> {
+    Ok(false)
+}
+
+fn fake_service_unit_file_remains(_unit: &service::RunnerServiceUnit) -> RunnerResult<bool> {
+    Ok(true)
+}
+
 fn failing_remove_dir_all(_path: &Path) -> RemoveDirAllFuture<'_> {
     Box::pin(async {
         Err(std::io::Error::new(
@@ -208,6 +216,7 @@ async fn gc_managed_resources(
         },
         ManagedResourceGcOperations {
             uninstall_service: successful_fake_uninstall_service_unit,
+            service_unit_file_exists: no_fake_service_unit_file_exists,
             remove_dir_all: real_remove_dir_all,
         },
     )
@@ -847,6 +856,21 @@ async fn uninstall_failure_keeps_service_resources_for_retry() {
 }
 
 #[tokio::test]
+async fn persistent_unit_file_after_uninstall_keeps_service_resources_for_retry() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home = HomePaths::with_root(dir.path().join("home"));
+    create_managed_resources(
+        &home,
+        "binary-opaque",
+        "config-opaque",
+        old_mtime(1_000_000),
+    );
+
+    run_systemctl_scenario(dir.path(), &home, "unit-remains-installed").await;
+}
+
+#[tokio::test]
 async fn directory_removal_failure_preserves_image_inventory_for_retry() {
     let dir = tempfile::tempdir().unwrap();
     install_fake_systemctl(dir.path());
@@ -1071,6 +1095,7 @@ async fn managed_resource_gc_systemctl_child() {
                 },
                 ManagedResourceGcOperations {
                     uninstall_service: unexpected_fake_uninstall_service_unit,
+                    service_unit_file_exists: no_fake_service_unit_file_exists,
                     remove_dir_all: real_remove_dir_all,
                 },
             )
@@ -1132,6 +1157,41 @@ async fn managed_resource_gc_systemctl_child() {
                 },
                 ManagedResourceGcOperations {
                     uninstall_service: failing_fake_uninstall_service_unit,
+                    service_unit_file_exists: no_fake_service_unit_file_exists,
+                    remove_dir_all: real_remove_dir_all,
+                },
+            )
+            .await
+            .unwrap();
+            let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+            assert!(report.is_empty());
+            assert_eq!(
+                retained_config_paths,
+                [home.runners_dir().join("config-opaque/runner.yaml")]
+            );
+            assert!(inventory_complete);
+            assert!(home.bin_dir().join("binary-opaque").exists());
+            assert!(home.runners_dir().join("config-opaque").exists());
+            assert!(unit.lock_path(&home).exists());
+        }
+        "unit-remains-installed" => {
+            let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
+            let outcome = gc_managed_resources_with_operations(
+                &home,
+                ManagedResourceGcRequest {
+                    persistent_service_suffixes: &persistent,
+                    reference_only_service_suffixes: &[],
+                    keep_service_suffixes: &empty,
+                    keep_bin_dirnames: &empty,
+                    keep_runner_dirnames: &empty,
+                    keep_latest: Some(0),
+                    service_inventory_complete: true,
+                    dry_run: false,
+                },
+                ManagedResourceGcOperations {
+                    uninstall_service: successful_fake_uninstall_service_unit,
+                    service_unit_file_exists: fake_service_unit_file_remains,
                     remove_dir_all: real_remove_dir_all,
                 },
             )
@@ -1165,6 +1225,7 @@ async fn managed_resource_gc_systemctl_child() {
                 },
                 ManagedResourceGcOperations {
                     uninstall_service: successful_fake_uninstall_service_unit,
+                    service_unit_file_exists: no_fake_service_unit_file_exists,
                     remove_dir_all: failing_remove_dir_all,
                 },
             )
@@ -1228,6 +1289,7 @@ async fn managed_resource_gc_systemctl_child() {
                 },
                 ManagedResourceGcOperations {
                     uninstall_service: touching_fake_uninstall_service_unit,
+                    service_unit_file_exists: no_fake_service_unit_file_exists,
                     remove_dir_all: real_remove_dir_all,
                 },
             )

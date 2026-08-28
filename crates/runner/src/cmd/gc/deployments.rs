@@ -31,11 +31,23 @@ const RESOURCE_QUERY_CONCURRENCY: usize = 4;
 
 type ServiceUninstallFuture<'a> = Pin<Box<dyn Future<Output = RunnerResult<()>> + 'a>>;
 type ServiceUninstallFn = for<'a> fn(&'a service::RunnerServiceUnit) -> ServiceUninstallFuture<'a>;
+type ServiceUnitFileExistsFn = fn(&service::RunnerServiceUnit) -> RunnerResult<bool>;
 type RemoveDirAllFuture<'a> = Pin<Box<dyn Future<Output = std::io::Result<()>> + 'a>>;
 type RemoveDirAllFn = for<'a> fn(&'a Path) -> RemoveDirAllFuture<'a>;
 
 fn real_uninstall_service_unit(unit: &service::RunnerServiceUnit) -> ServiceUninstallFuture<'_> {
     Box::pin(service::uninstall_service_unit(unit))
+}
+
+fn real_service_unit_file_exists(unit: &service::RunnerServiceUnit) -> RunnerResult<bool> {
+    match std::fs::symlink_metadata(unit.unit_file_path()) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "inspect installed Runner service unit {}: {error}",
+            unit.unit_file_path().display()
+        ))),
+    }
 }
 
 fn real_remove_dir_all(path: &Path) -> RemoveDirAllFuture<'_> {
@@ -102,6 +114,7 @@ struct ManagedResourceGcRequest<'a> {
 
 struct ManagedResourceGcOperations {
     uninstall_service: ServiceUninstallFn,
+    service_unit_file_exists: ServiceUnitFileExistsFn,
     remove_dir_all: RemoveDirAllFn,
 }
 
@@ -241,6 +254,7 @@ pub(super) async fn gc_managed_resources(
         },
         ManagedResourceGcOperations {
             uninstall_service: real_uninstall_service_unit,
+            service_unit_file_exists: real_service_unit_file_exists,
             remove_dir_all: real_remove_dir_all,
         },
     )
@@ -264,6 +278,7 @@ async fn gc_managed_resources_with_operations(
     } = request;
     let ManagedResourceGcOperations {
         uninstall_service,
+        service_unit_file_exists,
         remove_dir_all,
     } = operations;
 
@@ -366,6 +381,25 @@ async fn gc_managed_resources_with_operations(
             );
             record.retain_record = true;
             continue;
+        }
+        match service_unit_file_exists(&record.unit) {
+            Ok(false) => {}
+            Ok(true) => {
+                warn!(
+                    "runner service {}: installed unit file remains after uninstall; retaining its exact resources",
+                    record.unit.suffix()
+                );
+                record.retain_record = true;
+                continue;
+            }
+            Err(error) => {
+                warn!(
+                    "runner service {}: cannot verify installed unit removal ({error}); retaining its exact resources",
+                    record.unit.suffix()
+                );
+                record.retain_record = true;
+                continue;
+            }
         }
         let lock_path = record.unit.lock_path(home);
         if let Some(Some(service_lock)) = locks_by_suffix.get(record.unit.suffix()) {
