@@ -291,12 +291,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
-  [FeatureSwitchKey.IntroVideoTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Expose intro-video templates and their implementation-specific authoring flows.",
-    enabled: false,
-  },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:

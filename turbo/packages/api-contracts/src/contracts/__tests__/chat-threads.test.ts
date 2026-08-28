@@ -545,29 +545,6 @@ describe("chat thread generation template contract", () => {
     });
   });
 
-  it("accepts intro-video template selections as their own type", () => {
-    const parsed = generationTemplateRequestSchema.safeParse({
-      type: "intro-video",
-      selection: {
-        templateId: "intro-video-template:interview",
-      },
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("rejects video-envelope fields on intro-video selections", () => {
-    const parsed = generationTemplateRequestSchema.safeParse({
-      type: "intro-video",
-      selection: {
-        templateId: "intro-video-template:interview",
-        stylePresetId: "intro-video-template:interview",
-      },
-    });
-
-    expect(parsed.success).toBe(false);
-  });
-
   it("rejects empty workflow template ids", () => {
     const parsed = generationTemplateRequestSchema.safeParse({
       type: "workflow",

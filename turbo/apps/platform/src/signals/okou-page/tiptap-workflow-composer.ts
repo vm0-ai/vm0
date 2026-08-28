@@ -226,7 +226,6 @@ export type ComposerTemplateAttachmentType =
   | "presentation"
   | "illustration"
   | "video"
-  | "intro-video"
   | "avatar"
   | "workflow"
   | "website";
@@ -731,7 +730,6 @@ function templateAttachmentNodeAttributes(
     (type !== "presentation" &&
       type !== "illustration" &&
       type !== "video" &&
-      type !== "intro-video" &&
       type !== "avatar" &&
       type !== "workflow" &&
       type !== "website") ||
@@ -752,7 +750,7 @@ function templateAttachmentNodeAttributes(
 function templateAttachmentPreviewLabel(
   attachment: ComposerTemplateAttachment,
 ): string {
-  if (attachment.type === "video" || attachment.type === "intro-video") {
+  if (attachment.type === "video") {
     return i18n.t(
       ($) => {
         return $.chat.templates.previewVideo;
@@ -795,7 +793,7 @@ function templateAttachmentPreviewLabel(
 function templateAttachmentRemoveLabel(
   attachment: ComposerTemplateAttachment,
 ): string {
-  if (attachment.type === "video" || attachment.type === "intro-video") {
+  if (attachment.type === "video") {
     return i18n.t(
       ($) => {
         return $.chat.templates.removeVideo;
@@ -851,11 +849,6 @@ function templateAttachmentTypeLabel(
   if (type === "video") {
     return i18n.t(($) => {
       return $.chat.templates.categories.video;
-    });
-  }
-  if (type === "intro-video") {
-    return i18n.t(($) => {
-      return $.chat.templates.categories.introVideo;
     });
   }
   if (type === "avatar") {
@@ -1280,7 +1273,6 @@ function isComposerTemplateAttachmentType(
     value === "presentation" ||
     value === "illustration" ||
     value === "video" ||
-    value === "intro-video" ||
     value === "avatar" ||
     value === "workflow" ||
     value === "website"
