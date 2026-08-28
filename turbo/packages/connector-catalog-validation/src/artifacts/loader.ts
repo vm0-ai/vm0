@@ -5,9 +5,7 @@ import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts
 import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import { z } from "zod";
 
-import { safeJsonParse, safeSync } from "../../utils";
-import type { ApiDispatchTimingActionType } from "../api-dispatch-timing.service";
-import type { ConnectorCatalogLoadTiming } from "../connector-catalog-load-timing.service";
+import { attempt, parseJson } from "../safe";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   connectorCatalogArtifactSchema,
@@ -24,6 +22,21 @@ import { validateConnectorCatalogArtifact } from "./relationships";
 
 const ACTIVE_POINTER_MAX_BYTES = 16 * 1024;
 const CONNECTOR_CATALOG_MAX_GZIP_BYTES = CONNECTOR_CATALOG_MAX_RAW_BYTES * 2;
+
+export type ConnectorCatalogValidationTimingAction =
+  | "api_dispatch_connector_catalog_decompress"
+  | "api_dispatch_connector_catalog_verify_digest"
+  | "api_dispatch_connector_catalog_decode_json"
+  | "api_dispatch_connector_catalog_validate_schema"
+  | "api_dispatch_connector_catalog_validate_public_projection"
+  | "api_dispatch_connector_catalog_validate_relationships";
+
+export interface ConnectorCatalogValidationTiming {
+  measureSync<T>(
+    actionType: ConnectorCatalogValidationTimingAction,
+    operation: () => T,
+  ): T;
+}
 
 const connectorCatalogObjectKeySchema = artifactKeySchema.refine((key) => {
   const namespace = `connectors/v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/`;
@@ -115,13 +128,13 @@ async function readBoundedArtifact(
 }
 
 function decodedJson(bytes: Uint8Array): unknown {
-  const decoded = safeSync(() => {
+  const decoded = attempt(() => {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   });
   if (!("ok" in decoded)) {
     fail("invalid-json");
   }
-  const value = safeJsonParse(decoded.ok);
+  const value = parseJson(decoded.ok);
   if (value === undefined) {
     fail("invalid-json");
   }
@@ -151,8 +164,8 @@ function assertSupportedArtifactSchema(value: unknown): void {
 }
 
 function measureSnapshotPhase<T>(
-  timing: ConnectorCatalogLoadTiming | undefined,
-  actionType: ApiDispatchTimingActionType,
+  timing: ConnectorCatalogValidationTiming | undefined,
+  actionType: ConnectorCatalogValidationTimingAction,
   operation: () => T,
 ): T {
   return timing ? timing.measureSync(actionType, operation) : operation();
@@ -161,7 +174,7 @@ function measureSnapshotPhase<T>(
 function validateCatalogJson(args: {
   readonly json: unknown;
   readonly catalogVersion: string;
-  readonly timing?: ConnectorCatalogLoadTiming;
+  readonly timing?: ConnectorCatalogValidationTiming;
 }): ConnectorCatalogArtifact {
   const artifact = measureSnapshotPhase(
     args.timing,
@@ -183,7 +196,7 @@ function validateCatalogJson(args: {
     args.timing,
     "api_dispatch_connector_catalog_validate_public_projection",
     () => {
-      const publicProjection = safeSync(() => {
+      const publicProjection = attempt(() => {
         validateConnectorCatalogPublicProjection(artifact);
       });
       if (!("ok" in publicProjection)) {
@@ -195,7 +208,7 @@ function validateCatalogJson(args: {
     args.timing,
     "api_dispatch_connector_catalog_validate_relationships",
     () => {
-      const relationships = safeSync(() => {
+      const relationships = attempt(() => {
         validateConnectorCatalogArtifact(artifact);
       });
       if (!("ok" in relationships)) {
@@ -208,7 +221,7 @@ function validateCatalogJson(args: {
 
 function decodeCatalogJson(
   bytes: Uint8Array,
-  timing: ConnectorCatalogLoadTiming | undefined,
+  timing: ConnectorCatalogValidationTiming | undefined,
 ): unknown {
   return measureSnapshotPhase(
     timing,
@@ -222,7 +235,7 @@ function decodeCatalogJson(
 function parseAndValidateCatalog(args: {
   readonly bytes: Uint8Array;
   readonly catalogVersion: string;
-  readonly timing?: ConnectorCatalogLoadTiming;
+  readonly timing?: ConnectorCatalogValidationTiming;
 }): ConnectorCatalogArtifact {
   return validateCatalogJson({
     json: decodeCatalogJson(args.bytes, args.timing),
@@ -277,7 +290,7 @@ export function encodeConnectorCatalogSnapshot(rawBytes: Uint8Array): Buffer {
 }
 
 function gunzipCatalog(bytes: Uint8Array): Buffer {
-  const decompressed = safeSync(() => {
+  const decompressed = attempt(() => {
     return gunzipSync(bytes, {
       maxOutputLength: CONNECTOR_CATALOG_MAX_RAW_BYTES,
     });
@@ -299,7 +312,7 @@ interface ConnectorCatalogSnapshotDecodeArgs {
   readonly catalogRawSize: number;
   readonly catalogVersion: string;
   readonly catalogDigest: string;
-  readonly timing?: ConnectorCatalogLoadTiming;
+  readonly timing?: ConnectorCatalogValidationTiming;
 }
 
 function decodeConnectorCatalogSnapshotJson(

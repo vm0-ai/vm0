@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.601.0](https://github.com/vm0-ai/vm0/compare/core-v8.600.1...core-v8.601.0) (2026-08-28)
+
+
+### Features
+
+* **platform:** improve shared conversation handoff ([#29752](https://github.com/vm0-ai/vm0/issues/29752)) ([c60c27d](https://github.com/vm0-ai/vm0/commit/c60c27d452cf7679abc220f68c7590faecc04672))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.380.0
+
 ## [8.600.1](https://github.com/vm0-ai/vm0/compare/core-v8.600.0...core-v8.600.1) (2026-08-28)
 
 

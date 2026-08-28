@@ -32,14 +32,14 @@ import {
   type ConnectorCatalogArtifact,
   type ConnectorCatalogArtifactConnector,
   type ConnectorCatalogAuthMethod,
-} from "./connector-catalog-artifacts/artifacts";
+} from "@okouai/connector-catalog-validation/artifacts/artifacts";
 import {
   connectorCatalogArtifactFailureCode,
   decodeAttestedConnectorCatalogSnapshot,
   decodeConnectorCatalogSnapshot,
-} from "./connector-catalog-artifacts/loader";
-import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
-import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
+} from "@okouai/connector-catalog-validation/artifacts/loader";
+import { connectorCatalogIconUrl } from "@okouai/connector-catalog-validation/artifacts/icon";
+import { deriveConnectorCatalogFirewallPermissions } from "@okouai/connector-catalog-validation/artifacts/relationships";
 import {
   connectorCatalogCompatibilityEvaluationSchema,
   connectorCatalogExecutableCapabilityState,
@@ -194,13 +194,13 @@ function identityLogFields(identity: ExternalCatalogIdentity) {
 
 function persistedCatalogValidationAuthority(args: {
   readonly backendVersion: string | null;
-  readonly buildCommitSha: string | null;
+  readonly validationRevision: string | null;
 }): ConnectorCatalogValidationAuthority | null {
   return args.backendVersion === null
     ? null
     : {
-        backendVersion: args.backendVersion,
-        buildCommitSha: args.buildCommitSha,
+        validatorVersion: args.backendVersion,
+        buildCommitSha: args.validationRevision,
       };
 }
 
@@ -388,7 +388,7 @@ async function readCurrentCatalog(args: {
   };
   const validationAuthority = persistedCatalogValidationAuthority({
     backendVersion: row.catalogValidationBackendVersion,
-    buildCommitSha: row.catalogValidationBuildCommitSha,
+    validationRevision: row.catalogValidationBuildCommitSha,
   });
   const compatibilityEvaluationExists = row.executableCapabilityDigest !== null;
   const validationAuthorityIsCurrent =
@@ -417,7 +417,7 @@ async function readCurrentCatalog(args: {
     args.timing,
     "api_dispatch_connector_catalog_validate_compatibility",
     () => {
-      if (!compatibilityEvaluationExists) {
+      if (!validationAuthorityIsCurrent) {
         return evaluateConnectorCatalogCompatibility({
           artifact: decoded.artifact,
           capability: args.capability,

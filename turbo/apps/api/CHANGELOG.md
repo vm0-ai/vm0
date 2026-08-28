@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.507.0](https://github.com/vm0-ai/vm0/compare/api-v1.506.2...api-v1.507.0) (2026-08-28)
+
+
+### Features
+
+* add official workflow product surface ([#29996](https://github.com/vm0-ai/vm0/issues/29996)) ([71ff589](https://github.com/vm0-ai/vm0/commit/71ff589c65d4f6852f331243472e9d1002418a02))
+* improve okou social discovery and branding ([#30096](https://github.com/vm0-ai/vm0/issues/30096)) ([28e6fe6](https://github.com/vm0-ai/vm0/commit/28e6fe6a63a98e0ce80a68fbaa6fbd06afd6a73b))
+* **platform:** improve shared conversation handoff ([#29752](https://github.com/vm0-ai/vm0/issues/29752)) ([c60c27d](https://github.com/vm0-ai/vm0/commit/c60c27d452cf7679abc220f68c7590faecc04672))
+
+
+### Bug Fixes
+
+* **goal:** allow mutations during autonomous continuation ([#30128](https://github.com/vm0-ai/vm0/issues/30128)) ([4e3ab83](https://github.com/vm0-ai/vm0/commit/4e3ab83d59e4414561f74d7f38d31955ee1fa0ea))
+
+
+### Performance Improvements
+
+* **api:** reuse unchanged catalog validation authority ([#30062](https://github.com/vm0-ai/vm0/issues/30062)) ([6f17c79](https://github.com/vm0-ai/vm0/commit/6f17c79b5f8ffe4a73680ea9b508dbe72d540643))
+* **api:** stop persisting run-output progress per event batch ([#30108](https://github.com/vm0-ai/vm0/issues/30108)) ([28a8e7c](https://github.com/vm0-ai/vm0/commit/28a8e7cb93fa566da1012cc9946d216a8c251f2b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.380.0
+    * @okouai/connector-catalog-validation bumped to 2.0.1
+    * @okouai/core bumped to 8.601.0
+    * @okouai/db bumped to 1.228.3
+
 ## [1.506.2](https://github.com/vm0-ai/vm0/compare/api-v1.506.1...api-v1.506.2) (2026-08-28)
 
 

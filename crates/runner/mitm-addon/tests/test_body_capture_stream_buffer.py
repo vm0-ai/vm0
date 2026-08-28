@@ -232,6 +232,33 @@ class TestBodyCaptureStreamBuffer:
         assert "request_body_encoding" not in entry
         assert entry["request_body_truncated"] is True
 
+    @pytest.mark.parametrize(
+        ("complete", "expected_truncated"),
+        [
+            pytest.param(True, False, id="complete"),
+            pytest.param(False, True, id="incomplete"),
+        ],
+    )
+    def test_empty_failed_request_stream_decode_omits_encoding(
+        self, real_flow, complete, expected_truncated
+    ):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            request_encoding="compress",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, b"", complete=complete)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        if expected_truncated:
+            assert entry["request_body_truncated"] is True
+        else:
+            assert "request_body_truncated" not in entry
+
     def test_binary_request_stream_buffer_truncated_marks_truncation(self, real_flow):
         body = b"\x00" * STREAM_BUFFER_LIMIT
         flow = real_flow(

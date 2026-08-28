@@ -1,22 +1,36 @@
+import {
+  connectorCatalogValidationAuthorityIsCurrent,
+  connectorCatalogValidationAuthorityIsCurrentOrNewer,
+  createConnectorCatalogValidatorIdentity,
+  type ConnectorCatalogValidationAuthority,
+  type ConnectorCatalogValidatorIdentity,
+} from "@okouai/connector-catalog-validation/authority";
+import { CONNECTOR_CATALOG_VALIDATOR_VERSION } from "@okouai/connector-catalog-validation/version";
+
 import { getBuildVersion, normalizeBuildCommitSha } from "../../lib/build-info";
 import { env } from "../../lib/env";
 
 const CORE_SEMVER_REGEX =
   /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
+const BUILD_COMMIT_SHA_REGEX = /^[a-f0-9]{40}$/u;
 
-export interface ConnectorCatalogValidationAuthority {
+export {
+  connectorCatalogValidationAuthorityIsCurrent,
+  connectorCatalogValidationAuthorityIsCurrentOrNewer,
+  createConnectorCatalogValidatorIdentity,
+};
+export type {
+  ConnectorCatalogValidationAuthority,
+  ConnectorCatalogValidatorIdentity,
+};
+
+export interface ConnectorCatalogRejectionAuthority {
   readonly backendVersion: string;
   readonly buildCommitSha: string | null;
 }
 
-export interface ConnectorCatalogValidatorIdentity {
-  readonly backendVersion: string;
-  readonly buildCommitSha: string | null;
-  readonly production: boolean;
-}
-
-export type ConnectorCatalogRejectionAuthority =
-  ConnectorCatalogValidationAuthority;
+export type ConnectorCatalogRejectionValidatorIdentity =
+  ConnectorCatalogRejectionAuthority;
 
 interface CoreSemVer {
   readonly major: bigint;
@@ -54,54 +68,52 @@ function compareCoreSemVer(left: string, right: string): -1 | 0 | 1 {
   return 0;
 }
 
-export function createConnectorCatalogValidatorIdentity(
-  identity: ConnectorCatalogValidatorIdentity,
-): ConnectorCatalogValidatorIdentity {
+function createConnectorCatalogRejectionIdentity(
+  identity: ConnectorCatalogRejectionValidatorIdentity,
+): ConnectorCatalogRejectionValidatorIdentity {
   parseCoreSemVer(identity.backendVersion);
+  if (
+    identity.buildCommitSha !== null &&
+    !BUILD_COMMIT_SHA_REGEX.test(identity.buildCommitSha)
+  ) {
+    throw new Error(
+      `Invalid connector catalog rejection build commit SHA: ${identity.buildCommitSha}`,
+    );
+  }
   return identity;
 }
 
+function currentBuildCommitSha(): string | null {
+  const environment = env("ENV");
+  if (environment === "production") {
+    return null;
+  }
+  const buildCommitSha = normalizeBuildCommitSha(env("GIT_COMMIT_SHA"));
+  if (environment === "preview" && buildCommitSha === null) {
+    throw new Error(
+      "Preview connector catalog authority requires a commit SHA",
+    );
+  }
+  return buildCommitSha;
+}
+
 export function currentConnectorCatalogValidatorIdentity(): ConnectorCatalogValidatorIdentity {
-  const production = env("ENV") === "production";
   return createConnectorCatalogValidatorIdentity({
-    backendVersion: getBuildVersion(),
-    buildCommitSha: production
-      ? null
-      : normalizeBuildCommitSha(env("GIT_COMMIT_SHA")),
-    production,
+    validatorVersion: CONNECTOR_CATALOG_VALIDATOR_VERSION,
+    buildCommitSha: currentBuildCommitSha(),
   });
 }
 
-export function connectorCatalogValidationAuthorityIsCurrent(args: {
-  readonly authority: ConnectorCatalogValidationAuthority;
-  readonly validator: ConnectorCatalogValidatorIdentity;
-}): boolean {
-  return (
-    compareCoreSemVer(
-      args.authority.backendVersion,
-      args.validator.backendVersion,
-    ) === 0 && args.authority.buildCommitSha === args.validator.buildCommitSha
-  );
-}
-
-export function connectorCatalogValidationAuthorityIsCurrentOrNewer(args: {
-  readonly authority: ConnectorCatalogValidationAuthority;
-  readonly validator: ConnectorCatalogValidatorIdentity;
-}): boolean {
-  const versionOrder = compareCoreSemVer(
-    args.authority.backendVersion,
-    args.validator.backendVersion,
-  );
-  return (
-    versionOrder > 0 ||
-    (versionOrder === 0 &&
-      args.authority.buildCommitSha === args.validator.buildCommitSha)
-  );
+export function currentConnectorCatalogRejectionIdentity(): ConnectorCatalogRejectionValidatorIdentity {
+  return createConnectorCatalogRejectionIdentity({
+    backendVersion: getBuildVersion(),
+    buildCommitSha: currentBuildCommitSha(),
+  });
 }
 
 export function connectorCatalogRejectionIsReusable(args: {
   readonly authority: ConnectorCatalogRejectionAuthority;
-  readonly validator: ConnectorCatalogValidatorIdentity;
+  readonly validator: ConnectorCatalogRejectionValidatorIdentity;
 }): boolean {
   const versionOrder = compareCoreSemVer(
     args.authority.backendVersion,
@@ -110,8 +122,5 @@ export function connectorCatalogRejectionIsReusable(args: {
   if (versionOrder !== 0) {
     return versionOrder > 0;
   }
-  return (
-    args.validator.production ||
-    args.authority.buildCommitSha === args.validator.buildCommitSha
-  );
+  return args.authority.buildCommitSha === args.validator.buildCommitSha;
 }

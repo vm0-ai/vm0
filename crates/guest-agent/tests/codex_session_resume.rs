@@ -2,7 +2,7 @@
 //!
 //! # Why a dedicated test binary
 //!
-//! The pre-existing `tests/integration/mod.rs` binary defaults to Claude. This
+//! The pre-existing `tests/integration.rs` binary defaults to Claude. This
 //! binary keeps Codex metadata tests separate so their setup can stay focused
 //! on Codex config and file layout.
 //!

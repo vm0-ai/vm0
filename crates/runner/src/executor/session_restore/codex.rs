@@ -26,12 +26,38 @@ fn codex_restore_rollout_timestamp(
     session.codex_timestamp().unwrap_or(fallback_timestamp)
 }
 
-/// Write a Codex session history file as canonical JSONL or zstd-compressed
+/// Restore a Codex session history file as canonical JSONL or zstd-compressed
 /// JSONL under
 /// `~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl[.zst]`.
 ///
 /// Codex 0.137 filters filesystem resume candidates through its canonical
-/// rollout filename parser, so a bare `{thread_id}.jsonl` is ignored.
+/// rollout filename parser, so a bare `{thread_id}.jsonl` is ignored. The
+/// canonical path without the optional `.zst` suffix is the logical rollout
+/// path; the suffix is added only for compressed restored history.
+///
+/// On an idle-reused sandbox (`SandboxReuseResult::Reused`), cleanup runs
+/// before this function writes the replacement history. Every other reuse
+/// outcome writes to the timestamp-derived fallback path without scanning
+/// prior Codex state. The cleanup helper scans the complete
+/// `~/.codex/sessions` tree, bounded by `OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET`
+/// (default: 16,384 entries), because duplicate resume candidates can exist
+/// outside the fallback date directory.
+///
+/// Cleanup removes matching regular files and symlinks whose names contain the
+/// dashed or undashed session key and end in `.jsonl`, `.jsonl.zst`,
+/// `.jsonl.vm0tmp-*`, or `.jsonl.zst.vm0tmp-*`. Unrelated entries and
+/// directories are preserved. A matching regular file in the canonical
+/// `YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl[.zst]` layout is a
+/// logical-path candidate: raw and zstd siblings map to the same logical path,
+/// no candidate selects the fallback, and multiple distinct candidates are an
+/// ambiguity that fails before deletion.
+///
+/// The helper emits either empty stdout or exactly one LF-terminated canonical
+/// logical path. Rust validates that output independently at the guest trust
+/// boundary, including its layout, date/time fields, and session ID, before it
+/// becomes the write destination. A scan, deletion, helper, ambiguity,
+/// malformed/truncated-output, or path-validation failure therefore prevents
+/// the replacement history from being written.
 pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,

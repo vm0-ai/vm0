@@ -56,7 +56,7 @@ async function installQueueAdmissionFailureTrigger(db: Db): Promise<void> {
       IF NEW.event_type = 'input.automation' AND EXISTS (
         SELECT 1
         FROM workflow_user_automation_threads thread
-        INNER JOIN zero_workflow_automations automation
+        INNER JOIN workflow_automations automation
           ON automation.workflow_id = thread.workflow_id
           AND automation.org_id = thread.org_id
           AND automation.owner_user_id = thread.user_id

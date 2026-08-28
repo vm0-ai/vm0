@@ -1156,7 +1156,7 @@ mod tests {
     // Note: end-to-end coverage of session metadata capture (including both
     // the Claude `system/init` branch and the codex `thread.started`
     // branch) lives in the integration test suites:
-    //   - `tests/integration/events.rs::send_event_extracts_claude_session_id`
+    //   - `tests/integration_cases/events.rs::send_event_extracts_claude_session_id`
     //   - `tests/codex_session_resume.rs` (codex variant)
     // The Claude/Codex helpers are private; their contracts are
     // exercised transitively through `send_event`.

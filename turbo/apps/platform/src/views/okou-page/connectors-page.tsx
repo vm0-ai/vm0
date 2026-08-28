@@ -312,7 +312,7 @@ function ConnectorCategoryMenu({
   }
 
   return (
-    <aside className="pointer-events-none fixed right-6 top-[28vh] z-20 hidden w-44 min-[1332px]:block">
+    <aside className="pointer-events-none fixed right-6 top-[28vh] z-30 hidden w-44 min-[1332px]:block">
       <nav
         aria-label={t(($) => {
           return $.connectors.catalog.categoriesAria;

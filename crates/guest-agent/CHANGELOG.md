@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.82.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.14...guest-agent-v0.82.15) (2026-08-28)
+
+
+### Refactoring
+
+* **rust:** forbid path attributes ([#30129](https://github.com/vm0-ai/vm0/issues/30129)) ([c46da3e](https://github.com/vm0-ai/vm0/commit/c46da3ea8fb48b7595bc582036a1f28a0d676f5f))
+
+## [0.82.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.13...guest-agent-v0.82.14) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** centralize codex startup policy fixture ([#30089](https://github.com/vm0-ai/vm0/issues/30089)) ([b656e9a](https://github.com/vm0-ai/vm0/commit/b656e9a4dc3d450b9c7bec511c79edd5c020b99e))
+* **guest-agent:** remove legacy process-control endpoint reader ([#30130](https://github.com/vm0-ai/vm0/issues/30130)) ([57157de](https://github.com/vm0-ai/vm0/commit/57157de35208c779837373ce8cca6baf601d605b))
+* **guest-agent:** remove legacy root cgroup readers ([#30112](https://github.com/vm0-ai/vm0/issues/30112)) ([8d594fa](https://github.com/vm0-ai/vm0/commit/8d594fa8ce223e5040a0c0edcfae2aacf1a03307)), closes [#30103](https://github.com/vm0-ai/vm0/issues/30103) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest-agent:** reuse file-size limit guard ([#30135](https://github.com/vm0-ai/vm0/issues/30135)) ([1986eea](https://github.com/vm0-ai/vm0/commit/1986eea95d66a5e65a1f1022dee6b2f89502e099))
+* **runner:** cut guest API URL writer to canonical alias ([#30105](https://github.com/vm0-ai/vm0/issues/30105)) ([f3bb3c5](https://github.com/vm0-ai/vm0/commit/f3bb3c589879d6782f7942afff00b8e9af242706))
+
 ## [0.82.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.12...guest-agent-v0.82.13) (2026-08-28)
 
 ## [0.82.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.11...guest-agent-v0.82.12) (2026-08-28)

@@ -42,8 +42,8 @@ import {
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
   type ConnectorCatalogArtifactConnector,
-} from "../../services/connector-catalog-artifacts/artifacts";
-import { encodeConnectorCatalogSnapshot } from "../../services/connector-catalog-artifacts/loader";
+} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+import { encodeConnectorCatalogSnapshot } from "@okouai/connector-catalog-validation/artifacts/loader";
 import { connectorCatalogSource } from "../../services/connector-catalog-source";
 import { currentConnectorCatalogValidatorIdentity } from "../../services/connector-catalog-validator-authority";
 import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.service";

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.808.0](https://github.com/vm0-ai/vm0/compare/app-v0.807.1...app-v0.808.0) (2026-08-28)
+
+
+### Features
+
+* add official workflow product surface ([#29996](https://github.com/vm0-ai/vm0/issues/29996)) ([71ff589](https://github.com/vm0-ai/vm0/commit/71ff589c65d4f6852f331243472e9d1002418a02))
+* **platform:** improve shared conversation handoff ([#29752](https://github.com/vm0-ai/vm0/issues/29752)) ([c60c27d](https://github.com/vm0-ai/vm0/commit/c60c27d452cf7679abc220f68c7590faecc04672))
+
+
+### Bug Fixes
+
+* **auth:** preserve resend cooldown and accessibility ([#30084](https://github.com/vm0-ai/vm0/issues/30084)) ([7504b64](https://github.com/vm0-ai/vm0/commit/7504b64fcccbc975a0ca207432efbb1b25e3b1d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.380.0
+    * @okouai/core bumped to 8.601.0
+
 ## [0.807.1](https://github.com/vm0-ai/vm0/compare/app-v0.807.0...app-v0.807.1) (2026-08-28)
 
 

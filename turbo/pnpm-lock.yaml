@@ -144,6 +144,9 @@ importers:
       '@okouai/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts
+      '@okouai/connector-catalog-validation':
+        specifier: workspace:*
+        version: link:../../packages/connector-catalog-validation
       '@okouai/connectors':
         specifier: workspace:*
         version: link:../../packages/connectors
@@ -832,6 +835,43 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(happy-dom@20.11.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(msw@2.13.2(@types/node@24.3.0)(typescript@6.0.3))(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
+
+  packages/connector-catalog-validation:
+    dependencies:
+      '@okouai/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
+      '@okouai/connectors':
+        specifier: workspace:*
+        version: link:../connectors
+      '@okouai/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@okouai/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@okouai/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: 24.3.0
+        version: 24.3.0
+      eslint:
+        specifier: ^9.34.0
+        version: 9.39.4(jiti@2.7.0)
+      oxlint:
+        specifier: ^1.75.0
+        version: 1.75.0(oxlint-tsgolint@7.0.2001)
+      oxlint-tsgolint:
+        specifier: 7.0.2001
+        version: 7.0.2001
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
 
   packages/connectors:
     dependencies:
