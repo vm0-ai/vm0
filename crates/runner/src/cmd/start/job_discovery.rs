@@ -26,6 +26,7 @@ use super::idle_lifecycle::{
     select_idle_entry_for_pressure, set_idle_status_snapshot, spawn_idle_destroy_job,
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
+use super::ownership::{OwnershipTransitions, RunSandbox};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, maybe_panic_outer_job};
 use crate::config::ProfileConfig;
@@ -129,6 +130,7 @@ pub(super) struct FinalizingAdmission {
 
 struct ExactSpeculation {
     outcome: ExactSpeculationOutcome,
+    sandbox_id: SandboxId,
     idle_snapshot: IdlePoolSnapshot,
     preparation_started_at: Instant,
     preparation_completed_at: Instant,
@@ -140,6 +142,7 @@ struct ExactSpeculation {
 
 struct ExactSpeculationReservation {
     reservation: Box<ReservedIdleSandbox>,
+    sandbox_id: SandboxId,
     idle_snapshot: IdlePoolSnapshot,
 }
 
@@ -183,6 +186,11 @@ struct ReuseAdmissionRequest<'a> {
     workspace_disk_mb: u32,
     context: &'a ExecutionContext,
     job_lease: BudgetLease,
+}
+
+struct ReuseFromPoolFailure {
+    reuse_result: SandboxReuseResult,
+    error: String,
 }
 
 struct ClaimAdmissionRequest<'a> {
@@ -376,7 +384,7 @@ pub(super) async fn handle_discovered_job(
     ) = match resource {
         SandboxAdmittedResource::Fresh(job_lease) => {
             let (reuse_entry, active_lease, reuse_result, idle_snapshot, refresh, transfer_guard) =
-                try_reuse_from_pool(
+                match try_reuse_from_pool(
                     run_id,
                     ReuseAdmissionRequest {
                         profile_name: &profile_name,
@@ -389,7 +397,22 @@ pub(super) async fn handle_discovered_job(
                     &mut pre_spawn_timing,
                     &cancellation_handle,
                 )
-                .await;
+                .await
+                {
+                    Ok(ready) => ready,
+                    Err(failure) => {
+                        complete_claimed_failure(
+                            claimed,
+                            cancellation,
+                            Some(failure.reuse_result),
+                            crate::executor::ExecutionFailure::from_error(failure.error),
+                            &ctx,
+                        )
+                        .await;
+                        drop(active_run_guard);
+                        return DiscoveredJobResult::completed(true);
+                    }
+                };
             (
                 reuse_entry,
                 active_lease,
@@ -896,14 +919,13 @@ async fn recover_claimed_activation_failure(
     if cleanup_completed {
         remove_failed_activation_status(&ctx.status, run_id, sandbox_id).await;
     } else {
-        warn!(
-            run_id = %run_id,
-            sandbox_id = %sandbox_id,
-            recovery_reason = reason,
-            recovery_outcome = "orphaned_after_uncertain_destroy",
-            "activation recovery could not prove sandbox destruction; keeping active status for orphan reconciliation"
+        retain_uncertain_activation_ownership(
+            ctx.status.as_ref(),
+            &ctx.orphaned_active_runs,
+            run_id,
+            sandbox_id,
+            reason,
         );
-        ctx.orphaned_active_runs.insert(run_id, sandbox_id);
     }
     drop(active_run_guard);
     cancellation
@@ -1013,6 +1035,7 @@ async fn claim_with_local_admission(
         LocalAdmissionResource::ExactSpeculative(speculative) => {
             let ExactSpeculationReservation {
                 reservation,
+                sandbox_id,
                 idle_snapshot,
             } = speculative;
             let claim = async {
@@ -1023,6 +1046,7 @@ async fn claim_with_local_admission(
             let ((claimed, claim_returned_at), preparation) = tokio::join!(claim, preparation);
             let speculation = ExactSpeculation {
                 outcome: preparation.outcome,
+                sandbox_id,
                 idle_snapshot,
                 preparation_started_at: preparation.started_at,
                 preparation_completed_at: preparation.completed_at,
@@ -1309,6 +1333,7 @@ async fn exact_speculative_preparation(
     reservation: ReservedIdleActivation,
     ctx: &DiscoveredJobContext<'_>,
 ) -> PreferencePreparation {
+    let sandbox_id = reservation.sandbox_id();
     let (reservation, idle_snapshot) = reservation.into_parts();
     if let Err(error) = ctx
         .status
@@ -1328,6 +1353,7 @@ async fn exact_speculative_preparation(
         resource: Some(LocalAdmissionResource::ExactSpeculative(
             ExactSpeculationReservation {
                 reservation: Box::new(reservation),
+                sandbox_id,
                 idle_snapshot,
             },
         )),
@@ -1763,6 +1789,7 @@ async fn activate_speculated_exact(
     } = request;
     let ExactSpeculation {
         outcome,
+        sandbox_id,
         idle_snapshot,
         preparation_started_at,
         preparation_completed_at,
@@ -1793,14 +1820,16 @@ async fn activate_speculated_exact(
                 error,
                 "speculative exact-reuse preparation failed, destroying before fresh fallback"
             );
-            return cleanup_reserved_for_fresh_fallback(
+            return cleanup_claimed_speculation_for_fresh_fallback(
                 *destroy_job,
                 SandboxReuseResult::UnparkFailed,
                 "speculative_exact_reuse_prepare_failed",
+                run_id,
+                sandbox_id,
+                &idle_snapshot,
                 ctx.spawn_ctx,
             )
-            .await
-            .into();
+            .await;
         }
     };
 
@@ -1813,7 +1842,7 @@ async fn activate_speculated_exact(
             reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
             "claimed reuse key does not match speculatively prepared idle sandbox"
         );
-        return cleanup_reserved_for_fresh_fallback(
+        return cleanup_claimed_speculation_for_fresh_fallback(
             sandbox.into_destroy_job("speculative_reuse_session_mismatch"),
             if requested_reuse_key.is_none() {
                 SandboxReuseResult::NoReuseKey
@@ -1821,10 +1850,12 @@ async fn activate_speculated_exact(
                 SandboxReuseResult::PoolMiss
             },
             "speculative_reuse_session_mismatch",
+            run_id,
+            sandbox_id,
+            &idle_snapshot,
             ctx.spawn_ctx,
         )
-        .await
-        .into();
+        .await;
     }
 
     if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
@@ -1847,14 +1878,16 @@ async fn activate_speculated_exact(
                 mismatch = mismatch.as_str(),
                 "workspace promotion identity mismatch after speculative preparation"
             );
-            return cleanup_reserved_for_fresh_fallback(
+            return cleanup_claimed_speculation_for_fresh_fallback(
                 sandbox.into_destroy_job("speculative_workspace_promotion_mismatch"),
                 SandboxReuseResult::PoolMiss,
                 "speculative_workspace_promotion_mismatch",
+                run_id,
+                sandbox_id,
+                &idle_snapshot,
                 ctx.spawn_ctx,
             )
-            .await
-            .into();
+            .await;
         }
     }
 
@@ -1888,14 +1921,16 @@ async fn activate_speculated_exact(
                         error = %error,
                         "speculative exact-reuse timezone correction transport failed"
                     );
-                    return cleanup_reserved_for_fresh_fallback(
+                    return cleanup_claimed_speculation_for_fresh_fallback(
                         sandbox.into_destroy_job("speculative_timezone_correction_failed"),
                         SandboxReuseResult::UnparkFailed,
                         "speculative_timezone_correction_failed",
+                        run_id,
+                        sandbox_id,
+                        &idle_snapshot,
                         ctx.spawn_ctx,
                     )
-                    .await
-                    .into();
+                    .await;
                 }
                 Err(_) => {
                     speculation_timing.timezone_correction =
@@ -1909,14 +1944,16 @@ async fn activate_speculated_exact(
                         run_id = %run_id,
                         "speculative exact-reuse timezone correction panicked"
                     );
-                    return cleanup_reserved_for_fresh_fallback(
+                    return cleanup_claimed_speculation_for_fresh_fallback(
                         sandbox.into_destroy_job("speculative_timezone_correction_panicked"),
                         SandboxReuseResult::UnparkFailed,
                         "speculative_timezone_correction_panicked",
+                        run_id,
+                        sandbox_id,
+                        &idle_snapshot,
                         ctx.spawn_ctx,
                     )
-                    .await
-                    .into();
+                    .await;
                 }
             }
             true
@@ -2193,7 +2230,13 @@ pub(super) async fn activate_reserved_idle(
             )
             .await;
             if matches!(activation, FreshFallbackActivation::CannotStart { .. }) {
-                remove_failed_activation_status(&ctx.status, run_id, sandbox_id).await;
+                retain_uncertain_activation_ownership(
+                    &ctx.status,
+                    &ctx.orphaned_active_runs,
+                    run_id,
+                    sandbox_id,
+                    "reserved_reuse_unpark_failed",
+                );
             }
             activation.into()
         }
@@ -2233,6 +2276,63 @@ async fn remove_failed_activation_status(
             );
         }
     }
+}
+
+fn retain_uncertain_activation_ownership(
+    status: &StatusTracker,
+    orphaned_active_runs: &super::orphan_reap::OrphanedActiveRuns,
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    reason: &'static str,
+) {
+    warn!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        recovery_reason = reason,
+        recovery_outcome = "orphaned_after_uncertain_destroy",
+        "activation cleanup could not prove sandbox destruction; keeping active status for orphan reconciliation"
+    );
+    OwnershipTransitions::new(status)
+        .active_ownership_unknown(orphaned_active_runs, RunSandbox::new(run_id, sandbox_id));
+}
+
+async fn cleanup_claimed_speculation_for_fresh_fallback(
+    destroy_job: crate::idle_pool::IdleDestroyJob,
+    reuse_result: SandboxReuseResult,
+    cleanup_context: &'static str,
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    idle_snapshot: &IdlePoolSnapshot,
+    ctx: &SpawnContext,
+) -> PendingExactActivation {
+    let activation =
+        cleanup_reserved_for_fresh_fallback(destroy_job, reuse_result, cleanup_context, ctx).await;
+    if matches!(activation, FreshFallbackActivation::CannotStart { .. }) {
+        if let Err(error) = add_preparing_run_with_idle_status_snapshot(
+            &ctx.status,
+            run_id,
+            sandbox_id,
+            idle_snapshot.clone(),
+        )
+        .await
+        {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                %error,
+                recovery_reason = cleanup_context,
+                "failed to persist uncertain speculative activation ownership"
+            );
+        }
+        retain_uncertain_activation_ownership(
+            &ctx.status,
+            &ctx.orphaned_active_runs,
+            run_id,
+            sandbox_id,
+            cleanup_context,
+        );
+    }
+    activation.into()
 }
 
 async fn cleanup_reserved_for_fresh_fallback(
@@ -2305,14 +2405,17 @@ async fn try_reuse_from_pool(
     ctx: &mut DiscoveredJobContext<'_>,
     pre_spawn_timing: &mut RunnerPreSpawnTiming,
     cancellation: &RunCancellationHandle,
-) -> (
-    Option<ReusableIdleSandbox>,
-    BudgetLease,
-    SandboxReuseResult,
-    Option<IdlePoolSnapshot>,
-    bool,
-    Option<OwnedMutexGuard<()>>,
-) {
+) -> Result<
+    (
+        Option<ReusableIdleSandbox>,
+        BudgetLease,
+        SandboxReuseResult,
+        Option<IdlePoolSnapshot>,
+        bool,
+        Option<OwnedMutexGuard<()>>,
+    ),
+    ReuseFromPoolFailure,
+> {
     let ReuseAdmissionRequest {
         profile_name,
         device_rate_limits,
@@ -2324,14 +2427,14 @@ async fn try_reuse_from_pool(
     let started_at = Instant::now();
     let Some(reuse_key) = context.reuse_key() else {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (
+        return Ok((
             None,
             job_lease,
             SandboxReuseResult::NoReuseKey,
             None,
             false,
             None,
-        );
+        ));
     };
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
@@ -2381,14 +2484,14 @@ async fn try_reuse_from_pool(
                         entry.into_destroy_job_without_workspace_promotion_for_mismatch(),
                         "reuse_workspace_promotion_mismatch",
                     );
-                    return (
+                    return Ok((
                         None,
                         job_lease,
                         SandboxReuseResult::PoolMiss,
                         Some(snapshot),
                         needs_reuse_state_refresh,
                         None,
-                    );
+                    ));
                 }
             }
             let idle_snapshot = snapshot.clone();
@@ -2401,14 +2504,14 @@ async fn try_reuse_from_pool(
                     ctx.spawn_ctx,
                 )
                 .await;
-                return (
+                return Ok((
                     None,
                     job_lease,
                     SandboxReuseResult::PoolMiss,
                     None,
                     needs_reuse_state_refresh,
                     None,
-                );
+                ));
             }
             let status_started_at = Instant::now();
             if let Err(error) = add_preparing_run_with_idle_status_snapshot(
@@ -2435,14 +2538,14 @@ async fn try_reuse_from_pool(
                     ctx.spawn_ctx,
                 )
                 .await;
-                return (
+                return Ok((
                     None,
                     job_lease,
                     SandboxReuseResult::PoolMiss,
                     None,
                     needs_reuse_state_refresh,
                     None,
-                );
+                ));
             }
             pre_spawn_timing
                 .record_phase_elapsed(RunnerPreSpawnPhase::ActiveStatusPublish, status_started_at);
@@ -2469,14 +2572,14 @@ async fn try_reuse_from_pool(
                     // fresh-job lease and move the idle lease to the outer job
                     // task before handing the sandbox to the executor.
                     drop(job_lease);
-                    (
+                    Ok((
                         Some(*sandbox),
                         budget_lease,
                         SandboxReuseResult::Reused,
                         Some(snapshot),
                         needs_reuse_state_refresh,
                         Some(transfer_guard),
-                    )
+                    ))
                 }
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
@@ -2486,16 +2589,40 @@ async fn try_reuse_from_pool(
                         error = %error,
                         "unpark failed, destroying idle sandbox and falling through to fresh create"
                     );
-                    destroy_idle_jobs_and_wait(vec![*destroy_job], "reuse_unpark_failed").await;
+                    let cleanup = destroy_job.run_retaining_lease("reuse_unpark_failed").await;
+                    if cleanup.workspace_cache_promoted {
+                        ctx.spawn_ctx.reuse_state_notify.notify_one();
+                    }
                     drop(transfer_guard);
-                    (
-                        None,
-                        job_lease,
-                        SandboxReuseResult::UnparkFailed,
-                        Some(snapshot),
-                        needs_reuse_state_refresh,
-                        None,
-                    )
+                    match cleanup.outcome {
+                        DestroyOutcome::Completed => {
+                            drop(cleanup.budget_lease);
+                            Ok((
+                                None,
+                                job_lease,
+                                SandboxReuseResult::UnparkFailed,
+                                Some(snapshot),
+                                needs_reuse_state_refresh,
+                                None,
+                            ))
+                        }
+                        DestroyOutcome::Uncertain => {
+                            drop(cleanup.budget_lease);
+                            drop(job_lease);
+                            retain_uncertain_activation_ownership(
+                                &ctx.spawn_ctx.status,
+                                &ctx.spawn_ctx.orphaned_active_runs,
+                                run_id,
+                                sandbox_id,
+                                "reuse_unpark_failed",
+                            );
+                            Err(ReuseFromPoolFailure {
+                                reuse_result: SandboxReuseResult::UnparkFailed,
+                                error: "idle sandbox cleanup was uncertain; fresh replacement was not started"
+                                    .to_owned(),
+                            })
+                        }
+                    }
                 }
             }
         }
@@ -2512,14 +2639,14 @@ async fn try_reuse_from_pool(
                 stale.into_destroy_job(),
                 "reuse_device_limit_mismatch",
             );
-            (
+            Ok((
                 None,
                 job_lease,
                 SandboxReuseResult::DeviceLimitMismatch,
                 Some(snapshot),
                 needs_reuse_state_refresh,
                 None,
-            )
+            ))
         }
         Some((stale, snapshot)) => {
             info!(
@@ -2535,14 +2662,14 @@ async fn try_reuse_from_pool(
                 stale.into_destroy_job(),
                 "reuse_profile_mismatch",
             );
-            (
+            Ok((
                 None,
                 job_lease,
                 SandboxReuseResult::ProfileMismatch,
                 Some(snapshot),
                 needs_reuse_state_refresh,
                 None,
-            )
+            ))
         }
         None => {
             info!(
@@ -2551,14 +2678,14 @@ async fn try_reuse_from_pool(
                 reuse_key_kind = reuse_key_kind(reuse_key),
                 "no idle sandbox found for reuse key"
             );
-            (
+            Ok((
                 None,
                 job_lease,
                 SandboxReuseResult::PoolMiss,
                 None,
                 needs_reuse_state_refresh,
                 None,
-            )
+            ))
         }
     }
 }
