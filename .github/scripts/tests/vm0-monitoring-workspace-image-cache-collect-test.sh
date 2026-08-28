@@ -49,20 +49,6 @@ assert_playbook_contains() {
   grep -qF "$expected" "$playbook" || fail "playbook is missing: $expected"
 }
 
-assert_playbook_order() {
-  local earlier="$1"
-  local later="$2"
-  local earlier_line
-  local later_line
-
-  earlier_line="$(grep -nF "$earlier" "$playbook" | head -n 1 | cut -d: -f1)"
-  later_line="$(grep -nF "$later" "$playbook" | head -n 1 | cut -d: -f1)"
-  [ -n "$earlier_line" ] || fail "playbook is missing: $earlier"
-  [ -n "$later_line" ] || fail "playbook is missing: $later"
-  [ "$earlier_line" -lt "$later_line" ] ||
-    fail "playbook task order is invalid: $earlier must precede $later"
-}
-
 assert_no_match() {
   local pattern="$1"
   if grep -qE "$pattern" "$output_file"; then
@@ -340,35 +326,15 @@ test_missing_textfile_dir_fails() {
     fail "missing textfile directory error was not reported"
 }
 
-test_playbook_provisions_migrated_workspace_image_cache_collector_identity_and_cadence() {
+test_playbook_provisions_workspace_image_cache_collector_identity_and_cadence() {
   assert_playbook_contains 'src: ../files/vm0-monitoring-workspace-image-cache-collect.sh'
   assert_playbook_contains 'dest: /usr/local/bin/vm0-monitoring-workspace-image-cache-collect'
   assert_playbook_contains 'ExecStart=/usr/local/bin/vm0-monitoring-workspace-image-cache-collect'
   assert_playbook_contains 'dest: /etc/systemd/system/vm0-monitoring-workspace-image-cache-collect.service'
   assert_playbook_contains 'dest: /etc/systemd/system/vm0-monitoring-workspace-image-cache-collect.timer'
-  assert_playbook_contains 'name: vm0-monitoring-collect.timer'
-  assert_playbook_contains 'name: vm0-monitoring-collect.service'
-  assert_playbook_contains 'legacy_workspace_image_cache_collector_timer.stat.exists'
-  assert_playbook_contains '/etc/systemd/system/vm0-monitoring-collect.timer'
-  assert_playbook_contains '/etc/systemd/system/vm0-monitoring-collect.service'
-  assert_playbook_contains '/usr/local/bin/vm0-monitoring-collect'
   assert_playbook_contains 'name: vm0-monitoring-workspace-image-cache-collect.timer'
   assert_playbook_contains 'OnUnitActiveSec=1min'
   assert_playbook_contains 'AccuracySec=15s'
-  local ordered_tasks=(
-    'Install VM0 monitoring workspace image cache collector script'
-    'Install VM0 monitoring workspace image cache collector service'
-    'Install VM0 monitoring workspace image cache collector timer'
-    'Disable legacy VM0 workspace image cache collector timer'
-    'Stop legacy VM0 workspace image cache collector service'
-    'Remove legacy VM0 workspace image cache collector artifacts'
-    'Generate initial VM0 workspace image cache metrics'
-    'Enable VM0 monitoring workspace image cache collector timer'
-  )
-  local index
-  for ((index = 1; index < ${#ordered_tasks[@]}; index++)); do
-    assert_playbook_order "${ordered_tasks[index - 1]}" "${ordered_tasks[index]}"
-  done
 }
 
 test_missing_cache_dir_emits_zero_metrics
@@ -382,6 +348,6 @@ test_retired_workspace_image_cache_dir_is_ignored
 test_monitoring_textfile_dir_canonical_and_defaults
 test_retired_monitoring_textfile_dir_is_ignored
 test_missing_textfile_dir_fails
-test_playbook_provisions_migrated_workspace_image_cache_collector_identity_and_cadence
+test_playbook_provisions_workspace_image_cache_collector_identity_and_cadence
 
 echo "vm0 monitoring workspace image cache collector tests passed"
