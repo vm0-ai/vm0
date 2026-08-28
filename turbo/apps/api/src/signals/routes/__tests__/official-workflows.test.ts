@@ -71,7 +71,10 @@ import {
   setOfficialWorkflowAutomationAdmissionStateFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
-import { createCronOfficialWorkflowCatalogRoutes } from "../cron-official-workflow-catalog";
+import {
+  createCronOfficialWorkflowCatalogRoutes,
+  cronOfficialWorkflowCatalogRoutes,
+} from "../cron-official-workflow-catalog";
 import { officialWorkflowRoutes } from "../official-workflows";
 import { testOfficialWorkflowCatalogStateRoutes } from "../test-official-workflow-catalog-state";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
@@ -608,6 +611,15 @@ async function syncCatalog(candidate: unknown) {
     syncClient(candidate).sync({
       headers: { authorization: `Bearer ${CRON_SECRET}` },
     }),
+    [200],
+  );
+}
+
+async function syncDeployedCatalog() {
+  return await accept(
+    setupApp({ context, routes: cronOfficialWorkflowCatalogRoutes })(
+      cronOfficialWorkflowCatalogContract,
+    ).sync({ headers: { authorization: `Bearer ${CRON_SECRET}` } }),
     [200],
   );
 }
@@ -1169,6 +1181,91 @@ beforeEach(async () => {
 });
 
 describe.sequential("Official Workflow installations", () => {
+  it("materializes the deployed Morning Brief through generic installation state", async () => {
+    installCatalogStorageFixture();
+    const synced = await syncDeployedCatalog();
+    expect(synced.body).toMatchObject({ outcome: "accepted", diagnostics: [] });
+
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+
+    const discovered = await accept(officialClient().list({ headers }), [200]);
+    expect(discovered.body).toMatchObject([
+      {
+        name: "morning-brief",
+        displayName: "Morning Brief",
+      },
+    ]);
+
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName: "morning-brief" },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "daily-delivery", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    expect(installed.body.definition).toMatchObject({
+      name: "morning-brief",
+      lifecycle: "active",
+      blueprints: [{ key: "daily-delivery" }],
+    });
+    expect(installed.body.workflow).toMatchObject({
+      name: "morning-brief",
+      displayName: "Morning Brief",
+      agentId,
+      official: {
+        definitionName: "morning-brief",
+        installationState: "installed",
+        definitionLifecycle: "active",
+        readOnly: true,
+      },
+    });
+    expect(installed.body.workflow.automations).toHaveLength(1);
+    const automation = installed.body.workflow.automations[0];
+    expect(automation).toMatchObject({
+      kind: "schedule",
+      enabled: true,
+      schedule: {
+        type: "cron",
+        cronExpression: "0 7 * * *",
+        timezone: "Asia/Shanghai",
+      },
+      official: {
+        blueprintKey: "daily-delivery",
+        reconciliationStatus: "current",
+        intendedEnabled: true,
+        parameterBindings: [{ key: "timezone", value: "Asia/Shanghai" }],
+      },
+    });
+    if (!automation) {
+      throw new Error("Expected the Morning Brief Automation");
+    }
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, automation.id),
+    ).resolves.toMatchObject({
+      autonomyBudget: 10,
+      enabled: true,
+      officialBlueprintKey: "daily-delivery",
+      officialResultEmailEnabled: true,
+    });
+  });
+
   it("installs, guards, reconfigures, retires, and uninstalls through public boundaries", async () => {
     installCatalogStorageFixture();
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
