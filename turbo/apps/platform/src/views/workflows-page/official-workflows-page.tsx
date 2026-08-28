@@ -438,7 +438,7 @@ function OfficialWorkflowDefinitionPage() {
                   definition.description}
               </p>
             </div>
-            {definition.lifecycle === "active" ? (
+            {(definition.lifecycle ?? "active") === "active" ? (
               <Button
                 type="button"
                 className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg"
@@ -479,7 +479,7 @@ function OfficialWorkflowDefinitionPage() {
         ) : null}
         {definition ? (
           <div className="mx-auto flex max-w-[900px] flex-col gap-4">
-            {definition.lifecycle === "retired" ? (
+            {(definition.lifecycle ?? "active") === "retired" ? (
               <Alert>
                 <AlertTitle>
                   {i18n.t(($) => {

@@ -1561,6 +1561,31 @@ describe("workflows routes", () => {
     expect(queryButtonByText("Install")).toBeNull();
   });
 
+  it("treats a pre-P4 catalog detail without lifecycle as active", async () => {
+    const { lifecycle: _lifecycle, ...legacyDefinition } =
+      officialCatalogDetail();
+    mockAgentPageApis();
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([officialSalesResearch()]);
+    context.mocks.api(officialWorkflowsContract.get, ({ respond }) => {
+      return respond(200, legacyDefinition);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/workflows/official/sales-research",
+      featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
+    });
+
+    click(
+      await waitFor(() => {
+        return buttonByText("Install");
+      }),
+    );
+    await expect(screen.findByRole("dialog")).resolves.toBeInTheDocument();
+  });
+
   it("preselects the default Agent and installs every Blueprint with typed parameters", async () => {
     const definition = officialCatalogDetail();
     const installBodies: unknown[] = [];
