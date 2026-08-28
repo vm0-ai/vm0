@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   type UserMessageDocument,
@@ -19,9 +19,14 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { loadRichMarkdown } from "../../../signals/rich-markdown-module.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+beforeAll(async () => {
+  await loadRichMarkdown();
+});
 
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
