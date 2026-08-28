@@ -392,6 +392,7 @@ describe("okou social command", () => {
     const records = mockConsoleLog.mock.calls.map(([value]) => {
       return JSON.parse(String(value)) as unknown;
     });
+    expect(JSON.stringify(records)).not.toMatch(/socialkit/iu);
     expect(records[0]).toMatchObject({ kind: "page", pageNumber: 1 });
     expect(records[1]).toMatchObject({ kind: "page", pageNumber: 2 });
     expect(records[2]).toStrictEqual({
