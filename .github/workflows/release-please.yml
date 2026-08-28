@@ -1825,7 +1825,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.release_target }}
+          ref: ${{ github.sha }}
 
       - name: Update rollback dashboard issue
         env:

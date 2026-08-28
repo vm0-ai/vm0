@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 3 ] && [ "$#" -ne 4 ]; then
-  echo "usage: update-rollback-dashboard-body.sh BODY_FILE TARGET_COMMIT ROLLBACK_URL [RELEASE_TAGS_JSON]" >&2
+if [ "$#" -ne 4 ]; then
+  echo "usage: update-rollback-dashboard-body.sh BODY_FILE TARGET_COMMIT ROLLBACK_URL RELEASE_TAGS_JSON" >&2
   exit 2
 fi
 
 body_file=$1
 target_commit=$2
 rollback_url=$3
+release_tags=$4
 
 if [[ ! "$target_commit" =~ ^[0-9a-f]{40}$ ]]; then
   echo "target commit must be a full lowercase SHA-1: $target_commit" >&2
@@ -16,29 +17,6 @@ if [[ ! "$target_commit" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
-
-if [ "$#" -eq 3 ]; then
-  # TODO(#30182): Remove this pre-#30180 workflow compatibility path after
-  # every release workflow started before the merge has exceeded its lifetime.
-  release_tags=$(
-    gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" |
-      jq -ce --arg target "$target_commit" '
-        [
-          .[]
-          | select(.target_commitish == $target)
-          | .tag_name
-          | select(test("^.+-v[0-9]"))
-        ]
-        | if length == 0 then
-            error("No release artifacts found for target " + $target)
-          else
-            .
-          end
-      '
-  )
-else
-  release_tags=$4
-fi
 
 jq -e '
   type == "array" and

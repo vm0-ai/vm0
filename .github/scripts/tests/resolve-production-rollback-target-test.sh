@@ -459,11 +459,13 @@ ruby -e '
 
   expected_target = "$" + "{{ needs.release-please.outputs.release_target }}"
   expected_tags = "$" + "{{ needs.release-please.outputs.release_tags }}"
+  workflow_source = "$" + "{{ github.sha }}"
   desktop_target = "desktop-v" + "$" + "{{ needs.release-please.outputs.desktop_version }}"
   checkout_ref_exceptions = {
     "queue-production-deploy" => "main",
     "refresh-release-pull-request" => "main",
     "publish-desktop-update-manifest" => desktop_target,
+    "update-rollback-dashboard" => workflow_source,
   }
   release.each do |job_name, job|
     checkout_steps = job.fetch("steps", []).select do |step|
