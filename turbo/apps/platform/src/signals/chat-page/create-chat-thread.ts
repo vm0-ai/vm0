@@ -1363,6 +1363,7 @@ function createTranscriptEventsComputed(
         return {
           ...event,
           tree: entry.tree,
+          richContentError: entry.richContentError,
           isQueued,
           userMessageRenderDocument,
         };
@@ -1373,6 +1374,7 @@ function createTranscriptEventsComputed(
 
 interface SemanticChatEvent extends SemanticChatEventState {
   readonly tree: Root | undefined;
+  readonly richContentError: boolean;
   readonly userMessageRenderDocument: UserMessageRenderDocument | undefined;
 }
 
@@ -1383,6 +1385,7 @@ function semanticTranscriptEventsFromRaw(
   raw: readonly ChatEventProjectionEntry[],
   chatEvents: readonly ChatEvent[],
   trees: ReadonlyMap<string, Root>,
+  richContentErrors: ReadonlySet<string>,
   chatToolActivityEnabled: boolean,
 ): SemanticChatEvent[] {
   const renderDocumentByEventId = new Map(
@@ -1397,6 +1400,7 @@ function semanticTranscriptEventsFromRaw(
     return {
       ...entry,
       tree: trees.get(entry.event.id),
+      richContentError: richContentErrors.has(entry.event.id),
       userMessageRenderDocument: renderDocumentByEventId.get(entry.event.id),
     };
   });
@@ -1884,6 +1888,7 @@ function createCardRefRegistrar({
 interface EventTree {
   readonly content: string;
   readonly tree: Root | undefined;
+  readonly error: boolean;
 }
 
 interface RichEventTreePlan {
@@ -1917,30 +1922,42 @@ function planEventTreeUpdates(
     });
     next ??= new Map(current);
     if (plainTree !== null) {
-      next.set(event.id, { content: plan.content, tree: plainTree });
+      next.set(event.id, {
+        content: plan.content,
+        tree: plainTree,
+        error: false,
+      });
       continue;
     }
     // A streaming event must stop showing its prior tree while the new rich
     // body loads. This pending identity also deduplicates concurrent ensures.
-    next.set(event.id, { content: plan.content, tree: undefined });
+    next.set(event.id, {
+      content: plan.content,
+      tree: undefined,
+      error: false,
+    });
     richPlans.push({ eventId: event.id, ...plan });
   }
   return { next, richPlans };
 }
 
-function clearPendingEventTrees(
+function markPendingEventTreesFailed(
   current: ReadonlyMap<string, EventTree>,
   plans: readonly RichEventTreePlan[],
 ): Map<string, EventTree> | undefined {
-  let cleared: Map<string, EventTree> | undefined;
+  let failed: Map<string, EventTree> | undefined;
   for (const plan of plans) {
     const entry = current.get(plan.eventId);
-    if (entry?.content === plan.content && entry.tree === undefined) {
-      cleared ??= new Map(current);
-      cleared.delete(plan.eventId);
+    if (
+      entry?.content === plan.content &&
+      entry.tree === undefined &&
+      !entry.error
+    ) {
+      failed ??= new Map(current);
+      failed.set(plan.eventId, { ...entry, error: true });
     }
   }
-  return cleared;
+  return failed;
 }
 
 function createEventTreeSignals(registries: EventTreeRegistries) {
@@ -1955,6 +1972,15 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
       }
     }
     return trees;
+  });
+  const eventTreeErrors$ = computed((get): ReadonlySet<string> => {
+    const errors = new Set<string>();
+    for (const [eventId, entry] of get(internalEventTrees$)) {
+      if (entry.error) {
+        errors.add(eventId);
+      }
+    }
+    return errors;
   });
 
   const registerCardRef$ = createCardRefRegistrar(registries);
@@ -1972,7 +1998,8 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         const pendingEntry = pending.get(plan.eventId);
         if (
           pendingEntry?.content !== plan.content ||
-          pendingEntry.tree !== undefined
+          pendingEntry.tree !== undefined ||
+          pendingEntry.error
         ) {
           continue;
         }
@@ -1995,7 +2022,11 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
           return set(imageLoads.register$, url);
         });
         parsed ??= new Map(pending);
-        parsed.set(plan.eventId, { content: plan.content, tree });
+        parsed.set(plan.eventId, {
+          content: plan.content,
+          tree,
+          error: false,
+        });
       }
       signal.throwIfAborted();
       if (parsed) {
@@ -2036,16 +2067,39 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
       );
       if (!result.ok) {
         const pending = get(internalEventTrees$);
-        const cleared = clearPendingEventTrees(pending, richPlans);
-        if (cleared) {
-          set(internalEventTrees$, cleared);
+        const failed = markPendingEventTreesFailed(pending, richPlans);
+        if (failed) {
+          set(internalEventTrees$, failed);
         }
-        throw result.error;
       }
     },
   );
 
-  return { eventTrees$, ensureEventTrees$ };
+  const retryRichEventTree$ = command(
+    async (
+      { get, set },
+      event: ChatEvent,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const current = get(internalEventTrees$);
+      const entry = current.get(event.id);
+      const content = chatEventTreeContent(event);
+      if (!entry?.error || content === null || entry.content !== content) {
+        return;
+      }
+      const next = new Map(current);
+      next.delete(event.id);
+      set(internalEventTrees$, next);
+      await set(ensureEventTrees$, [event], signal);
+    },
+  );
+
+  return {
+    eventTrees$,
+    eventTreeErrors$,
+    ensureEventTrees$,
+    retryRichEventTree$,
+  };
 }
 
 function createPagedEventResources(
@@ -2092,7 +2146,12 @@ function createPagedEventResources(
     },
   );
 
-  const { eventTrees$, ensureEventTrees$ } = createEventTreeSignals({
+  const {
+    eventTrees$,
+    eventTreeErrors$,
+    ensureEventTrees$,
+    retryRichEventTree$,
+  } = createEventTreeSignals({
     chatActionContext,
     artifactCardSignals,
     connectorCardSignals,
@@ -2131,10 +2190,12 @@ function createPagedEventResources(
   return {
     artifactCardSignals,
     eventTrees$,
+    eventTreeErrors$,
     ensureEventTrees$,
     publicSignals: {
       browserSessionSignals,
       subscribeBrowserSessions$: browserSessionSignals.subscribe$,
+      retryRichEventTree$,
     },
     registeredEvents$,
     syncRegisteredEvents$,
@@ -2150,10 +2211,12 @@ function createPagedEventProjections({
   chatEvents$,
   registeredEvents$,
   eventTrees$,
+  eventTreeErrors$,
 }: {
   chatEvents$: Computed<ChatEvent[]>;
   registeredEvents$: State<RegisteredChatEvent[]>;
   eventTrees$: Computed<ReadonlyMap<string, Root>>;
+  eventTreeErrors$: Computed<ReadonlySet<string>>;
 }) {
   const rawEvents$ = createRawEventsComputed(registeredEvents$);
   const semanticEvents$ = computed((get): SemanticChatEvent[] => {
@@ -2161,6 +2224,7 @@ function createPagedEventProjections({
       get(rawEvents$),
       get(chatEvents$),
       get(eventTrees$),
+      get(eventTreeErrors$),
       get(featureSwitch$)[FeatureSwitchKey.ChatToolActivity] ?? false,
     );
   });
@@ -2440,6 +2504,7 @@ function createChatThreadMessagePipeline(
     chatEvents$: chatEvents.chatEvents$,
     registeredEvents$: resources.registeredEvents$,
     eventTrees$: resources.eventTrees$,
+    eventTreeErrors$: resources.eventTreeErrors$,
   });
   const initialEventsReady$ = state(false);
   const renderWindow = createChatRenderWindow({
@@ -3897,6 +3962,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$:
       events.resetRenderedChatGroupsIfAtBottom$,
+    retryRichEventTree$: events.retryRichEventTree$,
   };
 }
 

@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -19,7 +19,6 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { loadRichMarkdown } from "../../../signals/rich-markdown-module.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
@@ -34,10 +33,6 @@ import {
   mockThinkingTypewriterLayout,
   mockFailedAssistantThread,
 } from "./chat-lifecycle-test-helpers.ts";
-
-beforeAll(async () => {
-  await loadRichMarkdown();
-});
 
 describe("chat lifecycle", () => {
   it("shows billing recovery guidance when credits are depleted", async () => {
@@ -527,10 +522,12 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await waitFor(() => {
-      expect(screen.getByText(/Unexpected.*failure/u)).toBeInTheDocument();
-      expect(screen.getByText("tool")).toBeInTheDocument();
-    });
+    await expect(
+      screen.findByText(/Unexpected.*failure/u, undefined, {
+        timeout: 10_000,
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("tool")).toBeInTheDocument();
   });
 
   it("switches sessions without stale running or completed messages", async () => {

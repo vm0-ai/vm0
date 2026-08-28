@@ -7857,6 +7857,8 @@ function PagedAssistantEventItem({
   compactTop?: boolean;
   thread: ChatPanelSignals;
 }) {
+  const retryRichEventTree = useSet(thread.retryRichEventTree$);
+  const pageSignal = useGet(pageSignal$);
   const error = chatEventError(event);
   if (error) {
     return (
@@ -7884,7 +7886,20 @@ function PagedAssistantEventItem({
         data-chat-run-id={event.runId}
         compactTop={compactTop}
       >
-        <MarkdownEventBody tree={event.tree} mediaPreview />
+        <MarkdownEventBody
+          tree={event.tree}
+          mediaPreview
+          onRetry={
+            event.richContentError
+              ? () => {
+                  detach(
+                    retryRichEventTree(event, pageSignal),
+                    Reason.DomCallback,
+                  );
+                }
+              : undefined
+          }
+        />
       </ChatAssistantMessageBody>
     );
   }

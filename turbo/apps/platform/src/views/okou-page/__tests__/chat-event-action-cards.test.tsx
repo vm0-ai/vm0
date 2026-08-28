@@ -43,7 +43,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   detachedSetupPage,
@@ -52,15 +52,10 @@ import {
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { loadRichMarkdown } from "../../../signals/rich-markdown-module.ts";
 import { PLACEHOLDER, mockChatLifecycle } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 
 const context = testContext();
-
-beforeAll(async () => {
-  await loadRichMarkdown();
-});
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "e4000000-0000-4000-a000-000000000001";
@@ -414,7 +409,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     expect(card).toHaveClass("min-h-[88px]", "p-3", "sm:flex-row");
     expect(card).toHaveTextContent("Banking access request");
     expect(card).toHaveTextContent(`Zero · ${reason}`);
@@ -485,7 +482,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     const popup = new Window();
     Object.defineProperty(popup, "opener", {
       configurable: true,
@@ -606,7 +605,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     await user.click(
       within(card).getByRole("checkbox", { name: /Everyday Checking/u }),
     );

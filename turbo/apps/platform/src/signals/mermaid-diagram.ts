@@ -1,13 +1,24 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
 
+import { IN_VITEST } from "../env.ts";
 import { createRetryableLazyModule } from "./retryable-lazy-module.ts";
 import { createObjectUrlResource } from "./object-url-resource.ts";
 import { theme$ } from "./theme.ts";
-import { settle } from "./utils.ts";
+import { onRejection, settle } from "./utils.ts";
+
+export type MermaidModule = typeof import("mermaid");
+export type MermaidImporter = () => Promise<MermaidModule>;
+
+declare global {
+  interface Window {
+    vm0MermaidImporterForTest?: MermaidImporter;
+  }
+}
 
 const mermaidModule = createRetryableLazyModule(() => {
-  return import("mermaid");
+  const testImporter = IN_VITEST ? window.vm0MermaidImporterForTest : undefined;
+  return testImporter?.() ?? import("mermaid");
 });
 
 /**
@@ -37,6 +48,8 @@ export interface MermaidDiagramSignals {
   readonly code: string;
   /** Resolves `null` when the source is not a valid mermaid diagram. */
   readonly diagram$: Computed<Promise<MermaidDiagramImage | null>>;
+  /** Retries the current theme after a transient module or render failure. */
+  readonly retry$: Command<void, []>;
 }
 
 // Declared here rather than in the parse pipeline: the pipeline emits only
@@ -178,14 +191,16 @@ export function createMermaidDiagramSignals(
     "light" | "dark",
     Promise<MermaidDiagramImage | null>
   >();
+  const internalRetryVersion$ = state(0);
   const diagram$ = computed((get): Promise<MermaidDiagramImage | null> => {
+    get(internalRetryVersion$);
     const theme = get(theme$);
     const existing = imagesByTheme.get(theme);
     if (existing !== undefined) {
       return existing;
     }
     const renderQueue = get(mermaidRenderQueue$);
-    const image = (async (): Promise<MermaidDiagramImage | null> => {
+    const imageAttempt = (async (): Promise<MermaidDiagramImage | null> => {
       // Read the tail and replace it in the same synchronous block, so two
       // resuming renders cannot both chain onto the same predecessor.
       const previousRender = renderQueue.tail;
@@ -246,10 +261,21 @@ export function createMermaidDiagramSignals(
         file,
       };
     })();
+    const image = onRejection(imageAttempt, () => {
+      if (imagesByTheme.get(theme) === image) {
+        imagesByTheme.delete(theme);
+      }
+    });
     imagesByTheme.set(theme, image);
     return image;
   });
-  return { code, diagram$ };
+  const retry$ = command(({ get, set }): void => {
+    imagesByTheme.delete(get(theme$));
+    set(internalRetryVersion$, (version) => {
+      return version + 1;
+    });
+  });
+  return { code, diagram$, retry$ };
 }
 
 export interface MermaidDiagramRegistry {

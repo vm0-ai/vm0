@@ -51,6 +51,7 @@ import {
   setMockClerkAuthComponentMounted,
 } from "../../test/mocks/clerk-react.ts";
 import type { RichMarkdownModule } from "../rich-markdown-module.ts";
+import type { MermaidModule } from "../mermaid-diagram.ts";
 import { createDeferredPromise } from "../utils.ts";
 
 interface WindowOpenCall {
@@ -462,6 +463,20 @@ export function createTestMocks(getSignal: () => AbortSignal) {
         restoreOnAbort(getSignal(), () => {
           if (window.vm0RichMarkdownImporterForTest === mockedImport) {
             window.vm0RichMarkdownImporterForTest = previousImporter;
+          }
+        });
+        return mockedImport;
+      },
+      mermaidImport: (beforeImport: () => void | Promise<void> = () => {}) => {
+        const mockedImport = vi.fn<() => Promise<MermaidModule>>(async () => {
+          await beforeImport();
+          return import("mermaid");
+        });
+        const previousImporter = window.vm0MermaidImporterForTest;
+        window.vm0MermaidImporterForTest = mockedImport;
+        restoreOnAbort(getSignal(), () => {
+          if (window.vm0MermaidImporterForTest === mockedImport) {
+            window.vm0MermaidImporterForTest = previousImporter;
           }
         });
         return mockedImport;
