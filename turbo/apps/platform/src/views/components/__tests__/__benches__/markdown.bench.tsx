@@ -101,7 +101,7 @@ const THREAD_TAIL = THREAD.slice(-10);
 
 /** What the ensure command does per event: parse + embed prepared signals. */
 function prepareTree(source: string): Root {
-  const tree = parseMarkdownTree(source, { mathEnabled: true, mermaid: true });
+  const tree = parseMarkdownTree(source, { mermaid: true });
   embedMermaidSignals(tree, (code) => {
     return createMermaidDiagramSignals(code, context.signal);
   });
@@ -214,7 +214,6 @@ function ensurePass(
       continue;
     }
     const tree = parseMarkdownTree(plan.treeSource, {
-      mathEnabled: true,
       mermaid: true,
     });
     embedMermaidSignals(tree, (code) => {

@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import SharedDatabaseWorker from "virtual:shared-database-worker-inline";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
@@ -146,10 +147,7 @@ export const setupSharedDatabaseBridge$ = command(
     const apiBaseUrl = resolveApiBaseForTarget("api");
     const bridge = new ReconnectingSharedDatabaseBridge({
       createBridge: (events) => {
-        const worker = new SharedWorker(
-          new URL("../shared-database-worker.ts", import.meta.url),
-          { name: "okou core service", type: "module" },
-        );
+        const worker = new SharedDatabaseWorker({ name: "okou core service" });
         const portBridge = new MessagePortSharedDatabaseBridge(
           worker.port,
           apiBaseUrl,

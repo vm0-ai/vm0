@@ -16,6 +16,7 @@ import { accept } from "../../lib/accept.ts";
 import { initializeI18n } from "../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { apiClient$ } from "../api-client.ts";
+import { initAuthRecovery$, initClerkRuntime$ } from "../auth.ts";
 import { fetch$ } from "../fetch.ts";
 import {
   forceUpgradeDialogOpen$,
@@ -30,6 +31,8 @@ const resetAuthRecoverySignal$ = resetSignal();
 
 beforeEach(() => {
   context.store.set(setRootSignal$, context.signal);
+  context.store.set(initClerkRuntime$, context.signal);
+  context.store.set(initAuthRecovery$, context.signal);
 });
 
 const UUID_REGEX =

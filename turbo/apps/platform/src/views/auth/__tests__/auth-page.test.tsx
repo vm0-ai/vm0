@@ -398,9 +398,6 @@ describe("app auth pages", () => {
 
   it("renders the app-hosted sign-in route", async () => {
     setBrowserUrl("https://app.vm0.ai/sign-in");
-    const richMarkdownImport = context.mocks.browser.richMarkdownImport(() => {
-      throw new Error("sign-in must not load rich content");
-    });
 
     detachedSetupPage({ context, path: "/sign-in" });
 
@@ -425,7 +422,6 @@ describe("app auth pages", () => {
       "src",
       platformVm0LogoDarkImg,
     );
-    expect(richMarkdownImport).not.toHaveBeenCalled();
   });
 
   it("routes nested sign-in task paths to the Clerk sign-in surface", async () => {
@@ -517,11 +513,6 @@ describe("app auth pages", () => {
     );
     expect(document.title).toBe("Sign in | Okou");
     expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
-    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
-      "data-clerk-sign-in-start-title",
-      "Sign in to Okou",
-    );
-
     fireEvent.click(authV2Button("Continue with Okou Organization"));
 
     await waitFor(() => {

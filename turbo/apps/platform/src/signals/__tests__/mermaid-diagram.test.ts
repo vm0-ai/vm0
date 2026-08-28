@@ -27,6 +27,15 @@ function diagramMarkup(
 }
 
 describe("mermaid diagram rendering", () => {
+  it("rejects diagram types other than flowcharts", async () => {
+    const signals = createMermaidDiagramSignals(
+      "sequenceDiagram\n  Alice->>Bob: Hello",
+      context.signal,
+    );
+
+    await expect(context.store.get(signals.diagram$)).resolves.toBeNull();
+  });
+
   // mermaid.initialize mutates module-global configuration. When a theme flip
   // starts a second render while the first is still parsing, the second
   // initialize must not leak its theme into the first render — the first

@@ -2,7 +2,12 @@ import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { SupportedLocale } from "../i18n/resources.ts";
-import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
+import {
+  initAuthRecovery$,
+  initClerkRuntime$,
+  setupClerk$,
+  watchOrgSwitch$,
+} from "./auth.ts";
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
@@ -509,6 +514,8 @@ export const bootstrap$ = command(
     set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
     set(setRootSignal$, signal);
+    set(initClerkRuntime$, signal);
+    set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);
 
     set(setupLoggers$);

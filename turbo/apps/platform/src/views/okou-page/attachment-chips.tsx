@@ -39,7 +39,7 @@ import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-stat
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
-import { retryRichMarkdownModule$ } from "../../signals/rich-markdown-module.ts";
+import { retryRichMarkdown$ } from "../../signals/rich-markdown-retry.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import {
   attachmentSidebarRef,
@@ -640,7 +640,7 @@ function ArtifactDialogMarkdownBody({
   tree$: MarkdownPreviewTreeComputed;
 }) {
   const { t } = useTranslation();
-  const retry = useSet(retryRichMarkdownModule$);
+  const retry = useSet(retryRichMarkdown$);
   const loadable = useLoadable(tree$);
   if (loadable.state === "loading") {
     return (

@@ -3,8 +3,6 @@ import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeIgnore from "rehype-ignore";
-import rehypeKatex from "rehype-katex";
-import rehypePrism from "rehype-prism-plus/common";
 import rehypeRaw from "rehype-raw";
 import rehypeRewrite from "rehype-rewrite";
 import rehypeSlug from "rehype-slug";
@@ -12,7 +10,6 @@ import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
 import remarkGfm from "remark-gfm";
 import { remarkAlert } from "remark-github-blockquote-alert";
-import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified, type PluggableList } from "unified";
@@ -49,19 +46,17 @@ declare module "hast" {
  *
  * The plugin order is load-bearing and matches what the two packages built:
  *
- *   remark  remarkAlert → remarkMath? → cjk → gfm → cjkStrikethrough
+ *   remark  remarkAlert → cjk → gfm → cjkStrikethrough
  *   rehype  reservedMeta → raw → retrieveMeta → slug → autolinkHeadings →
- *           ignore → rewrite → attrs → katex? → mermaid → prism
+ *           ignore → rewrite → attrs → cards → mermaid
  *
  * `remarkCjkFriendlyStrikethrough` has to sit behind `remarkGfm` because it
- * replaces gfm's own `~~` extension, and `rehypeMermaid` has to sit ahead of
- * `rehypePrism`, which rewrites fence content beyond recognition.
+ * replaces gfm's own `~~` extension.
  */
 
 type MarkdownCard = NonNullable<Data["card"]>;
 
 interface MarkdownParseOptions {
-  readonly mathEnabled: boolean;
   /**
    * Replace closed ```mermaid fences with diagram marker nodes. Only surfaces
    * whose trees are prepared by a command enable this — the command resolves
@@ -292,13 +287,9 @@ const rewriteUnknownTags = rehypeRewriteHandle((node, _index, parent) => {
   }
 });
 
-function remarkPlugins(options: MarkdownParseOptions): PluggableList {
-  const mathPlugins: PluggableList = options.mathEnabled
-    ? [[remarkMath, { singleDollarTextMath: false }]]
-    : [];
+function remarkPlugins(): PluggableList {
   return [
     remarkAlert,
-    ...mathPlugins,
     remarkCjkFriendly,
     remarkGfm,
     remarkCjkFriendlyStrikethrough,
@@ -306,7 +297,6 @@ function remarkPlugins(options: MarkdownParseOptions): PluggableList {
 }
 
 function rehypePlugins(options: MarkdownParseOptions): PluggableList {
-  const mathPlugins: PluggableList = options.mathEnabled ? [rehypeKatex] : [];
   const cardPlugins: PluggableList = options.cards
     ? [[rehypeCards, { cards: options.cards }]]
     : [];
@@ -320,10 +310,8 @@ function rehypePlugins(options: MarkdownParseOptions): PluggableList {
     rehypeIgnore,
     [rehypeRewrite, { rewrite: rewriteUnknownTags }],
     [rehypeAttrs, { properties: "attr" }],
-    ...mathPlugins,
     ...cardPlugins,
     ...mermaidPlugins,
-    [rehypePrism, { ignoreMissing: true }],
   ];
 }
 
@@ -362,7 +350,7 @@ export function parseMarkdownTree(
 ): Root {
   const processor = unified()
     .use(remarkParse)
-    .use(remarkPlugins(options))
+    .use(remarkPlugins())
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypePlugins(options));
   // `rehypeMermaid` reads the original source off the file to tell a finished

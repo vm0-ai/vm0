@@ -18,13 +18,26 @@ import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
-vi.mock("@clerk/clerk-js", () => {
+vi.mock("@clerk/shared/loadClerkJsScript", () => {
   return {
-    Clerk: function MockClerk(
-      ...args: [string, { readonly domain?: string }?]
-    ) {
-      mockedClerk.initialize(...args);
-      return mockedClerk;
+    loadClerkJSScript: (options: {
+      readonly domain?: string;
+      readonly publishableKey: string;
+    }) => {
+      if (options.domain) {
+        mockedClerk.initialize(options.publishableKey, {
+          domain: options.domain,
+        });
+      } else {
+        mockedClerk.initialize(options.publishableKey);
+      }
+      Reflect.set(globalThis, "Clerk", mockedClerk);
+      return Promise.resolve(null);
+    },
+    loadClerkUIScript: () => {
+      function MockClerkUI() {}
+      Reflect.set(globalThis, "__internal_ClerkUICtor", MockClerkUI);
+      return Promise.resolve(null);
     },
   };
 });

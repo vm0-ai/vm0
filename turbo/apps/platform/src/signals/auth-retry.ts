@@ -6,7 +6,7 @@
  * of the app.
  */
 import { command, computed, state, type Command } from "ccstate";
-import type { Clerk } from "@clerk/clerk-js";
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import { now } from "../lib/time.ts";
 import {
   connectionDiagnosticError,
@@ -203,14 +203,13 @@ export const requestForegroundCatchUp$ = command(({ get }) => {
  */
 export function createAuthRecovery(
   clerk: ClerkLike,
-  getRootSignal: () => AbortSignal,
+  rootSignal: AbortSignal,
 ): AuthRecovery {
   let forceRefreshPromise: Promise<string | null> | null = null;
   let forceRefreshSpanId: string | null = null;
 
   const forceRefreshToken = (signal?: AbortSignal): Promise<string | null> => {
     if (!forceRefreshPromise) {
-      const rootSignal = getRootSignal();
       const spanId = createConnectionDiagnosticSpanId();
       const startedAtMs = now();
       publishConnectionDiagnostic({
@@ -248,7 +247,6 @@ export function createAuthRecovery(
       if (session !== undefined) {
         return readSettledClerkToken(session, signal);
       }
-      const rootSignal = getRootSignal();
       const tokenSignal = signal
         ? AbortSignal.any([rootSignal, signal])
         : rootSignal;

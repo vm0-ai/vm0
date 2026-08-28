@@ -1,5 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
+import * as bundledMermaid from "@okouai/mermaid-flowchart";
+import * as bundledMermaid from "mermaid";
 
 import { IN_VITEST } from "../env.ts";
 import { createRetryableLazyModule } from "./retryable-lazy-module.ts";
@@ -7,7 +9,7 @@ import { createObjectUrlResource } from "./object-url-resource.ts";
 import { theme$ } from "./theme.ts";
 import { onRejection, settle } from "./utils.ts";
 
-export type MermaidModule = typeof import("@okouai/mermaid-flowchart");
+export type MermaidModule = typeof bundledMermaid;
 export type MermaidImporter = () => Promise<MermaidModule>;
 
 declare global {
@@ -18,7 +20,7 @@ declare global {
 
 const mermaidModule = createRetryableLazyModule(() => {
   const testImporter = IN_VITEST ? window.vm0MermaidImporterForTest : undefined;
-  return testImporter?.() ?? import("@okouai/mermaid-flowchart");
+  return testImporter?.() ?? Promise.resolve(bundledMermaid);
 });
 
 /**
@@ -108,7 +110,7 @@ const FLOWCHART_DIAGRAM_TYPES: ReadonlySet<string> = new Set([
 
 /** Returns the diagram SVG, or undefined when the source is not a flowchart. */
 async function renderDiagramSvg(
-  mermaid: (typeof import("@okouai/mermaid-flowchart"))["default"],
+  mermaid: MermaidModule["default"],
   id: string,
   code: string,
 ): Promise<string | undefined> {

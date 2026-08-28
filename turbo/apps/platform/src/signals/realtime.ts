@@ -1,15 +1,15 @@
 import { command, computed, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import {
-  Realtime,
-  type ChannelStateChange,
-  type ConnectionStateChange,
-  type InboundMessage,
-  type RealtimeChannel,
+import type {
+  ChannelStateChange,
+  ConnectionStateChange,
+  InboundMessage,
+  RealtimeChannel,
 } from "ably";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
+import { createAblyRealtime, type AblyRealtime } from "../lib/ably-realtime.ts";
 import { now } from "../lib/time.ts";
 import { apiClient$ } from "./api-client.ts";
 import { authenticatedIdentity$ } from "./auth.ts";
@@ -112,7 +112,7 @@ interface StableRealtimeChannel {
 }
 
 interface RealtimeSession {
-  readonly ably: Realtime;
+  readonly ably: AblyRealtime;
   readonly channels: RealtimeSessionChannels;
   readonly close: () => void;
 }
@@ -937,7 +937,7 @@ interface ConnectedRealtimeChannels {
 }
 
 function connectedRealtimeChannels(
-  ably: Realtime,
+  ably: AblyRealtime,
   userId: string,
   orgId: string,
 ): ConnectedRealtimeChannels {
@@ -968,7 +968,7 @@ function observeRealtimeChannels(
 }
 
 interface ConnectedRealtimeClient {
-  readonly ably: Realtime;
+  readonly ably: AblyRealtime;
   readonly channels: ConnectedRealtimeChannels;
   readonly close: () => void;
 }
@@ -982,7 +982,7 @@ const connectRealtimeClient$ = command(
     signal.throwIfAborted();
     const createClient = get(apiClient$);
     const client = createClient(platformRealtimeTokenContract);
-    const ably = new Realtime({
+    const ably = createAblyRealtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
       // every invocation must fetch a freshly-signed request.
       authCallback: createAblyAuthCallback(client, signal),

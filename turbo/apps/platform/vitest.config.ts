@@ -16,6 +16,7 @@ export default defineConfig({
       ),
       // Mock ably in tests so setupRealtime$ creates a fake channel and
       // setAblyLoop$ uses the real subscribe/deferred code path.
+      "ably/modular": path.resolve(__dirname, "./src/mocks/ably.ts"),
       ably: path.resolve(__dirname, "./src/mocks/ably.ts"),
       // Mock idb in tests so IndexedDB operations fall through to the
       // remote (MSW-mocked) path on openDB rejection in happy-dom.
@@ -32,6 +33,10 @@ export default defineConfig({
         __dirname,
         "../../packages/mermaid-flowchart/dist/mermaid.esm.tiny.min.mjs",
       ),
+      "virtual:shared-database-worker-inline": `${path.resolve(
+        __dirname,
+        "./src/shared-database-worker.ts",
+      )}?sharedworker&inline`,
       "idb-real": path.resolve(__dirname, "./node_modules/idb/build/index.js"),
     },
   },

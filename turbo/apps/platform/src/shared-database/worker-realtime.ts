@@ -1,10 +1,10 @@
-import {
-  Realtime,
-  type AuthOptions,
-  type ConnectionStateChange,
-  type InboundMessage,
-  type TokenRequest,
+import type {
+  AuthOptions,
+  ConnectionStateChange,
+  InboundMessage,
+  TokenRequest,
 } from "ably";
+import { createAblyRealtime } from "../lib/ably-realtime.ts";
 import { logger } from "../signals/log.ts";
 import { createChildAbortController } from "../signals/utils.ts";
 import type { SharedDatabaseConnectionStatus } from "./protocol.ts";
@@ -77,7 +77,7 @@ export function createSharedDatabaseRealtimeSession(
     pendingAuthTasks.add(authenticate());
   };
 
-  const ably = new Realtime({
+  const ably = createAblyRealtime({
     authCallback,
     autoConnect: true,
     disconnectedRetryTimeout: 5000,

@@ -447,6 +447,11 @@ export class Realtime {
   }
 }
 
+export { Realtime as BaseRealtime };
+export const FetchRequest = Symbol("FetchRequest");
+export const WebSocketTransport = Symbol("WebSocketTransport");
+export const XHRPolling = Symbol("XHRPolling");
+
 /** Fire a server-side publish on every connected Realtime instance. */
 export function triggerAblyEvent(topic: string, data?: unknown): void {
   for (const realtime of realtimeInstances) {
