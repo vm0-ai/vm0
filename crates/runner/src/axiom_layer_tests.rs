@@ -12,9 +12,9 @@ use std::thread;
 use std::time::Duration;
 
 use super::{
-    AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, ERROR_SOURCE_MAX_DEPTH, INTERNAL_TARGET,
-    TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER, init_from_env_values, init_with_base_url,
-    init_with_base_url_and_hostname, with_ingest_filter,
+    AxiomGuard, AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, ERROR_SOURCE_MAX_DEPTH,
+    FLUSH_DEADLINE, INTERNAL_TARGET, Msg, TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER,
+    init_from_env_values, init_with_base_url, init_with_base_url_and_hostname, with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -758,10 +758,64 @@ fn burst_past_channel_cap_drops_without_blocking() {
     );
 }
 
+#[tokio::test(start_paused = true)]
+async fn shutdown_deadline_bounds_blocked_close_send() {
+    let (tx, mut receiver) = tokio::sync::mpsc::channel(1);
+    assert!(tx.send(Msg::Event(json!({}))).await.is_ok());
+    let guard = AxiomGuard { tx, handle: None };
+    let started_at = tokio::time::Instant::now();
+    let shutdown = guard.shutdown();
+    tokio::pin!(shutdown);
+
+    assert!(futures_util::poll!(shutdown.as_mut()).is_pending());
+    tokio::time::advance(FLUSH_DEADLINE - Duration::from_nanos(1)).await;
+    assert!(futures_util::poll!(shutdown.as_mut()).is_pending());
+    tokio::time::advance(Duration::from_nanos(1)).await;
+    assert!(futures_util::poll!(shutdown.as_mut()).is_ready());
+
+    assert_eq!(started_at.elapsed(), FLUSH_DEADLINE);
+    assert!(matches!(receiver.try_recv(), Ok(Msg::Event(_))));
+}
+
+#[tokio::test(start_paused = true)]
+async fn shutdown_deadline_bounds_blocked_dispatcher_join() {
+    let (tx, mut receiver) = tokio::sync::mpsc::channel(1);
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+    let dispatcher_task = tokio::spawn(async move {
+        release_rx.await.expect("release blocked dispatcher task");
+        finished_tx
+            .send(())
+            .expect("report blocked dispatcher task completion");
+    });
+    let guard = AxiomGuard {
+        tx,
+        handle: Some(dispatcher_task),
+    };
+    let started_at = tokio::time::Instant::now();
+    let shutdown = guard.shutdown();
+    tokio::pin!(shutdown);
+
+    assert!(futures_util::poll!(shutdown.as_mut()).is_pending());
+    assert!(matches!(receiver.try_recv(), Ok(Msg::Close)));
+    tokio::time::advance(FLUSH_DEADLINE - Duration::from_nanos(1)).await;
+    assert!(futures_util::poll!(shutdown.as_mut()).is_pending());
+    tokio::time::advance(Duration::from_nanos(1)).await;
+    assert!(futures_util::poll!(shutdown.as_mut()).is_ready());
+
+    assert_eq!(started_at.elapsed(), FLUSH_DEADLINE);
+    release_tx
+        .send(())
+        .expect("release detached dispatcher task after deadline");
+    finished_rx
+        .await
+        .expect("blocked dispatcher task must finish before test exit");
+}
+
 #[test]
 fn rejected_events_are_not_serialized() {
     let (tx, receiver) = tokio::sync::mpsc::channel(1);
-    assert!(tx.try_send(super::Msg::Event(json!({}))).is_ok());
+    assert!(tx.try_send(Msg::Event(json!({}))).is_ok());
 
     let layer = AxiomLayer {
         tx,
