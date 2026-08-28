@@ -13,6 +13,7 @@ static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
 static SANDBOX_USER_CREDENTIALS_INIT: Mutex<()> = Mutex::new(());
 
 const SANDBOX_USER_BASE_PATH: &str = "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games";
+const AGENT_SHELL: &str = "/bin/bash";
 // [sync:etc-environment] Keep in sync with:
 // - crates/runner/scripts/customize-rootfs.sh
 // - .github/scripts/runner-behavior-exec.sh (Test 10)
@@ -91,10 +92,12 @@ pub(crate) fn apply_command_identity(command: &mut Command, sudo: bool) -> io::R
     }
 }
 
-/// Install the trusted rootfs environment without sourcing sandbox-owned shell
-/// state during fixed Agent launch.
+/// Install the trusted Agent environment without sourcing sandbox-owned shell
+/// state during fixed launch.
 pub(crate) fn configure_agent_command_environment(command: &mut Command) -> io::Result<()> {
-    command.envs(TRUSTED_ROOTFS_ENVIRONMENT);
+    command
+        .envs(TRUSTED_ROOTFS_ENVIRONMENT)
+        .env("SHELL", AGENT_SHELL);
 
     #[cfg(any(debug_assertions, feature = "test-support"))]
     {
@@ -328,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_environment_preserves_trusted_rootfs_defaults() {
+    fn agent_environment_preserves_trusted_defaults() {
         let mut command = Command::new("true");
         configure_agent_command_environment(&mut command).unwrap();
 
@@ -339,6 +342,11 @@ mod tests {
                 .flatten();
             assert_eq!(actual, Some(std::ffi::OsStr::new(expected)));
         }
+        let shell = command
+            .get_envs()
+            .find_map(|(candidate, value)| (candidate == "SHELL").then_some(value))
+            .flatten();
+        assert_eq!(shell, Some(std::ffi::OsStr::new(AGENT_SHELL)));
     }
 
     #[test]

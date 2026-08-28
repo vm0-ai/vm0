@@ -120,6 +120,22 @@ if [ "$PATH" != "$expected_path" ]; then
   echo "Guest Agent CLI child PATH changed: expected=$expected_path actual=$PATH" >&2
   exit 1
 fi
+assert_env_value() {
+  key=$1
+  expected=$2
+  actual=$(printenv "$key" || true)
+  if [ "$actual" != "$expected" ]; then
+    echo "Guest Agent CLI child $key changed: expected=$expected actual=$actual" >&2
+    exit 1
+  fi
+}
+assert_env_value SHELL /bin/bash
+assert_env_value LANG C.UTF-8
+assert_env_value NPM_CONFIG_UPDATE_NOTIFIER false
+assert_env_value NODE_EXTRA_CA_CERTS /usr/local/share/ca-certificates/vm0-proxy-ca.crt
+assert_env_value SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt
+assert_env_value REQUESTS_CA_BUNDLE /etc/ssl/certs/ca-certificates.crt
+assert_env_value CARGO_HTTP_CAINFO /etc/ssl/certs/ca-certificates.crt
 if sudo find /run/vm0-exec -mindepth 1 -maxdepth 2 -print -quit | grep -q .; then
   echo "Guest Agent startup left a generic environment script" >&2
   exit 1
