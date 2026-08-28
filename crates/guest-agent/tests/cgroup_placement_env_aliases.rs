@@ -44,7 +44,7 @@ fn guest_agent_command() -> Command {
         command.env_remove(key);
     }
     command.env(
-        process_control_ipc::BOOTSTRAP_ENV,
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         "process-control-endpoint-must-not-leak",
     );
     command
@@ -334,7 +334,7 @@ async fn guest_agent_rejects_the_full_invalid_matrix_before_capability_consumpti
         "require OKOU_PROCESS_CONTROL_ENDPOINT or VM0_PROCESS_CONTROL_ENDPOINT",
         |command, endpoint| {
             command
-                .env_remove(process_control_ipc::BOOTSTRAP_ENV)
+                .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
                 .env(workload_canonical, endpoint)
                 .env(tool_canonical, "canonical-tool-must-not-leak");
         },
