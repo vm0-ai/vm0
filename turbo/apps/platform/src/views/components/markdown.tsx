@@ -1,7 +1,8 @@
 import type { Root } from "hast";
-import { useLoadable } from "ccstate-react";
+import { useLoadable, useSet } from "ccstate-react";
 import type { CSSProperties } from "react";
 
+import { i18n } from "../../i18n/index.ts";
 import {
   createPlainMarkdownTree,
   plainTextFromMarkdownTree,
@@ -10,6 +11,7 @@ import { MarkdownFrame } from "./markdown-frame.tsx";
 import {
   getLoadedRichMarkdown,
   richMarkdownModule$,
+  retryRichMarkdownModule$,
 } from "../../signals/rich-markdown-module.ts";
 
 interface MarkdownProps {
@@ -55,6 +57,30 @@ function RichContentLoading({
   );
 }
 
+function RichContentError({
+  className,
+  onRetry,
+  style,
+}: {
+  readonly className?: string;
+  readonly onRetry: () => void;
+  readonly style?: CSSProperties;
+}) {
+  return (
+    <MarkdownFrame className={className} style={style}>
+      <button
+        type="button"
+        className="rounded-md border border-border px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+        onClick={onRetry}
+      >
+        {i18n.t(($) => {
+          return $.chat.errors.recovery.tryAgain;
+        })}
+      </button>
+    </MarkdownFrame>
+  );
+}
+
 function LoadedMarkdownEventBody({
   tree,
   mediaPreview,
@@ -63,6 +89,7 @@ function LoadedMarkdownEventBody({
   readonly mediaPreview: boolean;
 }) {
   const loadable = useLoadable(richMarkdownModule$);
+  const retry = useSet(retryRichMarkdownModule$);
   const module =
     getLoadedRichMarkdown() ??
     (loadable.state === "hasData" ? loadable.data : undefined);
@@ -70,7 +97,12 @@ function LoadedMarkdownEventBody({
     return <module.MarkdownEventBody tree={tree} mediaPreview={mediaPreview} />;
   }
   if (loadable.state === "hasError") {
-    throw loadable.error;
+    return (
+      <RichContentError
+        onRetry={retry}
+        style={{ fontSize: "inherit", lineHeight: "inherit" }}
+      />
+    );
   }
   return (
     <RichContentLoading
@@ -81,13 +113,23 @@ function LoadedMarkdownEventBody({
 
 /** Renders prepared plain trees immediately and suspends only a rich body. */
 export function MarkdownEventBody({
+  onRetry,
   tree,
   mediaPreview,
 }: {
+  readonly onRetry?: () => void;
   readonly tree: Root | undefined;
   readonly mediaPreview: boolean;
 }) {
   if (tree === undefined) {
+    if (onRetry !== undefined) {
+      return (
+        <RichContentError
+          onRetry={onRetry}
+          style={{ fontSize: "inherit", lineHeight: "inherit" }}
+        />
+      );
+    }
     return (
       <RichContentLoading
         style={{ fontSize: "inherit", lineHeight: "inherit" }}
@@ -108,6 +150,7 @@ export function MarkdownEventBody({
 
 function LoadedMarkdown(props: MarkdownProps) {
   const loadable = useLoadable(richMarkdownModule$);
+  const retry = useSet(retryRichMarkdownModule$);
   const module =
     getLoadedRichMarkdown() ??
     (loadable.state === "hasData" ? loadable.data : undefined);
@@ -115,7 +158,13 @@ function LoadedMarkdown(props: MarkdownProps) {
     return <module.Markdown {...props} />;
   }
   if (loadable.state === "hasError") {
-    throw loadable.error;
+    return (
+      <RichContentError
+        className={props.className}
+        onRetry={retry}
+        style={props.style}
+      />
+    );
   }
   return <RichContentLoading className={props.className} style={props.style} />;
 }

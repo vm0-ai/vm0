@@ -5,7 +5,6 @@ import { createElement } from "react";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
 import { createPlainMarkdownTree } from "../../lib/markdown/plain-markdown.ts";
-import { loadRichMarkdown } from "../rich-markdown-module.ts";
 import {
   SharedThreadPage,
   type SharedDisplayThread,
@@ -13,17 +12,10 @@ import {
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { apiClient$ } from "../api-client.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import {
-  createMermaidDiagramRegistry,
-  embedMermaidSignals,
-} from "../mermaid-diagram.ts";
-import {
-  createImageLoadRegistry,
-  embedImageLoadSignals,
-} from "../image-load.ts";
 import { pathParams$ } from "../route.ts";
 import { updatePage$ } from "../react-router.ts";
 import { setPageSignal$ } from "../page-signal.ts";
+import { createSharedThreadRichContentSignals } from "./shared-thread-rich-content.ts";
 
 export const setupSharedThreadPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -36,41 +28,33 @@ export const setupSharedThreadPage$ = command(
       [200, 404],
       signal,
     );
-    // Page-scoped registries: repeated fences share one entry, and leaving
-    // the page releases the diagrams it rendered.
-    const mermaidDiagrams = createMermaidDiagramRegistry(signal);
-    const imageLoads = createImageLoadRegistry();
     let sharedThread: SharedDisplayThread | null = null;
     if (result.status === 200) {
       const messages: SharedDisplayThread["messages"][number][] = [];
-      let richMarkdown:
-        | Awaited<ReturnType<typeof loadRichMarkdown>>
-        | undefined;
+      const richMessages: (typeof result.body.messages)[number][] = [];
       for (const message of result.body.messages) {
         if (message.role !== "assistant") {
           messages.push(message);
           continue;
         }
-        let tree = createPlainMarkdownTree(message.content, {
+        const tree = createPlainMarkdownTree(message.content, {
           mathEnabled: true,
         });
         if (tree === null) {
-          richMarkdown ??= await loadRichMarkdown();
-          signal.throwIfAborted();
-          tree = richMarkdown.parseMarkdownTree(message.content, {
-            mathEnabled: true,
-            mermaid: true,
-          });
-          embedMermaidSignals(tree, (code) => {
-            return set(mermaidDiagrams.register$, code);
-          });
-          embedImageLoadSignals(tree, (url) => {
-            return set(imageLoads.register$, url);
-          });
+          richMessages.push(message);
+          messages.push({ ...message, tree: undefined });
+          continue;
         }
         messages.push({ ...message, tree });
       }
-      sharedThread = { ...result.body, messages };
+      sharedThread = {
+        ...result.body,
+        messages,
+        richContent:
+          richMessages.length === 0
+            ? undefined
+            : createSharedThreadRichContentSignals(richMessages, signal),
+      };
     }
     set(
       updateDocumentTitle$,
@@ -80,6 +64,10 @@ export const setupSharedThreadPage$ = command(
         }),
     );
     set(updatePage$, createElement(SharedThreadPage, { sharedThread }));
+    const richContentLoad = sharedThread?.richContent
+      ? set(sharedThread.richContent.load$, signal)
+      : undefined;
     await set(hideAppSkeleton$, signal);
+    await richContentLoad;
   },
 );

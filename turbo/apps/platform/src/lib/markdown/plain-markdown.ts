@@ -3,7 +3,7 @@ import type { Root } from "hast";
 const INLINE_RICH_SYNTAX = /[\\`*_<>~&|{}]|\[|\]/u;
 const AUTOLINK = /(?:https?:\/\/|www\.)\S|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/iu;
 const BLOCK_SYNTAX =
-  /^ {0,3}(?:#{1,6}(?:[ \t]+|$)|>|[-+](?:[ \t]+|$)|\d{1,9}[.)](?:[ \t]+|$)|(?:={2,}|-{3,})[ \t]*$)/u;
+  /^ {0,3}(?:#{1,6}(?:[ \t]+|$)|>|[-+](?:[ \t]+|$)|\d{1,9}[.)](?:[ \t]+|$)|(?:=+|-+)[ \t]*$)/u;
 
 /**
  * Returns the exact single-paragraph tree for syntax-free Markdown, or null
