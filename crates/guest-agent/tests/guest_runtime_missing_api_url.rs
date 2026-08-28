@@ -25,7 +25,7 @@ fn runtime_bootstrap_logs_missing_api_url_to_system_log() {
         )
         .env("HOME", tmp.path().join("home"))
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         )
         .env(

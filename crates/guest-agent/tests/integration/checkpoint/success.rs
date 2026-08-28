@@ -1170,7 +1170,7 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
     let server = api.server();
     let _run_id_guard = EnvVarRestore::capture(guest_contracts::env::RUN_ID_ENV);
     let _runtime_dir_guard =
-        EnvVarRestore::capture(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
+        EnvVarRestore::capture(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV);
 
     let tmp = tempfile::tempdir().unwrap();
     let runtime_dir = tmp.path().join("captured-runtime");
@@ -1214,7 +1214,7 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
     unsafe {
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, "stale-run-after-runtime");
         std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &stale_runtime_dir,
         );
     }

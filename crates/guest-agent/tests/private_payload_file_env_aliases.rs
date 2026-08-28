@@ -374,7 +374,7 @@ fn configure_private_files(files: &PrivateFiles, name: &str) -> TestResult {
     );
     set_test_env("HOME", root.join(format!("{name}-process-home")));
     set_test_env(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         &files.runtime_dir,
     );
     Ok(())

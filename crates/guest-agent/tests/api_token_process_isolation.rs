@@ -90,7 +90,7 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
             &run_payload_path,
         )
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         );
     if launch_unprivileged {

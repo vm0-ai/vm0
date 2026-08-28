@@ -90,7 +90,7 @@ async fn codex_setup_writes_model_catalog_before_cli_start() -> TestResult {
         )
         .env("OKOU_TEST_CODEX_HOME_DIR", &codex_home)
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         )
         .env("HOME", tmp.path());

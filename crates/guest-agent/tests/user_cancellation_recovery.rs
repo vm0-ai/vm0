@@ -226,7 +226,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
                 &run_payload_file,
             )
             .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
             )
             .env(process_control_ipc::CANONICAL_BOOTSTRAP_ENV, &endpoint)

@@ -24,7 +24,7 @@ fn process_env_config_loads_user_env_once() {
             &user_env_path,
         );
         std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         );
     }

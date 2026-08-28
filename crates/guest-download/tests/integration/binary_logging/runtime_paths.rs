@@ -58,7 +58,7 @@ fn binary_writes_system_log_to_explicit_runtime_path() {
     assert_eq!(content.matches("Download completed").count(), 1);
     assert_eq!(
         source_messages(&content),
-        ["guest_runtime_dir_env_source key=OKOU_GUEST_RUNTIME_DIR source=legacy-only"]
+        ["guest_runtime_dir_env_source key=OKOU_GUEST_RUNTIME_DIR source=canonical-only"]
     );
     assert!(!content.contains(fixture.logs.runtime_dir.to_string_lossy().as_ref()));
 
@@ -297,7 +297,7 @@ fn binary_fails_with_relative_runtime_dir_for_runtime_log_setup() {
             .arg(&manifest_path)
             .env(guest_contracts::env::RUN_ID_ENV, run_id)
             .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 "relative-runtime-dir",
             ),
     )
@@ -350,7 +350,7 @@ fn binary_uses_absolute_runtime_dir_without_validating_run_id_as_path_segment() 
                 "ignored/when/runtime-dir/is-set",
             )
             .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &logs.runtime_dir,
             ),
     )

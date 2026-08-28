@@ -28,7 +28,7 @@ fn runtime_bootstrap_scrubs_runner_env_and_installs_explicit_paths() {
         );
         std::env::set_var("HOME", tmp.path().join("home"));
         std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         );
         std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
