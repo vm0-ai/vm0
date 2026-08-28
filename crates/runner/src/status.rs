@@ -1319,7 +1319,6 @@ mod tests {
 
         let status = read_status(&path);
         assert!(status.get("idle_sandboxes").is_none());
-        assert!(status.get("idle_vms").is_none());
 
         let sb1 = SandboxId::new_v4();
         let sb2 = SandboxId::new_v4();
@@ -1343,7 +1342,6 @@ mod tests {
         );
 
         let status = read_status(&path);
-        assert!(status.get("idle_vms").is_none());
         let sandboxes = status["idle_sandboxes"].as_array().unwrap();
         assert_eq!(sandboxes.len(), 2);
         assert_eq!(sandboxes[0]["reuse_key"], "sess-1");

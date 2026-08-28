@@ -102,11 +102,11 @@ test_missing_and_empty_runner_roots_emit_zero_metrics() {
   assert_zero_snapshot
 }
 
-test_aggregates_current_legacy_and_future_statuses() {
+test_aggregates_current_and_future_statuses() {
   reset_dirs
   mkdir -p \
     "$runners_dir/current" \
-    "$runners_dir/legacy" \
+    "$runners_dir/draining" \
     "$runners_dir/future" \
     "$runners_dir/stopped"
 
@@ -128,15 +128,15 @@ test_aggregates_current_legacy_and_future_statuses() {
 }
 EOF
 
-  cat >"$runners_dir/legacy/status.json" <<EOF
+  cat >"$runners_dir/draining/status.json" <<EOF
 {
   "mode": "draining",
   "active_runs": [
-    {"run_id": "legacy-run", "sandbox_id": "$uuid_f"},
+    {"run_id": "draining-run", "sandbox_id": "$uuid_f"},
     {"run_id": "duplicate-idle", "sandbox_id": "$uuid_d"}
   ],
-  "idle_vms": [
-    {"sandbox_id": "$uuid_g", "session_id": "legacy-session"}
+  "idle_sandboxes": [
+    {"sandbox_id": "$uuid_g", "session_id": "session"}
   ]
 }
 EOF
@@ -170,18 +170,16 @@ EOF
   assert_line 'vm0_runner_status_files{result="stopped"} 1'
   assert_line 'vm0_runner_status_files{result="invalid"} 0'
   assert_line 'vm0_runner_status_collection_success 1'
-  if grep -qE "sandbox_id|run_id|reuse_key|session_id|$uuid_a|legacy-run" \
+  if grep -qE "sandbox_id|run_id|reuse_key|session_id|$uuid_a|draining-run" \
     "$output_file"; then
     fail "identity-level data leaked into metrics"
   fi
 }
 
-test_idle_field_compatibility_precedence() {
+test_canonical_idle_field_behavior() {
   reset_dirs
   mkdir -p \
     "$runners_dir/canonical" \
-    "$runners_dir/legacy" \
-    "$runners_dir/mirrored" \
     "$runners_dir/canonical-empty" \
     "$runners_dir/omitted"
 
@@ -189,13 +187,7 @@ test_idle_field_compatibility_precedence() {
     "{\"mode\":\"running\",\"idle_sandboxes\":[{\"sandbox_id\":\"$uuid_a\"}]}" \
     >"$runners_dir/canonical/status.json"
   printf '%s\n' \
-    "{\"mode\":\"running\",\"idle_vms\":[{\"sandbox_id\":\"$uuid_b\"}]}" \
-    >"$runners_dir/legacy/status.json"
-  printf '%s\n' \
-    "{\"mode\":\"running\",\"idle_sandboxes\":[{\"sandbox_id\":\"$uuid_c\"}],\"idle_vms\":[{\"sandbox_id\":\"$uuid_d\"}]}" \
-    >"$runners_dir/mirrored/status.json"
-  printf '%s\n' \
-    "{\"mode\":\"running\",\"idle_sandboxes\":[],\"idle_vms\":[{\"sandbox_id\":\"$uuid_e\"}]}" \
+    "{\"mode\":\"running\",\"idle_sandboxes\":[]}" \
     >"$runners_dir/canonical-empty/status.json"
   printf '%s\n' '{"mode":"running"}' \
     >"$runners_dir/omitted/status.json"
@@ -203,11 +195,11 @@ test_idle_field_compatibility_precedence() {
   run_collector
 
   assert_line 'vm0_runner_sandboxes{state="active"} 0'
-  assert_line 'vm0_runner_sandboxes{state="idle"} 3'
+  assert_line 'vm0_runner_sandboxes{state="idle"} 1'
   assert_line 'vm0_runner_sandboxes{state="preparing"} 0'
   assert_line 'vm0_runner_sandboxes{state="unknown"} 0'
-  assert_line 'vm0_runner_instances{mode="running"} 5'
-  assert_line 'vm0_runner_status_files{result="included"} 5'
+  assert_line 'vm0_runner_instances{mode="running"} 3'
+  assert_line 'vm0_runner_status_files{result="included"} 3'
   assert_line 'vm0_runner_status_files{result="invalid"} 0'
   assert_line 'vm0_runner_status_collection_success 1'
 }
@@ -228,10 +220,10 @@ EOF
   printf '%s\n' '{"mode":"running","active_runs":{}}' \
     >"$runners_dir/malformed-shape/status.json"
   printf '%s\n' \
-    "{\"mode\":\"running\",\"idle_sandboxes\":null,\"idle_vms\":[{\"sandbox_id\":\"$uuid_b\"}]}" \
+    "{\"mode\":\"running\",\"idle_sandboxes\":null}" \
     >"$runners_dir/malformed-canonical/status.json"
   printf '%s\n' \
-    '{"mode":"running","idle_vms":[{"sandbox_id":"not-a-uuid"}]}' \
+    '{"mode":"running","idle_sandboxes":[{"sandbox_id":"not-a-uuid"}]}' \
     >"$runners_dir/invalid-id/status.json"
 
   run_collector
@@ -444,8 +436,8 @@ test_playbook_provisions_collector_identity_and_cadence() {
 }
 
 test_missing_and_empty_runner_roots_emit_zero_metrics
-test_aggregates_current_legacy_and_future_statuses
-test_idle_field_compatibility_precedence
+test_aggregates_current_and_future_statuses
+test_canonical_idle_field_behavior
 test_invalid_files_publish_partial_metrics
 test_rejects_runner_and_status_symlinks
 test_output_is_deterministic_and_replaced_atomically
