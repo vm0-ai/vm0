@@ -210,6 +210,34 @@ describe("assistant markdown", () => {
     expect(screen.queryByTestId("rich-content-loading")).toBeNull();
   });
 
+  it("renders code fences without syntax token decoration", async () => {
+    mockThread("```ts\nconst value = 1;\n```");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const code = await screen.findByText("const value = 1;", {
+      selector: "code",
+    });
+    expect(code).toBeInTheDocument();
+    expect(code.querySelector(".token")).toBeNull();
+  });
+
+  it("keeps math source visible as plain text", async () => {
+    const source = "$$a^2 + b^2 = c^2$$";
+    mockThread(source);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await expect(screen.findByText(source)).resolves.toBeInTheDocument();
+    expect(document.querySelector(".katex")).toBeNull();
+  });
+
   it("renders formatted text and follows theme changes", async () => {
     mockThread("**bold text**");
 

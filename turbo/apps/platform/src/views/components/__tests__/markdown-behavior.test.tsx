@@ -76,20 +76,6 @@ describe("parse-in-render markdown", () => {
     expect(rendered).not.toContain("mermaid-block");
   });
 
-  it("renders code fences without syntax token decoration", () => {
-    const rendered = html("```ts\nconst value = 1;\n```");
-
-    expect(rendered).toContain("const value = 1;");
-    expect(rendered).not.toContain('class="token');
-  });
-
-  it("keeps math source as plain text", () => {
-    const rendered = html("$$a^2 + b^2 = c^2$$");
-
-    expect(rendered).toContain("$$a^2 + b^2 = c^2$$");
-    expect(rendered).not.toContain("katex");
-  });
-
   // A surface's registry is keyed by source, so the same fence shares one
   // entry wherever it appears in that surface and different sources never
   // collide.

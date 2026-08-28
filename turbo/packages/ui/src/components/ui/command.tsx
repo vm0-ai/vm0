@@ -1,28 +1,50 @@
 "use client";
 
-import * as React from "react";
-import { Command as CommandPrimitive } from "cmdk";
+import { Autocomplete } from "@base-ui/react/autocomplete";
 import { Search } from "lucide-react";
+import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { Dialog, DialogContent } from "./dialog";
 
-const Command = React.forwardRef<
-  React.ComponentRef<typeof CommandPrimitive>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive>
->(({ className, ...props }, ref) => {
-  return (
-    <CommandPrimitive
-      ref={ref}
-      className={cn(
-        "flex h-full w-full flex-col overflow-hidden rounded-xl bg-card text-foreground",
-        className,
-      )}
-      {...props}
-    />
-  );
-});
-Command.displayName = CommandPrimitive.displayName;
+interface CommandProps extends Omit<
+  Autocomplete.Root.Props<string>,
+  "inline" | "items" | "loopFocus" | "mode" | "open"
+> {
+  readonly className?: string | undefined;
+  readonly loop?: boolean | undefined;
+  readonly shouldFilter?: boolean | undefined;
+}
+
+const Command = React.forwardRef<HTMLDivElement, CommandProps>(
+  (
+    { autoHighlight, children, className, loop, shouldFilter = true, ...props },
+    ref,
+  ) => {
+    return (
+      <Autocomplete.Root
+        {...props}
+        inline
+        open
+        autoHighlight={loop ? true : autoHighlight}
+        loopFocus={loop ?? false}
+        mode={shouldFilter ? "list" : "none"}
+      >
+        <div
+          ref={ref}
+          data-slot="command"
+          className={cn(
+            "flex h-full w-full flex-col overflow-hidden rounded-xl bg-card text-foreground",
+            className,
+          )}
+        >
+          {children}
+        </div>
+      </Autocomplete.Root>
+    );
+  },
+);
+Command.displayName = "Command";
 
 interface CommandDialogProps extends Omit<
   React.ComponentPropsWithoutRef<typeof Dialog>,
@@ -62,115 +84,145 @@ function CommandDialog({
   );
 }
 
-interface CommandInputProps extends React.ComponentPropsWithoutRef<
-  typeof CommandPrimitive.Input
-> {
+interface CommandInputProps extends Autocomplete.Input.Props {
   readonly wrapperClassName?: string | undefined;
 }
 
-const CommandInput = React.forwardRef<
-  React.ComponentRef<typeof CommandPrimitive.Input>,
-  CommandInputProps
->(({ className, wrapperClassName, ...props }, ref) => {
-  return (
-    <div
-      className={cn(
-        "flex h-9 items-center gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10",
-        wrapperClassName,
-      )}
-    >
-      <Search size={16} className="shrink-0 text-muted-foreground" />
-      <CommandPrimitive.Input
-        ref={ref}
+const CommandInput = React.forwardRef<HTMLInputElement, CommandInputProps>(
+  ({ className, wrapperClassName, ...props }, ref) => {
+    return (
+      <div
+        data-slot="command-input-wrapper"
         className={cn(
-          "flex h-full w-full rounded-md bg-transparent text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
+          "flex h-9 items-center gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10",
+          wrapperClassName,
+        )}
+      >
+        <Search size={16} className="shrink-0 text-muted-foreground" />
+        <Autocomplete.Input
+          ref={ref}
+          data-slot="command-input"
+          className={cn(
+            "flex h-full w-full rounded-md bg-transparent text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
+            className,
+          )}
+          {...props}
+        />
+      </div>
+    );
+  },
+);
+CommandInput.displayName = "CommandInput";
+
+const CommandList = React.forwardRef<HTMLDivElement, Autocomplete.List.Props>(
+  ({ className, ...props }, ref) => {
+    return (
+      <Autocomplete.List
+        ref={ref}
+        data-slot="command-list"
+        className={cn("max-h-[min(520px,65vh)] overflow-y-auto", className)}
+        {...props}
+      />
+    );
+  },
+);
+CommandList.displayName = "CommandList";
+
+const CommandEmpty = React.forwardRef<HTMLDivElement, Autocomplete.Empty.Props>(
+  ({ className, ...props }, ref) => {
+    return (
+      <Autocomplete.Empty
+        ref={ref}
+        data-slot="command-empty"
+        className={cn(
+          "py-4 text-center text-sm text-muted-foreground",
           className,
         )}
         {...props}
       />
-    </div>
-  );
-});
-CommandInput.displayName = CommandPrimitive.Input.displayName;
+    );
+  },
+);
+CommandEmpty.displayName = "CommandEmpty";
 
-const CommandList = React.forwardRef<
-  React.ComponentRef<typeof CommandPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => {
-  return (
-    <CommandPrimitive.List
-      ref={ref}
-      className={cn("max-h-[min(520px,65vh)] overflow-y-auto", className)}
-      {...props}
-    />
-  );
-});
-CommandList.displayName = CommandPrimitive.List.displayName;
+interface CommandGroupProps extends Autocomplete.Group.Props {
+  readonly heading?: React.ReactNode;
+}
 
-const CommandEmpty = React.forwardRef<
-  React.ComponentRef<typeof CommandPrimitive.Empty>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Empty>
->(({ className, ...props }, ref) => {
-  return (
-    <CommandPrimitive.Empty
-      ref={ref}
-      className={cn(
-        "py-4 text-center text-sm text-muted-foreground",
-        className,
-      )}
-      {...props}
-    />
-  );
-});
-CommandEmpty.displayName = CommandPrimitive.Empty.displayName;
-
-const CommandGroup = React.forwardRef<
-  React.ComponentRef<typeof CommandPrimitive.Group>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Group>
->(({ className, ...props }, ref) => {
-  return (
-    <CommandPrimitive.Group
-      ref={ref}
-      className={cn(
-        "overflow-hidden text-foreground [&_[cmdk-group-heading]]:px-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground",
-        className,
-      )}
-      {...props}
-    />
-  );
-});
-CommandGroup.displayName = CommandPrimitive.Group.displayName;
+const CommandGroup = React.forwardRef<HTMLDivElement, CommandGroupProps>(
+  ({ children, className, heading, ...props }, ref) => {
+    return (
+      <Autocomplete.Group
+        ref={ref}
+        data-slot="command-group"
+        className={cn(
+          "overflow-hidden text-foreground [&_[data-slot=command-group-heading]]:px-1 [&_[data-slot=command-group-heading]]:text-xs [&_[data-slot=command-group-heading]]:font-medium [&_[data-slot=command-group-heading]]:text-muted-foreground",
+          className,
+        )}
+        {...props}
+      >
+        {heading !== undefined ? (
+          <Autocomplete.GroupLabel data-slot="command-group-heading">
+            {heading}
+          </Autocomplete.GroupLabel>
+        ) : null}
+        <div data-slot="command-group-items">{children}</div>
+      </Autocomplete.Group>
+    );
+  },
+);
+CommandGroup.displayName = "CommandGroup";
 
 const CommandSeparator = React.forwardRef<
-  React.ComponentRef<typeof CommandPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Separator>
+  HTMLDivElement,
+  Autocomplete.Separator.Props
 >(({ className, ...props }, ref) => {
   return (
-    <CommandPrimitive.Separator
+    <Autocomplete.Separator
       ref={ref}
+      data-slot="command-separator"
       className={cn("-mx-1 h-px bg-border", className)}
       {...props}
     />
   );
 });
-CommandSeparator.displayName = CommandPrimitive.Separator.displayName;
+CommandSeparator.displayName = "CommandSeparator";
 
-const CommandItem = React.forwardRef<
-  React.ComponentRef<typeof CommandPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>
->(({ className, ...props }, ref) => {
-  return (
-    <CommandPrimitive.Item
-      ref={ref}
-      className={cn(
-        "relative flex cursor-pointer select-none items-center rounded-lg text-sm outline-none transition-colors data-[disabled=true]:pointer-events-none data-[selected=true]:bg-state-hover data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  );
-});
-CommandItem.displayName = CommandPrimitive.Item.displayName;
+interface CommandItemProps extends Omit<
+  Autocomplete.Item.Props,
+  "onClick" | "onSelect" | "value"
+> {
+  readonly onClick?: Autocomplete.Item.Props["onClick"];
+  readonly onSelect?: ((value: string) => void) | undefined;
+  readonly value: string;
+}
+
+const CommandItem = React.forwardRef<HTMLDivElement, CommandItemProps>(
+  ({ className, onClick, onSelect, value, ...props }, ref) => {
+    return (
+      <Autocomplete.Item
+        ref={ref}
+        data-slot="command-item"
+        value={value}
+        className={cn(
+          "relative flex cursor-pointer select-none items-center rounded-lg text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[highlighted]:bg-state-hover data-[highlighted]:text-accent-foreground data-[disabled]:opacity-50",
+          className,
+        )}
+        onClick={(event) => {
+          onClick?.(event);
+          if (event.defaultPrevented) {
+            return;
+          }
+          event.preventDefault();
+          event.preventBaseUIHandler();
+          onSelect?.(value);
+        }}
+        {...props}
+      />
+    );
+  },
+);
+CommandItem.displayName = "CommandItem";
 
 const CommandShortcut = ({
   className,
