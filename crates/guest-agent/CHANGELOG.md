@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.82.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.7...guest-agent-v0.82.8) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy codex service-tier reader ([#29983](https://github.com/vm0-ai/vm0/issues/29983)) ([bdd382b](https://github.com/vm0-ai/vm0/commit/bdd382b86cef7a73142e4fe14732aa9d1c5dd33b))
+* **guest:** remove legacy mock binary path readers ([#29977](https://github.com/vm0-ai/vm0/issues/29977)) ([95df1fc](https://github.com/vm0-ai/vm0/commit/95df1fce63080ef61656f9d5e76b2c763fd2afdc)), closes [#29973](https://github.com/vm0-ai/vm0/issues/29973) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **runtime:** cut process-control writer to canonical alias ([#29915](https://github.com/vm0-ai/vm0/issues/29915)) ([d24888e](https://github.com/vm0-ai/vm0/commit/d24888e360664ac892d1be16788f5b75abd2a26a))
+* **test:** cut API start-time writers to canonical alias ([#29957](https://github.com/vm0-ai/vm0/issues/29957)) ([6b1f6b3](https://github.com/vm0-ai/vm0/commit/6b1f6b328efc2a747fbac17abafae66c70379d19))
+* **test:** cut API token writers to canonical alias ([#29969](https://github.com/vm0-ai/vm0/issues/29969)) ([e39f845](https://github.com/vm0-ai/vm0/commit/e39f845c8d6fa3932be90019dc6599c388a820d3))
+* **test:** cut api url writers to canonical alias ([#29972](https://github.com/vm0-ai/vm0/issues/29972)) ([53c81cd](https://github.com/vm0-ai/vm0/commit/53c81cdc6b75067d88c6682ea6f1c65681631862))
+* **test:** cut codex fast-mode writers to canonical alias ([#29971](https://github.com/vm0-ai/vm0/issues/29971)) ([1f8d334](https://github.com/vm0-ai/vm0/commit/1f8d3349a3c274c79495f1c8402da2de1fabc2dd))
+* **test:** cut mock path writers to canonical aliases ([#29949](https://github.com/vm0-ai/vm0/issues/29949)) ([3941a98](https://github.com/vm0-ai/vm0/commit/3941a9832964c22b647213509376be0fccb70683))
+* **test:** cut post-result timing writers to canonical aliases ([#29966](https://github.com/vm0-ai/vm0/issues/29966)) ([ca0592e](https://github.com/vm0-ai/vm0/commit/ca0592e4ddb23f7ddcc15a8f9a52f5bfb99444e3))
+* **test:** cut private payload writers to canonical aliases ([#29975](https://github.com/vm0-ai/vm0/issues/29975)) ([d3aadd7](https://github.com/vm0-ai/vm0/commit/d3aadd74c482a682a198db736b331baf680730fc))
+* **test:** cut resume-session writers to canonical alias ([#29955](https://github.com/vm0-ai/vm0/issues/29955)) ([086f2e1](https://github.com/vm0-ai/vm0/commit/086f2e1376400ef3feb818b896e751497bac0147)), closes [#29952](https://github.com/vm0-ai/vm0/issues/29952) [#29065](https://github.com/vm0-ai/vm0/issues/29065) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **test:** cut sandbox metadata writers to canonical aliases ([#29962](https://github.com/vm0-ai/vm0/issues/29962)) ([6762647](https://github.com/vm0-ai/vm0/commit/67626477d495d55587405b39964a88acf1793f37)), closes [#29956](https://github.com/vm0-ai/vm0/issues/29956) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **test:** cut stuck-tool timeout writers to canonical alias ([#29963](https://github.com/vm0-ai/vm0/issues/29963)) ([2bf4da0](https://github.com/vm0-ai/vm0/commit/2bf4da08395d98bc1538dcfcb95e355ff0a7d049))
+* **test:** cut timeout writers to canonical alias ([#29959](https://github.com/vm0-ai/vm0/issues/29959)) ([38b93ad](https://github.com/vm0-ai/vm0/commit/38b93ad6b0be1c85e20a4d1ce3d69edd38772ea3))
+
 ## [0.82.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.6...guest-agent-v0.82.7) (2026-08-27)
 
 ## [0.82.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.5...guest-agent-v0.82.6) (2026-08-27)

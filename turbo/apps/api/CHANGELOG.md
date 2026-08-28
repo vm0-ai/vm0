@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.505.0](https://github.com/vm0-ai/vm0/compare/api-v1.504.2...api-v1.505.0) (2026-08-28)
+
+
+### Features
+
+* deliver official automation results by email ([#29939](https://github.com/vm0-ai/vm0/issues/29939)) ([3175e48](https://github.com/vm0-ai/vm0/commit/3175e48851981f474154fa168846cc56c50f0bf9))
+* migrate chat event snapshots to v7 ([#29950](https://github.com/vm0-ai/vm0/issues/29950)) ([6746a51](https://github.com/vm0-ai/vm0/commit/6746a519009477e95d6ed6e3d3cab093d19db04e))
+* **workflows:** reconcile official automation blueprints ([#29958](https://github.com/vm0-ai/vm0/issues/29958)) ([41b9478](https://github.com/vm0-ai/vm0/commit/41b94783f8dfbc3a2470491b01aacc435a11a7f3))
+
+
+### Bug Fixes
+
+* **api:** align connector catalog capacity with publisher ([#29978](https://github.com/vm0-ai/vm0/issues/29978)) ([7645bb2](https://github.com/vm0-ai/vm0/commit/7645bb2d13a1334d97139c5a233f65a39adf1241))
+
+
+### Refactoring
+
+* **api:** remove legacy debug logging reader ([#29984](https://github.com/vm0-ai/vm0/issues/29984)) ([d3edfc7](https://github.com/vm0-ai/vm0/commit/d3edfc796a9dfb4a2d26afaf85892a2698413337))
+* **db:** canonicalize built-in provider writes ([#29938](https://github.com/vm0-ai/vm0/issues/29938)) ([aad55f4](https://github.com/vm0-ai/vm0/commit/aad55f424b8a4b72c2b06e25335e06de53e10c7a))
+* remove expired deployment compatibility ([#29979](https://github.com/vm0-ai/vm0/issues/29979)) ([ab9b66b](https://github.com/vm0-ai/vm0/commit/ab9b66bdec3a7e4e29283e4015878bb38cd329ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.378.0
+    * @okouai/core bumped to 8.599.4
+    * @okouai/db bumped to 1.227.0
+
 ## [1.504.2](https://github.com/vm0-ai/vm0/compare/api-v1.504.1...api-v1.504.2) (2026-08-27)
 
 

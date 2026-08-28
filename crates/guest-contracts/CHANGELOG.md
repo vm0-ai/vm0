@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.3...guest-contracts-v0.12.4) (2026-08-28)
+
+
+### Refactoring
+
+* **guest:** remove legacy mock binary path readers ([#29977](https://github.com/vm0-ai/vm0/issues/29977)) ([95df1fc](https://github.com/vm0-ai/vm0/commit/95df1fce63080ef61656f9d5e76b2c763fd2afdc)), closes [#29973](https://github.com/vm0-ai/vm0/issues/29973) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **test:** cut mock path writers to canonical aliases ([#29949](https://github.com/vm0-ai/vm0/issues/29949)) ([3941a98](https://github.com/vm0-ai/vm0/commit/3941a9832964c22b647213509376be0fccb70683))
+
 ## [0.12.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.2...guest-contracts-v0.12.3) (2026-08-27)
 
 
