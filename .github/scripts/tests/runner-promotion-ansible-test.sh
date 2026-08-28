@@ -75,7 +75,8 @@ mkdir -p \
 
 touch \
   "$runner_systemd_unit_dir/vm0-runner-production-blue.service" \
-  "$runner_systemd_unit_dir/vm0-runner-production-green.service"
+  "$runner_systemd_unit_dir/vm0-runner-production-green.service" \
+  "$runner_systemd_unit_dir/vm0-runner-$runner_release.service"
 
 ln -s "$(command -v flock)" "$test_bin/real-flock"
 cat > "$test_bin/flock" <<'EOF'
