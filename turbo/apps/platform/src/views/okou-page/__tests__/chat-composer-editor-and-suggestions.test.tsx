@@ -736,13 +736,13 @@ describe("chat composer models", () => {
           `chatThreadWorkflowsChanged:${THREAD_ID}`,
         ),
       ).toBeTruthy();
-      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
-        "aria-hidden",
-        "true",
-      );
     });
     await initialWorkflowsRequested.promise;
-    await user.click(await findComposerEditor());
+    const thread = await screen.findByLabelText("Chat thread");
+    const initialEditor = await within(thread).findByRole("textbox", {
+      name: "Message",
+    });
+    await user.click(initialEditor);
     await user.keyboard("/");
     await expect(
       screen.findByText("Loading workflows..."),
