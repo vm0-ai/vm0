@@ -91,11 +91,21 @@ async fn run_exec_with_writers(
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> RunnerResult<ExitCode> {
+    let home = HomePaths::new()?;
+    run_exec_with_home_and_writers(args, control, &home, stdout, stderr).await
+}
+
+async fn run_exec_with_home_and_writers(
+    args: ExecArgs,
+    control: &dyn SandboxControl,
+    home: &HomePaths,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> RunnerResult<ExitCode> {
     let target = if let Some(ref sid) = args.sandbox {
         SandboxControlTarget::sandbox(sid)
     } else if let Some(ref rid) = args.run {
-        let home = HomePaths::new()?;
-        let mappings = run_resolution::collect_active_run_mappings_from_home(&home).await?;
+        let mappings = run_resolution::collect_active_run_mappings_from_home(home).await?;
         let mapping = run_resolution::resolve_run_mapping(rid, &mappings)?;
         SandboxControlTarget::run(mapping.run_id, mapping.sandbox_id)
     } else {
@@ -203,6 +213,8 @@ fn write_remote_exec_warning(stderr: &mut impl Write, line_open: &mut bool, mess
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use sandbox::SandboxControlError;
     use sandbox_mock::{MockSandboxControl, RemoteExecCall};
 
@@ -234,6 +246,37 @@ mod tests {
         let calls = control.recorded_exec_calls();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].command, expected);
+    }
+
+    async fn publish_active_run(
+        home: &HomePaths,
+        base_dir: &Path,
+        run_id: &str,
+        sandbox_id: &str,
+    ) -> crate::live_runner_instances::LiveRunnerInstanceHandle {
+        std::fs::create_dir_all(base_dir).unwrap();
+        std::fs::write(
+            base_dir.join("status.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "active_runs": [{
+                    "run_id": run_id,
+                    "sandbox_id": sandbox_id,
+                }],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        crate::live_runner_instances::publish(
+            home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: base_dir.join("runner.yaml"),
+                base_dir: base_dir.to_path_buf(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+            },
+        )
+        .await
+        .unwrap()
     }
 
     #[tokio::test]
@@ -297,6 +340,79 @@ mod tests {
                 sudo: true,
             }],
         );
+    }
+
+    #[tokio::test]
+    async fn resolves_run_prefix_and_forwards_full_identity_and_exec_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let run_id = "run-abcdef-full";
+        let sandbox_id = "sandbox-123";
+        let handle =
+            publish_active_run(&home, &dir.path().join("runner-base"), run_id, sandbox_id).await;
+        let control = MockSandboxControl::new("/tmp");
+        let args = ExecArgs {
+            run: Some("run-abc".into()),
+            sandbox: None,
+            timeout: 47,
+            sudo: true,
+            show_diagnostic: false,
+            command: vec!["echo".into(), "hello world".into()],
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let result =
+            run_exec_with_home_and_writers(args, &control, &home, &mut stdout, &mut stderr)
+                .await
+                .unwrap();
+        assert!(handle.remove_if_current().await.unwrap());
+
+        assert_eq!(result, ExitCode::SUCCESS);
+        assert_eq!(
+            control.recorded_exec_calls(),
+            vec![RemoteExecCall {
+                target: SandboxControlTarget::run(run_id, sandbox_id),
+                command: "'echo' 'hello world'".to_string(),
+                timeout: Duration::from_secs(47),
+                sudo: true,
+            }],
+        );
+    }
+
+    #[tokio::test]
+    async fn run_resolution_failure_does_not_dispatch_exec() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let handle = publish_active_run(
+            &home,
+            &dir.path().join("runner-base"),
+            "run-abcdef-full",
+            "sandbox-123",
+        )
+        .await;
+        let control = MockSandboxControl::new("/tmp");
+        let args = ExecArgs {
+            run: Some("missing".into()),
+            sandbox: None,
+            timeout: 5,
+            sudo: false,
+            show_diagnostic: false,
+            command: vec!["true".into()],
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let error = run_exec_with_home_and_writers(args, &control, &home, &mut stdout, &mut stderr)
+            .await
+            .unwrap_err();
+        assert!(handle.remove_if_current().await.unwrap());
+
+        assert!(matches!(
+            error,
+            RunnerError::Config(message) if message == "no active run matches 'missing'"
+        ));
+        assert!(control.recorded_exec_calls().is_empty());
     }
 
     #[tokio::test]
