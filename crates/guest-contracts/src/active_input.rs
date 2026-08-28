@@ -1,5 +1,13 @@
 //! Runner-to-guest active-input process-control payload contract.
 //!
+//! This module owns the active-input JSON encoding and the allocation-free way
+//! to measure its encoded size. It does not own transport admission: producers
+//! must ensure that the encoded bytes fit the process-control frame before
+//! delivery. The inclusive production limit is the
+//! [`process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES`](https://github.com/vm0-ai/vm0/blob/main/crates/process-control-ipc/src/lib.rs)
+//! boundary, currently 1 MiB (1,048,576 bytes); Runner and process-control
+//! enforce that boundary.
+//!
 //! Runner encodes borrowed delivery IDs and text through this module before
 //! process-control transport. Guest-agent decodes the bytes into owned,
 //! validated values before applying run-scoped queue and receipt policy.
@@ -85,8 +93,15 @@ impl std::error::Error for ActiveInputDecodeError {}
 
 /// Encode an active-input payload from borrowed producer fields.
 ///
-/// The producer remains responsible for supplying valid field values. Use
-/// [`decode_active_input`] at the consumer trust boundary to validate them.
+/// This function only serializes the JSON payload. A successful result does
+/// not mean that the returned bytes fit the process-control transport frame.
+/// The producer remains responsible for supplying valid field values and
+/// should use [`encoded_active_input_len`] to preflight the exact encoded byte
+/// count before transport. The inclusive production boundary is the
+/// [`process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES`](https://github.com/vm0-ai/vm0/blob/main/crates/process-control-ipc/src/lib.rs)
+/// value, currently 1 MiB (1,048,576 bytes), and Runner/process-control own
+/// its admission check. Use [`decode_active_input`] at the consumer trust
+/// boundary to validate the fields.
 pub fn encode_active_input(delivery_id: &str, text: &str) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(&ActiveInputEncodeWire::new(delivery_id, text))
 }
@@ -111,6 +126,14 @@ impl Write for CountingWriter {
 }
 
 /// Calculate the exact encoded byte length without allocating the payload.
+///
+/// Producers should compare the returned count with the inclusive
+/// [`process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES`](https://github.com/vm0-ai/vm0/blob/main/crates/process-control-ipc/src/lib.rs)
+/// transport boundary before delivery. That boundary is currently 1 MiB
+/// (1,048,576 bytes), and Runner/process-control enforce it; this helper only
+/// measures the JSON bytes and does not reject an oversized payload. Therefore,
+/// a payload of 1,048,577 encoded bytes may still be returned successfully by
+/// [`encode_active_input`], but it is not transport-admissible.
 pub fn encoded_active_input_len(delivery_id: &str, text: &str) -> Result<usize, serde_json::Error> {
     let mut counter = CountingWriter::default();
     serde_json::to_writer(&mut counter, &ActiveInputEncodeWire::new(delivery_id, text))?;
