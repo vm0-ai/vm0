@@ -144,7 +144,7 @@ function configureTeamsDispatchMocks(): void {
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", "teams-app-id");
   mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", "teams-app-password");
   mockEnv("APP_URL", "http://localhost:3002");
-  mockEnv("VM0_WEB_URL", "http://localhost:3000");
+  mockEnv("OKOU_WEB_URL", "http://localhost:3000");
   mockEnv("OKOU_API_BACKEND_URL", "http://localhost:3001");
   mockOptionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL", TEAMS_TOKEN_URL);
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");

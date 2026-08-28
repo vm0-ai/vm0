@@ -201,7 +201,7 @@ async function rejectProviderAuthorization(
 describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   beforeEach(() => {
     mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     mockOAuthEnv();
   });
 
@@ -285,7 +285,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   });
 
   it("uses the configured web origin for local OAuth callback URLs", async () => {
-    mockEnv("VM0_WEB_URL", LOCAL_WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", LOCAL_WEB_ORIGIN);
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("github", {
@@ -1061,7 +1061,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   it("keeps API-origin OAuth callbacks on the PR API when WWW uses Omby staging", async () => {
     mockAuthenticatedSession();
     mockEnv("OKOU_API_BACKEND_URL", "https://pr-19337-api.vm6.ai");
-    mockEnv("VM0_WEB_URL", "https://staging-www.omby.ai");
+    mockEnv("OKOU_WEB_URL", "https://staging-www.omby.ai");
 
     const response = await requestOauthStart("cloudflare", {
       headers: authHeaders(),
@@ -1081,7 +1081,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   it("uses the canonical API origin when OKOU_API_BACKEND_URL is localhost", async () => {
     mockAuthenticatedSession();
     mockEnv("OKOU_API_BACKEND_URL", LOCAL_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
 
     const response = await requestOauthStart("cloudflare", {
       headers: authHeaders(),
@@ -1101,7 +1101,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   it("keeps Cloudflare OAuth callbacks on the canonical API origin when OKOU_API_BACKEND_URL is a tunnel", async () => {
     mockAuthenticatedSession();
     mockEnv("OKOU_API_BACKEND_URL", "https://tunnel-liangyou-vm2-www.vm7.ai");
-    mockEnv("VM0_WEB_URL", "https://www.vm7.ai:8443");
+    mockEnv("OKOU_WEB_URL", "https://www.vm7.ai:8443");
 
     const response = await requestOauthStart("cloudflare", {
       headers: authHeaders(),

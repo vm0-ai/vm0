@@ -940,8 +940,8 @@ jobs:
           app: api
           environment: preview
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          # Preview API routes that historically used VM0_WEB_URL now stay on
-          # the matching preview API instead of depending on a PR WWW proxy.
+          # Preview API routes stay on the matching preview API instead of
+          # depending on a PR WWW proxy.
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}

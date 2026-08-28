@@ -124,7 +124,7 @@ function slackIngressRequest(args: {
 describe("provider console paths", () => {
   beforeEach(() => {
     mockEnv("APP_URL", APP_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     mockEnv("SLACK_OAUTH_CLIENT_ID", "slack-client-id");
     mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-client-secret");
     mockOptionalEnv("SLACK_SIGNING_SECRET", SLACK_SIGNING_SECRET);

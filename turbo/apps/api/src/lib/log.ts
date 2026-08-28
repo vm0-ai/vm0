@@ -38,9 +38,7 @@ interface Logger {
   level: Level;
 }
 
-type RetainedAliasResolutionEvent =
-  | "web_url_alias_resolution"
-  | "stripe_preview_job_ref_alias_resolution";
+type RetainedAliasResolutionEvent = "stripe_preview_job_ref_alias_resolution";
 
 class LoggerRegistry {
   private readonly store = new Map<string, Logger>();

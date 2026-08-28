@@ -54,7 +54,7 @@ export function setupTeamsConnectTestEnv(
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
   mockEnv("MICROSOFT_TEAMS_APP_TENANT_ID", TEAMS_APP_TENANT_ID);
   mockEnv("APP_URL", appUrl);
-  mockEnv("VM0_WEB_URL", appUrl);
+  mockEnv("OKOU_WEB_URL", appUrl);
   mockEnv("OKOU_API_BACKEND_URL", apiBackendUrl);
 }
 

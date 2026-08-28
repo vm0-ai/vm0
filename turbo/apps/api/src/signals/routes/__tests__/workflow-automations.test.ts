@@ -1250,7 +1250,7 @@ describe("okou workflow automations", () => {
   });
 
   it("projects webhook URLs by request and run brand without rotating credentials", async () => {
-    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
     const { actor, agentId, workflowId } = await setupFixture("team");
     const created = await accept(
       automationsClient().create({
