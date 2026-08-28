@@ -16,6 +16,7 @@ import type {
 import type {
   OfficialWorkflowCatalogDetail,
   OfficialWorkflowCatalogSummary,
+  OfficialWorkflowInstallationDefinition,
 } from "@okouai/api-contracts/contracts/official-workflows";
 import { isValidTimeZone, parseScheduledAtTime } from "@okouai/core/timezone";
 import { agents } from "@okouai/db/schema/agent";
@@ -98,14 +99,11 @@ function catalogSummary(
   };
 }
 
-async function activeCatalogDetail(
+async function catalogDetail(
   db: ReadonlyDb,
   definition: OfficialWorkflowAcceptedDefinition,
   signal: AbortSignal,
-): Promise<OfficialWorkflowCatalogDetail | null> {
-  if (definition.lifecycle !== "active") {
-    return null;
-  }
+): Promise<OfficialWorkflowCatalogDetail> {
   const revision = await readAcceptedOfficialWorkflowRevision(
     db,
     { name: definition.name, revision: definition.revision },
@@ -119,6 +117,7 @@ async function activeCatalogDetail(
   return {
     name: definition.name,
     revision: definition.revision,
+    lifecycle: definition.lifecycle,
     displayName: revision.definition.workflow.displayName,
     description: revision.definition.workflow.description,
     workflow: revision.definition.workflow,
@@ -140,10 +139,7 @@ export async function listActiveOfficialWorkflows(
   });
   const details = await Promise.all(
     active.map(async (definition) => {
-      const detail = await activeCatalogDetail(db, definition, signal);
-      if (!detail) {
-        throw new Error("Active Official Workflow unexpectedly retired");
-      }
+      const detail = await catalogDetail(db, definition, signal);
       return catalogSummary(definition, detail);
     }),
   );
@@ -155,7 +151,7 @@ export async function listActiveOfficialWorkflows(
   });
 }
 
-export async function getActiveOfficialWorkflow(
+export async function getOfficialWorkflow(
   db: ReadonlyDb,
   name: string,
   signal: AbortSignal,
@@ -164,7 +160,37 @@ export async function getActiveOfficialWorkflow(
   const definition = catalog?.payload.definitions.find((entry) => {
     return entry.name === name;
   });
-  return definition ? await activeCatalogDetail(db, definition, signal) : null;
+  return definition ? await catalogDetail(db, definition, signal) : null;
+}
+
+export async function getOfficialWorkflowInstallationDefinition(
+  db: ReadonlyDb,
+  name: string,
+  signal: AbortSignal,
+): Promise<OfficialWorkflowInstallationDefinition | null> {
+  const catalog = await readAcceptedOfficialWorkflowCatalog(db, signal);
+  const definition = catalog?.payload.definitions.find((entry) => {
+    return entry.name === name;
+  });
+  if (!definition) {
+    return null;
+  }
+  const revision = await readAcceptedOfficialWorkflowRevision(
+    db,
+    { name: definition.name, revision: definition.revision },
+    signal,
+  );
+  if (!revision) {
+    throw new Error(
+      `Accepted Official Workflow revision is missing: ${definition.name}@${definition.revision}`,
+    );
+  }
+  return {
+    name: definition.name,
+    revision: definition.revision,
+    lifecycle: definition.lifecycle,
+    blueprints: revision.definition.blueprints,
+  };
 }
 
 function isParameterReference(

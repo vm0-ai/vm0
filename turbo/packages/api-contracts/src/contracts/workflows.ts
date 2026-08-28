@@ -779,8 +779,9 @@ const workflowAutomationSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
-  // P1 is backend-only. Keep the additive field optional until P4 can raise
-  // the app/API compatibility floor after retained pre-P1 APIs are gone.
+  // Retained new App -> old API fallback from P1. Remove the optional parser
+  // in #29991 only after production proves pre-P1 APIs are no longer serving
+  // or retained for rollback.
   official: z
     .object({
       blueprintKey: officialWorkflowBlueprintKeySchema,
@@ -1516,8 +1517,9 @@ export const workflowSummarySchema = z.object({
   createdAt: z.string().datetime(),
   canManage: z.boolean(),
   canPublish: z.boolean(),
-  // P1 is backend-only. Keep the additive field optional until P4 can raise
-  // the app/API compatibility floor after retained pre-P1 APIs are gone.
+  // Retained new App -> old API fallback from P1. Remove the optional parser
+  // in #29991 only after production proves pre-P1 APIs are no longer serving
+  // or retained for rollback.
   official: z
     .object({
       definitionName: workflowNameSchema,

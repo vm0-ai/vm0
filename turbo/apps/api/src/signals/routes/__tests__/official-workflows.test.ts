@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import {
   DeleteObjectsCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
@@ -79,7 +80,12 @@ import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 import { workflowsRoutes } from "../workflows";
 import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
-import { createDeferredPromise, onRejection } from "../../utils";
+import {
+  acknowledgeDetachedForTest,
+  createDeferredPromise,
+  onRejection,
+  settle,
+} from "../../utils";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -911,26 +917,62 @@ function missingS3Object(key: string): Error {
   });
 }
 
-function installCatalogStorageFixture(): void {
+function requiredS3ObjectKey(key: string | undefined): string {
+  if (!key) {
+    throw new Error("Expected an S3 object key");
+  }
+  return key;
+}
+
+function installCatalogStorageFixture() {
   const objects = new Map<string, Buffer>();
+  let nextWriteError: Error | null = null;
+  let heldWrite:
+    | {
+        readonly started: ReturnType<typeof createDeferredPromise<void>>;
+        readonly release: ReturnType<typeof createDeferredPromise<void>>;
+      }
+    | undefined;
   const fallback = context.mocks.s3.send.getMockImplementation();
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     if (command instanceof PutObjectCommand) {
-      const key = command.input.Key;
-      if (!key) {
-        throw new Error("Expected an S3 object key");
+      if (nextWriteError) {
+        const error = nextWriteError;
+        nextWriteError = null;
+        throw error;
+      }
+      const key = requiredS3ObjectKey(command.input.Key);
+      if (heldWrite) {
+        const gate = heldWrite;
+        heldWrite = undefined;
+        gate.started.resolve(undefined);
+        return gate.release.promise.then(() => {
+          objects.set(key, s3BodyBuffer(command.input.Body));
+          return {};
+        });
       }
       objects.set(key, s3BodyBuffer(command.input.Body));
       return Promise.resolve({});
     }
     if (command instanceof HeadObjectCommand) {
-      const key = command.input.Key;
-      if (!key) {
-        throw new Error("Expected an S3 object key");
-      }
+      const key = requiredS3ObjectKey(command.input.Key);
       const body = objects.get(key);
       return body
         ? Promise.resolve({ ContentLength: body.length })
+        : Promise.reject(missingS3Object(key));
+    }
+    if (command instanceof GetObjectCommand) {
+      const key = requiredS3ObjectKey(command.input.Key);
+      const body = objects.get(key);
+      return body
+        ? Promise.resolve({
+            Body: {
+              async *[Symbol.asyncIterator]() {
+                yield body;
+              },
+            },
+            ContentLength: body.length,
+          })
         : Promise.reject(missingS3Object(key));
     }
     if (command instanceof ListObjectsV2Command) {
@@ -960,6 +1002,32 @@ function installCatalogStorageFixture(): void {
     }
     return fallback(command);
   });
+  return {
+    objectCount(): number {
+      return objects.size;
+    },
+    failNextWrite(error: Error): void {
+      nextWriteError = error;
+    },
+    holdNextWrite() {
+      if (heldWrite) {
+        throw new Error("An S3 write is already held");
+      }
+      const started = createDeferredPromise<void>(context.signal);
+      const release = createDeferredPromise<void>(context.signal);
+      heldWrite = { started, release };
+      return {
+        started: started.promise,
+        resolve(): void {
+          release.resolve(undefined);
+        },
+        reject(error: Error): void {
+          acknowledgeDetachedForTest(release.promise);
+          release.reject(error);
+        },
+      };
+    },
+  };
 }
 
 async function setOfficialWorkflowsEnabled(
@@ -1209,6 +1277,7 @@ describe.sequential("Official Workflow installations", () => {
       instruction: "Execute only the accepted Definition content.",
       files: [{ path: "references/context.md", content: "accepted\n" }],
     });
+    expect(catalogDetail.body.lifecycle).toBe("active");
 
     const installBody = {
       agentId,
@@ -1408,6 +1477,11 @@ describe.sequential("Official Workflow installations", () => {
       }),
     );
     expect(installed.body.workflow.automations).toHaveLength(3);
+    expect(installed.body.definition).toMatchObject({
+      name: definitionName,
+      lifecycle: "active",
+      blueprints: [{ key: "daily" }, { key: "one-shot" }, { key: "pulse" }],
+    });
     expect(
       installed.body.workflow.automations.every((automation) => {
         return automation.enabled;
@@ -1733,6 +1807,104 @@ describe.sequential("Official Workflow installations", () => {
         return automation.id === dailyAutomation.id || automation.enabled;
       }),
     ).toBeTruthy();
+
+    const { agentId: activeCopyAgentId } = await workflowBdd.createAgent(actor);
+    let activeCopyAgentDeleted = false;
+    onTestFinished(async () => {
+      if (!activeCopyAgentDeleted) {
+        installCatalogStorageFixture();
+        await bdd.deleteAgent(actor, activeCopyAgentId);
+      }
+    });
+    installCatalogStorageFixture();
+    const activeCopy = await accept(
+      workflowClient().copy({
+        headers,
+        params: { workflowId: firstWorkflowId },
+        body: { toAgentId: activeCopyAgentId },
+      }),
+      [201],
+    );
+    expect(activeCopy.body).toMatchObject({
+      agentId: activeCopyAgentId,
+      name: definitionName,
+      visibility: "private",
+      official: null,
+    });
+    const activeCopyDetail = await accept(
+      workflowClient().get({
+        headers,
+        params: { workflowId: activeCopy.body.id },
+      }),
+      [200],
+    );
+    expect(activeCopyDetail.body).toMatchObject({
+      instruction: "Execute only the accepted Definition content.",
+      fileContents: [{ path: "references/context.md", content: "accepted\n" }],
+      canManage: true,
+      canPublish: true,
+      official: null,
+    });
+    expect(activeCopyDetail.body.automations).toHaveLength(3);
+    expect(
+      activeCopyDetail.body.automations.every((automation) => {
+        return automation.official === null;
+      }),
+    ).toBeTruthy();
+    const activeCopiedDaily = activeCopyDetail.body.automations.find(
+      (automation) => {
+        return (
+          automation.kind === "schedule" && automation.schedule.type === "cron"
+        );
+      },
+    );
+    expect(activeCopiedDaily).toMatchObject({
+      enabled: false,
+      schedule: { cronExpression: "0 9 * * *", timezone: "Asia/Shanghai" },
+      official: null,
+    });
+    if (!activeCopiedDaily) {
+      throw new Error("Expected an ordinary copied daily automation");
+    }
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, activeCopiedDaily.id),
+    ).resolves.toMatchObject({
+      autonomyBudget: 4,
+      officialBlueprintKey: null,
+      officialResultEmailEnabled: null,
+    });
+    await bdd.deleteAgent(actor, activeCopyAgentId);
+    activeCopyAgentDeleted = true;
+
+    const { agentId: failedCopyAgentId } = await workflowBdd.createAgent(actor);
+    let failedCopyAgentDeleted = false;
+    onTestFinished(async () => {
+      if (!failedCopyAgentDeleted) {
+        installCatalogStorageFixture();
+        await bdd.deleteAgent(actor, failedCopyAgentId);
+      }
+    });
+    const failingCopyStorage = installCatalogStorageFixture();
+    failingCopyStorage.failNextWrite(new Error("copy archive upload failed"));
+    await expect(
+      workflowClient().copy({
+        headers,
+        params: { workflowId: firstWorkflowId },
+        body: { toAgentId: failedCopyAgentId },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    expect(failingCopyStorage.objectCount()).toBe(0);
+    const failedCopyTargetWorkflows = await accept(
+      workflowCollectionClient().list({
+        headers,
+        query: { agentId: failedCopyAgentId },
+      }),
+      [200],
+    );
+    expect(failedCopyTargetWorkflows.body).toStrictEqual([]);
+    await bdd.deleteAgent(actor, failedCopyAgentId);
+    failedCopyAgentDeleted = true;
+
     await accept(
       automationClient().enable({
         headers,
@@ -1812,13 +1984,29 @@ describe.sequential("Official Workflow installations", () => {
     expect(
       retiredInstallation.body.workflow.official?.definitionLifecycle,
     ).toBe("retired");
-    await accept(
+    const retiredDiscovery = await accept(
+      officialClient().list({ headers }),
+      [200],
+    );
+    expect(
+      retiredDiscovery.body.some((entry) => {
+        return entry.name === definitionName;
+      }),
+    ).toBeFalsy();
+    const retiredDefinitionDetail = await accept(
       officialClient().get({
         headers,
         params: { definitionName },
       }),
-      [404],
+      [200],
     );
+    expect(retiredDefinitionDetail.body).toMatchObject({
+      name: definitionName,
+      lifecycle: "retired",
+      workflow: {
+        instruction: "Execute only the accepted Definition content.",
+      },
+    });
     await accept(
       officialClient().install({
         headers,
@@ -1830,13 +2018,110 @@ describe.sequential("Official Workflow installations", () => {
 
     await setOfficialWorkflowsEnabled(actor, false);
     await accept(officialClient().list({ headers }), [403]);
-    await accept(
+    const switchDisabledInstallation = await accept(
       installationClient().get({
         headers,
         params: { workflowId: reinstalled.body.workflow.id },
       }),
       [200],
     );
+    expect(switchDisabledInstallation.body.definition).toMatchObject({
+      name: definitionName,
+      lifecycle: "retired",
+      blueprints: expect.arrayContaining([
+        expect.objectContaining({
+          key: "daily",
+          parameters: expect.arrayContaining([
+            expect.objectContaining({
+              key: "include-weekends",
+              type: "boolean",
+            }),
+            expect.objectContaining({ key: "cron-expression", type: "string" }),
+          ]),
+        }),
+        expect.objectContaining({
+          key: "pulse",
+          parameters: expect.arrayContaining([
+            expect.objectContaining({
+              key: "interval-seconds",
+              type: "integer",
+            }),
+          ]),
+        }),
+      ]),
+    });
+
+    const { agentId: retiredCopyAgentId } =
+      await workflowBdd.createAgent(actor);
+    let retiredCopyAgentDeleted = false;
+    onTestFinished(async () => {
+      if (!retiredCopyAgentDeleted) {
+        installCatalogStorageFixture();
+        await bdd.deleteAgent(actor, retiredCopyAgentId);
+      }
+    });
+    installCatalogStorageFixture();
+    const retiredCopy = await accept(
+      workflowClient().copy({
+        headers,
+        params: { workflowId: reinstalled.body.workflow.id },
+        body: { toAgentId: retiredCopyAgentId },
+      }),
+      [201],
+    );
+    const retiredCopyDetail = await accept(
+      workflowClient().get({
+        headers,
+        params: { workflowId: retiredCopy.body.id },
+      }),
+      [200],
+    );
+    expect(retiredCopyDetail.body).toMatchObject({
+      instruction: "Execute only the accepted Definition content.",
+      fileContents: [{ path: "references/context.md", content: "accepted\n" }],
+      official: null,
+    });
+    expect(
+      retiredCopyDetail.body.automations.every((automation) => {
+        return automation.official === null;
+      }),
+    ).toBeTruthy();
+    await bdd.deleteAgent(actor, retiredCopyAgentId);
+    retiredCopyAgentDeleted = true;
+
+    const { agentId: staleCopyAgentId } = await workflowBdd.createAgent(actor);
+    let staleCopyAgentDeleted = false;
+    onTestFinished(async () => {
+      if (!staleCopyAgentDeleted) {
+        installCatalogStorageFixture();
+        await bdd.deleteAgent(actor, staleCopyAgentId);
+      }
+    });
+    await setOfficialWorkflowAutomationAdmissionStateFixture(
+      context,
+      reinstalledDailyAutomation.id,
+      "needs_reconfiguration",
+    );
+    const staleCopy = await accept(
+      workflowClient().copy({
+        headers,
+        params: { workflowId: reinstalled.body.workflow.id },
+        body: { toAgentId: staleCopyAgentId },
+      }),
+      [409],
+    );
+    expect(staleCopy.body.error.message).toContain("Reconfigure");
+    const staleTargetWorkflows = await accept(
+      workflowCollectionClient().list({
+        headers,
+        query: { agentId: staleCopyAgentId },
+      }),
+      [200],
+    );
+    expect(staleTargetWorkflows.body).toStrictEqual([]);
+    await bdd.deleteAgent(actor, staleCopyAgentId);
+    staleCopyAgentDeleted = true;
+
     await accept(
       automationClient().disable({
         headers,
@@ -1873,6 +2158,182 @@ describe.sequential("Official Workflow installations", () => {
       }),
       [204],
     );
+  });
+
+  it("publishes an Official copy only after its volume is durable and compensates a rejected upload", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-copy-publication-${suffix}`;
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [loopBlueprint()])]),
+    );
+
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+      tier: "team",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped copy actor");
+    }
+    await selectBuiltInDefaultModel(actor);
+    const { agentId: sourceAgentId } = await workflowBdd.createAgent(actor);
+    const { agentId: targetAgentId } = await workflowBdd.createAgent(actor);
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId: sourceAgentId,
+          blueprints: [
+            {
+              blueprintKey: "pulse",
+              bindings: [{ key: "interval-seconds", value: 60 }],
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      for (const agentId of [sourceAgentId, targetAgentId]) {
+        const createdRuns = await runs.listAgentRuns(actor, {
+          agent: agentId,
+          limit: 100,
+        });
+        for (const run of createdRuns.runs) {
+          await runs.requestCancelRun(actor, run.id, [200, 400]);
+        }
+      }
+      await flushWaitUntilForTest();
+      await bdd.deleteAgent(actor, targetAgentId);
+      await bdd.deleteAgent(actor, sourceAgentId);
+      await cleanupCatalog();
+    });
+
+    const beforeRunFamily = await readAgentRunFamilyCountsFixture(
+      context,
+      targetAgentId,
+    );
+    expect(beforeRunFamily).toStrictEqual({
+      run_count: 0,
+      callback_count: 0,
+      runner_job_count: 0,
+      launch_queue_count: 0,
+    });
+    const storage = installCatalogStorageFixture();
+    const objectsBeforeCopy = storage.objectCount();
+    const heldUpload = storage.holdNextWrite();
+    const copying = settle(
+      workflowClient().copy({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+        body: { toAgentId: targetAgentId },
+      }),
+      context.signal,
+    );
+    await heldUpload.started;
+    expect(storage.objectCount()).toBe(objectsBeforeCopy + 1);
+
+    // Both reads use independent route/database work while the copy
+    // transaction is held in S3 publication. Neither the Workflow nor its
+    // final enabled Automation may be observable from that transaction.
+    const duringCopyWorkflows = await accept(
+      workflowCollectionClient().list({
+        headers,
+        query: { agentId: targetAgentId },
+      }),
+      [200],
+    );
+    expect(duringCopyWorkflows.body).toStrictEqual([]);
+    const duringCopyAutomations = await accept(
+      automationClient().listWorkspace({ headers }),
+      [200],
+    );
+    expect(
+      duringCopyAutomations.body.some((automation) => {
+        return automation.workflow.agentId === targetAgentId;
+      }),
+    ).toBeFalsy();
+    await expect(
+      readAgentRunFamilyCountsFixture(context, targetAgentId),
+    ).resolves.toStrictEqual(beforeRunFamily);
+
+    // Poll only the otherwise-empty target Agent. A buggy committed copy would
+    // expose and dispatch its due schedule here; the uncommitted target must
+    // remain absent without touching the source Automation locks.
+    const drained = await withMockNowForTest(now() + 120_000, async () => {
+      return await accept(
+        automationExecutionClient().executeForAgent({
+          body: { agent_id: targetAgentId },
+        }),
+        [200],
+      );
+    });
+    expect(drained.body).toStrictEqual({
+      success: true,
+      executed: 0,
+      skipped: 0,
+    });
+    await expect(
+      readAgentRunFamilyCountsFixture(context, targetAgentId),
+    ).resolves.toStrictEqual(beforeRunFamily);
+
+    heldUpload.reject(new Error("copy archive upload rejected"));
+    const rejectedCopy = await copying;
+    expect(rejectedCopy.ok).toBeFalsy();
+    expect(storage.objectCount()).toBe(objectsBeforeCopy);
+    const afterRejectedWorkflows = await accept(
+      workflowCollectionClient().list({
+        headers,
+        query: { agentId: targetAgentId },
+      }),
+      [200],
+    );
+    expect(afterRejectedWorkflows.body).toStrictEqual([]);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, targetAgentId),
+    ).resolves.toStrictEqual(beforeRunFamily);
+
+    // If one concurrent PUT fails before its sibling completes, publication
+    // must await the sibling before compensating. Otherwise a late successful
+    // sibling could recreate an object after cleanup has already finished.
+    const lateSiblingUpload = storage.holdNextWrite();
+    storage.failNextWrite(new Error("copy manifest upload failed"));
+    let lateSiblingCopySettled = false;
+    const lateSiblingCopy = settle(
+      workflowClient().copy({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+        body: { toAgentId: targetAgentId },
+      }),
+      context.signal,
+    ).then((result) => {
+      lateSiblingCopySettled = true;
+      return result;
+    });
+    await lateSiblingUpload.started;
+    const duringLateSiblingWorkflows = await accept(
+      workflowCollectionClient().list({
+        headers,
+        query: { agentId: targetAgentId },
+      }),
+      [200],
+    );
+    expect(duringLateSiblingWorkflows.body).toStrictEqual([]);
+    expect(lateSiblingCopySettled).toBeFalsy();
+    lateSiblingUpload.resolve();
+    const rejectedLateSiblingCopy = await lateSiblingCopy;
+    expect(rejectedLateSiblingCopy.ok).toBeFalsy();
+    expect(storage.objectCount()).toBe(objectsBeforeCopy);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, targetAgentId),
+    ).resolves.toStrictEqual(beforeRunFamily);
   });
 
   it("rejects installation release races without churning unchanged reconfiguration Blueprints", async () => {

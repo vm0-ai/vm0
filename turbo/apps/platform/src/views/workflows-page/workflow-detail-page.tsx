@@ -4,6 +4,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { OfficialWorkflowInstallationDefinition } from "@okouai/api-contracts/contracts/official-workflows";
 import type { StrapiIntegration } from "@okouai/api-contracts/contracts/strapi-integrations";
 import type {
   ChatRunFinishedEventConfig,
@@ -34,6 +35,7 @@ import type {
 import type { PlatformWorkflowConnectorReadinessEntry } from "../../signals/connector-domain.ts";
 import {
   AlertTriangle,
+  BadgeCheck,
   CalendarClock,
   CircleCheck,
   ChevronDown,
@@ -200,6 +202,13 @@ import {
   workflowMetadataPatch$,
   workflowConnectorReadiness$,
 } from "../../signals/workflows-page/workflows-signals.ts";
+import {
+  currentOfficialWorkflowInstallation$,
+  officialWorkflowConfigurationForm$,
+  reconfigureOfficialWorkflow$,
+  setOfficialWorkflowConfigurationForm$,
+  uninstallOfficialWorkflow$,
+} from "../../signals/workflows-page/official-workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -207,7 +216,7 @@ import {
   detachedNavigateTo$,
   generateRouterPath,
 } from "../../signals/route.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, settle } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { orgPlanCapabilities$ } from "../../signals/okou-page/org-plan-capabilities.ts";
 import { strapiIntegrations$ } from "../../signals/okou-page/strapi.ts";
@@ -255,6 +264,11 @@ import { AutomationListIcon } from "../okou-page/workflow-automations-page.tsx";
 import { emptyAutomationsImg } from "../okou-page/platform-assets.ts";
 import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
+import {
+  createOfficialWorkflowConfigurationForm,
+  OfficialWorkflowConfigurationFields,
+  officialWorkflowConfigurationComplete,
+} from "./official-workflow-configuration.tsx";
 
 const AUTOMATION_FIELD_CLASS = "h-8 px-2 text-xs";
 const WORKFLOW_EDIT_TEXTAREA_CLASS = "min-h-24 resize-y";
@@ -1179,11 +1193,13 @@ function DetailHeader({
                 </p>
               </div>
             </div>
-            <WorkflowChatButton detail={detail} />
+            {detail.official ? null : <WorkflowChatButton detail={detail} />}
           </div>
           <div className="mt-4 flex items-center gap-2 sm:mt-6">
             <WorkflowTabNav activeTab={activeTab} onTabChange={onTabChange} />
-            {activeTab === "automations" ? <AutomationCreateAction /> : null}
+            {activeTab === "automations" && !detail.official ? (
+              <AutomationCreateAction />
+            ) : null}
             {activeTab === "instructions" ? (
               <WorkflowFilePicker detail={detail} />
             ) : null}
@@ -1373,8 +1389,62 @@ function WorkflowTabContent({
   return (
     <>
       <ShadowWarning detail={detail} />
+      <OfficialWorkflowLifecycleBanner detail={detail} />
       {content}
     </>
+  );
+}
+
+function OfficialWorkflowLifecycleBanner({
+  detail,
+}: {
+  readonly detail: WorkflowDetailResponse;
+}) {
+  if (!detail.official) {
+    return null;
+  }
+  const lifecycle = detail.official.definitionLifecycle;
+  const copy = (() => {
+    if (lifecycle === "retired") {
+      return {
+        title: i18n.t(($) => {
+          return $.workflows.official.retiredInstallationTitle;
+        }),
+        description: i18n.t(($) => {
+          return $.workflows.official.retiredInstallationDescription;
+        }),
+      };
+    }
+    if (lifecycle === "unavailable") {
+      return {
+        title: i18n.t(($) => {
+          return $.workflows.official.unavailableInstallationTitle;
+        }),
+        description: i18n.t(($) => {
+          return $.workflows.official.unavailableInstallationDescription;
+        }),
+      };
+    }
+    return {
+      title: i18n.t(($) => {
+        return $.workflows.official.activeInstallationTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.official.activeInstallationDescription;
+      }),
+    };
+  })();
+  return (
+    <Alert
+      className={cn(
+        "mx-auto mb-4 max-w-[900px]",
+        lifecycle === "retired" && "border-amber-300 bg-amber-50",
+      )}
+    >
+      <BadgeCheck size={16} />
+      <AlertTitle>{copy.title}</AlertTitle>
+      <AlertDescription>{copy.description}</AlertDescription>
+    </Alert>
   );
 }
 
@@ -1399,7 +1469,7 @@ function WorkflowInfoTab({
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-4">
       <WorkflowMetadataForm detail={detail} />
-      {connectorReadinessEnabled ? (
+      {connectorReadinessEnabled && !detail.official ? (
         <WorkflowConnectorReadiness
           detail={detail}
           hasUnsavedInputs={hasUnsavedReadinessInputs}
@@ -1433,7 +1503,10 @@ function WorkflowInfoTab({
           </InlineSettingsRow>
         </div>
       </div>
-      {detail.canManage ? (
+      {detail.official ? (
+        <OfficialWorkflowInstallationSettings detail={detail} />
+      ) : null}
+      {detail.canManage && !detail.official ? (
         <div className="zero-card overflow-hidden border-destructive/20">
           <div className="p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
@@ -1476,14 +1549,364 @@ function WorkflowInfoTab({
           setActionDialog(open ? "copy" : null);
         }}
       />
-      <WorkflowDeleteDialog
-        detail={detail}
-        open={actionDialog === "delete"}
-        onOpenChange={(open) => {
-          setActionDialog(open ? "delete" : null);
-        }}
-      />
+      {!detail.official ? (
+        <WorkflowDeleteDialog
+          detail={detail}
+          open={actionDialog === "delete"}
+          onOpenChange={(open) => {
+            setActionDialog(open ? "delete" : null);
+          }}
+        />
+      ) : null}
+      {detail.official ? (
+        <OfficialWorkflowUninstallDialog
+          detail={detail}
+          open={actionDialog === "delete"}
+          onOpenChange={(open) => {
+            setActionDialog(open ? "delete" : null);
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function OfficialWorkflowInstallationSettings({
+  detail,
+}: {
+  readonly detail: WorkflowDetailResponse;
+}) {
+  const installationLoadable = useLoadable(
+    currentOfficialWorkflowInstallation$,
+  );
+  const installation =
+    installationLoadable.state === "hasData" ? installationLoadable.data : null;
+  const definition = installation?.definition;
+  return (
+    <>
+      <OfficialWorkflowReconfigureCard
+        detail={detail}
+        definition={definition}
+        loading={installationLoadable.state === "loading"}
+      />
+      <OfficialWorkflowUninstallCard />
+      {definition ? (
+        <OfficialWorkflowReconfigureDialog
+          detail={detail}
+          definition={definition}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function OfficialWorkflowReconfigureCard({
+  detail,
+  definition,
+  loading,
+}: {
+  readonly detail: WorkflowDetailResponse;
+  readonly definition: OfficialWorkflowInstallationDefinition | undefined;
+  readonly loading: boolean;
+}) {
+  const setForm = useSet(setOfficialWorkflowConfigurationForm$);
+  const preferences = useLastResolved(userPreferences$);
+  const userTimezone =
+    preferences?.timezone ??
+    new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const description = definition
+    ? i18n.t(($) => {
+        return $.workflows.official.reconfigureDescription;
+      })
+    : i18n.t(($) => {
+        return $.workflows.official.reconfigureUnavailable;
+      });
+  return (
+    <div className="zero-card overflow-hidden">
+      <div className="p-4 sm:p-5">
+        <InlineSettingsRow
+          label={i18n.t(($) => {
+            return $.workflows.official.reconfigureTitle;
+          })}
+          description={description}
+          alignControls="center"
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi h-9 rounded-lg"
+            disabled={
+              !definition || definition.blueprints.length === 0 || loading
+            }
+            onClick={() => {
+              if (!definition) {
+                return;
+              }
+              setForm(
+                createOfficialWorkflowConfigurationForm({
+                  target: {
+                    operation: "reconfigure",
+                    workflowId: detail.id,
+                  },
+                  definitionName: definition.name,
+                  agentId: detail.agentId,
+                  blueprints: definition.blueprints,
+                  automations: detail.automations,
+                  userTimezone,
+                }),
+              );
+            }}
+          >
+            {i18n.t(($) => {
+              return $.workflows.official.reconfigure;
+            })}
+          </Button>
+        </InlineSettingsRow>
+      </div>
+    </div>
+  );
+}
+
+function OfficialWorkflowUninstallCard() {
+  const setActionDialog = useSet(setWorkflowActionDialog$);
+  return (
+    <div className="zero-card overflow-hidden border-destructive/20">
+      <div className="p-4 sm:p-5">
+        <InlineSettingsRow
+          label={i18n.t(($) => {
+            return $.workflows.official.uninstallTitle;
+          })}
+          description={i18n.t(($) => {
+            return $.workflows.official.uninstallDescription;
+          })}
+          alignControls="center"
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => {
+              setActionDialog("delete");
+            }}
+          >
+            <Trash size={14} />
+            {i18n.t(($) => {
+              return $.workflows.official.uninstall;
+            })}
+          </Button>
+        </InlineSettingsRow>
+      </div>
+    </div>
+  );
+}
+
+function OfficialWorkflowReconfigureDialog({
+  detail,
+  definition,
+}: {
+  readonly detail: WorkflowDetailResponse;
+  readonly definition: OfficialWorkflowInstallationDefinition;
+}) {
+  const form = useGet(officialWorkflowConfigurationForm$);
+  const setForm = useSet(setOfficialWorkflowConfigurationForm$);
+  const pageSignal = useGet(pageSignal$);
+  const [reconfigureLoadable, reconfigure] = useLoadableSet(
+    reconfigureOfficialWorkflow$,
+  );
+  const reconfiguring = reconfigureLoadable.state === "loading";
+  const activeForm =
+    form?.target.operation === "reconfigure" &&
+    form.target.workflowId === detail.id &&
+    form.definitionName === definition.name
+      ? form
+      : null;
+  const complete = activeForm
+    ? officialWorkflowConfigurationComplete(activeForm, definition.blueprints)
+    : false;
+  const submit = () => {
+    if (!activeForm) {
+      return;
+    }
+    detach(
+      (async () => {
+        await reconfigure(
+          { workflowId: detail.id, blueprints: activeForm.blueprints },
+          pageSignal,
+        );
+        setForm(null);
+        toast.success(
+          i18n.t(($) => {
+            return $.workflows.official.reconfigured;
+          }),
+        );
+      })(),
+      Reason.DomCallback,
+      "reconfigure Official Workflow",
+    );
+  };
+  return (
+    <Dialog
+      open={activeForm !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setForm(null);
+        }
+      }}
+    >
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.workflows.official.reconfigureTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.workflows.official.reconfigureDialogDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        {activeForm ? (
+          <OfficialWorkflowConfigurationFields
+            form={activeForm}
+            blueprints={definition.blueprints}
+            agents={[]}
+            agentsLoaded
+            showAgent={false}
+            disabled={reconfiguring}
+          />
+        ) : null}
+        {reconfigureLoadable.state === "hasError" ? (
+          <Alert variant="destructive">
+            <AlertTitle>
+              {i18n.t(($) => {
+                return $.workflows.official.reconfigureErrorTitle;
+              })}
+            </AlertTitle>
+            <AlertDescription>
+              {i18n.t(($) => {
+                return $.workflows.official.reconfigureErrorDescription;
+              })}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        <OfficialWorkflowReconfigureDialogFooter
+          disabled={!activeForm || !complete || reconfiguring}
+          loading={reconfiguring}
+          onCancel={() => {
+            setForm(null);
+          }}
+          onSubmit={submit}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function OfficialWorkflowReconfigureDialogFooter({
+  disabled,
+  loading,
+  onCancel,
+  onSubmit,
+}: {
+  readonly disabled: boolean;
+  readonly loading: boolean;
+  readonly onCancel: () => void;
+  readonly onSubmit: () => void;
+}) {
+  return (
+    <DialogFooter>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={loading}
+        onClick={onCancel}
+      >
+        {i18n.t(($) => {
+          return $.workflows.common.cancel;
+        })}
+      </Button>
+      <Button type="button" disabled={disabled} onClick={onSubmit}>
+        {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+        {i18n.t(($) => {
+          return $.workflows.official.reconfigure;
+        })}
+      </Button>
+    </DialogFooter>
+  );
+}
+
+function OfficialWorkflowUninstallDialog({
+  detail,
+  open,
+  onOpenChange,
+}: {
+  readonly detail: WorkflowDetailResponse;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
+  const [uninstallLoadable, uninstall] = useLoadableSet(
+    uninstallOfficialWorkflow$,
+  );
+  const uninstalling = uninstallLoadable.state === "loading";
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.workflows.official.uninstallTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.workflows.official.uninstallConfirm;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={uninstalling}
+            onClick={() => {
+              onOpenChange(false);
+            }}
+          >
+            {i18n.t(($) => {
+              return $.workflows.common.cancel;
+            })}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={uninstalling}
+            onClick={() => {
+              detach(
+                (async () => {
+                  await uninstall(detail.id, pageSignal);
+                  onOpenChange(false);
+                  navigate(ROUTES.workflows);
+                })(),
+                Reason.DomCallback,
+                "uninstall Official Workflow",
+              );
+            }}
+          >
+            {uninstalling ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : null}
+            {i18n.t(($) => {
+              return $.workflows.official.uninstall;
+            })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1999,10 +2422,11 @@ function WorkflowMetadataForm({
   const resetForm = useSet(resetWorkflowMetadataForm$);
   const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
   const saving = saveLoadable.state === "loading";
-  const disabled = !detail.canManage || saving;
+  const canEdit = detail.canManage && !detail.official;
+  const disabled = !canEdit || saving;
   const defaults = workflowMetadataDefaults(detail);
   const values =
-    detail.canManage && patch?.workflowId === detail.id
+    canEdit && patch?.workflowId === detail.id
       ? { ...defaults, ...patch }
       : defaults;
   const dirty =
@@ -2010,13 +2434,13 @@ function WorkflowMetadataForm({
     values.name !== defaults.name ||
     values.description !== defaults.description;
   const patchValues = (patch: Partial<WorkflowMetadataValues>) => {
-    if (!detail.canManage || saving) {
+    if (!canEdit || saving) {
       return;
     }
     patchForm({ workflowId: detail.id, patch });
   };
   const save = () => {
-    if (!detail.canManage) {
+    if (!canEdit) {
       return;
     }
     const nextDisplayName = values.displayName.trim();
@@ -2064,7 +2488,7 @@ function WorkflowMetadataForm({
           values={values}
         />
       </form>
-      {detail.canManage && dirty ? (
+      {canEdit && dirty ? (
         <UnsavedBar onDiscard={resetForm} onSave={save} saving={saving} />
       ) : null}
     </>
@@ -2127,15 +2551,20 @@ function WorkflowPublicToggle({
   const isPublic = detail.visibility === "public";
   const statusLabel = isPublic ? copy.public : copy.private;
   const publishBlocked =
-    detail.visibility === "private" && detail.canManage && !detail.canPublish;
+    !detail.official &&
+    detail.visibility === "private" &&
+    detail.canManage &&
+    !detail.canPublish;
   const toggleAction: Parameters<typeof changeVisibility>[0]["action"] | null =
-    isPublic
-      ? detail.canManage
-        ? "demote"
-        : null
-      : detail.canPublish
-        ? "publish"
-        : null;
+    detail.official
+      ? null
+      : isPublic
+        ? detail.canManage
+          ? "demote"
+          : null
+        : detail.canPublish
+          ? "publish"
+          : null;
   const submitVisibilityAction = (
     action: Parameters<typeof changeVisibility>[0]["action"],
   ) => {
@@ -2410,15 +2839,8 @@ function WorkflowCopyDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const pageSignal = useGet(pageSignal$);
-  const navigate = useSet(detachedNavigateTo$);
   const form = useGet(workflowCopyForm$);
   const setForm = useSet(setWorkflowCopyForm$);
-  const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
-  const [pauseLoadable, pauseWorkflowAutomations] = useLoadableSet(
-    pauseWorkflowAutomations$,
-  );
-  const [deleteLoadable, deleteWorkflow] = useLoadableSet(deleteWorkflow$);
   const agentsLoadable = useLoadable(agents$);
   const agentsLoaded = agentsLoadable.state === "hasData";
   const agents = agentsLoaded
@@ -2426,10 +2848,6 @@ function WorkflowCopyDialog({
         return agent.agentId !== detail.agentId;
       })
     : [];
-  const submitting =
-    copyLoadable.state === "loading" ||
-    pauseLoadable.state === "loading" ||
-    deleteLoadable.state === "loading";
   const sourceAgentName = agentLabel(detail);
   const enabledSourceAutomationIds = detail.automations
     .filter((automation) => {
@@ -2447,48 +2865,14 @@ function WorkflowCopyDialog({
     i18n.t(($) => {
       return $.workflows.detail.copy.agentFallback;
     });
-
-  const submit = () => {
-    const toAgentId = form.selectedAgentId;
-    if (!toAgentId) {
-      return;
-    }
-    const removeOriginal = form.removeOriginal;
-    detach(
-      (async () => {
-        const copied = await copyWorkflow(
-          { workflowId: detail.id, toAgentId },
-          pageSignal,
-        );
-        if (removeOriginal) {
-          if (enabledSourceAutomationIds.length > 0) {
-            await pauseWorkflowAutomations(
-              enabledSourceAutomationIds,
-              pageSignal,
-            );
-          }
-          await deleteWorkflow(detail.id, pageSignal);
-        }
-        onOpenChange(false);
-        if (removeOriginal) {
-          navigate(ROUTES.workflowDetailAutomations, {
-            pathParams: { workflowId: copied.id },
-          });
-        }
-        notifyWorkflowCopySuccess({
-          agentName,
-          sourceAgentName,
-          removedOriginal: removeOriginal,
-          onView: () => {
-            navigate(ROUTES.workflowDetailAutomations, {
-              pathParams: { workflowId: copied.id },
-            });
-          },
-        });
-      })(),
-      Reason.DomCallback,
-    );
-  };
+  const { submit, submitting } = useWorkflowCopySubmission({
+    agentName,
+    detail,
+    enabledSourceAutomationIds,
+    form,
+    onOpenChange,
+    sourceAgentName,
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -2525,6 +2909,97 @@ function WorkflowCopyDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function useWorkflowCopySubmission({
+  agentName,
+  detail,
+  enabledSourceAutomationIds,
+  form,
+  onOpenChange,
+  sourceAgentName,
+}: {
+  readonly agentName: string;
+  readonly detail: WorkflowDetailResponse;
+  readonly enabledSourceAutomationIds: readonly string[];
+  readonly form: WorkflowCopyFormState;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly sourceAgentName: string;
+}): { readonly submit: () => void; readonly submitting: boolean } {
+  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
+  const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
+  const [pauseLoadable, pauseWorkflowAutomations] = useLoadableSet(
+    pauseWorkflowAutomations$,
+  );
+  const [deleteLoadable, deleteWorkflow] = useLoadableSet(deleteWorkflow$);
+  const [uninstallLoadable, uninstallOfficialWorkflow] = useLoadableSet(
+    uninstallOfficialWorkflow$,
+  );
+  const submitting =
+    copyLoadable.state === "loading" ||
+    pauseLoadable.state === "loading" ||
+    deleteLoadable.state === "loading" ||
+    uninstallLoadable.state === "loading";
+  const navigateToCopy = (workflowId: string) => {
+    navigate(ROUTES.workflowDetailAutomations, {
+      pathParams: { workflowId },
+    });
+  };
+  const submit = () => {
+    const toAgentId = form.selectedAgentId;
+    if (!toAgentId) {
+      return;
+    }
+    detach(
+      (async () => {
+        const copied = await copyWorkflow(
+          { workflowId: detail.id, toAgentId },
+          pageSignal,
+        );
+        let removedOriginal = false;
+        let officialUninstallFailed = false;
+        if (form.removeOriginal && detail.official) {
+          const removal = await settle(
+            uninstallOfficialWorkflow(detail.id, pageSignal),
+            pageSignal,
+          );
+          removedOriginal = removal.ok;
+          officialUninstallFailed = !removal.ok;
+        } else if (form.removeOriginal) {
+          if (enabledSourceAutomationIds.length > 0) {
+            await pauseWorkflowAutomations(
+              [...enabledSourceAutomationIds],
+              pageSignal,
+            );
+          }
+          await deleteWorkflow(detail.id, pageSignal);
+          removedOriginal = true;
+        }
+        onOpenChange(false);
+        if (form.removeOriginal) {
+          navigateToCopy(copied.id);
+        }
+        notifyWorkflowCopySuccess({
+          agentName,
+          sourceAgentName,
+          removedOriginal,
+          onView: () => {
+            navigateToCopy(copied.id);
+          },
+        });
+        if (officialUninstallFailed) {
+          toast.error(
+            i18n.t(($) => {
+              return $.workflows.official.copySucceededUninstallFailed;
+            }),
+          );
+        }
+      })(),
+      Reason.DomCallback,
+    );
+  };
+  return { submit, submitting };
 }
 
 function WorkflowCopyDialogFooter({
@@ -2725,7 +3200,7 @@ function WorkflowFilePicker({
           selectedFilePath={selectedFilePath}
           onSelectFile={setSelectedFilePath}
         />
-        {detail.canManage ? (
+        {detail.canManage && !detail.official ? (
           <WorkflowFileManagementItems
             saving={saving}
             selectedFilePath={selectedFilePath}
@@ -2952,17 +3427,18 @@ function WorkflowSelectedFileEditor({
   const pageSignal = useGet(pageSignal$);
   const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
   const saving = saveLoadable.state === "loading";
+  const canEdit = detail.canManage && !detail.official;
   const draftMatches =
     draftState?.workflowId === detail.id &&
     draftState.filePath === selectedFilePath &&
     draftState.sourceContent === sourceContent;
-  const draft = detail.canManage && draftMatches ? draftState.content : null;
+  const draft = canEdit && draftMatches ? draftState.content : null;
   const content = draft ?? sourceContent;
   const dirty = draft !== null && draft !== sourceContent;
   const markdown =
     selectedFilePath === null || isMarkdownPath(selectedFilePath);
   const setDraft = (nextContent: string) => {
-    if (!detail.canManage || saving) {
+    if (!canEdit || saving) {
       return;
     }
     setDraftState({
@@ -2974,7 +3450,7 @@ function WorkflowSelectedFileEditor({
   };
 
   const saveDraft = () => {
-    if (!detail.canManage || draft === null) {
+    if (!canEdit || draft === null) {
       return;
     }
     const body = workflowDraftUpdateBody(selectedFilePath, draft, fileContents);
@@ -3000,7 +3476,7 @@ function WorkflowSelectedFileEditor({
           key={`${detail.id}:${selectedFilePath ?? "instructions"}:${sourceContent}`}
           initialContent={content}
           onChange={setDraft}
-          disabled={!detail.canManage || saving}
+          disabled={!canEdit || saving}
           footerHint={null}
           surface="canvas"
           ariaLabel={
@@ -3028,7 +3504,7 @@ function WorkflowSelectedFileEditor({
             return $.workflows.detail.files.fileContent;
           })}
           value={content}
-          disabled={!detail.canManage || saving}
+          disabled={!canEdit || saving}
           spellCheck={false}
           className="min-h-[calc(100vh-10rem)] w-full resize-none bg-transparent px-0 py-3 font-mono text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
           onChange={(event) => {
@@ -3036,7 +3512,7 @@ function WorkflowSelectedFileEditor({
           }}
         />
       )}
-      {detail.canManage && dirty ? (
+      {canEdit && dirty ? (
         <UnsavedBar
           saving={saving}
           onDiscard={() => {
@@ -5535,7 +6011,10 @@ function AutomationsSection({
                 <AutomationRow
                   key={automation.id}
                   automation={automation}
-                  canManage={automation.ownerUserId === currentUserId}
+                  canOperate={automation.ownerUserId === currentUserId}
+                  canEditStructure={
+                    automation.ownerUserId === currentUserId && !detail.official
+                  }
                   displayTimezone={displayTimezone}
                   showDivider={index < automations.length - 1}
                 />
@@ -9521,14 +10000,55 @@ function AutomationRowStats({
   );
 }
 
+function officialReconciliationStatusLabel(
+  status: NonNullable<
+    WorkflowAutomationSummary["official"]
+  >["reconciliationStatus"],
+): string {
+  switch (status) {
+    case "reconciling": {
+      return i18n.t(($) => {
+        return $.workflows.official.statusReconciling;
+      });
+    }
+    case "needs_reconfiguration": {
+      return i18n.t(($) => {
+        return $.workflows.official.statusNeedsReconfiguration;
+      });
+    }
+    case "failed": {
+      return i18n.t(($) => {
+        return $.workflows.official.statusFailed;
+      });
+    }
+    case "current": {
+      return i18n.t(($) => {
+        return $.workflows.official.statusCurrent;
+      });
+    }
+  }
+}
+
+function officialIntendedStateLabel(enabled: boolean): string {
+  return enabled
+    ? i18n.t(($) => {
+        return $.workflows.official.intendedOn;
+      })
+    : i18n.t(($) => {
+        return $.workflows.official.intendedOff;
+      });
+}
+
 function AutomationRow({
   automation,
-  canManage,
+  canOperate,
+  canEditStructure,
   displayTimezone,
   showDivider,
 }: {
   readonly automation: WorkflowAutomationSummary;
-  readonly canManage: boolean;
+  readonly canOperate: boolean;
+  readonly canEditStructure: boolean;
   readonly displayTimezone: string;
   readonly showDivider: boolean;
 }) {
@@ -9568,6 +10088,23 @@ function AutomationRow({
                 {subtitle}
               </div>
             ) : null}
+            {automation.official ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {i18n.t(
+                  ($) => {
+                    return $.workflows.official.reconciliationState;
+                  },
+                  {
+                    state: officialReconciliationStatusLabel(
+                      automation.official.reconciliationStatus,
+                    ),
+                    intended: officialIntendedStateLabel(
+                      automation.official.intendedEnabled,
+                    ),
+                  },
+                )}
+              </p>
+            ) : null}
           </div>
         </div>
         <AutomationRowStats
@@ -9577,12 +10114,13 @@ function AutomationRow({
         <AutomationStatusSwitch
           automation={automation}
           title={title}
-          canManage={canManage}
+          canManage={canOperate}
         />
-        {canManage ? (
+        {canOperate ? (
           <AutomationControls
             automation={automation}
             displayTimezone={displayTimezone}
+            canEditStructure={canEditStructure}
           />
         ) : (
           <div aria-hidden="true" />
@@ -9613,7 +10151,7 @@ function AutomationRow({
       {showDivider ? (
         <div className="mx-5 h-px bg-border/50" aria-hidden="true" />
       ) : null}
-      {canManage ? (
+      {canEditStructure ? (
         <EditWorkflowAutomationDialog
           automation={automation}
           displayTimezone={displayTimezone}
@@ -9744,9 +10282,11 @@ function AutomationStatusSwitch({
 function AutomationControls({
   automation,
   displayTimezone,
+  canEditStructure,
 }: {
   readonly automation: WorkflowAutomationSummary;
   readonly displayTimezone: string;
+  readonly canEditStructure: boolean;
 }) {
   const copy = automationActionCopy();
   const pageSignal = useGet(pageSignal$);
@@ -9761,7 +10301,7 @@ function AutomationControls({
   );
   const [runNowLoadable, runNow] = useLoadableSet(runWorkflowAutomationNow$);
   const busy = runNowLoadable.state === "loading";
-  const canEdit = canEditWorkflowAutomation(automation);
+  const canEdit = canEditStructure && canEditWorkflowAutomation(automation);
   const revealWebhookSecretOpen =
     revealWebhookSecretAutomationId === automation.id &&
     isWebhookWorkflowAutomation(automation);
@@ -9836,17 +10376,20 @@ function AutomationControls({
               </TooltipContent>
             </Tooltip>
           ) : null}
-          <AutomationMoreActionsMenu
-            automation={automation}
-            disabled={busy}
-            onRevealWebhookSecret={
-              isWebhookWorkflowAutomation(automation)
-                ? () => {
-                    setRevealWebhookSecretAutomationId(automation.id);
-                  }
-                : undefined
-            }
-          />
+          {canEditStructure || isWebhookWorkflowAutomation(automation) ? (
+            <AutomationMoreActionsMenu
+              automation={automation}
+              disabled={busy}
+              canDelete={canEditStructure}
+              onRevealWebhookSecret={
+                isWebhookWorkflowAutomation(automation)
+                  ? () => {
+                      setRevealWebhookSecretAutomationId(automation.id);
+                    }
+                  : undefined
+              }
+            />
+          ) : null}
         </div>
       </TooltipProvider>
       {revealWebhookSecretOpen && isWebhookWorkflowAutomation(automation) ? (
@@ -9866,10 +10409,12 @@ function AutomationControls({
 function AutomationMoreActionsMenu({
   automation,
   disabled,
+  canDelete,
   onRevealWebhookSecret,
 }: {
   readonly automation: WorkflowAutomationSummary;
   readonly disabled: boolean;
+  readonly canDelete: boolean;
   readonly onRevealWebhookSecret?: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -9918,25 +10463,27 @@ function AutomationMoreActionsMenu({
             })}
           </DropdownMenuModalItem>
         ) : null}
-        <DropdownMenuItem
-          disabled={deleting}
-          className="gap-2 text-destructive focus:text-destructive"
-          onClick={() => {
-            detach(
-              deleteAutomation(automation.id, pageSignal),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          {deleting ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Trash size={14} />
-          )}
-          {i18n.t(($) => {
-            return $.workflows.automations.common.deleteAutomation;
-          })}
-        </DropdownMenuItem>
+        {canDelete ? (
+          <DropdownMenuItem
+            disabled={deleting}
+            className="gap-2 text-destructive focus:text-destructive"
+            onClick={() => {
+              detach(
+                deleteAutomation(automation.id, pageSignal),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {deleting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Trash size={14} />
+            )}
+            {i18n.t(($) => {
+              return $.workflows.automations.common.deleteAutomation;
+            })}
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
