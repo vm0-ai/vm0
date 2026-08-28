@@ -36,7 +36,6 @@ import {
   toolUseIdForRunEvent,
 } from "./assistant-event-id";
 
-const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
 interface OutputCandidate {
@@ -59,6 +58,13 @@ export interface MaterializedChatProjection {
     readonly apiStartedAt: number;
     readonly acknowledgedAt: number;
   } | null;
+}
+
+export class AgentEventRunNotFoundError extends Error {
+  constructor(runId: string) {
+    super(`Run ${runId} is missing during output materialization`);
+    this.name = "AgentEventRunNotFoundError";
+  }
 }
 
 function recordOf(value: unknown): Record<string, unknown> | null {
@@ -179,67 +185,6 @@ function eventOutputId(event: AgentEvent): string {
   }
 
   return `event:${event.sequenceNumber}`;
-}
-
-function nextProjectionSequenceState(
-  currentProcessedThroughSequence: number,
-  currentPendingSequenceNumbers: readonly number[],
-  events: readonly AgentEvent[],
-): {
-  readonly processedThroughSequence: number;
-  readonly pendingSequenceNumbers: number[];
-} {
-  const sortedSequences = Array.from(
-    new Set(
-      [
-        ...currentPendingSequenceNumbers,
-        ...events.map((event) => {
-          return event.sequenceNumber;
-        }),
-      ].filter((sequenceNumber) => {
-        return Number.isInteger(sequenceNumber) && sequenceNumber >= 0;
-      }),
-    ),
-  ).sort((left, right) => {
-    return left - right;
-  });
-
-  let nextProcessedThroughSequence = currentProcessedThroughSequence;
-  for (const sequenceNumber of sortedSequences) {
-    if (sequenceNumber <= nextProcessedThroughSequence) {
-      continue;
-    }
-    if (sequenceNumber !== nextProcessedThroughSequence + 1) {
-      break;
-    }
-    nextProcessedThroughSequence = sequenceNumber;
-  }
-
-  return {
-    processedThroughSequence: nextProcessedThroughSequence,
-    pendingSequenceNumbers: sortedSequences.filter((sequenceNumber) => {
-      return sequenceNumber > nextProcessedThroughSequence;
-    }),
-  };
-}
-
-function nextStoredProjectionSequenceState(
-  current:
-    | {
-        readonly processedThroughSequence: number;
-        readonly pendingSequenceNumbers: readonly number[];
-      }
-    | undefined,
-  events: readonly AgentEvent[],
-): {
-  readonly processedThroughSequence: number;
-  readonly pendingSequenceNumbers: number[];
-} {
-  return nextProjectionSequenceState(
-    current?.processedThroughSequence ?? INITIAL_PROCESSED_THROUGH_SEQUENCE,
-    current?.pendingSequenceNumbers ?? [],
-    events,
-  );
 }
 
 function toolRunEventId(sequenceNumber: number): string {
@@ -468,6 +413,23 @@ async function lockRunOutputProjection(
   signal.throwIfAborted();
 }
 
+async function lockAgentRunForOutputMaterialization(
+  tx: Tx,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [run] = await tx
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("key share")
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    throw new AgentEventRunNotFoundError(runId);
+  }
+}
+
 async function materializeRunOutputEvents(
   writeDb: Db,
   payload: EventConsumerPayload,
@@ -478,6 +440,7 @@ async function materializeRunOutputEvents(
 
   return await writeDb.transaction(async (tx) => {
     await lockRunOutputProjection(tx, payload.runId, signal);
+    await lockAgentRunForOutputMaterialization(tx, payload.runId, signal);
 
     const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
@@ -496,57 +459,41 @@ async function materializeRunOutputEvents(
         insertion.shouldAttemptFirstAssistantEventClaim;
     }
 
-    const [existingState] = await tx
-      .select({
-        processedThroughSequence:
-          runOutputMaterializations.processedThroughSequence,
-        pendingSequenceNumbers:
-          runOutputMaterializations.pendingSequenceNumbers,
-      })
-      .from(runOutputMaterializations)
-      .where(eq(runOutputMaterializations.runId, payload.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    const { processedThroughSequence, pendingSequenceNumbers } =
-      nextStoredProjectionSequenceState(existingState, payload.events);
-    const updatedAt = nowDate();
-    await tx
-      .insert(runOutputMaterializations)
-      .values({
-        runId: payload.runId,
-        processedThroughSequence,
-        pendingSequenceNumbers,
-        latestResultSequence: latestResult?.sequenceNumber,
-        latestResultText: latestResult?.content,
-        latestOutputSequence: latestOutput?.sequenceNumber,
-        latestOutputText: latestOutput?.content,
-        updatedAt,
-      })
-      .onConflictDoUpdate({
-        target: runOutputMaterializations.runId,
-        set: {
-          processedThroughSequence: sql`greatest(${runOutputMaterializations.processedThroughSequence}, ${processedThroughSequence})`,
-          pendingSequenceNumbers,
-          latestResultSequence:
-            latestResult === null
-              ? runOutputMaterializations.latestResultSequence
-              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.sequenceNumber} else ${runOutputMaterializations.latestResultSequence} end`,
-          latestResultText:
-            latestResult === null
-              ? runOutputMaterializations.latestResultText
-              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.content} else ${runOutputMaterializations.latestResultText} end`,
-          latestOutputSequence:
-            latestOutput === null
-              ? runOutputMaterializations.latestOutputSequence
-              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.sequenceNumber} else ${runOutputMaterializations.latestOutputSequence} end`,
-          latestOutputText:
-            latestOutput === null
-              ? runOutputMaterializations.latestOutputText
-              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.content} else ${runOutputMaterializations.latestOutputText} end`,
+    if (latestResult !== null || latestOutput !== null) {
+      const updatedAt = nowDate();
+      await tx
+        .insert(runOutputMaterializations)
+        .values({
+          runId: payload.runId,
+          latestResultSequence: latestResult?.sequenceNumber,
+          latestResultText: latestResult?.content,
+          latestOutputSequence: latestOutput?.sequenceNumber,
+          latestOutputText: latestOutput?.content,
           updatedAt,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: runOutputMaterializations.runId,
+          set: {
+            latestResultSequence:
+              latestResult === null
+                ? runOutputMaterializations.latestResultSequence
+                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.sequenceNumber} else ${runOutputMaterializations.latestResultSequence} end`,
+            latestResultText:
+              latestResult === null
+                ? runOutputMaterializations.latestResultText
+                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.content} else ${runOutputMaterializations.latestResultText} end`,
+            latestOutputSequence:
+              latestOutput === null
+                ? runOutputMaterializations.latestOutputSequence
+                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.sequenceNumber} else ${runOutputMaterializations.latestOutputSequence} end`,
+            latestOutputText:
+              latestOutput === null
+                ? runOutputMaterializations.latestOutputText
+                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.content} else ${runOutputMaterializations.latestOutputText} end`,
+            updatedAt,
+          },
+        });
+    }
     signal.throwIfAborted();
 
     if (!thread) {
