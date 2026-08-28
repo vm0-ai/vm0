@@ -541,12 +541,69 @@ async fn run_start_with_home(
         None
     };
 
-    // Start background prefetch of snapshot memory for all profiles.
-    let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
-        resource_locks
-            .profile_paths()
-            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory()),
+    // Resource budget from host resources + config.
+    let host_cpus = host::cpu_count()?;
+    let host_memory_mb = u32::try_from(host::memory_mb()?).map_err(|_| {
+        RunnerError::Internal("host memory exceeds supported runner capacity".into())
+    })?;
+    let pre_spawn_capacity = host::pre_spawn_cpu_capacity(host_cpus)?;
+    let pre_spawn_vcpu_tokens = pre_spawn_capacity.tokens();
+    let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
+    let budget = Arc::new(ResourceBudget::new(
+        host_cpus as u32,
+        host_memory_mb,
+        concurrency_factor,
+        max_concurrent,
+    ));
+    info!(
+        host_cpus,
+        host_memory_mb,
+        concurrency_factor,
+        concurrency_factor_source = concurrency_factor_source.label(),
+        yaml_concurrency_factor,
+        max_concurrent,
+        effective_vcpu = budget.effective_vcpu(),
+        effective_memory_mb = budget.effective_memory_mb(),
+        profiles = runner_config.profiles.len(),
+        "resource budget initialized"
     );
+    match pre_spawn_capacity {
+        host::PreSpawnCpuCapacity::ExactPhysical(_) => {
+            info!(
+                capacity_source = "physical_topology",
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+        host::PreSpawnCpuCapacity::ConservativeLogical(_) => {
+            warn!(
+                capacity_source = "logical_cpu_fallback",
+                reason = "topology directories are absent for all online CPUs",
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+    }
+
+    let memory_prefetch_candidates = resource_locks
+        .profile_paths()
+        .map(|(name, profile_paths)| {
+            let profile = runner_config.profiles.get(name).ok_or_else(|| {
+                RunnerError::Internal(format!(
+                    "missing runner profile for locked image artifacts {name}"
+                ))
+            })?;
+            Ok(prefetch::MemoryPrefetchCandidate {
+                path: profile_paths.snapshot_paths().memory(),
+                memory_mb: profile.memory_mb,
+            })
+        })
+        .collect::<RunnerResult<Vec<_>>>()?;
+    let memory_prefetch_budget_mb = u64::from(budget.effective_memory_mb().min(host_memory_mb));
+    let mut memory_prefetch =
+        prefetch::MemoryPrefetchTasks::spawn(memory_prefetch_candidates, memory_prefetch_budget_mb);
 
     // Compute the smallest profile resources for budget pre-check.
     // When budget is exhausted for all profiles, we wait instead of polling.
@@ -589,49 +646,6 @@ async fn run_start_with_home(
     let kmsg_handle = kmsg_log::spawn(network_log_manager.clone())
         .map_err(|e| RunnerError::Internal(format!("kmsg monitor: {e}")))?;
 
-    // Resource budget from host resources + config.
-    let host_cpus = host::cpu_count()?;
-    let host_memory_mb = host::memory_mb()?;
-    let pre_spawn_capacity = host::pre_spawn_cpu_capacity(host_cpus)?;
-    let pre_spawn_vcpu_tokens = pre_spawn_capacity.tokens();
-    let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
-    let budget = Arc::new(ResourceBudget::new(
-        host_cpus as u32,
-        host_memory_mb as u32,
-        concurrency_factor,
-        max_concurrent,
-    ));
-    info!(
-        host_cpus,
-        host_memory_mb,
-        concurrency_factor,
-        concurrency_factor_source = concurrency_factor_source.label(),
-        yaml_concurrency_factor,
-        max_concurrent,
-        effective_vcpu = budget.effective_vcpu(),
-        effective_memory_mb = budget.effective_memory_mb(),
-        profiles = runner_config.profiles.len(),
-        "resource budget initialized"
-    );
-    match pre_spawn_capacity {
-        host::PreSpawnCpuCapacity::ExactPhysical(_) => {
-            info!(
-                capacity_source = "physical_topology",
-                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
-                host_logical_cpus = host_cpus,
-                "pre-spawn admission initialized"
-            );
-        }
-        host::PreSpawnCpuCapacity::ConservativeLogical(_) => {
-            warn!(
-                capacity_source = "logical_cpu_fallback",
-                reason = "topology directories are absent for all online CPUs",
-                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
-                host_logical_cpus = host_cpus,
-                "pre-spawn admission initialized"
-            );
-        }
-    }
     let io_limit_resolution =
         crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env);
     let device_rate_limits = io_limit_resolution.device_rate_limits();
