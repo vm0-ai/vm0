@@ -1545,10 +1545,14 @@ jobs:
           application_url="${PAGES_URL%/}/sign-up"
           ready_passes=0
           for attempt in {1..60}; do
+            probe_succeeded=false
             if curl --fail --silent --show-error \
               --max-time 10 \
               --output "$document_body" \
-              "$application_url" && \
+              "$application_url"; then
+              probe_succeeded=true
+            fi
+            if [[ "$probe_succeeded" == true ]] &&
               grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
               ((ready_passes += 1))
             else
