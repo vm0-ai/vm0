@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { getBuildVersion, normalizeBuildCommitSha } from "../../lib/build-info";
 import { env } from "../../lib/env";
 
@@ -71,9 +73,16 @@ export function createConnectorCatalogValidatorIdentity(
 }
 
 function productionValidationRevision(): string | null {
-  return typeof __CONNECTOR_CATALOG_VALIDATION_REVISION__ === "string"
-    ? __CONNECTOR_CATALOG_VALIDATION_REVISION__
-    : null;
+  if (typeof __CONNECTOR_CATALOG_VALIDATION_REVISION__ !== "string") {
+    return null;
+  }
+  return createHash("sha256")
+    .update("validation-source\0", "utf8")
+    .update(__CONNECTOR_CATALOG_VALIDATION_REVISION__, "utf8")
+    .update("\0runtime-node\0", "utf8")
+    .update(process.versions.node, "utf8")
+    .digest("hex")
+    .slice(0, 40);
 }
 
 export function currentConnectorCatalogValidatorIdentity(): ConnectorCatalogValidatorIdentity {
@@ -132,9 +141,6 @@ export function connectorCatalogRejectionIsReusable(args: {
   readonly authority: ConnectorCatalogRejectionAuthority;
   readonly validator: ConnectorCatalogValidatorIdentity;
 }): boolean {
-  if (validationRevisionMatches(args)) {
-    return true;
-  }
   const versionOrder = compareCoreSemVer(
     args.authority.backendVersion,
     args.validator.backendVersion,

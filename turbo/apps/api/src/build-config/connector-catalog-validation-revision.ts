@@ -17,16 +17,13 @@ const VALIDATION_SURFACE_PATHS = [
   "apps/api/src/signals/services/connector-catalog-source.ts",
   "apps/api/src/signals/services/connector-catalog-validator-authority.ts",
   "apps/api/src/signals/utils.ts",
-  "packages/api-contracts/src/contracts/connector-catalog-diagnostics.ts",
-  "packages/api-contracts/src/contracts/connector-catalog.ts",
-  "packages/api-contracts/src/contracts/connector-identity.ts",
-  "packages/api-contracts/src/contracts/public-brand.ts",
-  "packages/api-contracts/src/contracts/runners.ts",
+  "packages/api-contracts/src/contracts",
   "packages/connectors/src",
   "packages/core/src/public-brand.ts",
   "packages/core/src/storage-names.ts",
   "packages/db/src/jsonb-contracts/connector-catalog.ts",
   "packages/db/src/schema/connector-catalog.ts",
+  "pnpm-lock.yaml",
 ] as const;
 
 function isProductionSource(relativePath: string): boolean {
@@ -95,6 +92,7 @@ export function connectorCatalogValidationRevisionFromMembers(
 function packageVersionMember(args: {
   readonly packageName: string;
   readonly packageJsonPath: string;
+  readonly workspacePath: string;
 }): ConnectorCatalogValidationRevisionMember {
   const packageJson = JSON.parse(
     readFileSync(args.packageJsonPath, "utf8"),
@@ -108,7 +106,7 @@ function packageVersionMember(args: {
     throw new Error(`Package ${args.packageName} has no string version`);
   }
   return {
-    path: `external/${args.packageName}/version`,
+    path: `external/${args.workspacePath}/${args.packageName}/version`,
     content: packageJson.version,
   };
 }
@@ -124,15 +122,36 @@ export function connectorCatalogValidationRevision(): string {
   members.push(
     packageVersionMember({
       packageName: "zod",
+      workspacePath: "apps/api",
       packageJsonPath: path.join(
         root,
         "apps/api/node_modules/zod/package.json",
       ),
     }),
-    {
-      path: "runtime/node/version",
-      content: process.versions.node,
-    },
+    packageVersionMember({
+      packageName: "zod",
+      workspacePath: "packages/api-contracts",
+      packageJsonPath: path.join(
+        root,
+        "packages/api-contracts/node_modules/zod/package.json",
+      ),
+    }),
+    packageVersionMember({
+      packageName: "zod",
+      workspacePath: "packages/connectors",
+      packageJsonPath: path.join(
+        root,
+        "packages/connectors/node_modules/zod/package.json",
+      ),
+    }),
+    packageVersionMember({
+      packageName: "tr46",
+      workspacePath: "packages/connectors",
+      packageJsonPath: path.join(
+        root,
+        "packages/connectors/node_modules/tr46/package.json",
+      ),
+    }),
   );
   return connectorCatalogValidationRevisionFromMembers(members);
 }

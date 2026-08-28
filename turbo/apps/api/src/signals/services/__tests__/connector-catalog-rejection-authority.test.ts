@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { connectorCatalogValidationRevision } from "../../../build-config/connector-catalog-validation-revision";
@@ -35,9 +37,16 @@ function validator(args: {
 describe("connector catalog rejection authority", () => {
   it("uses the injected validation revision in production", () => {
     mockEnv("ENV", "production");
+    const expectedRevision = createHash("sha256")
+      .update("validation-source\0", "utf8")
+      .update(connectorCatalogValidationRevision(), "utf8")
+      .update("\0runtime-node\0", "utf8")
+      .update(process.versions.node, "utf8")
+      .digest("hex")
+      .slice(0, 40);
 
     expect(currentConnectorCatalogValidatorIdentity().validationRevision).toBe(
-      connectorCatalogValidationRevision(),
+      expectedRevision,
     );
   });
 
@@ -100,7 +109,7 @@ describe("connector catalog rejection authority", () => {
     ).toBeTruthy();
   });
 
-  it("reuses an equal non-null validation revision across backend versions", () => {
+  it("reuses an equal revision across backends only for accepted catalogs", () => {
     const revision = "a".repeat(40);
     const stored = authority("1.318.0", revision);
     const current = validator({
@@ -125,7 +134,7 @@ describe("connector catalog rejection authority", () => {
         authority: stored,
         validator: current,
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
   });
 
   it("keeps changed and legacy revisions ordered by backend version", () => {

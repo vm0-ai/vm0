@@ -67,6 +67,7 @@ import {
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogRuntimeProjectionRow,
   expireApiTestConnectorCatalogRuntimeProjectionAuthority,
+  invalidateApiTestConnectorCatalogCompatibility,
   installApiTestConnectorCatalog,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
@@ -2059,18 +2060,43 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "test-run-lifecycle-different-catalog-authority",
     );
 
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-before-different-validation-${randomUUID()}`,
+    });
+    const differentAuthorityActor = await entitledRunActor();
+    const warmRun = await api.createDirectRun(differentAuthorityActor.actor, {
+      ...zeroBackedDirectRunBody({
+        agentId: differentAuthorityActor.agentId,
+        prompt: "warm catalog before changing validation authority",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    await api.requestCancelRun(
+      differentAuthorityActor.actor,
+      warmRun.runId,
+      [200],
+    );
+
     const differentCatalogVersion = `api-test-different-validation-${randomUUID()}`;
     await installApiTestConnectorCatalog({
       catalogVersion: differentCatalogVersion,
     });
+    const currentValidationAuthority =
+      apiTestConnectorCatalogValidationAuthority();
     const differentValidationAuthority = {
-      ...apiTestConnectorCatalogValidationAuthority(),
+      ...currentValidationAuthority,
       backendVersion: "999999.0.0",
+      validationRevision:
+        currentValidationAuthority.validationRevision === "f".repeat(40)
+          ? "e".repeat(40)
+          : "f".repeat(40),
     };
     await setApiTestConnectorCatalogValidationAuthority(
       differentValidationAuthority,
     );
-    const differentAuthorityActor = await entitledRunActor();
     const differentAuthorityPrompt =
       "different connector catalog validation authority";
     const differentAuthorityRun = await api.createDirectRun(
@@ -2887,6 +2913,43 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("rejects invalid projection compatibility", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-invalid-projection-compatibility-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-invalid-projection-compatibility-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    await invalidateApiTestConnectorCatalogCompatibility();
+    const { actor, agentId } = await entitledRunActor();
+    const rejectedPrompt = "invalid projection compatibility rejection";
+
+    await expect(
+      api.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({
+          agentId,
+          prompt: rejectedPrompt,
+        }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
+      }),
+    ).rejects.toThrow("Accepted external connector catalog is unavailable");
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.filter((run) => {
+        return run.prompt === rejectedPrompt;
+      }),
+    ).toHaveLength(0);
   });
 
   it("falls back for an incomplete projection and observes reconciliation", async () => {
