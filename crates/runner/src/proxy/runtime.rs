@@ -11,6 +11,7 @@ use std::time::Duration;
 use nix::fcntl::Flock;
 use tracing::{info, warn};
 
+use crate::axiom_layer::MITMDUMP_RUNTIME_RECONCILIATION_TARGET;
 use crate::error::{RunnerError, RunnerResult};
 use crate::process::{ProcessStat, ProcessStatRead, process_stat_is_live};
 
@@ -80,6 +81,37 @@ struct ProcessSnapshot {
     same_uid: usize,
 }
 
+#[derive(Default)]
+struct ReconciliationSummary {
+    legacy_only_seen: bool,
+    canonical_only_seen: bool,
+    equal_dual_seen: bool,
+    stale_launch_directory_count: u32,
+}
+
+impl ReconciliationSummary {
+    fn observe(&mut self, snapshot: &ProcessSnapshot) {
+        for process in &snapshot.processes {
+            match process.marker_source {
+                RuntimeMarkerSource::LegacyOnly => self.legacy_only_seen = true,
+                RuntimeMarkerSource::CanonicalOnly => self.canonical_only_seen = true,
+                RuntimeMarkerSource::Dual => self.equal_dual_seen = true,
+            }
+        }
+    }
+
+    fn emit_startup(&self) {
+        info!(
+            target: MITMDUMP_RUNTIME_RECONCILIATION_TARGET,
+            legacy_only_seen = self.legacy_only_seen,
+            canonical_only_seen = self.canonical_only_seen,
+            equal_dual_seen = self.equal_dual_seen,
+            stale_launch_directory_count = u64::from(self.stale_launch_directory_count),
+            "completed initial mitmdump runtime reconciliation"
+        );
+    }
+}
+
 /// Serializes owners of the runner-local proxy resources and scopes every
 /// PyInstaller extraction to one private launch directory.
 pub(super) struct MitmdumpRuntime {
@@ -108,7 +140,8 @@ impl MitmdumpRuntime {
             root,
             _lock: runtime_lock,
         });
-        runtime.reconcile().await?;
+        let summary = runtime.reconcile().await?;
+        summary.emit_startup();
         Ok(runtime)
     }
 
@@ -153,12 +186,17 @@ impl MitmdumpRuntime {
         }
     }
 
-    async fn reconcile(&self) -> RunnerResult<()> {
+    async fn reconcile(&self) -> RunnerResult<ReconciliationSummary> {
         let launch_dirs = self.discover_launch_dirs().await?;
+        let stale_launch_directory_count = u32::try_from(launch_dirs.len()).unwrap_or(u32::MAX);
         if launch_dirs.is_empty() {
-            return Ok(());
+            return Ok(ReconciliationSummary {
+                stale_launch_directory_count,
+                ..ReconciliationSummary::default()
+            });
         }
-        self.terminate_marked_processes(None).await?;
+        let mut summary = self.terminate_marked_processes(None).await?;
+        summary.stale_launch_directory_count = stale_launch_directory_count;
 
         let mut removed = 0usize;
         for launch_dir in launch_dirs {
@@ -176,7 +214,7 @@ impl MitmdumpRuntime {
         if removed > 0 {
             info!(removed, root = %self.root.display(), "reconciled stale mitmdump launch directories");
         }
-        Ok(())
+        Ok(summary)
     }
 
     async fn discover_launch_dirs(&self) -> RunnerResult<Vec<PathBuf>> {
@@ -229,16 +267,21 @@ impl MitmdumpRuntime {
         Ok(launch_dirs)
     }
 
-    async fn terminate_marked_processes(&self, exact_path: Option<&Path>) -> RunnerResult<()> {
+    async fn terminate_marked_processes(
+        &self,
+        exact_path: Option<&Path>,
+    ) -> RunnerResult<ReconciliationSummary> {
         let target = exact_path.unwrap_or(&self.root);
         let mut consecutive_empty_scans = 0u8;
+        let mut summary = ReconciliationSummary::default();
         loop {
             let snapshot = self.scan_marked_processes(exact_path).await?;
+            summary.observe(&snapshot);
             log_process_snapshot(target, &snapshot);
             if snapshot.processes.is_empty() {
                 consecutive_empty_scans += 1;
                 if consecutive_empty_scans == 2 {
-                    return Ok(());
+                    return Ok(summary);
                 }
             } else {
                 consecutive_empty_scans = 0;
@@ -718,6 +761,11 @@ mod tests {
     use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
     use super::*;
+    use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    const STARTUP_SUMMARY_MESSAGE: &str = "completed initial mitmdump runtime reconciliation";
 
     struct ProbeChild {
         child: Child,
@@ -776,6 +824,199 @@ mod tests {
             environ.push(0);
         }
         environ
+    }
+
+    async fn capture_runtime_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let output = future.with_subscriber(subscriber).await;
+        (output, captured.entries())
+    }
+
+    fn startup_summaries(events: &[CapturedEvent]) -> Vec<&CapturedEvent> {
+        events
+            .iter()
+            .filter(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|message| message == STARTUP_SUMMARY_MESSAGE)
+            })
+            .collect()
+    }
+
+    fn assert_startup_summary(
+        event: &CapturedEvent,
+        legacy_only_seen: bool,
+        canonical_only_seen: bool,
+        equal_dual_seen: bool,
+        stale_launch_directory_count: u32,
+    ) {
+        let expected_stale_launch_directory_count = stale_launch_directory_count.to_string();
+        assert_eq!(event.level, tracing::Level::INFO);
+        assert_eq!(
+            event.fields.keys().map(String::as_str).collect::<Vec<_>>(),
+            vec![
+                "canonical_only_seen",
+                "equal_dual_seen",
+                "legacy_only_seen",
+                "message",
+                "stale_launch_directory_count",
+            ],
+        );
+        for (field, expected) in [
+            ("legacy_only_seen", legacy_only_seen),
+            ("canonical_only_seen", canonical_only_seen),
+            ("equal_dual_seen", equal_dual_seen),
+        ] {
+            assert_eq!(
+                event.fields.get(field).map(String::as_str),
+                Some(if expected { "true" } else { "false" }),
+            );
+            assert_eq!(event.field_kinds.get(field).copied(), Some("bool"));
+        }
+        assert_eq!(
+            event
+                .fields
+                .get("stale_launch_directory_count")
+                .map(String::as_str),
+            Some(expected_stale_launch_directory_count.as_str()),
+        );
+        assert_eq!(
+            event
+                .field_kinds
+                .get("stale_launch_directory_count")
+                .copied(),
+            Some("u64"),
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_acquisition_emits_one_value_free_startup_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("runtime");
+        let lock_path = dir.path().join("runtime.lock");
+
+        let (result, events) =
+            capture_runtime_events(MitmdumpRuntime::acquire(root, lock_path)).await;
+        let runtime = result.unwrap();
+
+        let summaries = startup_summaries(&events);
+        assert_eq!(summaries.len(), 1, "captured events: {events:#?}");
+        assert_startup_summary(summaries[0], false, false, false, 0);
+        drop(runtime);
+    }
+
+    #[tokio::test]
+    async fn acquisition_aggregates_sources_across_repeated_scans_into_one_summary() {
+        const PATH_SENTINEL: &str = "private-marker-value-should-not-leak";
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("runtime");
+        let lock_path = dir.path().join("runtime.lock");
+        crate::private_fs::ensure_private_dir(&root).await.unwrap();
+
+        let mut children = Vec::new();
+        let mut launch_paths = Vec::new();
+        for (source, canonical, legacy) in [
+            ("legacy-only", false, true),
+            ("canonical-only", true, false),
+            ("equal-dual", true, true),
+        ] {
+            let launch = root.join(format!("launch-{source}-{PATH_SENTINEL}"));
+            std::fs::create_dir(&launch).unwrap();
+            children.push(ProbeChild::spawn(
+                canonical.then_some(launch.as_path()),
+                legacy.then_some(launch.as_path()),
+            ));
+            launch_paths.push(launch);
+        }
+
+        let process_ids = children
+            .iter()
+            .map(|child| child.pid().to_string())
+            .collect::<Vec<_>>();
+        let (result, events) =
+            capture_runtime_events(MitmdumpRuntime::acquire(root, lock_path)).await;
+        let runtime = result.unwrap();
+
+        let summaries = startup_summaries(&events);
+        assert_eq!(summaries.len(), 1, "captured events: {events:#?}");
+        let summary = summaries[0];
+        assert_startup_summary(summary, true, true, true, 3);
+        assert!(
+            summary
+                .fields
+                .values()
+                .all(|value| !value.contains(PATH_SENTINEL))
+        );
+        for process_id in process_ids {
+            assert!(
+                summary
+                    .fields
+                    .values()
+                    .all(|value| !value.contains(&process_id))
+            );
+        }
+        for launch_path in launch_paths {
+            assert!(!launch_path.exists(), "stale launch was not removed");
+        }
+
+        drop(runtime);
+        drop(children);
+    }
+
+    #[tokio::test]
+    async fn conflicting_acquisition_emits_no_success_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("runtime");
+        let lock_path = dir.path().join("runtime.lock");
+        crate::private_fs::ensure_private_dir(&root).await.unwrap();
+        let canonical = root.join("launch-canonical-value-should-not-leak");
+        let legacy = root.join("launch-legacy-value-should-not-leak");
+        std::fs::create_dir(&canonical).unwrap();
+        std::fs::create_dir(&legacy).unwrap();
+        let mut child = ProbeChild::spawn(Some(&canonical), Some(&legacy));
+
+        let (result, events) =
+            capture_runtime_events(MitmdumpRuntime::acquire(root, lock_path)).await;
+        let error = match result {
+            Ok(_) => panic!("expected conflicting runtime markers"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(error.contains(CANONICAL_RUNTIME_MARKER_ENV));
+        assert!(error.contains(LEGACY_RUNTIME_MARKER_ENV));
+        assert!(startup_summaries(&events).is_empty());
+        assert!(canonical.is_dir());
+        assert!(legacy.is_dir());
+        child.assert_responds();
+    }
+
+    #[tokio::test]
+    async fn per_launch_reconciliation_emits_no_startup_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("runtime");
+        let lock_path = dir.path().join("runtime.lock");
+        let runtime = MitmdumpRuntime::acquire(root.clone(), lock_path)
+            .await
+            .unwrap();
+        let stale_launch = root.join("launch-later-reconciliation");
+        std::fs::create_dir(&stale_launch).unwrap();
+        let child = ProbeChild::spawn(Some(&stale_launch), None);
+
+        let (result, events) = capture_runtime_events(runtime.create_launch_dir()).await;
+        let launch = result.unwrap();
+
+        assert!(startup_summaries(&events).is_empty());
+        assert!(!stale_launch.exists());
+        assert!(launch.path().is_dir());
+        drop(launch);
+        drop(child);
+        drop(runtime);
     }
 
     #[test]
