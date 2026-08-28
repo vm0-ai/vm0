@@ -12,10 +12,28 @@ import {
   singleWorkerJavaScriptBundlePlugin,
 } from "./scripts/single-bundle.ts";
 
-process.env.VITE_APP_VERSION = platformPackage.version;
+const APP_ASSET_BASE = "https://static.okou.io/okou-app/";
+const APP_GIT_COMMIT_SHA = process.env.OKOU_APP_GIT_COMMIT_SHA ?? "";
+const APP_VERSION = process.env.OKOU_APP_VERSION ?? platformPackage.version;
 
-export default defineConfig({
-  base: "/",
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? APP_ASSET_BASE : "/",
+  define: {
+    __OKOU_APP_GIT_COMMIT_SHA__: JSON.stringify(APP_GIT_COMMIT_SHA),
+    __OKOU_APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
+  experimental: {
+    renderBuiltUrl(filename, { hostType, type }) {
+      if (
+        hostType === "js" &&
+        type === "asset" &&
+        /^assets\/shared-database-worker-[^/]+\.js$/u.test(filename)
+      ) {
+        const workerPath = new URL(filename, APP_ASSET_BASE).pathname;
+        return { runtime: `location.origin + ${JSON.stringify(workerPath)}` };
+      }
+    },
+  },
   envPrefix: ["VITE_", "PUBLIC_"],
   resolve: {
     alias: {
@@ -59,10 +77,17 @@ export default defineConfig({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        // Browser application modules are one deployment unit. The
-        // SharedWorker is emitted and validated separately, while locale JSON
-        // remains external and is fetched only for the active language.
-        codeSplitting: false,
+        // Keep all third-party modules in one cache-stable vendor chunk. The
+        // application entry and Rolldown runtime remain separate generated
+        // chunks, while the SharedWorker is emitted as its own asset.
+        codeSplitting: {
+          groups: [
+            {
+              name: "vendor",
+              test: /[\\/]node_modules[\\/]/u,
+            },
+          ],
+        },
         // Mangle identifiers for smaller bundles while preserving runtime
         // function and class names for framework semantics and diagnostics.
         keepNames: true,
@@ -74,4 +99,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

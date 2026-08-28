@@ -52,9 +52,26 @@ release_api_job = release["jobs"]["promote-api-production"]
 rollback_job = rollback["jobs"]["rollback-app"]
 rollback_verification_job = rollback["jobs"]["verify-production-domains"]
 
+build_step = find_step(turbo_job, "Build canonical app artifact")
 preview_step = find_step(turbo_job, "Deploy Cloudflare Pages preview")
 prepare_preview_step = find_step(turbo_job, "Prepare Cloudflare Pages preview")
 publish_assets_step = find_step(turbo_job, "Publish immutable app assets to R2")
+verify_preview_assets_step = find_step(
+    turbo_job, "Verify immutable app assets on CDN"
+)
+preview_readiness_step = find_step(
+    turbo_job, "Wait for Cloudflare Pages deployment readiness"
+)
+preview_gateway_step = find_step(turbo_job, "Smoke test app preview gateway")
+prepare_release_step = find_step(
+    release_job, "Prepare Cloudflare Pages production deployment"
+)
+verify_release_assets_step = find_step(
+    release_job, "Verify immutable app assets on CDN"
+)
+release_sentry_step = find_step(
+    release_job, "Upload Cloudflare Pages source maps to Sentry"
+)
 release_step = find_step(release_job, "Deploy Cloudflare Pages production")
 release_api_verification_step = find_step(
     release_api_job, "Verify production App and API domains"
@@ -65,6 +82,16 @@ rollback_verification_step = find_step(
 )
 
 shared_script = "bash .github/scripts/deploy-okou-pages.sh"
+require_fragments(
+    build_step,
+    ["build:verify-hashes", "--sourcemap", "sentry-cli sourcemaps inject dist"],
+)
+if build_step.get("env", {}).get("OKOU_APP_GIT_COMMIT_SHA") != (
+    "${{ steps.artifact.outputs.sha }}"
+):
+    raise RuntimeError("canonical App build must receive the isolated commit SHA")
+if "VITE_GIT_COMMIT_SHA" in build_step.get("env", {}):
+    raise RuntimeError("App commit SHA must not enter the public Vite env object")
 require_fragments(
     preview_step,
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', '"$PAGES_BRANCH"', '"$ARTIFACT_SHA"'],
@@ -84,17 +111,100 @@ if publish_assets_step.get("env", {}).get("CANONICAL_ASSETS") != (
 ):
     raise RuntimeError("R2 publication must use canonical app assets")
 
+asset_verifier = "bash .github/scripts/verify-okou-app-assets.sh"
+for step, canonical_assets in (
+    (
+        verify_preview_assets_step,
+        "${{ steps.pages-preview.outputs.canonical-dist }}/assets",
+    ),
+    (
+        verify_release_assets_step,
+        "${{ steps.pages-production.outputs.canonical-dist }}/assets",
+    ),
+):
+    require_fragments(
+        step,
+        [
+            asset_verifier,
+            '"https://static.okou.io/okou-app/assets"',
+            '"$CANONICAL_ASSETS"',
+        ],
+    )
+    if step.get("env", {}).get("CANONICAL_ASSETS") != canonical_assets:
+        raise RuntimeError(
+            f"CDN verification must use canonical app assets: {step['name']}"
+        )
+
 turbo_steps = turbo_job["steps"]
 if not (
     turbo_steps.index(prepare_preview_step)
     < turbo_steps.index(publish_assets_step)
+    < turbo_steps.index(verify_preview_assets_step)
     < turbo_steps.index(preview_step)
 ):
-    raise RuntimeError("R2 asset publication must run before Pages deployment")
+    raise RuntimeError(
+        "R2 asset publication and CDN verification must run before Pages deployment"
+    )
+
+release_steps = release_job["steps"]
+if not (
+    release_steps.index(prepare_release_step)
+    < release_steps.index(verify_release_assets_step)
+    < release_steps.index(release_sentry_step)
+    < release_steps.index(release_step)
+):
+    raise RuntimeError("CDN assets must be verified before production Pages deployment")
+if "publish-okou-app-assets.sh" in str(release_job):
+    raise RuntimeError("production promotion must not publish immutable app assets")
+
+require_fragments(
+    preview_readiness_step,
+    [
+        'id="app-bootstrap-skeleton"',
+        "Cloudflare Pages shell is ready",
+        "bash .github/scripts/verify-okou-app-runtime.sh",
+        '"https://static.okou.io/okou-app/assets"',
+        '"$CANONICAL_ASSETS"',
+    ],
+)
+if "PAGES_DIST" in preview_readiness_step.get("env", {}):
+    raise RuntimeError("Pages shell readiness must not inspect removed app assets")
+if preview_readiness_step.get("env", {}).get("CANONICAL_ASSETS") != (
+    "${{ steps.pages-preview.outputs.canonical-dist }}/assets"
+):
+    raise RuntimeError("Pages readiness must verify the canonical App bundles")
+require_fragments(
+    preview_gateway_step,
+    [
+        "bash .github/scripts/verify-okou-app-runtime.sh",
+        '"$APP_PREVIEW_URL"',
+        '"https://static.okou.io/okou-app/assets"',
+        '"$CANONICAL_ASSETS"',
+    ],
+)
+if preview_gateway_step.get("env", {}).get("CANONICAL_ASSETS") != (
+    "${{ steps.pages-preview.outputs.canonical-dist }}/assets"
+):
+    raise RuntimeError("SharedWorker smoke test must use canonical app assets")
 require_fragments(
     release_step,
-    [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', "production", '"$ARTIFACT_SHA"'],
+    [
+        shared_script,
+        '"$PAGES_DIST"',
+        '"$CF_PAGES_PROJECT_NAME"',
+        "production",
+        '"$ARTIFACT_SHA"',
+        "bash .github/scripts/verify-okou-app-runtime.sh",
+        '"https://static.okou.io/okou-app/assets"',
+        '"$CANONICAL_ASSETS"',
+        '"https://app.vm0.ai"',
+        '"https://app.okou.ai"',
+    ],
 )
+if release_step.get("env", {}).get("CANONICAL_ASSETS") != (
+    "${{ steps.pages-production.outputs.canonical-dist }}/assets"
+):
+    raise RuntimeError("production deploy must verify the canonical App bundles")
 require_fragments(
     rollback_step,
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', "production", '"$TARGET_COMMIT"'],

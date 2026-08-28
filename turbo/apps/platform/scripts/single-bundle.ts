@@ -2,7 +2,10 @@ import type { Plugin } from "vite";
 
 export const RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES = 8_500_000;
 
-const SHARED_DATABASE_WORKER_FILE_PREFIX = "assets/shared-database-worker-";
+const SHARED_DATABASE_WORKER_FILE_PATTERN =
+  /^assets\/shared-database-worker-[^/]+\.js$/u;
+const VENDOR_FILE_PATTERN = /^assets\/vendor-[^/]+\.js$/u;
+const ROLLDOWN_RUNTIME_FILE_PATTERN = /^assets\/rolldown-runtime-[^/]+\.js$/u;
 
 const FORBIDDEN_BUNDLED_PACKAGES = [
   "@base-org",
@@ -26,6 +29,7 @@ interface GeneratedChunk {
   readonly dynamicImports?: readonly string[];
   readonly fileName: string;
   readonly imports?: readonly string[];
+  readonly isEntry?: boolean;
   readonly moduleIds?: readonly string[];
   readonly type: "chunk";
 }
@@ -38,11 +42,72 @@ interface GeneratedAsset {
 
 type GeneratedOutput = GeneratedAsset | GeneratedChunk;
 
+function normalizeModuleId(moduleId: string): string {
+  return moduleId.replaceAll("\\", "/");
+}
+
+function isNodeModule(moduleId: string): boolean {
+  return normalizeModuleId(moduleId).includes("/node_modules/");
+}
+
 function bundledPackage(moduleId: string): string | undefined {
-  const normalized = moduleId.replaceAll("\\", "/");
+  const normalized = normalizeModuleId(moduleId);
   return FORBIDDEN_BUNDLED_PACKAGES.find((packageName) => {
     return normalized.includes(`/node_modules/${packageName}/`);
   });
+}
+
+function generatedChunks(
+  outputs: readonly GeneratedOutput[],
+): GeneratedChunk[] {
+  return outputs.filter((output): output is GeneratedChunk => {
+    return output.type === "chunk";
+  });
+}
+
+function outputDescription(outputs: readonly GeneratedOutput[]): string {
+  if (outputs.length === 0) {
+    return "none";
+  }
+  return outputs
+    .map((output) => {
+      return `${output.fileName} (${output.type})`;
+    })
+    .join(", ");
+}
+
+function chunkViolations(
+  chunk: GeneratedChunk,
+  allowedStaticImports: ReadonlySet<string>,
+): string[] {
+  const violations: string[] = [];
+  const unexpectedImports = (chunk.imports ?? []).filter((fileName) => {
+    return !allowedStaticImports.has(fileName);
+  });
+  if (unexpectedImports.length > 0) {
+    violations.push(
+      `${chunk.fileName}: unexpected JavaScript imports: ${unexpectedImports.join(", ")}`,
+    );
+  }
+  if ((chunk.dynamicImports ?? []).length > 0) {
+    violations.push(
+      `${chunk.fileName}: expected no dynamic JavaScript imports, found ${(chunk.dynamicImports ?? []).join(", ")}`,
+    );
+  }
+
+  const forbiddenPackages = new Set(
+    (chunk.moduleIds ?? [])
+      .map(bundledPackage)
+      .filter((packageName): packageName is string => {
+        return packageName !== undefined;
+      }),
+  );
+  if (forbiddenPackages.size > 0) {
+    violations.push(
+      `${chunk.fileName}: forbidden packages reached the bundle: ${[...forbiddenPackages].join(", ")}`,
+    );
+  }
+  return violations;
 }
 
 export function applicationBundleViolations(
@@ -51,42 +116,73 @@ export function applicationBundleViolations(
   const javaScriptOutputs = outputs.filter((output) => {
     return output.fileName.endsWith(".js");
   });
-  const applicationChunks = javaScriptOutputs.filter(
-    (output): output is GeneratedChunk => {
-      return output.type === "chunk";
-    },
-  );
+  const applicationChunks = generatedChunks(javaScriptOutputs);
   const workerAssets = javaScriptOutputs.filter(
     (output): output is GeneratedAsset => {
       return (
         output.type === "asset" &&
-        output.fileName.startsWith(SHARED_DATABASE_WORKER_FILE_PREFIX)
+        SHARED_DATABASE_WORKER_FILE_PATTERN.test(output.fileName)
       );
     },
   );
-  const applicationChunk = applicationChunks[0];
+  const vendorChunks = applicationChunks.filter((chunk) => {
+    return VENDOR_FILE_PATTERN.test(chunk.fileName);
+  });
+  const runtimeChunks = applicationChunks.filter((chunk) => {
+    return ROLLDOWN_RUNTIME_FILE_PATTERN.test(chunk.fileName);
+  });
+  const appChunks = applicationChunks.filter((chunk) => {
+    return (
+      !VENDOR_FILE_PATTERN.test(chunk.fileName) &&
+      !ROLLDOWN_RUNTIME_FILE_PATTERN.test(chunk.fileName)
+    );
+  });
+  const appChunk = appChunks[0];
+  const vendorChunk = vendorChunks[0];
+  const runtimeChunk = runtimeChunks[0];
   const workerAsset = workerAssets[0];
   if (
-    javaScriptOutputs.length !== 2 ||
-    applicationChunks.length !== 1 ||
+    javaScriptOutputs.length !== 4 ||
+    applicationChunks.length !== 3 ||
+    appChunks.length !== 1 ||
+    vendorChunks.length !== 1 ||
+    runtimeChunks.length !== 1 ||
     workerAssets.length !== 1 ||
-    !applicationChunk ||
-    !workerAsset
+    !appChunk ||
+    !vendorChunk ||
+    !runtimeChunk ||
+    !workerAsset ||
+    appChunk.isEntry !== true ||
+    vendorChunk.isEntry === true ||
+    runtimeChunk.isEntry === true
   ) {
     return [
-      `Expected exactly one application JavaScript chunk and one shared database worker JavaScript asset, but generated: ${
-        javaScriptOutputs.length === 0
-          ? "none"
-          : javaScriptOutputs
-              .map((output) => {
-                return `${output.fileName} (${output.type})`;
-              })
-              .join(", ")
-      }`,
+      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${outputDescription(javaScriptOutputs)}`,
     ];
   }
 
-  const violations = chunkViolations(applicationChunk);
+  const allowedStaticImports = new Set(
+    applicationChunks.map((chunk) => {
+      return chunk.fileName;
+    }),
+  );
+  const violations = applicationChunks.flatMap((chunk) => {
+    return chunkViolations(chunk, allowedStaticImports);
+  });
+  for (const chunk of [appChunk, runtimeChunk]) {
+    const misplacedNodeModules = (chunk.moduleIds ?? []).filter(isNodeModule);
+    if (misplacedNodeModules.length > 0) {
+      violations.push(
+        `${chunk.fileName}: third-party modules must be emitted only in the vendor chunk: ${misplacedNodeModules.join(", ")}`,
+      );
+    }
+  }
+  if (!(vendorChunk.moduleIds ?? []).some(isNodeModule)) {
+    violations.push(
+      `${vendorChunk.fileName}: vendor chunk has no node_modules`,
+    );
+  }
+
   const rawBytes = javaScriptOutputs.reduce((total, output) => {
     if (output.type === "chunk") {
       return total + new TextEncoder().encode(output.code).byteLength;
@@ -106,33 +202,6 @@ export function applicationBundleViolations(
   return violations;
 }
 
-function chunkViolations(chunk: GeneratedChunk): string[] {
-  const violations: string[] = [];
-  const linkedJavaScript = [
-    ...(chunk.imports ?? []),
-    ...(chunk.dynamicImports ?? []),
-  ];
-  if (linkedJavaScript.length > 0) {
-    violations.push(
-      `${chunk.fileName}: expected no JavaScript imports, found ${linkedJavaScript.join(", ")}`,
-    );
-  }
-
-  const forbiddenPackages = new Set(
-    (chunk.moduleIds ?? [])
-      .map(bundledPackage)
-      .filter((packageName): packageName is string => {
-        return packageName !== undefined;
-      }),
-  );
-  if (forbiddenPackages.size > 0) {
-    violations.push(
-      `${chunk.fileName}: forbidden packages reached the bundle: ${[...forbiddenPackages].join(", ")}`,
-    );
-  }
-  return violations;
-}
-
 export function singleWorkerBundleViolations(
   chunks: readonly GeneratedChunk[],
 ): string[] {
@@ -146,22 +215,14 @@ export function singleWorkerBundleViolations(
         .join(", ")}`,
     ];
   }
-  return chunkViolations(chunk);
-}
-
-function generatedChunks(
-  outputs: readonly GeneratedOutput[],
-): GeneratedChunk[] {
-  return outputs.filter((output): output is GeneratedChunk => {
-    return output.type === "chunk";
-  });
+  return chunkViolations(chunk, new Set());
 }
 
 export function applicationJavaScriptBundlePlugin(): Plugin {
   return {
     apply: "build",
     enforce: "post",
-    name: "platform-application-javascript-bundle",
+    name: "platform-application-javascript-bundles",
     generateBundle(_options, bundle) {
       const violations = applicationBundleViolations(Object.values(bundle));
       if (violations.length > 0) {

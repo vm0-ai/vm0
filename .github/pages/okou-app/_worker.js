@@ -4,6 +4,13 @@ const PREVIEW_API_ORIGIN_PATTERN =
   /^https:\/\/(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
 const API_ORIGIN_MARKER_PATTERN =
   /<meta\s+name=["']vm0-api-origin["']\s+content=["']([^"']*)["']\s*\/?>/iu;
+const APP_ASSET_PATH_PREFIX = "/okou-app/assets/";
+const APP_ASSET_REQUEST_HEADER_NAMES = [
+  "Accept",
+  "If-Modified-Since",
+  "If-None-Match",
+  "Range",
+];
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
 const PRODUCTION_API_ORIGINS = new Map([
   ["app.okou.ai", "https://api.okou.ai"],
@@ -327,9 +334,35 @@ function metaRequestHeaders(requestUrl, origin) {
   return headers;
 }
 
+function proxyAppAsset(request, requestUrl) {
+  const staticUrl = new URL(
+    `${requestUrl.pathname}${requestUrl.search}`,
+    OKOU_APP_METADATA.staticAssetsOrigin,
+  );
+  const headers = new Headers();
+  for (const name of APP_ASSET_REQUEST_HEADER_NAMES) {
+    const value = request.headers.get(name);
+    if (value !== null) {
+      headers.set(name, value);
+    }
+  }
+  return fetch(
+    new Request(staticUrl, {
+      headers,
+      method: request.method,
+    }),
+  );
+}
+
 export default {
   async fetch(request, env) {
     const requestUrl = new URL(request.url);
+    if (
+      (request.method === "GET" || request.method === "HEAD") &&
+      requestUrl.pathname.startsWith(APP_ASSET_PATH_PREFIX)
+    ) {
+      return proxyAppAsset(request, requestUrl);
+    }
     const match = SHARED_THREAD_PATH.exec(requestUrl.pathname);
     if (match && request.method === "GET") {
       let assetResponse;

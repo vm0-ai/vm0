@@ -414,6 +414,44 @@ assert.equal(await staticAsset.text(), "export const app = true;");
 assert.equal(staticAsset.headers.get("etag"), '"asset-etag"');
 assert.equal(staticAsset.headers.get("x-robots-tag"), null);
 
+let proxiedAssetRequest = null;
+globalThis.fetch = (input) => {
+  proxiedAssetRequest = input instanceof Request ? input : new Request(input);
+  return Promise.resolve(
+    new Response("export const worker = true;", {
+      headers: {
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-type": "application/javascript",
+      },
+    }),
+  );
+};
+const proxiedAsset = await worker.fetch(
+  new Request(
+    "https://app.okou.ai/okou-app/assets/shared-database-worker-AbCd1234.js",
+    {
+      headers: {
+        Authorization: "Bearer secret",
+        Cookie: "session=secret",
+        Range: "bytes=0-1023",
+      },
+    },
+  ),
+  assetEnvironment(),
+);
+assert.equal(
+  proxiedAssetRequest?.url,
+  "https://static.okou.io/okou-app/assets/shared-database-worker-AbCd1234.js",
+);
+assert.equal(proxiedAssetRequest?.headers.get("range"), "bytes=0-1023");
+assert.equal(proxiedAssetRequest?.headers.get("authorization"), null);
+assert.equal(proxiedAssetRequest?.headers.get("cookie"), null);
+assert.equal(await proxiedAsset.text(), "export const worker = true;");
+assert.equal(
+  proxiedAsset.headers.get("cache-control"),
+  "public, max-age=31536000, immutable",
+);
+
 async function requestSharedPage({
   appOrigin,
   apiOrigin = "",

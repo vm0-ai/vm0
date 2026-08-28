@@ -1617,6 +1617,14 @@ jobs:
           echo "canonical-dist=$canonical_dist" >> "$GITHUB_OUTPUT"
           echo "pages-dist=$pages_dist" >> "$GITHUB_OUTPUT"
 
+      - name: Verify immutable app assets on CDN
+        env:
+          CANONICAL_ASSETS: ${{ steps.pages-production.outputs.canonical-dist }}/assets
+        run: |
+          bash .github/scripts/verify-okou-app-assets.sh \
+            "https://static.okou.io/okou-app/assets" \
+            "$CANONICAL_ASSETS"
+
       - name: Upload Cloudflare Pages source maps to Sentry
         env:
           CANONICAL_DIST: ${{ steps.pages-production.outputs.canonical-dist }}
@@ -1631,6 +1639,7 @@ jobs:
         id: deploy-pages
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
+          CANONICAL_ASSETS: ${{ steps.pages-production.outputs.canonical-dist }}/assets
           CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
@@ -1645,6 +1654,15 @@ jobs:
 
           pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
           production_url="https://app.vm0.ai"
+          for app_url in \
+            "$pages_url" \
+            "https://app.vm0.ai" \
+            "https://app.okou.ai"; do
+            bash .github/scripts/verify-okou-app-runtime.sh \
+              "$app_url" \
+              "https://static.okou.io/okou-app/assets" \
+              "$CANONICAL_ASSETS"
+          done
           bash .github/scripts/verify-okou-production-domains.sh "$pages_url"
           echo "url=$production_url" >> "$GITHUB_OUTPUT"
 

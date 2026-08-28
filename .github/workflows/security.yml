@@ -262,6 +262,8 @@ jobs:
             .github/scripts/list-okou-pages-preview-pr-numbers.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
             .github/scripts/publish-okou-app-assets.sh \
+            .github/scripts/verify-okou-app-assets.sh \
+            .github/scripts/verify-okou-app-runtime.sh \
             .github/scripts/reconcile-and-start-runner-groups.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
             .github/actions/report-memory-peak/report.sh \
@@ -290,6 +292,8 @@ jobs:
             .github/scripts/tests/deploy-okou-pages-test.sh \
             .github/scripts/tests/deploy-okou-pages-workflow-test.sh \
             .github/scripts/tests/publish-okou-app-assets-test.sh \
+            .github/scripts/tests/verify-okou-app-assets-test.sh \
+            .github/scripts/tests/verify-okou-app-runtime-test.sh \
             .github/scripts/tests/download-verified-test.sh \
             .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
             .github/scripts/tests/list-okou-pages-preview-pr-numbers-test.sh \

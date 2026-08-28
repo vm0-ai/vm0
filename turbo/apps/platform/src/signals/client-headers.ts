@@ -11,7 +11,7 @@ import { getBuildVersion } from "../lib/build-info.ts";
 function readClientVersion(): string {
   const version = getBuildVersion();
   if (version === null) {
-    throw new Error("VITE_APP_VERSION is required for client headers");
+    throw new Error("App version is required for client headers");
   }
   return version;
 }

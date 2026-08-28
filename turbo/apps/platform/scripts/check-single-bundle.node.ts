@@ -14,85 +14,121 @@ import {
   singleWorkerJavaScriptBundlePlugin,
 } from "./single-bundle.ts";
 
+const APP_FILE = "assets/index-AppHash1.js";
+const VENDOR_FILE = "assets/vendor-Vendor01.js";
+const RUNTIME_FILE = "assets/rolldown-runtime-Runtime1.js";
+
 function applicationChunk() {
   return {
     code: "entry",
-    fileName: "assets/index.js",
+    fileName: APP_FILE,
+    imports: [RUNTIME_FILE, VENDOR_FILE],
+    isEntry: true,
+    moduleIds: ["/repo/apps/platform/src/main.ts"],
+    type: "chunk" as const,
+  };
+}
+
+function vendorChunk() {
+  return {
+    code: "vendor",
+    fileName: VENDOR_FILE,
+    imports: [RUNTIME_FILE],
+    moduleIds: ["/repo/node_modules/react/index.js"],
+    type: "chunk" as const,
+  };
+}
+
+function runtimeChunk() {
+  return {
+    code: "runtime",
+    fileName: RUNTIME_FILE,
+    moduleIds: ["\0rolldown:runtime"],
     type: "chunk" as const,
   };
 }
 
 function workerAsset() {
   return {
-    fileName: "assets/shared-database-worker-hash.js",
+    fileName: "assets/shared-database-worker-Worker01.js",
     source: "worker",
     type: "asset" as const,
   };
 }
 
-await test("rejects missing or extra JavaScript outputs", () => {
-  assert.deepEqual(applicationBundleViolations([applicationChunk()]), [
-    "Expected exactly one application JavaScript chunk and one shared database worker JavaScript asset, but generated: assets/index.js (chunk)",
-  ]);
+function validApplicationOutputs() {
+  return [applicationChunk(), vendorChunk(), runtimeChunk(), workerAsset()];
+}
+
+await test("requires the fixed app, vendor, runtime, and worker layout", () => {
+  assert.deepEqual(applicationBundleViolations(validApplicationOutputs()), []);
+  assert.deepEqual(
+    applicationBundleViolations(validApplicationOutputs().slice(0, 3)),
+    [
+      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${APP_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk)`,
+    ],
+  );
   assert.deepEqual(
     applicationBundleViolations([
-      applicationChunk(),
-      workerAsset(),
-      { code: "lazy", fileName: "assets/lazy.js", type: "chunk" },
+      ...validApplicationOutputs(),
+      { code: "lazy", fileName: "assets/lazy-Extra001.js", type: "chunk" },
     ]),
     [
-      "Expected exactly one application JavaScript chunk and one shared database worker JavaScript asset, but generated: assets/index.js (chunk), assets/shared-database-worker-hash.js (asset), assets/lazy.js (chunk)",
+      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${APP_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk), assets/shared-database-worker-Worker01.js (asset), assets/lazy-Extra001.js (chunk)`,
     ],
   );
 });
 
 await test("rejects raw-size regressions", () => {
-  const worker = workerAsset();
-  assert.deepEqual(
-    applicationBundleViolations([
-      {
-        code: "x".repeat(RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES),
-        fileName: "assets/index.js",
-        type: "chunk",
-      },
-      worker,
-    ]),
-    [
-      `JavaScript output: ${RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES + worker.source.length} raw bytes exceeds ${RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES}`,
-    ],
-  );
+  const violations = applicationBundleViolations([
+    {
+      ...applicationChunk(),
+      code: "x".repeat(RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES),
+    },
+    vendorChunk(),
+    runtimeChunk(),
+    workerAsset(),
+  ]);
+  assert.equal(violations.length, 1);
+  assert.match(violations[0] ?? "", /raw bytes exceeds/u);
 });
 
-await test("rejects JavaScript imports and forbidden bundled packages", () => {
-  assert.deepEqual(
-    applicationBundleViolations([
-      {
-        code: "entry",
-        dynamicImports: ["assets/lazy.js"],
-        fileName: "assets/index.js",
-        type: "chunk",
-      },
-      workerAsset(),
-    ]),
-    ["assets/index.js: expected no JavaScript imports, found assets/lazy.js"],
+await test("keeps third-party modules only in vendor and rejects extra edges", () => {
+  const violations = applicationBundleViolations([
+    {
+      ...applicationChunk(),
+      dynamicImports: ["assets/lazy-Extra001.js"],
+      moduleIds: [
+        "/repo/apps/platform/src/main.ts",
+        "/repo/node_modules/react/index.js",
+      ],
+    },
+    {
+      ...vendorChunk(),
+      moduleIds: [
+        "/repo/node_modules/react/index.js",
+        "/repo/node_modules/@clerk/clerk-js/dist/clerk.mjs",
+      ],
+    },
+    runtimeChunk(),
+    workerAsset(),
+  ]);
+  assert.ok(
+    violations.some((violation) => {
+      return violation.includes("expected no dynamic JavaScript imports");
+    }),
   );
-  assert.deepEqual(
-    applicationBundleViolations([
-      {
-        code: "entry",
-        fileName: "assets/index.js",
-        moduleIds: [
-          "/repo/node_modules/@clerk/clerk-js/dist/clerk.mjs",
-          "/repo/node_modules/katex/dist/katex.mjs",
-          "/repo/node_modules/tr46/index.js",
-        ],
-        type: "chunk",
-      },
-      workerAsset(),
-    ]),
-    [
-      "assets/index.js: forbidden packages reached the bundle: @clerk/clerk-js, katex, tr46",
-    ],
+  assert.ok(
+    violations.some((violation) => {
+      return violation.includes("third-party modules must be emitted only");
+    }),
+  );
+  assert.ok(
+    violations.some((violation) => {
+      return violation.includes(
+        "forbidden packages reached the bundle: @clerk/clerk-js",
+      );
+    }),
   );
 });
 
@@ -125,29 +161,27 @@ await test("rejects worker chunks with imports or forbidden packages", () => {
       },
     ]),
     [
-      "assets/shared-database-worker.js: expected no JavaScript imports, found assets/worker-dependency.js",
+      "assets/shared-database-worker.js: unexpected JavaScript imports: assets/worker-dependency.js",
       "assets/shared-database-worker.js: forbidden packages reached the bundle: lowlight",
     ],
   );
 });
 
-await test("emits one app bundle and one worker bundle while preserving locale JSON", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "okou-single-bundle-"));
+await test("emits the fixed page topology and one external worker", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "okou-app-bundles-"));
   const sourceDirectory = path.join(root, "src");
+  const vendorDirectory = path.join(root, "node_modules", "fixture-vendor");
 
   try {
     await mkdir(sourceDirectory, { recursive: true });
+    await mkdir(vendorDirectory, { recursive: true });
     await writeFile(
       path.join(root, "index.html"),
       '<script type="module" src="/src/main.js"></script>',
     );
     await writeFile(
       path.join(sourceDirectory, "main.js"),
-      'import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import { value } from "./dependency.js"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, value);',
-    );
-    await writeFile(
-      path.join(sourceDirectory, "dependency.js"),
-      'export const value = "static";',
+      'import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import vendor from "fixture-vendor"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, vendor.value);',
     );
     await writeFile(
       path.join(sourceDirectory, "shared-database-worker.js"),
@@ -156,6 +190,14 @@ await test("emits one app bundle and one worker bundle while preserving locale J
     await writeFile(
       path.join(sourceDirectory, "locale.json"),
       JSON.stringify({ greeting: "hello" }),
+    );
+    await writeFile(
+      path.join(vendorDirectory, "package.json"),
+      JSON.stringify({ exports: "./index.cjs", name: "fixture-vendor" }),
+    );
+    await writeFile(
+      path.join(vendorDirectory, "index.cjs"),
+      'module.exports = { value: "vendor-static" };',
     );
 
     const result = await build({
@@ -167,7 +209,11 @@ await test("emits one app bundle and one worker bundle while preserving locale J
         minify: false,
         write: false,
         rolldownOptions: {
-          output: { codeSplitting: false },
+          output: {
+            codeSplitting: {
+              groups: [{ name: "vendor", test: /[\\/]node_modules[\\/]/u }],
+            },
+          },
         },
       },
       plugins: [applicationJavaScriptBundlePlugin()],
@@ -184,26 +230,39 @@ await test("emits one app bundle and one worker bundle while preserving locale J
     const javaScriptOutputs = result.output.filter((item) => {
       return item.fileName.endsWith(".js");
     });
-    assert.equal(javaScriptOutputs.length, 2);
-    const applicationOutput = javaScriptOutputs.find((item) => {
-      return item.type === "chunk";
-    });
-    assert.ok(applicationOutput?.type === "chunk");
-    assert.match(applicationOutput.code, /static/u);
-    assert.ok(
-      javaScriptOutputs.some((item) => {
-        return (
-          item.type === "asset" &&
-          item.fileName.startsWith("assets/shared-database-worker-")
-        );
-      }),
-      "expected one external shared database worker JavaScript asset",
+    assert.equal(javaScriptOutputs.length, 4);
+    assert.equal(
+      javaScriptOutputs.filter((item) => {
+        return item.type === "chunk" && item.isEntry;
+      }).length,
+      1,
     );
+    for (const pattern of [
+      /^assets\/vendor-[^/]+\.js$/u,
+      /^assets\/rolldown-runtime-[^/]+\.js$/u,
+      /^assets\/shared-database-worker-[^/]+\.js$/u,
+    ]) {
+      assert.ok(
+        javaScriptOutputs.some((item) => {
+          return pattern.test(item.fileName);
+        }),
+        `expected JavaScript output matching ${pattern}`,
+      );
+    }
+    const html = result.output.find((item) => {
+      return item.type === "asset" && item.fileName === "index.html";
+    });
+    assert.ok(html?.type === "asset");
+    const htmlSource = String(html.source);
+    assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 1);
+    assert.equal((htmlSource.match(/rel="modulepreload"/gu) ?? []).length, 2);
+    assert.match(htmlSource, /assets\/vendor-[^/]+\.js/u);
+    assert.match(htmlSource, /assets\/rolldown-runtime-[^/]+\.js/u);
     assert.ok(
       result.output.some((item) => {
         return item.type === "asset" && item.fileName.endsWith(".json");
       }),
-      "expected the locale JSON to remain a separate asset",
+      "expected locale JSON to remain a separate asset",
     );
   } finally {
     await rm(root, { recursive: true, force: true });

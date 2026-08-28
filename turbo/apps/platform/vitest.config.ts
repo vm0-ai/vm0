@@ -38,6 +38,10 @@ export default defineConfig({
     },
   },
   define: {
+    __OKOU_APP_GIT_COMMIT_SHA__: JSON.stringify(
+      "0123456789abcdef0123456789abcdef01234567",
+    ),
+    __OKOU_APP_VERSION__: JSON.stringify("0.540.0"),
     "import.meta.env.VITE_MOCK_LOG_DETAIL": JSON.stringify(""),
   },
   test: {
