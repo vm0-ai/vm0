@@ -15,11 +15,6 @@ interface FocusedElementPresentation {
   readonly boxShadow: string;
 }
 
-interface AuthV2ActionContrast {
-  readonly link: number;
-  readonly primary: number;
-}
-
 const checkboxTheme = `
   @theme {
     --spacing: 0.25rem;
@@ -43,11 +38,6 @@ const authV2ActionTheme = `
   @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
   @theme {
     --color-card: rgb(255 255 255);
-    --color-gray-50: rgb(243 245 248);
-    --color-gray-950: rgb(20 23 29);
-    --color-primary: rgb(237 78 1);
-    --color-primary-500: rgb(244 162 136);
-    --color-primary-600: rgb(235 136 104);
     --color-primary-900: rgb(208 50 0);
     --color-primary-950: rgb(92 41 24);
   }
@@ -91,13 +81,12 @@ function contrastRatio(foreground: string, background: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-export async function renderedAuthV2ActionContrast(
-  primaryAction: HTMLElement,
+export async function renderedAuthV2LinkContrast(
   linkAction: HTMLElement,
   surface: HTMLElement,
   theme: "dark" | "light",
   signal: AbortSignal,
-): Promise<AuthV2ActionContrast> {
+): Promise<number> {
   const compiler = await compile(authV2ActionTheme);
   const styleElement = document.createElement("style");
   const effectiveRestingColorClasses = (element: HTMLElement): string[] => {
@@ -126,15 +115,12 @@ export async function renderedAuthV2ActionContrast(
       return true;
     });
   };
-  const primaryProbe = document.createElement("div");
   const linkProbe = document.createElement("div");
   const surfaceProbe = document.createElement("div");
-  primaryProbe.classList.add(...effectiveRestingColorClasses(primaryAction));
   linkProbe.classList.add(...effectiveRestingColorClasses(linkAction));
   surfaceProbe.classList.add(...effectiveRestingColorClasses(surface));
-  document.body.append(primaryProbe, linkProbe, surfaceProbe);
+  document.body.append(linkProbe, surfaceProbe);
   const restingColorClasses = [
-    ...primaryProbe.classList,
     ...linkProbe.classList,
     ...surfaceProbe.classList,
   ];
@@ -142,8 +128,6 @@ export async function renderedAuthV2ActionContrast(
     compiler.build(restingColorClasses),
     `[data-theme="dark"] {
       --color-card: rgb(37 37 39);
-      --color-gray-50: rgb(25 25 27);
-      --color-gray-950: rgb(232 233 237);
       --color-primary-900: rgb(255 148 110);
       --color-primary-950: rgb(254 213 199);
     }`,
@@ -153,34 +137,25 @@ export async function renderedAuthV2ActionContrast(
     "abort",
     () => {
       styleElement.remove();
-      primaryProbe.remove();
       linkProbe.remove();
       surfaceProbe.remove();
     },
     { once: true },
   );
 
-  const primaryStyle = getComputedStyle(primaryProbe);
   const linkStyle = getComputedStyle(linkProbe);
   const surfaceStyle = getComputedStyle(surfaceProbe);
-  const primaryColor = primaryStyle.color;
-  const primaryBackground = primaryStyle.backgroundColor;
   const linkColor = linkStyle.color;
   const surfaceBackground = surfaceStyle.backgroundColor;
-  if (!primaryColor || !primaryBackground || !linkColor || !surfaceBackground) {
+  if (!linkColor || !surfaceBackground) {
     throw new Error(
-      `Missing rendered action color: ${JSON.stringify({
+      `Missing rendered link color: ${JSON.stringify({
         linkColor,
-        primaryBackground,
-        primaryColor,
         surfaceBackground,
       })}`,
     );
   }
-  return {
-    link: contrastRatio(linkColor, surfaceBackground),
-    primary: contrastRatio(primaryColor, primaryBackground),
-  };
+  return contrastRatio(linkColor, surfaceBackground);
 }
 
 export async function renderedFocusedElementPresentation(

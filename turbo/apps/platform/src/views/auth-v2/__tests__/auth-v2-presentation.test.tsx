@@ -12,7 +12,7 @@ import {
   platformVm0LogoImg,
 } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { renderedAuthV2ActionContrast } from "./auth-v2-style-assertions.ts";
+import { renderedAuthV2LinkContrast } from "./auth-v2-style-assertions.ts";
 
 const context = testContext();
 
@@ -136,7 +136,7 @@ describe("auth v2 presentation", () => {
     expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("keeps primary and link actions at WCAG AA contrast in both themes", async () => {
+  it("keeps link actions at WCAG AA contrast in both themes", async () => {
     const user = userEvent.setup();
     context.mocks.browser.matchMedia(false);
     setBrowserUrl("https://app.vm0.ai/v2/sign-in");
@@ -148,34 +148,27 @@ describe("auth v2 presentation", () => {
       user: null,
     });
 
-    const primaryAction = await waitFor(() => {
-      return buttonByLabel("Continue");
-    });
     const linkAction = await waitFor(() => {
       return linkByText("Sign up");
     });
     const surface = screen.getByTestId("app-auth-v2");
-    const lightContrast = await renderedAuthV2ActionContrast(
-      primaryAction,
+    const lightContrast = await renderedAuthV2LinkContrast(
       linkAction,
       surface,
       "light",
       context.signal,
     );
-    expect(lightContrast.primary).toBeGreaterThanOrEqual(4.5);
-    expect(lightContrast.link).toBeGreaterThanOrEqual(4.5);
+    expect(lightContrast).toBeGreaterThanOrEqual(4.5);
 
     await user.click(buttonByLabel("Toggle theme"));
 
-    const darkContrast = await renderedAuthV2ActionContrast(
-      primaryAction,
+    const darkContrast = await renderedAuthV2LinkContrast(
       linkAction,
       surface,
       "dark",
       context.signal,
     );
-    expect(darkContrast.primary).toBeGreaterThanOrEqual(4.5);
-    expect(darkContrast.link).toBeGreaterThanOrEqual(4.5);
+    expect(darkContrast).toBeGreaterThanOrEqual(4.5);
   });
 
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {

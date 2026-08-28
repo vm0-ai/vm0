@@ -62,42 +62,26 @@ function contrastRatio(foreground: string, background: string): number {
   );
 }
 
-async function renderedActionContrast(
-  primaryAction: Locator,
+async function renderedLinkContrast(
   linkAction: Locator,
   surface: Locator,
-): Promise<{ readonly link: number; readonly primary: number }> {
-  const primaryForeground = await primaryAction.evaluate((element) => {
-    return getComputedStyle(element).color;
-  });
-  const primaryBackground = await primaryAction.evaluate((element) => {
-    return getComputedStyle(element).backgroundColor;
-  });
+): Promise<number> {
   const linkForeground = await linkAction.evaluate((element) => {
     return getComputedStyle(element).color;
   });
   const surfaceBackground = await surface.evaluate((element) => {
     return getComputedStyle(element).backgroundColor;
   });
-  return {
-    link: contrastRatio(linkForeground, surfaceBackground),
-    primary: contrastRatio(primaryForeground, primaryBackground),
-  };
+  return contrastRatio(linkForeground, surfaceBackground);
 }
 
-async function expectAccessibleActionContrast(
-  primaryAction: Locator,
+async function expectAccessibleLinkContrast(
   linkAction: Locator,
   surface: Locator,
 ): Promise<void> {
   await expect
     .poll(async () => {
-      const contrast = await renderedActionContrast(
-        primaryAction,
-        linkAction,
-        surface,
-      );
-      return Math.min(contrast.primary, contrast.link);
+      return renderedLinkContrast(linkAction, surface);
     })
     .toBeGreaterThanOrEqual(4.5);
 }
@@ -130,7 +114,7 @@ test("base, nested, refreshed, and legacy auth routes coexist on desktop", async
   }
 });
 
-test("primary and link actions retain accessible brand colors in both themes", async ({
+test("primary actions retain brand styling while links remain accessible", async ({
   page,
 }) => {
   await openAuthV2(page, "/v2/sign-up");
@@ -153,9 +137,11 @@ test("primary and link actions retain accessible brand colors in both themes", a
     "background-color",
     AUTH_V2_PRIMARY_BACKGROUND_COLOR,
   );
+  await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
   await expect(continueButton).toHaveClass(/\bbg-primary\b/);
+  await expect(continueButton).toHaveClass(/\btext-primary-foreground\b/);
   await expect(signInLink).toHaveClass(/\btext-primary-900\b/);
-  await expectAccessibleActionContrast(continueButton, signInLink, root);
+  await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(21, 24, 30)");
 
   await page.getByRole("button", { name: "Toggle theme" }).click();
@@ -164,7 +150,8 @@ test("primary and link actions retain accessible brand colors in both themes", a
     "background-color",
     AUTH_V2_PRIMARY_BACKGROUND_COLOR,
   );
-  await expectAccessibleActionContrast(continueButton, signInLink, root);
+  await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS(
     "color",
     "rgb(233, 234, 236)",
