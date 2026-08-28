@@ -24,7 +24,14 @@ const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
 const COPY_TEMP_FILE_MODE: u32 = 0o600;
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 pub(super) const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = 64 * 1024;
-pub(super) const COPY_FILE_STREAM_MAX_BYTES: u64 = 128 * 1024 * 1024;
+
+/// Inclusive maximum number of bytes accepted by the guest-to-host copy
+/// operation.
+///
+/// The current limit is 128 MiB (`134_217_728` bytes). A larger
+/// [`CopyFileOptions::max_bytes`] value is rejected with
+/// `io::ErrorKind::InvalidInput` before guest work starts.
+pub const COPY_FILE_STREAM_MAX_BYTES: u64 = 128 * 1024 * 1024;
 // Copying is the one built-in streaming consumer that must tolerate the host
 // reader briefly outrunning the temp-file writer without failing the exec operation.
 const COPY_FILE_STREAM_QUEUE_CAPACITY: usize = exec_operation::MAX_EXEC_STREAM_CAPACITY;
@@ -36,9 +43,11 @@ static COPY_TEMP_NONCE: AtomicU64 = AtomicU64::new(1);
 pub struct CopyFileOptions {
     /// Maximum bytes to stream from the guest before the copy fails.
     ///
-    /// This value must be positive and no larger than the host copy stream
-    /// limit. The copy fails if the streamed file contents exceed this byte
-    /// count.
+    /// This value must be positive and no larger than the inclusive
+    /// [`crate::COPY_FILE_STREAM_MAX_BYTES`] limit (128 MiB, or
+    /// `134_217_728` bytes). A value above the limit returns
+    /// `io::ErrorKind::InvalidInput` before guest work starts. The copy also
+    /// fails if the streamed file contents exceed this byte count.
     pub max_bytes: u64,
     /// Guest-side copy exec timeout in milliseconds.
     ///
