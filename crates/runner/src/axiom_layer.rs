@@ -1,5 +1,4 @@
-//! Tracing layer that ships WARN+ events and the dedicated host-env alias
-//! source event to Axiom.
+//! Tracing layer that ships WARN+ events and selected INFO events to Axiom.
 //!
 //! Disabled at construction when `AXIOM_TOKEN_TELEMETRY` or
 //! `AXIOM_DATASET_SUFFIX` is unset. Dual-write: the existing fmt subscriber
@@ -68,6 +67,9 @@ const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
 const AXIOM_TOKEN_ENV: &str = "AXIOM_TOKEN_TELEMETRY";
 const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
+/// Exact informational target for the bounded startup reconciliation summary.
+pub(crate) const MITMDUMP_RUNTIME_RECONCILIATION_TARGET: &str =
+    "runner::proxy::mitmdump_runtime_reconciliation";
 /// Target used for this layer's own diagnostics. Dispatcher diagnostics
 /// (non-success ingest responses, HTTP errors) remain visible to local
 /// logging, while the Axiom per-layer filter keeps any observed diagnostics
@@ -239,7 +241,8 @@ fn should_ingest(metadata: &Metadata<'_>) -> bool {
     metadata.target() != INTERNAL_TARGET
         && (*metadata.level() <= tracing::Level::WARN
             || (*metadata.level() == tracing::Level::INFO
-                && metadata.target() == crate::host_env::HOST_ENV_ALIAS_SOURCE_TARGET))
+                && (metadata.target() == MITMDUMP_RUNTIME_RECONCILIATION_TARGET
+                    || metadata.target() == crate::host_env::HOST_ENV_ALIAS_SOURCE_TARGET)))
 }
 
 fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {
