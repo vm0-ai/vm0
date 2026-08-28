@@ -39,7 +39,6 @@ interface Logger {
 }
 
 type RetainedAliasResolutionEvent =
-  | "api_backend_url_alias_resolution"
   | "web_url_alias_resolution"
   | "stripe_preview_job_ref_alias_resolution";
 

@@ -565,7 +565,7 @@ describe("POST /api/image-io/generate", () => {
   let releasePendingFalResponse: (() => void) | null = null;
 
   beforeEach(() => {
-    mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
+    mockEnv("OKOU_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -1128,7 +1128,6 @@ describe("POST /api/image-io/generate", () => {
 
   it("generates image files on the Okou CDN for Okou run-scoped agent tokens", async () => {
     mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
-    mockEnv("VM0_API_BACKEND_URL", undefined);
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,

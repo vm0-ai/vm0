@@ -336,7 +336,7 @@ function configureOfficialCalendarWatchMock() {
     stopCalls: 0,
     watchShouldFail: false,
   };
-  mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
     http.get(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
@@ -980,7 +980,6 @@ function configureResultEmailRecipient(actor: ApiTestUser): void {
   const emailId = `email_${actor.userId}`;
   mockEnv("APP_URL", "https://app.vm0.ai");
   mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-  mockEnv("VM0_API_BACKEND_URL", undefined);
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
   context.mocks.clerk.users.getUserList.mockResolvedValue({
     data: [

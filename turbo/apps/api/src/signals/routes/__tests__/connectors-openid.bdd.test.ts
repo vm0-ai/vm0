@@ -47,7 +47,7 @@ function mockSession(actor: TestActor): void {
 }
 
 function mockSteamRuntimeEnv(): void {
-  mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
 }
 

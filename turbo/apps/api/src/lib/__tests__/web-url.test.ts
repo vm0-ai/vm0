@@ -226,7 +226,6 @@ describe("web URL aliases", () => {
   it("preserves OAuth web, API, and canonical redirect origins for legacy-only input", () => {
     configureAliases(undefined, "https://www.vm6.ai/configured/path");
     mockEnv("OKOU_API_BACKEND_URL", undefined);
-    mockEnv("VM0_API_BACKEND_URL", undefined);
     const request = new Request(
       "https://api.vm6.ai/api/connectors/github/callback?code=test",
     );

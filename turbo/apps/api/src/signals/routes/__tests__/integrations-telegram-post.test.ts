@@ -878,7 +878,7 @@ describe("POST /api/telegram/register", () => {
       seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.example.test");
     mockEnv("VM0_WEB_URL", "https://www.example.test");
     mockEnv("APP_URL", "https://app.example.test");
     mockTelegramGetMe({ botId: telegramBotId, username: "registered_bot" });
@@ -2030,9 +2030,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     ).toHaveLength(1);
   });
 
-  it("keeps Telegram callbacks typed when VM0_API_BACKEND_URL is set", async () => {
-    mockEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
-    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  it("keeps Telegram callbacks typed when OKOU_API_BACKEND_URL is set", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );

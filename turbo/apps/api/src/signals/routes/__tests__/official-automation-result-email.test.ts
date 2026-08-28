@@ -253,7 +253,6 @@ function unsubscribeToken(userId: string): string {
 beforeEach(() => {
   mockEnv("APP_URL", "https://app.vm0.ai");
   mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-  mockEnv("VM0_API_BACKEND_URL", undefined);
   mockEnv("RESEND_API_KEY", "official-result-email-resend-key");
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
   mockEnv("RESEND_WEBHOOK_SECRET", "whsec_test");

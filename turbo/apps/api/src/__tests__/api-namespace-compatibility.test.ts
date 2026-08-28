@@ -1,12 +1,8 @@
-import { createHash } from "node:crypto";
-
-import { EVENT } from "@axiomhq/logging";
 import {
   apiNamespaceAliasPaths,
   brandedApiNamespace,
 } from "@okouai/api-contracts/contracts/api-namespaces";
 
-import { optionalEnv } from "../lib/env";
 import { ROUTES } from "../signals/route";
 import {
   assertUniqueRouteRegistrations,
@@ -14,39 +10,9 @@ import {
   withApiNamespaceAliases,
   withMigratedBrandedPaths,
 } from "../signals/route-entry";
-import { getApiTestMocks } from "./mocks";
 
 const CANONICAL_PREFIX = "/api/okou";
 const LEGACY_PREFIX = "/api/zero";
-const API_BACKEND_URL_ALIAS_RESOLUTION_EVENT =
-  "api_backend_url_alias_resolution";
-const API_BACKEND_URL_LOG_CONTEXT = "ApiBackendUrl";
-const legacyApiBackendUrl = optionalEnv("VM0_API_BACKEND_URL");
-if (!legacyApiBackendUrl) {
-  throw new Error("Expected the API test backend URL fixture");
-}
-
-const apiTestMocks = getApiTestMocks();
-const apiBackendUrlInitializationInfoCalls =
-  apiTestMocks.axiomLogging.info.mock.calls.filter(([message]) => {
-    return message === API_BACKEND_URL_ALIAS_RESOLUTION_EVENT;
-  });
-const apiBackendUrlInitializationWarnCalls =
-  apiTestMocks.axiomLogging.warn.mock.calls.filter(([message]) => {
-    return message === API_BACKEND_URL_ALIAS_RESOLUTION_EVENT;
-  });
-
-function expectValueFree(diagnostics: string, value: string): void {
-  const forbiddenDerivatives = [
-    value,
-    String(value.length),
-    createHash("sha256").update(value).digest("hex"),
-    JSON.stringify(value),
-  ];
-  for (const derivative of forbiddenDerivatives) {
-    expect(diagnostics).not.toContain(derivative);
-  }
-}
 
 // The six legacy `/api/zero/**` paths this service still owes a caller after
 // #28701, keyed by the canonical `/api/okou/**` path. Restated here rather than
@@ -149,28 +115,6 @@ function brandedRouteSource(): RouteEntry {
 function brandedPath(neutralPath: string): string {
   return `${CANONICAL_PREFIX}${neutralPath.slice("/api".length)}`;
 }
-
-describe("API route bundle initialization", () => {
-  it("reports the fixed API backend URL alias source", () => {
-    expect(apiBackendUrlInitializationInfoCalls).toStrictEqual([
-      [
-        API_BACKEND_URL_ALIAS_RESOLUTION_EVENT,
-        {
-          [EVENT]: { source: "api" },
-          canonicalKey: "OKOU_API_BACKEND_URL",
-          legacyKey: "VM0_API_BACKEND_URL",
-          state: "legacy-only",
-          context: API_BACKEND_URL_LOG_CONTEXT,
-        },
-      ],
-    ]);
-    expect(apiBackendUrlInitializationWarnCalls).toStrictEqual([]);
-    expectValueFree(
-      JSON.stringify(apiBackendUrlInitializationInfoCalls),
-      legacyApiBackendUrl,
-    );
-  });
-});
 
 // Per-endpoint behaviour is covered through the endpoints themselves. This
 // file asserts the properties no single endpoint can express: over the whole
