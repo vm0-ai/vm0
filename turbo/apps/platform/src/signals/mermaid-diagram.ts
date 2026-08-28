@@ -82,6 +82,8 @@ function diagramRenderId(seed: string): string {
   return `mermaid-diagram-${(hash >>> 0).toString(36)}`;
 }
 
+// `flowchart-v2` is Mermaid's internal ID for its modern Flowchart renderer,
+// not a separate user-facing diagram syntax.
 const FLOWCHART_DIAGRAM_TYPES: ReadonlySet<string> = new Set([
   "flowchart",
   "flowchart-v2",
