@@ -2002,6 +2002,99 @@
       "threads": "チャット",
       "title": "転送先"
     },
+    "introVideo": {
+      "avatar": {
+        "heading": "アバターを選択",
+        "help": "プレゼンターを選ぶか、アバターなしで続行します",
+        "skip": "アバターをスキップ"
+      },
+      "cardDescription": "ファイルや画面録画を完成した動画に変換",
+      "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",
+      "errors": {
+        "recordingEmpty": "録画が空でした。もう一度お試しください。",
+        "recordingFailed": "画面録画を開始できませんでした。最新の Chrome でもう一度お試しください。",
+        "recordingPermission": "共有対象が選択されませんでした。準備ができたらタブ、ウィンドウ、または画面を選択してください。",
+        "recordingShareEnded": "録画開始前に画面共有が終了しました。",
+        "recordingUnsupported": "このブラウザは画面録画に対応していません。",
+        "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
+        "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
+      },
+      "footer": {
+        "back": "戻る",
+        "createInChat": "チャットで作成",
+        "download": "素材をダウンロード",
+        "draftInTab": "この下書きはタブを閉じるまで保持されます",
+        "draftSaved": "素材はこのブラウザに保存されています",
+        "localUntilSend": "チャットスレッドを作成するまでファイルはローカルに保持されます",
+        "next": "次へ",
+        "startRecording": "画面を選んで開始",
+        "stopRecording": "録画を停止"
+      },
+      "recording": {
+        "chooseSurface": "タブ、ウィンドウ、または画面を選択",
+        "countdown": "カウントダウン終了後に録画を開始します",
+        "description": "Chrome が共有対象を確認します。3 秒のカウントダウンが終わるまで録画は始まりません。",
+        "heading": "画面を録画",
+        "localNote": "Chrome の共有バーまたはこの画面から停止できます。チャットスレッドが作成されるまで録画はローカルに保持されます。",
+        "microphone": "マイク",
+        "microphoneHelp": "操作を見せながらナレーションを追加",
+        "recordingLocally": "ローカルで録画中",
+        "systemAudio": "システム音声",
+        "systemAudioHelp": "利用できる音声は Chrome とシステムによって異なります"
+      },
+      "review": {
+        "avatar": "アバター",
+        "heading": "イントロビデオを確認",
+        "help": "新しいチャットスレッドに送る設定を確認してください",
+        "instructions": "編集指示",
+        "source": "素材",
+        "voice": "音声"
+      },
+      "source": {
+        "chatDescription": "今すぐスレッドを開き、Zero と動画を作り上げます",
+        "chatDetail": "素材、アバター、音声は後からチャットで追加できます",
+        "chatTitle": "チャットから開始",
+        "documentDescription": "コンテンツをナレーション付きイントロビデオに変換",
+        "documentFormats": "PPTX、PPT、PDF、DOC、DOCX",
+        "documentTitle": "スライドまたは文書をアップロード",
+        "dropDescription": "スライド、文書、または録画",
+        "dropTitle": "素材をここにドロップ",
+        "heading": "どのように始めますか？",
+        "help": "手元の素材を追加するか、画面を録画するか、作りたい動画を言葉で説明してください",
+        "recordDescription": "タブ、ウィンドウ、または画面全体を選択",
+        "recordDetail": "3 秒のカウントダウン後に開始",
+        "recordTitle": "画面を録画",
+        "videoDescription": "AI がテンポ、フレーミング、ナレーションを整えます",
+        "videoFormats": "MP4、MOV、WEBM",
+        "videoTitle": "録画をアップロード"
+      },
+      "sourceReview": {
+        "format": "形式",
+        "heading": "素材の準備ができました",
+        "help": "続行する前にファイルを確認してください",
+        "inBrowser": "このブラウザ内",
+        "inTab": "このタブを閉じるまで",
+        "replace": "素材を置き換える",
+        "saved": "保存先",
+        "source": "素材"
+      },
+      "steps": {
+        "avatar": "アバター",
+        "label": "イントロビデオの手順",
+        "review": "確認",
+        "source": "素材",
+        "voice": "音声"
+      },
+      "title": "イントロビデオを作成",
+      "voice": {
+        "heading": "音声を選択",
+        "help": "続行する前にサンプルを再生できます",
+        "none": "ナレーションなし",
+        "noneDescription": "ナレーションを使わず字幕中心の動画を作成",
+        "original": "元の音声",
+        "originalDescription": "アップロードした動画または録画の音声を維持"
+      }
+    },
     "mail": {
       "bcc": "BCC",
       "cc": "cc",

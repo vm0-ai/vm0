@@ -437,8 +437,10 @@ function AvatarTemplateCard({
 
 function AvatarCatalogFilters({
   signals,
+  onAspectRatioChange,
 }: {
   readonly signals: ComposerSignals;
+  readonly onAspectRatioChange?: (value: "portrait" | "landscape") => void;
 }) {
   const { t } = useTranslation();
   const filters = useGet(signals.template.avatarTemplateFilters$);
@@ -463,6 +465,7 @@ function AvatarCatalogFilters({
         value={filters.aspectRatio}
         onChange={(aspectRatio) => {
           setFilters({ ...filters, aspectRatio });
+          onAspectRatioChange?.(aspectRatio);
         }}
       />
       <CatalogFiltersPopover
@@ -1008,11 +1011,11 @@ function SelectedAvatarCard({
 
 function AvatarVoiceCatalog({
   signals,
-  value,
+  selectedVoiceId,
   onSelect,
 }: {
   readonly signals: ComposerSignals;
-  readonly value: GenerationTemplateRequest | undefined;
+  readonly selectedVoiceId: string | undefined;
   readonly onSelect: (voice: AvatarVideoVoice) => void;
 }) {
   const catalog = useLoadable(signals.template.avatarTemplateVoiceCatalogPage$);
@@ -1034,10 +1037,6 @@ function AvatarVoiceCatalog({
         ? lastCatalog
         : undefined;
   const pageSignal = useGet(pageSignal$);
-  const selectedVoiceId =
-    value?.type === "video"
-      ? readAvatarTemplateOptions(value.selection).voiceId
-      : undefined;
   const recommendedVoice =
     recommendation.state === "hasData"
       ? (recommendation.data ?? visibleCatalog?.voices[0] ?? null)
@@ -1112,6 +1111,10 @@ function AvatarVoicePickerContent({
   const aspectRatio = useGet(
     signals.template.avatarTemplateFilters$,
   ).aspectRatio;
+  const selectedVoiceId =
+    value?.type === "video"
+      ? readAvatarTemplateOptions(value.selection).voiceId
+      : undefined;
 
   return (
     <div
@@ -1129,7 +1132,7 @@ function AvatarVoicePickerContent({
         </div>
         <AvatarVoiceCatalog
           signals={signals}
-          value={value}
+          selectedVoiceId={selectedVoiceId}
           onSelect={(voice) => {
             onSelect(avatar, voice);
           }}
@@ -1142,10 +1145,12 @@ function AvatarVoicePickerContent({
 function AvatarCatalogPickerContent({
   signals,
   value,
+  selectedAvatarId,
   onUse,
 }: {
   readonly signals: ComposerSignals;
   readonly value: GenerationTemplateRequest | undefined;
+  readonly selectedAvatarId?: number;
   readonly onUse: (avatar: AvatarVideoAvatar) => void;
 }) {
   const catalog = useLoadable(signals.template.avatarTemplateCatalogPage$);
@@ -1203,7 +1208,11 @@ function AvatarCatalogPickerContent({
                     key={avatar.id}
                     avatar={avatar}
                     aspectRatio={filters.aspectRatio}
-                    selected={isSelectedAvatarTemplate(avatar, value)}
+                    selected={
+                      selectedAvatarId === undefined
+                        ? isSelectedAvatarTemplate(avatar, value)
+                        : avatar.id === selectedAvatarId
+                    }
                     onSelect={onUse}
                   />
                 );
@@ -1237,6 +1246,72 @@ export function AvatarTemplatePickerToolbar({
     );
   }
   return <AvatarCatalogFilters signals={signals} />;
+}
+
+/** Avatar catalog surface shared by the template picker and intro-video flow. */
+export function AvatarLibraryToolbar({
+  signals,
+  onAspectRatioChange,
+}: {
+  readonly signals: ComposerSignals;
+  readonly onAspectRatioChange: (value: "portrait" | "landscape") => void;
+}) {
+  return (
+    <AvatarCatalogFilters
+      signals={signals}
+      onAspectRatioChange={onAspectRatioChange}
+    />
+  );
+}
+
+export function AvatarLibraryContent({
+  signals,
+  selectedAvatarId,
+  onSelect,
+}: {
+  readonly signals: ComposerSignals;
+  readonly selectedAvatarId: number | undefined;
+  readonly onSelect: (avatar: AvatarVideoAvatar) => void;
+}) {
+  return (
+    <AvatarCatalogPickerContent
+      signals={signals}
+      value={undefined}
+      selectedAvatarId={selectedAvatarId}
+      onUse={onSelect}
+    />
+  );
+}
+
+export function VoiceLibraryToolbar({
+  signals,
+}: {
+  readonly signals: ComposerSignals;
+}) {
+  return <AvatarVoiceFilters signals={signals} />;
+}
+
+export function VoiceLibraryContent({
+  signals,
+  selectedVoiceId,
+  onSelect,
+}: {
+  readonly signals: ComposerSignals;
+  readonly selectedVoiceId: string | undefined;
+  readonly onSelect: (voice: AvatarVideoVoice) => void;
+}) {
+  return (
+    <div
+      data-avatar-voice-picker=""
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
+      <AvatarVoiceCatalog
+        signals={signals}
+        selectedVoiceId={selectedVoiceId}
+        onSelect={onSelect}
+      />
+    </div>
+  );
 }
 
 export function AvatarTemplatePickerContent({

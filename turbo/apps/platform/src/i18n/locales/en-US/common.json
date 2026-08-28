@@ -2005,6 +2005,99 @@
       "threads": "Chats",
       "title": "Forward to"
     },
+    "introVideo": {
+      "avatar": {
+        "heading": "Choose an avatar",
+        "help": "Choose a presenter or continue without one",
+        "skip": "Skip avatar"
+      },
+      "cardDescription": "Turn a file or screen recording into a finished video",
+      "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
+      "errors": {
+        "recordingEmpty": "The recording was empty. Please try again.",
+        "recordingFailed": "Screen recording could not start. Try again in a recent Chrome browser.",
+        "recordingPermission": "Nothing was shared. Choose a tab, window, or screen when you are ready.",
+        "recordingShareEnded": "Screen sharing ended before recording started.",
+        "recordingUnsupported": "Screen recording is not supported in this browser.",
+        "sendFailed": "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
+        "uploadFailed": "The source could not be uploaded. It is still saved locally and has been downloaded as a backup."
+      },
+      "footer": {
+        "back": "Back",
+        "createInChat": "Create in chat",
+        "download": "Download source",
+        "draftInTab": "This draft is kept until this tab closes",
+        "draftSaved": "Your source is saved in this browser",
+        "localUntilSend": "Files stay local until you create the chat thread",
+        "next": "Next",
+        "startRecording": "Choose screen and start",
+        "stopRecording": "Stop recording"
+      },
+      "recording": {
+        "chooseSurface": "Choose a tab, window, or screen",
+        "countdown": "Recording starts after the countdown",
+        "description": "Chrome will ask what to share. Recording begins only after the three-second countdown finishes.",
+        "heading": "Record your screen",
+        "localNote": "You can stop from Chrome's sharing bar or return here. The recording stays local until the chat thread is created.",
+        "microphone": "Microphone",
+        "microphoneHelp": "Add narration while you demonstrate",
+        "recordingLocally": "Recording locally",
+        "systemAudio": "System audio",
+        "systemAudioHelp": "Available sources depend on Chrome and your system"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Review your intro video",
+        "help": "Confirm the choices Zero will receive in the new chat thread",
+        "instructions": "Editing instructions",
+        "source": "Source",
+        "voice": "Voice"
+      },
+      "source": {
+        "chatDescription": "Open a thread now and shape the video with Zero",
+        "chatDetail": "Add a source, avatar, or voice later in chat",
+        "chatTitle": "Start in chat",
+        "documentDescription": "Turn your content into a narrated intro video",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Upload slides or a document",
+        "dropDescription": "Slides, documents, or recordings",
+        "dropTitle": "Drop a source here",
+        "heading": "How do you want to start?",
+        "help": "Add something you already have, record your screen, or describe the video in your own words",
+        "recordDescription": "Choose a tab, window, or your entire screen",
+        "recordDetail": "Starts after a three-second countdown",
+        "recordTitle": "Record your screen",
+        "videoDescription": "Let AI tighten the pacing, framing, and narration",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Upload a recording"
+      },
+      "sourceReview": {
+        "format": "Format",
+        "heading": "Your source is ready",
+        "help": "Check the file before you continue",
+        "inBrowser": "In this browser",
+        "inTab": "Until this tab closes",
+        "replace": "Replace source",
+        "saved": "Saved",
+        "source": "Source"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Intro video steps",
+        "review": "Review",
+        "source": "Source",
+        "voice": "Voice"
+      },
+      "title": "Create an intro video",
+      "voice": {
+        "heading": "Choose a voice",
+        "help": "Preview a sample before you continue",
+        "none": "No voiceover",
+        "noneDescription": "Create a caption-led video without narration",
+        "original": "Original audio",
+        "originalDescription": "Keep the audio from the uploaded video or recording"
+      }
+    },
     "mail": {
       "bcc": "bcc",
       "cc": "cc",
