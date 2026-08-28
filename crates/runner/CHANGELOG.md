@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.177.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.4...runner-rs-v0.177.5) (2026-08-28)
+
+
+### Refactoring
+
+* **runner:** cut api token writer to canonical alias ([#30025](https://github.com/vm0-ai/vm0/issues/30025)) ([0f1af83](https://github.com/vm0-ai/vm0/commit/0f1af83895de4965396672276f0b709f77190f64))
+* **runner:** cut execution timeout writer to canonical alias ([#30020](https://github.com/vm0-ai/vm0/issues/30020)) ([89628c1](https://github.com/vm0-ai/vm0/commit/89628c1f22e6441c025a846859036281751776bd))
+
 ## [0.177.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.3...runner-rs-v0.177.4) (2026-08-28)
 
 

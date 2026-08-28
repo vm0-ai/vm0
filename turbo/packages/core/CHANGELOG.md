@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.600.0](https://github.com/vm0-ai/vm0/compare/core-v8.599.5...core-v8.600.0) (2026-08-28)
+
+
+### Features
+
+* **auth:** add custom add-account rollout ([#29901](https://github.com/vm0-ai/vm0/issues/29901)) ([895b70c](https://github.com/vm0-ai/vm0/commit/895b70cc33b936090afc7c86a4c71bf82a591324))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.379.0
+
 ## [8.599.5](https://github.com/vm0-ai/vm0/compare/core-v8.599.4...core-v8.599.5) (2026-08-28)
 
 
