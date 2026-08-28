@@ -335,6 +335,41 @@ class TestRunnerUsageFlushSignal:
             flush_request_id=_DEFAULT_USAGE_FLUSH_REQUEST_ID,
         )
 
+    def test_formal_runner_request_attempts_observations_when_billing_flush_fails(
+        self,
+        runner_usage_flush_files: RunnerUsageFlushFiles,
+        mitm_ctx,
+    ) -> None:
+        observations_flushed = threading.Event()
+        runner_usage_flush_files.write_usage_flush_request()
+
+        with (
+            mitm_ctx(),
+            patch.object(
+                usage,
+                "flush_usage_events",
+                side_effect=OSError("billing unavailable"),
+            ) as flush_usage_events,
+            patch.object(
+                usage,
+                "flush_model_usage_observations",
+                side_effect=lambda *, trigger: observations_flushed.set() or 0,
+            ) as flush_model_usage_observations,
+        ):
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+            assert observations_flushed.wait(timeout=1)
+            wait_for_usage_flush_worker_to_stop()
+
+        flush_usage_events.assert_called_once_with(trigger="runner")
+        flush_model_usage_observations.assert_called_once_with(trigger="runner")
+        assert_pending(
+            runner_usage_flush_files.pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id=_DEFAULT_USAGE_FLUSH_REQUEST_ID,
+        )
+
     def test_signal_worker_start_handoff_to_closed_shutdown_does_not_spawn_worker(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ) -> None:

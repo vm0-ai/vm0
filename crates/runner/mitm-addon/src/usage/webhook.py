@@ -1,9 +1,9 @@
 """Webhook delivery (HTTP + thread pool).
 
-Background thread pool processes usage reports in parallel; the runner
+Background thread pools process usage reports in parallel; the runner
 first waits for the pending counters to drain, then ``done()`` flushes
-submitted futures during mitmproxy shutdown.  Falls back to synchronous
-delivery if the executor has been shut down (drain/shutdown race) so
+submitted futures during mitmproxy shutdown. Falls back to synchronous
+delivery if an executor has been shut down (drain/shutdown race) so
 reports are not silently lost.
 """
 
@@ -366,6 +366,10 @@ def _pending_model_observation_delivery_payload_count() -> int:
         return _pending_model_observation_delivery_payloads
 
 
+def pending_model_observation_delivery_payload_count_for_tests() -> int:
+    return _pending_model_observation_delivery_payload_count()
+
+
 def _post_admitted_webhook_with_retry(
     url: str,
     bearer_credential: str,
@@ -563,10 +567,8 @@ def enqueue_model_usage_observation_delivery(
 
 def shutdown_delivery_executors(*, wait: bool) -> None:
     """Shut down each configured delivery executor exactly once."""
-    executors = (usage_executor, model_usage_observation_executor)
-    shut_down: set[int] = set()
-    for executor in executors:
-        if id(executor) in shut_down:
-            continue
-        shut_down.add(id(executor))
-        executor.shutdown(wait=wait)
+    try:
+        usage_executor.shutdown(wait=wait)
+    finally:
+        if model_usage_observation_executor is not usage_executor:
+            model_usage_observation_executor.shutdown(wait=wait)

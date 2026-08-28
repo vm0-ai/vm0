@@ -1991,7 +1991,7 @@ def done():
     The runner flush lifecycle waits for any active SIGUSR1 delivery worker,
     retries buffered usage and retained diagnostic reports, drains accepted
     requests, and closes admission before this hook shuts down the usage
-    executor. It also performs a final JSONL marker observation and joins the
+    executors. It also performs a final JSONL marker observation and joins the
     marker watcher before the JSONL writer stops. Any retryable usage outcome
     retained by completed workers is then retried synchronously.
     Auth.base forwarding does not need to finish running work during shutdown.
@@ -2000,9 +2000,9 @@ def done():
     upstream work without joining daemon workers or waiting for slow upstream
     responses. JSONL writer shutdown is also bounded and best-effort; if it times
     out, process shutdown continues with accepted log entries possibly still
-    pending. After joining the usage executor, retained billing and diagnostic
-    work is drained through synchronous delivery. Model-provider failure delivery
-    stops admission and receives one bounded drain window.
+    pending. After joining the usage executors, retained billing, observation,
+    and diagnostic work is drained through synchronous delivery. Model-provider
+    failure delivery stops admission and receives one bounded drain window.
     """
     try:
         runner_flush_lifecycle.drain_and_close()

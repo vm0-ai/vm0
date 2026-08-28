@@ -1,12 +1,12 @@
 """Process-local buffering for aggregate usage webhook uploads.
 
-This package owns the usage report buffer singleton used by the mitmproxy addon.
-The singleton is created on import with default settings, but its flush timer is
-scheduled lazily only after source events are accepted into the buffer.
+This package owns the billing and model observation report buffers used by the
+mitmproxy addon. The buffers are created on import with default settings, but
+their flush timers are scheduled lazily only after source events are accepted.
 
-Source event idempotency keys are deduped process-wide before destination
-bucketing. The seen-key set survives flushes and is bounded by
-``MAX_SOURCE_IDEMPOTENCY_KEYS``, evicting oldest keys first, so duplicate
+Source event idempotency keys are deduped within each process-local buffer
+before destination bucketing. Each seen-key set survives flushes and is bounded
+by ``MAX_SOURCE_IDEMPOTENCY_KEYS``, evicting oldest keys first, so duplicate
 response/error observations do not become separate aggregate rows.
 
 By default, accepted events are separated by webhook destination and output
@@ -91,7 +91,7 @@ _model_usage_observation_buffer = UsageEventBuffer(
 
 
 def configure_usage_buffer(*, flush_interval_seconds: float) -> None:
-    """Update singleton buffer settings for future timer scheduling.
+    """Update billing buffer settings for future timer scheduling.
 
     Existing scheduled timers are not rescheduled.
     """
@@ -223,7 +223,7 @@ def buffer_source_model_usage_observations(
 
 
 def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
-    """Attempt to admit buffered webhook batches from the singleton.
+    """Attempt to admit buffered webhook batches from both usage lanes.
 
     ``runner`` and ``shutdown`` wait for flush ownership. ``timer``,
     ``threshold``, and ``test`` defer when another invocation owns the flush;
@@ -240,10 +240,13 @@ def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
     retained work for a later timer when timers are enabled; shutdown does not
     schedule another timer.
     """
-    flushed = flush_billing_usage_events(trigger=trigger)
     if trigger == "runner":
-        return flushed
-    return flushed + flush_model_usage_observations(trigger=trigger)
+        return flush_billing_usage_events(trigger=trigger)
+    try:
+        billing_batches = flush_billing_usage_events(trigger=trigger)
+    finally:
+        observation_batches = flush_model_usage_observations(trigger=trigger)
+    return billing_batches + observation_batches
 
 
 def flush_billing_usage_events(*, trigger: UsageFlushTrigger) -> int:
@@ -257,17 +260,16 @@ def flush_model_usage_observations(*, trigger: UsageFlushTrigger) -> int:
 
 
 def seen_source_idempotency_keys(source_keys: Iterable[str]) -> set[str]:
-    """Return candidate source keys retained by process-local admission history."""
-    source_keys = tuple(source_keys)
-    return _usage_event_buffer.seen_source_idempotency_keys(
-        source_keys
-    ) | _model_usage_observation_buffer.seen_source_idempotency_keys(source_keys)
+    """Return candidate billing source keys retained by admission history."""
+    return _usage_event_buffer.seen_source_idempotency_keys(source_keys)
 
 
 def drain_usage_events_after_executor_shutdown() -> None:
-    """Synchronously drain usage retained after the executor has stopped."""
-    _usage_event_buffer.drain_usage_events_after_executor_shutdown()
-    _model_usage_observation_buffer.drain_usage_events_after_executor_shutdown()
+    """Synchronously drain usage retained after both executors have stopped."""
+    try:
+        _usage_event_buffer.drain_usage_events_after_executor_shutdown()
+    finally:
+        _model_usage_observation_buffer.drain_usage_events_after_executor_shutdown()
 
 
 def reset_usage_buffer_for_tests(

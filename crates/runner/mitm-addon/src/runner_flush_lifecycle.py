@@ -229,9 +229,11 @@ def _flush_delivery_work(
     *, trigger: _DeliveryFlushTrigger, include_observations: bool = True
 ) -> None:
     """Admit billing work before retained diagnostic reports."""
-    usage.flush_usage_events(trigger=trigger)
-    if trigger == "runner" and include_observations:
-        usage.flush_model_usage_observations(trigger=trigger)
+    try:
+        usage.flush_usage_events(trigger=trigger)
+    finally:
+        if trigger == "runner" and include_observations:
+            usage.flush_model_usage_observations(trigger=trigger)
     _retry_retained_diagnostic_reports()
 
 
@@ -243,9 +245,9 @@ def _retry_retained_diagnostic_reports() -> None:
 
 
 def drain_delivery_work_after_executor_shutdown() -> None:
-    """Synchronously drain work after the usage executor has been joined.
+    """Synchronously drain work after both usage executors have been joined.
 
-    The caller must first shut down and join the executor so completed delivery
+    The caller must first shut down and join the executors so completed delivery
     callbacks cannot retain new billing work after the usage drain observes an
     empty state. New admissions then use webhook delivery's synchronous fallback.
     """
