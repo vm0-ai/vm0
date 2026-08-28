@@ -15,6 +15,7 @@ crates_json=$(yq -o=json '.' "$CRATES_WORKFLOW")
 
 jq -e '
   .jobs.detect as $detect |
+  .jobs.check as $check |
   {
     "any-changed": "${{ steps.detect.outputs.any-changed }}",
     "ci-changed": "${{ steps.detect.outputs.ci-changed }}",
@@ -52,7 +53,11 @@ jq -e '
     .id == "runner-job-ref" and
     (.run | contains("job-ref=${JOB_REF}")) and
     (.run | contains("image-job-ref=${IMAGE_JOB_REF}"))
+  ) and
+  any($check.steps[]?;
+    .name == "Configure Git safe directory" and
+    .run == "git config --global --add safe.directory \"$GITHUB_WORKSPACE\""
   )
-' <<<"$crates_json" >/dev/null || fail "Crates detect workflow contract changed"
+' <<<"$crates_json" >/dev/null || fail "Crates workflow contract changed"
 
 echo "crates-detect-workflow-test: ok"

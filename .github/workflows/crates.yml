@@ -300,6 +300,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
