@@ -98,6 +98,34 @@ requires atomically restoring the legacy spellings before starting the older
 binary. Every file change still requires the normal runner drain and restart;
 the running process does not reload it.
 
+Every successful `host.env` load emits exactly one informational `runner host
+environment loaded` event. Its dedicated tracing target, serialized to the
+Axiom `context` field, is `runner::host_env::alias_sources`. The Runner Axiom
+filter admits this exact informational target in addition to its existing
+warning-and-error traffic; other informational events remain local. The event
+contains these five fixed, value-free fields:
+
+| Field                                     | Classification                     |
+| ----------------------------------------- | ---------------------------------- |
+| `concurrency_factor_alias_source`         | `absent`, `canonical`, or `legacy` |
+| `disk_bandwidth_mib_per_sec_alias_source` | `absent`, `canonical`, or `legacy` |
+| `disk_iops_alias_source`                  | `absent`, `canonical`, or `legacy` |
+| `net_rx_mib_per_sec_alias_source`         | `absent`, `canonical`, or `legacy` |
+| `net_tx_mib_per_sec_alias_source`         | `absent`, `canonical`, or `legacy` |
+
+`absent` means the logical setting was omitted, `canonical` means the
+`OKOU_*` spelling supplied it, and `legacy` means the `VM0_*` spelling supplied
+it. Configured values, raw lines, and arbitrary input are never included.
+`runner_hostname` and `runner_version` are added automatically by the Axiom
+layer.
+
+Before removing the temporary legacy readers, use this event to cover every
+intended Runner host and supported rollback version for the full drain window.
+Every field must remain either `canonical` or `absent`, with no `legacy`
+classification during that window. A parse or alias-conflict failure emits no
+successful-load event, so missing expected host coverage is a failed gate, not
+evidence that the legacy spelling is absent.
+
 Bandwidth values may be fractional. After conversion from MiB/s, the byte/s
 value must be at least `1`, must fit in a `u64`, and is rounded down to an
 integer. Disk IOPS must parse directly as a nonzero `u64`.
