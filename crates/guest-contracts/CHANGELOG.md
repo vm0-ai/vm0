@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.9...guest-contracts-v0.12.10) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy root cgroup readers ([#30112](https://github.com/vm0-ai/vm0/issues/30112)) ([8d594fa](https://github.com/vm0-ai/vm0/commit/8d594fa8ce223e5040a0c0edcfae2aacf1a03307)), closes [#30103](https://github.com/vm0-ai/vm0/issues/30103) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **runner:** cut guest API URL writer to canonical alias ([#30105](https://github.com/vm0-ai/vm0/issues/30105)) ([f3bb3c5](https://github.com/vm0-ai/vm0/commit/f3bb3c589879d6782f7942afff00b8e9af242706))
+
 ## [0.12.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.8...guest-contracts-v0.12.9) (2026-08-28)
 
 

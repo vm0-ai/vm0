@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.297.0](https://github.com/vm0-ai/vm0/compare/cli-v9.296.1...cli-v9.297.0) (2026-08-28)
+
+
+### Features
+
+* improve okou social discovery and branding ([#30096](https://github.com/vm0-ai/vm0/issues/30096)) ([28e6fe6](https://github.com/vm0-ai/vm0/commit/28e6fe6a63a98e0ce80a68fbaa6fbd06afd6a73b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.380.0
+    * @okouai/core bumped to 8.601.0
+
 ## [9.296.1](https://github.com/vm0-ai/vm0/compare/cli-v9.296.0...cli-v9.296.1) (2026-08-28)
 
 

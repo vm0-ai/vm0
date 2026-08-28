@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.58](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.57...sandbox-v0.19.58) (2026-08-28)
+
+
+### Bug Fixes
+
+* **sandbox:** preserve process handle must-use diagnostics ([#30094](https://github.com/vm0-ai/vm0/issues/30094)) ([4db19fd](https://github.com/vm0-ai/vm0/commit/4db19fdc7ceffb7ddba056888c1851c82b2a09a6))
+
 ## [0.19.57](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.56...sandbox-v0.19.57) (2026-08-28)
 
 

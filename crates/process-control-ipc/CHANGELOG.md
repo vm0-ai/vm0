@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.9](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.8...process-control-ipc-v0.3.9) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy process-control endpoint reader ([#30130](https://github.com/vm0-ai/vm0/issues/30130)) ([57157de](https://github.com/vm0-ai/vm0/commit/57157de35208c779837373ce8cca6baf601d605b))
+
 ## [0.3.8](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.7...process-control-ipc-v0.3.8) (2026-08-28)
 
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.178.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.8...runner-rs-v0.178.0) (2026-08-28)
+
+
+### Features
+
+* **runner:** report host env alias sources ([#30115](https://github.com/vm0-ai/vm0/issues/30115)) ([c186d6b](https://github.com/vm0-ai/vm0/commit/c186d6b93698a43a7510e02e92e8747314cd6e01))
+* **runner:** report mitmdump reconciliation sources at startup ([#30133](https://github.com/vm0-ai/vm0/issues/30133)) ([877af7f](https://github.com/vm0-ai/vm0/commit/877af7fc5477a32a58c1aff22d0c2d45a99a8f5d))
+
+
+### Bug Fixes
+
+* **python:** omit encoding for empty streamed request bodies ([#30139](https://github.com/vm0-ai/vm0/issues/30139)) ([a94e9d8](https://github.com/vm0-ai/vm0/commit/a94e9d8e0bcce0fa42683dec3f3f2be65af0f32d))
+* **runner:** handle procfs exit race in mitmdump cleanup ([#30111](https://github.com/vm0-ai/vm0/issues/30111)) ([cb6e740](https://github.com/vm0-ai/vm0/commit/cb6e74099bc60ccc887895714dab1c277f53f1cb))
+
+
+### Documentation
+
+* **python:** qualify X endpoint pricing mapping guidance ([#30098](https://github.com/vm0-ai/vm0/issues/30098)) ([d5367b4](https://github.com/vm0-ai/vm0/commit/d5367b438887682f832ea0ae75ca248a0bec57cf))
+
+
+### Refactoring
+
+* **runner:** cut guest API URL writer to canonical alias ([#30105](https://github.com/vm0-ai/vm0/issues/30105)) ([f3bb3c5](https://github.com/vm0-ai/vm0/commit/f3bb3c589879d6782f7942afff00b8e9af242706))
+
+
+### Performance Improvements
+
+* **runner:** bound snapshot memory prefetch ([#30142](https://github.com/vm0-ai/vm0/issues/30142)) ([f9b9aa2](https://github.com/vm0-ai/vm0/commit/f9b9aa2581f7406ee1d650977c5b5e4cff97798f))
+
 ## [0.177.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.7...runner-rs-v0.177.8) (2026-08-28)
 
 ## [0.177.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.6...runner-rs-v0.177.7) (2026-08-28)
