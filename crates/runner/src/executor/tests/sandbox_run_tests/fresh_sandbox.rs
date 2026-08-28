@@ -1097,7 +1097,13 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let expected_run_payload_file = guest_run_payload_file_path(ctx.run_id).unwrap();
     let expected_connector_account_context_file =
         guest_connector_account_context_file_path(ctx.run_id).unwrap();
-    assert_eq!(start_env.get("VM0_API_TOKEN").unwrap(), "tok");
+    assert_eq!(
+        start_env
+            .get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
+            .unwrap(),
+        "tok"
+    );
+    assert!(!start_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
     assert_eq!(start_env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
     assert_eq!(
         start_env.get(USER_ENV_FILE_ENV_KEY).map(String::as_str),
@@ -1193,6 +1199,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
     assert!(!user_env.contains_key("VM0_APP_URL"));
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
+    assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
     assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
     assert_eq!(
