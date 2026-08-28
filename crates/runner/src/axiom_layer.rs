@@ -1,4 +1,5 @@
-//! Tracing layer that ships WARN+ events to Axiom.
+//! Tracing layer that ships WARN+ events and the dedicated host-env alias
+//! source event to Axiom.
 //!
 //! Disabled at construction when `AXIOM_TOKEN_TELEMETRY` or
 //! `AXIOM_DATASET_SUFFIX` is unset. Dual-write: the existing fmt subscriber
@@ -235,7 +236,10 @@ pub(crate) struct AxiomLayer {
 }
 
 fn should_ingest(metadata: &Metadata<'_>) -> bool {
-    *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
+    metadata.target() != INTERNAL_TARGET
+        && (*metadata.level() <= tracing::Level::WARN
+            || (*metadata.level() == tracing::Level::INFO
+                && metadata.target() == crate::host_env::HOST_ENV_ALIAS_SOURCE_TARGET))
 }
 
 fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {

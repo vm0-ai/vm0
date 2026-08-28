@@ -34,6 +34,130 @@ const focusedElementTheme = `
   @tailwind utilities;
 `;
 
+const authV2ActionTheme = `
+  @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+  @theme {
+    --color-card: rgb(255 255 255);
+    --color-primary-900: rgb(208 50 0);
+    --color-primary-950: rgb(92 41 24);
+  }
+  @tailwind utilities;
+`;
+
+function colorChannels(color: string): readonly [number, number, number] {
+  const channels = color
+    .match(/[\d.]+/g)
+    ?.slice(0, 3)
+    .map(Number);
+  if (!channels || channels.length !== 3) {
+    throw new Error(`Unable to read color channels from ${color}`);
+  }
+  return [channels[0] ?? 0, channels[1] ?? 0, channels[2] ?? 0];
+}
+
+function relativeLuminance(color: string): number {
+  const channels = colorChannels(color).map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return (
+    0.2126 * (channels[0] ?? 0) +
+    0.7152 * (channels[1] ?? 0) +
+    0.0722 * (channels[2] ?? 0)
+  );
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const lighter = Math.max(
+    relativeLuminance(foreground),
+    relativeLuminance(background),
+  );
+  const darker = Math.min(
+    relativeLuminance(foreground),
+    relativeLuminance(background),
+  );
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+export async function renderedAuthV2LinkContrast(
+  linkAction: HTMLElement,
+  surface: HTMLElement,
+  theme: "dark" | "light",
+  signal: AbortSignal,
+): Promise<number> {
+  const compiler = await compile(authV2ActionTheme);
+  const styleElement = document.createElement("style");
+  const effectiveRestingColorClasses = (element: HTMLElement): string[] => {
+    const candidates = [...element.classList]
+      .map((className) => {
+        if (className.startsWith("dark:")) {
+          return theme === "dark" ? className.slice("dark:".length) : null;
+        }
+        return className;
+      })
+      .filter((className): className is string => {
+        return (
+          className !== null &&
+          !className.includes(":") &&
+          !className.includes("[") &&
+          (className.startsWith("bg-") || className.startsWith("text-"))
+        );
+      });
+    const properties = new Set<string>();
+    return candidates.reverse().filter((className) => {
+      const property = className.startsWith("bg-") ? "background" : "color";
+      if (properties.has(property)) {
+        return false;
+      }
+      properties.add(property);
+      return true;
+    });
+  };
+  const linkProbe = document.createElement("div");
+  const surfaceProbe = document.createElement("div");
+  linkProbe.classList.add(...effectiveRestingColorClasses(linkAction));
+  surfaceProbe.classList.add(...effectiveRestingColorClasses(surface));
+  document.body.append(linkProbe, surfaceProbe);
+  const restingColorClasses = [
+    ...linkProbe.classList,
+    ...surfaceProbe.classList,
+  ];
+  styleElement.textContent = [
+    compiler.build(restingColorClasses),
+    `[data-theme="dark"] {
+      --color-card: rgb(37 37 39);
+      --color-primary-900: rgb(255 148 110);
+      --color-primary-950: rgb(254 213 199);
+    }`,
+  ].join("\n");
+  document.head.append(styleElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      styleElement.remove();
+      linkProbe.remove();
+      surfaceProbe.remove();
+    },
+    { once: true },
+  );
+
+  const linkStyle = getComputedStyle(linkProbe);
+  const surfaceStyle = getComputedStyle(surfaceProbe);
+  const linkColor = linkStyle.color;
+  const surfaceBackground = surfaceStyle.backgroundColor;
+  if (!linkColor || !surfaceBackground) {
+    throw new Error(
+      `Missing rendered link color: ${JSON.stringify({
+        linkColor,
+        surfaceBackground,
+      })}`,
+    );
+  }
+  return contrastRatio(linkColor, surfaceBackground);
+}
+
 export async function renderedFocusedElementPresentation(
   element: HTMLElement,
   signal: AbortSignal,

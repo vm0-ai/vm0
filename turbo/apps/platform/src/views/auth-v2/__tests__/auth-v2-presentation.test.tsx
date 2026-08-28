@@ -12,6 +12,7 @@ import {
   platformVm0LogoImg,
 } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { renderedAuthV2LinkContrast } from "./auth-v2-style-assertions.ts";
 
 const context = testContext();
 
@@ -41,6 +42,16 @@ function linkByLabel(label: string): HTMLAnchorElement {
   });
   if (!(link instanceof HTMLAnchorElement)) {
     throw new Error(`Link not found: ${label}`);
+  }
+  return link;
+}
+
+function linkByText(text: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === text;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Link not found: ${text}`);
   }
   return link;
 }
@@ -123,6 +134,41 @@ describe("auth v2 presentation", () => {
 
     expect(region).toContainElement(passwordVisibilityAction);
     expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("keeps link actions at WCAG AA contrast in both themes", async () => {
+    const user = userEvent.setup();
+    context.mocks.browser.matchMedia(false);
+    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+
+    detachedSetupPage({
+      context,
+      path: "/v2/sign-in",
+      session: null,
+      user: null,
+    });
+
+    const linkAction = await waitFor(() => {
+      return linkByText("Sign up");
+    });
+    const surface = screen.getByTestId("app-auth-v2");
+    const lightContrast = await renderedAuthV2LinkContrast(
+      linkAction,
+      surface,
+      "light",
+      context.signal,
+    );
+    expect(lightContrast).toBeGreaterThanOrEqual(4.5);
+
+    await user.click(buttonByLabel("Toggle theme"));
+
+    const darkContrast = await renderedAuthV2LinkContrast(
+      linkAction,
+      surface,
+      "dark",
+      context.signal,
+    );
+    expect(darkContrast).toBeGreaterThanOrEqual(4.5);
   });
 
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {
