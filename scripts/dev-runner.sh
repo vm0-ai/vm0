@@ -158,7 +158,7 @@ cmd_deploy() {
     R2_USER_STORAGES_BUCKET_NAME "${R2_USER_STORAGES_BUCKET_NAME:-}")"
 
   # Clean up old images and installed deployments while retaining this deployment.
-  ssh_cmd "sudo $REMOTE_BIN_DIR/runner gc --keep-latest 3 --keep-service-suffix $RUNNER_SERVICE_SUFFIX --keep-bin-dirname $RUNNER_SERVICE_SUFFIX --keep-runner-dirname $RUNNER_SERVICE_SUFFIX"
+  ssh_cmd "sudo flock --exclusive /var/lib/vm0-runner/locks/deployment-gc.lock $REMOTE_BIN_DIR/runner gc --keep-latest 3 --keep-service-suffix $RUNNER_SERVICE_SUFFIX --keep-bin-dirname $RUNNER_SERVICE_SUFFIX --keep-runner-dirname $RUNNER_SERVICE_SUFFIX"
 
   # Build unified image (rootfs + snapshot)
   PROFILES=("vm0/default")
