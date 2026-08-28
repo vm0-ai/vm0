@@ -174,6 +174,7 @@ export class SharedDatabaseMessagePortServer {
           {
             identity: message.identity,
             apiBaseUrl: message.apiBaseUrl,
+            emit: this.emit,
             ...(message.vercelProtectionBypass
               ? {
                   vercelProtectionBypass: message.vercelProtectionBypass,

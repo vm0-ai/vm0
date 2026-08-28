@@ -15,32 +15,50 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../data-key.ts";
-import type { SharedDatabaseConnectionStatus } from "../protocol.ts";
-import { ReconnectingSharedDatabaseBridge } from "../reconnecting-client.ts";
+import {
+  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
+  type SharedDatabaseConnectionStatus,
+  type SharedDatabaseHeartbeatResult,
+} from "../protocol.ts";
+import {
+  ReconnectingSharedDatabaseBridge,
+  SharedDatabaseTransportError,
+} from "../reconnecting-client.ts";
 
 class FakeBridge implements SharedDatabaseBridge {
   readonly callbacks: (() => void)[] = [];
   readonly heartbeats: SharedDatabaseHeartbeat[] = [];
   readonly heartbeatSignals: AbortSignal[] = [];
   heartbeatCalls = 0;
+  queryCalls = 0;
+  subscribeCalls = 0;
+  queryError: Error | null = null;
+  subscribeError: Error | null = null;
   timeoutHeartbeatCall: number | null = null;
 
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<SharedDatabaseHeartbeatResult> {
     this.heartbeatCalls += 1;
     this.heartbeats.push(heartbeat);
     this.heartbeatSignals.push(signal);
     if (this.heartbeatCalls === this.timeoutHeartbeatCall) {
       await createDeferredPromise<void>(signal).promise;
     }
+    return { clientReconnected: false };
   }
 
   query<TKey extends SharedDatabaseDataKey>(
     _query: SharedDatabaseQuery<TKey>,
     _signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
+    this.queryCalls += 1;
+    if (this.queryError) {
+      const error = this.queryError;
+      this.queryError = null;
+      return Promise.reject(error);
+    }
     return Promise.resolve([] as SharedDatabaseQueryResult<TKey>);
   }
 
@@ -49,6 +67,12 @@ class FakeBridge implements SharedDatabaseBridge {
     callback: () => void,
     signal: AbortSignal,
   ): Promise<void> {
+    this.subscribeCalls += 1;
+    if (this.subscribeError) {
+      const error = this.subscribeError;
+      this.subscribeError = null;
+      return Promise.reject(error);
+    }
     this.callbacks.push(callback);
     signal.addEventListener(
       "abort",
@@ -92,6 +116,12 @@ function dataKey(): SharedDatabaseDataKey {
     orgId: currentIdentity.orgId,
     threadId: "reconnecting-thread",
   };
+}
+
+function clientNotConnectedError(): Error {
+  const error = new Error("Shared database client is not connected");
+  error.name = SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME;
+  return error;
 }
 
 describe("reconnecting shared database bridge", () => {
@@ -150,6 +180,139 @@ describe("reconnecting shared database bridge", () => {
 
     subscription.abort();
     expect(recoveredBridge.callbacks).toHaveLength(0);
+    owner.abort();
+  });
+
+  it("retries a query after client expiry and restores subscriptions once", async () => {
+    const bridges: FakeBridge[] = [];
+    const bridge = new ReconnectingSharedDatabaseBridge({
+      createBridge: () => {
+        const created = new FakeBridge();
+        bridges.push(created);
+        return created;
+      },
+      events: {
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged:
+          vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
+      },
+    });
+    const owner = createChildAbortController(context.signal);
+    const subscription = createChildAbortController(context.signal);
+    await bridge.heartbeat(heartbeat(), owner.signal);
+    let appends = 0;
+    await bridge.on(
+      dataKey(),
+      () => {
+        appends += 1;
+      },
+      subscription.signal,
+    );
+    const firstBridge = bridges[0]!;
+    firstBridge.queryError = clientNotConnectedError();
+
+    await expect(
+      bridge.query(
+        {
+          dataKey: dataKey(),
+          afterSeqId: null,
+          consistency: "cache-only",
+        },
+        owner.signal,
+      ),
+    ).resolves.toStrictEqual([]);
+
+    expect(bridges).toHaveLength(2);
+    expect(firstBridge.queryCalls).toBe(1);
+    expect(firstBridge.callbacks).toHaveLength(0);
+    const recoveredBridge = bridges[1]!;
+    expect(recoveredBridge.queryCalls).toBe(1);
+    expect(recoveredBridge.subscribeCalls).toBe(1);
+    expect(recoveredBridge.callbacks).toHaveLength(1);
+    recoveredBridge.callbacks[0]?.();
+    expect(appends).toBe(1);
+
+    subscription.abort();
+    owner.abort();
+  });
+
+  it("retries a subscription once after client expiry", async () => {
+    const bridges: FakeBridge[] = [];
+    const bridge = new ReconnectingSharedDatabaseBridge({
+      createBridge: () => {
+        const created = new FakeBridge();
+        bridges.push(created);
+        return created;
+      },
+      events: {
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged:
+          vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
+      },
+    });
+    const owner = createChildAbortController(context.signal);
+    const subscription = createChildAbortController(context.signal);
+    await bridge.heartbeat(heartbeat(), owner.signal);
+    const firstBridge = bridges[0]!;
+    firstBridge.subscribeError = clientNotConnectedError();
+
+    await bridge.on(dataKey(), vi.fn<() => void>(), subscription.signal);
+
+    expect(bridges).toHaveLength(2);
+    expect(firstBridge.subscribeCalls).toBe(1);
+    expect(firstBridge.callbacks).toHaveLength(0);
+    expect(bridges[1]!.subscribeCalls).toBe(1);
+    expect(bridges[1]!.callbacks).toHaveLength(1);
+
+    subscription.abort();
+    owner.abort();
+  });
+
+  it("allows a query caller to abort while shared transport recovery continues", async () => {
+    const bridges: FakeBridge[] = [];
+    const recovery = context.mocks.deferred<"reconnect">();
+    let recoveryCalls = 0;
+    const bridge = new ReconnectingSharedDatabaseBridge({
+      createBridge: () => {
+        const created = new FakeBridge();
+        bridges.push(created);
+        return created;
+      },
+      events: {
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged:
+          vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
+      },
+    });
+    const owner = createChildAbortController(context.signal);
+    const caller = createChildAbortController(context.signal);
+    await bridge.heartbeat(heartbeat(), owner.signal);
+    bridges[0]!.queryError = new SharedDatabaseTransportError(
+      "Shared database worker failed to load",
+      () => {
+        recoveryCalls += 1;
+        return recovery.promise;
+      },
+    );
+
+    const query = bridge.query(
+      {
+        dataKey: dataKey(),
+        afterSeqId: null,
+        consistency: "cache-only",
+      },
+      caller.signal,
+    );
+    await vi.waitFor(() => {
+      expect(recoveryCalls).toBe(1);
+    });
+    caller.abort(new DOMException("Query cancelled", "AbortError"));
+
+    await expect(query).rejects.toMatchObject({ name: "AbortError" });
+    expect(bridges).toHaveLength(1);
+    expect(recoveryCalls).toBe(1);
+
+    recovery.resolve("reconnect");
     owner.abort();
   });
 });
