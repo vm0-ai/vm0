@@ -1,12 +1,14 @@
-//! Cgroup placement aliases are resolved before capability consumption.
+//! Canonical cgroup placement endpoints are captured before capability consumption.
 
 #![cfg(unix)]
 
 mod common;
 
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
+use std::io::{BufRead, Write};
 use std::os::fd::AsFd;
 use std::os::unix::ffi::OsStringExt;
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
@@ -16,14 +18,17 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 const ENDPOINT_MARKER: &str = "must-not-leak";
+const SCRUB_CHILD_TEST: &str = "canonical_pair_ignores_and_scrubs_retired_aliases_isolated";
+const SCRUB_CHILD_GUARD: &str = "OKOU_CGROUP_PLACEMENT_SCRUB_CHILD";
+const SCRUB_CHILD_GUARD_VALUE: &str = "1";
+const SCRUB_CHILD_MARKER: &str = "cgroup placement scrub child active";
+const BROKER_CHILD_TEST: &str = "canonical_pair_scrub_broker_isolated";
+const BROKER_CHILD_GUARD: &str = "OKOU_CGROUP_PLACEMENT_BROKER_CHILD";
+const BROKER_CHILD_GUARD_VALUE: &str = "1";
+const BROKER_ENDPOINT_ENV: &str = "OKOU_CGROUP_PLACEMENT_BROKER_ENDPOINT";
+const BROKER_READY_MARKER: &str = "cgroup placement broker ready";
+const ISOLATED_CHILD_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 static NEXT_ENDPOINT: AtomicU32 = AtomicU32::new(1);
-
-#[derive(Clone, Copy)]
-enum AliasSource {
-    CanonicalOnly,
-    LegacyOnly,
-    Dual,
-}
 
 fn unique_endpoint() -> String {
     let seq = std::process::id().wrapping_add(NEXT_ENDPOINT.fetch_add(1, Ordering::Relaxed));
@@ -48,42 +53,6 @@ fn guest_agent_command() -> Command {
         "process-control-endpoint-must-not-leak",
     );
     command
-}
-
-fn apply_pair(
-    command: &mut Command,
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-    source: AliasSource,
-    value: &OsStr,
-) {
-    match source {
-        AliasSource::CanonicalOnly => {
-            command.env(canonical_key, value);
-        }
-        AliasSource::LegacyOnly => {
-            command.env(legacy_key, value);
-        }
-        AliasSource::Dual => {
-            command.env(canonical_key, value).env(legacy_key, value);
-        }
-    }
-}
-
-fn apply_values(
-    command: &mut Command,
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-    canonical: Option<OsString>,
-    legacy: Option<OsString>,
-) {
-    command.env_remove(canonical_key).env_remove(legacy_key);
-    if let Some(value) = canonical {
-        command.env(canonical_key, value);
-    }
-    if let Some(value) = legacy {
-        command.env(legacy_key, value);
-    }
 }
 
 async fn command_output(command: &mut Command, context: &str) -> TestResult<std::process::Output> {
@@ -147,114 +116,112 @@ where
     Ok(())
 }
 
-#[tokio::test]
-async fn guest_agent_accepts_each_resolved_alias_source_for_both_pairs() -> TestResult {
-    let sources = [
-        AliasSource::CanonicalOnly,
-        AliasSource::LegacyOnly,
-        AliasSource::Dual,
-    ];
-
-    for (workload_index, workload_source) in sources.into_iter().enumerate() {
-        for (tool_index, tool_source) in sources.into_iter().enumerate() {
-            let endpoint = unique_endpoint();
-            let listener = process_control_ipc::bind_abstract_listener(&endpoint)?;
-            let broker = std::thread::spawn(move || -> std::io::Result<()> {
-                let stream =
-                    process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(5))?;
-                let invalid_placement =
-                    std::fs::OpenOptions::new().write(true).open("/dev/null")?;
-                process_control_ipc::send_workload_placement(&stream, invalid_placement.as_fd())
-            });
-            let tool_endpoint = format!("tool-{workload_index}-{tool_index}-{ENDPOINT_MARKER}");
-            let mut command = guest_agent_command();
-            apply_pair(
-                &mut command,
-                guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-                guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-                workload_source,
-                OsStr::new(&endpoint),
-            );
-            apply_pair(
-                &mut command,
-                guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-                guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-                tool_source,
-                OsStr::new(&tool_endpoint),
-            );
-
-            let output = command_output(
-                &mut command,
-                "resolved cgroup placement alias scenario did not finish",
-            )
-            .await?;
-            broker
-                .join()
-                .map_err(|_| "workload placement broker thread panicked")??;
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            assert_eq!(output.status.code(), Some(1), "stderr: {stderr}");
-            assert!(
-                stderr.contains("workload placement fd is not on cgroup v2"),
-                "stderr: {stderr}"
-            );
-            assert_value_free(&stderr, &endpoint, "resolved alias source");
-            assert!(!stderr.contains(&tool_endpoint));
-        }
-    }
+fn assert_listener_idle(listener: &std::os::unix::net::UnixListener, context: &str) -> TestResult {
+    listener.set_nonblocking(true)?;
+    let error = match listener.accept() {
+        Err(error) => error,
+        Ok(_) => return Err(format!("{context} accepted an unexpected connection").into()),
+    };
+    assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock, "{context}");
     Ok(())
 }
 
 #[tokio::test]
-async fn guest_agent_rejects_the_full_invalid_matrix_before_capability_consumption() -> TestResult {
+async fn guest_agent_accepts_the_canonical_pair_and_preserves_endpoint_bytes() -> TestResult {
+    let endpoint = unique_endpoint();
+    let listener = process_control_ipc::bind_abstract_listener(&endpoint)?;
+    let broker = std::thread::spawn(move || -> std::io::Result<()> {
+        let stream = process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(5))?;
+        let invalid_placement = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
+        process_control_ipc::send_workload_placement(&stream, invalid_placement.as_fd())
+    });
+    let tool_endpoint = format!("canonical-tool-{ENDPOINT_MARKER}");
+    let mut command = guest_agent_command();
+    command
+        .env(
+            guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+            &endpoint,
+        )
+        .env(
+            guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+            &tool_endpoint,
+        );
+
+    let output = command_output(
+        &mut command,
+        "canonical cgroup placement scenario did not finish",
+    )
+    .await?;
+    broker
+        .join()
+        .map_err(|_| "workload placement broker thread panicked")??;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "stderr: {stderr}");
+    assert!(
+        stderr.contains("workload placement fd is not on cgroup v2"),
+        "stderr: {stderr}"
+    );
+    assert_value_free(&stderr, &endpoint, "canonical pair");
+    assert!(!stderr.contains(&tool_endpoint));
+    Ok(())
+}
+
+#[tokio::test]
+async fn guest_agent_rejects_invalid_canonical_input_before_capability_consumption() -> TestResult {
     let workload_canonical =
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV;
-    let workload_legacy = guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV;
+    let workload_retired = guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV;
     let tool_canonical = guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV;
-    let tool_legacy = guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV;
-    let workload_conflict = format!(
-        "conflicting cgroup placement environment aliases: canonical_key={workload_canonical} \
-         legacy_key={workload_legacy} state=conflict"
-    );
-    let tool_conflict = format!(
-        "conflicting cgroup placement environment aliases: canonical_key={tool_canonical} \
-         legacy_key={tool_legacy} state=conflict"
-    );
-    let workload_empty = format!(
-        "invalid cgroup placement environment aliases: canonical_key={workload_canonical} \
-         legacy_key={workload_legacy} state=empty"
-    );
-    let tool_empty = format!(
-        "invalid cgroup placement environment aliases: canonical_key={tool_canonical} \
-         legacy_key={tool_legacy} state=empty"
-    );
+    let tool_retired = guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV;
+    let pair_required = format!("{workload_canonical} and {tool_canonical} are required with");
+    let workload_empty =
+        format!("invalid cgroup placement environment: key={workload_canonical} state=empty");
+    let tool_empty =
+        format!("invalid cgroup placement environment: key={tool_canonical} state=empty");
 
     assert_rejected_before_workload_connection(
-        "workload-conflict",
-        &workload_conflict,
-        |command, _endpoint| {
-            apply_values(
-                command,
-                workload_canonical,
-                workload_legacy,
-                Some(OsString::from("canonical-workload-must-not-leak")),
-                Some(OsString::from("legacy-workload-must-not-leak")),
-            );
-            command.env(tool_legacy, "legacy-tool-must-not-leak");
+        "missing-canonical-tool",
+        &pair_required,
+        |command, endpoint| {
+            command.env(workload_canonical, endpoint);
         },
     )
     .await?;
     assert_rejected_before_workload_connection(
-        "tool-conflict-after-workload-resolution",
-        &tool_conflict,
+        "missing-canonical-workload",
+        &pair_required,
+        |command, _endpoint| {
+            command.env(tool_canonical, "canonical-tool-must-not-leak");
+        },
+    )
+    .await?;
+    assert_rejected_before_workload_connection(
+        "retired-only",
+        &pair_required,
         |command, endpoint| {
-            command.env(workload_canonical, endpoint);
-            apply_values(
-                command,
-                tool_canonical,
-                tool_legacy,
-                Some(OsString::from("canonical-tool-must-not-leak")),
-                Some(OsString::from("legacy-tool-must-not-leak")),
-            );
+            command
+                .env(workload_retired, endpoint)
+                .env(tool_retired, "legacy-tool-must-not-leak");
+        },
+    )
+    .await?;
+    assert_rejected_before_workload_connection(
+        "canonical-workload-with-retired-tool",
+        &pair_required,
+        |command, endpoint| {
+            command
+                .env(workload_canonical, endpoint)
+                .env(tool_retired, "legacy-tool-must-not-leak");
+        },
+    )
+    .await?;
+    assert_rejected_before_workload_connection(
+        "retired-workload-with-canonical-tool",
+        &pair_required,
+        |command, endpoint| {
+            command
+                .env(workload_retired, endpoint)
+                .env(tool_canonical, "canonical-tool-must-not-leak");
         },
     )
     .await?;
@@ -264,42 +231,15 @@ async fn guest_agent_rejects_the_full_invalid_matrix_before_capability_consumpti
         |command, _endpoint| {
             command
                 .env(workload_canonical, "")
-                .env(tool_legacy, "legacy-tool-must-not-leak");
+                .env(tool_canonical, "canonical-tool-must-not-leak");
         },
     )
     .await?;
-    assert_rejected_before_workload_connection(
-        "tool-dual-empty",
-        &tool_empty,
-        |command, endpoint| {
-            command
-                .env(workload_legacy, endpoint)
-                .env(tool_canonical, "")
-                .env(tool_legacy, "");
-        },
-    )
-    .await?;
-    assert_rejected_before_workload_connection(
-        "workload-empty-nonempty-conflict",
-        &workload_conflict,
-        |command, _endpoint| {
-            command
-                .env(workload_canonical, "")
-                .env(workload_legacy, "legacy-workload-must-not-leak")
-                .env(tool_legacy, "legacy-tool-must-not-leak");
-        },
-    )
-    .await?;
-    assert_rejected_before_workload_connection(
-        "tool-empty-nonempty-conflict",
-        &tool_conflict,
-        |command, endpoint| {
-            command
-                .env(workload_legacy, endpoint)
-                .env(tool_canonical, "")
-                .env(tool_legacy, "legacy-tool-must-not-leak");
-        },
-    )
+    assert_rejected_before_workload_connection("tool-empty", &tool_empty, |command, endpoint| {
+        command
+            .env(workload_canonical, endpoint)
+            .env(tool_canonical, "");
+    })
     .await?;
     assert_rejected_before_workload_connection(
         "workload-non-unicode",
@@ -307,25 +247,17 @@ async fn guest_agent_rejects_the_full_invalid_matrix_before_capability_consumpti
         |command, _endpoint| {
             command
                 .env(workload_canonical, OsString::from_vec(vec![0xff]))
-                .env(tool_legacy, "legacy-tool-must-not-leak");
+                .env(tool_canonical, "canonical-tool-must-not-leak");
         },
     )
     .await?;
     assert_rejected_before_workload_connection(
         "tool-non-unicode-after-workload-resolution",
-        &format!("{tool_legacy} must be valid UTF-8"),
+        &format!("{tool_canonical} must be valid UTF-8"),
         |command, endpoint| {
             command
                 .env(workload_canonical, endpoint)
-                .env(tool_legacy, OsString::from_vec(vec![0xff]));
-        },
-    )
-    .await?;
-    assert_rejected_before_workload_connection(
-        "missing-tool-pair",
-        "are required with",
-        |command, endpoint| {
-            command.env(workload_canonical, endpoint);
+                .env(tool_canonical, OsString::from_vec(vec![0xff]));
         },
     )
     .await?;
@@ -341,5 +273,140 @@ async fn guest_agent_rejects_the_full_invalid_matrix_before_capability_consumpti
     )
     .await?;
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn guest_agent_ignores_and_scrubs_retired_aliases_after_canonical_capture() -> TestResult {
+    let mut command = Command::new(std::env::current_exe()?);
+    command
+        .arg("--exact")
+        .arg(SCRUB_CHILD_TEST)
+        .arg("--ignored")
+        .arg("--nocapture")
+        .arg("--test-threads=1")
+        .env_clear()
+        .env("PATH", ISOLATED_CHILD_PATH)
+        .env(SCRUB_CHILD_GUARD, SCRUB_CHILD_GUARD_VALUE);
+    if let Some(llvm_profile_file) = std::env::var_os("LLVM_PROFILE_FILE") {
+        command.env("LLVM_PROFILE_FILE", llvm_profile_file);
+    }
+
+    let output = command_output(
+        &mut command,
+        "isolated cgroup placement scrub test did not finish",
+    )
+    .await?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "isolated scrub test failed with {}; stdout:\n{stdout}\nstderr:\n{stderr}",
+        output.status
+    );
+    assert!(stdout.contains(SCRUB_CHILD_MARKER), "stdout:\n{stdout}");
+    Ok(())
+}
+
+#[test]
+#[ignore = "spawned exactly by the cgroup placement scrub parent test"]
+fn canonical_pair_ignores_and_scrubs_retired_aliases_isolated() -> TestResult {
+    if std::env::var(SCRUB_CHILD_GUARD).ok().as_deref() != Some(SCRUB_CHILD_GUARD_VALUE) {
+        return Ok(());
+    }
+
+    let canonical_endpoint = unique_endpoint();
+    let retired_endpoint = unique_endpoint();
+    let retired_listener = process_control_ipc::bind_abstract_listener(&retired_endpoint)?;
+    let workload_canonical =
+        guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV;
+    let workload_retired = guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV;
+    let tool_canonical = guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV;
+    let tool_retired = guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV;
+
+    // SAFETY: this exact ignored test is the only active test in its process,
+    // and no thread exists while the environment is configured or scrubbed.
+    unsafe {
+        std::env::set_var(workload_canonical, &canonical_endpoint);
+        std::env::set_var(workload_retired, &retired_endpoint);
+        std::env::set_var(tool_canonical, "canonical-tool-must-not-leak");
+        std::env::set_var(tool_retired, OsString::from_vec(vec![0xff]));
+    }
+
+    let mut broker_command = std::process::Command::new(std::env::current_exe()?);
+    broker_command
+        .arg("--exact")
+        .arg(BROKER_CHILD_TEST)
+        .arg("--ignored")
+        .arg("--nocapture")
+        .arg("--test-threads=1")
+        .env_clear()
+        .env("PATH", ISOLATED_CHILD_PATH)
+        .env(BROKER_CHILD_GUARD, BROKER_CHILD_GUARD_VALUE)
+        .env(BROKER_ENDPOINT_ENV, &canonical_endpoint)
+        .stdout(Stdio::piped());
+    if let Some(llvm_profile_file) = std::env::var_os("LLVM_PROFILE_FILE") {
+        broker_command.env("LLVM_PROFILE_FILE", llvm_profile_file);
+    }
+    let mut broker = broker_command.spawn()?;
+    let mut broker_stdout = std::io::BufReader::new(
+        broker
+            .stdout
+            .take()
+            .ok_or("cgroup placement broker stdout is unavailable")?,
+    );
+    let mut readiness = String::new();
+    loop {
+        let read = broker_stdout.read_line(&mut readiness)?;
+        if readiness.contains(BROKER_READY_MARKER) {
+            break;
+        }
+        if read == 0 {
+            return Err("cgroup placement broker exited before readiness".into());
+        }
+    }
+
+    let error = guest_agent::workload_containment::WorkloadContainment::from_process_env(true)
+        .expect_err("invalid placement descriptor should reject canonical bootstrap");
+    assert!(
+        error.contains("workload placement fd is not on cgroup v2"),
+        "unexpected canonical bootstrap error: {error}"
+    );
+    assert_value_free(&error, &canonical_endpoint, "canonical scrub child");
+    assert_value_free(&error, &retired_endpoint, "retired scrub child");
+
+    let broker_status = broker.wait()?;
+    assert!(broker_status.success(), "broker status: {broker_status}");
+    assert_listener_idle(&retired_listener, "retired workload endpoint")?;
+    for key in [
+        workload_canonical,
+        workload_retired,
+        tool_canonical,
+        tool_retired,
+    ] {
+        assert!(
+            std::env::var_os(key).is_none(),
+            "Guest Agent retained {key} after canonical capture"
+        );
+    }
+
+    println!("{SCRUB_CHILD_MARKER}");
+    Ok(())
+}
+
+#[test]
+#[ignore = "spawned exactly by the cgroup placement scrub child test"]
+fn canonical_pair_scrub_broker_isolated() -> TestResult {
+    if std::env::var(BROKER_CHILD_GUARD).ok().as_deref() != Some(BROKER_CHILD_GUARD_VALUE) {
+        return Ok(());
+    }
+
+    let endpoint = std::env::var(BROKER_ENDPOINT_ENV)?;
+    let listener = process_control_ipc::bind_abstract_listener(&endpoint)?;
+    println!("{BROKER_READY_MARKER}");
+    std::io::stdout().flush()?;
+    let stream = process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(5))?;
+    let invalid_placement = std::fs::OpenOptions::new().write(true).open("/dev/null")?;
+    process_control_ipc::send_workload_placement(&stream, invalid_placement.as_fd())?;
     Ok(())
 }
