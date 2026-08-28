@@ -8,11 +8,7 @@ import {
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  clearMockedAuthOnAbort,
-  mockOrganization,
-  mockUser,
-} from "../../../__tests__/mock-auth.ts";
+import { setupBootstrap } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
   CHAT_EVENT_CURSOR_STORE,
@@ -152,25 +148,26 @@ async function writeCachedRows(rows: readonly ChatEventRow[]): Promise<void> {
   );
 }
 
-function mockSignedInUser(): void {
-  clearMockedAuthOnAbort(context.signal);
-  mockUser(
-    {
+async function setupAuthenticatedBootstrap(): Promise<void> {
+  await setupBootstrap({
+    context,
+    path: "/error",
+    user: {
       id: userId(),
       fullName: "Snapshot Read User",
       email: "snapshot-read@example.com",
     },
-    { token: "test-token" },
-  );
-  mockOrganization({
-    activeOrg: { id: orgId(), name: "Snapshot Read Org" },
-    memberships: [{ id: orgId() }],
+    session: { token: "test-token" },
+    org: {
+      activeOrg: { id: orgId(), name: "Snapshot Read Org" },
+      memberships: [{ id: orgId() }],
+    },
   });
 }
 
 describe("chat event snapshot read", () => {
   it("reads sparse snapshot positions and tails from its coverage", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const threadId = crypto.randomUUID();
     const promptEventRow = promptRow(threadId, 5, "snapshot prompt");
     const assistantEventRow = baseRow(threadId, 8);
@@ -249,7 +246,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("retries V6 once when an old API rejects V7 as ahead", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
     const snapshotVersions: string[] = [];
@@ -334,7 +331,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("cold-starts from the rows endpoint when the thread has no snapshot yet", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
 
@@ -376,7 +373,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("keeps output.tool cache and cursors physical while the semantic gate changes", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const threadId = crypto.randomUUID();
     const toolEventRow = toolRow(threadId, 1);
     const assistantEventRow = baseRow(threadId, 2);
@@ -477,7 +474,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("fails loudly when the rows cursor expires right after a cold start", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId } = threadFixture();
 
     // A head the reader refuses to serve: the snapshot endpoint fails closed
@@ -511,7 +508,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("initializes from cached rows without touching the network", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     context.mocks.api(chatThreadEventsContract.snapshot, () => {
       throw new Error("snapshot endpoint must not be called");
     });
@@ -529,7 +526,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("rebuilds from a fresh snapshot when the rows cursor expires", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
     const staleRow = baseRow(threadId, 5);
@@ -577,7 +574,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("background-syncs new rows into the row cache", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const appDb = await openTestChatDb();
@@ -614,7 +611,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("background-cold-starts raw rows and forwards them to an active thread", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const appDb = await openTestChatDb();
@@ -676,7 +673,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("background-cold-starts from row zero when no snapshot exists", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
 
@@ -723,7 +720,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("background-rebuilds raw rows when the cached cursor expires", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const staleRow = baseRow(threadId, 5);
