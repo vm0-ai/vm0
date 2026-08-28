@@ -30,6 +30,18 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
         "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/bin/binary-opaque/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runtime/runner.yaml"
       exit 0
       ;;
+    external-source)
+      printf '%s\n' \
+        '[Service]' \
+        "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/bin/binary-opaque/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runtime/runner.yaml --deployment-source-config $OKOU_RUN_GC_DEPLOYMENT_HOME/operator/runner.yaml"
+      exit 0
+      ;;
+    invalid-managed-source)
+      printf '%s\n' \
+        '[Service]' \
+        "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/bin/binary-opaque/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runtime/runner.yaml --deployment-source-config $OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/not-runner.yaml"
+      exit 0
+      ;;
     opaque-paths|keep-service|partial-runner-failure|uninstall-failure)
       binary_dirname=binary-opaque
       runner_dirname=config-opaque
@@ -453,6 +465,66 @@ async fn legacy_snapshot_service_leaves_runner_directory_unregistered() {
 }
 
 #[tokio::test]
+async fn externally_managed_source_config_does_not_claim_a_runner_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home_root = dir.path().join("home");
+    create_test_deployment(
+        &home_root,
+        "binary-opaque",
+        "config-opaque",
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+    );
+    std::fs::create_dir_all(home_root.join("operator")).unwrap();
+    std::fs::write(home_root.join("operator/runner.yaml"), "profiles: {}\n").unwrap();
+
+    let invocations_path = dir.path().join("invocations");
+    run_ignored_child_test(
+        DEPLOYMENT_CHILD_TEST,
+        (DEPLOYMENT_SCENARIO_ENV, "external-source"),
+        &[
+            ("PATH", Some(dir.path().to_str().unwrap())),
+            (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+            (
+                DEPLOYMENT_INVOCATIONS_ENV,
+                Some(invocations_path.to_str().unwrap()),
+            ),
+        ],
+        Duration::from_secs(10),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn invalid_managed_source_config_layout_fails_closed() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home_root = dir.path().join("home");
+    create_test_deployment(
+        &home_root,
+        "binary-opaque",
+        "config-opaque",
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+    );
+
+    let invocations_path = dir.path().join("invocations");
+    run_ignored_child_test(
+        DEPLOYMENT_CHILD_TEST,
+        (DEPLOYMENT_SCENARIO_ENV, "invalid-managed-source"),
+        &[
+            ("PATH", Some(dir.path().to_str().unwrap())),
+            (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+            (
+                DEPLOYMENT_INVOCATIONS_ENV,
+                Some(invocations_path.to_str().unwrap()),
+            ),
+        ],
+        Duration::from_secs(10),
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn keep_latest_retains_the_newest_installed_deployment_by_mtime() {
     let dir = tempfile::tempdir().unwrap();
     install_fake_systemctl(dir.path());
@@ -729,7 +801,7 @@ async fn installed_deployment_systemctl_child() {
                     .exists()
             );
         }
-        "legacy-snapshot" => {
+        "legacy-snapshot" | "external-source" => {
             let outcome = gc_deployments_with_operations(
                 &home,
                 DeploymentGcRequest {
@@ -755,6 +827,15 @@ async fn installed_deployment_systemctl_child() {
             assert!(inventory_complete);
             assert!(!home.bin_dir().join("binary-opaque").exists());
             assert!(home.runners_dir().join("config-opaque").exists());
+            if scenario == "external-source" {
+                assert!(
+                    home.bin_dir()
+                        .parent()
+                        .unwrap()
+                        .join("operator/runner.yaml")
+                        .exists()
+                );
+            }
         }
         "keep-service" => {
             let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
@@ -958,6 +1039,26 @@ async fn installed_deployment_systemctl_child() {
             assert!(retained_config_paths.is_empty());
             assert!(!inventory_complete);
             assert!(home.bin_dir().join("unregistered").exists());
+        }
+        "invalid-managed-source" => {
+            let outcome = gc_discovered_deployments(
+                &home,
+                &["service-blue".to_string()],
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                Some(0),
+                false,
+            )
+            .await
+            .unwrap();
+            let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+            assert!(report.is_empty());
+            assert!(retained_config_paths.is_empty());
+            assert!(!inventory_complete);
+            assert!(home.bin_dir().join("binary-opaque").exists());
+            assert!(home.runners_dir().join("config-opaque").exists());
         }
         unexpected => panic!("unexpected deployment scenario: {unexpected}"),
     }

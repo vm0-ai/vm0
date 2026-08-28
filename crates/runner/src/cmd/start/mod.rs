@@ -297,7 +297,7 @@ pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
     pub(crate) config: PathBuf,
-    /// Original managed config path recorded in persistent service metadata for deployment GC.
+    /// Original config path recorded in persistent service metadata for deployment GC.
     #[arg(long = "deployment-source-config", hide = true)]
     deployment_source_config: Option<PathBuf>,
     /// vm0 API URL (overrides config; `OKOU_API_BACKEND_URL`; legacy: `VM0_API_BACKEND_URL`)

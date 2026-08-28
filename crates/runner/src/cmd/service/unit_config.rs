@@ -73,6 +73,7 @@ fn parse_unit_exec_start<T>(
     parse: impl Fn(&str) -> Result<Option<T>, ()>,
 ) -> Option<T> {
     let mut value = None;
+    let mut selected_exec_start_invalid = false;
     let mut in_service_section = false;
     for line in logical_unit_lines(content) {
         let trimmed = line.trim();
@@ -91,15 +92,16 @@ fn parse_unit_exec_start<T>(
         }
         if rest.trim().is_empty() {
             value = None;
+            selected_exec_start_invalid = false;
             continue;
         }
         match parse(rest) {
             Ok(Some(next_value)) => value = Some(next_value),
             Ok(None) => {}
-            Err(()) => return None,
+            Err(()) => selected_exec_start_invalid = true,
         }
     }
-    value
+    (!selected_exec_start_invalid).then_some(value).flatten()
 }
 
 fn unit_section_name(line: &str) -> Option<&str> {
@@ -521,6 +523,26 @@ ExecStart="/usr/bin/runner" start --config "/run/override.yaml" --deployment-sou
         assert_eq!(
             parse_unit_config_path(content),
             Some(PathBuf::from("/run/override.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_unit_command_paths_accepts_valid_override_after_resetting_malformed_base() {
+        let content = r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/run/base.yaml" --deployment-source-config "/source/first.yaml" --deployment-source-config "/source/second.yaml"
+ExecStart=
+ExecStart="/usr/bin/runner" start --config "/run/override.yaml" --deployment-source-config "/source/override.yaml"
+"#;
+
+        let paths = parse_unit_command_paths(content).unwrap();
+        assert_eq!(
+            paths.activation_config_path(),
+            Path::new("/run/override.yaml")
+        );
+        assert_eq!(
+            paths.deployment_source_config_path(),
+            Some(Path::new("/source/override.yaml"))
         );
     }
 

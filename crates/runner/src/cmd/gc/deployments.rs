@@ -436,34 +436,47 @@ async fn resolve_deployment(
         );
         return None;
     }
-    let source_config_path = command_paths
-        .deployment_source_config_path()
-        .or_else(|| {
-            managed_dirname(
-                activation_config_path,
-                &home.runners_dir(),
-                RUNNER_CONFIG_NAME,
-            )
-            .map(|_| activation_config_path)
-        })
-        .map(Path::to_path_buf);
-    if source_config_path.is_none() {
+    let explicit_source_config_path = command_paths.deployment_source_config_path();
+    if explicit_source_config_path.is_some_and(|path| !path.is_absolute()) {
+        warn!(
+            "runner deployment {}: deployment source config is not absolute; retaining all deployments",
+            locked.unit.suffix()
+        );
+        return None;
+    }
+    let managed_source = if let Some(path) = explicit_source_config_path {
+        if let Some(dirname) = managed_dirname(path, &home.runners_dir(), RUNNER_CONFIG_NAME) {
+            Some((dirname, path.to_path_buf()))
+        } else if path.strip_prefix(home.runners_dir()).is_ok() {
+            warn!(
+                "runner deployment {}: source config {} has an invalid managed runner layout; retaining all deployments",
+                locked.unit.suffix(),
+                path.display()
+            );
+            return None;
+        } else {
+            info!(
+                "runner deployment {}: source config {} is externally managed; no runner directory will be associated",
+                locked.unit.suffix(),
+                path.display()
+            );
+            None
+        }
+    } else {
+        managed_dirname(
+            activation_config_path,
+            &home.runners_dir(),
+            RUNNER_CONFIG_NAME,
+        )
+        .map(|dirname| (dirname, activation_config_path.to_path_buf()))
+    };
+    if managed_source.is_none() {
         info!(
             "runner deployment {}: unit does not expose a managed deployment source config; no runner directory will be associated",
             locked.unit.suffix()
         );
     }
-    let runner_path = if let Some(source_config_path) = &source_config_path {
-        let Some(runner_dirname) =
-            managed_dirname(source_config_path, &home.runners_dir(), RUNNER_CONFIG_NAME)
-        else {
-            warn!(
-                "runner deployment {}: source config {} is outside the managed runner layout; retaining all deployments",
-                locked.unit.suffix(),
-                source_config_path.display()
-            );
-            return None;
-        };
+    let runner_path = if let Some((runner_dirname, source_config_path)) = &managed_source {
         Some((home.runners_dir().join(runner_dirname), source_config_path))
     } else {
         None
@@ -499,7 +512,7 @@ async fn resolve_deployment(
         bin_dir,
         runner_dir: runner_path.map(|(runner_dir, _)| runner_dir),
         activation_config_path: activation_config_path.to_path_buf(),
-        source_config_path,
+        source_config_path: managed_source.map(|(_, source_config_path)| source_config_path),
         newest_mtime: deployment_mtime,
         retain_record: keep_service_suffixes.contains(locked.unit.suffix()),
     })
