@@ -139,13 +139,9 @@ async fn start_agent_process_returns_mandatory_control_handle() {
 
     let with_control = sandbox
         .start_agent_process(&StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: "agent",
-                timeout: Duration::from_secs(5),
-                env: &[],
-                sudo: false,
-                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            },
+            timeout: Duration::from_secs(5),
+            env: &[],
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
         })
         .await
         .unwrap();
@@ -165,13 +161,9 @@ async fn start_agent_process_fails_when_control_is_unavailable() {
 
     let error = match sandbox
         .start_agent_process(&StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: "agent",
-                timeout: Duration::from_secs(5),
-                env: &[],
-                sudo: false,
-                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            },
+            timeout: Duration::from_secs(5),
+            env: &[],
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
         })
         .await
     {
@@ -197,13 +189,9 @@ async fn process_control_calls_are_recorded_when_overrides_are_enabled() {
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let handle = sandbox
         .start_agent_process(&StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: "agent",
-                timeout: Duration::from_secs(5),
-                env: &[],
-                sudo: false,
-                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            },
+            timeout: Duration::from_secs(5),
+            env: &[],
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
         })
         .await
         .unwrap();
@@ -232,13 +220,9 @@ async fn queued_process_control_errors_are_consumed_fifo() {
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let handle = sandbox
         .start_agent_process(&StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: "agent",
-                timeout: Duration::from_secs(5),
-                env: &[],
-                sudo: false,
-                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            },
+            timeout: Duration::from_secs(5),
+            env: &[],
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
         })
         .await
         .unwrap();
@@ -284,13 +268,9 @@ async fn queued_structured_process_control_outcomes_are_preserved() {
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let handle = sandbox
         .start_agent_process(&StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: "agent",
-                timeout: Duration::from_secs(5),
-                env: &[],
-                sudo: false,
-                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            },
+            timeout: Duration::from_secs(5),
+            env: &[],
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
         })
         .await
         .unwrap();

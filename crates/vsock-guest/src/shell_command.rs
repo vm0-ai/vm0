@@ -34,7 +34,7 @@
 //! In production non-`sudo` execution, the root-owned directory deliberately
 //! denies that access to the sandbox user, so the root-side `EnvScriptGuard`
 //! owns normal cleanup and the restricted script remains until operation
-//! teardown. `PreparedShellCommand` and `SpawnedShellCommand` carry that guard
+//! teardown. `PreparedShellCommand` and `SpawnedCommand` carry that guard
 //! through the prepare-to-spawn handoff and for the spawned operation. Callers
 //! must retain it while the shell wrapper may still need to open the script;
 //! dropping it too early can remove the script before bash reads it.
@@ -43,7 +43,7 @@
 //! termination bypasses destructors, a script can remain until a later launch
 //! removes it after the stale threshold.
 //!
-//! `SpawnedShellCommand` also returns exec process-containment ownership
+//! `SpawnedCommand` also returns exec process-containment ownership
 //! only after a successful spawn. Setup failures clean that containment before
 //! returning the original spawn error.
 
@@ -175,7 +175,7 @@ pub(crate) struct PreparedShellCommand {
     pub(crate) env_script: Option<EnvScriptGuard>,
 }
 
-pub(crate) struct SpawnedShellCommand {
+pub(crate) struct SpawnedCommand {
     pub(crate) child: Child,
     pub(crate) env_script: Option<EnvScriptGuard>,
     pub(crate) process_containment: ExecProcessContainment,
@@ -270,6 +270,11 @@ fn validate_env_values(env: &[(&str, &str)]) -> io::Result<()> {
     Ok(())
 }
 
+pub(crate) fn validate_exec_environment(env: &[(&str, &str)]) -> io::Result<()> {
+    validate_env_keys(env)?;
+    validate_env_values(env)
+}
+
 fn build_env_script_content(
     script_dir: &Path,
     script_path: &Path,
@@ -282,8 +287,7 @@ fn build_env_script_content(
             "command contains NUL bytes",
         ));
     }
-    validate_env_keys(env)?;
-    validate_env_values(env)?;
+    validate_exec_environment(env)?;
     let script_dir = script_dir.to_str().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -579,11 +583,8 @@ pub(crate) fn spawn_shell_command_with_pipes(
     sudo: bool,
     pipe_stdin: bool,
     process_containment: ExecProcessContainment,
-) -> io::Result<SpawnedShellCommand> {
+) -> io::Result<SpawnedCommand> {
     let spawn_result = (|| -> io::Result<(Child, Option<EnvScriptGuard>)> {
-        let mut prepared_containment = process_containment.prepare_command().map_err(|error| {
-            io::Error::other(format!("process containment setup failed: {error}"))
-        })?;
         let PreparedShellCommand {
             mut command,
             env_script,
@@ -592,18 +593,12 @@ pub(crate) fn spawn_shell_command_with_pipes(
         if pipe_stdin {
             command.stdin(Stdio::piped());
         }
-        // Placement requires the root-opened cgroup descriptor. Drop to the
-        // sandbox identity only after placement, then restore non-dumpable
-        // state because setuid may reset it.
-        prepared_containment.configure_placement(&mut command);
-        crate::user::apply_command_identity(&mut command, sudo)?;
-        prepared_containment.configure_process_inspection(&mut command);
-        let child = crate::process::spawn_in_own_process_group(&mut command)?;
+        let child = spawn_command_in_containment(&mut command, sudo, &process_containment)?;
         Ok((child, env_script))
     })();
 
     match spawn_result {
-        Ok((child, env_script)) => Ok(SpawnedShellCommand {
+        Ok((child, env_script)) => Ok(SpawnedCommand {
             child,
             env_script,
             process_containment,
@@ -613,6 +608,25 @@ pub(crate) fn spawn_shell_command_with_pipes(
             Err(error)
         }
     }
+}
+
+/// Apply the common identity and containment boundary, then spawn a command as
+/// the leader of its own process group.
+pub(crate) fn spawn_command_in_containment(
+    command: &mut Command,
+    sudo: bool,
+    process_containment: &ExecProcessContainment,
+) -> io::Result<Child> {
+    let mut prepared_containment = process_containment
+        .prepare_command()
+        .map_err(|error| io::Error::other(format!("process containment setup failed: {error}")))?;
+    // Placement requires the root-opened cgroup descriptor. Drop to the
+    // target identity only after placement, then restore non-dumpable state
+    // because setuid may reset it.
+    prepared_containment.configure_placement(command);
+    crate::user::apply_command_identity(command, sudo)?;
+    prepared_containment.configure_process_inspection(command);
+    crate::process::spawn_in_own_process_group(command)
 }
 
 #[cfg(test)]

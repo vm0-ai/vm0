@@ -225,7 +225,6 @@ async fn codex_catalog_prefetch_start_timeout_does_not_delay_agent() {
     assert!(overrides.start_process_calls().is_empty());
     let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
-    assert!(!start_calls[0].cmd.contains("codex --version"));
 }
 
 #[tokio::test]
@@ -506,10 +505,6 @@ async fn assert_codex_catalog_prefetch_skipped(
     let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1, "{scenario}");
     assert!(
-        !start_calls[0].cmd.contains("codex --version"),
-        "{scenario}"
-    );
-    assert!(
         prefetch_ops(&telemetry).is_empty(),
         "{scenario}: ineligible runs must not record prefetch telemetry"
     );
@@ -697,7 +692,7 @@ async fn fresh_codex_oauth_run_prefetches_catalog_while_agent_prepares() {
         ProcessOutputMode::Buffered { .. }
     ));
     let agent_calls = overrides.start_agent_process_calls();
-    assert!(!agent_calls[0].cmd.contains("codex --version"));
+    assert_eq!(agent_calls.len(), 1);
 
     wait_gate.notify_waiters();
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)

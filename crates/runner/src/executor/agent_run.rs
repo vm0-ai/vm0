@@ -17,7 +17,7 @@ use guest_contracts::session_history_identity::{
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, ProcessOutputMode, Sandbox,
-    StartAgentProcessRequest, StartProcessRequest,
+    StartAgentProcessRequest,
 };
 use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
@@ -79,7 +79,7 @@ use crate::telemetry::{
 };
 use crate::types::{ExecutionContext, WorkspaceReuseResult};
 
-const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+const AGENT_START_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
 const SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR: &str =
     "session history download phase failed";
@@ -427,40 +427,11 @@ async fn materialize_inline_resume_session(
     )))
 }
 
-pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
-    let run_agent_path = quote_shell_arg(run_agent_path);
-    format!(
-        "if [ ! -e {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is missing' >&2; \
-            exit 127; \
-        fi; \
-        if [ ! -f {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is not a regular file' >&2; \
-            exit 126; \
-        fi; \
-        if [ ! -x {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is not executable' >&2; \
-            exit 126; \
-        fi; \
-        exec {run_agent_path} 2>&1"
-    )
-}
-
-fn validate_agent_bootstrap_exec_boundary(
-    agent_cmd: &str,
-    env_pairs: &[(String, String)],
-) -> RunnerResult<()> {
-    let mut values = Vec::with_capacity(env_pairs.len() + 3);
+fn validate_agent_bootstrap_exec_boundary(env_pairs: &[(String, String)]) -> RunnerResult<()> {
+    let mut values = Vec::with_capacity(env_pairs.len() + 1);
     values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
         "argv[0]",
-        "/bin/bash",
-    ));
-    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
-        "argv[1]", "-c",
-    ));
-    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
-        "argv[2] bootstrap command",
-        agent_cmd,
+        guest::RUN_AGENT,
     ));
     for (key, value) in env_pairs {
         values.push(guest_contracts::exec_limits::ExecBoundaryValue::env(
@@ -2135,11 +2106,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         .collect();
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // Spawn guest-agent with stdout streamed to the host via vsock. Its stderr
-    // is merged into stdout, while a small capture keeps shell or wrapper
-    // startup failures visible when the process exits before guest logging.
-    let agent_cmd = build_agent_start_command(guest::RUN_AGENT);
-    validate_agent_bootstrap_exec_boundary(&agent_cmd, &env_pairs)?;
+    // Spawn the fixed guest-agent executable with combined stdout/stderr
+    // streamed to the host. A small terminal capture remains available for
+    // bounded pre-start diagnostics.
+    validate_agent_bootstrap_exec_boundary(&env_pairs)?;
     info!(run_id = %context.run_id, "spawning agent");
 
     // Guest-agent receives JOB_TIMEOUT as the user execution budget. The
@@ -2149,15 +2119,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let t = Instant::now();
     let handle = sandbox
         .start_agent_process(&StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: &agent_cmd,
-                timeout: job_supervisor_timeout(),
-                env: &env_refs,
-                sudo: false,
-                output: ProcessOutputMode::stream_with_stderr_capture(
-                    AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES,
-                ),
-            },
+            timeout: job_supervisor_timeout(),
+            env: &env_refs,
+            output: ProcessOutputMode::stream_with_stderr_capture(
+                AGENT_START_STDERR_CAPTURE_LIMIT_BYTES,
+            ),
         })
         .await;
 
@@ -2763,10 +2729,9 @@ mod tests {
         let secret = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
         let env_pairs = vec![("VM0_OVERSIZED".to_string(), secret.clone())];
 
-        let error =
-            validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
-                .unwrap_err()
-                .to_string();
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("guest-agent bootstrap argv/env too large"));
         assert!(error.contains("VM0_OVERSIZED"));
@@ -2780,25 +2745,21 @@ mod tests {
             .map(|index| (format!("VM0_CHUNK_{index}"), value.clone()))
             .collect();
 
-        let error =
-            validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
-                .unwrap_err()
-                .to_string();
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("argv/env aggregate too large"));
     }
 
     #[test]
-    fn bootstrap_exec_boundary_counts_shell_wrapper_dash_c_arg() {
-        let agent_cmd = "exec /usr/local/bin/guest-agent";
-        let shell_arg_bytes = exec_arg_aggregate_bytes("/bin/bash")
-            + exec_arg_aggregate_bytes("-c")
-            + exec_arg_aggregate_bytes(agent_cmd);
+    fn bootstrap_exec_boundary_counts_fixed_agent_executable_arg() {
+        let executable_arg_bytes = exec_arg_aggregate_bytes(guest::RUN_AGENT);
         let env_pairs = env_pairs_for_aggregate_bytes(
-            guest_contracts::exec_limits::EXECVE_ARG_ENV_MAX_BYTES + 1 - shell_arg_bytes,
+            guest_contracts::exec_limits::EXECVE_ARG_ENV_MAX_BYTES + 1 - executable_arg_bytes,
         );
 
-        let error = validate_agent_bootstrap_exec_boundary(agent_cmd, &env_pairs)
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
             .unwrap_err()
             .to_string();
 

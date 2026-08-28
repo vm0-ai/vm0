@@ -11,8 +11,8 @@ use async_trait::async_trait;
 
 use crate::call_records::{
     CopyFileCall, ExecCall, GuestStateRestoreCall, GuestStateRestoreTimezoneCall,
-    ProcessCancelCall, ProcessControlCall, ReadFileCall, StartProcessCall, StorageManifestCall,
-    WaitProcessCall, WriteFileCall, WriteFilesCall,
+    ProcessCancelCall, ProcessControlCall, ReadFileCall, StartAgentProcessCall, StartProcessCall,
+    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
 use crate::overrides::{ExecMatcherOutcome, GuestStateRestoreBehavior, MockSandboxOverrides};
@@ -1217,28 +1217,32 @@ impl Sandbox for MockSandbox {
             wait_lifecycle_gate(&overrides.process.start_process_lifecycle_gate).await;
         }
         let operation = SandboxOperation::StartAgentProcess;
-        validate_mock_exec_env_keys(operation, request.process.env)?;
-        request.process.output.validate(operation)?;
+        validate_mock_exec_env_keys(operation, request.env)?;
+        request.output.validate(operation)?;
         if let Some(overrides) = &self.overrides {
             overrides
                 .process
                 .start_agent_process_calls
                 .lock_ignoring_poison()
-                .push(StartProcessCall {
-                    cmd: request.process.cmd.to_string(),
-                    timeout: request.process.timeout,
+                .push(StartAgentProcessCall {
+                    timeout: request.timeout,
                     env: request
-                        .process
                         .env
                         .iter()
                         .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
                         .collect(),
-                    sudo: request.process.sudo,
-                    output: request.process.output,
+                    output: request.output,
                 });
         }
+        let process_request = StartProcessRequest {
+            cmd: "",
+            timeout: request.timeout,
+            env: request.env,
+            sudo: false,
+            output: request.output,
+        };
         let process = self
-            .start_process_with_contract(&request.process, operation, true)
+            .start_process_with_contract(&process_request, operation, true)
             .await?;
         let ready_at = Instant::now();
         GuestAgentProcessHandle::try_from_process(

@@ -65,6 +65,7 @@ use vsock_proto::{
 #[cfg(test)]
 use vsock_proto::MSG_EXEC_RESULT;
 
+use crate::agent_command::{GuestAgentProgram, spawn_agent_command_with_pipes};
 use crate::drain::{
     BoundedDrainResult, BoundedStreamConfig, DrainCancellation, drain_bounded_cancellable,
 };
@@ -78,7 +79,7 @@ use crate::process_containment::{
 };
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
-    SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
+    SpawnedCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
     truncate_command_preview,
 };
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
@@ -245,6 +246,7 @@ pub(crate) struct ExecOperationWorkerRequest {
     control: ExecControlPolicy,
     exec_control_guard: Option<ExecControlGuard>,
     exec_control_bootstrap_endpoint: Option<String>,
+    guest_agent_program: GuestAgentProgram,
     process_containment_mode: ProcessContainmentMode,
     drain_deadline: Duration,
 }
@@ -271,6 +273,7 @@ impl ExecOperationWorkerRequest {
         decoded: vsock_proto::DecodedExecStart<'_>,
         process_containment_mode: ProcessContainmentMode,
         drain_deadline: Duration,
+        guest_agent_program: GuestAgentProgram,
     ) -> io::Result<Self> {
         vsock_proto::validate_exec_process_contract(
             decoded.role,
@@ -310,6 +313,26 @@ impl ExecOperationWorkerRequest {
                 "exec control policy requires supervised lifecycle",
             ));
         }
+        if decoded.role == ExecProcessRole::Agent {
+            if !decoded.command.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Agent process cannot select a command",
+                ));
+            }
+            if decoded.sudo {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Agent process cannot select sudo execution",
+                ));
+            }
+            if decoded.stdin_bytes.is_some() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Agent process cannot provide stdin",
+                ));
+            }
+        }
 
         Ok(Self {
             seq,
@@ -331,6 +354,7 @@ impl ExecOperationWorkerRequest {
             control: decoded.control,
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
+            guest_agent_program,
             process_containment_mode,
             drain_deadline,
         })
@@ -1311,26 +1335,37 @@ fn run_exec_operation_worker<S>(
         env_refs.as_slice()
     };
     let shell_spawn_started = Instant::now();
-    let spawned = match spawn_shell_command_with_pipes(
-        &request.command,
-        effective_env,
-        request.sudo,
-        pipe_stdin,
-        process_containment,
-    ) {
+    let spawn_result = match request.role {
+        ExecProcessRole::Workload => spawn_shell_command_with_pipes(
+            &request.command,
+            effective_env,
+            request.sudo,
+            pipe_stdin,
+            process_containment,
+        ),
+        ExecProcessRole::Agent => spawn_agent_command_with_pipes(
+            effective_env,
+            process_containment,
+            &request.guest_agent_program,
+        ),
+    };
+    let spawned = match spawn_result {
         Ok(spawned) => spawned,
         Err(e) => {
-            let diagnostic = format!(
-                "Failed to execute: {e} ({})",
-                format_env_diagnostics(&request.command, &env_refs)
-            );
+            let diagnostic = match request.role {
+                ExecProcessRole::Workload => format!(
+                    "Failed to execute: {e} ({})",
+                    format_env_diagnostics(&request.command, &env_refs)
+                ),
+                ExecProcessRole::Agent => format!("Failed to execute controlled Agent: {e}"),
+            };
             completion.start_failed(&diagnostic);
             return;
         }
     };
     let shell_spawn = shell_spawn_started.elapsed();
     let shell_spawned_at = Instant::now();
-    let SpawnedShellCommand {
+    let SpawnedCommand {
         child,
         env_script,
         process_containment,
@@ -2199,6 +2234,7 @@ mod tests {
             control: ExecControlPolicy::Disabled,
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
+            guest_agent_program: GuestAgentProgram::production(),
             process_containment_mode: ProcessContainmentMode::BuildConfigured,
             drain_deadline: EXEC_OUTPUT_DRAIN_DEADLINE,
         }
@@ -2251,6 +2287,7 @@ mod tests {
                 decoded,
                 ProcessContainmentMode::TestNoop,
                 EXEC_OUTPUT_DRAIN_DEADLINE,
+                GuestAgentProgram::production(),
             ) {
                 Ok(_) => panic!("worker accepted invalid process contract"),
                 Err(error) => error,

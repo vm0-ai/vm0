@@ -176,17 +176,15 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     ];
 
     common::ensure_canonical_workspace_for_test()?;
-    let connection = start_host_and_guest(tmp.path()).await?;
-    let command = cgroup_isolated_guest_agent_wrapper_command(guest_agent);
-    let sudo = needs_sudo_for_canonical_workspace();
+    let connection = start_host_and_guest(tmp.path(), PathBuf::from(guest_agent)).await?;
     let mut handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
             role: vsock_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
-            command: &command,
+            command: "",
             env: &env,
-            sudo,
+            sudo: false,
             label: "guest-agent-process-control-channel",
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024 * 1024,
@@ -322,17 +320,15 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
     ];
 
     common::ensure_canonical_workspace_for_test()?;
-    let connection = start_host_and_guest(tmp.path()).await?;
-    let command = guest_agent_wrapper_command(guest_agent);
-    let sudo = needs_sudo_for_canonical_workspace();
+    let connection = start_host_and_guest(tmp.path(), PathBuf::from(guest_agent)).await?;
     let handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
             role: vsock_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
-            command: &command,
+            command: "",
             env: &env,
-            sudo,
+            sudo: false,
             label: "guest-agent-process-control-plain-run",
             stdout: ExecOutputPolicy::Capture {
                 limit_bytes: 1024 * 1024,
@@ -398,7 +394,7 @@ async fn collect_stdout_until(
     })?
 }
 
-async fn start_host_and_guest(dir: &Path) -> TestResult<ConnectionHarness> {
+async fn start_host_and_guest(dir: &Path, guest_agent: PathBuf) -> TestResult<ConnectionHarness> {
     let base_path = dir.join("vsock").to_string_lossy().to_string();
     let listener_path = format!("{base_path}_1000");
     let listener = PathBuf::from(&listener_path);
@@ -428,7 +424,7 @@ async fn start_host_and_guest(dir: &Path) -> TestResult<ConnectionHarness> {
 
     let guest = thread::spawn(move || {
         let stream = vsock_guest::connect_unix(&listener_path)?;
-        vsock_guest::handle_connection(stream)
+        vsock_guest::handle_connection_with_test_guest_agent_program(stream, guest_agent)
     });
 
     let host = match host_task.await? {
@@ -531,37 +527,4 @@ fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
         .join()
         .map_err(|_| io::Error::other("guest thread panicked"))??;
     Ok(())
-}
-
-fn guest_agent_wrapper_command(guest_agent: &str) -> String {
-    quote_shell_arg(guest_agent)
-}
-
-fn cgroup_isolated_guest_agent_wrapper_command(guest_agent: &str) -> String {
-    // The test process can itself run under vm0 and inherit an incomplete
-    // cgroup bootstrap pair. Keep this unmanaged fixture isolated from it.
-    format!(
-        "unset {} {} {} {}; exec {}",
-        guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-        guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-        quote_shell_arg(guest_agent)
-    )
-}
-
-fn needs_sudo_for_canonical_workspace() -> bool {
-    let parent = Path::new("/home/user");
-    if parent.exists() {
-        return !path_is_writable(parent);
-    }
-    !path_is_writable(Path::new("/home"))
-}
-
-fn path_is_writable(path: &Path) -> bool {
-    let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
-        return false;
-    };
-    // SAFETY: c_path is a valid NUL-terminated path.
-    unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 }
 }
