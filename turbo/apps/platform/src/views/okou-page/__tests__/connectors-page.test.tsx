@@ -48,6 +48,7 @@ import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/conne
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
+import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -2603,6 +2604,52 @@ describe("connectors page", () => {
       expect(screen.getByRole("dialog", { name: "Axiom" })).toBeInTheDocument();
       expect(screen.getByText("Save")).toBeInTheDocument();
     });
+  });
+
+  it("keeps the expanded category menu above connector access controls", async () => {
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledConnectorSlugs: [] });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const categoryMenuItem = await screen.findByTestId(
+      "connector-category-menu-ai",
+    );
+    categoryMenuItem.focus();
+    expect(categoryMenuItem).toHaveFocus();
+
+    const categoryMenuLayer = categoryMenuItem.closest("aside");
+    const accessControl = within(connectorCardByLabel("GitHub")).getByLabelText(
+      "Manage GitHub access",
+    );
+    const accessControlLayer = accessControl.parentElement;
+    if (
+      !(categoryMenuLayer instanceof HTMLElement) ||
+      !(accessControlLayer instanceof HTMLElement)
+    ) {
+      throw new Error("Connector stacking layers not found");
+    }
+
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    const styleElement = document.createElement("style");
+    styleElement.textContent = tailwindCompiler.build([
+      ...categoryMenuLayer.classList,
+      ...accessControlLayer.classList,
+    ]);
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+
+    expect(Number(getComputedStyle(categoryMenuLayer).zIndex)).toBeGreaterThan(
+      Number(getComputedStyle(accessControlLayer).zIndex),
+    );
   });
 
   it("filters connectors by slug", async () => {
