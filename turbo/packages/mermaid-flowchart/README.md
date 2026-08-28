@@ -5,9 +5,9 @@ It supports `flowchart` plus the legacy `graph` spelling and uses Dagre for
 layout. Other Mermaid diagram syntaxes are intentionally unsupported.
 
 The generated ESM files are committed so normal vm0 installs and builds do not
-clone or compile Mermaid. The entry module stays statically imported by the
-platform; the upstream Flowchart parser and Dagre renderer remain split into
-their own internal chunks.
+clone or compile Mermaid. The platform loads the entry module through its
+retryable lazy loader; the upstream Flowchart parser and Dagre renderer remain
+split into their own internal chunks.
 
 ## Bundle footprint
 
