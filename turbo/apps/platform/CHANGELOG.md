@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.808.3](https://github.com/vm0-ai/vm0/compare/app-v0.808.2...app-v0.808.3) (2026-08-28)
+
+
+### Bug Fixes
+
+* **platform:** recover shared database worker transport ([#30140](https://github.com/vm0-ai/vm0/issues/30140)) ([cad77b0](https://github.com/vm0-ai/vm0/commit/cad77b0a69d6c054d8f6bca0588c88a2aace0a48))
+
+
+### Refactoring
+
+* remove introVideoTemplates feature switch ([#30158](https://github.com/vm0-ai/vm0/issues/30158)) ([5797b76](https://github.com/vm0-ai/vm0/commit/5797b76de0daad39916c79d72714b043da8cb03b))
+
+
+### Performance Improvements
+
+* **platform:** bound stable chunk graph traversal ([#30168](https://github.com/vm0-ai/vm0/issues/30168)) ([98dc764](https://github.com/vm0-ai/vm0/commit/98dc76471a1614b0bc60d1226adaed89d019d67d))
+* **platform:** lazy-load rich message content ([#30100](https://github.com/vm0-ai/vm0/issues/30100)) ([96d5ad9](https://github.com/vm0-ai/vm0/commit/96d5ad9364b49d09223407cd50754015913c6cb9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.0
+    * @okouai/core bumped to 8.601.1
+
 ## [0.808.2](https://github.com/vm0-ai/vm0/compare/app-v0.808.1...app-v0.808.2) (2026-08-28)
 
 

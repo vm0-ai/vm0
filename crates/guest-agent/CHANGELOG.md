@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.82.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.15...guest-agent-v0.82.16) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
 ## [0.82.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.14...guest-agent-v0.82.15) (2026-08-28)
 
 

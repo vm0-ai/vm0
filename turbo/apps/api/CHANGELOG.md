@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.509.0](https://github.com/vm0-ai/vm0/compare/api-v1.508.0...api-v1.509.0) (2026-08-28)
+
+
+### Features
+
+* **api:** add runner model observation ingestion ([#30149](https://github.com/vm0-ai/vm0/issues/30149)) ([cbdccae](https://github.com/vm0-ai/vm0/commit/cbdccaede7be2848193a575a179e73ac11ee5d4d))
+
+
+### Refactoring
+
+* remove introVideoTemplates feature switch ([#30158](https://github.com/vm0-ai/vm0/issues/30158)) ([5797b76](https://github.com/vm0-ai/vm0/commit/5797b76de0daad39916c79d72714b043da8cb03b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.0
+    * @okouai/connector-catalog-validation bumped to 2.0.2
+    * @okouai/core bumped to 8.601.1
+    * @okouai/db bumped to 1.228.4
+
 ## [1.508.0](https://github.com/vm0-ai/vm0/compare/api-v1.507.0...api-v1.508.0) (2026-08-28)
 
 

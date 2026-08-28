@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.125](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.124...vsock-guest-v0.19.125) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
 ## [0.19.124](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.123...vsock-guest-v0.19.124) (2026-08-28)
 
 

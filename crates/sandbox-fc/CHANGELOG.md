@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.268](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.267...sandbox-fc-v0.37.268) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
 ## [0.37.267](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.266...sandbox-fc-v0.37.267) (2026-08-28)
 
 ## [0.37.266](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.265...sandbox-fc-v0.37.266) (2026-08-28)
