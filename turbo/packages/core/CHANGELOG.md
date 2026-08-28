@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.600.1](https://github.com/vm0-ai/vm0/compare/core-v8.600.0...core-v8.600.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **platform:** persist appearance preferences ([#30051](https://github.com/vm0-ai/vm0/issues/30051)) ([21d2954](https://github.com/vm0-ai/vm0/commit/21d2954bebb4336546670465bcee7796959f5cad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.379.1
+
 ## [8.600.0](https://github.com/vm0-ai/vm0/compare/core-v8.599.5...core-v8.600.0) (2026-08-28)
 
 

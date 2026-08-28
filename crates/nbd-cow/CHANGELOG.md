@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.81](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.80...nbd-cow-v0.4.81) (2026-08-28)
+
+
+### Documentation
+
+* **nbd-cow:** clarify host disk benchmark attribution ([#30031](https://github.com/vm0-ai/vm0/issues/30031)) ([df7a764](https://github.com/vm0-ai/vm0/commit/df7a7646389f1b4937dfbdfd5c9b6faa04a7ffda))
+
 ## [0.4.80](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.79...nbd-cow-v0.4.80) (2026-08-27)
 
 

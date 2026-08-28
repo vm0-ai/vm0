@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.8...guest-contracts-v0.12.9) (2026-08-28)
+
+
+### Documentation
+
+* **rust:** document active-input payload size responsibility ([#30080](https://github.com/vm0-ai/vm0/issues/30080)) ([dbceaf5](https://github.com/vm0-ai/vm0/commit/dbceaf5c1617ffff16b5e0fdd43170e09853a7f4))
+
 ## [0.12.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.7...guest-contracts-v0.12.8) (2026-08-28)
 
 
