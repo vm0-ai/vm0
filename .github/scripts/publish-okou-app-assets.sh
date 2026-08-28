@@ -43,32 +43,8 @@ content_type_for_app_asset() {
 publish_app_asset() {
   local source_path=$1
   local relative_path="${source_path#"$OKOU_APP_ASSETS_DIRECTORY"/}"
-  local asset_name="${relative_path##*/}"
-
-  if [[ "$relative_path" == *.map ]] &&
-    [[ ! "$asset_name" =~ -[[:alnum:]_-]{8,}\.[^.]+\.map$ ]]; then
-    echo "Skipping unhashed source map: $relative_path"
-    return 0
-  fi
-
   local object_key="okou-app/assets/${relative_path}"
-  local aws_output status
-  if aws_output="$(aws s3api head-object \
-    --endpoint-url "$OKOU_APP_R2_ENDPOINT" \
-    --bucket "$OKOU_APP_R2_BUCKET" \
-    --key "$object_key" 2>&1)"; then
-    echo "App asset already exists: $object_key"
-    return 0
-  else
-    status=$?
-  fi
-
-  if ! grep -Eqi '404|NotFound|Not Found|NoSuchKey' <<< "$aws_output"; then
-    printf '%s\n' "$aws_output" >&2
-    return "$status"
-  fi
-
-  local content_type
+  local aws_output content_type status
   content_type="$(content_type_for_app_asset "$relative_path")"
   if aws_output="$(aws s3api put-object \
     --endpoint-url "$OKOU_APP_R2_ENDPOINT" \
@@ -96,9 +72,48 @@ publish_app_asset() {
 export OKOU_APP_R2_ENDPOINT OKOU_APP_R2_BUCKET OKOU_APP_ASSETS_DIRECTORY
 export -f content_type_for_app_asset publish_app_asset
 
-find "$OKOU_APP_ASSETS_DIRECTORY" -type f -print0 |
-  sort -z |
-  xargs -0 -r -n 1 -P 16 bash -c \
-    "set -euo pipefail; publish_app_asset \"\$1\"" _
+existing_assets_json="$(mktemp)"
+existing_assets="$(mktemp)"
+pending_assets="$(mktemp)"
+sorted_assets="$(mktemp)"
+trap 'rm -f "$existing_assets_json" "$existing_assets" "$pending_assets" "$sorted_assets"' EXIT
+
+aws s3api list-objects-v2 \
+  --endpoint-url "$OKOU_APP_R2_ENDPOINT" \
+  --bucket "$OKOU_APP_R2_BUCKET" \
+  --prefix 'okou-app/assets/' \
+  --output json \
+  --no-cli-pager > "$existing_assets_json"
+jq -r '(.Contents // [])[] | .Key' \
+  "$existing_assets_json" > "$existing_assets"
+
+declare -A existing_asset_keys=()
+while IFS= read -r object_key; do
+  existing_asset_keys["$object_key"]=1
+done < "$existing_assets"
+echo "Found ${#existing_asset_keys[@]} existing app assets in R2"
+
+find "$OKOU_APP_ASSETS_DIRECTORY" -type f -print0 | sort -z > "$sorted_assets"
+while IFS= read -r -d '' source_path; do
+  relative_path="${source_path#"$OKOU_APP_ASSETS_DIRECTORY"/}"
+  asset_name="${relative_path##*/}"
+
+  if [[ "$relative_path" == *.map ]] &&
+    [[ ! "$asset_name" =~ -[[:alnum:]_-]{8,}\.[^.]+\.map$ ]]; then
+    echo "Skipping unhashed source map: $relative_path"
+    continue
+  fi
+
+  object_key="okou-app/assets/${relative_path}"
+  if [[ -n "${existing_asset_keys["$object_key"]+present}" ]]; then
+    echo "App asset already exists: $object_key"
+    continue
+  fi
+
+  printf '%s\0' "$source_path" >> "$pending_assets"
+done < "$sorted_assets"
+
+xargs -0 -r -n 1 -P 16 bash -c \
+  "set -euo pipefail; publish_app_asset \"\$1\"" _ < "$pending_assets"
 
 echo "App asset publication complete"

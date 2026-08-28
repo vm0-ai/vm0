@@ -49,6 +49,7 @@ shift 2
 endpoint=""
 bucket=""
 key=""
+prefix=""
 body=""
 content_type=""
 cache_control=""
@@ -58,10 +59,13 @@ while (( $# > 0 )); do
     --endpoint-url) endpoint=$2; shift 2 ;;
     --bucket) bucket=$2; shift 2 ;;
     --key) key=$2; shift 2 ;;
+    --prefix) prefix=$2; shift 2 ;;
     --body) body=$2; shift 2 ;;
     --content-type) content_type=$2; shift 2 ;;
     --cache-control) cache_control=$2; shift 2 ;;
     --if-none-match) if_none_match=$2; shift 2 ;;
+    --output) shift 2 ;;
+    --no-cli-pager) shift ;;
     *) echo "unexpected aws argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -77,17 +81,9 @@ printf '%s|%s|%s|%s|%s|%s|%s\n' \
 
 object_path="${MOCK_OBJECT_STORE}/${key}"
 case "$operation" in
-  head-object)
-    if [[ "$key" == 'okou-app/assets/race-Yzab5678.js' ]]; then
-      echo 'An error occurred (404) when calling the HeadObject operation: Not Found' >&2
-      exit 254
-    fi
-    if [[ -f "$object_path" ]]; then
-      printf '{}\n'
-    else
-      echo 'An error occurred (404) when calling the HeadObject operation: Not Found' >&2
-      exit 254
-    fi
+  list-objects-v2)
+    [[ "$prefix" == 'okou-app/assets/' ]] || exit 2
+    printf '{"Contents":[{"Key":"okou-app/assets/existing-UvWx1234.js"}]}\n'
     ;;
   put-object)
     if [[ "$key" == 'okou-app/assets/race-Yzab5678.js' ]]; then
@@ -127,6 +123,13 @@ grep -Fq 'App asset already exists: okou-app/assets/race-Yzab5678.js' <<< "$outp
   fail "conditional write race was not treated as an existing object"
 grep -Fq 'App asset publication complete' <<< "$output" ||
   fail "publication did not complete"
+
+if [[ "$(grep -Fc 'list-objects-v2|' "$aws_log")" -ne 1 ]]; then
+  fail "existing assets were not listed exactly once"
+fi
+if grep -Fq 'head-object|' "$aws_log"; then
+  fail "an asset used a redundant HEAD request"
+fi
 
 assert_put 'okou-app/assets/app-AbCd1234.js' 'application/javascript'
 assert_put 'okou-app/assets/style-EfGh5678.css' 'text/css; charset=utf-8'
