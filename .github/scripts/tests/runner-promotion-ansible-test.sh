@@ -120,7 +120,7 @@ case "${1:-}" in
       fi
       exit 0
     fi
-    if [ "$*" != "gc --keep-latest 6 --keep-bin-dirname v999.0.0 --keep-runner-dirname v999.0.0 --deployment-service-suffix=production-blue --deployment-service-suffix=production-green" ]; then
+    if [ "$*" != "gc --keep-latest 6 --keep-bin-dirname v999.0.0 --keep-runner-dirname v999.0.0 --deployment-service-suffix=production-blue --deployment-service-suffix=production-green --deployment-service-suffix=v999.0.0" ]; then
       echo "unexpected gc arguments: $*" >&2
       exit 1
     fi
@@ -186,7 +186,7 @@ if ! PATH="$test_bin:$PATH" \
 fi
 
 assert_line_count "$invocation_log" 2 \
-  "gc --keep-latest 6 --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release --deployment-service-suffix=production-blue --deployment-service-suffix=production-green"
+  "gc --keep-latest 6 --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release --deployment-service-suffix=production-blue --deployment-service-suffix=production-green --deployment-service-suffix=$runner_release"
 assert_line_count "$invocation_log" 4 "doctor --name $runner_release"
 assert_line_count "$invocation_log" 2 \
   "service wait-running --name $runner_release --timeout-secs 120"
@@ -209,6 +209,6 @@ if ! RUNNER_GC_EXPLICIT_SUPPORT=false \
 fi
 
 assert_line_count "$invocation_log" 2 \
-  "gc --keep-latest 6 --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release --deployment-service-suffix=production-blue --deployment-service-suffix=production-green"
+  "gc --keep-latest 6 --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release --deployment-service-suffix=production-blue --deployment-service-suffix=production-green --deployment-service-suffix=$runner_release"
 
 echo "runner-promotion-ansible-test: ok"

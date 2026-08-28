@@ -18,6 +18,28 @@
     - runner_gc_help.rc == 0
     - "'--deployment-service-suffix' in runner_gc_help.stdout"
 
+- name: Build explicit runner deployment inventory
+  ansible.builtin.set_fact:
+    runner_gc_service_suffixes: >-
+      {{
+        (
+          [runner_release]
+          + (
+            runner_gc_service_units.files
+            | map(attribute='path')
+            | map('basename')
+            | map('regex_replace', '^vm0-runner-', '')
+            | map('regex_replace', '\.service$', '')
+            | list
+          )
+        )
+        | unique
+        | sort
+      }}
+  when:
+    - runner_gc_help.rc == 0
+    - "'--deployment-service-suffix' in runner_gc_help.stdout"
+
 - name: Run serialized runner garbage collection
   ansible.builtin.command:
     argv: >-
@@ -36,10 +58,8 @@
           runner_release
         ]
         + (
-          runner_gc_service_units.files
-          | map(attribute='path')
-          | map('basename')
-          | map('regex_replace', '^vm0-runner-(.*)\.service$', '--deployment-service-suffix=\1')
+          runner_gc_service_suffixes
+          | map('regex_replace', '^', '--deployment-service-suffix=')
           | list
         )
       }}

@@ -286,6 +286,7 @@ async fn gc_deployments_with_operations(
             failed_paths.insert(bin_dir);
         }
     }
+    let mut image_inventory_complete = failed_paths.is_empty();
 
     let locks_by_suffix = locked_units
         .iter()
@@ -311,6 +312,7 @@ async fn gc_deployments_with_operations(
                     "runner deployment {}: cannot uninstall service safely ({error}); leaving its unit and lock for retry",
                     deployment.unit.suffix()
                 );
+                image_inventory_complete = false;
                 continue;
             }
             let lock_path = deployment.unit.lock_path(home);
@@ -344,7 +346,7 @@ async fn gc_deployments_with_operations(
     Ok(DeploymentGcOutcome {
         report: GcReport::removed_deployments(removed),
         retained_config_paths,
-        image_inventory_complete: true,
+        image_inventory_complete,
     })
 }
 
@@ -646,7 +648,7 @@ printf '%s\n' "$*" >> "$OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS"
 
 if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
   case "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" in
-    opaque-paths)
+    opaque-paths|partial-runner-failure|uninstall-failure)
       binary_dirname=binary-opaque
       runner_dirname=config-opaque
       ;;
@@ -655,6 +657,28 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
       suffix=${suffix%.service}
       binary_dirname=${suffix}-bin
       runner_dirname=${suffix}-config
+      ;;
+    keep-roots)
+      case "$4" in
+        vm0-runner-service-a.service)
+          binary_dirname=keep-bin
+          runner_dirname=remove-runner
+          ;;
+        vm0-runner-service-z.service)
+          binary_dirname=remove-bin
+          runner_dirname=keep-runner
+          ;;
+      esac
+      ;;
+    shared-paths)
+      binary_dirname=shared-bin
+      runner_dirname=shared-runner
+      ;;
+    out-of-root)
+      printf '%s\n' \
+        '[Service]' \
+        "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/outside/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/runner.yaml"
+      exit 0
       ;;
     *)
       printf '%s\n' "unexpected deployment scenario: $OKOU_RUN_GC_DEPLOYMENT_SCENARIO" >&2
@@ -668,6 +692,11 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
 fi
 
 if [ "$1" = "show" ]; then
+  if [ "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" = "shared-paths" ] && \
+     [ "$2" = "vm0-runner-service-a.service" ]; then
+    printf '%s\n' 'LoadState=loaded' 'ActiveState=deactivating'
+    exit 0
+  fi
   printf '%s\n' 'LoadState=loaded' 'ActiveState=inactive'
   exit 0
 fi
@@ -680,6 +709,21 @@ exit 2
         _unit: &service::RunnerServiceUnit,
     ) -> ServiceUninstallFuture<'_> {
         Box::pin(async { Ok(()) })
+    }
+
+    fn failing_fake_uninstall_service_unit(
+        _unit: &service::RunnerServiceUnit,
+    ) -> ServiceUninstallFuture<'_> {
+        Box::pin(async { Err(RunnerError::Internal("injected uninstall failure".into())) })
+    }
+
+    fn failing_remove_dir_all(_path: &Path) -> RemoveDirAllFuture<'_> {
+        Box::pin(async {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "injected directory removal failure",
+            ))
+        })
     }
 
     fn install_fake_systemctl(dir: &Path) {
@@ -786,6 +830,33 @@ exit 2
     }
 
     #[tokio::test]
+    async fn no_candidates_leave_unregistered_semver_shaped_paths_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        create_test_deployment(dir.path(), "v1.2.3", "v1.2.3", old);
+
+        let outcome = gc_deployments(
+            &home,
+            &[],
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            Some(0),
+            false,
+            false,
+        )
+        .await
+        .unwrap();
+        let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+        assert!(report.is_empty());
+        assert!(retained_config_paths.is_empty());
+        assert!(inventory_complete);
+        assert!(home.bin_dir().join("v1.2.3/runner").exists());
+        assert!(home.runners_dir().join("v1.2.3/runner.yaml").exists());
+    }
+
+    #[tokio::test]
     async fn explicit_service_suffix_resolves_independent_opaque_dirnames() {
         let dir = tempfile::tempdir().unwrap();
         install_fake_systemctl(dir.path());
@@ -845,6 +916,144 @@ exit 2
         run_ignored_child_test(
             DEPLOYMENT_CHILD_TEST,
             (DEPLOYMENT_SCENARIO_ENV, "keep-latest"),
+            &[
+                ("PATH", Some(dir.path().to_str().unwrap())),
+                (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+                (
+                    DEPLOYMENT_INVOCATIONS_ENV,
+                    Some(invocations_path.to_str().unwrap()),
+                ),
+            ],
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn exact_keep_dirnames_apply_only_to_their_own_roots() {
+        let dir = tempfile::tempdir().unwrap();
+        install_fake_systemctl(dir.path());
+        let home_root = dir.path().join("home");
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        create_test_deployment(&home_root, "keep-bin", "remove-runner", old);
+        create_test_deployment(&home_root, "remove-bin", "keep-runner", old);
+
+        let invocations_path = dir.path().join("invocations");
+        run_ignored_child_test(
+            DEPLOYMENT_CHILD_TEST,
+            (DEPLOYMENT_SCENARIO_ENV, "keep-roots"),
+            &[
+                ("PATH", Some(dir.path().to_str().unwrap())),
+                (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+                (
+                    DEPLOYMENT_INVOCATIONS_ENV,
+                    Some(invocations_path.to_str().unwrap()),
+                ),
+            ],
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn shared_paths_are_retained_by_a_deactivating_deployment() {
+        let dir = tempfile::tempdir().unwrap();
+        install_fake_systemctl(dir.path());
+        let home_root = dir.path().join("home");
+        create_test_deployment(
+            &home_root,
+            "shared-bin",
+            "shared-runner",
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+        );
+
+        let invocations_path = dir.path().join("invocations");
+        run_ignored_child_test(
+            DEPLOYMENT_CHILD_TEST,
+            (DEPLOYMENT_SCENARIO_ENV, "shared-paths"),
+            &[
+                ("PATH", Some(dir.path().to_str().unwrap())),
+                (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+                (
+                    DEPLOYMENT_INVOCATIONS_ENV,
+                    Some(invocations_path.to_str().unwrap()),
+                ),
+            ],
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn partial_path_failure_retains_retry_authority_and_skips_image_gc() {
+        let dir = tempfile::tempdir().unwrap();
+        install_fake_systemctl(dir.path());
+        let home_root = dir.path().join("home");
+        create_test_deployment(
+            &home_root,
+            "binary-opaque",
+            "config-opaque",
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+        );
+
+        let invocations_path = dir.path().join("invocations");
+        run_ignored_child_test(
+            DEPLOYMENT_CHILD_TEST,
+            (DEPLOYMENT_SCENARIO_ENV, "partial-runner-failure"),
+            &[
+                ("PATH", Some(dir.path().to_str().unwrap())),
+                (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+                (
+                    DEPLOYMENT_INVOCATIONS_ENV,
+                    Some(invocations_path.to_str().unwrap()),
+                ),
+            ],
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn uninstall_failure_retains_lock_and_skips_image_gc() {
+        let dir = tempfile::tempdir().unwrap();
+        install_fake_systemctl(dir.path());
+        let home_root = dir.path().join("home");
+        create_test_deployment(
+            &home_root,
+            "binary-opaque",
+            "config-opaque",
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+        );
+
+        let invocations_path = dir.path().join("invocations");
+        run_ignored_child_test(
+            DEPLOYMENT_CHILD_TEST,
+            (DEPLOYMENT_SCENARIO_ENV, "uninstall-failure"),
+            &[
+                ("PATH", Some(dir.path().to_str().unwrap())),
+                (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+                (
+                    DEPLOYMENT_INVOCATIONS_ENV,
+                    Some(invocations_path.to_str().unwrap()),
+                ),
+            ],
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn out_of_root_unit_paths_make_the_inventory_incomplete() {
+        let dir = tempfile::tempdir().unwrap();
+        install_fake_systemctl(dir.path());
+        let home_root = dir.path().join("home");
+        std::fs::create_dir_all(home_root.join("bin/unregistered")).unwrap();
+        std::fs::create_dir_all(home_root.join("runners/config-opaque")).unwrap();
+
+        let invocations_path = dir.path().join("invocations");
+        run_ignored_child_test(
+            DEPLOYMENT_CHILD_TEST,
+            (DEPLOYMENT_SCENARIO_ENV, "out-of-root"),
             &[
                 ("PATH", Some(dir.path().to_str().unwrap())),
                 (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
@@ -921,6 +1130,148 @@ exit 2
                     [home.runners_dir().join("service-z-config/runner.yaml")]
                 );
                 assert!(inventory_complete);
+            }
+            "keep-roots" => {
+                let outcome = gc_deployments_with_operations(
+                    &home,
+                    DeploymentGcRequest {
+                        service_suffixes: &["service-a".to_string(), "service-z".to_string()],
+                        keep_bin_dirnames: &BTreeSet::from(["keep-bin".to_string()]),
+                        keep_runner_dirnames: &BTreeSet::from(["keep-runner".to_string()]),
+                        keep_latest: Some(0),
+                        legacy_inventory_missing: false,
+                        dry_run: false,
+                    },
+                    DeploymentGcOperations {
+                        uninstall_service: successful_fake_uninstall_service_unit,
+                        remove_dir_all: real_remove_dir_all,
+                    },
+                )
+                .await
+                .unwrap();
+                let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+                assert_eq!(report.activity_count, 2);
+                assert_eq!(
+                    retained_config_paths,
+                    [home.runners_dir().join("keep-runner/runner.yaml")]
+                );
+                assert!(inventory_complete);
+                assert!(home.bin_dir().join("keep-bin").exists());
+                assert!(!home.runners_dir().join("remove-runner").exists());
+                assert!(!home.bin_dir().join("remove-bin").exists());
+                assert!(home.runners_dir().join("keep-runner").exists());
+            }
+            "shared-paths" => {
+                let service_a = service::RunnerServiceUnit::from_suffix("service-a").unwrap();
+                let service_z = service::RunnerServiceUnit::from_suffix("service-z").unwrap();
+                let outcome = gc_deployments_with_operations(
+                    &home,
+                    DeploymentGcRequest {
+                        service_suffixes: &["service-a".to_string(), "service-z".to_string()],
+                        keep_bin_dirnames: &BTreeSet::new(),
+                        keep_runner_dirnames: &BTreeSet::new(),
+                        keep_latest: Some(0),
+                        legacy_inventory_missing: false,
+                        dry_run: false,
+                    },
+                    DeploymentGcOperations {
+                        uninstall_service: successful_fake_uninstall_service_unit,
+                        remove_dir_all: real_remove_dir_all,
+                    },
+                )
+                .await
+                .unwrap();
+                let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+                assert_eq!(report.activity_count, 1);
+                assert_eq!(
+                    retained_config_paths,
+                    [home.runners_dir().join("shared-runner/runner.yaml")]
+                );
+                assert!(inventory_complete);
+                assert!(home.bin_dir().join("shared-bin").exists());
+                assert!(home.runners_dir().join("shared-runner").exists());
+                assert!(service_a.lock_path(&home).exists());
+                assert!(!service_z.lock_path(&home).exists());
+            }
+            "partial-runner-failure" => {
+                let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
+                let outcome = gc_deployments_with_operations(
+                    &home,
+                    DeploymentGcRequest {
+                        service_suffixes: &["service-blue".to_string()],
+                        keep_bin_dirnames: &BTreeSet::new(),
+                        keep_runner_dirnames: &BTreeSet::new(),
+                        keep_latest: Some(0),
+                        legacy_inventory_missing: false,
+                        dry_run: false,
+                    },
+                    DeploymentGcOperations {
+                        uninstall_service: successful_fake_uninstall_service_unit,
+                        remove_dir_all: failing_remove_dir_all,
+                    },
+                )
+                .await
+                .unwrap();
+                let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+                assert!(report.is_empty());
+                assert_eq!(
+                    retained_config_paths,
+                    [home.runners_dir().join("config-opaque/runner.yaml")]
+                );
+                assert!(!inventory_complete);
+                assert!(home.bin_dir().join("binary-opaque").exists());
+                assert!(home.runners_dir().join("config-opaque").exists());
+                assert!(unit.lock_path(&home).exists());
+            }
+            "uninstall-failure" => {
+                let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
+                let outcome = gc_deployments_with_operations(
+                    &home,
+                    DeploymentGcRequest {
+                        service_suffixes: &["service-blue".to_string()],
+                        keep_bin_dirnames: &BTreeSet::new(),
+                        keep_runner_dirnames: &BTreeSet::new(),
+                        keep_latest: Some(0),
+                        legacy_inventory_missing: false,
+                        dry_run: false,
+                    },
+                    DeploymentGcOperations {
+                        uninstall_service: failing_fake_uninstall_service_unit,
+                        remove_dir_all: real_remove_dir_all,
+                    },
+                )
+                .await
+                .unwrap();
+                let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+                assert!(report.is_empty());
+                assert!(retained_config_paths.is_empty());
+                assert!(!inventory_complete);
+                assert!(!home.bin_dir().join("binary-opaque").exists());
+                assert!(!home.runners_dir().join("config-opaque").exists());
+                assert!(unit.lock_path(&home).exists());
+            }
+            "out-of-root" => {
+                let outcome = gc_deployments(
+                    &home,
+                    &["service-blue".to_string()],
+                    &BTreeSet::new(),
+                    &BTreeSet::new(),
+                    Some(0),
+                    false,
+                    true,
+                )
+                .await
+                .unwrap();
+                let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+                assert!(report.is_empty());
+                assert!(retained_config_paths.is_empty());
+                assert!(!inventory_complete);
+                assert!(home.bin_dir().join("unregistered").exists());
             }
             unexpected => panic!("unexpected deployment scenario: {unexpected}"),
         }
