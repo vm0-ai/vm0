@@ -498,7 +498,7 @@ pub trait SandboxFinalExecParkObserver: Send {
 /// Production backends must make dropping an active sandbox a best-effort
 /// emergency cleanup path. If runner-side code unwinds before calling
 /// [`SandboxFactory::destroy()`](crate::SandboxFactory::destroy), `Drop`
-/// must not silently leave a VM process and associated host resources alive.
+/// must not silently leave a backing process and associated host resources alive.
 /// This fallback is only a safety net: callers must not treat drop-triggered
 /// cleanup as proof that explicit destroy completed.
 #[async_trait]
@@ -509,7 +509,7 @@ pub trait Sandbox: Send + Sync + Any {
     /// process. Used in logs, metrics, and socket/path derivation.
     fn id(&self) -> &str;
     /// The network-visible source IP address for this sandbox.
-    /// Used as the key for proxy VM registration.
+    /// Used as the key for proxy sandbox registration.
     fn source_ip(&self) -> &str;
     /// Host-side PID of the sandbox backing process (e.g. firecracker).
     /// Used for host diagnostics like OOM detection.

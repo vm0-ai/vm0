@@ -53,7 +53,7 @@ impl DnsReadinessLogObservation {
     }
 }
 
-/// Tail dnsmasq stderr and write DNS log entries to per-VM network JSONL.
+/// Tail dnsmasq stderr and write DNS log entries to per-sandbox network JSONL.
 ///
 /// dnsmasq `--log-queries=extra --log-facility=-` outputs lines like:
 /// ```text

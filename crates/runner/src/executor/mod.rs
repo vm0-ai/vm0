@@ -618,7 +618,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         .record(&context, params, &mut telemetry);
 
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
-    record_api_latency("api_to_vm_start", &context, &mut telemetry);
+    record_api_latency("api_to_sandbox_start", &context, &mut telemetry);
 
     let sandbox_id = dispatch.id.to_string();
     let outcome = match validate_execution_context_before_sandbox(
@@ -729,7 +729,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         .record(&context, params, &mut telemetry);
 
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
-    record_api_latency("api_to_vm_start", &context, &mut telemetry);
+    record_api_latency("api_to_sandbox_start", &context, &mut telemetry);
 
     let sandbox_id = idle_sandbox.sandbox_id();
     let ReusableIdleSandboxParts {

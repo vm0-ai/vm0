@@ -1,30 +1,30 @@
 # Rust Crates
 
-This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestration, guest execution, vsock communication, and supporting services.
+This workspace contains Rust crates for the vm0 sandbox runtime — sandbox orchestration, guest execution, vsock communication, and supporting services.
 
 ## Crates
 
-| Crate                 | Description                                                                                                                         |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **runner**            | Sandbox orchestrator — polls for jobs (API or local queue), manages VM lifecycle, proxy, service install, and bridges to sandbox-fc |
-| **sandbox**           | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult`                          |
-| **sandbox-fc**        | Firecracker sandbox implementation — VM lifecycle, network namespace pool, NBD COW, snapshot restore                                |
-| **nbd-cow**           | Userspace NBD COW device — block-level copy-on-write via Linux NBD, bitmap tracking, no dm-snapshot/loop devices                    |
-| **vsock-proto**       | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages                                          |
-| **vsock-host**        | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets                                                    |
-| **vsock-guest**       | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2                                             |
-| **vsock-test**        | Integration tests for vsock — real host + real guest over Unix sockets                                                              |
-| **guest-init**        | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest                 |
-| **guest-agent**       | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM                              |
-| **guest-contracts**   | Runner/guest contracts — bootstrap environment variables, runtime path layout, and private runtime file helpers                     |
-| **guest-tool-exec**   | Explicit shell-tool launcher and runtime hook adapter for per-tool cgroup placement                                                |
-| **guest-common**      | Guest-only shared utilities — logging macros and telemetry recording                                                                |
-| **guest-download**    | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic                      |
-| **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL                                            |
-| **guest-mock-codex**  | Mock Codex app-server for testing — speaks JSON-RPC over stdio and persists session artifacts                                       |
-| **guest-reseed**      | Entropy reseed after snapshot restore — mixes stdin entropy into /dev/urandom and forces CRNG reseed via RNDRESEEDCRNG              |
-| **guest-write-file**  | Direct file writer for vsock `write_file` — writes stdin to guest files without shell startup overhead                              |
-| **ably-subscriber**   | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection             |
+| Crate                 | Description                                                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **runner**            | Sandbox orchestrator — polls for jobs (API or local queue), manages sandbox lifecycle, proxy, service install, and bridges to sandbox-fc |
+| **sandbox**           | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult`                               |
+| **sandbox-fc**        | Firecracker sandbox implementation — VM lifecycle, network namespace pool, NBD COW, snapshot restore                                     |
+| **nbd-cow**           | Userspace NBD COW device — block-level copy-on-write via Linux NBD, bitmap tracking, no dm-snapshot/loop devices                         |
+| **vsock-proto**       | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages                                               |
+| **vsock-host**        | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets                                                         |
+| **vsock-guest**       | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2                                                  |
+| **vsock-test**        | Integration tests for vsock — real host + real guest over Unix sockets                                                                   |
+| **guest-init**        | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest                      |
+| **guest-agent**       | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM                                   |
+| **guest-contracts**   | Runner/guest contracts — bootstrap environment variables, runtime path layout, and private runtime file helpers                          |
+| **guest-tool-exec**   | Explicit shell-tool launcher and runtime hook adapter for per-tool cgroup placement                                                      |
+| **guest-common**      | Guest-only shared utilities — logging macros and telemetry recording                                                                     |
+| **guest-download**    | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic                           |
+| **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL                                                 |
+| **guest-mock-codex**  | Mock Codex app-server for testing — speaks JSON-RPC over stdio and persists session artifacts                                            |
+| **guest-reseed**      | Entropy reseed after snapshot restore — mixes stdin entropy into /dev/urandom and forces CRNG reseed via RNDRESEEDCRNG                   |
+| **guest-write-file**  | Direct file writer for vsock `write_file` — writes stdin to guest files without shell startup overhead                                   |
+| **ably-subscriber**   | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection                  |
 
 ## Architecture
 

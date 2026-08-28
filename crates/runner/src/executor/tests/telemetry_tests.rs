@@ -1081,11 +1081,13 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let factory = ObservedMockSandboxFactory::new();
+    let mut context = minimal_context();
+    context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (_outcome, telemetry) = execute_job_with_prepared_notifier(
         &factory,
-        minimal_context(),
+        context,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
             reuse_result: SandboxReuseResult::PoolMiss,
@@ -1125,6 +1127,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "runner_agent_placement_broker_setup",
         "runner_agent_shell_spawn",
         "runner_agent_bootstrap_ready_wait",
+        "api_to_sandbox_start",
         "sandbox_reuse_miss",
         "sandbox_create",
         "workspace_drive_mount",
@@ -1550,9 +1553,11 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     let cancel = tokio_util::sync::CancellationToken::new();
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
+    let mut context = minimal_context();
+    context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
     let (_outcome, telemetry) = execute_job_reuse_with_hooks(
         idle_sandbox,
-        minimal_context(),
+        context,
         &config,
         &default_params(),
         RunCancellationSignals::hard_only(cancel),
@@ -1584,6 +1589,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         "runner_agent_placement_broker_setup",
         "runner_agent_shell_spawn",
         "runner_agent_bootstrap_ready_wait",
+        "api_to_sandbox_start",
         "sandbox_reuse_hit",
         "agent_execute",
     ] {

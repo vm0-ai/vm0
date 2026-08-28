@@ -113,7 +113,7 @@ set -eu
 marker=/tmp/vm0-process-containment
 rm -rf "$marker"
 mkdir -p "$marker"
-touch "$marker/vm-reuse-marker"
+touch "$marker/sandbox-reuse-marker"
 
 expected_path="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:$HOME/go/bin:$HOME/.cargo/bin"
 if [ "$PATH" != "$expected_path" ]; then
@@ -341,7 +341,7 @@ VERIFY_PROMPT=$(cat <<'PROMPT'
 set -eu
 marker=/tmp/vm0-process-containment
 base=/sys/fs/cgroup/vm0-exec
-test -f "$marker/vm-reuse-marker"
+test -f "$marker/sandbox-reuse-marker"
 if [ -e "$marker/profile-executed" ]; then
   echo "sandbox login profile executed before Guest Agent" >&2
   exit 1
@@ -413,7 +413,7 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt 'test -f /tmp/vm0-process-containment/vm-reuse-marker' \
+  --prompt 'test -f /tmp/vm0-process-containment/sandbox-reuse-marker' \
   || fail "Turn 3 failed; healthy cleanup did not re-enter reuse"
 
 echo "--- Pressure: sustain CPU saturation with live process control ---"
@@ -767,7 +767,6 @@ after = snapshot(workload, control)
 for event in ("max", "oom", "oom_kill", "oom_group_kill"):
     if after["workload_events"].get(event, 0) != before["workload_events"].get(event, 0):
         raise RuntimeError(f"memory pressure triggered workload-local {event}")
-marker_dir.joinpath("memory-reclaim-vm").write_text("ready\n")
 print(
     json.dumps(
         {
@@ -921,7 +920,7 @@ import time
 
 marker = pathlib.Path("/tmp/vm0-process-containment")
 marker.mkdir()
-(marker / "pid-pressure-vm").touch()
+(marker / "pid-pressure-sandbox").touch()
 relative = next(
     line.removeprefix("0::").strip()
     for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
@@ -989,7 +988,7 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$PID_CHAT_THREAD_ID" \
   --session-id "$PID_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt 'test -f /tmp/vm0-process-containment/pid-pressure-vm' \
+  --prompt 'test -f /tmp/vm0-process-containment/pid-pressure-sandbox' \
   || fail "PID-pressure cleanup did not preserve safe sandbox reuse"
 
 LOGS=$(sudo journalctl --no-pager "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \

@@ -1679,7 +1679,6 @@ exit 42
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(registry["sandboxes"], serde_json::json!({}));
-        assert!(registry.get("vms").is_none());
     }
 
     #[tokio::test]

@@ -14,7 +14,7 @@
 //! loading the root-owned system profile, production `sudo` commands run as
 //! root, and debug/test-support builds run as the current user unless `sudo`
 //! requests the local `sudo sh -c` wrapper. The production wrapper must stay
-//! non-login: sandbox-owned profile files may persist across VM reuse and must
+//! non-login: sandbox-owned profile files may persist across sandbox reuse and must
 //! never run before the trusted command bootstrap.
 //!
 //! The env-script path is one security boundary. Env keys must be shell

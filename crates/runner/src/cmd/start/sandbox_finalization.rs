@@ -890,7 +890,7 @@ async fn finalize_sandbox_for_completion_inner(
                             "sandbox parked for reuse"
                         );
                         #[cfg(test)]
-                        test_observer.notify_vm_parked_for_reuse(run_id, reuse_key.clone());
+                        test_observer.notify_sandbox_parked_for_reuse(run_id, reuse_key.clone());
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -1903,7 +1903,7 @@ mod tests {
         )
         .await;
         let observed_reuse_key = observer
-            .wait_vm_parked_for_reuse(run_id, Duration::from_secs(1))
+            .wait_sandbox_parked_for_reuse(run_id, Duration::from_secs(1))
             .await;
 
         assert_eq!(observed_reuse_key, reuse_key);

@@ -1263,7 +1263,7 @@ impl StartLoopTestObserver {
             })
     }
 
-    fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
+    fn notify_sandbox_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
         self.record(StartLoopEvent::SandboxParkedForReuse { run_id, reuse_key });
     }
 
@@ -1349,7 +1349,7 @@ impl StartLoopTestObserver {
         .await
     }
 
-    async fn wait_vm_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
+    async fn wait_sandbox_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
         self.wait_for(timeout, "sandbox parked for reuse", |event| match event {
             StartLoopEvent::SandboxParkedForReuse {
                 run_id: observed_run_id,

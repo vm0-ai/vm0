@@ -443,7 +443,7 @@ const webhookCompleteBodySchema = z
     error: z.string().optional(),
     lastEventSequence: eventSequenceNumberSchema.optional(),
     // Sandbox id the run executed against. Optional because a run that fails
-    // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
+    // before sandbox creation has no sandbox. Persisted to agent_runs.sandbox_id;
     // the 255-char cap matches the DB column (defense in depth).
     sandboxId: z.string().max(255).optional(),
     sandboxReuseResult: sandboxReuseResultSchema.optional(),

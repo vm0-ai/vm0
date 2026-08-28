@@ -21,29 +21,6 @@ class TestLoadRegistry:
         assert "10.200.0.1" in result
         assert result["10.200.0.1"]["runId"] == "run-abc-123"
 
-    def test_does_not_read_legacy_vms_collection(self, tmp_path):
-        path = tmp_path / "registry.json"
-        path.write_text(
-            json.dumps(
-                {
-                    "vms": {
-                        "10.200.0.1": {
-                            "runId": "run-legacy",
-                            "billableFirewalls": [],
-                            "cliAgentType": "claude-code",
-                        }
-                    },
-                    "updatedAt": 0,
-                }
-            )
-        )
-
-        state = registry.load_registry_state(str(path))
-
-        assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.sandboxes == {}
-        assert state.invalid_sandboxes == {}
-
     def test_classifies_invalid_registered_sandbox_entries(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(

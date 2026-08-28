@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Deserializer};
 
 use crate::error::RunnerError;
 use crate::ids::RunId;
@@ -87,10 +87,8 @@ pub(crate) struct StatusForDoctor {
     #[serde(default)]
     pub(crate) active_runs: Vec<StatusActiveRun>,
     pub(crate) started_at: String,
-    #[serde(default, deserialize_with = "deserialize_present_idle_sandboxes")]
-    idle_sandboxes: Option<Vec<StatusIdleSandbox>>,
-    #[serde(default, rename = "idle_vms")]
-    legacy_idle_sandboxes: Vec<StatusIdleSandbox>,
+    #[serde(default)]
+    idle_sandboxes: Vec<StatusIdleSandbox>,
     #[serde(default)]
     pub(crate) proxy_port: Option<u16>,
     #[serde(default)]
@@ -99,19 +97,8 @@ pub(crate) struct StatusForDoctor {
 
 impl StatusForDoctor {
     pub(crate) fn idle_sandboxes(&self) -> &[StatusIdleSandbox] {
-        self.idle_sandboxes
-            .as_deref()
-            .unwrap_or(&self.legacy_idle_sandboxes)
+        &self.idle_sandboxes
     }
-}
-
-fn deserialize_present_idle_sandboxes<'de, D>(
-    deserializer: D,
-) -> Result<Option<Vec<StatusIdleSandbox>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Vec::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Deserialize)]
@@ -217,65 +204,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn doctor_idle_sandbox_fields_follow_compatibility_precedence() {
-        let cases = [
-            (
-                "legacy only",
-                r#""idle_vms":[{"reuse_key":"legacy","sandbox_id":"sandbox-legacy"}]"#,
-                &["legacy"][..],
-            ),
-            (
-                "mirrored",
-                r#""idle_sandboxes":[{"reuse_key":"canonical","sandbox_id":"sandbox-canonical"}],"idle_vms":[{"reuse_key":"legacy","sandbox_id":"sandbox-legacy"}]"#,
-                &["canonical"][..],
-            ),
-            (
-                "canonical only",
-                r#""idle_sandboxes":[{"reuse_key":"canonical","sandbox_id":"sandbox-canonical"}]"#,
-                &["canonical"][..],
-            ),
-            (
-                "canonical empty",
-                r#""idle_sandboxes":[],"idle_vms":[{"reuse_key":"legacy","sandbox_id":"sandbox-legacy"}]"#,
-                &[][..],
-            ),
-            ("neither", "", &[][..]),
-        ];
+    async fn doctor_defaults_omitted_idle_sandboxes_to_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            dir.path().join("status.json"),
+            r#"{"mode":"running","started_at":"2026-04-13T00:00:00.000Z"}"#,
+        )
+        .await
+        .unwrap();
 
-        for (name, idle_fields, expected_reuse_keys) in cases {
-            let dir = tempfile::tempdir().unwrap();
-            let separator = if idle_fields.is_empty() { "" } else { "," };
-            let content = format!(
-                r#"{{"mode":"running","started_at":"2026-04-13T00:00:00.000Z"{separator}{idle_fields}}}"#
-            );
-            tokio::fs::write(dir.path().join("status.json"), content)
-                .await
-                .unwrap();
+        let status = read_as::<StatusForDoctor>(dir.path())
+            .await
+            .unwrap()
+            .unwrap();
 
-            let status = read_as::<StatusForDoctor>(dir.path())
-                .await
-                .unwrap()
-                .unwrap();
-            let reuse_keys: Vec<&str> = status
-                .idle_sandboxes()
-                .iter()
-                .map(|sandbox| sandbox.reuse_key.as_str())
-                .collect();
-
-            assert_eq!(reuse_keys, expected_reuse_keys, "{name}");
-        }
+        assert!(status.idle_sandboxes().is_empty());
     }
 
     #[tokio::test]
-    async fn doctor_rejects_malformed_present_canonical_idle_sandboxes() {
+    async fn doctor_accepts_explicit_empty_idle_sandboxes() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            dir.path().join("status.json"),
+            r#"{"mode":"running","started_at":"2026-04-13T00:00:00.000Z","idle_sandboxes":[]}"#,
+        )
+        .await
+        .unwrap();
+
+        let status = read_as::<StatusForDoctor>(dir.path())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(status.idle_sandboxes().is_empty());
+    }
+
+    #[tokio::test]
+    async fn doctor_rejects_malformed_present_idle_sandboxes() {
         let dir = tempfile::tempdir().unwrap();
         tokio::fs::write(
             dir.path().join("status.json"),
             r#"{
                 "mode":"running",
                 "started_at":"2026-04-13T00:00:00.000Z",
-                "idle_sandboxes":null,
-                "idle_vms":[{"reuse_key":"legacy","sandbox_id":"sandbox-legacy"}]
+                "idle_sandboxes":null
             }"#,
         )
         .await

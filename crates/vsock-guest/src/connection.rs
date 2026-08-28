@@ -231,7 +231,7 @@ fn handle_quiesce_operations(
 
     match operation_state.enter_quiescing() {
         // Quiescing atomically fences new guest operations. Once pending is
-        // zero, this is the final race-free boundary before the VM is parked.
+        // zero, this is the final race-free boundary before the sandbox is parked.
         QuiesceResult::Quiesced => {
             match verify_exec_process_containment_empty(process_containment_mode) {
                 Ok(()) => send_empty_response(MSG_OPERATIONS_QUIESCED, seq, writer),

@@ -61,7 +61,7 @@ pub const CANONICAL_SANDBOX_ID_ENV: &str = "OKOU_SANDBOX_ID";
 
 /// Wire value for the runner's sandbox-reuse decision.
 ///
-/// `reused` means an idle VM was unparked. Other values describe why reuse did
+/// `reused` means an idle sandbox was unparked. Other values describe why reuse did
 /// not happen, such as `poolMiss` or `noReuseKey`.
 ///
 /// Guest readers retain this legacy alias as a rollback fallback.

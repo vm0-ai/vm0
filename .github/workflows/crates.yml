@@ -861,7 +861,7 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-systemd-reload.sh
 
-      - name: Test VM keep-alive across conversation turns
+      - name: Test sandbox keep-alive across conversation turns
         timeout-minutes: 5
         env:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
