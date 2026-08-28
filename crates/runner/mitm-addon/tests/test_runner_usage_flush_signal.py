@@ -298,7 +298,8 @@ class TestRunnerUsageFlushSignal:
             proxy_log_path,
         )
 
-        runner_flush_lifecycle._flush_usage_for_runner_request()
+        runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+        wait_for_usage_flush_worker_to_stop()
 
         assert [call.log_type for call in enqueue.calls] == ["usage_event"]
         assert_pending(
@@ -309,7 +310,8 @@ class TestRunnerUsageFlushSignal:
         )
 
         runner_usage_flush_files.write_usage_flush_request()
-        runner_flush_lifecycle._flush_usage_for_runner_request()
+        runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+        wait_for_usage_flush_worker_to_stop()
 
         assert [call.log_type for call in enqueue.calls] == [
             "usage_event",
