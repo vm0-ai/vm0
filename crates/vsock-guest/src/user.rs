@@ -13,6 +13,20 @@ static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
 static SANDBOX_USER_CREDENTIALS_INIT: Mutex<()> = Mutex::new(());
 
 const SANDBOX_USER_BASE_PATH: &str = "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games";
+// [sync:etc-environment] Keep in sync with:
+// - crates/runner/scripts/customize-rootfs.sh
+// - .github/scripts/runner-behavior-exec.sh (Test 10)
+const TRUSTED_ROOTFS_ENVIRONMENT: [(&str, &str); 6] = [
+    ("LANG", "C.UTF-8"),
+    ("NPM_CONFIG_UPDATE_NOTIFIER", "false"),
+    (
+        "NODE_EXTRA_CA_CERTS",
+        "/usr/local/share/ca-certificates/vm0-proxy-ca.crt",
+    ),
+    ("SSL_CERT_FILE", "/etc/ssl/certs/ca-certificates.crt"),
+    ("REQUESTS_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt"),
+    ("CARGO_HTTP_CAINFO", "/etc/ssl/certs/ca-certificates.crt"),
+];
 
 #[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,9 +91,11 @@ pub(crate) fn apply_command_identity(command: &mut Command, sudo: bool) -> io::R
     }
 }
 
-/// Preserve the trusted PATH produced by the rootfs system profile without
-/// sourcing sandbox-owned shell state during fixed Agent launch.
+/// Install the trusted rootfs environment without sourcing sandbox-owned shell
+/// state during fixed Agent launch.
 pub(crate) fn configure_agent_command_environment(command: &mut Command) -> io::Result<()> {
+    command.envs(TRUSTED_ROOTFS_ENVIRONMENT);
+
     #[cfg(any(debug_assertions, feature = "test-support"))]
     {
         command.env("PATH", SANDBOX_USER_BASE_PATH);
@@ -309,6 +325,20 @@ mod tests {
             sandbox_user_path(Path::new("/home/user")),
             "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/user/go/bin:/home/user/.cargo/bin"
         );
+    }
+
+    #[test]
+    fn agent_environment_preserves_trusted_rootfs_defaults() {
+        let mut command = Command::new("true");
+        configure_agent_command_environment(&mut command).unwrap();
+
+        for (key, expected) in TRUSTED_ROOTFS_ENVIRONMENT {
+            let actual = command
+                .get_envs()
+                .find_map(|(candidate, value)| (candidate == key).then_some(value))
+                .flatten();
+            assert_eq!(actual, Some(std::ffi::OsStr::new(expected)));
+        }
     }
 
     #[test]
