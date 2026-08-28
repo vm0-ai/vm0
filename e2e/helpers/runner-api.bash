@@ -11,6 +11,7 @@ runner_e2e_setup_test() {
     AGENT_ID=""
     THREAD_ID=""
     RUN_ID=""
+    CONNECTOR_ACCOUNT_ID=""
 }
 
 runner_e2e_teardown_test() {
@@ -24,8 +25,11 @@ runner_e2e_teardown_test() {
     if [[ -n "${AGENT_ID:-}" ]]; then
         delete_runner_agent "$AGENT_ID" >/dev/null 2>&1 || true
     fi
-    if [[ -n "$connector_slug" ]]; then
-        runner_e2e_disconnect_single_connector_account "$connector_slug" >/dev/null 2>&1 || true
+    if [[ -n "$connector_slug" && -n "${CONNECTOR_ACCOUNT_ID:-}" ]]; then
+        runner_e2e_delete_connector_account \
+            "$connector_slug" \
+            "$CONNECTOR_ACCOUNT_ID" \
+            >/dev/null 2>&1 || true
     fi
 }
 
@@ -34,24 +38,57 @@ runner_e2e_connect_manual_connector() {
     local auth_method="$2"
     local agent_id="$3"
     local values="$4"
-    local payload
+    local existing_connection_id="${5:-}"
+    local account payload response returned_connection_id
+    if [[ -n "$existing_connection_id" ]]; then
+        account=$(jq -nc \
+            --arg connectionId "$existing_connection_id" \
+            '{intent: "reconnect", connectionId: $connectionId}')
+    else
+        account='{"intent":"add"}'
+    fi
     payload=$(jq -nc \
         --arg authMethod "$auth_method" \
         --arg agentId "$agent_id" \
+        --argjson account "$account" \
         --argjson values "$values" \
-        '{authMethod: $authMethod, agentId: $agentId, authorizeAgent: true, account: {intent: "single-account"}, values: $values}')
-    runner_api_curl "/api/connectors/${connector_slug}/manual-grant" \
+        '{authMethod: $authMethod, agentId: $agentId, authorizeAgent: true, account: $account, values: $values}')
+    response=$(runner_api_curl "/api/connectors/${connector_slug}/manual-grant" \
         -X POST \
-        -d "$payload"
+        -d "$payload") || return
+    returned_connection_id=$(jq -er \
+        '.id | select(type == "string" and length > 0)' \
+        <<<"$response") || return
+
+    if [[ -n "$existing_connection_id" ]]; then
+        [[ "$returned_connection_id" == "$existing_connection_id" ]] || return
+    else
+        local default_payload default_response
+        default_payload=$(jq -nc \
+            --arg connectorSlug "$connector_slug" \
+            '{target: {kind: "builtin", connectorSlug: $connectorSlug}}')
+        default_response=$(runner_api_curl \
+            "/api/connector-accounts/${returned_connection_id}/default" \
+            -X POST \
+            -d "$default_payload") || return
+        jq -e \
+            --arg connectionId "$returned_connection_id" \
+            '.id == $connectionId and .isDefault == true' \
+            <<<"$default_response" \
+            >/dev/null || return
+    fi
+
+    printf '%s\n' "$response"
 }
 
-runner_e2e_disconnect_single_connector_account() {
+runner_e2e_delete_connector_account() {
     local connector_slug="$1"
+    local connection_id="$2"
     local payload
     payload=$(jq -nc \
         --arg connectorSlug "$connector_slug" \
         '{target: {kind: "builtin", connectorSlug: $connectorSlug}}')
-    runner_api_curl "/api/connector-accounts/single-account" \
+    runner_api_curl "/api/connector-accounts/${connection_id}" \
         -X DELETE \
         -d "$payload"
 }

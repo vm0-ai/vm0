@@ -69,7 +69,7 @@ teardown() {
     values_payload=$(jq -nc \
         --arg secret "$probe_secret" \
         '{
-            account: {intent: "single-account"},
+            account: {intent: "add"},
             values: [{key: "probe_secret", kind: "secret", value: $secret}]
         }')
     run runner_api_curl \
