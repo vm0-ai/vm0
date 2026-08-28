@@ -19,7 +19,10 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { createDeferredPromise } from "../../utils";
-import { createCronOfficialWorkflowCatalogRoutes } from "../cron-official-workflow-catalog";
+import {
+  createCronOfficialWorkflowCatalogRoutes,
+  cronOfficialWorkflowCatalogRoutes,
+} from "../cron-official-workflow-catalog";
 import { testOfficialWorkflowCatalogStateRoutes } from "../test-official-workflow-catalog-state";
 
 const context = testContext();
@@ -195,6 +198,15 @@ async function syncCatalog(candidate: unknown) {
   );
 }
 
+async function syncDeployedCatalog() {
+  return await accept(
+    setupApp({ context, routes: cronOfficialWorkflowCatalogRoutes })(
+      cronOfficialWorkflowCatalogContract,
+    ).sync({ headers: cronHeaders() }),
+    [200],
+  );
+}
+
 async function syncCatalogUnauthorized(candidate: unknown) {
   return await accept(
     syncClient(candidate).sync({ headers: cronHeaders("wrong-secret") }),
@@ -364,6 +376,103 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       storages: 0,
       storageVersions: 0,
     });
+  });
+
+  it("releases the deployed Morning Brief catalog with stable executable identity", async () => {
+    const s3 = installVolumeS3Fixture();
+    const first = await syncDeployedCatalog();
+    expect(first.body).toMatchObject({
+      outcome: "accepted",
+      diagnostics: [],
+    });
+
+    const firstState = await readState("morning-brief");
+    const definition = firstState.body.definition;
+    expect(firstState.body.catalog?.payload.definitions).toHaveLength(1);
+    expect(definition).toMatchObject({
+      name: "morning-brief",
+      lifecycle: "active",
+      blueprints: [
+        {
+          key: "daily-delivery",
+          parameters: [
+            {
+              key: "timezone",
+              type: "string",
+              format: "timezone",
+              required: true,
+              derivation: { kind: "user-timezone" },
+            },
+          ],
+          desiredState: {
+            kind: "schedule",
+            schedule: {
+              type: "cron",
+              cronExpression: "0 7 * * *",
+              timezone: { parameter: "timezone" },
+            },
+          },
+          runtime: { resultEmail: true },
+        },
+      ],
+    });
+    expect(firstState.body.storage).toMatchObject({
+      storageName: "official-workflow@morning-brief",
+      orgId: SYSTEM_ORG_ID,
+      userId: VOLUME_ORG_USER_ID,
+      headVersionId: definition?.artifact.storageVersion,
+      versionCount: 1,
+    });
+    expect(firstState.body.counts).toStrictEqual({
+      releases: 1,
+      revisions: 1,
+      storages: 1,
+      storageVersions: 1,
+    });
+    expect(s3.objects.size).toBe(2);
+
+    const revision = definition?.revision;
+    expect(revision).toBeDefined();
+    if (!revision) {
+      throw new Error("Expected the Morning Brief Definition revision");
+    }
+    const exact = await readState("morning-brief", revision);
+    const instruction = exact.body.revision?.definition.workflow.instruction;
+    expect(exact.body.revision?.definition.workflow).toMatchObject({
+      displayName: "Morning Brief",
+      description:
+        "Summarize today's email, GitHub, calendar, and unread Chat priorities.",
+      files: [],
+    });
+    expect(instruction).toContain("Gmail connector skill");
+    expect(instruction).toContain("GitHub connector skill");
+    expect(instruction).toContain("Google Calendar connector skill");
+    expect(instruction).toContain("okou chat list --unread --all-agents");
+    expect(instruction).toContain("Never invent, infer, or claim source data");
+    expect(instruction).toContain("Do not send email");
+    expect(instruction).not.toMatch(
+      /morning-brief-(?:collect|run)|morning_brief|chat_morning_brief_context/,
+    );
+
+    const firstIdentity = {
+      revision: definition?.revision,
+      blueprintFingerprint: definition?.blueprints[0]?.fingerprint,
+      artifact: definition?.artifact,
+    };
+    s3.clearWrites();
+    const second = await syncDeployedCatalog();
+    expect(second.body).toMatchObject({
+      outcome: "unchanged",
+      releaseId: first.body.releaseId,
+      diagnostics: [],
+    });
+    const secondDefinition = (await readState("morning-brief")).body.definition;
+    expect({
+      revision: secondDefinition?.revision,
+      blueprintFingerprint: secondDefinition?.blueprints[0]?.fingerprint,
+      artifact: secondDefinition?.artifact,
+    }).toStrictEqual(firstIdentity);
+    expect(s3.writes).toStrictEqual([]);
   });
 
   it("accepts multiple Definitions as one release with exact system artifacts", async () => {
