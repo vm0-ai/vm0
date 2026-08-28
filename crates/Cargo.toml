@@ -26,6 +26,7 @@ members = [
     "vsock-host",
     "vsock-proto",
     "vsock-test",
+    "xtask",
 ]
 
 [workspace.package]
@@ -76,6 +77,7 @@ idna = "1"
 libc = "0.2"
 nix = { version = "0.31", default-features = false }
 proptest = { version = "1", default-features = false, features = ["std"] }
+proc-macro2 = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 rmp-serde = "1"
 rmpv = "1"

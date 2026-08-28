@@ -113,6 +113,7 @@ jobs:
           check_crate runner
           check_crate nbd-cow
           check_crate vsock-test
+          check_crate xtask
 
           # Aggregate: true if any crate or CI config changed
           if grep -q "=true" "$GITHUB_OUTPUT"; then
@@ -299,11 +300,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
           shared-key: check
           save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check Rust module paths
+        run: |
+          cd crates
+          cargo xtask check-rust-path-attributes
 
       - name: Check formatting
         run: |

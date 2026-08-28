@@ -1,6 +1,5 @@
 //! Standard-tier startup coverage for ChatGPT-authenticated Codex app-server runs.
 
-#[path = "common/codex_app_server_startup.rs"]
 mod codex_app_server_startup;
 mod codex_app_server_startup_policy;
 mod common;

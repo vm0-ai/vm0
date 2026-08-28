@@ -3,11 +3,8 @@
 // serialises correctly (each runtime owns its own OS thread).
 #![allow(clippy::await_holding_lock)]
 
-#[path = "../common/mod.rs"]
-mod common;
-
 #[macro_use]
-mod support;
+pub(crate) mod support;
 
 mod checkpoint;
 mod complete;
