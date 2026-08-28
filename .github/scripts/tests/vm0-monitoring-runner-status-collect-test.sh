@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
-script="$repo_root/ansible/files/vm0-runner-status-collect.py"
+script="$repo_root/ansible/files/vm0-monitoring-runner-status-collect.py"
 playbook="$repo_root/ansible/playbooks/provision-monitoring.yml"
 tmp_root="$(mktemp -d)"
 trap 'rm -rf "$tmp_root"' EXIT
@@ -432,11 +432,20 @@ test_missing_textfile_dir_fails() {
     fail "missing textfile directory error was not reported"
 }
 
-test_playbook_provisions_independent_collector_cadence() {
-  assert_playbook_contains 'src: ../files/vm0-runner-status-collect.py'
-  assert_playbook_contains 'dest: /usr/local/bin/vm0-runner-status-collect'
-  assert_playbook_contains 'ExecStart=/usr/local/bin/vm0-runner-status-collect'
-  assert_playbook_contains 'dest: /etc/systemd/system/vm0-runner-status-collect.timer'
+test_playbook_provisions_migrated_collector_identity_and_cadence() {
+  assert_playbook_contains 'src: ../files/vm0-monitoring-runner-status-collect.py'
+  assert_playbook_contains 'dest: /usr/local/bin/vm0-monitoring-runner-status-collect'
+  assert_playbook_contains 'ExecStart=/usr/local/bin/vm0-monitoring-runner-status-collect'
+  assert_playbook_contains 'dest: /etc/systemd/system/vm0-monitoring-runner-status-collect.service'
+  assert_playbook_contains 'dest: /etc/systemd/system/vm0-monitoring-runner-status-collect.timer'
+  assert_playbook_contains 'name: vm0-runner-status-collect.timer'
+  assert_playbook_contains 'name: vm0-runner-status-collect.service'
+  assert_playbook_contains 'enabled: false'
+  assert_playbook_contains 'state: absent'
+  assert_playbook_contains '/etc/systemd/system/vm0-runner-status-collect.timer'
+  assert_playbook_contains '/etc/systemd/system/vm0-runner-status-collect.service'
+  assert_playbook_contains '/usr/local/bin/vm0-runner-status-collect'
+  assert_playbook_contains 'name: vm0-monitoring-runner-status-collect.timer'
   assert_playbook_contains 'OnUnitActiveSec=15s'
   assert_playbook_contains 'AccuracySec=1s'
   assert_playbook_contains 'OnUnitActiveSec=1min'
@@ -453,6 +462,6 @@ test_retired_runners_dir_is_ignored
 test_monitoring_textfile_dir_canonical_and_defaults
 test_retired_monitoring_textfile_dir_is_ignored
 test_missing_textfile_dir_fails
-test_playbook_provisions_independent_collector_cadence
+test_playbook_provisions_migrated_collector_identity_and_cadence
 
-echo "vm0 runner status collector tests passed"
+echo "vm0 monitoring runner status collector tests passed"

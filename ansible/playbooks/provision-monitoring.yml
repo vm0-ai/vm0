@@ -94,10 +94,10 @@
         mode: "0755"
       become: true
 
-    - name: Install VM0 runner status collector script
+    - name: Install VM0 monitoring runner status collector script
       copy:
-        src: ../files/vm0-runner-status-collect.py
-        dest: /usr/local/bin/vm0-runner-status-collect
+        src: ../files/vm0-monitoring-runner-status-collect.py
+        dest: /usr/local/bin/vm0-monitoring-runner-status-collect
         owner: root
         group: root
         mode: "0755"
@@ -118,7 +118,7 @@
         mode: "0644"
       become: true
 
-    - name: Install VM0 runner status collector service
+    - name: Install VM0 monitoring runner status collector service
       copy:
         content: |
           [Unit]
@@ -126,8 +126,8 @@
 
           [Service]
           Type=oneshot
-          ExecStart=/usr/local/bin/vm0-runner-status-collect
-        dest: /etc/systemd/system/vm0-runner-status-collect.service
+          ExecStart=/usr/local/bin/vm0-monitoring-runner-status-collect
+        dest: /etc/systemd/system/vm0-monitoring-runner-status-collect.service
         owner: root
         group: root
         mode: "0644"
@@ -153,7 +153,7 @@
         mode: "0644"
       become: true
 
-    - name: Install VM0 runner status collector timer
+    - name: Install VM0 monitoring runner status collector timer
       copy:
         content: |
           [Unit]
@@ -167,10 +167,41 @@
 
           [Install]
           WantedBy=timers.target
-        dest: /etc/systemd/system/vm0-runner-status-collect.timer
+        dest: /etc/systemd/system/vm0-monitoring-runner-status-collect.timer
         owner: root
         group: root
         mode: "0644"
+      become: true
+
+    - name: Check for legacy VM0 runner status collector timer
+      stat:
+        path: /etc/systemd/system/vm0-runner-status-collect.timer
+      register: legacy_runner_status_collector_timer
+      become: true
+
+    - name: Disable legacy VM0 runner status collector timer
+      systemd:
+        name: vm0-runner-status-collect.timer
+        state: stopped
+        enabled: false
+      become: true
+      when: legacy_runner_status_collector_timer.stat.exists
+
+    - name: Stop legacy VM0 runner status collector service
+      systemd:
+        name: vm0-runner-status-collect.service
+        state: stopped
+      become: true
+      when: legacy_runner_status_collector_timer.stat.exists
+
+    - name: Remove legacy VM0 runner status collector artifacts
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/vm0-runner-status-collect.timer
+        - /etc/systemd/system/vm0-runner-status-collect.service
+        - /usr/local/bin/vm0-runner-status-collect
       become: true
 
     - name: Generate initial VM0 host monitoring metrics
@@ -181,9 +212,9 @@
       become: true
       changed_when: false
 
-    - name: Generate initial VM0 runner lifecycle metrics
+    - name: Generate initial VM0 runner lifecycle monitoring metrics
       systemd:
-        name: vm0-runner-status-collect.service
+        name: vm0-monitoring-runner-status-collect.service
         state: started
         daemon_reload: true
       become: true
@@ -197,9 +228,9 @@
         daemon_reload: true
       become: true
 
-    - name: Enable VM0 runner status collector timer
+    - name: Enable VM0 monitoring runner status collector timer
       systemd:
-        name: vm0-runner-status-collect.timer
+        name: vm0-monitoring-runner-status-collect.timer
         state: started
         enabled: true
         daemon_reload: true
