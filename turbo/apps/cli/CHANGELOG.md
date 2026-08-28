@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.296.0](https://github.com/vm0-ai/vm0/compare/cli-v9.295.1...cli-v9.296.0) (2026-08-28)
+
+
+### Features
+
+* **social:** download socialkit media as artifacts ([#29875](https://github.com/vm0-ai/vm0/issues/29875)) ([eb36e7d](https://github.com/vm0-ai/vm0/commit/eb36e7d6e21792ac51ab2149b910cd5783ec8e11))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.379.0
+    * @okouai/core bumped to 8.600.0
+
 ## [9.295.1](https://github.com/vm0-ai/vm0/compare/cli-v9.295.0...cli-v9.295.1) (2026-08-28)
 
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.807.0](https://github.com/vm0-ai/vm0/compare/app-v0.806.1...app-v0.807.0) (2026-08-28)
+
+
+### Features
+
+* **auth:** add custom add-account rollout ([#29901](https://github.com/vm0-ai/vm0/issues/29901)) ([895b70c](https://github.com/vm0-ai/vm0/commit/895b70cc33b936090afc7c86a4c71bf82a591324))
+
+
+### Bug Fixes
+
+* **platform:** reserve growth entry space before loading ([#30014](https://github.com/vm0-ai/vm0/issues/30014)) ([a50d82f](https://github.com/vm0-ai/vm0/commit/a50d82f03c320ec7034c0408a211902745191f39))
+
+
+### Performance Improvements
+
+* **platform:** add skeleton duration to bootstrap phases ([#30017](https://github.com/vm0-ai/vm0/issues/30017)) ([8e9d333](https://github.com/vm0-ai/vm0/commit/8e9d333effada141917385e0482bcc35fd419fab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.379.0
+    * @okouai/core bumped to 8.600.0
+
 ## [0.806.1](https://github.com/vm0-ai/vm0/compare/app-v0.806.0...app-v0.806.1) (2026-08-28)
 
 
