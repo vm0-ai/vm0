@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.177.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.5...runner-rs-v0.177.6) (2026-08-28)
+
+
+### Refactoring
+
+* **runner:** cut private payload writers to canonical aliases ([#30055](https://github.com/vm0-ai/vm0/issues/30055)) ([edbdda3](https://github.com/vm0-ai/vm0/commit/edbdda3db6a2553bdf047181becbf2f9a170b997))
+
+
+### Performance Improvements
+
+* **runner:** bound gc service discovery ([#30046](https://github.com/vm0-ai/vm0/issues/30046)) ([0786169](https://github.com/vm0-ai/vm0/commit/0786169689bb80470ff1ea77e9ac3fac02d5ac30))
+
 ## [0.177.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.4...runner-rs-v0.177.5) (2026-08-28)
 
 

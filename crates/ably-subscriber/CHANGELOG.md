@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.19](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.18...ably-subscriber-v1.0.19) (2026-08-28)
+
+
+### Performance Improvements
+
+* **ably-subscriber:** reuse tokens across reconnect failures ([#30042](https://github.com/vm0-ai/vm0/issues/30042)) ([a7aa6a1](https://github.com/vm0-ai/vm0/commit/a7aa6a198654157e6691720436c030418621aceb))
+
 ## [1.0.18](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.17...ably-subscriber-v1.0.18) (2026-08-25)
 
 
