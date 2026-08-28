@@ -28,12 +28,8 @@ export const createdOrganizationsCount$ = computed(async (get) => {
   get(reloadCreatedOrganizationsCount$);
   const createClient = get(apiClient$);
   const client = createClient(orgContract);
-  const result = await accept(client.createdCount(), [200, 404]);
-  // Rollout fallback for new App -> old API: the old API predates this
-  // additive route, so preserve its Clerk-gated creation-entry behavior.
-  // Remove after that API no longer serves or remains a rollback target.
-  // Follow-up: https://github.com/vm0-ai/vm0/issues/29866
-  return result.status === 200 ? result.body.createdOrganizationsCount : 0;
+  const result = await accept(client.createdCount(), [200]);
+  return result.body.createdOrganizationsCount;
 });
 
 /**

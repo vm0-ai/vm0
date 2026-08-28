@@ -32,7 +32,6 @@ export const orgContract = c.router({
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,
-      404: apiErrorSchema,
       503: apiErrorSchema,
     },
     summary: "Get current user's created organization count",
