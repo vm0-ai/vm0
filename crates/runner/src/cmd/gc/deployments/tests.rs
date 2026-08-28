@@ -327,6 +327,28 @@ async fn explicit_keeps_are_independent_for_all_three_namespaces() {
 }
 
 #[tokio::test]
+async fn managed_directory_keeps_reject_path_traversal() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().to_path_buf());
+    let invalid = BTreeSet::from(["../escape".to_string()]);
+    let empty = BTreeSet::new();
+
+    let Err(bin_error) =
+        gc_managed_resources(&home, (&[], &[]), &empty, &invalid, &empty, Some(0), false).await
+    else {
+        panic!("unsafe binary keep must fail");
+    };
+    assert!(bin_error.to_string().contains("--keep-bin-dirname"));
+
+    let Err(runner_error) =
+        gc_managed_resources(&home, (&[], &[]), &empty, &empty, &invalid, Some(0), false).await
+    else {
+        panic!("unsafe Runner keep must fail");
+    };
+    assert!(runner_error.to_string().contains("--keep-runner-dirname"));
+}
+
+#[tokio::test]
 async fn recent_managed_directories_are_retained_without_services() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
