@@ -105,10 +105,12 @@ pub const CANONICAL_RESUME_SESSION_ID_ENV: &str = "OKOU_RESUME_SESSION_ID";
 /// Optional Unix epoch millisecond timestamp for when the API accepted the
 /// run.
 ///
-/// The runner emits an empty string when the timestamp is unavailable.
+/// Guest readers retain this legacy alias as a rollback fallback.
 pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
 
-/// Canonical alias for the API start timestamp accepted by guest readers.
+/// Canonical alias for the API start timestamp written by the runner.
+///
+/// The runner emits an empty string when the timestamp is unavailable.
 pub const CANONICAL_API_START_TIME_ENV: &str = "OKOU_API_START_TIME";
 
 /// Maximum agent execution duration in seconds.

@@ -474,14 +474,15 @@ fn build_env_json_required_keys() {
         "sandboxReused"
     );
     assert_eq!(
-        env.get(guest_contracts::env::API_START_TIME_ENV).unwrap(),
+        env.get(guest_contracts::env::CANONICAL_API_START_TIME_ENV)
+            .unwrap(),
         ""
     );
+    assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
     for canonical_key in [
         guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
         guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
         guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
     ] {
         assert!(
             !env.contains_key(canonical_key),
@@ -1264,7 +1265,12 @@ fn build_env_json_with_api_start_time() {
     ctx.api_start_time = Some(1_700_000_000_500);
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert_eq!(env.get("VM0_API_START_TIME").unwrap(), "1700000000500");
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_API_START_TIME_ENV)
+            .unwrap(),
+        "1700000000500"
+    );
+    assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
 }
 
 #[test]

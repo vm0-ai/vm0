@@ -618,7 +618,7 @@ fn build_env_json_with_host_env_inner(
     );
     insert_guest_agent_tuning_env(&mut env, context);
     env.insert(
-        guest_contracts::env::API_START_TIME_ENV.into(),
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV.into(),
         context
             .api_start_time
             .map(|t| t.to_string())
