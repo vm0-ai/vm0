@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -19,6 +19,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { loadRichMarkdown } from "../../../signals/rich-markdown-module.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
@@ -33,6 +34,10 @@ import {
   mockThinkingTypewriterLayout,
   mockFailedAssistantThread,
 } from "./chat-lifecycle-test-helpers.ts";
+
+beforeAll(async () => {
+  await loadRichMarkdown();
+});
 
 describe("chat lifecycle", () => {
   it("shows billing recovery guidance when credits are depleted", async () => {
