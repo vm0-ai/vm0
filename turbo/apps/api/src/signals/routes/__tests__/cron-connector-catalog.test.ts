@@ -63,6 +63,7 @@ import {
   readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionAuthority,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import {
@@ -1787,7 +1788,7 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
     ).resolves.toStrictEqual({
-      backendVersion: "999.0.0",
+      validatorVersion: "1.0.0",
       buildCommitSha: null,
     });
     mockNow(new Date("2026-07-15T08:02:00.000Z"));
@@ -1799,6 +1800,19 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
     ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
+
+    const newerProjectionAuthority = {
+      validatorVersion: "999.0.0",
+      buildCommitSha: null,
+    };
+    await setApiTestConnectorCatalogRuntimeProjectionAuthority(
+      newerProjectionAuthority,
+    );
+    mockNow(new Date("2026-07-15T08:03:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual(newerProjectionAuthority);
 
     serveObjects(catalogObjects([first, second], second));
     expect((await syncCatalog()).body).toMatchObject({
@@ -5785,7 +5799,7 @@ describe("connector catalog executable compatibility", () => {
     });
   });
 
-  it("repairs missing and preserves newer catalog validation authorities", async () => {
+  it("repairs missing and preserves newer validator package authorities", async () => {
     configureSource();
     const release = buildRelease({
       version: "2026-07-27.validation-authority-repair",
@@ -5806,7 +5820,7 @@ describe("connector catalog executable compatibility", () => {
 
     const newerAuthority = {
       ...currentAuthority,
-      backendVersion: "999999.0.0",
+      validatorVersion: "999999.0.0",
     };
     await setApiTestConnectorCatalogValidationAuthority(newerAuthority);
     mockNow(new Date("2026-07-27T08:02:00.000Z"));
@@ -5816,7 +5830,7 @@ describe("connector catalog executable compatibility", () => {
     ).resolves.toStrictEqual(newerAuthority);
   });
 
-  it("repairs accepted validation authority after an API release", async () => {
+  it("preserves accepted authority across an API-only release", async () => {
     configureSource();
     mockEnv("ENV", "production");
     setApiVersion("1.318.0");
@@ -5825,22 +5839,17 @@ describe("connector catalog executable compatibility", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
+    const currentAuthority = apiTestConnectorCatalogValidationAuthority();
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
-    ).resolves.toStrictEqual({
-      backendVersion: "1.318.0",
-      buildCommitSha: null,
-    });
+    ).resolves.toStrictEqual(currentAuthority);
 
     setApiVersion("1.319.0");
     mockNow(new Date("2026-07-27T08:01:00.000Z"));
     expect((await syncCatalog()).body.outcome).toBe("unchanged");
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
-    ).resolves.toStrictEqual({
-      backendVersion: "1.319.0",
-      buildCommitSha: null,
-    });
+    ).resolves.toStrictEqual(currentAuthority);
     const evaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
     expect(evaluations).toHaveLength(1);
@@ -5848,51 +5857,7 @@ describe("connector catalog executable compatibility", () => {
       evaluations.map((evaluation) => {
         return evaluation.validationAuthority;
       }),
-    ).toStrictEqual([{ backendVersion: "1.319.0", buildCommitSha: null }]);
-  });
-
-  it("prevents a draining older API release from downgrading validation authority", async () => {
-    configureSource();
-    mockEnv("ENV", "production");
-    setApiVersion("1.319.0");
-    const release = buildRelease({
-      version: "2026-07-27.validation-release-overlap",
-    });
-    serveObjects(catalogObjects([release], release));
-    await syncCatalog();
-
-    const alternateCatalogKey = release.catalogKey.replace(
-      /catalog\.json$/u,
-      "catalog-copy.json",
-    );
-    const alternatePointer = buildRelease({
-      version: release.version,
-      mutatePointer: (pointer) => {
-        pointer.catalogKey = alternateCatalogKey;
-      },
-    });
-    const alternateObjects = new Map(
-      catalogObjects([release], alternatePointer),
-    );
-    alternateObjects.set(alternateCatalogKey, releaseCatalogBytes(release));
-
-    setApiVersion("1.318.0");
-    serveObjects(alternateObjects);
-    mockNow(new Date("2026-07-27T08:01:00.000Z"));
-    expect((await syncCatalog()).body.outcome).toBe("accepted");
-    await expect(
-      readApiTestConnectorCatalogValidationAuthority(),
-    ).resolves.toStrictEqual({
-      backendVersion: "1.319.0",
-      buildCommitSha: null,
-    });
-    const evaluations =
-      await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(
-      evaluations.map((evaluation) => {
-        return evaluation.validationAuthority;
-      }),
-    ).toStrictEqual([{ backendVersion: "1.319.0", buildCommitSha: null }]);
+    ).toStrictEqual([currentAuthority]);
   });
 
   it("repairs accepted validation authority after a preview build", async () => {
@@ -5906,10 +5871,12 @@ describe("connector catalog executable compatibility", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
+    const validatorVersion =
+      apiTestConnectorCatalogValidationAuthority().validatorVersion;
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
-      backendVersion: DEFAULT_API_VERSION,
+      validatorVersion,
       buildCommitSha: firstCommit,
     });
 
@@ -5919,7 +5886,13 @@ describe("connector catalog executable compatibility", () => {
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
-      backendVersion: DEFAULT_API_VERSION,
+      validatorVersion,
+      buildCommitSha: secondCommit,
+    });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual({
+      validatorVersion,
       buildCommitSha: secondCommit,
     });
   });

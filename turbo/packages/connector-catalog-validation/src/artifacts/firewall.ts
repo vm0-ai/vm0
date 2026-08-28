@@ -8,7 +8,6 @@ import {
 } from "@okouai/connectors/firewall-types";
 import { z } from "zod";
 
-import { safeUrlParse } from "../../utils";
 import { connectorSlugSchema, privateNameSchema } from "./common";
 
 const TEMPLATE_REFERENCE_PATTERN = /\b(secrets|vars)\.([A-Z][A-Z0-9_]*)\b/gu;
@@ -183,18 +182,14 @@ export const firewallCategoriesSchema = z
   })
   .strict();
 
-const firewallGeneratorResultSchema = z
-  .object({
-    firewall: firewallConfigSchema,
-    categories: firewallCategoriesSchema.nullable(),
-    defaultAllowed: z.array(z.string().min(1)).nullable(),
-    defaultUnknownPolicy: firewallPolicyValueSchema,
-  })
-  .strict();
-
 type FirewallApi = z.infer<typeof firewallApiSchema>;
 type FirewallConfig = z.infer<typeof firewallConfigSchema>;
-type FirewallGeneratorResult = z.infer<typeof firewallGeneratorResultSchema>;
+interface FirewallGeneratorResult {
+  readonly firewall: FirewallConfig;
+  readonly categories: z.infer<typeof firewallCategoriesSchema> | null;
+  readonly defaultAllowed: readonly string[] | null;
+  readonly defaultUnknownPolicy: z.infer<typeof firewallPolicyValueSchema>;
+}
 
 function duplicateStrings(values: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -290,7 +285,7 @@ function assertCanonicalFirewallBaseHostname(normalizedBase: string): void {
     BASE_URL_PARAMETER_PATTERN,
     "variable",
   );
-  const parsedComparableBase = safeUrlParse(comparableBase);
+  const parsedComparableBase = URL.parse(comparableBase) ?? undefined;
   const rawHostname = rawUrlHostname(comparableBase);
   if (
     parsedComparableBase === undefined ||
@@ -313,7 +308,7 @@ export function parseFirewallBaseUrl(
   }
   validateBaseUrl(base, connectorSlug);
   const normalizedBase = normalizedFirewallBaseUrl(base);
-  const parsed = safeUrlParse(normalizedBase);
+  const parsed = URL.parse(normalizedBase) ?? undefined;
   if (
     parsed === undefined ||
     parsed.protocol !== "https:" ||

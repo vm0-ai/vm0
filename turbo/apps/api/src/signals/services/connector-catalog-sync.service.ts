@@ -26,7 +26,7 @@ import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
-} from "./connector-catalog-artifacts/artifacts";
+} from "@okouai/connector-catalog-validation/artifacts/artifacts";
 import {
   CONNECTOR_CATALOG_ACTIVE_MAX_BYTES,
   connectorCatalogArtifactFailureCode,
@@ -36,7 +36,7 @@ import {
   type ConnectorCatalogActivePointer,
   type ConnectorCatalogArtifactReader,
   type ValidatedConnectorCatalogCandidate,
-} from "./connector-catalog-artifacts/loader";
+} from "@okouai/connector-catalog-validation/artifacts/loader";
 import {
   connectorCatalogExecutableCapabilityState,
   persistConnectorCatalogCompatibility,
@@ -44,8 +44,10 @@ import {
 } from "./connector-catalog-compatibility.service";
 import {
   connectorCatalogRejectionIsReusable,
+  currentConnectorCatalogRejectionIdentity,
   currentConnectorCatalogValidatorIdentity,
   type ConnectorCatalogRejectionAuthority,
+  type ConnectorCatalogRejectionValidatorIdentity,
   type ConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-validator-authority";
 import {
@@ -474,7 +476,7 @@ function cachedRejectionForPointer(
     readonly pointer: ConnectorCatalogActivePointer;
   },
   state: SyncStateSnapshot | undefined,
-  validator: ConnectorCatalogValidatorIdentity,
+  validator: ConnectorCatalogRejectionValidatorIdentity,
 ): ConnectorCatalogSyncFailureCode | undefined {
   const rejectedCandidate = rejectedCandidateFromState(state);
   if (!state || !rejectedCandidate?.pointer) {
@@ -499,7 +501,7 @@ function cachedRejectionForPointer(
 
 function cachedRejectionForObservedEtag(
   state: SyncStateSnapshot | undefined,
-  validator: ConnectorCatalogValidatorIdentity,
+  validator: ConnectorCatalogRejectionValidatorIdentity,
 ): ConnectorCatalogSyncFailureCode | undefined {
   const rejectedCandidate = rejectedCandidateFromState(state);
   if (
@@ -546,7 +548,7 @@ function cacheableRejectedCandidate(
 
 function rejectedCandidateValues(
   candidate: RejectedCandidate | undefined,
-  validator: ConnectorCatalogValidatorIdentity,
+  validator: ConnectorCatalogRejectionValidatorIdentity,
 ) {
   if (!candidate) {
     return {};
@@ -595,7 +597,7 @@ async function recordRejectedAttempt(args: {
   readonly rejectedCandidate?: RejectedCandidate;
   readonly pointerObservation?: PointerObservation;
   readonly reusedCachedRejection: boolean;
-  readonly validator: ConnectorCatalogValidatorIdentity;
+  readonly validator: ConnectorCatalogRejectionValidatorIdentity;
 }): Promise<boolean> {
   const rejectedValues = rejectedCandidateValues(
     args.rejectedCandidate,
@@ -850,7 +852,7 @@ async function rejectCandidate(args: {
   readonly rejectedCandidate?: RejectedCandidate;
   readonly pointerObservation?: PointerObservation;
   readonly reusedCachedRejection: boolean;
-  readonly validator: ConnectorCatalogValidatorIdentity;
+  readonly validator: ConnectorCatalogRejectionValidatorIdentity;
 }): Promise<ConnectorCatalogRawSyncResponse | undefined> {
   const committed = await recordRejectedAttempt({
     db: args.db,
@@ -888,6 +890,7 @@ interface ConnectorCatalogSyncRuntime {
     ifNoneMatch: string | null,
   ) => Promise<ConditionalS3BufferDownload>;
   readonly source: ConnectorCatalogSource;
+  readonly rejectionValidator: ConnectorCatalogRejectionValidatorIdentity;
   readonly validator: ConnectorCatalogValidatorIdentity;
 }
 
@@ -943,7 +946,7 @@ async function rejectSyncAttempt(
         : undefined,
     pointerObservation: resolvedOptions.pointerObservation,
     reusedCachedRejection,
-    validator: runtime.validator,
+    validator: runtime.rejectionValidator,
   });
   signal.throwIfAborted();
   return response ? { kind: "complete", response } : { kind: "retry" };
@@ -957,7 +960,7 @@ async function loadPointerForSync(
   const conditionalEtag =
     baseline?.lastObservedPointerEtag &&
     (observedPointerFromState(baseline) ||
-      cachedRejectionForObservedEtag(baseline, runtime.validator))
+      cachedRejectionForObservedEtag(baseline, runtime.rejectionValidator))
       ? baseline.lastObservedPointerEtag
       : null;
   const downloaded = await settle(
@@ -1205,7 +1208,7 @@ async function syncConnectorCatalogAttempt(
     }
     const cachedFailure = cachedRejectionForObservedEtag(
       baseline,
-      runtime.validator,
+      runtime.rejectionValidator,
     );
     if (cachedFailure) {
       return await rejectSyncAttempt(
@@ -1255,7 +1258,7 @@ async function syncConnectorCatalogAttempt(
   const cachedFailure = cachedRejectionForPointer(
     pointerObservation,
     baseline,
-    runtime.validator,
+    runtime.rejectionValidator,
   );
   if (cachedFailure) {
     return await rejectSyncAttempt(
@@ -1323,6 +1326,7 @@ export const syncConnectorCatalog$ = command(
       capability: connectorCatalogExecutableCapabilityState(),
       db: set(writeDb$),
       source,
+      rejectionValidator: currentConnectorCatalogRejectionIdentity(),
       validator: currentConnectorCatalogValidatorIdentity(),
       readActivePointer: async (ifNoneMatch) => {
         const result = await get(

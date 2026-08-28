@@ -43,6 +43,10 @@
             "release-type": "node",
             "skip-changelog": true
         },
+        "turbo/packages/connector-catalog-validation": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
         "turbo/packages/db": {
             "release-type": "node",
             "skip-changelog": true
