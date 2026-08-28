@@ -1438,13 +1438,16 @@
           ".svg";
 
         function typewriterAnimation(message, delay) {
+          // Pre-roll the width animation while hidden so its first glyph is
+          // already painted when the visibility handoff happens.
+          var typeDelay = Math.max(0, delay - 50);
           return (
             "app-bootstrap-skeleton-show-typewriter " +
             delay +
             "ms forwards, app-bootstrap-skeleton-type 1.5s steps(" +
             message.length +
-            ") " +
-            delay +
+            ", jump-start) " +
+            typeDelay +
             "ms forwards, app-bootstrap-skeleton-blink 0.6s step-end " +
             delay +
             "ms infinite"

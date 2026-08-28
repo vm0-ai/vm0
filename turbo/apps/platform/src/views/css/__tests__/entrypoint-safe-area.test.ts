@@ -44,6 +44,13 @@ describe("platform entrypoint safe area behavior", () => {
     expect(rule).not.toMatch(/(?:^|[;\s])(?:min-)?height\s*:/);
   });
 
+  it("reveals the next loading message without an empty handoff frame", () => {
+    expect(indexHtml).toContain("var typeDelay = Math.max(0, delay - 50);");
+    expect(indexHtml).toMatch(
+      /app-bootstrap-skeleton-type 1\.5s steps\("\s*\+\s*message\.length\s*\+\s*", jump-start\)/,
+    );
+  });
+
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {
     const globalCss = readGlobalCss();
 

@@ -1,8 +1,21 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const appSkeletonSourcePath = [
+  join(process.cwd(), "src/views/okou-page/app-skeleton.tsx"),
+  join(process.cwd(), "apps/platform/src/views/okou-page/app-skeleton.tsx"),
+].find((candidate) => {
+  return existsSync(candidate);
+});
+if (appSkeletonSourcePath === undefined) {
+  throw new Error("Unable to locate app skeleton source");
+}
+const appSkeletonSource = readFileSync(appSkeletonSourcePath, "utf8");
 
 const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
@@ -130,5 +143,17 @@ describe("app skeleton", () => {
     expect(skeletons[0]).toHaveTextContent(
       /Aquecendo os neurônios|Preparando algumas ideias|Preparando tudo|Quase lá|Carregando seu espaço de trabalho|Ajustando os instrumentos|Ligando os pontos|Reunindo a equipe/u,
     );
+  });
+
+  it("reveals the next loading message without an empty handoff frame", async () => {
+    detachedSetupPage({ context, path: "/_/skeleton" });
+
+    const skeleton = await screen.findByTestId("app-skeleton");
+    const typewriter = [...skeleton.querySelectorAll("p")].find((element) => {
+      return element.style.animation.includes("sk-typing");
+    });
+
+    expect(typewriter?.style.animation).toContain("jump-start");
+    expect(appSkeletonSource).toContain("jump-start) 750ms forwards, sk-blink");
   });
 });
