@@ -441,7 +441,7 @@ describe("chat composer models", () => {
     },
   );
 
-  it("shows a new-chat model scope footer and offers it for future chats", async () => {
+  it("shows a new-chat model scope card and offers it for future chats", async () => {
     const user = userEvent.setup({ delay: null });
     let preference: UserModelPreferenceResponse = {
       selectedModel: "claude-fable-5",
@@ -500,18 +500,15 @@ describe("chat composer models", () => {
     expect(within(modelPicker).queryByText("Default")).not.toBeInTheDocument();
 
     await user.keyboard("{Escape}");
-    const scopeFooter = screen.getByRole("group", {
+    const scopeCard = screen.getByRole("group", {
       name: "Model for this chat",
     });
     expect(
-      within(scopeFooter).getByText("Claude Sonnet 4.6"),
+      within(scopeCard).getByText("Claude Sonnet 4.6"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByPlaceholderText(PLACEHOLDER).closest(".zero-composer"),
-    ).toContainElement(scopeFooter);
     const useForFutureChatsButton = buttonContainingText(
       "Use for future chats",
-      scopeFooter,
+      scopeCard,
     );
 
     await user.click(useForFutureChatsButton);
@@ -3942,7 +3939,7 @@ describe("chat composer image model", () => {
     });
   });
 
-  it("shows only the active Chat, Image, or Video scope footer", async () => {
+  it("shows only the active Chat, Image, or Video scope card", async () => {
     const user = userEvent.setup({ delay: null });
     const updates: UpdateUserModelPreferenceRequest[] = [];
     context.mocks.browser.matchMedia(true);
@@ -3993,7 +3990,7 @@ describe("chat composer image model", () => {
     });
     expect(queryModelScope("Model for this chat")).toBeNull();
 
-    // Switching category is enough to re-point the composer, so the footer
+    // Switching category is enough to re-point the composer, so the card
     // follows the tab even before a model in it is picked.
     await user.click(await findComposerModelPickerTrigger());
     await user.click(await findCategoryTab("Video"));
@@ -4882,7 +4879,7 @@ describe("chat composer video model", () => {
     });
   });
 
-  it("shows only the scope footer for the model mode the composer is in", async () => {
+  it("shows only the scope card for the model mode the composer is in", async () => {
     const user = userEvent.setup({ delay: null });
     const { updates } = mockNewChatVideoDefaultAction({
       selectedModel: "claude-fable-5",
@@ -4924,7 +4921,7 @@ describe("chat composer video model", () => {
     });
     expect(queryModelScope("Model for this chat")).toBeNull();
 
-    // Back to the chat tab: the run-model footer returns, the video one leaves.
+    // Back to the chat tab: the run-model card returns, the video one leaves.
     await user.click(await findComposerModelPickerTrigger());
     await user.click(await findCategoryTab("Chat"));
     await waitFor(() => {

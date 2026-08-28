@@ -10226,7 +10226,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerModelScopeFooter({
+function ComposerModelScopeCard({
   label,
   model,
   updating,
@@ -10239,31 +10239,33 @@ function ComposerModelScopeFooter({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-b-xl border-t border-border bg-gray-50 px-4 py-2.5 text-xs"
-      role="group"
-      aria-label={label}
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-medium text-foreground">{model}</span>
-      </div>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="shrink-0"
-        disabled={updating}
-        aria-busy={updating}
-        onClick={onUseForFutureChats}
+    <div className="relative z-20 h-8 sm:h-5">
+      <div
+        className="absolute inset-x-3 top-0 flex -translate-y-1/2 flex-wrap items-center gap-2 rounded-xl bg-gray-50 p-1 pl-3 text-xs sm:left-auto sm:right-4 sm:max-w-[calc(100%_-_2rem)] sm:flex-nowrap"
+        role="group"
+        aria-label={label}
+        aria-live="polite"
+        aria-atomic="true"
       >
-        {updating && <Loader2 className="animate-spin" aria-hidden="true" />}
-        {t(($) => {
-          return $.chat.composer.useForFutureChats;
-        })}
-      </Button>
+        <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-muted-foreground">{label}</span>
+          <span className="font-medium text-foreground">{model}</span>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto shrink-0 text-foreground"
+          disabled={updating}
+          aria-busy={updating}
+          onClick={onUseForFutureChats}
+        >
+          {updating && <Loader2 className="animate-spin" aria-hidden="true" />}
+          {t(($) => {
+            return $.chat.composer.useForFutureChats;
+          })}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -10327,7 +10329,7 @@ function ComposerTemporaryModelNotice({
     );
   };
   return (
-    <ComposerModelScopeFooter
+    <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.modelForThisChat;
       })}
@@ -10344,7 +10346,7 @@ function ComposerTemporaryVideoModelNotice({
   videoModelSignals: ComposerVideoModelSignals;
 }) {
   const { t } = useTranslation();
-  // The effective model, not the pin: the footer names the model a run would
+  // The effective model, not the pin: the card names the model a run would
   // actually use, which is what the member default is being compared against.
   const selection = useLastResolved(videoModelSignals.effectiveVideoModel$);
   const userPreference = useLastResolved(userModelPreference$);
@@ -10368,7 +10370,7 @@ function ComposerTemporaryVideoModelNotice({
     detach(updateDefaultVideoModel(selection, pageSignal), Reason.DomCallback);
   };
   return (
-    <ComposerModelScopeFooter
+    <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.videoModelForThisChat;
       })}
@@ -10407,7 +10409,7 @@ function ComposerTemporaryImageModelNotice({
     detach(updateDefaultImageModel(selection, pageSignal), Reason.DomCallback);
   };
   return (
-    <ComposerModelScopeFooter
+    <ComposerModelScopeCard
       label={t(($) => {
         return $.chat.composer.imageModelForThisChat;
       })}
@@ -10430,7 +10432,7 @@ function ComposerTemporaryModelNoticeSlot({
   if (!enabled) {
     return null;
   }
-  // One footer at a time: it belongs to whichever model the composer is
+  // One card at a time: it belongs to whichever model the composer is
   // currently pointed at, matching the pressed state of the two mode chips.
   if (imageModelSignals && mediaModelCategory === "image") {
     return (
@@ -11135,7 +11137,6 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
               <ComposerSendControl signals={signals} />
             </div>
           </div>
-          <ComposerTemporaryModelNoticeSlot signals={signals} />
         </div>
       </CardContent>
     </Card>
@@ -11155,6 +11156,7 @@ function ComposerSurface({
       <div className="relative flex w-full min-w-0 flex-col">
         {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
         <ComposerCard signals={signals} />
+        <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
         <WebsiteTemplatePreviewDialogSlot signals={signals} />
       </div>
