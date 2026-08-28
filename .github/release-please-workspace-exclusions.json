@@ -3,6 +3,7 @@
   "turbo/packages/api-services": "Unshipped package with no workspace consumer",
   "turbo/packages/eslint-config": "Development-only lint configuration",
   "turbo/packages/eslint-rules": "Development-only lint rules",
+  "turbo/packages/mermaid-lite": "Private vendored Flowchart-only build consumed by the platform",
   "turbo/packages/proxy": "Local development proxy",
   "turbo/packages/typescript-config": "Development-only TypeScript configuration"
 }
