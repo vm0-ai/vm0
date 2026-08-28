@@ -79,16 +79,10 @@ impl WorkloadContainment {
     /// Receive and adopt the production bootstrap descriptor.
     ///
     /// This must run before any other thread can read or mutate process-global
-    /// environment state. The caller supplies the once-resolved canonical or
-    /// legacy process-control presence. A process-control bootstrap requires a
-    /// matching workload capability in production. Direct local execution is
-    /// unmanaged when neither bootstrap value exists.
-    ///
-    /// This reader fallback covers existing runners and reusable sandboxes for
-    /// the two-hour guest runtime budget plus bounded finalization. #28914 owns
-    /// the writer-cutover and reader-removal follow-ups; remove the legacy
-    /// branches only after the reader floor, drain, rollback window, and
-    /// legacy-read-zero gates are complete.
+    /// environment state. The caller supplies the once-resolved canonical
+    /// process-control presence. A process-control bootstrap requires a matching
+    /// workload capability in production. Direct local execution is unmanaged
+    /// when the canonical bootstrap value is absent.
     pub fn from_process_env(process_control_present: bool) -> Result<Option<Self>, String> {
         let (placement_endpoint, tool_endpoint) =
             resolve_cgroup_placement_endpoints_from_process_env()?;
@@ -119,22 +113,20 @@ impl WorkloadContainment {
                     })
             }
             (true, _, _) => Err(format!(
-                "{} or {}, and {} or {}, are required with {} or {}",
+                "{} or {}, and {} or {}, are required with {}",
                 CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
                 WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 CANONICAL_TOOL_CGROUP_PROCS_ENV,
                 TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             )),
             (false, _, _) => Err(format!(
-                "{} or {}, and {} or {}, require {} or {}",
+                "{} or {}, and {} or {}, require {}",
                 CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
                 WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 CANONICAL_TOOL_CGROUP_PROCS_ENV,
                 TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             )),
         }
     }

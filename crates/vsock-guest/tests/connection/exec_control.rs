@@ -132,7 +132,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
             timeout: ExecTimeoutPolicy::None,
             command: &command,
             env: &[
-                (process_control_ipc::BOOTSTRAP_ENV, "stale-legacy-endpoint"),
+                ("VM0_PROCESS_CONTROL_ENDPOINT", "stale-legacy-endpoint"),
                 (
                     process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                     "stale-canonical-endpoint",

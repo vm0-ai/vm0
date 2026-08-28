@@ -1203,7 +1203,6 @@ mod tests {
             guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
             guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-            process_control_ipc::BOOTSTRAP_ENV,
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,

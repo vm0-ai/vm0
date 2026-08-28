@@ -375,7 +375,6 @@ fn process_env_dual_reads_api_token_aliases_without_value_leaks() -> TestResult 
     );
     set_test_env(guest_contracts::env::API_TOKEN_ENV, LEGACY_TOKEN);
     for key in [
-        process_control_ipc::BOOTSTRAP_ENV,
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,

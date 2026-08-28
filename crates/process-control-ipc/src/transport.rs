@@ -19,7 +19,8 @@ const LISTENER_BACKLOG: libc::c_int = 128;
 ///
 /// The name includes the guest operation sequence number and a hexadecimal
 /// encoding of the 16-byte control nonce. The returned string is suitable for
-/// [`bind_abstract_listener`], [`connect_abstract`], and [`crate::BOOTSTRAP_ENV`].
+/// [`bind_abstract_listener`], [`connect_abstract`], and
+/// [`crate::CANONICAL_BOOTSTRAP_ENV`].
 pub fn endpoint_name(seq: u32, nonce: &[u8; 16]) -> String {
     let mut out =
         String::with_capacity(ENDPOINT_PREFIX.len() + MAX_U32_DECIMAL_DIGITS + 1 + NONCE_HEX_LEN);
