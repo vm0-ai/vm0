@@ -10,6 +10,22 @@ const c = initContract();
 export const sendModeSchema = z.enum(["enter", "cmd-enter"]);
 export type SendMode = z.infer<typeof sendModeSchema>;
 
+export const themePreferenceSchema = z.enum(["light", "dark", "system"]);
+export type ThemePreference = z.infer<typeof themePreferenceSchema>;
+
+export const COLOR_THEMES = [
+  "golden-hour",
+  "citrus-spark",
+  "berry-blush",
+  "cotton-sky",
+  "blue-horizon",
+  "daydream",
+  "deep-lagoon",
+  "limelight",
+] as const;
+export const colorThemeSchema = z.enum(COLOR_THEMES);
+export type ColorTheme = z.infer<typeof colorThemeSchema>;
+
 export const SUPPORTED_USER_LOCALES = [
   "en-US",
   "pt-BR",
@@ -33,6 +49,11 @@ export const userPreferencesResponseSchema = z.object({
   // canonical order and ignores client-provided order on writes.
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
+  // Optional during the frontend/backend compatibility window. A current API
+  // always returns the key; null means the local preference has not been
+  // migrated to server storage yet.
+  theme: themePreferenceSchema.nullable().optional(),
+  colorTheme: colorThemeSchema.nullable().optional(),
   morningBriefEnabled: z.boolean(),
   /**
    * Next scheduled Morning Brief send (ISO instant), or null when no run is
@@ -53,6 +74,8 @@ export const updateUserPreferencesRequestSchema = z
     // Membership update only; request order is not used for display ordering.
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
+    theme: themePreferenceSchema.optional(),
+    colorTheme: colorThemeSchema.optional(),
     morningBriefEnabled: z.boolean().optional(),
     captureNetworkBodiesRemaining: z.number().int().min(0).optional(),
   })
@@ -63,6 +86,8 @@ export const updateUserPreferencesRequestSchema = z
         data.locale !== undefined ||
         data.pinnedAgentIds !== undefined ||
         data.sendMode !== undefined ||
+        data.theme !== undefined ||
+        data.colorTheme !== undefined ||
         data.morningBriefEnabled !== undefined ||
         data.captureNetworkBodiesRemaining !== undefined
       );

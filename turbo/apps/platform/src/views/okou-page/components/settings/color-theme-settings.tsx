@@ -5,17 +5,28 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { cn } from "@okouai/ui";
 
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   colorTheme$,
-  setColorTheme$,
   type ColorTheme,
+  updateColorThemePreference$,
 } from "../../../../signals/theme.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
+
+function useUpdateColorTheme(): (colorTheme: ColorTheme) => void {
+  const updateColorTheme = useSet(updateColorThemePreference$);
+  const pageSignal = useGet(pageSignal$);
+
+  return (colorTheme) => {
+    detach(updateColorTheme(colorTheme, pageSignal), Reason.DomCallback);
+  };
+}
 
 export function ColorThemeSettings() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
   const colorTheme = useGet(colorTheme$);
-  const setColorTheme = useSet(setColorTheme$);
+  const updateColorTheme = useUpdateColorTheme();
 
   if (!featureSwitches[FeatureSwitchKey.GradientColorThemes]) {
     return null;
@@ -109,7 +120,7 @@ export function ColorThemeSettings() {
               type="button"
               aria-pressed={selected}
               onClick={() => {
-                setColorTheme(value);
+                updateColorTheme(value);
               }}
               className={cn(
                 "flex min-w-0 items-center gap-2 rounded-lg border border-[0.7px] bg-background/80 p-2 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

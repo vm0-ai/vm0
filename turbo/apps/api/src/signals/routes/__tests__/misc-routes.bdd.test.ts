@@ -84,6 +84,8 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       locale: null,
       pinnedAgentIds: [],
       sendMode: "enter",
+      theme: null,
+      colorTheme: null,
     });
 
     const firstPinnedAgentId = "00000000-0000-0000-0000-000000000001";
@@ -94,6 +96,8 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
         timezone: "UTC",
         locale: "en-US",
         sendMode: "cmd-enter",
+        theme: "dark",
+        colorTheme: "golden-hour",
         pinnedAgentIds: [
           secondPinnedAgentId,
           firstPinnedAgentId,
@@ -108,6 +112,8 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       locale: "en-US",
       pinnedAgentIds: [secondPinnedAgentId, firstPinnedAgentId],
       sendMode: "cmd-enter",
+      theme: "dark",
+      colorTheme: "golden-hour",
       captureNetworkBodiesRemaining: 3,
     });
     const rereadPreferences = await api.readPreferences(admin);

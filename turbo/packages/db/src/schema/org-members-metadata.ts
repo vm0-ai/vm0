@@ -10,6 +10,10 @@ import {
 } from "drizzle-orm/pg-core";
 import type { OrgMembersPinnedAgentIds } from "@okouai/db/jsonb-contracts/org-members-metadata";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type {
+  ColorTheme,
+  ThemePreference,
+} from "@okouai/api-contracts/contracts/user-preferences";
 
 /**
  * org_members_metadata — source of truth for per-member preferences.
@@ -27,6 +31,8 @@ export const orgMembersMetadata = pgTable(
       .$type<OrgMembersPinnedAgentIds>()
       .default([]),
     sendMode: text("send_mode").notNull().default("enter"),
+    theme: text("theme").$type<ThemePreference>(),
+    colorTheme: text("color_theme").$type<ColorTheme>(),
     // Opt-in: rollout must not flip existing members on by default.
     morningBriefEnabled: boolean("morning_brief_enabled")
       .notNull()
