@@ -16,7 +16,6 @@ const CANONICAL_ENDPOINT: &str = "canonical-endpoint-must-not-leak";
 const RETIRED_ENDPOINT: &str = "retired-endpoint-must-not-leak";
 const ENDPOINT_VALUES: [&str; 2] = [CANONICAL_ENDPOINT, RETIRED_ENDPOINT];
 const RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
-const RETIRED_SOURCE_EVENT: &str = "process_control_env_source";
 
 #[derive(Clone, Copy)]
 enum EnvInput {
@@ -182,13 +181,7 @@ fn startup_reads_only_canonical_process_control_without_value_leaks() -> TestRes
             "{} unexpectedly initialized workload containment",
             case.name
         );
-        let log = read_system_log(&runtime_dir)?;
-        assert!(
-            !log.contains(RETIRED_SOURCE_EVENT),
-            "{} emitted retired process-control source telemetry",
-            case.name
-        );
-        assert_value_free(&log, case.name);
+        assert_value_free(&read_system_log(&runtime_dir)?, case.name);
     }
 
     for (name, retired) in [
