@@ -400,62 +400,90 @@ impl RunPayload {
     }
 }
 
-/// Guest-agent stuck-tool timeout override in seconds.
+/// Retained local input for the Guest Agent stuck-tool timeout in seconds.
 ///
-/// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
-/// unset or unparseable values use the compiled default.
+/// Local execution may pass this legacy name through ordinary user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
+/// [`CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV`] for Guest bootstrap. The
+/// guest-agent parses the value as `u64`; unset or unparseable values use the
+/// compiled default.
 pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 
-/// Canonical stuck-tool timeout alias accepted by guest readers.
+/// Canonical stuck-tool timeout bootstrap output written by the runner.
 ///
-/// The runner writer and supported local tuning interface remain on
-/// [`STUCK_TOOL_TIMEOUT_SECS_ENV`] during #28914 reader Stage 1.
+/// Guest readers retain [`STUCK_TOOL_TIMEOUT_SECS_ENV`] as a rollback fallback.
 pub const CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "OKOU_STUCK_TOOL_TIMEOUT_SECS";
 
-/// Guest-agent grace period in seconds before sending SIGTERM after the CLI
-/// reports a final result.
+/// Retained local input for the Guest Agent SIGTERM grace period in seconds
+/// after the CLI reports a final result.
 ///
-/// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
-/// use the guest-agent's compiled default.
+/// Local execution may pass this legacy name through ordinary user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
+/// [`CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV`] for Guest bootstrap. Unset,
+/// unparseable, or out-of-range values use the guest-agent's compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
 
-/// Canonical post-result SIGTERM grace alias accepted by guest readers.
+/// Canonical post-result SIGTERM grace bootstrap output written by the runner.
 ///
-/// The runner writer and supported local tuning interface remain on
-/// [`POST_RESULT_SIGTERM_GRACE_SECS_ENV`] during #28914 reader Stage 1.
+/// Guest readers retain [`POST_RESULT_SIGTERM_GRACE_SECS_ENV`] as a rollback
+/// fallback.
 pub const CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGTERM_GRACE_SECS";
 
-/// Guest-agent absolute cap in seconds before sending SIGTERM after the CLI
-/// reports a final result, regardless of later post-result stdout events.
+/// Retained local input for the Guest Agent absolute cap in seconds before
+/// sending SIGTERM after the CLI reports a final result, regardless of later
+/// post-result stdout events.
 ///
-/// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
-/// use the guest-agent's compiled default.
+/// Local execution may pass this legacy name through ordinary user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
+/// [`CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV`] for Guest bootstrap. Unset,
+/// unparseable, or out-of-range values use the guest-agent's compiled default.
 pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
 
-/// Canonical post-result total-cap alias accepted by guest readers.
+/// Canonical post-result total-cap bootstrap output written by the runner.
 ///
-/// The runner writer and supported local tuning interface remain on
-/// [`POST_RESULT_TOTAL_CAP_SECS_ENV`] during #28914 reader Stage 1.
+/// Guest readers retain [`POST_RESULT_TOTAL_CAP_SECS_ENV`] as a rollback
+/// fallback.
 pub const CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "OKOU_POST_RESULT_TOTAL_CAP_SECS";
 
-/// Guest-agent grace period in seconds before escalating from SIGTERM to
-/// SIGKILL after the CLI reports a final result.
+/// Retained local input for the Guest Agent grace period in seconds before
+/// escalating from SIGTERM to SIGKILL after the CLI reports a final result.
 ///
-/// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
-/// use the guest-agent's compiled default.
+/// Local execution may pass this legacy name through ordinary user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
+/// [`CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV`] for Guest bootstrap. Unset,
+/// unparseable, or out-of-range values use the guest-agent's compiled default.
 pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
 
-/// Canonical post-result SIGKILL grace alias accepted by guest readers.
+/// Canonical post-result SIGKILL grace bootstrap output written by the runner.
 ///
-/// The runner writer and supported local tuning interface remain on
-/// [`POST_RESULT_SIGKILL_GRACE_SECS_ENV`] during #28914 reader Stage 1.
+/// Guest readers retain [`POST_RESULT_SIGKILL_GRACE_SECS_ENV`] as a rollback
+/// fallback.
 pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGKILL_GRACE_SECS";
+
+/// Complete mapping from retained legacy local tuning inputs to canonical
+/// Guest bootstrap outputs.
+///
+/// Each tuple is `(legacy_input, canonical_bootstrap_output)`.
+pub const GUEST_AGENT_TUNING_ENV_MAPPINGS: [(&str, &str); 4] = [
+    (
+        STUCK_TOOL_TIMEOUT_SECS_ENV,
+        CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+    ),
+    (
+        POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+    ),
+    (
+        POST_RESULT_TOTAL_CAP_SECS_ENV,
+        CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+    ),
+    (
+        POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    ),
+];
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
 /// binary.
@@ -487,16 +515,17 @@ pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
 /// boundary.
 pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
 
-/// Runner-owned guest-agent tuning keys that local user env may provide.
+/// Retained legacy Guest Agent tuning inputs that local user env may provide.
 ///
 /// These are the only `VM0_` keys intentionally allowed to cross the local
-/// user-env boundary. They tune guest-agent timing behavior and are copied into
-/// the bootstrap env separately from the general user environment payload.
+/// user-env boundary. The runner translates them to the corresponding canonical
+/// outputs in [`GUEST_AGENT_TUNING_ENV_MAPPINGS`] separately from the general
+/// user environment payload.
 pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
-    STUCK_TOOL_TIMEOUT_SECS_ENV,
-    POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    POST_RESULT_TOTAL_CAP_SECS_ENV,
-    POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    GUEST_AGENT_TUNING_ENV_MAPPINGS[0].0,
+    GUEST_AGENT_TUNING_ENV_MAPPINGS[1].0,
+    GUEST_AGENT_TUNING_ENV_MAPPINGS[2].0,
+    GUEST_AGENT_TUNING_ENV_MAPPINGS[3].0,
 ];
 
 const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
@@ -885,7 +914,28 @@ mod tests {
     }
 
     #[test]
-    fn guest_agent_tuning_keys_are_explicit() {
+    fn guest_agent_tuning_mapping_and_local_inputs_are_explicit() {
+        assert_eq!(
+            GUEST_AGENT_TUNING_ENV_MAPPINGS,
+            [
+                (
+                    STUCK_TOOL_TIMEOUT_SECS_ENV,
+                    CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+                ),
+                (
+                    POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                    CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                ),
+                (
+                    POST_RESULT_TOTAL_CAP_SECS_ENV,
+                    CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+                ),
+                (
+                    POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                    CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                ),
+            ]
+        );
         assert_eq!(
             GUEST_AGENT_TUNING_ENV_KEYS,
             [
@@ -903,7 +953,7 @@ mod tests {
         ] {
             assert!(
                 !is_guest_agent_tuning_env_key(key),
-                "canonical reader alias {key} must not become a local tuning input"
+                "canonical bootstrap output {key} must not become a local tuning input"
             );
         }
         for key in [API_URL_ENV, CANONICAL_API_URL_ENV] {

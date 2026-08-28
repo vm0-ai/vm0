@@ -830,9 +830,11 @@ pub(super) fn insert_guest_agent_tuning_env(
     let Some(user_env) = &context.environment else {
         return;
     };
-    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
-        if let Some(value) = user_env.get(*key) {
-            env.insert((*key).into(), value.clone());
+    for (legacy_input, canonical_bootstrap_output) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+    {
+        if let Some(value) = user_env.get(legacy_input) {
+            env.insert(canonical_bootstrap_output.into(), value.clone());
         }
     }
 }
