@@ -437,13 +437,15 @@ async fn exact_reconciliation_info_target_is_ingested_without_broadening_info() 
     assert_eq!(summary["canonical_only_seen"], json!(true));
     assert_eq!(summary["equal_dual_seen"], json!(false));
     assert_eq!(summary["stale_launch_directory_count"], json!(1));
+    let mut summary_keys = summary
+        .as_object()
+        .expect("summary should be a JSON object")
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    summary_keys.sort_unstable();
     assert_eq!(
-        summary
-            .as_object()
-            .expect("summary should be a JSON object")
-            .keys()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
+        summary_keys,
         [
             "_time",
             "canonical_only_seen",
