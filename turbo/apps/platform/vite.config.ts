@@ -14,9 +14,22 @@ process.env.VITE_APP_VERSION = platformPackage.version;
 const stableChunkName = createStableChunkName(
   fileURLToPath(new URL("./src/main.ts", import.meta.url)),
 );
+const APP_ASSET_BASE = "https://static.okou.io/okou-app/";
 
-export default defineConfig({
-  base: "/",
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? APP_ASSET_BASE : "/",
+  experimental: {
+    renderBuiltUrl(filename, { hostType, type }) {
+      if (
+        hostType === "js" &&
+        type === "asset" &&
+        /^assets\/shared-database-worker-[^/]+\.js$/u.test(filename)
+      ) {
+        const workerPath = new URL(filename, APP_ASSET_BASE).pathname;
+        return { runtime: `location.origin + ${JSON.stringify(workerPath)}` };
+      }
+    },
+  },
   envPrefix: ["VITE_", "PUBLIC_"],
   plugins: [
     tailwindcss(),
@@ -61,4 +74,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

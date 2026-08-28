@@ -148,7 +148,10 @@ export const setupSharedDatabaseBridge$ = command(
       createBridge: (events) => {
         const worker = new SharedWorker(
           new URL("../shared-database-worker.ts", import.meta.url),
-          { name: "okou core service", type: "module" },
+          {
+            name: "okou core service",
+            type: "module",
+          },
         );
         const portBridge = new MessagePortSharedDatabaseBridge(
           worker.port,

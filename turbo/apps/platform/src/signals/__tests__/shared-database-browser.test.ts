@@ -154,6 +154,9 @@ describe("shared database browser bridge", () => {
       name: "okou core service",
       type: "module",
     });
+    expect(new URL(String(constructorCalls[0]?.scriptURL)).origin).toBe(
+      window.location.origin,
+    );
   });
 
   it("recreates the shared worker when the module asset is still available", async () => {
