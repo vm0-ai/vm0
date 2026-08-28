@@ -1,6 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
-import mermaid from "mermaid";
 
 import { createObjectUrlResource } from "./object-url-resource.ts";
 import { theme$ } from "./theme.ts";
@@ -9,11 +8,11 @@ import { settle } from "./utils.ts";
 /**
  * Mermaid diagrams render through a pull model. Each diagram source owns one
  * `MermaidDiagramSignals` in the registry of the surface showing it; its
- * `diagram$` computed lays the diagram out and resolves to an image the view
- * shows in an `<img>` — or to `null` when the parser rejects the source, in
- * which case the fence simply stays a code block. Reading the theme inside the
- * computed makes a theme switch re-render every diagram without any
- * remounting.
+ * `diagram$` computed loads mermaid, lays the diagram out and resolves to an
+ * image the view shows in an `<img>` — or to `null` when the parser rejects
+ * the source, in which case the fence simply stays a code block. Reading the
+ * theme inside the computed makes a theme switch re-render every diagram
+ * without any remounting.
  *
  * The command that parses a tree registers each diagram and embeds the
  * returned signals on the marker node, so rendering receives the signals
@@ -69,6 +68,14 @@ export function embedMermaidSignals(
   visitNode(tree);
 }
 
+// Mermaid core adds about 150 KB gzip and is only needed once a diagram
+// renders. Keep it behind the diagram signal; ccstate memoizes the module
+// promise, and the bootstrap preload-error handler owns recovery when a later
+// deployment removes that chunk.
+const mermaidModule$ = computed(() => {
+  return import("mermaid");
+});
+
 /**
  * mermaid needs a DOM id per `render` call. Concurrent renders only happen for
  * distinct code+theme pairs — the same pair is one deduplicated computed — so
@@ -84,6 +91,7 @@ function diagramRenderId(seed: string): string {
 
 /** Returns the diagram SVG, or undefined when the source is not valid mermaid. */
 async function renderDiagramSvg(
+  mermaid: (typeof import("mermaid"))["default"],
   id: string,
   code: string,
 ): Promise<string | undefined> {
@@ -179,8 +187,11 @@ export function createMermaidDiagramSignals(
     if (existing !== undefined) {
       return existing;
     }
+    const mermaidModule = get(mermaidModule$);
     const renderQueue = get(mermaidRenderQueue$);
     const image = (async (): Promise<MermaidDiagramImage | null> => {
+      const { default: mermaid } = await mermaidModule;
+      ownerSignal.throwIfAborted();
       // Read the tail and replace it in the same synchronous block, so two
       // resuming renders cannot both chain onto the same predecessor.
       const previousRender = renderQueue.tail;
@@ -208,7 +219,11 @@ export function createMermaidDiagramSignals(
           themeVariables: { fontSize: "14px" },
           flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
         });
-        return renderDiagramSvg(diagramRenderId(`${theme}:${code}`), code);
+        return renderDiagramSvg(
+          mermaid,
+          diagramRenderId(`${theme}:${code}`),
+          code,
+        );
       })();
       renderQueue.tail = render;
       const markup = await render;

@@ -15,8 +15,10 @@ if (sourcePath === undefined) {
 const source = readFileSync(sourcePath, "utf8");
 
 describe("mermaid diagram imports", () => {
-  it("keeps mermaid in the static import graph", () => {
-    expect(source).toMatch(/^import mermaid from "mermaid";$/m);
-    expect(source).not.toMatch(/\bimport\s*\(\s*["']mermaid["']\s*\)/);
+  it("loads mermaid through the diagram computed", () => {
+    expect(source).not.toMatch(/^import mermaid from "mermaid";$/m);
+    expect(source).toMatch(
+      /const mermaidModule\$ = computed\(\(\) => \{\s*return import\("mermaid"\);\s*\}\);/,
+    );
   });
 });
