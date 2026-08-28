@@ -1018,6 +1018,9 @@ function installCatalogStorageFixture() {
       heldWrite = { started, release };
       return {
         started: started.promise,
+        resolve(): void {
+          release.resolve(undefined);
+        },
         reject(error: Error): void {
           acknowledgeDetachedForTest(release.promise);
           release.reject(error);
@@ -2293,6 +2296,41 @@ describe.sequential("Official Workflow installations", () => {
       [200],
     );
     expect(afterRejectedWorkflows.body).toStrictEqual([]);
+    await expect(
+      readAgentRunFamilyCountsFixture(context, targetAgentId),
+    ).resolves.toStrictEqual(beforeRunFamily);
+
+    // If one concurrent PUT fails before its sibling completes, publication
+    // must await the sibling before compensating. Otherwise a late successful
+    // sibling could recreate an object after cleanup has already finished.
+    const lateSiblingUpload = storage.holdNextWrite();
+    storage.failNextWrite(new Error("copy manifest upload failed"));
+    let lateSiblingCopySettled = false;
+    const lateSiblingCopy = settle(
+      workflowClient().copy({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+        body: { toAgentId: targetAgentId },
+      }),
+      context.signal,
+    ).then((result) => {
+      lateSiblingCopySettled = true;
+      return result;
+    });
+    await lateSiblingUpload.started;
+    const duringLateSiblingWorkflows = await accept(
+      workflowCollectionClient().list({
+        headers,
+        query: { agentId: targetAgentId },
+      }),
+      [200],
+    );
+    expect(duringLateSiblingWorkflows.body).toStrictEqual([]);
+    expect(lateSiblingCopySettled).toBeFalsy();
+    lateSiblingUpload.resolve();
+    const rejectedLateSiblingCopy = await lateSiblingCopy;
+    expect(rejectedLateSiblingCopy.ok).toBeFalsy();
+    expect(storage.objectCount()).toBe(objectsBeforeCopy);
     await expect(
       readAgentRunFamilyCountsFixture(context, targetAgentId),
     ).resolves.toStrictEqual(beforeRunFamily);
