@@ -1465,9 +1465,20 @@ jobs:
             "$api_origin"
 
           {
+            echo "canonical-dist=$canonical_dist"
             echo "dist=$pages_dist"
             echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Publish immutable app assets to R2
+        env:
+          CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
+        run: |
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          bash .github/scripts/publish-okou-app-assets.sh \
+            "$r2_endpoint" \
+            "$R2_BUCKET_NAME" \
+            "$CANONICAL_ASSETS"
 
       - name: Deploy Cloudflare Pages preview
         id: pages-deploy

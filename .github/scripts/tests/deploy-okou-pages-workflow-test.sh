@@ -53,6 +53,8 @@ rollback_job = rollback["jobs"]["rollback-app"]
 rollback_verification_job = rollback["jobs"]["verify-production-domains"]
 
 preview_step = find_step(turbo_job, "Deploy Cloudflare Pages preview")
+prepare_preview_step = find_step(turbo_job, "Prepare Cloudflare Pages preview")
+publish_assets_step = find_step(turbo_job, "Publish immutable app assets to R2")
 release_step = find_step(release_job, "Deploy Cloudflare Pages production")
 release_api_verification_step = find_step(
     release_api_job, "Verify production App and API domains"
@@ -67,6 +69,28 @@ require_fragments(
     preview_step,
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', '"$PAGES_BRANCH"', '"$ARTIFACT_SHA"'],
 )
+require_fragments(prepare_preview_step, ['echo "canonical-dist=$canonical_dist"'])
+require_fragments(
+    publish_assets_step,
+    [
+        "bash .github/scripts/publish-okou-app-assets.sh",
+        '"$r2_endpoint"',
+        '"$R2_BUCKET_NAME"',
+        '"$CANONICAL_ASSETS"',
+    ],
+)
+if publish_assets_step.get("env", {}).get("CANONICAL_ASSETS") != (
+    "${{ steps.pages-preview.outputs.canonical-dist }}/assets"
+):
+    raise RuntimeError("R2 publication must use canonical app assets")
+
+turbo_steps = turbo_job["steps"]
+if not (
+    turbo_steps.index(prepare_preview_step)
+    < turbo_steps.index(publish_assets_step)
+    < turbo_steps.index(preview_step)
+):
+    raise RuntimeError("R2 asset publication must run before Pages deployment")
 require_fragments(
     release_step,
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', "production", '"$ARTIFACT_SHA"'],
