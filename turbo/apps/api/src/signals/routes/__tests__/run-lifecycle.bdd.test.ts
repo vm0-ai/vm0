@@ -14550,7 +14550,9 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("okou social --help");
     expect(appendSystemPrompt).toContain("okou social tools --json");
     expect(appendSystemPrompt).toContain("okou social call --help");
-    expect(appendSystemPrompt).toContain("full collection retrieval");
+    expect(appendSystemPrompt).toContain(
+      "optionally bounded full collection retrieval with `--all`, `--max-pages`, or `--max-items`",
+    );
     expect(appendSystemPrompt).toContain("okou social download --help");
     expect(appendSystemPrompt).toContain(
       "downloads from YouTube, TikTok, Instagram, and Facebook",
