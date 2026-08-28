@@ -1919,8 +1919,8 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(appendSystemPrompt).toContain(goalBrief);
     expect(appendSystemPrompt).toContain("Autonomy budget: 9");
     expect(appendSystemPrompt).toContain("# How to operate");
-    expect(appendSystemPrompt).not.toContain(
-      "Do not create, edit, pause, resume, or clear goals",
+    expect(appendSystemPrompt).toContain(
+      "- Inspect goal state anytime with `okou goal get`.\n- Do not stop to ask the user and wait; act on the best available information.",
     );
     expect(goalContext.body.sessionId).toBe(
       cliAgentSessionIdForChatRun(first.runId),
