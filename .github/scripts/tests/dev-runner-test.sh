@@ -58,7 +58,7 @@ case "$command" in
     ;;
   *" setup")
     ;;
-  *" gc --keep-latest 3 --deployment-service-suffix local-test --keep-bin-dirname local-test --keep-runner-dirname local-test")
+  *" gc --keep-latest 3 --keep-service-suffix local-test --keep-bin-dirname local-test --keep-runner-dirname local-test")
     ;;
   *" build --profile "*)
     printf '%s\n' "rootfs_hash=rootfs-test"
@@ -155,7 +155,7 @@ run_deploy x86-success x86_64 env >"${TMPDIR}/x86-success.out" 2>"${TMPDIR}/x86-
 grep -q -- "--target x86_64-unknown-linux-musl" "${TMPDIR}/x86-success/cargo.log" || fail "expected x86_64 cargo target"
 grep -q "service stop" "${TMPDIR}/x86-success/service-stop.log" || fail "expected x86_64 service stop"
 grep -q -- "--hostname dev-host" "${TMPDIR}/x86-success/cf-ssh.log" || fail "expected config hostname"
-gc_command=$(grep " gc --keep-latest 3 --deployment-service-suffix local-test --keep-bin-dirname local-test --keep-runner-dirname local-test$" "${TMPDIR}/x86-success/cf-ssh.log")
+gc_command=$(grep " gc --keep-latest 3 --keep-service-suffix local-test --keep-bin-dirname local-test --keep-runner-dirname local-test$" "${TMPDIR}/x86-success/cf-ssh.log")
 [[ "$gc_command" != *"R2_"* ]] || fail "gc should not receive R2 credentials"
 build_command=$(grep " build --profile vm0/default$" "${TMPDIR}/x86-success/cf-ssh.log")
 [[ "$build_command" == *"R2_ACCOUNT_ID="* ]] || fail "build should retain R2 credentials"

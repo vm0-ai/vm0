@@ -7,7 +7,7 @@ use crate::test_fixtures::ignored_child::{
 };
 
 const DEPLOYMENT_CHILD_TEST: &str =
-    "cmd::gc::deployments::tests::explicit_deployment_systemctl_child";
+    "cmd::gc::deployments::tests::installed_deployment_systemctl_child";
 const DEPLOYMENT_SCENARIO_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_SCENARIO";
 const DEPLOYMENT_HOME_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_HOME";
 const DEPLOYMENT_INVOCATIONS_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS";
@@ -16,7 +16,7 @@ printf '%s\n' "$*" >> "$OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS"
 
 if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
   case "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" in
-    opaque-paths|partial-runner-failure|uninstall-failure)
+    opaque-paths|keep-service|partial-runner-failure|uninstall-failure)
       binary_dirname=binary-opaque
       runner_dirname=config-opaque
       ;;
@@ -127,20 +127,48 @@ fn create_test_deployment(
     }
 }
 
+async fn gc_discovered_deployments(
+    home: &HomePaths,
+    service_suffixes: &[String],
+    keep_service_suffixes: &BTreeSet<String>,
+    keep_bin_dirnames: &BTreeSet<String>,
+    keep_runner_dirnames: &BTreeSet<String>,
+    keep_latest: Option<usize>,
+    dry_run: bool,
+) -> RunnerResult<DeploymentGcOutcome> {
+    gc_deployments_with_operations(
+        home,
+        DeploymentGcRequest {
+            service_suffixes,
+            keep_service_suffixes,
+            keep_bin_dirnames,
+            keep_runner_dirnames,
+            keep_latest,
+            service_inventory_complete: true,
+            dry_run,
+        },
+        DeploymentGcOperations {
+            uninstall_service: real_uninstall_service_unit,
+            remove_dir_all: real_remove_dir_all,
+        },
+    )
+    .await
+}
+
 #[tokio::test]
-async fn busy_candidate_lock_makes_the_complete_inventory_unavailable() {
+async fn busy_installed_service_lock_makes_the_complete_inventory_unavailable() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
     let _held = crate::lock::acquire(unit.lock_path(&home)).await.unwrap();
 
-    let outcome = gc_deployments(
+    let outcome = gc_discovered_deployments(
         &home,
         &["service-blue".to_string()],
         &BTreeSet::new(),
         &BTreeSet::new(),
+        &BTreeSet::new(),
         Some(0),
-        false,
         true,
     )
     .await
@@ -160,13 +188,13 @@ async fn symlinked_managed_root_makes_inventory_incomplete() {
     std::fs::create_dir_all(home.bin_dir().parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(dir.path().join("outside"), home.bin_dir()).unwrap();
 
-    let outcome = gc_deployments(
+    let outcome = gc_discovered_deployments(
         &home,
         &["service-blue".to_string()],
         &BTreeSet::new(),
         &BTreeSet::new(),
+        &BTreeSet::new(),
         Some(0),
-        false,
         true,
     )
     .await
@@ -179,12 +207,12 @@ async fn symlinked_managed_root_makes_inventory_incomplete() {
 }
 
 #[tokio::test]
-async fn legacy_keep_without_candidates_retains_both_paths_and_skips_images() {
+async fn explicit_keeps_without_installed_services_retain_paths() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let keep = BTreeSet::from(["release-blue".to_string()]);
 
-    let outcome = gc_deployments(&home, &[], &keep, &keep, Some(0), true, false)
+    let outcome = gc_discovered_deployments(&home, &[], &keep, &keep, &keep, Some(0), false)
         .await
         .unwrap();
     let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
@@ -194,23 +222,23 @@ async fn legacy_keep_without_candidates_retains_both_paths_and_skips_images() {
         retained_config_paths,
         [home.runners_dir().join("release-blue/runner.yaml")]
     );
-    assert!(!inventory_complete);
+    assert!(inventory_complete);
 }
 
 #[tokio::test]
-async fn no_candidates_leave_unregistered_semver_shaped_paths_untouched() {
+async fn no_installed_services_leave_unregistered_semver_shaped_paths_untouched() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
     create_test_deployment(dir.path(), "v1.2.3", "v1.2.3", old);
 
-    let outcome = gc_deployments(
+    let outcome = gc_discovered_deployments(
         &home,
         &[],
         &BTreeSet::new(),
         &BTreeSet::new(),
+        &BTreeSet::new(),
         Some(0),
-        false,
         false,
     )
     .await
@@ -225,7 +253,48 @@ async fn no_candidates_leave_unregistered_semver_shaped_paths_untouched() {
 }
 
 #[tokio::test]
-async fn explicit_service_suffix_resolves_independent_opaque_dirnames() {
+async fn installed_service_discovery_is_sorted_and_ignores_unrelated_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("vm0-runner-production-z.service"), "").unwrap();
+    std::fs::write(dir.path().join("vm0-runner-production-a.service"), "").unwrap();
+    std::fs::write(dir.path().join("unrelated.service"), "").unwrap();
+
+    let inventory = discover_installed_service_suffixes(dir.path()).await;
+
+    assert_eq!(
+        inventory.suffixes,
+        ["production-a".to_string(), "production-z".to_string()]
+    );
+    assert!(inventory.complete);
+}
+
+#[tokio::test]
+async fn invalid_installed_runner_service_makes_inventory_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("vm0-runner-production.service"), "").unwrap();
+    std::fs::write(dir.path().join("vm0-runner-UPPER.service"), "").unwrap();
+
+    let inventory = discover_installed_service_suffixes(dir.path()).await;
+
+    assert_eq!(inventory.suffixes, ["production".to_string()]);
+    assert!(!inventory.complete);
+}
+
+#[tokio::test]
+async fn installed_service_iteration_failure_makes_inventory_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("vm0-runner-production.service"), "").unwrap();
+    let mut entry_reader = GcDirEntryReader::failing_after(0);
+
+    let inventory =
+        discover_installed_service_suffixes_with_reader(dir.path(), &mut entry_reader).await;
+
+    assert!(inventory.suffixes.is_empty());
+    assert!(!inventory.complete);
+}
+
+#[tokio::test]
+async fn installed_service_resolves_independent_opaque_dirnames() {
     let dir = tempfile::tempdir().unwrap();
     install_fake_systemctl(dir.path());
 
@@ -263,7 +332,7 @@ async fn explicit_service_suffix_resolves_independent_opaque_dirnames() {
 }
 
 #[tokio::test]
-async fn keep_latest_retains_the_newest_explicit_deployment_by_mtime() {
+async fn keep_latest_retains_the_newest_installed_deployment_by_mtime() {
     let dir = tempfile::tempdir().unwrap();
     install_fake_systemctl(dir.path());
     let home_root = dir.path().join("home");
@@ -310,6 +379,31 @@ async fn exact_keep_dirnames_apply_only_to_their_own_roots() {
     run_ignored_child_test(
         DEPLOYMENT_CHILD_TEST,
         (DEPLOYMENT_SCENARIO_ENV, "keep-roots"),
+        &[
+            ("PATH", Some(dir.path().to_str().unwrap())),
+            (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
+            (
+                DEPLOYMENT_INVOCATIONS_ENV,
+                Some(invocations_path.to_str().unwrap()),
+            ),
+        ],
+        Duration::from_secs(10),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn exact_keep_service_suffix_retains_the_resolved_deployment() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home_root = dir.path().join("home");
+    let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    create_test_deployment(&home_root, "binary-opaque", "config-opaque", old);
+
+    let invocations_path = dir.path().join("invocations");
+    run_ignored_child_test(
+        DEPLOYMENT_CHILD_TEST,
+        (DEPLOYMENT_SCENARIO_ENV, "keep-service"),
         &[
             ("PATH", Some(dir.path().to_str().unwrap())),
             (DEPLOYMENT_HOME_ENV, Some(home_root.to_str().unwrap())),
@@ -436,8 +530,8 @@ async fn out_of_root_unit_paths_make_the_inventory_incomplete() {
 }
 
 #[tokio::test]
-#[ignore = "spawned by explicit deployment systemctl tests"]
-async fn explicit_deployment_systemctl_child() {
+#[ignore = "spawned by installed deployment systemctl tests"]
+async fn installed_deployment_systemctl_child() {
     let Ok(scenario) = std::env::var(DEPLOYMENT_SCENARIO_ENV) else {
         return;
     };
@@ -451,10 +545,11 @@ async fn explicit_deployment_systemctl_child() {
                 &home,
                 DeploymentGcRequest {
                     service_suffixes: &["service-blue".to_string()],
+                    keep_service_suffixes: &BTreeSet::new(),
                     keep_bin_dirnames: &BTreeSet::new(),
                     keep_runner_dirnames: &BTreeSet::new(),
                     keep_latest: Some(0),
-                    legacy_inventory_missing: false,
+                    service_inventory_complete: true,
                     dry_run: false,
                 },
                 DeploymentGcOperations {
@@ -478,14 +573,46 @@ async fn explicit_deployment_systemctl_child() {
                     .exists()
             );
         }
+        "keep-service" => {
+            let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
+            let outcome = gc_deployments_with_operations(
+                &home,
+                DeploymentGcRequest {
+                    service_suffixes: &["service-blue".to_string()],
+                    keep_service_suffixes: &BTreeSet::from(["service-blue".to_string()]),
+                    keep_bin_dirnames: &BTreeSet::new(),
+                    keep_runner_dirnames: &BTreeSet::new(),
+                    keep_latest: Some(0),
+                    service_inventory_complete: true,
+                    dry_run: false,
+                },
+                DeploymentGcOperations {
+                    uninstall_service: successful_fake_uninstall_service_unit,
+                    remove_dir_all: real_remove_dir_all,
+                },
+            )
+            .await
+            .unwrap();
+            let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+            assert!(report.is_empty());
+            assert_eq!(
+                retained_config_paths,
+                [home.runners_dir().join("config-opaque/runner.yaml")]
+            );
+            assert!(inventory_complete);
+            assert!(home.bin_dir().join("binary-opaque").exists());
+            assert!(home.runners_dir().join("config-opaque").exists());
+            assert!(unit.lock_path(&home).exists());
+        }
         "keep-latest" => {
-            let outcome = gc_deployments(
+            let outcome = gc_discovered_deployments(
                 &home,
                 &["service-a".to_string(), "service-z".to_string()],
                 &BTreeSet::new(),
                 &BTreeSet::new(),
+                &BTreeSet::new(),
                 Some(1),
-                false,
                 true,
             )
             .await
@@ -504,10 +631,11 @@ async fn explicit_deployment_systemctl_child() {
                 &home,
                 DeploymentGcRequest {
                     service_suffixes: &["service-a".to_string(), "service-z".to_string()],
+                    keep_service_suffixes: &BTreeSet::new(),
                     keep_bin_dirnames: &BTreeSet::from(["keep-bin".to_string()]),
                     keep_runner_dirnames: &BTreeSet::from(["keep-runner".to_string()]),
                     keep_latest: Some(0),
-                    legacy_inventory_missing: false,
+                    service_inventory_complete: true,
                     dry_run: false,
                 },
                 DeploymentGcOperations {
@@ -537,10 +665,11 @@ async fn explicit_deployment_systemctl_child() {
                 &home,
                 DeploymentGcRequest {
                     service_suffixes: &["service-a".to_string(), "service-z".to_string()],
+                    keep_service_suffixes: &BTreeSet::new(),
                     keep_bin_dirnames: &BTreeSet::new(),
                     keep_runner_dirnames: &BTreeSet::new(),
                     keep_latest: Some(0),
-                    legacy_inventory_missing: false,
+                    service_inventory_complete: true,
                     dry_run: false,
                 },
                 DeploymentGcOperations {
@@ -569,10 +698,11 @@ async fn explicit_deployment_systemctl_child() {
                 &home,
                 DeploymentGcRequest {
                     service_suffixes: &["service-blue".to_string()],
+                    keep_service_suffixes: &BTreeSet::new(),
                     keep_bin_dirnames: &BTreeSet::new(),
                     keep_runner_dirnames: &BTreeSet::new(),
                     keep_latest: Some(0),
-                    legacy_inventory_missing: false,
+                    service_inventory_complete: true,
                     dry_run: false,
                 },
                 DeploymentGcOperations {
@@ -600,10 +730,11 @@ async fn explicit_deployment_systemctl_child() {
                 &home,
                 DeploymentGcRequest {
                     service_suffixes: &["service-blue".to_string()],
+                    keep_service_suffixes: &BTreeSet::new(),
                     keep_bin_dirnames: &BTreeSet::new(),
                     keep_runner_dirnames: &BTreeSet::new(),
                     keep_latest: Some(0),
-                    legacy_inventory_missing: false,
+                    service_inventory_complete: true,
                     dry_run: false,
                 },
                 DeploymentGcOperations {
@@ -623,13 +754,13 @@ async fn explicit_deployment_systemctl_child() {
             assert!(unit.lock_path(&home).exists());
         }
         "out-of-root" => {
-            let outcome = gc_deployments(
+            let outcome = gc_discovered_deployments(
                 &home,
                 &["service-blue".to_string()],
                 &BTreeSet::new(),
                 &BTreeSet::new(),
+                &BTreeSet::new(),
                 Some(0),
-                false,
                 true,
             )
             .await

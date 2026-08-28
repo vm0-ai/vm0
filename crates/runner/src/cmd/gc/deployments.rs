@@ -13,12 +13,13 @@ use crate::lock;
 use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
-use super::filesystem::{GcDirStatus, gc_path_dir_status};
+use super::filesystem::{GcDirEntryReader, GcDirStatus, gc_path_dir_status, read_dir_or_missing};
 use super::lock_file::{ExistingLockProbe, probe_existing_lock, remove_unused_lock_after_probe};
 use super::report::GcReport;
 
 const RUNNER_BINARY_NAME: &str = "runner";
 const RUNNER_CONFIG_NAME: &str = "runner.yaml";
+const SYSTEMD_SYSTEM_DIR: &str = "/etc/systemd/system";
 
 type ServiceUninstallFuture<'a> = Pin<Box<dyn Future<Output = RunnerResult<()>> + 'a>>;
 type ServiceUninstallFn = for<'a> fn(&'a service::RunnerServiceUnit) -> ServiceUninstallFuture<'a>;
@@ -65,10 +66,11 @@ struct LockedUnit {
 
 struct DeploymentGcRequest<'a> {
     service_suffixes: &'a [String],
+    keep_service_suffixes: &'a BTreeSet<String>,
     keep_bin_dirnames: &'a BTreeSet<String>,
     keep_runner_dirnames: &'a BTreeSet<String>,
     keep_latest: Option<usize>,
-    legacy_inventory_missing: bool,
+    service_inventory_complete: bool,
     dry_run: bool,
 }
 
@@ -77,23 +79,100 @@ struct DeploymentGcOperations {
     remove_dir_all: RemoveDirAllFn,
 }
 
+struct InstalledServiceInventory {
+    suffixes: Vec<String>,
+    complete: bool,
+}
+
+async fn discover_installed_service_suffixes(system_dir: &Path) -> InstalledServiceInventory {
+    let mut entry_reader = GcDirEntryReader::new();
+    discover_installed_service_suffixes_with_reader(system_dir, &mut entry_reader).await
+}
+
+async fn discover_installed_service_suffixes_with_reader(
+    system_dir: &Path,
+    entry_reader: &mut GcDirEntryReader,
+) -> InstalledServiceInventory {
+    let Some(mut entries) = (match read_dir_or_missing(system_dir).await {
+        Ok(entries) => entries,
+        Err(error) => {
+            warn!(
+                "runner deployments: cannot scan installed services in {} ({error}); retaining all deployments",
+                system_dir.display()
+            );
+            return InstalledServiceInventory {
+                suffixes: Vec::new(),
+                complete: false,
+            };
+        }
+    }) else {
+        return InstalledServiceInventory {
+            suffixes: Vec::new(),
+            complete: true,
+        };
+    };
+
+    let mut suffixes = BTreeSet::new();
+    let mut complete = true;
+    loop {
+        let entry = match entry_reader
+            .next_entry_warn(&mut entries, "runner_deployments", system_dir)
+            .await
+        {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(_) => {
+                complete = false;
+                break;
+            }
+        };
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            warn!(
+                "runner deployments: installed service entry {} is not valid UTF-8; retaining all deployments",
+                entry.path().display()
+            );
+            complete = false;
+            continue;
+        };
+        if !file_name.starts_with("vm0-runner-") || !file_name.ends_with(".service") {
+            continue;
+        }
+        let Some(unit) = service::RunnerServiceUnit::from_file_name(file_name) else {
+            warn!(
+                "runner deployments: installed runner service filename {file_name:?} is invalid; retaining all deployments"
+            );
+            complete = false;
+            continue;
+        };
+        suffixes.insert(unit.suffix().to_string());
+    }
+
+    InstalledServiceInventory {
+        suffixes: suffixes.into_iter().collect(),
+        complete,
+    }
+}
+
 pub(super) async fn gc_deployments(
     home: &HomePaths,
-    service_suffixes: &[String],
+    keep_service_suffixes: &BTreeSet<String>,
     keep_bin_dirnames: &BTreeSet<String>,
     keep_runner_dirnames: &BTreeSet<String>,
     keep_latest: Option<usize>,
-    legacy_inventory_missing: bool,
     dry_run: bool,
 ) -> RunnerResult<DeploymentGcOutcome> {
+    let service_inventory =
+        discover_installed_service_suffixes(Path::new(SYSTEMD_SYSTEM_DIR)).await;
     gc_deployments_with_operations(
         home,
         DeploymentGcRequest {
-            service_suffixes,
+            service_suffixes: &service_inventory.suffixes,
+            keep_service_suffixes,
             keep_bin_dirnames,
             keep_runner_dirnames,
             keep_latest,
-            legacy_inventory_missing,
+            service_inventory_complete: service_inventory.complete,
             dry_run,
         },
         DeploymentGcOperations {
@@ -111,16 +190,18 @@ async fn gc_deployments_with_operations(
 ) -> RunnerResult<DeploymentGcOutcome> {
     let DeploymentGcRequest {
         service_suffixes,
+        keep_service_suffixes,
         keep_bin_dirnames,
         keep_runner_dirnames,
         keep_latest,
-        legacy_inventory_missing,
+        service_inventory_complete,
         dry_run,
     } = request;
     let DeploymentGcOperations {
         uninstall_service,
         remove_dir_all,
     } = operations;
+    validate_service_suffixes(keep_service_suffixes)?;
     validate_dirnames("--keep-bin-dirname", keep_bin_dirnames)?;
     validate_dirnames("--keep-runner-dirname", keep_runner_dirnames)?;
 
@@ -129,17 +210,16 @@ async fn gc_deployments_with_operations(
         .map(|dirname| home.runners_dir().join(dirname).join(RUNNER_CONFIG_NAME))
         .collect::<Vec<_>>();
 
+    if !service_inventory_complete {
+        return Ok(incomplete_outcome());
+    }
+
     let units = validated_units(service_suffixes)?;
     if units.is_empty() {
-        if legacy_inventory_missing {
-            warn!(
-                "runner deployments: legacy --protect-version did not provide deployment service inventory; skipping image GC"
-            );
-        }
         return Ok(DeploymentGcOutcome {
             report: GcReport::default(),
             retained_config_paths: explicit_config_paths,
-            image_inventory_complete: !legacy_inventory_missing,
+            image_inventory_complete: true,
         });
     }
     if !managed_roots_are_safe(home).await {
@@ -220,7 +300,7 @@ async fn gc_deployments_with_operations(
             runner_dir,
             config_path: command_paths.config_path().to_path_buf(),
             newest_mtime: deployment_mtime,
-            retain_record: false,
+            retain_record: keep_service_suffixes.contains(locked.unit.suffix()),
         });
     }
 
@@ -245,7 +325,7 @@ async fn gc_deployments_with_operations(
         }
     }
 
-    // The complete candidate lock set stays held through this final activity
+    // The complete installed service-lock set stays held through this final activity
     // check and every mutation, preventing install/uninstall from changing the
     // exact ownership graph after it has authorized deletion.
     if !mark_newly_active_deployments(
@@ -367,6 +447,13 @@ fn validate_dirnames(flag: &str, dirnames: &BTreeSet<String>) -> RunnerResult<()
                 crate::runner_dirname::validation_rules()
             )));
         }
+    }
+    Ok(())
+}
+
+fn validate_service_suffixes(service_suffixes: &BTreeSet<String>) -> RunnerResult<()> {
+    for suffix in service_suffixes {
+        service::RunnerServiceUnit::from_suffix(suffix)?;
     }
     Ok(())
 }

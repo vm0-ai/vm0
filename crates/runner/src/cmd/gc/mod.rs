@@ -43,52 +43,47 @@ pub struct GcArgs {
     /// Show what would be deleted without actually deleting
     #[arg(long)]
     dry_run: bool,
-    /// Keep the N newest eligible items in each independent retention policy: explicitly
-    /// nominated runner deployments (by modification time), image snapshots (by modification time), and stable
+    /// Keep the N newest eligible items in each independent retention policy:
+    /// installed runner deployments (by modification time), image snapshots (by modification time), and stable
     /// debootstrap tarballs (by modification time). Recent, active, locked, referenced, incomplete,
     /// and temporary artifacts follow their own safety rules; temporary debootstrap tarballs do not
     /// consume a stable retention slot.
     /// Omit this option or set it to 0 to disable top-N retention.
     #[arg(long)]
     keep_latest: Option<usize>,
-    /// Systemd service suffix whose effective ExecStart identifies one managed deployment.
+    /// Systemd service suffix to retain while garbage collecting installed runner services.
     #[arg(long)]
-    deployment_service_suffix: Vec<String>,
+    keep_service_suffix: Vec<String>,
     /// Binary directory name to retain under the managed binary root.
     #[arg(long)]
     keep_bin_dirname: Vec<String>,
     /// Runner configuration directory name to retain under the managed runner root.
     #[arg(long)]
     keep_runner_dirname: Vec<String>,
-    /// Deprecated compatibility alias that retains the same dirname in both managed roots.
+    /// Deprecated compatibility alias that retains the same suffix or dirname in all three
+    /// deployment namespaces.
     #[arg(long, hide = true)]
     protect_version: Option<String>,
 }
 
 pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let home = HomePaths::new()?;
-    let mut keep_bin_dirnames = args.keep_bin_dirname.into_iter().collect::<BTreeSet<_>>();
-    let mut keep_runner_dirnames = args
-        .keep_runner_dirname
-        .into_iter()
-        .collect::<BTreeSet<_>>();
-    if let Some(legacy_dirname) = &args.protect_version {
-        keep_bin_dirnames.insert(legacy_dirname.clone());
-        keep_runner_dirnames.insert(legacy_dirname.clone());
-    }
-    let legacy_inventory_missing =
-        args.protect_version.is_some() && args.deployment_service_suffix.is_empty();
+    let (keep_service_suffixes, keep_bin_dirnames, keep_runner_dirnames) = normalize_keep_sets(
+        args.keep_service_suffix,
+        args.keep_bin_dirname,
+        args.keep_runner_dirname,
+        args.protect_version,
+    );
 
-    // Deployment cleanup holds the complete explicit service-lock set while it
+    // Deployment cleanup holds the complete installed service-lock set while it
     // resolves exact ownership and mutates directories. Image protection then
     // consumes only the final retained config paths, after those locks release.
     let deployment_outcome = gc_deployments(
         &home,
-        &args.deployment_service_suffix,
+        &keep_service_suffixes,
         &keep_bin_dirnames,
         &keep_runner_dirnames,
         args.keep_latest,
-        legacy_inventory_missing,
         args.dry_run,
     )
     .await?;
@@ -126,7 +121,7 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 
     // General lock GC preserves the service-lock namespace for lifecycle and
     // rolling-version compatibility; deployment GC removes only exact locks
-    // whose explicitly nominated units were successfully removed.
+    // whose installed units were successfully removed.
     let lock_report = gc_orphaned_locks(&home, args.dry_run).await?;
     record_gc_phase(&mut report, "orphaned locks", lock_report, args.dry_run);
 
@@ -147,6 +142,23 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     log_gc_summary(&report, args.dry_run);
 
     Ok(())
+}
+
+fn normalize_keep_sets(
+    service_suffixes: Vec<String>,
+    bin_dirnames: Vec<String>,
+    runner_dirnames: Vec<String>,
+    legacy_name: Option<String>,
+) -> (BTreeSet<String>, BTreeSet<String>, BTreeSet<String>) {
+    let mut service_suffixes = service_suffixes.into_iter().collect::<BTreeSet<_>>();
+    let mut bin_dirnames = bin_dirnames.into_iter().collect::<BTreeSet<_>>();
+    let mut runner_dirnames = runner_dirnames.into_iter().collect::<BTreeSet<_>>();
+    if let Some(legacy_name) = legacy_name {
+        service_suffixes.insert(legacy_name.clone());
+        bin_dirnames.insert(legacy_name.clone());
+        runner_dirnames.insert(legacy_name);
+    }
+    (service_suffixes, bin_dirnames, runner_dirnames)
 }
 
 fn record_gc_phase(total: &mut GcReport, domain: &str, phase: GcReport, dry_run: bool) {
@@ -178,12 +190,28 @@ mod tests {
     }
 
     #[test]
-    fn gc_explicit_deployment_flags_are_repeatable_and_independent() {
+    fn gc_protect_version_retains_all_legacy_same_name_namespaces() {
+        let cli = GcCli::try_parse_from(["gc", "--protect-version", "v0.78.3"]).unwrap();
+        let (service_suffixes, bin_dirnames, runner_dirnames) = normalize_keep_sets(
+            cli.args.keep_service_suffix,
+            cli.args.keep_bin_dirname,
+            cli.args.keep_runner_dirname,
+            cli.args.protect_version,
+        );
+
+        let expected = BTreeSet::from(["v0.78.3".to_string()]);
+        assert_eq!(service_suffixes, expected);
+        assert_eq!(bin_dirnames, expected);
+        assert_eq!(runner_dirnames, expected);
+    }
+
+    #[test]
+    fn gc_keep_flags_are_repeatable_and_independent() {
         let cli = GcCli::try_parse_from([
             "gc",
-            "--deployment-service-suffix",
+            "--keep-service-suffix",
             "production-blue",
-            "--deployment-service-suffix",
+            "--keep-service-suffix",
             "production-green",
             "--keep-bin-dirname",
             "binary-blue",
@@ -193,7 +221,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            cli.args.deployment_service_suffix,
+            cli.args.keep_service_suffix,
             ["production-blue", "production-green"]
         );
         assert_eq!(cli.args.keep_bin_dirname, ["binary-blue"]);
@@ -214,7 +242,7 @@ mod tests {
             .to_ascii_lowercase();
         for phrase in [
             "each independent retention policy",
-            "explicitly nominated runner deployments",
+            "installed runner deployments",
             "image snapshots",
             "stable debootstrap tarballs",
             "modification time",

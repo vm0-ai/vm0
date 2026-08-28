@@ -15,7 +15,7 @@ use super::workspaces::is_base_dir_lock_name;
 /// because deployment lifecycle and rolling-version compatibility rely on
 /// those lock paths to coordinate with concurrent service install/uninstall
 /// commands. Deployment GC removes an exact service lock only after its
-/// explicitly nominated unit is removed successfully. The
+/// installed unit is removed successfully. The
 /// systemd reload lock is also retained because non-runner lifecycle owners use
 /// the same stable path with plain `flock`.
 pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
@@ -35,7 +35,7 @@ pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> Runner
             continue;
         }
         // Deployment lifecycle uses service locks to prevent concurrent
-        // install, uninstall, and explicitly owned deployment cleanup.
+        // install, uninstall, and installed deployment cleanup.
         // Workspace GC owns base-dir lock lifecycle because those locks carry
         // the base_dir metadata needed to rediscover dead-runner workspaces.
         if RunnerServiceUnit::is_reserved_lock_file_name(name)

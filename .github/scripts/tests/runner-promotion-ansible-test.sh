@@ -61,7 +61,6 @@ data_dir="$tmp/vm0-runner"
 test_bin="$tmp/bin"
 runner_release=v999.0.0
 runner_bin_dir="$data_dir/bin/$runner_release"
-runner_systemd_unit_dir="$tmp/systemd"
 invocation_log="$data_dir/runner-invocations"
 gc_arrivals="$data_dir/gc-arrivals"
 mkdir -p \
@@ -70,13 +69,7 @@ mkdir -p \
   "$data_dir/locks" \
   "$data_dir/runners/$runner_release" \
   "$gc_arrivals" \
-  "$runner_systemd_unit_dir" \
   "$runner_bin_dir"
-
-touch \
-  "$runner_systemd_unit_dir/vm0-runner-production-blue.service" \
-  "$runner_systemd_unit_dir/vm0-runner-production-green.service" \
-  "$runner_systemd_unit_dir/vm0-runner-$runner_release.service"
 
 ln -s "$(command -v flock)" "$test_bin/real-flock"
 cat > "$test_bin/flock" <<'EOF'
@@ -116,12 +109,12 @@ case "${1:-}" in
     ;;
   gc)
     if [ "${2:-}" = "--help" ]; then
-      if [ "${RUNNER_GC_EXPLICIT_SUPPORT:-true}" = "true" ]; then
-        printf '%s\n' '      --deployment-service-suffix <DEPLOYMENT_SERVICE_SUFFIX>'
+      if [ "${RUNNER_GC_KEEP_SUPPORT:-true}" = "true" ]; then
+        printf '%s\n' '      --keep-service-suffix <KEEP_SERVICE_SUFFIX>'
       fi
       exit 0
     fi
-    if [ "$*" != "gc --keep-latest 6 --keep-bin-dirname v999.0.0 --keep-runner-dirname v999.0.0 --deployment-service-suffix=production-blue --deployment-service-suffix=production-green --deployment-service-suffix=v999.0.0" ]; then
+    if [ "$*" != "gc --keep-latest 6 --keep-service-suffix v999.0.0 --keep-bin-dirname v999.0.0 --keep-runner-dirname v999.0.0" ]; then
       echo "unexpected gc arguments: $*" >&2
       exit 1
     fi
@@ -167,7 +160,7 @@ done
 
 assert_contains "$promote_playbook" "include_tasks: ../tasks/garbage-collect-runner.yml"
 assert_contains "$rollback_playbook" "include_tasks: ../tasks/garbage-collect-runner.yml"
-assert_contains "$gc_task" "data_dir ~ '/locks/deployment-gc.lock'"
+assert_contains "$gc_task" "{{ data_dir }}/locks/deployment-gc.lock"
 
 if ! PATH="$test_bin:$PATH" \
   HOME="$test_home" \
@@ -180,19 +173,18 @@ if ! PATH="$test_bin:$PATH" \
     -e "runner_host_env_file=$tmp/host.env" \
     -e "runner_version=999.0.0" \
     -e "runner_target=$runner_target" \
-    -e "runner_systemd_unit_dir=$runner_systemd_unit_dir" \
     "$promote_playbook" >"$tmp/promote-output" 2>&1; then
   cat "$tmp/promote-output" >&2
   exit 1
 fi
 
 assert_line_count "$invocation_log" 2 \
-  "gc --keep-latest 6 --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release --deployment-service-suffix=production-blue --deployment-service-suffix=production-green --deployment-service-suffix=$runner_release"
+  "gc --keep-latest 6 --keep-service-suffix $runner_release --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release"
 assert_line_count "$invocation_log" 4 "doctor --name $runner_release"
 assert_line_count "$invocation_log" 2 \
   "service wait-running --name $runner_release --timeout-secs 120"
 
-if ! RUNNER_GC_EXPLICIT_SUPPORT=false \
+if ! RUNNER_GC_KEEP_SUPPORT=false \
   PATH="$test_bin:$PATH" \
   HOME="$test_home" \
   ANSIBLE_CONFIG="$ansible_config" \
@@ -203,13 +195,12 @@ if ! RUNNER_GC_EXPLICIT_SUPPORT=false \
     -e "data_dir=$data_dir" \
     -e "runner_version=999.0.0" \
     -e "runner_target=$runner_target" \
-    -e "runner_systemd_unit_dir=$runner_systemd_unit_dir" \
     "$promote_playbook" >"$tmp/old-runner-promote-output" 2>&1; then
   cat "$tmp/old-runner-promote-output" >&2
   exit 1
 fi
 
 assert_line_count "$invocation_log" 2 \
-  "gc --keep-latest 6 --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release --deployment-service-suffix=production-blue --deployment-service-suffix=production-green --deployment-service-suffix=$runner_release"
+  "gc --keep-latest 6 --keep-service-suffix $runner_release --keep-bin-dirname $runner_release --keep-runner-dirname $runner_release"
 
 echo "runner-promotion-ansible-test: ok"

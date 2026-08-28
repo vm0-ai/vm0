@@ -2,8 +2,8 @@
 #
 # This playbook switches a host from its currently-active runner version to a
 # target version. The target version's per-version bin dir and config are
-# typically already on disk — preserved by the explicit deployment inventory
-# and keep-dirname arguments passed to `runner gc --keep-latest 6` at the tail
+# typically already on disk — preserved by installed-service discovery and the
+# keep arguments passed to `runner gc --keep-latest 6` at the tail
 # of every promote. Older inactive deployments stay until they're pushed out
 # of the 6-slot window:
 #
@@ -505,7 +505,7 @@
     # Phase 8: Garbage collect + final health check
     # ========================================
     #
-    # GC receives separate keep-dirname arguments so the rollback target is never swept.
+    # GC receives independent keep arguments so the rollback target is never swept.
     - name: Garbage collect old artifacts
       include_tasks: ../tasks/garbage-collect-runner.yml
 
