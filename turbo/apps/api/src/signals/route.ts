@@ -72,10 +72,7 @@ import { billingCreditCheckoutRoutes } from "./routes/billing-credit-checkout";
 import { billingDowngradeRoutes } from "./routes/billing-downgrade";
 import { billingInvoicesRoutes } from "./routes/billing-invoices";
 import { billingPortalRoutes } from "./routes/billing-portal";
-import {
-  billingRedeemCodeRoutes,
-  reportMachineSecretAliasSourceAtProcessInitialization,
-} from "./routes/billing-redeem-code";
+import { billingRedeemCodeRoutes } from "./routes/billing-redeem-code";
 import { billingRedeemRoutes } from "./routes/billing-redeem";
 import { billingRestoreRoutes } from "./routes/billing-restore";
 import { billingStatusRoutes } from "./routes/billing-status";
@@ -200,7 +197,6 @@ import { videoIoGenerateRoutes } from "./routes/video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
 
-reportMachineSecretAliasSourceAtProcessInitialization();
 reportApiBackendUrlAliasSourceAtProcessInitialization();
 
 export const ROUTES: readonly RouteEntry[] = [

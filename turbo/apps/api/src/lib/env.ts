@@ -119,7 +119,6 @@ const SCHEMA = {
   STRIPE_SECRET_KEY: z.string().min(1),
   ATOM_URL: z.url().optional(),
   ATOM_GRANT_PRICE: z.string().min(1).optional(),
-  VM0_MACHINE_SECRET_KEY: z.string().min(1).optional(),
   OKOU_PRICE_PRO: priceIdsSchema,
   OKOU_PRICE_TEAM: priceIdsSchema,
   OKOU_PRICE_USAGE_PACK_PLAN_PRO: priceIdsSchema,
