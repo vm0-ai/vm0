@@ -154,6 +154,22 @@ function installProtocolBridge(): {
   return { platformStore, workerStore, platformPort, workerPort };
 }
 
+function connectProtocolTransport(
+  events: SharedDatabaseBridgeEvents,
+): MessagePortSharedDatabaseBridge {
+  const [platformPort, workerPort] = messagePortPair();
+  new SharedDatabaseMessagePortServer(
+    context.workerStore,
+    workerPort,
+    context.signal,
+  );
+  return new MessagePortSharedDatabaseBridge(
+    platformPort,
+    location.origin,
+    events,
+  );
+}
+
 describe("shared database MessagePort protocol", () => {
   it("correlates out-of-order queries across structured-cloned independent stores", async () => {
     const { platformStore, workerStore } = installProtocolBridge();
@@ -287,21 +303,6 @@ describe("shared database MessagePort protocol", () => {
     workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
     const start = Date.parse("2030-01-01T00:00:00.000Z");
     mockNow(start, context.signal);
-    const connectProtocolTransport = (
-      events: SharedDatabaseBridgeEvents,
-    ): MessagePortSharedDatabaseBridge => {
-      const [platformPort, workerPort] = messagePortPair();
-      new SharedDatabaseMessagePortServer(
-        workerStore,
-        workerPort,
-        context.signal,
-      );
-      return new MessagePortSharedDatabaseBridge(
-        platformPort,
-        location.origin,
-        events,
-      );
-    };
 
     let firstTabTransports = 0;
     let staleTabTransports = 0;
@@ -393,6 +394,65 @@ describe("shared database MessagePort protocol", () => {
       subscription.abort();
       staleOwner.abort();
       firstOwner.abort();
+    }
+  });
+
+  it("renews a single expired tab over its existing MessagePort", async () => {
+    const workerStore = context.workerStore;
+    workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
+    const start = Date.parse("2030-01-01T00:00:00.000Z");
+    mockNow(start, context.signal);
+    let transports = 0;
+    const bridge = new ReconnectingSharedDatabaseBridge({
+      createBridge: (events) => {
+        transports += 1;
+        return connectProtocolTransport(events);
+      },
+      events: {
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged:
+          vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
+      },
+    });
+    const owner = createChildAbortController(context.signal);
+    const subscription = createChildAbortController(context.signal);
+    try {
+      await bridge.heartbeat(heartbeat(), owner.signal);
+      const key = dataKey(crypto.randomUUID());
+      context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      });
+      context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
+        return respond(200, { rows: [] });
+      });
+
+      const initialAttach = context.mocks.ably.deferNextSubscribe();
+      await bridge.on(key, vi.fn<() => void>(), subscription.signal);
+      await initialAttach.started;
+      initialAttach.attach();
+      await vi.waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+      });
+
+      mockNow(start + 4 * 60 * 1000, context.signal);
+      const renewedAttach = context.mocks.ably.deferNextSubscribe();
+      await bridge.heartbeat(heartbeat(), owner.signal);
+      await renewedAttach.started;
+      renewedAttach.attach();
+      await vi.waitFor(() => {
+        expect(transports).toBe(1);
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+      });
+    } finally {
+      subscription.abort();
+      owner.abort();
     }
   });
 

@@ -488,7 +488,15 @@ export class SharedDatabaseWorkerRuntime {
     vercelProtectionBypass: string | undefined,
   ): Promise<SharedDatabaseHeartbeatResult> {
     this.rootSignal.throwIfAborted();
+    const heartbeatAt = now();
     let client = this.clients.get(clientId);
+    if (
+      client &&
+      client.lastHeartbeatAt < heartbeatAt - STALE_CLIENT_AFTER_MS
+    ) {
+      this.expireClient(clientId);
+      client = undefined;
+    }
     const clientReconnected = client === undefined;
     if (!client) {
       if (!emit) {
@@ -496,8 +504,8 @@ export class SharedDatabaseWorkerRuntime {
       }
       client = this.registerClient(clientId, emit);
     }
-    client.lastHeartbeatAt = now();
-    this.pruneStaleClients();
+    client.lastHeartbeatAt = heartbeatAt;
+    this.pruneStaleClients(heartbeatAt);
     const previousCredentialId = client.identity
       ? sharedDatabaseCredentialId(client.identity)
       : null;
@@ -1778,8 +1786,8 @@ export class SharedDatabaseWorkerRuntime {
     }
   }
 
-  private pruneStaleClients(): void {
-    const staleBefore = now() - STALE_CLIENT_AFTER_MS;
+  private pruneStaleClients(currentTime: number): void {
+    const staleBefore = currentTime - STALE_CLIENT_AFTER_MS;
     const staleClientIds = Array.from(this.clients.values()).flatMap(
       (client) => {
         return client.lastHeartbeatAt < staleBefore ? [client.clientId] : [];

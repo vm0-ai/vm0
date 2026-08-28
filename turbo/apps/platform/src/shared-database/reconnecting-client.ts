@@ -420,18 +420,28 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
   }
 
   private async waitForTransportRecovery(
-    error: unknown,
+    failure: unknown,
     signal: AbortSignal,
   ): Promise<void> {
-    if (!(error instanceof SharedDatabaseTransportError)) {
+    if (!(failure instanceof SharedDatabaseTransportError)) {
       return;
     }
-    const recovery = await error.recover();
+    const waitController = createChildAbortController(signal);
+    const aborted = createDeferredPromise<never>(waitController.signal);
+    const recoveryWork = failure.recover();
+    const recovery = await withCleanup(
+      Promise.race([recoveryWork, aborted.promise]),
+      () => {
+        waitController.abort(
+          new DOMException("Transport recovery wait completed", "AbortError"),
+        );
+      },
+    );
     signal.throwIfAborted();
     if (recovery === "reconnect") {
       return;
     }
-    if (error.claimReload()) {
+    if (failure.claimReload()) {
       this.options.events.reloadRequired();
     }
     await createDeferredPromise<never>(signal).promise;

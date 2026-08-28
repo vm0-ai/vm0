@@ -20,7 +20,10 @@ import {
   type SharedDatabaseConnectionStatus,
   type SharedDatabaseHeartbeatResult,
 } from "../protocol.ts";
-import { ReconnectingSharedDatabaseBridge } from "../reconnecting-client.ts";
+import {
+  ReconnectingSharedDatabaseBridge,
+  SharedDatabaseTransportError,
+} from "../reconnecting-client.ts";
 
 class FakeBridge implements SharedDatabaseBridge {
   readonly callbacks: (() => void)[] = [];
@@ -262,6 +265,54 @@ describe("reconnecting shared database bridge", () => {
     expect(bridges[1]!.callbacks).toHaveLength(1);
 
     subscription.abort();
+    owner.abort();
+  });
+
+  it("allows a query caller to abort while shared transport recovery continues", async () => {
+    const bridges: FakeBridge[] = [];
+    const recovery = context.mocks.deferred<"reconnect">();
+    let recoveryCalls = 0;
+    const bridge = new ReconnectingSharedDatabaseBridge({
+      createBridge: () => {
+        const created = new FakeBridge();
+        bridges.push(created);
+        return created;
+      },
+      events: {
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged:
+          vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
+      },
+    });
+    const owner = createChildAbortController(context.signal);
+    const caller = createChildAbortController(context.signal);
+    await bridge.heartbeat(heartbeat(), owner.signal);
+    bridges[0]!.queryError = new SharedDatabaseTransportError(
+      "Shared database worker failed to load",
+      () => {
+        recoveryCalls += 1;
+        return recovery.promise;
+      },
+    );
+
+    const query = bridge.query(
+      {
+        dataKey: dataKey(),
+        afterSeqId: null,
+        consistency: "cache-only",
+      },
+      caller.signal,
+    );
+    await vi.waitFor(() => {
+      expect(recoveryCalls).toBe(1);
+    });
+    caller.abort(new DOMException("Query cancelled", "AbortError"));
+
+    await expect(query).rejects.toMatchObject({ name: "AbortError" });
+    expect(bridges).toHaveLength(1);
+    expect(recoveryCalls).toBe(1);
+
+    recovery.resolve("reconnect");
     owner.abort();
   });
 });
