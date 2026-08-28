@@ -447,10 +447,11 @@ fn build_env_json_required_keys() {
     assert!(!env.contains_key("VM0_RUN_ID"));
     assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
-        env.get(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV)
+        env.get(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV)
             .unwrap(),
         "7200"
     );
+    assert!(!env.contains_key(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV));
     assert_eq!(
         env.get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
