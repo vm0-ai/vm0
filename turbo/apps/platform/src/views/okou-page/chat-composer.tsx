@@ -10239,9 +10239,16 @@ function ComposerModelScopeCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="relative z-20 h-8 sm:h-5">
+    <div className="relative z-0 mx-3 sm:ml-auto sm:mr-4 sm:w-fit sm:max-w-[calc(100%_-_2rem)]">
+      {/* The surface extends one content-height behind the composer. The
+          composer stays above it (z-10), while the controls remain fully
+          visible in the half that protrudes below. */}
       <div
-        className="absolute inset-x-3 top-0 flex -translate-y-1/2 flex-wrap items-center gap-2 rounded-xl bg-gray-50 p-1 pl-3 text-xs sm:left-auto sm:right-4 sm:max-w-[calc(100%_-_2rem)] sm:flex-nowrap"
+        className="pointer-events-none absolute inset-x-0 -top-full bottom-0 rounded-xl bg-gray-50"
+        aria-hidden="true"
+      />
+      <div
+        className="relative flex flex-wrap items-center gap-2 p-1 pl-3 text-xs sm:flex-nowrap"
         role="group"
         aria-label={label}
         aria-live="polite"
