@@ -1991,7 +1991,7 @@ def done():
     upstream work without joining daemon workers or waiting for slow upstream
     responses. JSONL writer shutdown is also bounded and best-effort; if it times
     out, process shutdown continues with accepted log entries possibly still
-    pending. After joining the usage executor, retained billing and diagnostic
+    pending. After joining the usage executors, retained billing and diagnostic
     work is drained through synchronous delivery. Model-provider failure delivery
     stops admission and receives one bounded drain window.
     """
@@ -2000,7 +2000,7 @@ def done():
     finally:
         try:
             try:
-                usage.webhook.usage_executor.shutdown(wait=True)
+                usage.webhook.shutdown_usage_executors(wait=True)
                 runner_flush_lifecycle.drain_delivery_work_after_executor_shutdown()
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)

@@ -475,7 +475,7 @@ def usage_webhook_api(mitm_ctx):
 
 @pytest.fixture
 def sync_usage_executor():
-    """Swap ``usage.webhook.usage_executor`` for a synchronous stub.
+    """Swap both usage webhook executors for a synchronous stub.
 
     Tests that want webhook side effects to complete before inline
     assertions can use this instead of a background thread plus explicit
@@ -517,21 +517,24 @@ def sync_usage_executor():
             for future in futures:
                 future.result()
 
-    original = usage.webhook.usage_executor
+    original_usage = usage.webhook.usage_executor
+    original_observation = usage.webhook.model_usage_observation_executor
     executor = _InlineExecutor()
     usage.webhook.usage_executor = executor
+    usage.webhook.model_usage_observation_executor = executor
     try:
         yield executor
     finally:
         try:
             executor.shutdown(wait=True)
         finally:
-            usage.webhook.usage_executor = original
+            usage.webhook.usage_executor = original_usage
+            usage.webhook.model_usage_observation_executor = original_observation
 
 
 @pytest.fixture
 def fresh_usage_executor():
-    """Swap ``usage.webhook.usage_executor`` for a throw-away pool for one test.
+    """Swap both usage webhook executors for a throw-away pool for one test.
 
     Tests that call ``shutdown(wait=True)`` to flush pending webhook
     reports need a fresh executor afterwards so later tests still see a

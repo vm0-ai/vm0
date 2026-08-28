@@ -124,14 +124,17 @@ def install_recording_usage_timer(
 
 @contextlib.contextmanager
 def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
-    """Install a temporary usage executor and restore the original on exit."""
-    original = usage.webhook.usage_executor
+    """Install a temporary usage executor and restore both originals on exit."""
+    original_usage = usage.webhook.usage_executor
+    original_observation = usage.webhook.model_usage_observation_executor
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
     usage.webhook.usage_executor = executor
+    usage.webhook.model_usage_observation_executor = executor
     try:
         yield executor
     finally:
         usage.webhook.usage_executor = executor
+        usage.webhook.model_usage_observation_executor = executor
         try:
             try:
                 usage.flush_usage_events(trigger="shutdown")
@@ -139,7 +142,8 @@ def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
                 executor.shutdown(wait=True)
                 usage.drain_usage_events_after_executor_shutdown()
         finally:
-            usage.webhook.usage_executor = original
+            usage.webhook.usage_executor = original_usage
+            usage.webhook.model_usage_observation_executor = original_observation
 
 
 @dataclass(frozen=True)

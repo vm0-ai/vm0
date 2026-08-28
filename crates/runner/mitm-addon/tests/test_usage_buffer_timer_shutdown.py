@@ -787,7 +787,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
                 [event(source_key="usage-source-2")],
                 path,
             )
-            assert len(timers) == 3
+            assert len(timers) == 4
         return True
 
     enqueue.side_effect = enqueue_and_buffer_later_usage
@@ -1042,6 +1042,30 @@ def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
     assert enqueue.last_call.payload["events"][0]["quantity"] == 10
 
 
+def test_model_observation_timer_uses_longer_aggregation_window(tmp_path):
+    enqueue = RecordingEnqueue()
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [observation(source_key="source-1", input_tokens=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert len(timers) == 1
+    assert timers[0].started is True
+    assert 240 <= timers[0].delay <= 360
+    enqueue.assert_not_called()
+
+    timers[0].callback()
+
+    enqueue.assert_called_once()
+    assert timers[0].cancelled is True
+    assert enqueue.last_call.log_type == "model_usage_observation"
+
+
 def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
     pending_path = tmp_path / "usage-pending"
 
@@ -1078,6 +1102,37 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
         reports=0,
         flush_request_id="timer-failure-retained",
     )
+
+
+def test_model_observation_threshold_allows_more_webhook_batches(tmp_path):
+    enqueue = RecordingEnqueue()
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+
+    for index in range(usage_buffer.MAX_BUFFERED_MODEL_USAGE_OBSERVATION_WEBHOOK_BATCHES - 1):
+        usage.buffer_model_usage_observations(
+            "https://api.test/api/webhooks/agent/model-usage-observation",
+            "token-a",
+            f"run-{index}",
+            [observation(source_key=f"source-{index}", input_tokens=1)],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+    assert len(timers) == 1
+    assert timers[0].started is True
+    enqueue.assert_not_called()
+
+    final_index = usage_buffer.MAX_BUFFERED_MODEL_USAGE_OBSERVATION_WEBHOOK_BATCHES - 1
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        f"run-{final_index}",
+        [observation(source_key=f"source-{final_index}", input_tokens=1)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert timers[0].cancelled is True
+    assert enqueue.call_count == (usage_buffer.MAX_BUFFERED_MODEL_USAGE_OBSERVATION_WEBHOOK_BATCHES)
+    assert {call.log_type for call in enqueue.calls} == {"model_usage_observation"}
 
 
 def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):

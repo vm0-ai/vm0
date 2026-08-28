@@ -266,6 +266,55 @@ def test_does_not_admit_when_delivery_capacity_is_saturated(tmp_path):
     assert "secret-payload" not in json.dumps(saturated_entry)
 
 
+def test_saturated_model_observation_delivery_does_not_block_billing(tmp_path):
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    billing_executor = QueuedUsageExecutor()
+    observation_executor = QueuedUsageExecutor()
+    usage.set_pending_path(str(pending_path))
+
+    with (
+        patch.object(usage.webhook, "usage_executor", billing_executor),
+        patch.object(
+            usage.webhook,
+            "model_usage_observation_executor",
+            observation_executor,
+        ),
+    ):
+        for index in range(usage.webhook.MAX_PENDING_MODEL_USAGE_OBSERVATION_PAYLOADS):
+            assert usage.webhook.enqueue_webhook_delivery(
+                "https://api.vm0.ai/api/webhooks/agent/model-usage-observation",
+                "tok",
+                {"runId": f"run-{index}", "events": []},
+                str(proxy_log),
+                "model_usage_observation",
+            )
+
+        assert not usage.webhook.enqueue_webhook_delivery(
+            "https://api.vm0.ai/api/webhooks/agent/model-usage-observation",
+            "tok",
+            {"runId": "run-saturated", "events": []},
+            str(proxy_log),
+            "model_usage_observation",
+        )
+        assert usage.webhook.enqueue_webhook_delivery(
+            "https://api.vm0.ai/api/webhooks/agent/usage-event",
+            "tok",
+            {"runId": "run-billing", "events": []},
+            str(proxy_log),
+            "usage_event",
+        )
+
+    assert len(observation_executor.submissions) == (
+        usage.webhook.MAX_PENDING_MODEL_USAGE_OBSERVATION_PAYLOADS
+    )
+    assert len(billing_executor.submissions) == 1
+    assert usage.webhook.pending_model_usage_observation_delivery_payload_count_for_tests() == (
+        usage.webhook.MAX_PENDING_MODEL_USAGE_OBSERVATION_PAYLOADS
+    )
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 1
+
+
 def test_delivery_capacity_released_after_success(
     mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
 ):

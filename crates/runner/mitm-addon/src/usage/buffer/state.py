@@ -121,8 +121,12 @@ class _UsageBufferState:
     """Mutable usage work state; callers must hold UsageEventBuffer._lock."""
 
     def __init__(
-        self, *, max_retained_batch_retries: int = MAX_RETAINED_USAGE_BATCH_RETRIES
+        self,
+        *,
+        max_buffered_webhook_batches: int = MAX_BUFFERED_WEBHOOK_BATCHES,
+        max_retained_batch_retries: int = MAX_RETAINED_USAGE_BATCH_RETRIES,
     ) -> None:
+        self._max_buffered_webhook_batches = max_buffered_webhook_batches
         self._max_retained_batch_retries = max_retained_batch_retries
         self._buffer_id = str(uuid.uuid4())
         self._flush_sequence = 0
@@ -319,7 +323,7 @@ class _UsageBufferState:
         )
         if aggregate_bucket_count >= MAX_AGGREGATE_BUCKETS:
             return True
-        return self._estimated_webhook_batch_count() >= MAX_BUFFERED_WEBHOOK_BATCHES
+        return self._estimated_webhook_batch_count() >= self._max_buffered_webhook_batches
 
     def _estimated_webhook_batch_count(self) -> int:
         count = 0

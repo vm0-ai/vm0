@@ -1,9 +1,9 @@
 """Webhook delivery (HTTP + thread pool).
 
-Background thread pool processes usage reports in parallel; the runner
+Background thread pools process usage reports in parallel; the runner
 first waits for the pending counters to drain, then ``done()`` flushes
-submitted futures during mitmproxy shutdown.  Falls back to synchronous
-delivery if the executor has been shut down (drain/shutdown race) so
+submitted futures during mitmproxy shutdown. Falls back to synchronous
+delivery if an executor has been shut down (drain/shutdown race) so
 reports are not silently lost.
 """
 
@@ -294,46 +294,88 @@ def _is_retryable_http_error(exc: urllib.error.HTTPError) -> bool:
 
 USAGE_WEBHOOK_WORKERS = 4
 MAX_PENDING_WEBHOOK_PAYLOADS = USAGE_WEBHOOK_WORKERS * 4
+MODEL_USAGE_OBSERVATION_WEBHOOK_WORKERS = 2
+MAX_PENDING_MODEL_USAGE_OBSERVATION_PAYLOADS = 16
 
 usage_executor = ThreadPoolExecutor(
     max_workers=USAGE_WEBHOOK_WORKERS,
     thread_name_prefix="usage",
 )
+model_usage_observation_executor = ThreadPoolExecutor(
+    max_workers=MODEL_USAGE_OBSERVATION_WEBHOOK_WORKERS,
+    thread_name_prefix="model-usage-observation",
+)
 
 _delivery_capacity_lock = threading.Lock()
 _pending_delivery_payloads = 0
+_pending_model_usage_observation_payloads = 0
 
 
-def _try_acquire_delivery_capacity() -> int | None:
-    global _pending_delivery_payloads
+def _is_model_usage_observation(log_type: str) -> bool:
+    return log_type == "model_usage_observation"
+
+
+def _try_acquire_delivery_capacity(log_type: str) -> int | None:
+    global _pending_delivery_payloads, _pending_model_usage_observation_payloads
     with _delivery_capacity_lock:
+        if _is_model_usage_observation(log_type):
+            if (
+                _pending_model_usage_observation_payloads
+                >= MAX_PENDING_MODEL_USAGE_OBSERVATION_PAYLOADS
+            ):
+                return None
+            _pending_model_usage_observation_payloads += 1
+            return _pending_model_usage_observation_payloads
         if _pending_delivery_payloads >= MAX_PENDING_WEBHOOK_PAYLOADS:
             return None
         _pending_delivery_payloads += 1
         return _pending_delivery_payloads
 
 
-def _release_delivery_capacity() -> None:
-    global _pending_delivery_payloads
+def _release_delivery_capacity(log_type: str) -> None:
+    global _pending_delivery_payloads, _pending_model_usage_observation_payloads
     with _delivery_capacity_lock:
+        if _is_model_usage_observation(log_type):
+            if _pending_model_usage_observation_payloads <= 0:
+                raise RuntimeError(
+                    "model usage observation delivery capacity released without acquire"
+                )
+            _pending_model_usage_observation_payloads -= 1
+            return
         if _pending_delivery_payloads <= 0:
             raise RuntimeError("usage webhook delivery capacity released without acquire")
         _pending_delivery_payloads -= 1
 
 
-def _pending_delivery_payload_count() -> int:
+def _pending_delivery_payload_count(log_type: str) -> int:
     with _delivery_capacity_lock:
+        if _is_model_usage_observation(log_type):
+            return _pending_model_usage_observation_payloads
         return _pending_delivery_payloads
 
 
 def pending_delivery_payload_count_for_tests() -> int:
-    return _pending_delivery_payload_count()
+    return _pending_delivery_payload_count("usage_event")
+
+
+def pending_model_usage_observation_delivery_payload_count_for_tests() -> int:
+    return _pending_delivery_payload_count("model_usage_observation")
 
 
 def reset_delivery_capacity_for_tests() -> None:
-    global _pending_delivery_payloads
+    global _pending_delivery_payloads, _pending_model_usage_observation_payloads
     with _delivery_capacity_lock:
         _pending_delivery_payloads = 0
+        _pending_model_usage_observation_payloads = 0
+
+
+def shutdown_usage_executors(*, wait: bool) -> None:
+    """Close billing and observation delivery admission and join their workers."""
+    try:
+        usage_executor.shutdown(wait=wait)
+    finally:
+        if model_usage_observation_executor is not usage_executor:
+            model_usage_observation_executor.shutdown(wait=wait)
 
 
 def _post_admitted_webhook_with_retry(
@@ -356,7 +398,7 @@ def _post_admitted_webhook_with_retry(
             delivery_outcome_callback=delivery_outcome_callback,
         )
     finally:
-        _release_delivery_capacity()
+        _release_delivery_capacity(log_type)
 
 
 def enqueue_webhook_delivery(
@@ -391,7 +433,12 @@ def enqueue_webhook_delivery(
     Returns whether the payload was admitted to delivery.  ``False`` means
     delivery was saturated and the caller still owns retry handling.
     """
-    admitted_count = _try_acquire_delivery_capacity()
+    admitted_count = _try_acquire_delivery_capacity(log_type)
+    delivery_capacity = (
+        MAX_PENDING_MODEL_USAGE_OBSERVATION_PAYLOADS
+        if _is_model_usage_observation(log_type)
+        else MAX_PENDING_WEBHOOK_PAYLOADS
+    )
     if admitted_count is None:
         _log_webhook_entry(
             proxy_log_path,
@@ -402,8 +449,8 @@ def enqueue_webhook_delivery(
             payload,
             extra_fields={
                 "reason": "delivery_saturated",
-                "webhook_delivery_capacity": MAX_PENDING_WEBHOOK_PAYLOADS,
-                "webhook_delivery_pending": _pending_delivery_payload_count(),
+                "webhook_delivery_capacity": delivery_capacity,
+                "webhook_delivery_pending": _pending_delivery_payload_count(log_type),
             },
         )
         return False
@@ -417,17 +464,22 @@ def enqueue_webhook_delivery(
             log_type,
             payload,
             extra_fields={
-                "webhook_delivery_capacity": MAX_PENDING_WEBHOOK_PAYLOADS,
+                "webhook_delivery_capacity": delivery_capacity,
                 "webhook_delivery_pending": admitted_count,
             },
         )
     except Exception:
-        _release_delivery_capacity()
+        _release_delivery_capacity(log_type)
         raise
 
     pending_report = admit_pending_report()
+    executor = (
+        model_usage_observation_executor
+        if _is_model_usage_observation(log_type)
+        else usage_executor
+    )
     try:
-        usage_executor.submit(
+        executor.submit(
             _post_admitted_webhook_with_retry,
             url,
             sandbox_token,
@@ -463,9 +515,9 @@ def enqueue_webhook_delivery(
                 pending_report.release()
             raise
         finally:
-            _release_delivery_capacity()
+            _release_delivery_capacity(log_type)
     except Exception:
         pending_report.release()
-        _release_delivery_capacity()
+        _release_delivery_capacity(log_type)
         raise
     return True
