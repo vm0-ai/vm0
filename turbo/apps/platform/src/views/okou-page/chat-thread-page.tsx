@@ -6740,11 +6740,6 @@ function generationTemplateTypeLabel(
       return $.chat.templates.categories.video;
     });
   }
-  if (value.type === "intro-video") {
-    return i18n.t(($) => {
-      return $.chat.templates.categories.introVideo;
-    });
-  }
   if (value.type === "illustration") {
     return i18n.t(($) => {
       return $.chat.templates.categories.illustration;

@@ -5,6 +5,7 @@ import type {
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
 import type { SharedDatabaseHeartbeat } from "./bridge.ts";
+import type { SharedDatabaseHeartbeatResult } from "./protocol.ts";
 import {
   SharedDatabaseWorkerRuntime,
   type WorkerClientEmitter,
@@ -14,6 +15,7 @@ const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 
 interface SharedDatabaseWorkerHeartbeat extends SharedDatabaseHeartbeat {
   readonly apiBaseUrl: string;
+  readonly emit?: WorkerClientEmitter;
 }
 
 function requireRuntime(
@@ -46,15 +48,17 @@ export const heartbeatSharedDatabaseWorker$ = command(
     clientId: string,
     heartbeat: SharedDatabaseWorkerHeartbeat,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<SharedDatabaseHeartbeatResult> => {
     signal.throwIfAborted();
-    await requireRuntime(get(workerRuntimeState$)).heartbeat(
+    const result = await requireRuntime(get(workerRuntimeState$)).heartbeat(
       clientId,
+      heartbeat.emit,
       heartbeat.identity,
       heartbeat.apiBaseUrl,
       heartbeat.vercelProtectionBypass,
     );
     signal.throwIfAborted();
+    return result;
   },
 );
 

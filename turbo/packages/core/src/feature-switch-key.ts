@@ -69,7 +69,6 @@ export enum FeatureSwitchKey {
   CustomConnectorMcp = "customConnectorMcp",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
-  IntroVideoTemplates = "introVideoTemplates",
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
   LatestPresentationTemplates = "latestPresentationTemplates",

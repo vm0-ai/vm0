@@ -673,7 +673,6 @@
       "importedSlides_one": "{{count}} diapositiva",
       "importedSlides_many": "{{count}} diapositive",
       "importedSlides_other": "{{count}} diapositive",
-      "introVideo": "Video introduttivo",
       "multiAccent": "Multiaccento",
       "nextSlide": "Anteprima della diapositiva successiva",
       "noMatches": "Nessuna corrispondenza",
@@ -691,7 +690,6 @@
       "searchConnector": "Cerca modelli",
       "searchConnectors": "Cerca modelli",
       "selected": "Modello: {{title}}",
-      "selectIntroVideo": "Seleziona il modello di video introduttivo {{title}}",
       "selectStyle": "Seleziona lo stile {{style}}",
       "selectTemplate": "Seleziona il modello {{title}}",
       "selectVideo": "Seleziona il modello video {{title}}",
@@ -2298,7 +2296,6 @@
     "templates": {
       "categories": {
         "illustration": "Illustrazione",
-        "introVideo": "Video introduttivo",
         "presentation": "Presentazione",
         "video": "Video",
         "website": "Sito web",

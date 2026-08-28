@@ -51,10 +51,6 @@ export const imageRecognitionAvailable$ = computed((): boolean => {
   return true;
 });
 
-export const introVideoTemplatesEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.IntroVideoTemplates] ?? false;
-});
-
 export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });

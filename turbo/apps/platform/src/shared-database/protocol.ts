@@ -8,6 +8,14 @@ import {
 export const SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME =
   "SharedDatabaseClientNotConnectedError";
 
+export const sharedDatabaseHeartbeatResultSchema = z
+  .object({ clientReconnected: z.boolean() })
+  .strict();
+
+export type SharedDatabaseHeartbeatResult = z.infer<
+  typeof sharedDatabaseHeartbeatResultSchema
+>;
+
 const requestIdSchema = z.string().min(1);
 const subscriptionIdSchema = z.string().min(1);
 
