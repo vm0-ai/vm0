@@ -10226,37 +10226,57 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerTemporaryModelNoticeRow({
-  notice,
+function ComposerModelScopeCard({
+  label,
+  model,
   updating,
-  onSetAsDefault,
+  onUseForFutureChats,
 }: {
-  notice: string;
+  label: string;
+  model: string;
   updating: boolean;
-  onSetAsDefault: () => void;
+  onUseForFutureChats: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 px-3 text-xs leading-5 text-muted-foreground sm:px-4"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <span>{notice}</span>
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"
-        disabled={updating}
-        aria-busy={updating}
-        onClick={onSetAsDefault}
+    <div className="relative z-0 mx-3 sm:ml-auto sm:mr-4 sm:w-fit sm:max-w-[calc(100%_-_2rem)]">
+      {/* The surface extends one content-height behind the composer. The
+          composer stays above it (z-10), while the controls remain fully
+          visible in the half that protrudes below. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 -top-full bottom-0 rounded-xl bg-gray-50"
+        aria-hidden="true"
+      />
+      <div
+        className="relative flex flex-wrap items-center gap-2 p-1 pl-3 text-xs sm:flex-nowrap"
+        role="group"
+        aria-label={label}
+        aria-live="polite"
+        aria-atomic="true"
       >
-        {updating && (
-          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-        )}
-        {t(($) => {
-          return $.chat.composer.setAsDefault;
-        })}
-      </button>
+        <span className="min-w-0 max-w-full text-muted-foreground">
+          <span>
+            {t(($) => {
+              return $.chat.composer.temporarilySwitchTo;
+            })}
+          </span>{" "}
+          <span>{model}</span>
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto shrink-0 text-xs font-medium text-foreground"
+          disabled={updating}
+          aria-busy={updating}
+          onClick={onUseForFutureChats}
+        >
+          {updating && <Loader2 className="animate-spin" aria-hidden="true" />}
+          {t(($) => {
+            return $.chat.composer.useForFutureChats;
+          })}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -10301,23 +10321,10 @@ function ComposerTemporaryModelNotice({
       ? $.settings.models.picker.fast
       : $.settings.models.picker.standard;
   });
-  const notice = !modelChanged
-    ? t(($) => {
-        return selectionServiceTier === "priority"
-          ? $.chat.composer.temporaryFastModeEnabledNotice
-          : $.chat.composer.temporaryFastModeDisabledNotice;
-      })
-    : t(
-        ($) => {
-          return $.chat.composer.temporaryModelNotice;
-        },
-        {
-          model: serviceTierChanged
-            ? `${modelName} ${runSpeedLabel}`
-            : modelName,
-        },
-      );
-  const setAsDefault = () => {
+  const scopedModelLabel = serviceTierChanged
+    ? `${modelName} ${runSpeedLabel}`
+    : modelName;
+  const useForFutureChats = () => {
     if (updating) {
       return;
     }
@@ -10333,10 +10340,13 @@ function ComposerTemporaryModelNotice({
     );
   };
   return (
-    <ComposerTemporaryModelNoticeRow
-      notice={notice}
+    <ComposerModelScopeCard
+      label={t(($) => {
+        return $.chat.composer.modelForThisChat;
+      })}
+      model={scopedModelLabel}
       updating={updating}
-      onSetAsDefault={setAsDefault}
+      onUseForFutureChats={useForFutureChats}
     />
   );
 }
@@ -10347,7 +10357,7 @@ function ComposerTemporaryVideoModelNotice({
   videoModelSignals: ComposerVideoModelSignals;
 }) {
   const { t } = useTranslation();
-  // The effective model, not the pin: the notice names the model a run would
+  // The effective model, not the pin: the card names the model a run would
   // actually use, which is what the member default is being compared against.
   const selection = useLastResolved(videoModelSignals.effectiveVideoModel$);
   const userPreference = useLastResolved(userModelPreference$);
@@ -10364,22 +10374,20 @@ function ComposerTemporaryVideoModelNotice({
     return null;
   }
   const updating = updateLoadable.state === "loading";
-  const setAsDefault = () => {
+  const useForFutureChats = () => {
     if (updating) {
       return;
     }
     detach(updateDefaultVideoModel(selection, pageSignal), Reason.DomCallback);
   };
   return (
-    <ComposerTemporaryModelNoticeRow
-      notice={t(
-        ($) => {
-          return $.chat.composer.temporaryVideoModelNotice;
-        },
-        { model: getModelDisplayName(selection) },
-      )}
+    <ComposerModelScopeCard
+      label={t(($) => {
+        return $.chat.composer.videoModelForThisChat;
+      })}
+      model={getModelDisplayName(selection)}
       updating={updating}
-      onSetAsDefault={setAsDefault}
+      onUseForFutureChats={useForFutureChats}
     />
   );
 }
@@ -10405,22 +10413,20 @@ function ComposerTemporaryImageModelNotice({
     return null;
   }
   const updating = updateLoadable.state === "loading";
-  const setAsDefault = () => {
+  const useForFutureChats = () => {
     if (updating) {
       return;
     }
     detach(updateDefaultImageModel(selection, pageSignal), Reason.DomCallback);
   };
   return (
-    <ComposerTemporaryModelNoticeRow
-      notice={t(
-        ($) => {
-          return $.chat.composer.temporaryImageModelNotice;
-        },
-        { model: IMAGE_MODEL_CONFIGS[selection].label },
-      )}
+    <ComposerModelScopeCard
+      label={t(($) => {
+        return $.chat.composer.imageModelForThisChat;
+      })}
+      model={IMAGE_MODEL_CONFIGS[selection].label}
       updating={updating}
-      onSetAsDefault={setAsDefault}
+      onUseForFutureChats={useForFutureChats}
     />
   );
 }
@@ -10437,7 +10443,7 @@ function ComposerTemporaryModelNoticeSlot({
   if (!enabled) {
     return null;
   }
-  // One notice at a time: it belongs to whichever model the composer is
+  // One card at a time: it belongs to whichever model the composer is
   // currently pointed at, matching the pressed state of the two mode chips.
   if (imageModelSignals && mediaModelCategory === "image") {
     return (
