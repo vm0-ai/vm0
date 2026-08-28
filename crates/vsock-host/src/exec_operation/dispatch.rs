@@ -15,7 +15,7 @@ use super::state::{
 };
 use super::types::{
     ExecControlAck, ExecControlGuestStatus, ExecControlOutcome, ExecOperationResult,
-    ExecOwnedCapturedOutput, SupervisedExecStartTiming,
+    ExecOutputEvent, ExecOwnedCapturedOutput, SupervisedExecStartTiming,
 };
 use super::{exec_operation_guest_error, exec_operation_protocol_error};
 
@@ -119,6 +119,19 @@ fn owned_captured_output(output: ExecCapturedOutput<'_>) -> ExecOwnedCapturedOut
     }
 }
 
+fn owned_output_event(
+    output: vsock_proto::DecodedExecOutput<'_>,
+    before_copy: impl FnOnce(),
+) -> ExecOutputEvent {
+    before_copy();
+    ExecOutputEvent {
+        stream: output.stream,
+        output_seq: output.output_seq,
+        chunk: output.chunk.to_vec(),
+        truncated: output.truncated,
+    }
+}
+
 #[cfg(test)]
 fn run_exec_output_before_copy_hook(shared: &Arc<Shared>) {
     let hook = shared
@@ -218,8 +231,10 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
     drop(senders_to_drop);
 
     let returned_sender = if let Some((permit, decoded)) = prepared_output {
-        #[cfg(test)]
-        run_exec_output_before_copy_hook(shared);
+        let event = owned_output_event(decoded, || {
+            #[cfg(test)]
+            run_exec_output_before_copy_hook(shared);
+        });
 
         {
             let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -234,7 +249,7 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
                 false
             };
             if sender_matches {
-                Some(permit.send(decoded))
+                Some(permit.send(event))
             } else {
                 None
             }
