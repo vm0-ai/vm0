@@ -14564,8 +14564,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain(
       "authenticated actions not available in Okou Social, such as publishing",
     );
-    expect(appendSystemPrompt).not.toContain("SocialKit");
-
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 

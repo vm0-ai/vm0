@@ -251,11 +251,12 @@ function printRecord(value: unknown, compact: boolean): void {
   console.log(JSON.stringify(value, null, compact ? 0 : 2));
 }
 
+type PublicSocialResponse = Omit<SocialKitResponse, "provider">;
+
 function publicSocialResponse(
   response: SocialKitResponse,
-): Readonly<Record<string, unknown>> {
+): PublicSocialResponse {
   return {
-    provider: "okou-social",
     tool: response.tool,
     billingCategory: response.billingCategory,
     billingQuantity: response.billingQuantity,
