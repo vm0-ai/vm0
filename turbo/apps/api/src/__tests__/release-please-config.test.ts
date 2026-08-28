@@ -92,6 +92,28 @@ describe("release-please API deployment graph", () => {
     expect(manifest["turbo/apps/cli"]).toBe(cliPackage.version);
   });
 
+  it("keeps connector catalog validator identity release-managed", () => {
+    const releaseConfig = readJson<ReleasePleaseConfig>(
+      "release-please-config.json",
+    );
+    const manifest = readJson<Record<string, string>>(
+      ".release-please-manifest.json",
+    );
+    const validatorPackage = readJson<VersionedPackageJson>(
+      "turbo/packages/connector-catalog-validation/package.json",
+    );
+
+    expect(
+      releaseConfig.packages["turbo/packages/connector-catalog-validation"],
+    ).toStrictEqual({
+      "release-type": "node",
+      "skip-changelog": true,
+    });
+    expect(manifest["turbo/packages/connector-catalog-validation"]).toBe(
+      validatorPackage.version,
+    );
+  });
+
   it("tracks every API runtime workspace dependency", () => {
     const releaseConfig = readJson<ReleasePleaseConfig>(
       "release-please-config.json",

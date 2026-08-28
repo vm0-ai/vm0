@@ -73,7 +73,6 @@ import {
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
   replaceApiTestConnectorCatalogStoredBytes,
-  setApiTestConnectorCatalogRuntimeProjectionAuthority,
   setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook,
   setApiTestConnectorCatalogRuntimeProjectionIdentityReplacements,
   setApiTestConnectorCatalogValidationAuthority,
@@ -2088,9 +2087,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       apiTestConnectorCatalogValidationAuthority();
     const differentValidationAuthority = {
       ...currentValidationAuthority,
-      backendVersion: "999999.0.0",
-      validationRevision:
-        currentValidationAuthority.validationRevision === "f".repeat(40)
+      validatorVersion: "999999.0.0",
+      buildCommitSha:
+        currentValidationAuthority.buildCommitSha === "f".repeat(40)
           ? "e".repeat(40)
           : "f".repeat(40),
     };
@@ -2137,7 +2136,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).resolves.toStrictEqual(differentValidationAuthority);
     expectApiDispatchTimingEventsNotToLeak(differentAuthorityEvents, [
       differentCatalogVersion,
-      differentValidationAuthority.backendVersion,
+      differentValidationAuthority.validatorVersion,
       differentAuthorityPrompt,
       differentAuthorityActor.agentId,
       "test-oauth-secret",
@@ -2181,7 +2180,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     expectApiDispatchTimingEventsNotToLeak(cachedEvents, [
       differentCatalogVersion,
-      differentValidationAuthority.backendVersion,
+      differentValidationAuthority.validatorVersion,
       cachedPrompt,
       cachedActor.agentId,
       "test-oauth-secret",
@@ -2797,7 +2796,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, repeatedRun.runId, [200]);
   });
 
-  it("reuses unchanged validation authority across API backend versions", async () => {
+  it("reuses current validator package authority", async () => {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
     mockEnv("GIT_COMMIT_SHA", "a".repeat(40));
@@ -2809,18 +2808,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       catalogVersion: `api-test-reusable-projection-authority-${randomUUID()}`,
       runtimeProjection: true,
     });
-    const currentAuthority = apiTestConnectorCatalogValidationAuthority();
-    if (currentAuthority.validationRevision === null) {
-      throw new Error("Expected a catalog validation revision");
-    }
-    const priorBackendAuthority = {
-      ...currentAuthority,
-      backendVersion: "1.0.0",
-    };
-    await setApiTestConnectorCatalogValidationAuthority(priorBackendAuthority);
-    await setApiTestConnectorCatalogRuntimeProjectionAuthority(
-      priorBackendAuthority,
-    );
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await fw.seedTestConnector(actor, {
       connectorSlug: "x",

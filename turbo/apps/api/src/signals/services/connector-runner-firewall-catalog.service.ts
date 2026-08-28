@@ -12,7 +12,7 @@ import {
   type AcceptedConnectorCatalogSnapshot,
   type ExternalCatalogIdentity,
 } from "./connector-catalog-external-reader.service";
-import { connectorCatalogFirewallConfig } from "./connector-catalog-artifacts/relationships";
+import { connectorCatalogFirewallConfig } from "@okouai/connector-catalog-validation/artifacts/relationships";
 
 const MODEL_PROVIDER_FIREWALL_PREFIX = "model-provider:";
 

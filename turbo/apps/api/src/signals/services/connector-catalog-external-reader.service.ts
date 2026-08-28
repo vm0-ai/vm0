@@ -32,14 +32,14 @@ import {
   type ConnectorCatalogArtifact,
   type ConnectorCatalogArtifactConnector,
   type ConnectorCatalogAuthMethod,
-} from "./connector-catalog-artifacts/artifacts";
+} from "@okouai/connector-catalog-validation/artifacts/artifacts";
 import {
   connectorCatalogArtifactFailureCode,
   decodeAttestedConnectorCatalogSnapshot,
   decodeConnectorCatalogSnapshot,
-} from "./connector-catalog-artifacts/loader";
-import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
-import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
+} from "@okouai/connector-catalog-validation/artifacts/loader";
+import { connectorCatalogIconUrl } from "@okouai/connector-catalog-validation/artifacts/icon";
+import { deriveConnectorCatalogFirewallPermissions } from "@okouai/connector-catalog-validation/artifacts/relationships";
 import {
   connectorCatalogCompatibilityEvaluationSchema,
   connectorCatalogExecutableCapabilityState,
@@ -199,8 +199,8 @@ function persistedCatalogValidationAuthority(args: {
   return args.backendVersion === null
     ? null
     : {
-        backendVersion: args.backendVersion,
-        validationRevision: args.validationRevision,
+        validatorVersion: args.backendVersion,
+        buildCommitSha: args.validationRevision,
       };
 }
 

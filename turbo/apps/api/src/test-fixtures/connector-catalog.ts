@@ -18,12 +18,12 @@ import { nowDate } from "../lib/time";
 import {
   connectorCatalogArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-} from "../signals/services/connector-catalog-artifacts/artifacts";
-import { encodeConnectorCatalogSnapshot } from "../signals/services/connector-catalog-artifacts/loader";
+} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+import { encodeConnectorCatalogSnapshot } from "@okouai/connector-catalog-validation/artifacts/loader";
 import {
   connectorCatalogFirewallConfig,
   validateConnectorCatalogArtifact,
-} from "../signals/services/connector-catalog-artifacts/relationships";
+} from "@okouai/connector-catalog-validation/artifacts/relationships";
 import {
   connectorCatalogExecutableCapabilityState,
   connectorCatalogCompatibilityEvaluationSchema,
@@ -371,8 +371,8 @@ function requireSingleCatalogMutation(
 export function apiTestConnectorCatalogValidationAuthority(): ConnectorCatalogValidationAuthority {
   const validator = currentConnectorCatalogValidatorIdentity();
   return {
-    backendVersion: validator.backendVersion,
-    validationRevision: validator.validationRevision,
+    validatorVersion: validator.validatorVersion,
+    buildCommitSha: validator.buildCommitSha,
   };
 }
 
@@ -426,8 +426,8 @@ export async function readApiTestConnectorCatalogCompatibilityEvaluations(): Pro
         row.catalogValidationBackendVersion === null
           ? null
           : {
-              backendVersion: row.catalogValidationBackendVersion,
-              validationRevision: row.catalogValidationBuildCommitSha,
+              validatorVersion: row.catalogValidationBackendVersion,
+              buildCommitSha: row.catalogValidationBuildCommitSha,
             },
       evaluatedAt: row.evaluatedAt.toISOString(),
       payload: row.payload,
@@ -456,8 +456,8 @@ export async function readApiTestConnectorCatalogValidationAuthority(): Promise<
   return row.catalogValidationBackendVersion === null
     ? null
     : {
-        backendVersion: row.catalogValidationBackendVersion,
-        validationRevision: row.catalogValidationBuildCommitSha,
+        validatorVersion: row.catalogValidationBackendVersion,
+        buildCommitSha: row.catalogValidationBuildCommitSha,
       };
 }
 
@@ -469,8 +469,8 @@ export async function setApiTestConnectorCatalogValidationAuthority(
   const updated = await db
     .update(connectorCatalogCompatibilityEvaluation)
     .set({
-      catalogValidationBackendVersion: authority?.backendVersion ?? null,
-      catalogValidationBuildCommitSha: authority?.validationRevision ?? null,
+      catalogValidationBackendVersion: authority?.validatorVersion ?? null,
+      catalogValidationBuildCommitSha: authority?.buildCommitSha ?? null,
     })
     .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
     .returning({ sourceId: connectorCatalogCompatibilityEvaluation.sourceId });
@@ -497,9 +497,9 @@ export async function replaceApiTestConnectorCatalogStoredBytes(args: {
         catalogVersion: args.catalogVersion,
         catalogDigest,
         catalogValidationBackendVersion:
-          args.catalogValidationAuthority?.backendVersion ?? null,
+          args.catalogValidationAuthority?.validatorVersion ?? null,
         catalogValidationBuildCommitSha:
-          args.catalogValidationAuthority?.validationRevision ?? null,
+          args.catalogValidationAuthority?.buildCommitSha ?? null,
       })
       .where(currentApiTestConnectorCatalogCompatibilityWhere(identity))
       .returning({
@@ -717,12 +717,12 @@ export async function corruptApiTestConnectorCatalogRuntimeProjectionPayload(
 
 export async function expireApiTestConnectorCatalogRuntimeProjectionAuthority(): Promise<void> {
   await setApiTestConnectorCatalogRuntimeProjectionAuthority({
-    backendVersion: "999.0.0",
-    validationRevision: null,
+    validatorVersion: "999.0.0",
+    buildCommitSha: null,
   });
 }
 
-export async function setApiTestConnectorCatalogRuntimeProjectionAuthority(
+async function setApiTestConnectorCatalogRuntimeProjectionAuthority(
   authority: ConnectorCatalogValidationAuthority,
 ): Promise<void> {
   const identity = await currentApiTestConnectorCatalogIdentity();
@@ -735,8 +735,8 @@ export async function setApiTestConnectorCatalogRuntimeProjectionAuthority(
   const updated = await db
     .update(connectorCatalogRuntimeProjectionSets)
     .set({
-      catalogValidationBackendVersion: authority.backendVersion,
-      catalogValidationBuildCommitSha: authority.validationRevision,
+      catalogValidationBackendVersion: authority.validatorVersion,
+      catalogValidationBuildCommitSha: authority.buildCommitSha,
     })
     .where(eq(connectorCatalogRuntimeProjectionSets.id, projectionSet.id))
     .returning({ id: connectorCatalogRuntimeProjectionSets.id });
@@ -748,20 +748,20 @@ export async function readApiTestConnectorCatalogRuntimeProjectionAuthority(): P
   const db = store.set(writeDb$);
   const [projectionSet] = await db
     .select({
-      backendVersion:
+      validatorVersion:
         connectorCatalogRuntimeProjectionSets.catalogValidationBackendVersion,
-      validationRevision:
+      buildCommitSha:
         connectorCatalogRuntimeProjectionSets.catalogValidationBuildCommitSha,
     })
     .from(connectorCatalogRuntimeProjectionSets)
     .where(currentApiTestConnectorCatalogRuntimeProjectionSetWhere(identity))
     .limit(1);
-  if (projectionSet === undefined || projectionSet.backendVersion === null) {
+  if (projectionSet === undefined || projectionSet.validatorVersion === null) {
     return null;
   }
   return {
-    backendVersion: projectionSet.backendVersion,
-    validationRevision: projectionSet.validationRevision,
+    validatorVersion: projectionSet.validatorVersion,
+    buildCommitSha: projectionSet.buildCommitSha,
   };
 }
 

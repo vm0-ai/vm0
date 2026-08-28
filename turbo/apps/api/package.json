@@ -39,6 +39,7 @@
     "@vercel/functions": "^3.4.4",
     "@vercel/otel": "^2.1.2",
     "@okouai/api-contracts": "workspace:*",
+    "@okouai/connector-catalog-validation": "workspace:*",
     "@okouai/connectors": "workspace:*",
     "@okouai/core": "workspace:*",
     "@okouai/db": "workspace:*",

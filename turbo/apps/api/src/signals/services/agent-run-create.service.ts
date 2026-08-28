@@ -5344,8 +5344,8 @@ function buildConnectorPermissionBaseline(
     version: 1,
     catalogIdentity: snapshot.catalogIdentity,
     validationAuthority: {
-      backendVersion: validationAuthority.backendVersion,
-      buildCommitSha: validationAuthority.validationRevision,
+      backendVersion: validationAuthority.validatorVersion,
+      buildCommitSha: validationAuthority.buildCommitSha,
     },
     connectors: Object.fromEntries(
       sources.map((source) => {
