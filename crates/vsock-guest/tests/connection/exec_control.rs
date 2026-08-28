@@ -132,12 +132,12 @@ sleep 60
     let mut permissions = fs::metadata(agent_path.as_str()).unwrap().permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(agent_path.as_str(), permissions).unwrap();
-    vsock_guest::set_debug_guest_agent_executable_for_tests(PathBuf::from(agent_path.as_str()));
     let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let target_seq = 203;
     let control_nonce = unique_exec_control_nonce(u64::from(target_seq));
     let endpoint = process_control_ipc::endpoint_name(target_seq, &control_nonce);
-    let (handle, mut host_stream) = start_guest_connection();
+    let (handle, mut host_stream) =
+        start_guest_connection_with_guest_agent_program(PathBuf::from(agent_path.as_str()));
 
     send_exec_start_request(
         &mut host_stream,

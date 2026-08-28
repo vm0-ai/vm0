@@ -9,6 +9,7 @@ pub(crate) use connection::{
     join_guest_connection, listener_has_pending_connection, read_guest_ready,
     start_guest_connection, start_guest_connection_with_dns_readiness_program,
     start_guest_connection_with_exec_drain_deadline,
+    start_guest_connection_with_guest_agent_program,
     start_guest_connection_with_guest_state_restore_program,
     start_guest_connection_with_storage_manifest_program, wait_for_guest_connection,
 };

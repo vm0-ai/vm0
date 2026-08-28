@@ -65,7 +65,7 @@ use vsock_proto::{
 #[cfg(test)]
 use vsock_proto::MSG_EXEC_RESULT;
 
-use crate::agent_command::spawn_agent_command_with_pipes;
+use crate::agent_command::{GuestAgentProgram, spawn_agent_command_with_pipes};
 use crate::drain::{
     BoundedDrainResult, BoundedStreamConfig, DrainCancellation, drain_bounded_cancellable,
 };
@@ -246,6 +246,7 @@ pub(crate) struct ExecOperationWorkerRequest {
     control: ExecControlPolicy,
     exec_control_guard: Option<ExecControlGuard>,
     exec_control_bootstrap_endpoint: Option<String>,
+    guest_agent_program: GuestAgentProgram,
     process_containment_mode: ProcessContainmentMode,
     drain_deadline: Duration,
 }
@@ -272,6 +273,7 @@ impl ExecOperationWorkerRequest {
         decoded: vsock_proto::DecodedExecStart<'_>,
         process_containment_mode: ProcessContainmentMode,
         drain_deadline: Duration,
+        guest_agent_program: GuestAgentProgram,
     ) -> io::Result<Self> {
         vsock_proto::validate_exec_process_contract(
             decoded.role,
@@ -352,6 +354,7 @@ impl ExecOperationWorkerRequest {
             control: decoded.control,
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
+            guest_agent_program,
             process_containment_mode,
             drain_deadline,
         })
@@ -1340,9 +1343,11 @@ fn run_exec_operation_worker<S>(
             pipe_stdin,
             process_containment,
         ),
-        ExecProcessRole::Agent => {
-            spawn_agent_command_with_pipes(effective_env, process_containment)
-        }
+        ExecProcessRole::Agent => spawn_agent_command_with_pipes(
+            effective_env,
+            process_containment,
+            &request.guest_agent_program,
+        ),
     };
     let spawned = match spawn_result {
         Ok(spawned) => spawned,
@@ -2229,6 +2234,7 @@ mod tests {
             control: ExecControlPolicy::Disabled,
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
+            guest_agent_program: GuestAgentProgram::production(),
             process_containment_mode: ProcessContainmentMode::BuildConfigured,
             drain_deadline: EXEC_OUTPUT_DRAIN_DEADLINE,
         }
@@ -2281,6 +2287,7 @@ mod tests {
                 decoded,
                 ProcessContainmentMode::TestNoop,
                 EXEC_OUTPUT_DRAIN_DEADLINE,
+                GuestAgentProgram::production(),
             ) {
                 Ok(_) => panic!("worker accepted invalid process contract"),
                 Err(error) => error,

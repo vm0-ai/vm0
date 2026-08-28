@@ -12,7 +12,6 @@ static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
 static SANDBOX_USER_CREDENTIALS_INIT: Mutex<()> = Mutex::new(());
 
-#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 const SANDBOX_USER_BASE_PATH: &str = "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games";
 
 #[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
@@ -83,7 +82,7 @@ pub(crate) fn apply_command_identity(command: &mut Command, sudo: bool) -> io::R
 pub(crate) fn configure_agent_command_environment(command: &mut Command) -> io::Result<()> {
     #[cfg(any(debug_assertions, feature = "test-support"))]
     {
-        let _ = command;
+        command.env("PATH", SANDBOX_USER_BASE_PATH);
         Ok(())
     }
 

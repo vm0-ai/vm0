@@ -33,6 +33,7 @@ mod worker_ownership;
 mod writer;
 
 pub use connection::handle_connection_with_test_dns_readiness_program;
+pub use connection::handle_connection_with_test_guest_agent_program;
 pub use connection::handle_connection_with_test_guest_state_restore_program;
 pub use connection::handle_connection_with_test_storage_manifest_program;
 pub use connection::{
@@ -46,10 +47,4 @@ pub use log::log;
 #[doc(hidden)]
 pub fn set_debug_guest_write_file_path_for_tests(path: std::path::PathBuf) {
     handlers::set_debug_guest_write_file_path(path);
-}
-
-#[cfg(any(debug_assertions, feature = "test-support"))]
-#[doc(hidden)]
-pub fn set_debug_guest_agent_executable_for_tests(path: std::path::PathBuf) {
-    agent_command::set_debug_guest_agent_executable(path);
 }

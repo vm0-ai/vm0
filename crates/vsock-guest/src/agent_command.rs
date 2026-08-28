@@ -5,58 +5,47 @@
 //! installed directly in the child environment and remain absent from argv
 //! and diagnostics.
 
-use std::borrow::Cow;
 use std::fs;
 use std::io;
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
-#[cfg(any(debug_assertions, feature = "test-support"))]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{ChildStderr, ChildStdout, Command, Stdio};
-#[cfg(any(debug_assertions, feature = "test-support"))]
-use std::sync::Mutex;
 
 use crate::process_containment::{ExecProcessContainment, ProcessContainmentCleanupMode};
 use crate::shell_command::{SpawnedCommand, spawn_command_in_containment};
 
 pub(crate) const GUEST_AGENT_EXECUTABLE: &str = "/usr/local/bin/guest-agent";
 
-#[cfg(any(debug_assertions, feature = "test-support"))]
-static DEBUG_GUEST_AGENT_EXECUTABLE: Mutex<Option<PathBuf>> = Mutex::new(None);
+#[derive(Clone)]
+pub(crate) enum GuestAgentProgram {
+    Production,
+    Test(PathBuf),
+}
+
+impl GuestAgentProgram {
+    pub(crate) fn production() -> Self {
+        Self::Production
+    }
+
+    pub(crate) fn for_test(path: PathBuf) -> Self {
+        Self::Test(path)
+    }
+
+    fn executable(&self) -> &Path {
+        match self {
+            Self::Production => Path::new(GUEST_AGENT_EXECUTABLE),
+            Self::Test(path) => path,
+        }
+    }
+}
 
 pub(crate) fn spawn_agent_command_with_pipes(
     env: &[(&str, &str)],
     process_containment: ExecProcessContainment,
+    program: &GuestAgentProgram,
 ) -> io::Result<SpawnedCommand> {
-    let executable = configured_agent_executable();
-    spawn_agent_executable_with_pipes(&executable, env, process_containment)
-}
-
-fn configured_agent_executable() -> Cow<'static, Path> {
-    #[cfg(any(debug_assertions, feature = "test-support"))]
-    {
-        let configured = DEBUG_GUEST_AGENT_EXECUTABLE
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        configured.map_or_else(
-            || Cow::Borrowed(Path::new(GUEST_AGENT_EXECUTABLE)),
-            Cow::Owned,
-        )
-    }
-
-    #[cfg(not(any(debug_assertions, feature = "test-support")))]
-    {
-        Cow::Borrowed(Path::new(GUEST_AGENT_EXECUTABLE))
-    }
-}
-
-#[cfg(any(debug_assertions, feature = "test-support"))]
-pub(crate) fn set_debug_guest_agent_executable(path: PathBuf) {
-    *DEBUG_GUEST_AGENT_EXECUTABLE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(path);
+    spawn_agent_executable_with_pipes(program.executable(), env, process_containment)
 }
 
 fn spawn_agent_executable_with_pipes(
@@ -73,6 +62,7 @@ fn spawn_agent_executable_with_pipes(
 
         let mut command = Command::new(executable);
         command
+            .env_clear()
             .envs(env.iter().copied())
             .stdout(Stdio::from(output_writer))
             .stderr(Stdio::from(output_stderr));
