@@ -1663,6 +1663,41 @@ def test_conflicting_sse_event_type_is_not_reported(
         mitm_addon.response(flow)
 
 
+def test_uninspectable_billable_success_is_not_reported_as_provider_failure(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        firewall_name="model-provider:anthropic-api-key",
+        request_path="/v1/messages",
+        response_headers=header_map(
+            {
+                "content-type": "text/event-stream",
+                "content-encoding": "br",
+            }
+        ),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    stream = response_stream(flow)
+    assert stream(b"uninspectable upstream bytes") == b""
+    assert stream(b"") == b""
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == []
+
+
 def test_sse_failure_is_reported_before_response_hook(
     tmp_path,
     real_flow,
