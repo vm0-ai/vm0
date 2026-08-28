@@ -5,14 +5,12 @@ import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 import {
-  INTRO_VIDEO_TEMPLATE_ITEMS,
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@okouai/core";
-import { INTRO_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/intro-video-template-items";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -10977,52 +10975,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(events.body.events).toStrictEqual([]);
   }, 60_000);
 
-  it("gates intro-video templates before prompt and CLI activation", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0];
-    if (!template || !actor.orgId) {
-      throw new Error("Expected an org-scoped intro-video template actor");
-    }
-    const selection: GenerationTemplateRequest = {
-      type: "intro-video",
-      selection: { templateId: template.id },
-    };
-
-    const switchedOff = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "turn this interview into a video",
-        userMessage: userMessageWithTemplate(
-          "turn this interview into a video",
-          selection,
-        ),
-      },
-      [400],
-    );
-    expectApiError(switchedOff.body);
-    expect(switchedOff.body.error.message).toBe("Unknown intro-video template");
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.IntroVideoTemplates]: true },
-    );
-    const sent = await sendChatRun(actor, {
-      agentId,
-      prompt: "turn this interview into a video",
-      template: selection,
-    });
-    const run = await api.readRun(actor, sent.runId);
-    expect(run.appendSystemPrompt ?? "").toContain(
-      `okou generate intro-video --template ${template.id}`,
-    );
-    const { claim } = await claimChatRun(runnerGroup, sent.runId);
-    expect(claim.environment?.[INTRO_VIDEO_TEMPLATES_ENABLED_ENV]).toBe("1");
-    await cancelChatRun(actor, sent.runId);
-  }, 90_000);
-
   it("reports one template usage per template that reached the prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -11210,35 +11162,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     ]);
     await cancelChatRun(actor, active.runId);
   }, 90_000);
-
-  it("reports no usage for a selection the prompt builder rejected", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0];
-    if (!template) {
-      throw new Error("Expected a registered intro-video template");
-    }
-    context.mocks.axiom.ingest.mockClear();
-
-    // The switch is off for this actor, so the selection never becomes guidance.
-    const rejected = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "turn this interview into a video",
-        userMessage: userMessageWithTemplate(
-          "turn this interview into a video",
-          {
-            type: "intro-video",
-            selection: { templateId: template.id },
-          },
-        ),
-      },
-      [400],
-    );
-    expectApiError(rejected.body);
-    expect(templateUsageEvents()).toStrictEqual([]);
-  }, 60_000);
 
   it("resolves attachment metadata in ordered waves of four", async () => {
     const { actor, agentId } = await entitledChatActor();

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createMermaidDiagramRegistry } from "../../../signals/mermaid-diagram.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { Markdown } from "../markdown.tsx";
+import { Markdown } from "../rich-markdown.tsx";
 
 const context = testContext();
 

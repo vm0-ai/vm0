@@ -1988,7 +1988,9 @@ describe("zero attachment chips", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const bodyImage = await screen.findByAltText("first.png");
+    const bodyImage = await screen.findByAltText("first.png", undefined, {
+      timeout: 10_000,
+    });
     const previewButton = bodyImage.closest("button");
     if (!previewButton) {
       throw new Error("Markdown image preview button not found");

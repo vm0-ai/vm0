@@ -1,10 +1,25 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
-import mermaid from "@okouai/mermaid-flowchart";
 
+import { IN_VITEST } from "../env.ts";
+import { createRetryableLazyModule } from "./retryable-lazy-module.ts";
 import { createObjectUrlResource } from "./object-url-resource.ts";
 import { theme$ } from "./theme.ts";
-import { settle } from "./utils.ts";
+import { onRejection, settle } from "./utils.ts";
+
+export type MermaidModule = typeof import("@okouai/mermaid-flowchart");
+export type MermaidImporter = () => Promise<MermaidModule>;
+
+declare global {
+  interface Window {
+    vm0MermaidImporterForTest?: MermaidImporter;
+  }
+}
+
+const mermaidModule = createRetryableLazyModule(() => {
+  const testImporter = IN_VITEST ? window.vm0MermaidImporterForTest : undefined;
+  return testImporter?.() ?? import("@okouai/mermaid-flowchart");
+});
 
 /**
  * Mermaid diagrams render through a pull model. Each diagram source owns one
@@ -33,6 +48,8 @@ export interface MermaidDiagramSignals {
   readonly code: string;
   /** Resolves `null` when the source is not a supported Mermaid flowchart. */
   readonly diagram$: Computed<Promise<MermaidDiagramImage | null>>;
+  /** Retries the current theme after a transient module or render failure. */
+  readonly retry$: Command<void, []>;
 }
 
 // Declared here rather than in the parse pipeline: the pipeline emits only
@@ -91,6 +108,7 @@ const FLOWCHART_DIAGRAM_TYPES: ReadonlySet<string> = new Set([
 
 /** Returns the diagram SVG, or undefined when the source is not a flowchart. */
 async function renderDiagramSvg(
+  mermaid: (typeof import("@okouai/mermaid-flowchart"))["default"],
   id: string,
   code: string,
 ): Promise<string | undefined> {
@@ -180,19 +198,22 @@ export function createMermaidDiagramSignals(
     "light" | "dark",
     Promise<MermaidDiagramImage | null>
   >();
+  const internalRetryVersion$ = state(0);
   const diagram$ = computed((get): Promise<MermaidDiagramImage | null> => {
+    get(internalRetryVersion$);
     const theme = get(theme$);
     const existing = imagesByTheme.get(theme);
     if (existing !== undefined) {
       return existing;
     }
     const renderQueue = get(mermaidRenderQueue$);
-    const image = (async (): Promise<MermaidDiagramImage | null> => {
+    const imageAttempt = (async (): Promise<MermaidDiagramImage | null> => {
       // Read the tail and replace it in the same synchronous block, so two
       // resuming renders cannot both chain onto the same predecessor.
       const previousRender = renderQueue.tail;
       const render = (async (): Promise<string | undefined> => {
         await settle(previousRender);
+        const { default: mermaid } = await mermaidModule.load();
         mermaid.initialize({
           startOnLoad: false,
           // "strict" makes mermaid sanitize the generated SVG with DOMPurify
@@ -215,7 +236,11 @@ export function createMermaidDiagramSignals(
           themeVariables: { fontSize: "14px" },
           flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
         });
-        return renderDiagramSvg(diagramRenderId(`${theme}:${code}`), code);
+        return renderDiagramSvg(
+          mermaid,
+          diagramRenderId(`${theme}:${code}`),
+          code,
+        );
       })();
       renderQueue.tail = render;
       const markup = await render;
@@ -243,10 +268,21 @@ export function createMermaidDiagramSignals(
         file,
       };
     })();
+    const image = onRejection(imageAttempt, () => {
+      if (imagesByTheme.get(theme) === image) {
+        imagesByTheme.delete(theme);
+      }
+    });
     imagesByTheme.set(theme, image);
     return image;
   });
-  return { code, diagram$ };
+  const retry$ = command(({ get, set }): void => {
+    imagesByTheme.delete(get(theme$));
+    set(internalRetryVersion$, (version) => {
+      return version + 1;
+    });
+  });
+  return { code, diagram$, retry$ };
 }
 
 export interface MermaidDiagramRegistry {

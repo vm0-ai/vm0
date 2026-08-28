@@ -1,5 +1,5 @@
 interface ChunkModuleInfo {
-  readonly importers: readonly string[];
+  readonly importedIds: readonly string[];
 }
 
 interface ChunkingContext {
@@ -8,7 +8,6 @@ interface ChunkingContext {
 
 const PNPM_PACKAGE_PREFIX =
   /\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?/u;
-const WORKSPACE_PACKAGE_PREFIX = "/packages/";
 
 const chunkGroups = [
   {
@@ -42,7 +41,7 @@ const chunkGroups = [
       "highlight.js",
       "katex",
       "lowlight",
-      "mermaid-flowchart",
+      "mermaid",
       "micromark-util-sanitize-uri",
       "rehype-attr",
       "rehype-autolink-headings",
@@ -76,17 +75,7 @@ function normalizeModuleId(moduleId: string): string {
 function packagePath(moduleId: string): string | null {
   const normalizedId = normalizeModuleId(moduleId);
   const match = PNPM_PACKAGE_PREFIX.exec(normalizedId);
-  if (match) {
-    return normalizedId.slice(match.index + match[0].length);
-  }
-  const workspacePackageIndex = normalizedId.lastIndexOf(
-    WORKSPACE_PACKAGE_PREFIX,
-  );
-  return workspacePackageIndex === -1
-    ? null
-    : normalizedId.slice(
-        workspacePackageIndex + WORKSPACE_PACKAGE_PREFIX.length,
-      );
+  return match ? normalizedId.slice(match.index + match[0].length) : null;
 }
 
 function matchesPackage(path: string, packageName: string): boolean {
@@ -113,48 +102,47 @@ function packageChunkName(moduleId: string): string | null {
 
 export function createStableChunkName(entryModuleId: string) {
   const normalizedEntryModuleId = normalizeModuleId(entryModuleId);
-  const startupModules = new Set<string>();
+  let startupModules: ReadonlySet<string> | undefined;
 
-  // Walking static importers back to main keeps feature-only dependencies in
-  // Rolldown's normal lazy chunks instead of pulling them into startup.
-  function isStartupModule(
-    moduleId: string,
-    context: ChunkingContext,
-    visiting = new Set<string>(),
-  ): boolean {
-    if (startupModules.has(moduleId)) {
-      return true;
-    }
-    if (normalizeModuleId(moduleId) === normalizedEntryModuleId) {
-      startupModules.add(moduleId);
-      return true;
-    }
-    if (visiting.has(moduleId)) {
-      return false;
+  function getStartupModules(context: ChunkingContext): ReadonlySet<string> {
+    if (startupModules) {
+      return startupModules;
     }
 
-    const moduleInfo = context.getModuleInfo(moduleId);
-    if (moduleInfo === null) {
-      return false;
+    const visited = new Set<string>();
+    const pending = [normalizedEntryModuleId];
+    while (pending.length > 0) {
+      const moduleId = pending.pop();
+      if (moduleId === undefined) {
+        continue;
+      }
+      const normalizedModuleId = normalizeModuleId(moduleId);
+      if (visited.has(normalizedModuleId)) {
+        continue;
+      }
+      visited.add(normalizedModuleId);
+
+      const moduleInfo = context.getModuleInfo(moduleId);
+      if (moduleInfo === null) {
+        continue;
+      }
+      for (const importedId of moduleInfo.importedIds) {
+        if (!visited.has(normalizeModuleId(importedId))) {
+          pending.push(importedId);
+        }
+      }
     }
 
-    visiting.add(moduleId);
-    const startupModule = moduleInfo.importers.some((importerId) => {
-      return isStartupModule(importerId, context, visiting);
-    });
-    visiting.delete(moduleId);
-    // A false result can be specific to the current cycle traversal. Cache only
-    // proven reachability so later Rolldown callbacks cannot inherit that
-    // contextual miss and become order-dependent.
-    if (startupModule) {
-      startupModules.add(moduleId);
-    }
-    return startupModule;
+    startupModules = visited;
+    return startupModules;
   }
 
   return (moduleId: string, context: ChunkingContext): string | null => {
     const chunkName = packageChunkName(moduleId);
-    if (chunkName === null || !isStartupModule(moduleId, context)) {
+    if (
+      chunkName === null ||
+      !getStartupModules(context).has(normalizeModuleId(moduleId))
+    ) {
       return null;
     }
     return chunkName;

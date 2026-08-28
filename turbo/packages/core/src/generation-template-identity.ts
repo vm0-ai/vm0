@@ -15,7 +15,6 @@ import { findWorkflowTemplateItem } from "./workflow-template-items";
 export type GenerationTemplateCategory =
   | "avatar"
   | "illustration"
-  | "intro-video"
   | "presentation"
   | "video"
   | "website"
@@ -28,9 +27,9 @@ export type GenerationTemplateSource = "builtin" | "user-imported";
  * One template selection, normalised into a shape that is comparable across
  * categories.
  *
- * The seven built-in catalogues each name their templates differently
+ * The six built-in catalogues each name their templates differently
  * (`template:`, `website-template:`, `image-style:`, `video-template:`,
- * `intro-video-template:`, `workflow-template:`, `avatar-template:`). Reporting
+ * `workflow-template:`, `avatar-template:`). Reporting
  * on the raw selection would produce one incomparable property per category, so
  * every consumer reads this instead.
  */
@@ -163,9 +162,6 @@ export function generationTemplateIdentity(
     }
     case "video": {
       return videoIdentity(request.selection);
-    }
-    case "intro-video": {
-      return builtinIdentity("intro-video", request.selection.templateId);
     }
     case "illustration": {
       return builtinIdentity(

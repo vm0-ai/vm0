@@ -35,7 +35,6 @@ function noGenerationTemplates(): ResolvedThreadGenerationTemplates {
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
-  readonly introVideoTemplatesEnabled: boolean;
   readonly latestPresentationTemplatesEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
   /**
@@ -45,7 +44,6 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   readonly mountedUserPresentationTemplateIds: readonly string[];
 }): ResolvedThreadGenerationTemplates {
   const options = {
-    introVideoTemplatesEnabled: args.introVideoTemplatesEnabled,
     latestPresentationTemplatesEnabled: args.latestPresentationTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds: args.mountedUserPresentationTemplateIds,

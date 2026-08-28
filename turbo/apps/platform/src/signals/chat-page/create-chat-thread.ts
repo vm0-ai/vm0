@@ -151,10 +151,8 @@ import {
 } from "./chat-event-body-blocks.ts";
 import type { ChatActionContext } from "./chat-action-context.ts";
 import type { Root } from "hast";
-import {
-  markdownCardKey,
-  parseMarkdownTree,
-} from "../../lib/markdown/pipeline.ts";
+import { createPlainMarkdownTree } from "../../lib/markdown/plain-markdown.ts";
+import { loadRichMarkdown } from "../rich-markdown-module.ts";
 import type { MarkdownCardRef } from "./markdown-card-ref.ts";
 import {
   createArtifactCardSignalsRegistry,
@@ -1365,6 +1363,7 @@ function createTranscriptEventsComputed(
         return {
           ...event,
           tree: entry.tree,
+          richContentError: entry.richContentError,
           isQueued,
           userMessageRenderDocument,
         };
@@ -1375,6 +1374,7 @@ function createTranscriptEventsComputed(
 
 interface SemanticChatEvent extends SemanticChatEventState {
   readonly tree: Root | undefined;
+  readonly richContentError: boolean;
   readonly userMessageRenderDocument: UserMessageRenderDocument | undefined;
 }
 
@@ -1385,6 +1385,7 @@ function semanticTranscriptEventsFromRaw(
   raw: readonly ChatEventProjectionEntry[],
   chatEvents: readonly ChatEvent[],
   trees: ReadonlyMap<string, Root>,
+  richContentErrors: ReadonlySet<string>,
   chatToolActivityEnabled: boolean,
 ): SemanticChatEvent[] {
   const renderDocumentByEventId = new Map(
@@ -1399,6 +1400,7 @@ function semanticTranscriptEventsFromRaw(
     return {
       ...entry,
       tree: trees.get(entry.event.id),
+      richContentError: richContentErrors.has(entry.event.id),
       userMessageRenderDocument: renderDocumentByEventId.get(entry.event.id),
     };
   });
@@ -1883,52 +1885,132 @@ function createCardRefRegistrar({
   );
 }
 
+interface EventTree {
+  readonly content: string;
+  readonly tree: Root | undefined;
+  readonly error: boolean;
+}
+
+interface RichEventTreePlan {
+  readonly eventId: string;
+  readonly content: string;
+  readonly treeSource: string;
+  readonly descriptors: readonly CardDescriptorBlock[];
+}
+
+function planEventTreeUpdates(
+  events: readonly ChatEvent[],
+  current: ReadonlyMap<string, EventTree>,
+  chatActionContext: ChatActionContext,
+): {
+  readonly next: Map<string, EventTree> | undefined;
+  readonly richPlans: RichEventTreePlan[];
+} {
+  let next: Map<string, EventTree> | undefined;
+  const richPlans: RichEventTreePlan[] = [];
+  for (const event of events) {
+    const content = chatEventTreeContent(event);
+    if (content === null || current.get(event.id)?.content === content) {
+      continue;
+    }
+    const plan = chatEventTreePlan(event, chatActionContext);
+    if (plan === null) {
+      continue;
+    }
+    const plainTree = createPlainMarkdownTree(plan.treeSource, {
+      mathEnabled: true,
+    });
+    next ??= new Map(current);
+    if (plainTree !== null) {
+      next.set(event.id, {
+        content: plan.content,
+        tree: plainTree,
+        error: false,
+      });
+      continue;
+    }
+    // A streaming event must stop showing its prior tree while the new rich
+    // body loads. This pending identity also deduplicates concurrent ensures.
+    next.set(event.id, {
+      content: plan.content,
+      tree: undefined,
+      error: false,
+    });
+    richPlans.push({ eventId: event.id, ...plan });
+  }
+  return { next, richPlans };
+}
+
+function markPendingEventTreesFailed(
+  current: ReadonlyMap<string, EventTree>,
+  plans: readonly RichEventTreePlan[],
+): Map<string, EventTree> | undefined {
+  let failed: Map<string, EventTree> | undefined;
+  for (const plan of plans) {
+    const entry = current.get(plan.eventId);
+    if (
+      entry?.content === plan.content &&
+      entry.tree === undefined &&
+      !entry.error
+    ) {
+      failed ??= new Map(current);
+      failed.set(plan.eventId, { ...entry, error: true });
+    }
+  }
+  return failed;
+}
+
 function createEventTreeSignals(registries: EventTreeRegistries) {
   const { chatActionContext, mermaidDiagrams, imageLoads } = registries;
-  interface EventTree {
-    readonly content: string;
-    readonly tree: Root;
-  }
 
   const internalEventTrees$ = state<ReadonlyMap<string, EventTree>>(new Map());
   const eventTrees$ = computed((get): ReadonlyMap<string, Root> => {
     const trees = new Map<string, Root>();
     for (const [eventId, entry] of get(internalEventTrees$)) {
-      trees.set(eventId, entry.tree);
+      if (entry.tree !== undefined) {
+        trees.set(eventId, entry.tree);
+      }
     }
     return trees;
   });
+  const eventTreeErrors$ = computed((get): ReadonlySet<string> => {
+    const errors = new Set<string>();
+    for (const [eventId, entry] of get(internalEventTrees$)) {
+      if (entry.error) {
+        errors.add(eventId);
+      }
+    }
+    return errors;
+  });
 
   const registerCardRef$ = createCardRefRegistrar(registries);
-
-  /**
-   * Parses the markdown tree of every listed event that has none yet, or whose
-   * body changed since it was parsed. Cards register here, ahead of the parse
-   * that resolves their slots. Runs after every write that can change the
-   * visible window, including scroll captures, so the unchanged path costs a
-   * content lookup per event, not a plan.
-   */
-  const ensureEventTrees$ = command(
-    ({ get, set }, events: readonly ChatEvent[]): void => {
-      const current = get(internalEventTrees$);
-      let next: Map<string, EventTree> | undefined;
-      for (const event of events) {
-        const content = chatEventTreeContent(event);
-        if (content === null || current.get(event.id)?.content === content) {
-          continue;
-        }
-        const plan = chatEventTreePlan(event, chatActionContext);
-        if (plan === null) {
+  const parseRichEventTrees$ = command(
+    async (
+      { get, set },
+      richPlans: readonly RichEventTreePlan[],
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const richMarkdown = await loadRichMarkdown();
+      signal.throwIfAborted();
+      const pending = get(internalEventTrees$);
+      let parsed: Map<string, EventTree> | undefined;
+      for (const plan of richPlans) {
+        const pendingEntry = pending.get(plan.eventId);
+        if (
+          pendingEntry?.content !== plan.content ||
+          pendingEntry.tree !== undefined ||
+          pendingEntry.error
+        ) {
           continue;
         }
         const cards = new Map<string, MarkdownCardRef>();
         for (const descriptor of plan.descriptors) {
           cards.set(
-            markdownCardKey(cardSlotUrl(descriptor)),
+            richMarkdown.markdownCardKey(cardSlotUrl(descriptor)),
             set(registerCardRef$, descriptor),
           );
         }
-        const tree = parseMarkdownTree(plan.treeSource, {
+        const tree = richMarkdown.parseMarkdownTree(plan.treeSource, {
           mathEnabled: true,
           mermaid: true,
           cards,
@@ -1939,16 +2021,85 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         embedImageLoadSignals(tree, (url) => {
           return set(imageLoads.register$, url);
         });
-        next ??= new Map(current);
-        next.set(event.id, { content: plan.content, tree });
+        parsed ??= new Map(pending);
+        parsed.set(plan.eventId, {
+          content: plan.content,
+          tree,
+          error: false,
+        });
       }
-      if (next) {
-        set(internalEventTrees$, next);
+      signal.throwIfAborted();
+      if (parsed) {
+        set(internalEventTrees$, parsed);
       }
     },
   );
 
-  return { eventTrees$, ensureEventTrees$ };
+  /**
+   * Parses the markdown tree of every listed event that has none yet, or whose
+   * body changed since it was parsed. Cards register here, ahead of the parse
+   * that resolves their slots. Runs after every write that can change the
+   * visible window, including scroll captures, so the unchanged path costs a
+   * content lookup per event, not a plan.
+   */
+  const ensureEventTrees$ = command(
+    async (
+      { get, set },
+      events: readonly ChatEvent[],
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const current = get(internalEventTrees$);
+      const { next, richPlans } = planEventTreeUpdates(
+        events,
+        current,
+        chatActionContext,
+      );
+      if (next) {
+        set(internalEventTrees$, next);
+      }
+      if (richPlans.length === 0) {
+        return;
+      }
+
+      const result = await settle(
+        set(parseRichEventTrees$, richPlans, signal),
+        signal,
+      );
+      if (!result.ok) {
+        const pending = get(internalEventTrees$);
+        const failed = markPendingEventTreesFailed(pending, richPlans);
+        if (failed) {
+          set(internalEventTrees$, failed);
+        }
+      }
+    },
+  );
+
+  const retryRichEventTree$ = command(
+    async (
+      { get, set },
+      event: ChatEvent,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const current = get(internalEventTrees$);
+      const entry = current.get(event.id);
+      const content = chatEventTreeContent(event);
+      if (!entry?.error || content === null || entry.content !== content) {
+        return;
+      }
+      const next = new Map(current);
+      next.delete(event.id);
+      set(internalEventTrees$, next);
+      await set(ensureEventTrees$, [event], signal);
+    },
+  );
+
+  return {
+    eventTrees$,
+    eventTreeErrors$,
+    ensureEventTrees$,
+    retryRichEventTree$,
+  };
 }
 
 function createPagedEventResources(
@@ -1995,7 +2146,12 @@ function createPagedEventResources(
     },
   );
 
-  const { eventTrees$, ensureEventTrees$ } = createEventTreeSignals({
+  const {
+    eventTrees$,
+    eventTreeErrors$,
+    ensureEventTrees$,
+    retryRichEventTree$,
+  } = createEventTreeSignals({
     chatActionContext,
     artifactCardSignals,
     connectorCardSignals,
@@ -2034,10 +2190,12 @@ function createPagedEventResources(
   return {
     artifactCardSignals,
     eventTrees$,
+    eventTreeErrors$,
     ensureEventTrees$,
     publicSignals: {
       browserSessionSignals,
       subscribeBrowserSessions$: browserSessionSignals.subscribe$,
+      retryRichEventTree$,
     },
     registeredEvents$,
     syncRegisteredEvents$,
@@ -2053,10 +2211,12 @@ function createPagedEventProjections({
   chatEvents$,
   registeredEvents$,
   eventTrees$,
+  eventTreeErrors$,
 }: {
   chatEvents$: Computed<ChatEvent[]>;
   registeredEvents$: State<RegisteredChatEvent[]>;
   eventTrees$: Computed<ReadonlyMap<string, Root>>;
+  eventTreeErrors$: Computed<ReadonlySet<string>>;
 }) {
   const rawEvents$ = createRawEventsComputed(registeredEvents$);
   const semanticEvents$ = computed((get): SemanticChatEvent[] => {
@@ -2064,6 +2224,7 @@ function createPagedEventProjections({
       get(rawEvents$),
       get(chatEvents$),
       get(eventTrees$),
+      get(eventTreeErrors$),
       get(featureSwitch$)[FeatureSwitchKey.ChatToolActivity] ?? false,
     );
   });
@@ -2131,7 +2292,6 @@ function createEventChangeEffects(
     projections,
     scroll,
     syncVisibleEventTrees$,
-    initialEventsReady$,
   }: {
     readonly threadId: string;
     readonly chatEvents: ChatEventSignals;
@@ -2140,8 +2300,10 @@ function createEventChangeEffects(
       "rawEvents$" | "latestRunFinishCreatedAt$"
     >;
     readonly scroll: ChatThreadScrollSignals;
-    readonly syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>;
-    readonly initialEventsReady$: State<boolean>;
+    readonly syncVisibleEventTrees$: Command<
+      Promise<void>,
+      [boolean, AbortSignal]
+    >;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2185,12 +2347,9 @@ function createEventChangeEffects(
       scrollPosition: ThreadScrollPosition | null,
       signal: AbortSignal,
     ): Promise<void> => {
-      await Promise.all([
-        set(syncVisibleEventTrees$, signal),
-        set(autoOpenSidebar$, signal),
-      ]);
+      const eventTreesReady = set(syncVisibleEventTrees$, true, signal);
+      await Promise.all([eventTreesReady, set(autoOpenSidebar$, signal)]);
       signal.throwIfAborted();
-      set(initialEventsReady$, true);
       await set(scroll.autoScroll$, scrollPosition, signal);
     },
   );
@@ -2236,7 +2395,10 @@ function createChatEventPresentationLifecycle({
 }: {
   readonly chatEvents: ChatEventSignals;
   readonly afterEventsChange$: Command<Promise<void>, [AbortSignal]>;
-  readonly syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>;
+  readonly syncVisibleEventTrees$: Command<
+    Promise<void>,
+    [boolean, AbortSignal]
+  >;
   readonly enableSidebarEntryAnimations$: Command<void, []>;
   readonly initialEventsReady$: State<boolean>;
 }) {
@@ -2248,7 +2410,7 @@ function createChatEventPresentationLifecycle({
         afterEventsChange$,
         signal,
       );
-      await set(syncVisibleEventTrees$, signal);
+      await set(syncVisibleEventTrees$, false, signal);
       set(enableSidebarEntryAnimations$);
       const result = await settle(set(chatEvents.setup$, signal), signal);
       if (!result.ok) {
@@ -2294,20 +2456,10 @@ function createReadyScrollAfterRenderRequest(
   });
 }
 
-function createChatThreadMessagePipeline(
-  {
-    chatActionContext,
-    chatEvents,
-    previewImageUrlsByUrl$,
-  }: {
-    chatActionContext: ChatActionContext;
-    chatEvents: ChatEventSignals;
-    previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-  },
-  ownerSignal: AbortSignal,
-) {
-  const { threadId } = chatActionContext;
-  const browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents = {
+function createBrowserLifecycleOptimisticEvents(
+  chatEvents: ChatEventSignals,
+): BrowserLifecycleOptimisticEvents {
+  return {
     append$: command(
       async (
         { set },
@@ -2322,10 +2474,24 @@ function createChatThreadMessagePipeline(
       },
     ),
   };
-  // Construction resolves the window/scroll cycle through the module-scope
-  // position state: the render window computes from the read-only position
-  // view, and the scroll signals that write the position are wired afterwards
-  // with the window's ensure step.
+}
+
+function createChatThreadMessagePipeline(
+  {
+    chatActionContext,
+    chatEvents,
+    previewImageUrlsByUrl$,
+  }: {
+    chatActionContext: ChatActionContext;
+    chatEvents: ChatEventSignals;
+    previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+  },
+  ownerSignal: AbortSignal,
+) {
+  const { threadId } = chatActionContext;
+  const browserLifecycleOptimisticEvents =
+    createBrowserLifecycleOptimisticEvents(chatEvents);
+  // Position is created before scroll writers are wired to the render window.
   const position = createThreadScrollPositionSignals(threadId);
   const resources = createPagedEventResources(
     chatActionContext,
@@ -2338,26 +2504,40 @@ function createChatThreadMessagePipeline(
     chatEvents$: chatEvents.chatEvents$,
     registeredEvents$: resources.registeredEvents$,
     eventTrees$: resources.eventTrees$,
+    eventTreeErrors$: resources.eventTreeErrors$,
   });
+  const initialEventsReady$ = state(false);
   const renderWindow = createChatRenderWindow({
     threadId,
     allRenderedChatGroups$: projections.allRenderedChatGroups$,
     threadScrollPosition$: position.threadScrollPosition$,
     awayFromBottom$: position.awayFromBottom$,
     ensureEventTrees$: resources.ensureEventTrees$,
+    initialEventsReady$,
   });
   const syncVisibleEventTrees$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
+    async (
+      { set },
+      revealPreparedEvents: boolean,
+      signal: AbortSignal,
+    ): Promise<void> => {
       set(resources.syncRegisteredEvents$, signal);
-      await set(renderWindow.ensureVisibleEventTrees$, signal);
+      await set(
+        renderWindow.ensureVisibleEventTrees$,
+        revealPreparedEvents,
+        signal,
+      );
     },
   );
+  const ensureVisibleEventTreesAfterScroll$ =
+    createEnsureVisibleEventTreesAfterScroll(
+      renderWindow.ensureVisibleEventTrees$,
+    );
   const scroll = createChatThreadScrollSignals(
     threadId,
     position,
-    renderWindow.ensureVisibleEventTrees$,
+    ensureVisibleEventTreesAfterScroll$,
   );
-  const initialEventsReady$ = state(false);
   const effects = createEventChangeEffects(
     {
       threadId,
@@ -2365,7 +2545,6 @@ function createChatThreadMessagePipeline(
       projections,
       scroll,
       syncVisibleEventTrees$,
-      initialEventsReady$,
     },
     ownerSignal,
   );
@@ -2388,7 +2567,6 @@ function createChatThreadMessagePipeline(
     scroll.pendingScrollAfterRenderRequest$,
     renderWindow.visibleRenderedChatGroups$,
   );
-
   const loadMoreRenderedChatGroups$ = command(
     async ({ set }, signal: AbortSignal): Promise<boolean> => {
       const scrollPosition = set(scroll.readRenderedThreadScrollPosition$);
@@ -2546,19 +2724,26 @@ function scrollTargetStartIndex(
   return startIndex;
 }
 
+interface ChatRenderWindowOptions {
+  readonly threadId: string;
+  readonly allRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
+  readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  readonly awayFromBottom$: Computed<boolean>;
+  readonly ensureEventTrees$: Command<
+    Promise<void>,
+    [readonly ChatEvent[], AbortSignal]
+  >;
+  readonly initialEventsReady$: State<boolean>;
+}
+
 function createChatRenderWindow({
   threadId,
   allRenderedChatGroups$,
   threadScrollPosition$,
   awayFromBottom$,
   ensureEventTrees$,
-}: {
-  threadId: string;
-  allRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
-  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
-  awayFromBottom$: Computed<boolean>;
-  ensureEventTrees$: Command<void, [readonly ChatEvent[]]>;
-}) {
+  initialEventsReady$,
+}: ChatRenderWindowOptions) {
   const visibleRenderedChatGroups$ = computed(
     async (get): Promise<ChatEventGroup[]> => {
       const groups = await get(allRenderedChatGroups$);
@@ -2592,15 +2777,24 @@ function createChatRenderWindow({
    * commands. Parsing stays command-driven — reading the window never parses.
    */
   const ensureVisibleEventTrees$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    async (
+      { get, set },
+      revealPreparedEvents: boolean,
+      signal: AbortSignal,
+    ): Promise<void> => {
       const groups = await get(visibleRenderedChatGroups$);
       signal.throwIfAborted();
-      set(
+      const richContentReady = set(
         ensureEventTrees$,
         groups.flatMap((group) => {
           return group.events;
         }),
+        signal,
       );
+      if (revealPreparedEvents) {
+        set(initialEventsReady$, true);
+      }
+      await richContentReady;
     },
   );
 
@@ -2640,7 +2834,7 @@ function createChatRenderWindow({
       );
       // The newly revealed groups need trees before the prepend renders, so
       // the caller's scroll restoration lands on the final layout.
-      await set(ensureVisibleEventTrees$, signal);
+      await set(ensureVisibleEventTrees$, false, signal);
       return true;
     },
   );
@@ -2675,6 +2869,14 @@ function createChatRenderWindow({
     loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$,
   };
+}
+
+function createEnsureVisibleEventTreesAfterScroll(
+  ensureVisibleEventTrees$: Command<Promise<void>, [boolean, AbortSignal]>,
+): Command<Promise<void>, [AbortSignal]> {
+  return command(async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(ensureVisibleEventTrees$, false, signal);
+  });
 }
 
 function createOnSubscribedCommand({
@@ -3760,6 +3962,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$:
       events.resetRenderedChatGroupsIfAtBottom$,
+    retryRichEventTree$: events.retryRichEventTree$,
   };
 }
 

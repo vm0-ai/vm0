@@ -1947,7 +1947,9 @@ describe("chat inline feedback", () => {
       featureSwitches: {},
     });
 
-    const firstReplyElement = await screen.findByText(firstReply);
+    const firstReplyElement = await screen.findByText(firstReply, undefined, {
+      timeout: 10_000,
+    });
     const secondReplyElement = await screen.findByText(secondReply);
     selectTextAcrossElementsForInlineFeedback(
       firstReplyElement,

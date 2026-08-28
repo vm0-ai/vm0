@@ -437,15 +437,6 @@ const videoGenerationTemplateRequestSchema = z.object({
   }),
 });
 
-const introVideoGenerationTemplateRequestSchema = z.object({
-  type: z.literal("intro-video"),
-  selection: z
-    .object({
-      templateId: z.string().min(1),
-    })
-    .strict(),
-});
-
 const illustrationGenerationTemplateRequestSchema = z.object({
   type: z.literal("illustration"),
   selection: z.object({
@@ -472,7 +463,6 @@ const websiteGenerationTemplateRequestSchema = z.object({
 const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
-  introVideoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   workflowGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
@@ -1972,7 +1962,6 @@ export {
   userMessageDocumentSchema,
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
-  introVideoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
   chatEventSchema,
@@ -2007,7 +1996,7 @@ export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
 export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
-  "intro-video" | "workflow" | "website"
+  "workflow" | "website"
 >;
 /**
  * Legacy generation template shape retained for older thread-level storage.
@@ -2031,9 +2020,6 @@ export type AvatarGenerationOptions = z.infer<
 >;
 export type VideoGenerationTemplateRequest = z.infer<
   typeof videoGenerationTemplateRequestSchema
->;
-export type IntroVideoGenerationTemplateRequest = z.infer<
-  typeof introVideoGenerationTemplateRequestSchema
 >;
 export type IllustrationGenerationTemplateRequest = z.infer<
   typeof illustrationGenerationTemplateRequestSchema
