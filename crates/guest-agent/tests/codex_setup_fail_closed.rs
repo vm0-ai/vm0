@@ -193,7 +193,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
         )
         .env("OKOU_TEST_CODEX_HOME_DIR", args.home.join(".codex"))
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             args.runtime_dir,
         )
         .env("HOME", args.home);

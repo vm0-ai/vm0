@@ -242,7 +242,7 @@ fn assert_guest_config_for_source(tmp: &Path, canonical: bool) -> TestResult {
     );
     set_test_env("HOME", tmp.join("home"));
     set_test_env(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         &runtime_dir,
     );
     set_test_env(

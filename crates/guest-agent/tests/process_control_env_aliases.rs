@@ -179,7 +179,7 @@ fn configure_case(
         );
         std::env::set_var("HOME", root.join(format!("{name}-home")));
         std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         );
         std::env::set_var("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true");

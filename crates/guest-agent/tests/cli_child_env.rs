@@ -84,10 +84,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &configured_runtime_dir,
         );
-        std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            &configured_runtime_dir,
-        );
     }
     let runtime_dir = guest_contracts::runtime_paths::run_dir_from_env(&run_id)?;
     let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);

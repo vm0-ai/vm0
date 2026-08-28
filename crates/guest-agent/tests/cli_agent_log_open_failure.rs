@@ -24,7 +24,7 @@ async fn agent_log_open_failure_warns_and_keeps_cli_run_successful()
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, &run_id);
         std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             runtime_dir.as_os_str(),
         );
         common::set_run_payload_file_env_for_test(

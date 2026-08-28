@@ -130,7 +130,7 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
                 &run_payload_file,
             )
             .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
             ),
         Duration::from_secs(20),

@@ -365,7 +365,7 @@ fn assert_conflict_precedes_private_payload_consumption(tmp: &Path) -> TestResul
         remove_test_env(key);
     }
     set_test_env(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         &runtime_dir,
     );
     set_test_env(

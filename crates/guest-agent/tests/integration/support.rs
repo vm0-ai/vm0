@@ -34,7 +34,7 @@ pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
         );
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, TEST_RUN_ID);
         std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             MOCK_RUNTIME_DIR.as_os_str(),
         );
         write_shared_run_payload_file_or_panic();
@@ -107,7 +107,8 @@ fn write_shared_run_payload_file_or_panic() {
 
 fn cleanup_integration_runtime_root() {
     let Some(runtime_dir) =
-        std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV).map(PathBuf::from)
+        std::env::var_os(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
+            .map(PathBuf::from)
     else {
         return;
     };
