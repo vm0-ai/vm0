@@ -512,7 +512,7 @@ async fn discover_managed_dirs(
             );
             return None;
         };
-        if !crate::runner_dirname::validate_name(dirname) {
+        if !is_safe_managed_dirname(dirname) {
             warn!(
                 "runner managed resources: managed {label} entry {dirname:?} has an invalid dirname; retaining all resources"
             );
@@ -617,7 +617,11 @@ async fn resolve_service_record(
         Ok(Some(path)) => {
             if let Some(config_base_dir) = read_config_base_dir(activation_config_path).await {
                 let config_base_dir = config_base_dir?;
-                if config_base_dir != path {
+                let resolved_base_dir = managed_exact_dir(&config_base_dir, &home.runners_dir())
+                    .await
+                    .ok()
+                    .flatten();
+                if resolved_base_dir.as_ref() != Some(&path) {
                     warn!(
                         "runner service {}: activation config base_dir {} disagrees with managed path {}; retaining all resources",
                         locked.unit.suffix(),
@@ -630,7 +634,7 @@ async fn resolve_service_record(
             Some(path)
         }
         Ok(None) => match read_config_base_dir(activation_config_path).await {
-            Some(Some(base_dir)) => match managed_exact_dir(&base_dir, &home.runners_dir()) {
+            Some(Some(base_dir)) => match managed_exact_dir(&base_dir, &home.runners_dir()).await {
                 Ok(runner_dir) => runner_dir,
                 Err(()) => {
                     warn!(
@@ -723,7 +727,7 @@ fn managed_runner_dir_from_activation_path(
         return Err(());
     };
     let dirname = dirname.to_str().ok_or(())?;
-    if !crate::runner_dirname::validate_name(dirname) {
+    if !is_safe_managed_dirname(dirname) {
         return Err(());
     }
     let Some(second) = components.next() else {
@@ -786,17 +790,27 @@ fn managed_file_dirname(
         return Err(());
     }
     let dirname = dirname.to_str().ok_or(())?;
-    if !crate::runner_dirname::validate_name(dirname) {
+    if !is_safe_managed_dirname(dirname) {
         return Err(());
     }
     Ok(Some(dirname.to_string()))
 }
 
-fn managed_exact_dir(path: &Path, root: &Path) -> Result<Option<PathBuf>, ()> {
+async fn managed_exact_dir(path: &Path, root: &Path) -> Result<Option<PathBuf>, ()> {
     if !path.is_absolute() {
         return Err(());
     }
-    let Ok(relative) = path.strip_prefix(root) else {
+    let resolved_path = match tokio::fs::canonicalize(path).await {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => path.to_path_buf(),
+        Err(_) => return Err(()),
+    };
+    let resolved_root = match tokio::fs::canonicalize(root).await {
+        Ok(root) => root,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => root.to_path_buf(),
+        Err(_) => return Err(()),
+    };
+    let Ok(relative) = resolved_path.strip_prefix(&resolved_root) else {
         return Ok(None);
     };
     let mut components = relative.components();
@@ -807,7 +821,7 @@ fn managed_exact_dir(path: &Path, root: &Path) -> Result<Option<PathBuf>, ()> {
         return Err(());
     }
     let dirname = dirname.to_str().ok_or(())?;
-    if !crate::runner_dirname::validate_name(dirname) {
+    if !is_safe_managed_dirname(dirname) {
         return Err(());
     }
     Ok(Some(root.join(dirname)))
@@ -836,7 +850,7 @@ async fn live_managed_references(home: &HomePaths) -> Option<LiveManagedReferenc
     let mut bin_dirs = HashSet::new();
     let mut runner_dirs = HashSet::new();
     for instance in instances {
-        match managed_exact_dir(&instance.base_dir, &home.runners_dir()) {
+        match managed_exact_dir(&instance.base_dir, &home.runners_dir()).await {
             Ok(Some(runner_dir)) => {
                 runner_dirs.insert(runner_dir);
             }
@@ -1082,15 +1096,30 @@ fn incomplete_outcome() -> ManagedResourceGcOutcome {
 
 fn validate_dirnames(flag: &str, dirnames: &BTreeSet<String>) -> RunnerResult<()> {
     for dirname in dirnames {
-        if !crate::runner_dirname::validate_name(dirname) {
+        if !is_safe_managed_dirname(dirname) {
             return Err(RunnerError::Config(format!(
-                "invalid {flag} value {}: {}",
-                crate::runner_dirname::invalid_name_diagnostic(dirname),
-                crate::runner_dirname::validation_rules()
+                "invalid {flag} value {dirname:?}: must be a non-empty single path segment without NUL bytes"
             )));
         }
     }
     Ok(())
+}
+
+/// Return whether a dirname identifies exactly one child of a managed root.
+///
+/// Managed-root inventory is a filesystem ownership boundary, not a Runner
+/// instance-name namespace. In particular, it must not inherit the creation-time
+/// grammar used by `runner config --runner-dirname` or systemd service suffixes.
+fn is_safe_managed_dirname(dirname: &str) -> bool {
+    if dirname.as_bytes().contains(&0) {
+        return false;
+    }
+    let mut components = Path::new(dirname).components();
+    matches!(
+        (components.next(), components.next()),
+        (Some(Component::Normal(component)), None)
+            if component == std::ffi::OsStr::new(dirname)
+    )
 }
 
 fn validate_service_suffixes(service_suffixes: &BTreeSet<String>) -> RunnerResult<()> {

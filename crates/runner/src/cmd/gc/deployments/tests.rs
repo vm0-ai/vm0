@@ -22,7 +22,7 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
   suffix=${unit#vm0-runner-}
   suffix=${suffix%.service}
   case "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" in
-    direct|keep-service|transient|uninstall-failure|remove-failure|becomes-recent)
+    direct|keep-service|transient|uninstall-failure|remove-failure|becomes-active|becomes-recent)
       binary_dirname=binary-opaque
       config="$OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/runner.yaml"
       ;;
@@ -34,7 +34,7 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
       binary_dirname=binary-opaque
       config="$OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/service-config-snapshots/other-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.yaml"
       ;;
-    external-config)
+    external-config|external-relative-config)
       binary_dirname=binary-opaque
       config="$OKOU_RUN_GC_DEPLOYMENT_HOME/operator/runner.yaml"
       ;;
@@ -70,6 +70,20 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
 fi
 
 if [ "$1" = "show" ]; then
+  if [ "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" = "becomes-active" ]; then
+    show_count=0
+    while IFS= read -r invocation; do
+      case "$invocation" in
+        'show vm0-runner-service-blue.service '*) show_count=$((show_count + 1)) ;;
+      esac
+    done < "$OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS"
+    if [ "$show_count" -ge 2 ]; then
+      printf '%s\n' 'LoadState=loaded' 'ActiveState=active'
+    else
+      printf '%s\n' 'LoadState=loaded' 'ActiveState=inactive'
+    fi
+    exit 0
+  fi
   if [ "$OKOU_RUN_GC_DEPLOYMENT_SCENARIO" = "shared" ] && \
      [ "$2" = "vm0-runner-service-a.service" ]; then
     printf '%s\n' 'LoadState=loaded' 'ActiveState=deactivating'
@@ -225,7 +239,7 @@ async fn run_systemctl_scenario(dir: &Path, home: &HomePaths, scenario: &str) {
 async fn no_services_removes_old_managed_directories() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
-    create_managed_resources(&home, "orphan-bin", "orphan-runner", old_mtime(1_000_000));
+    create_managed_resources(&home, "Orphan_BIN", "Orphan_RUNNER", old_mtime(1_000_000));
 
     let outcome = gc_managed_resources(
         &home,
@@ -243,8 +257,8 @@ async fn no_services_removes_old_managed_directories() {
     assert_eq!(report.activity_count, 2);
     assert!(retained_config_paths.is_empty());
     assert!(inventory_complete);
-    assert!(!home.bin_dir().join("orphan-bin").exists());
-    assert!(!home.runners_dir().join("orphan-runner").exists());
+    assert!(!home.bin_dir().join("Orphan_BIN").exists());
+    assert!(!home.runners_dir().join("Orphan_RUNNER").exists());
 }
 
 #[tokio::test]
@@ -284,15 +298,15 @@ async fn keep_latest_is_independent_for_binary_and_runner_roots() {
 async fn explicit_keeps_are_independent_for_all_three_namespaces() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
-    create_managed_resources(&home, "keep-bin", "remove-runner", old_mtime(1_000_000));
-    create_managed_resources(&home, "remove-bin", "keep-runner", old_mtime(1_000_000));
+    create_managed_resources(&home, "Keep_BIN", "remove-runner", old_mtime(1_000_000));
+    create_managed_resources(&home, "remove-bin", "Keep_RUNNER", old_mtime(1_000_000));
 
     let outcome = gc_managed_resources(
         &home,
         (&[], &[]),
         &BTreeSet::from(["unrelated-service".to_string()]),
-        &BTreeSet::from(["keep-bin".to_string()]),
-        &BTreeSet::from(["keep-runner".to_string()]),
+        &BTreeSet::from(["Keep_BIN".to_string()]),
+        &BTreeSet::from(["Keep_RUNNER".to_string()]),
         Some(0),
         false,
     )
@@ -303,13 +317,13 @@ async fn explicit_keeps_are_independent_for_all_three_namespaces() {
     assert_eq!(report.activity_count, 2);
     assert_eq!(
         retained_config_paths,
-        [home.runners_dir().join("keep-runner/runner.yaml")]
+        [home.runners_dir().join("Keep_RUNNER/runner.yaml")]
     );
     assert!(inventory_complete);
-    assert!(home.bin_dir().join("keep-bin").exists());
+    assert!(home.bin_dir().join("Keep_BIN").exists());
     assert!(!home.bin_dir().join("remove-bin").exists());
     assert!(!home.runners_dir().join("remove-runner").exists());
-    assert!(home.runners_dir().join("keep-runner").exists());
+    assert!(home.runners_dir().join("Keep_RUNNER").exists());
 }
 
 #[tokio::test]
@@ -683,6 +697,33 @@ async fn external_activation_config_can_resolve_an_exact_managed_base_dir() {
 }
 
 #[tokio::test]
+async fn external_relative_config_resolves_the_runtime_managed_base_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home = HomePaths::with_root(dir.path().join("home"));
+    create_managed_resources(
+        &home,
+        "binary-opaque",
+        "config-opaque",
+        old_mtime(1_000_000),
+    );
+    let external_config = home
+        .bin_dir()
+        .parent()
+        .unwrap()
+        .join("operator/runner.yaml");
+    std::fs::create_dir_all(external_config.parent().unwrap()).unwrap();
+    std::fs::write(
+        &external_config,
+        "base_dir: ../runners/config-opaque\nprofiles: {}\n",
+    )
+    .unwrap();
+    set_tree_mtime(external_config.parent().unwrap(), old_mtime(1_000_000));
+
+    run_systemctl_scenario(dir.path(), &home, "external-relative-config").await;
+}
+
+#[tokio::test]
 async fn external_config_with_invalid_managed_base_dir_fails_closed() {
     let dir = tempfile::tempdir().unwrap();
     install_fake_systemctl(dir.path());
@@ -814,6 +855,21 @@ async fn directories_that_become_recent_after_inventory_are_retained() {
 }
 
 #[tokio::test]
+async fn service_that_becomes_active_before_mutation_is_retained() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home = HomePaths::with_root(dir.path().join("home"));
+    create_managed_resources(
+        &home,
+        "binary-opaque",
+        "config-opaque",
+        old_mtime(1_000_000),
+    );
+
+    run_systemctl_scenario(dir.path(), &home, "becomes-active").await;
+}
+
+#[tokio::test]
 async fn external_executable_does_not_claim_a_managed_binary() {
     let dir = tempfile::tempdir().unwrap();
     install_fake_systemctl(dir.path());
@@ -878,6 +934,37 @@ async fn managed_resource_gc_systemctl_child() {
             assert!(inventory_complete);
             assert!(!home.bin_dir().join("binary-opaque").exists());
             assert!(!home.runners_dir().join("config-opaque").exists());
+        }
+        "external-relative-config" => {
+            let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
+            let outcome = gc_managed_resources(
+                &home,
+                (&persistent, &[]),
+                &BTreeSet::from(["service-blue".to_string()]),
+                &empty,
+                &empty,
+                Some(0),
+                false,
+            )
+            .await
+            .unwrap();
+            let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+            assert!(report.is_empty());
+            assert_eq!(
+                retained_config_paths,
+                [
+                    home.bin_dir()
+                        .parent()
+                        .unwrap()
+                        .join("operator/runner.yaml"),
+                    home.runners_dir().join("config-opaque/runner.yaml"),
+                ]
+            );
+            assert!(inventory_complete);
+            assert!(home.bin_dir().join("binary-opaque").exists());
+            assert!(home.runners_dir().join("config-opaque").exists());
+            assert!(unit.lock_path(&home).exists());
         }
         "external-executable" => {
             let outcome = gc_managed_resources(
@@ -1072,6 +1159,36 @@ async fn managed_resource_gc_systemctl_child() {
             assert!(home.bin_dir().join("binary-opaque").exists());
             assert!(home.runners_dir().join("config-opaque").exists());
             assert!(!unit.lock_path(&home).exists());
+        }
+        "becomes-active" => {
+            let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
+            let outcome = gc_managed_resources(
+                &home,
+                (&persistent, &[]),
+                &empty,
+                &empty,
+                &empty,
+                Some(0),
+                false,
+            )
+            .await
+            .unwrap();
+            let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+            assert!(
+                report.is_empty(),
+                "unexpected cleanup report {report:?}; systemctl invocations:\n{}",
+                std::fs::read_to_string(std::env::var(DEPLOYMENT_INVOCATIONS_ENV).unwrap())
+                    .unwrap()
+            );
+            assert_eq!(
+                retained_config_paths,
+                [home.runners_dir().join("config-opaque/runner.yaml")]
+            );
+            assert!(inventory_complete);
+            assert!(home.bin_dir().join("binary-opaque").exists());
+            assert!(home.runners_dir().join("config-opaque").exists());
+            assert!(unit.lock_path(&home).exists());
         }
         "becomes-recent" => {
             let unit = service::RunnerServiceUnit::from_suffix("service-blue").unwrap();
