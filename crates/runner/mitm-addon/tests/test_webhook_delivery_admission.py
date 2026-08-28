@@ -343,8 +343,16 @@ def test_delivery_capacity_released_after_success(
     )
 
 
+@pytest.mark.parametrize(
+    "log_type",
+    ["usage_event", "model_usage_observation"],
+)
 def test_delivery_capacity_released_when_outcome_callback_fails(
-    mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
+    mitm_ctx,
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+    log_type: str,
 ):
     proxy_log = tmp_path / "proxy.jsonl"
     pending_path = tmp_path / "usage-pending"
@@ -360,7 +368,7 @@ def test_delivery_capacity_released_when_outcome_callback_fails(
             "tok",
             {"runId": "run-1", "events": []},
             str(proxy_log),
-            "usage_event",
+            log_type,
             delivery_outcome_callback=fail_callback,
         )
 
@@ -369,12 +377,52 @@ def test_delivery_capacity_released_when_outcome_callback_fails(
 
     assert usage_webhook_server.request_count == 1
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert usage.webhook.pending_model_usage_observation_delivery_payload_count_for_tests() == 0
     assert_current_pending(
         pending_path,
         flows=0,
         buffered=0,
         reports=0,
         flush_request_id="callback-failed",
+    )
+
+
+def test_model_observation_uses_sync_fallback_after_its_executor_shutdown(
+    mitm_ctx, tmp_path, usage_webhook_server
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    billing_executor = QueuedUsageExecutor()
+    usage.set_pending_path(str(pending_path))
+    usage_webhook_server.queue_response(204)
+
+    with (
+        mitm_ctx(),
+        patch.object(usage.webhook, "usage_executor", billing_executor),
+        patch.object(
+            usage.webhook.model_usage_observation_executor,
+            "submit",
+            side_effect=RuntimeError("shutdown"),
+        ),
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "model_usage_observation",
+        )
+
+    assert usage_webhook_server.request_count == 1
+    assert not billing_executor.submissions
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert usage.webhook.pending_model_usage_observation_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="observation-sync-fallback",
     )
 
 
