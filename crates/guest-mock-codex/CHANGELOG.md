@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.12](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.11...guest-mock-codex-v0.9.12) (2026-08-28)
+
+
+### Bug Fixes
+
+* **rust:** terminate guest mock codex descendants ([#30063](https://github.com/vm0-ai/vm0/issues/30063)) ([2722fea](https://github.com/vm0-ai/vm0/commit/2722feae9537cd3148698b019cd27729b7515a18))
+
 ## [0.9.11](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.10...guest-mock-codex-v0.9.11) (2026-08-28)
 
 ## [0.9.10](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.9...guest-mock-codex-v0.9.10) (2026-08-28)

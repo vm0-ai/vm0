@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.7...guest-contracts-v0.12.8) (2026-08-28)
+
+
+### Refactoring
+
+* **runner:** cut sandbox metadata writers to canonical aliases ([#30066](https://github.com/vm0-ai/vm0/issues/30066)) ([237f6a8](https://github.com/vm0-ai/vm0/commit/237f6a84c78087d2fe9a446f3c9c3d040a3f6365))
+* **runner:** translate timing tuning writers to canonical aliases ([#30060](https://github.com/vm0-ai/vm0/issues/30060)) ([44f18e2](https://github.com/vm0-ai/vm0/commit/44f18e290973d5ea8c7cc5f34857e67091c4293b))
+
 ## [0.12.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.6...guest-contracts-v0.12.7) (2026-08-28)
 
 

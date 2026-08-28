@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.177.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.6...runner-rs-v0.177.7) (2026-08-28)
+
+
+### Bug Fixes
+
+* **mitm-addon:** reject uninspectable billable responses ([#30065](https://github.com/vm0-ai/vm0/issues/30065)) ([8ddd437](https://github.com/vm0-ai/vm0/commit/8ddd437fd792b4886231d08b962848b8a420ba7d))
+
+
+### Refactoring
+
+* **runner:** cut sandbox metadata writers to canonical aliases ([#30066](https://github.com/vm0-ai/vm0/issues/30066)) ([237f6a8](https://github.com/vm0-ai/vm0/commit/237f6a84c78087d2fe9a446f3c9c3d040a3f6365))
+* **runner:** translate timing tuning writers to canonical aliases ([#30060](https://github.com/vm0-ai/vm0/issues/30060)) ([44f18e2](https://github.com/vm0-ai/vm0/commit/44f18e290973d5ea8c7cc5f34857e67091c4293b))
+
+
+### Performance Improvements
+
+* **mitm-addon:** bound x billing unicode label work ([#30059](https://github.com/vm0-ai/vm0/issues/30059)) ([3d8161d](https://github.com/vm0-ai/vm0/commit/3d8161dee6f29f74d4723ee6f535ea0ffeaac004))
+
 ## [0.177.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.177.5...runner-rs-v0.177.6) (2026-08-28)
 
 
