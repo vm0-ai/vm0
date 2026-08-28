@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.19"
+version = "1.0.20"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -1255,7 +1255,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "guest-agent"
-version = "0.82.14"
+version = "0.82.15"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -2071,7 +2071,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.81"
+version = "0.4.82"
 dependencies = [
  "bitvec",
  "libc",
@@ -2608,7 +2608,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.178.0"
+version = "0.178.1"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2814,7 +2814,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.266"
+version = "0.37.267"
 dependencies = [
  "async-trait",
  "clap",
