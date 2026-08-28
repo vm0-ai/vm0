@@ -3,7 +3,6 @@
 //! This test lives in its own binary to isolate process env, working directory,
 //! and guest runtime path overrides used during setup.
 
-#[path = "common/codex_app_server_startup_policy.rs"]
 mod codex_app_server_startup_policy;
 mod common;
 

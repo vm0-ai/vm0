@@ -2,10 +2,7 @@ use guest_agent::masker::SecretMasker;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::common;
-
-#[path = "codex_app_server_startup_policy.rs"]
-mod codex_app_server_startup_policy;
+use crate::{codex_app_server_startup_policy, common};
 
 pub struct CodexAppServerStartupCase {
     pub run_id: &'static str,
