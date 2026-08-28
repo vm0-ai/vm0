@@ -52,10 +52,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             std::env::set_var(legacy, std::env::var(canonical)?);
         }
         std::env::set_var("VM0_SECRET_VALUES", "runner-secret-values");
-        std::env::set_var(
-            process_control_ipc::BOOTSTRAP_ENV,
-            "runner-control-endpoint",
-        );
+        std::env::set_var("VM0_PROCESS_CONTROL_ENDPOINT", "runner-control-endpoint");
         std::env::set_var(
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             "runner-control-endpoint",
@@ -291,7 +288,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     }
     assert!(!cli_env.contains_key("CLI_AGENT_TYPE"));
     for key in [
-        process_control_ipc::BOOTSTRAP_ENV,
+        "VM0_PROCESS_CONTROL_ENDPOINT",
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
     ] {
         assert!(

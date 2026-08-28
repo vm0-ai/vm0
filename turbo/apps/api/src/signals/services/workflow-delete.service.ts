@@ -21,6 +21,83 @@ interface DeleteWorkflowInput {
   readonly serializeOfficialLifecycle?: boolean;
 }
 
+interface DeleteOrphanedWorkflowVolumeInput {
+  readonly orgId: string;
+  readonly workflowId: string;
+}
+
+/**
+ * Remove a prepared Workflow volume only when no Workflow row was published.
+ * Copy/Remix uses this after a transaction-time volume publication failure;
+ * the absence check keeps cleanup from deleting a concurrently visible fork.
+ */
+export const deleteOrphanedWorkflowVolume$ = command(
+  async (
+    { get, set },
+    args: DeleteOrphanedWorkflowVolumeInput,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const writeDb = set(writeDb$);
+    const result = await writeDb.transaction(async (tx) => {
+      const [workflow] = await tx
+        .select({ id: workflows.id })
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.orgId, args.orgId),
+            eq(workflows.id, args.workflowId),
+          ),
+        )
+        .limit(1);
+      if (workflow) {
+        return { deleted: false as const };
+      }
+
+      const [storage] = await tx
+        .select({ id: storages.id, s3Prefix: storages.s3Prefix })
+        .from(storages)
+        .where(
+          and(
+            eq(storages.orgId, args.orgId),
+            eq(storages.userId, VOLUME_ORG_USER_ID),
+            eq(storages.name, getCustomSkillStorageName(args.workflowId)),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!storage) {
+        return { deleted: false as const };
+      }
+
+      await tx.delete(storages).where(eq(storages.id, storage.id));
+      return {
+        deleted: true as const,
+        s3Prefix: storage.s3Prefix,
+      };
+    });
+    signal.throwIfAborted();
+    if (!result.deleted) {
+      return false;
+    }
+
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const objects = await get(
+      listS3ObjectsUnderPrefix(bucket, result.s3Prefix),
+    );
+    signal.throwIfAborted();
+    await get(
+      deleteS3Objects(
+        bucket,
+        objects.map((object) => {
+          return object.key;
+        }),
+      ),
+    );
+    signal.throwIfAborted();
+    return true;
+  },
+);
+
 export const deleteWorkflow$ = command(
   async (
     { get, set },

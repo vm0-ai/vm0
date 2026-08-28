@@ -157,48 +157,14 @@ async fn run_cached_write_failure_scenario() -> TestResult {
     std::fs::rename(&metrics_path, &moved_path)?;
     let first_record_bytes = std::fs::metadata(&moved_path)?.len();
 
-    let mut original_limit = std::mem::MaybeUninit::<libc::rlimit>::uninit();
-    // SAFETY: `original_limit` points to writable storage for one `rlimit`.
-    let get_limit_result =
-        unsafe { libc::getrlimit(libc::RLIMIT_FSIZE, original_limit.as_mut_ptr()) };
-    if get_limit_result != 0 {
-        return Err(operation_error("getrlimit").into());
-    }
-    // SAFETY: successful `getrlimit` initialized the full value.
-    let original_limit = unsafe { original_limit.assume_init() };
-    // SAFETY: installing `SIG_IGN` for SIGXFSZ is process-global, and this test
-    // runs alone in a dedicated child process.
-    let original_handler = unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
-    if original_handler == libc::SIG_ERR {
-        return Err(operation_error("install SIGXFSZ handler").into());
-    }
-
-    let constrained_limit = libc::rlimit {
-        rlim_cur: first_record_bytes,
-        rlim_max: original_limit.rlim_max,
-    };
-    // SAFETY: the hard limit is unchanged and the process is isolated from all
-    // other tests while the soft limit is constrained.
-    let set_limit_result = unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &constrained_limit) };
-    if set_limit_result != 0 {
-        return Err(operation_error("set RLIMIT_FSIZE").into());
-    }
+    let limit_guard = crate::common::set_soft_file_size_limit(first_record_bytes)?;
 
     tokio::time::advance(METRICS_INTERVAL).await;
     settle_runnable_tasks().await;
     assert_eq!(std::fs::metadata(&moved_path)?.len(), first_record_bytes);
     assert!(!metrics_path.exists());
 
-    // SAFETY: restore the exact resource limit captured before the test.
-    let restore_limit_result = unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &original_limit) };
-    if restore_limit_result != 0 {
-        return Err(operation_error("restore RLIMIT_FSIZE").into());
-    }
-    // SAFETY: restore the exact signal disposition captured before the test.
-    let restore_handler_result = unsafe { libc::signal(libc::SIGXFSZ, original_handler) };
-    if restore_handler_result == libc::SIG_ERR {
-        return Err(operation_error("restore SIGXFSZ handler").into());
-    }
+    limit_guard.restore()?;
 
     tokio::time::advance(METRICS_INTERVAL).await;
     wait_for_line_count(&metrics_path, 1).await?;
@@ -210,10 +176,4 @@ async fn run_cached_write_failure_scenario() -> TestResult {
     clock_guard.abort();
     let _ = clock_guard.await;
     Ok(())
-}
-
-#[cfg(unix)]
-fn operation_error(operation: &str) -> std::io::Error {
-    let error = std::io::Error::last_os_error();
-    std::io::Error::new(error.kind(), format!("{operation}: {error}"))
 }

@@ -1,4 +1,4 @@
-//! Process-control aliases are resolved once at the guest startup boundary.
+//! Process-control bootstrap is captured only from the canonical startup key.
 
 #![cfg(unix)]
 
@@ -13,13 +13,12 @@ use guest_agent::run_context::GuestRuntime;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const CANONICAL_ENDPOINT: &str = "canonical-endpoint-must-not-leak";
-const LEGACY_ENDPOINT: &str = "legacy-endpoint-must-not-leak";
-const SHARED_ENDPOINT: &str = "shared-endpoint-must-not-leak";
-const ENDPOINT_VALUES: [&str; 3] = [CANONICAL_ENDPOINT, LEGACY_ENDPOINT, SHARED_ENDPOINT];
-const SOURCE_EVENT: &str = "process_control_env_source";
+const RETIRED_ENDPOINT: &str = "retired-endpoint-must-not-leak";
+const ENDPOINT_VALUES: [&str; 2] = [CANONICAL_ENDPOINT, RETIRED_ENDPOINT];
+const RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
 
 #[derive(Clone, Copy)]
-enum AliasInput {
+enum EnvInput {
     Absent,
     Readable(&'static str),
     NonUnicode,
@@ -28,110 +27,59 @@ enum AliasInput {
 #[derive(Clone, Copy)]
 struct SuccessCase {
     name: &'static str,
-    canonical: AliasInput,
-    legacy: AliasInput,
+    canonical: EnvInput,
+    retired: EnvInput,
     expected_endpoint: Option<&'static str>,
-    expected_source: Option<&'static str>,
 }
 
-#[derive(Clone, Copy)]
-struct InvalidEncodingCase {
-    name: &'static str,
-    canonical: AliasInput,
-    legacy: AliasInput,
-    expected_key: &'static str,
-}
-
-const SUCCESS_CASES: [SuccessCase; 9] = [
+const SUCCESS_CASES: [SuccessCase; 8] = [
     SuccessCase {
         name: "absent",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Absent,
+        canonical: EnvInput::Absent,
+        retired: EnvInput::Absent,
         expected_endpoint: None,
-        expected_source: None,
     },
     SuccessCase {
         name: "canonical-empty",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::Absent,
+        canonical: EnvInput::Readable(""),
+        retired: EnvInput::Absent,
         expected_endpoint: None,
-        expected_source: None,
     },
     SuccessCase {
-        name: "legacy-empty",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable(""),
-        expected_endpoint: None,
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "dual-empty",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::Readable(""),
-        expected_endpoint: None,
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "canonical-only",
-        canonical: AliasInput::Readable(CANONICAL_ENDPOINT),
-        legacy: AliasInput::Absent,
+        name: "canonical-present",
+        canonical: EnvInput::Readable(CANONICAL_ENDPOINT),
+        retired: EnvInput::Absent,
         expected_endpoint: Some(CANONICAL_ENDPOINT),
-        expected_source: Some("canonical-only"),
     },
     SuccessCase {
-        name: "legacy-only",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable(LEGACY_ENDPOINT),
-        expected_endpoint: Some(LEGACY_ENDPOINT),
-        expected_source: Some("legacy-only"),
+        name: "retired-only-is-ignored",
+        canonical: EnvInput::Absent,
+        retired: EnvInput::Readable(RETIRED_ENDPOINT),
+        expected_endpoint: None,
     },
     SuccessCase {
-        name: "equal-dual",
-        canonical: AliasInput::Readable(SHARED_ENDPOINT),
-        legacy: AliasInput::Readable(SHARED_ENDPOINT),
-        expected_endpoint: Some(SHARED_ENDPOINT),
-        expected_source: Some("dual"),
+        name: "retired-non-unicode-is-ignored",
+        canonical: EnvInput::Absent,
+        retired: EnvInput::NonUnicode,
+        expected_endpoint: None,
     },
     SuccessCase {
-        name: "canonical-empty-with-legacy",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::Readable(LEGACY_ENDPOINT),
-        expected_endpoint: Some(LEGACY_ENDPOINT),
-        expected_source: Some("legacy-only"),
-    },
-    SuccessCase {
-        name: "canonical-with-legacy-empty",
-        canonical: AliasInput::Readable(CANONICAL_ENDPOINT),
-        legacy: AliasInput::Readable(""),
+        name: "canonical-is-not-overridden-by-retired",
+        canonical: EnvInput::Readable(CANONICAL_ENDPOINT),
+        retired: EnvInput::Readable(RETIRED_ENDPOINT),
         expected_endpoint: Some(CANONICAL_ENDPOINT),
-        expected_source: Some("canonical-only"),
     },
-];
-
-const INVALID_ENCODING_CASES: [InvalidEncodingCase; 4] = [
-    InvalidEncodingCase {
-        name: "canonical-non-unicode",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::Absent,
-        expected_key: process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+    SuccessCase {
+        name: "canonical-ignores-non-unicode-retired",
+        canonical: EnvInput::Readable(CANONICAL_ENDPOINT),
+        retired: EnvInput::NonUnicode,
+        expected_endpoint: Some(CANONICAL_ENDPOINT),
     },
-    InvalidEncodingCase {
-        name: "legacy-non-unicode",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::NonUnicode,
-        expected_key: process_control_ipc::BOOTSTRAP_ENV,
-    },
-    InvalidEncodingCase {
-        name: "canonical-with-non-unicode-legacy",
-        canonical: AliasInput::Readable(CANONICAL_ENDPOINT),
-        legacy: AliasInput::NonUnicode,
-        expected_key: process_control_ipc::BOOTSTRAP_ENV,
-    },
-    InvalidEncodingCase {
-        name: "non-unicode-canonical-with-legacy",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::Readable(LEGACY_ENDPOINT),
-        expected_key: process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+    SuccessCase {
+        name: "canonical-empty-does-not-fall-back-to-retired",
+        canonical: EnvInput::Readable(""),
+        retired: EnvInput::Readable(RETIRED_ENDPOINT),
+        expected_endpoint: None,
     },
 ];
 
@@ -151,20 +99,20 @@ fn remove_test_env(key: impl AsRef<OsStr>) {
     }
 }
 
-fn apply_alias(key: &str, input: AliasInput) {
+fn apply_input(key: &str, input: EnvInput) {
     remove_test_env(key);
     match input {
-        AliasInput::Absent => {}
-        AliasInput::Readable(value) => set_test_env(key, value),
-        AliasInput::NonUnicode => set_test_env(key, OsString::from_vec(vec![0xff])),
+        EnvInput::Absent => {}
+        EnvInput::Readable(value) => set_test_env(key, value),
+        EnvInput::NonUnicode => set_test_env(key, OsString::from_vec(vec![0xff])),
     }
 }
 
 fn configure_case(
     root: &Path,
     name: &str,
-    canonical: AliasInput,
-    legacy: AliasInput,
+    canonical: EnvInput,
+    retired: EnvInput,
 ) -> Result<PathBuf, String> {
     let runtime_dir = root.join(format!("{name}-runtime"));
     guest_common::log::clear_system_log_file();
@@ -175,7 +123,7 @@ fn configure_case(
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(
             guest_contracts::env::RUN_ID_ENV,
-            format!("process-control-alias-{name}"),
+            format!("process-control-env-{name}"),
         );
         std::env::set_var("HOME", root.join(format!("{name}-home")));
         std::env::set_var(
@@ -188,8 +136,8 @@ fn configure_case(
             &guest_contracts::env::RunPayload::default(),
         )?;
     }
-    apply_alias(process_control_ipc::CANONICAL_BOOTSTRAP_ENV, canonical);
-    apply_alias(process_control_ipc::BOOTSTRAP_ENV, legacy);
+    apply_input(process_control_ipc::CANONICAL_BOOTSTRAP_ENV, canonical);
+    apply_input(RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV, retired);
     Ok(runtime_dir)
 }
 
@@ -211,58 +159,16 @@ fn assert_value_free(text: &str, context: &str) {
     }
 }
 
-fn assert_source_evidence(log: &str, case: SuccessCase) {
-    assert_value_free(log, case.name);
-    let source_lines = log
-        .lines()
-        .filter(|line| line.contains(SOURCE_EVENT))
-        .collect::<Vec<_>>();
-    match case.expected_source {
-        Some(source) => {
-            let expected = format!(
-                "{SOURCE_EVENT} key={} source={source}",
-                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
-            );
-            assert!(
-                source_lines.len() == 1
-                    && source_lines
-                        .first()
-                        .and_then(|line| line.rsplit_once("] "))
-                        .is_some_and(|(_, message)| message == expected),
-                "{} emitted incorrect fixed source evidence",
-                case.name
-            );
-        }
-        None => assert!(
-            source_lines.is_empty(),
-            "{} emitted source evidence without an endpoint",
-            case.name
-        ),
-    }
-}
-
-fn expected_conflict_error() -> String {
-    format!(
-        "conflicting process control environment aliases: canonical_key={} legacy_key={} state=conflict",
-        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-        process_control_ipc::BOOTSTRAP_ENV
-    )
-}
-
 #[test]
-fn startup_dual_reads_process_control_aliases_without_value_leaks() -> TestResult {
+fn startup_reads_only_canonical_process_control_without_value_leaks() -> TestResult {
     assert_eq!(
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         "OKOU_PROCESS_CONTROL_ENDPOINT"
     );
-    assert_eq!(
-        process_control_ipc::BOOTSTRAP_ENV,
-        "VM0_PROCESS_CONTROL_ENDPOINT"
-    );
     let tmp = tempfile::tempdir()?;
 
     for case in SUCCESS_CASES {
-        let runtime_dir = configure_case(tmp.path(), case.name, case.canonical, case.legacy)?;
+        let runtime_dir = configure_case(tmp.path(), case.name, case.canonical, case.retired)?;
         let runtime = GuestRuntime::from_process_env().map_err(std::io::Error::other)?;
         assert_eq!(
             runtime.process_control_endpoint.as_deref(),
@@ -275,49 +181,36 @@ fn startup_dual_reads_process_control_aliases_without_value_leaks() -> TestResul
             "{} unexpectedly initialized workload containment",
             case.name
         );
-        assert_source_evidence(&read_system_log(&runtime_dir)?, case);
+        assert_value_free(&read_system_log(&runtime_dir)?, case.name);
     }
 
-    configure_case(
-        tmp.path(),
-        "conflict",
-        AliasInput::Readable(CANONICAL_ENDPOINT),
-        AliasInput::Readable(LEGACY_ENDPOINT),
-    )?;
-    set_test_env(
-        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-        OsString::from_vec(vec![0xff]),
-    );
-    set_test_env(
-        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-        "must-not-be-consumed",
-    );
-    let conflict_error = match GuestRuntime::from_process_env() {
-        Ok(_) => return Err("conflicting process-control aliases were accepted".into()),
-        Err(error) => error,
-    };
-    assert_eq!(conflict_error, expected_conflict_error());
-    assert_value_free(&conflict_error, "conflict");
-    assert!(
-        std::env::var_os(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
-            .is_some(),
-        "conflict reached workload-containment initialization"
-    );
-
-    for case in INVALID_ENCODING_CASES {
-        configure_case(tmp.path(), case.name, case.canonical, case.legacy)?;
+    for (name, retired) in [
+        ("canonical-non-unicode", EnvInput::Absent),
+        (
+            "canonical-non-unicode-does-not-fall-back-to-retired",
+            EnvInput::Readable(RETIRED_ENDPOINT),
+        ),
+    ] {
+        configure_case(tmp.path(), name, EnvInput::NonUnicode, retired)?;
         let error = match GuestRuntime::from_process_env() {
-            Ok(_) => return Err(format!("{} accepted a non-Unicode alias", case.name).into()),
+            Ok(_) => return Err(format!("{name} accepted a non-Unicode canonical value").into()),
             Err(error) => error,
         };
-        assert_eq!(error, format!("{} must be valid UTF-8", case.expected_key));
-        assert_value_free(&error, case.name);
+        assert_eq!(
+            error,
+            format!(
+                "{} must be valid UTF-8",
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
+            )
+        );
+        assert_value_free(&error, name);
     }
 
     // SAFETY: the single test has not started threads and is finished reading
     // the process environment.
     unsafe {
         common::clear_guest_agent_bootstrap_env_for_test();
+        std::env::remove_var(RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV);
     }
     Ok(())
 }

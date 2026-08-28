@@ -1,3 +1,4 @@
+import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 import {
   socialContract,
   type SocialKitDownloadRequest,
@@ -10,6 +11,31 @@ import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 const SOCIALKIT_API_TIMEOUT_MS = 280_000;
+
+function handlePublicSocialError(
+  result: { readonly status: number; readonly body: unknown },
+  defaultMessage: string,
+): never {
+  const parsed = apiErrorSchema.safeParse(result.body);
+  if (!parsed.success) {
+    handleError(result, defaultMessage);
+  }
+  handleError(
+    {
+      status: result.status,
+      body: {
+        error: {
+          ...parsed.data.error,
+          message: parsed.data.error.message.replace(
+            /socialkit/giu,
+            "Okou Social",
+          ),
+        },
+      },
+    },
+    defaultMessage,
+  );
+}
 
 export async function callSocialKit(
   body: SocialKitRequest,
@@ -24,7 +50,7 @@ export async function callSocialKit(
   if (result.status === 200) {
     return result.body;
   }
-  handleError(result, "SocialKit request failed");
+  handlePublicSocialError(result, "Okou Social request failed");
 }
 
 export async function createSocialKitDownload(
@@ -40,7 +66,7 @@ export async function createSocialKitDownload(
   if (result.status === 202) {
     return result.body;
   }
-  handleError(result, "SocialKit download failed to start");
+  handlePublicSocialError(result, "Okou Social download failed to start");
 }
 
 export async function getSocialKitDownload(
@@ -56,5 +82,5 @@ export async function getSocialKitDownload(
   if (result.status === 200) {
     return result.body;
   }
-  handleError(result, "SocialKit download status failed");
+  handlePublicSocialError(result, "Okou Social download status failed");
 }

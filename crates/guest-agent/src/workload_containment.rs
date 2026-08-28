@@ -54,10 +54,11 @@ impl WorkloadContainment {
     /// Receive and adopt the production bootstrap descriptor.
     ///
     /// This must run before any other thread can read or mutate process-global
-    /// environment state. The caller supplies the once-resolved canonical or
-    /// legacy process-control presence. A process-control bootstrap requires
+    /// environment state. The caller supplies the once-resolved canonical
+    /// process-control presence. A process-control bootstrap requires
     /// the canonical workload and tool capabilities in production. Direct
-    /// local execution is unmanaged when neither canonical capability exists.
+    /// local execution is unmanaged when the canonical process-control value
+    /// and both canonical capabilities are absent.
     /// Retired root-bootstrap aliases are ignored during selection and scrubbed
     /// after the canonical pair is captured successfully.
     pub fn from_process_env(process_control_present: bool) -> Result<Option<Self>, String> {
@@ -83,18 +84,16 @@ impl WorkloadContainment {
                 })
             }
             (true, _, _) => Err(format!(
-                "{} and {} are required with {} or {}",
+                "{} and {} are required with {}",
                 CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
                 CANONICAL_TOOL_CGROUP_PROCS_ENV,
-                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             )),
             (false, _, _) => Err(format!(
-                "{} and {} require {} or {}",
+                "{} and {} require {}",
                 CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
                 CANONICAL_TOOL_CGROUP_PROCS_ENV,
-                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             )),
         }
     }

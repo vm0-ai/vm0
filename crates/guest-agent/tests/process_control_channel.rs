@@ -177,7 +177,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
 
     common::ensure_canonical_workspace_for_test()?;
     let connection = start_host_and_guest(tmp.path()).await?;
-    let command = canonical_process_control_guest_agent_wrapper_command(guest_agent);
+    let command = cgroup_isolated_guest_agent_wrapper_command(guest_agent);
     let sudo = needs_sudo_for_canonical_workspace();
     let mut handle = connection
         .host()
@@ -537,15 +537,11 @@ fn guest_agent_wrapper_command(guest_agent: &str) -> String {
     quote_shell_arg(guest_agent)
 }
 
-fn canonical_process_control_guest_agent_wrapper_command(guest_agent: &str) -> String {
+fn cgroup_isolated_guest_agent_wrapper_command(guest_agent: &str) -> String {
     // The test process can itself run under vm0 and inherit an incomplete
     // cgroup bootstrap pair. Keep this unmanaged fixture isolated from it.
     format!(
-        "if [ -z \"${{{}+x}}\" ]; then export {}=\"${}\"; fi; unset {} {} {} {} {}; exec {}",
-        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-        process_control_ipc::BOOTSTRAP_ENV,
-        process_control_ipc::BOOTSTRAP_ENV,
+        "unset {} {} {} {}; exec {}",
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
