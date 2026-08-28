@@ -54,7 +54,7 @@ describe("agentRuns circular foreign keys", () => {
       "workflow_automation_id",
     );
     expect(workflowAutomation.foreignKey.getName()).toBe(
-      "agent_runs_workflow_automation_id_zero_workflow_automations_id_fk",
+      "agent_runs_workflow_automation_id_workflow_automations_id_fk",
     );
     expect(workflowAutomation.foreignKey.onDelete).toBe("set null");
     expect(workflowAutomation.reference.columns).toEqual([

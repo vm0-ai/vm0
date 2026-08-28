@@ -61,12 +61,12 @@ describe("workflow schema physical identity", () => {
         "official_workflow_reconciliation_work",
       officialWorkflowAutomationIdentities:
         "official_workflow_automation_identities",
-      workflows: "zero_workflows",
-      workflowAutomations: "zero_workflow_automations",
-      workflowWebhookAutomations: "zero_workflow_webhook_automations",
-      workflowWebhookDeliveries: "zero_workflow_webhook_deliveries",
-      workflowGithubProcessedEvents: "zero_workflow_github_processed_events",
-      strapiWorkflowAutomations: "zero_workflow_strapi_automations",
+      workflows: "workflows",
+      workflowAutomations: "workflow_automations",
+      workflowWebhookAutomations: "workflow_webhook_automations",
+      workflowWebhookDeliveries: "workflow_webhook_deliveries",
+      workflowGithubProcessedEvents: "workflow_github_processed_events",
+      strapiWorkflowAutomations: "workflow_strapi_automations",
     });
   });
 
@@ -87,7 +87,7 @@ describe("workflow schema physical identity", () => {
     expect(schema.strapiWorkflowAutomations).toBe(strapiWorkflowAutomations);
   });
 
-  it("keeps every Official projection on the legacy Workflow relations", () => {
+  it("keeps every Official projection on the canonical Workflow relations", () => {
     const officialColumnNames = (
       table: Parameters<typeof getTableConfig>[0],
     ): string[] => {
@@ -155,13 +155,13 @@ describe("workflow schema physical identity", () => {
       },
       workflows: {
         indexes: [
-          "idx_zero_workflows_agent",
-          "idx_zero_workflows_org",
-          "idx_zero_workflows_org_owner",
-          "idx_zero_workflows_private_owner_agent_name_unique",
-          "idx_zero_workflows_public_agent_name_unique",
+          "idx_workflows_agent",
+          "idx_workflows_org",
+          "idx_workflows_org_owner",
+          "idx_workflows_private_owner_agent_name_unique",
+          "idx_workflows_public_agent_name_unique",
         ],
-        checks: ["zero_workflows_official_installation_check"],
+        checks: ["workflows_official_installation_check"],
       },
       workflowUserAutomationThreads: {
         indexes: [
@@ -173,32 +173,32 @@ describe("workflow schema physical identity", () => {
       },
       workflowAutomations: {
         indexes: [
-          "idx_zero_workflow_automations_next_run",
-          "idx_zero_workflow_automations_official_blueprint_unique",
-          "idx_zero_workflow_automations_org",
-          "idx_zero_workflow_automations_workflow",
+          "idx_workflow_automations_next_run",
+          "idx_workflow_automations_official_blueprint_unique",
+          "idx_workflow_automations_org",
+          "idx_workflow_automations_workflow",
         ],
         checks: [
-          "zero_workflow_automations_autonomy_budget_check",
-          "zero_workflow_automations_official_binding_check",
-          "zero_workflow_automations_schedule_config_check",
+          "workflow_automations_autonomy_budget_check",
+          "workflow_automations_official_binding_check",
+          "workflow_automations_schedule_config_check",
         ],
       },
       workflowWebhookAutomations: {
-        indexes: ["idx_zero_workflow_webhook_automations_token_hash"],
+        indexes: ["idx_workflow_webhook_automations_token_hash"],
         checks: [],
       },
       workflowWebhookDeliveries: {
         indexes: [
-          "idx_zero_workflow_webhook_deliveries_automation_key",
-          "idx_zero_workflow_webhook_deliveries_automation_received",
+          "idx_workflow_webhook_deliveries_automation_key",
+          "idx_workflow_webhook_deliveries_automation_received",
         ],
         checks: [],
       },
       workflowGithubProcessedEvents: {
         indexes: [
-          "idx_zero_workflow_github_processed_automation_delivery",
-          "idx_zero_workflow_github_processed_subject",
+          "idx_workflow_github_processed_automation_delivery",
+          "idx_workflow_github_processed_subject",
         ],
         checks: [],
       },
@@ -211,7 +211,7 @@ describe("workflow schema physical identity", () => {
         checks: [],
       },
       strapiWorkflowAutomations: {
-        indexes: ["idx_zero_workflow_strapi_automations_integration"],
+        indexes: ["idx_workflow_strapi_automations_integration"],
         checks: [],
       },
       strapiWebhookDeliveries: {

@@ -13,7 +13,7 @@ import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const log = logger("OfficialWorkflowReconciliationCron");
 
-// The cron tick polls the zero_workflow_automations table; runs carry generic
+// The cron tick polls the workflow_automations table; runs carry generic
 // trigger provenance and inject the workflow skill via the agent's attachment.
 const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
   async ({ get, set }, signal: AbortSignal) => {
