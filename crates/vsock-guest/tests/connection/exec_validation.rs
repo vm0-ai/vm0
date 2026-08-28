@@ -256,6 +256,59 @@ fn exec_operation_invalid_env_returns_start_failed_without_leaking_value() {
 }
 
 #[test]
+fn controlled_agent_rejects_invalid_environment_without_starting() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    for (seq, key, value, expected) in [
+        (
+            134,
+            "BAD;KEY",
+            "do-not-print-this-key-secret",
+            "invalid environment variable name",
+        ),
+        (
+            135,
+            "VALID_KEY",
+            "do-not-print-this-value-secret\0",
+            "environment variable value contains NUL bytes",
+        ),
+    ] {
+        send_exec_start_request(
+            &mut host_stream,
+            seq,
+            vsock_proto::ExecStartEncodeRequest {
+                lifecycle: ExecLifecyclePolicy::Supervised,
+                role: vsock_proto::ExecProcessRole::Agent,
+                timeout: ExecTimeoutPolicy::None,
+                command: "",
+                env: &[(key, value)],
+                sudo: false,
+                label: "controlled-agent-invalid-environment",
+                stdout: ExecOutputPolicy::Discard,
+                stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+                expected_exit_codes: &[],
+                control: ExecControlPolicy::Enabled {
+                    control_nonce: [seq as u8; 16],
+                    sink: true,
+                },
+                stdin_bytes: None,
+            },
+        );
+
+        let msg = read_message(&mut host_stream);
+        assert_eq!(msg.msg_type, vsock_proto::MSG_EXEC_RESULT);
+        assert_eq!(msg.seq, seq);
+        let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+        assert_eq!(result.termination, ExecTermination::StartFailed);
+        assert!(result.diagnostic.contains(expected));
+        assert!(!result.diagnostic.contains("do-not-print-this"));
+    }
+
+    assert_ping_pong(&mut host_stream, 136);
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn exec_operation_unknown_cancel_is_ignored() {
     let (handle, mut host_stream) = start_guest_connection();
 

@@ -54,6 +54,7 @@ fn spawn_agent_executable_with_pipes(
     process_containment: ExecProcessContainment,
 ) -> io::Result<SpawnedCommand> {
     let spawn_result = (|| {
+        crate::shell_command::validate_exec_environment(env)?;
         validate_agent_executable(executable)?;
         let (output_reader, output_writer) = cloexec_pipe()?;
         let output_stderr = output_writer.try_clone()?;

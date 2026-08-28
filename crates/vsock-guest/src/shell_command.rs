@@ -270,6 +270,11 @@ fn validate_env_values(env: &[(&str, &str)]) -> io::Result<()> {
     Ok(())
 }
 
+pub(crate) fn validate_exec_environment(env: &[(&str, &str)]) -> io::Result<()> {
+    validate_env_keys(env)?;
+    validate_env_values(env)
+}
+
 fn build_env_script_content(
     script_dir: &Path,
     script_path: &Path,
@@ -282,8 +287,7 @@ fn build_env_script_content(
             "command contains NUL bytes",
         ));
     }
-    validate_env_keys(env)?;
-    validate_env_values(env)?;
+    validate_exec_environment(env)?;
     let script_dir = script_dir.to_str().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
