@@ -246,6 +246,10 @@ def configure(updated: set[str]) -> None:
         api_url=get_api_url(),
         bearer_credential=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
     )
+    usage.configure_model_usage_observation_reporting(
+        api_url=get_api_url(),
+        runner_token=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
+    )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
             flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
@@ -2005,7 +2009,7 @@ def done():
     finally:
         try:
             try:
-                usage.webhook.usage_executor.shutdown(wait=True)
+                usage.webhook.shutdown_delivery_executors(wait=True)
                 runner_flush_lifecycle.drain_delivery_work_after_executor_shutdown()
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)

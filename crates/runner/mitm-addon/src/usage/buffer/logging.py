@@ -31,6 +31,7 @@ import time
 from collections.abc import Iterable
 from typing import Literal
 
+import addon_process_logging
 from logging_utils import log_proxy_entry
 
 from ..underbilling import log_usage_underbilling
@@ -46,6 +47,8 @@ type _UsageFlushPhase = Literal["started", "enqueued", "failed", "retained", "dr
 _RETRY_BUDGET_EXHAUSTED_REASON = "retry_budget_exhausted"
 _SHUTDOWN_RETAINED_WITHOUT_RETRY_REASON = "shutdown_retained_without_retry"
 _USAGE_QUANTITY_OUT_OF_RANGE_REASON = "usage_quantity_out_of_range"
+_MODEL_OBSERVATION_LOG_TYPE = "model_usage_observation"
+_MODEL_OBSERVATION_SUMMARY_TYPE = "model_usage_observation_buffer_flush"
 
 
 def _log_rejected_usage_quantity(
@@ -141,6 +144,13 @@ def _log_flush_summaries(
             message = "Usage event buffer flush dropped retained batches"
         elif phase == "enqueued" and summary.retained_webhook_batch_count:
             message = "Usage event buffer flush retained webhook batches for retry"
+        if summary.log_type == _MODEL_OBSERVATION_LOG_TYPE and (
+            phase in ("failed", "retained", "dropped") or retained_webhook_batch_count > 0
+        ):
+            process_level: addon_process_logging.AddonProcessEventLevel = (
+                "error" if phase in ("failed", "dropped") else "warn"
+            )
+            _log_model_observation_process_summary(level=process_level, fields=extra)
         if phase == "dropped":
             log_usage_underbilling(
                 summary.proxy_log_path,
@@ -172,6 +182,35 @@ def _log_flush_summaries(
             message,
             **extra,
         )
+
+
+def _log_model_observation_process_summary(
+    *,
+    level: addon_process_logging.AddonProcessEventLevel,
+    fields: dict[str, object],
+) -> None:
+    """Emit one scalar-only observation anomaly through the process logger."""
+    ordered_keys = (
+        "phase",
+        "trigger",
+        "flush_sequence",
+        "source_event_count",
+        "aggregate_event_count",
+        "webhook_batch_count",
+        "dropped_webhook_batch_count",
+        "retained_webhook_batch_count",
+        "retained_source_event_count",
+        "duration_ms",
+        "retained_retry_count",
+        "error_type",
+    )
+    process_fields = {key: fields[key] for key in ordered_keys if key in fields}
+    addon_process_logging.emit_addon_process_event(
+        level,
+        "Model usage observation buffer flush anomaly",
+        type=_MODEL_OBSERVATION_SUMMARY_TYPE,
+        **process_fields,
+    )
 
 
 def _elapsed_ms(started_at: float) -> int:

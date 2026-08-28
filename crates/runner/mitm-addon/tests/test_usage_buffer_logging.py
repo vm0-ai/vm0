@@ -10,6 +10,7 @@ from tests.usage_buffer_helpers import (
     RecordingEnqueue,
     event,
     flush_log_entries,
+    observation,
 )
 
 
@@ -52,6 +53,49 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
     assert "duration_ms" not in entries[0]
     assert isinstance(entries[1]["duration_ms"], int)
     assert entries[1]["duration_ms"] >= 0
+
+
+def test_model_observation_flush_logs_scalar_only_process_summary(tmp_path, capsys):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    usage.buffer_model_usage_observations(
+        "https://sensitive-api.test/api/runners/model-usage-observations",
+        "secret-runner-token",
+        "secret-run-id",
+        [
+            observation(
+                source_key="secret-source-key",
+                model="secret-model",
+                input_tokens=10,
+            )
+        ],
+        str(tmp_path / "secret-proxy.jsonl"),
+    )
+
+    assert usage.flush_model_usage_observations(trigger="test") == 1
+
+    lines = capsys.readouterr().err.splitlines()
+    assert len(lines) == 2
+    assert "phase=started" in lines[0]
+    assert "phase=enqueued" in lines[1]
+    for line in lines:
+        assert line.startswith("type=model_usage_observation_buffer_flush ")
+        assert "trigger=test" in line
+        assert "source_event_count=1" in line
+        assert "aggregate_event_count=1" in line
+        assert "webhook_batch_count=1" in line
+        assert not any(
+            sensitive in line
+            for sensitive in (
+                "secret-runner-token",
+                "secret-run-id",
+                "secret-source-key",
+                "secret-model",
+                "sensitive-api.test",
+                "secret-proxy.jsonl",
+            )
+        )
 
 
 def test_flush_logs_isolate_summaries_across_proxy_log_paths(tmp_path):

@@ -143,6 +143,21 @@ class TestUsagePendingCounter:
         usage.write_pending_snapshot(flush_request_id="request-2")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
+    def test_buffered_snapshot_adds_billing_and_model_observation_lanes(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        usage.counters.set_buffered_usage_events(2)
+        usage.counters.set_buffered_model_usage_observations(3)
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=5,
+            reports=0,
+            flush_request_id="both-lanes",
+        )
+
     def test_buffered_report_lease_composes_with_usage_events(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))

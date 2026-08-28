@@ -235,18 +235,18 @@ class _UsageBufferState:
     def add_model_usage_observations(
         self,
         url: str,
-        sandbox_token: str,
+        runner_token: str,
         run_id: str,
         observations: Iterable[ModelUsageObservation],
-        proxy_log_path: str,
+        admission_log_path: str,
         *,
         preserve_source_idempotency: bool,
         accepted_source_keys: set[str] | None,
     ) -> int:
         destination = _DestinationKey(
             url,
-            sandbox_token,
-            proxy_log_path,
+            runner_token,
+            "",
             "model",
             False,
             "model_usage_observation",
@@ -257,7 +257,7 @@ class _UsageBufferState:
         for observation in observations:
             if not _observation_has_safe_quantities(observation):
                 _log_rejected_usage_quantity(
-                    proxy_log_path,
+                    admission_log_path,
                     run_id,
                     "model_usage_observation",
                 )
@@ -271,17 +271,13 @@ class _UsageBufferState:
                     source_observations = self._source_observations.setdefault(destination, [])
                 source_observations.append(
                     _BufferedSourceObservation(
-                        run_id=run_id,
                         observation=_copy_observation(observation),
                     )
                 )
             else:
                 if buckets is None:
                     buckets = self._observation_buckets.setdefault(destination, {})
-                aggregate_key = _ObservationAggregateKey(
-                    run_id=run_id,
-                    model=observation["model"],
-                )
+                aggregate_key = _ObservationAggregateKey(model=observation["model"])
                 segments = buckets.setdefault(aggregate_key, [])
                 if not segments or not _observation_fits_segment(segments[-1], observation):
                     segments.append(_ObservationAggregateBucket())
@@ -344,25 +340,12 @@ class _UsageBufferState:
                 for event_count in source_events_by_run.values()
             )
         for buckets in self._observation_buckets.values():
-            observations_by_run: dict[str, int] = {}
-            for aggregate_key, segments in buckets.items():
-                observations_by_run[aggregate_key.run_id] = observations_by_run.get(
-                    aggregate_key.run_id, 0
-                ) + len(segments)
-            count += sum(
-                (observation_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
-                for observation_count in observations_by_run.values()
-            )
+            observation_count = sum(len(segments) for segments in buckets.values())
+            count += (observation_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
         for source_observations in self._source_observations.values():
-            source_observations_by_run: dict[str, int] = {}
-            for source_observation in source_observations:
-                source_observations_by_run[source_observation.run_id] = (
-                    source_observations_by_run.get(source_observation.run_id, 0) + 1
-                )
-            count += sum(
-                (observation_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
-                for observation_count in source_observations_by_run.values()
-            )
+            count += (
+                len(source_observations) + USAGE_EVENT_BATCH_SIZE - 1
+            ) // USAGE_EVENT_BATCH_SIZE
         return count
 
     def has_schedulable_work(self) -> bool:
@@ -708,14 +691,14 @@ class _UsageBufferState:
                 item.log_type,
             ),
         ):
-            observations_by_run: dict[str, list[_FlushEvent]] = {}
+            observations: list[_FlushEvent] = []
             for aggregate_key in sorted(
                 buckets_by_destination[destination],
-                key=lambda item: (item.run_id, item.model),
+                key=lambda item: item.model,
             ):
                 segments = buckets_by_destination[destination][aggregate_key]
                 for segment_index, bucket in enumerate(segments):
-                    observations_by_run.setdefault(aggregate_key.run_id, []).append(
+                    observations.append(
                         _FlushEvent(
                             payload={
                                 "idempotencyKey": self._observation_aggregate_idempotency_key(
@@ -733,7 +716,7 @@ class _UsageBufferState:
                             source_event_count=bucket.source_event_count,
                         )
                     )
-            batches.extend(_observation_flush_batches(destination, observations_by_run))
+            batches.extend(_observation_flush_batches(destination, observations))
         return batches
 
     def _build_source_observation_flush_batches(
@@ -751,15 +734,15 @@ class _UsageBufferState:
                 item.log_type,
             ),
         ):
-            observations_by_run: dict[str, list[_FlushEvent]] = {}
+            observations: list[_FlushEvent] = []
             for source_observation in observations_by_destination[destination]:
-                observations_by_run.setdefault(source_observation.run_id, []).append(
+                observations.append(
                     _FlushEvent(
                         payload=dict(source_observation.observation),
                         source_event_count=1,
                     )
                 )
-            batches.extend(_observation_flush_batches(destination, observations_by_run))
+            batches.extend(_observation_flush_batches(destination, observations))
         return batches
 
     def _events_by_run(
@@ -835,9 +818,6 @@ class _UsageBufferState:
                 self._buffer_id,
                 str(flush_sequence),
                 destination.url,
-                destination.sandbox_token,
-                destination.proxy_log_path,
-                aggregate_key.run_id,
                 aggregate_key.model,
                 str(segment_index),
             ),
@@ -872,28 +852,25 @@ def _observation_fits_segment(
 
 def _observation_flush_batches(
     destination: _DestinationKey,
-    observations_by_run: dict[str, list[_FlushEvent]],
+    observations: list[_FlushEvent],
 ) -> list[_FlushBatch]:
     batches: list[_FlushBatch] = []
-    for run_id in sorted(observations_by_run):
-        observations = observations_by_run[run_id]
-        for start in range(0, len(observations), USAGE_EVENT_BATCH_SIZE):
-            batch_observations = observations[start : start + USAGE_EVENT_BATCH_SIZE]
-            batches.append(
-                _FlushBatch(
-                    url=destination.url,
-                    sandbox_token=destination.sandbox_token,
-                    payload={
-                        "runId": run_id,
-                        "events": [observation.payload for observation in batch_observations],
-                    },
-                    proxy_log_path=destination.proxy_log_path,
-                    log_type=destination.log_type,
-                    source_event_count=sum(
-                        observation.source_event_count for observation in batch_observations
-                    ),
-                )
+    for start in range(0, len(observations), USAGE_EVENT_BATCH_SIZE):
+        batch_observations = observations[start : start + USAGE_EVENT_BATCH_SIZE]
+        batches.append(
+            _FlushBatch(
+                url=destination.url,
+                sandbox_token=destination.sandbox_token,
+                payload={
+                    "events": [observation.payload for observation in batch_observations],
+                },
+                proxy_log_path=destination.proxy_log_path,
+                log_type=destination.log_type,
+                source_event_count=sum(
+                    observation.source_event_count for observation in batch_observations
+                ),
             )
+        )
     return batches
 
 

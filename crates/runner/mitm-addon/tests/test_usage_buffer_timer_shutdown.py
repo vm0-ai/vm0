@@ -753,7 +753,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.set_pending_path(str(pending_path))
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [observation(source_key="observation-source", input_tokens=1)],
@@ -788,7 +788,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
                 [event(source_key="usage-source-2")],
                 path,
             )
-            assert len(timers) == 3
+            assert len(timers) == 4
         return True
 
     enqueue.side_effect = enqueue_and_buffer_later_usage
@@ -819,6 +819,31 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
         reports=0,
         flush_request_id="priority-drained",
     )
+
+
+def test_model_observation_timer_is_fixed_and_independent_from_billing_configuration(tmp_path):
+    enqueue = RecordingEnqueue()
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    usage.configure_usage_buffer(flush_interval_seconds=5)
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "sandbox-token",
+        "run-1",
+        [event(source_key="usage-source")],
+        str(tmp_path / "billing.jsonl"),
+    )
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/runners/model-usage-observations",
+        "runner-token",
+        "run-1",
+        [observation(source_key="observation-source", input_tokens=1)],
+        str(tmp_path / "observation.jsonl"),
+    )
+
+    assert len(timers) == 2
+    assert 4 <= timers[0].delay <= 6
+    assert 240 <= timers[1].delay <= 360
 
 
 def test_failed_timer_start_allows_idempotent_replay_to_reschedule(tmp_path):

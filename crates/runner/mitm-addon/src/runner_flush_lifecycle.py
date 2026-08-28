@@ -212,7 +212,10 @@ def _flush_usage_for_runner_request() -> None:
     """
     flush_request_id = usage.read_usage_flush_request_id()
     try:
-        _flush_delivery_work(trigger="runner")
+        _flush_delivery_work(
+            trigger="runner",
+            include_observations=flush_request_id is not None,
+        )
     except Exception as exc:
         addon_process_logging.emit_addon_process_event(
             "warn",
@@ -222,9 +225,13 @@ def _flush_usage_for_runner_request() -> None:
         usage.write_pending_snapshot(flush_request_id=flush_request_id)
 
 
-def _flush_delivery_work(*, trigger: _DeliveryFlushTrigger) -> None:
+def _flush_delivery_work(
+    *, trigger: _DeliveryFlushTrigger, include_observations: bool = True
+) -> None:
     """Admit billing work before retained diagnostic reports."""
     usage.flush_usage_events(trigger=trigger)
+    if trigger == "runner" and include_observations:
+        usage.flush_model_usage_observations(trigger=trigger)
     _retry_retained_diagnostic_reports()
 
 
