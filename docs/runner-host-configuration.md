@@ -13,12 +13,15 @@ the raw value. Existing configuration files without `hostname` continue to
 load and omit the canonical hostname fields.
 
 Hostname does not select a service, directory, release, or rollback target.
-Systemd service suffixes are opaque local instance names. Production currently
-passes its explicit `runner_release` value as the service name and Runner
-directory name, but version logic uses `runner_release` directly and does not
-interpret a runner name as a version. Live processes are selected by their
-exact config path and process identity, and rolling log files use the release
-compiled into the Runner binary. Current Runner binaries send optional
+Systemd service suffixes, managed binary directory names, and managed Runner
+configuration directory names are independent opaque local selectors.
+Production declares them separately as `runner_service_suffix`,
+`runner_bin_dirname`, and `runner_dirname`. They currently render the same
+`v<runner_version>` text, but that equality is only a deployment convention and
+does not create ownership or identity across namespaces. Release tags and
+asset names remain separate artifact identities. Live processes are selected
+by their exact config path and process identity, and rolling log files use the
+release compiled into the Runner binary. Current Runner binaries send optional
 canonical `runnerHostname` from configuration and canonical `runnerVersion`
 compiled into the binary. They no longer send legacy `runnerName` in
 heartbeats or sandbox telemetry. Current API revisions no longer declare,
