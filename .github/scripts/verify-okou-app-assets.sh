@@ -67,6 +67,6 @@ if (( asset_count == 0 )); then
 fi
 
 xargs -0 -r -n 1 -P 16 bash -c \
-  'set -euo pipefail; verify_app_asset "$1"' _ < "$pending_assets"
+  "set -euo pipefail; verify_app_asset \"\$1\"" _ < "$pending_assets"
 
 echo "Verified ${asset_count} immutable app assets on ${OKOU_APP_PUBLIC_ASSETS_URL}"
