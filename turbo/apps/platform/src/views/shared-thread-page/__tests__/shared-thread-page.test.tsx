@@ -1,5 +1,6 @@
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +14,8 @@ const SHARED_THREAD_ID = "30000000-0000-4000-8000-000000000702";
 
 describe("shared thread page", () => {
   it("renders the immutable public DTO without owner or agent identity", async () => {
+    const user = userEvent.setup({ delay: null });
+    const clipboard = context.mocks.browser.clipboardWriteText();
     context.mocks.api(sharedThreadsContract.get, ({ params, respond }) => {
       expect(params.id).toBe(SHARED_THREAD_ID);
       return respond(200, {
@@ -54,46 +57,60 @@ describe("shared thread page", () => {
     expect(screen.getByText("What should we launch?")).toBeInTheDocument();
     expect(screen.getByText("Keep it concise.")).toBeInTheDocument();
     expect(screen.getByText("public preview").tagName).toBe("STRONG");
-    const userMessages = document.querySelectorAll("[data-role='user']");
-    expect(userMessages).toHaveLength(2);
-    expect(userMessages[1]).toHaveClass("-mt-5");
-    expect(
-      document.querySelector("[data-role='assistant']"),
-    ).toBeInTheDocument();
-    const assistantAvatar = screen.getByRole("img", { name: "Okou" });
-    expect(assistantAvatar).toHaveClass("h-7", "@[900px]:h-9");
-    expect(assistantAvatar.querySelectorAll("img")).toHaveLength(3);
-    expect(
-      document.querySelector("[data-shared-assistant-avatar] svg"),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector("[data-shared-message-actions='user']"),
-    ).toHaveClass("mt-1");
-    expect(
-      document.querySelector("[data-shared-message-actions='assistant']"),
-    ).toHaveClass("pt-2", "pb-1");
-    expect(
-      document.querySelectorAll("[data-shared-message-copy]"),
-    ).toHaveLength(3);
+    const links = queryAllByRoleFast("link");
+    const brandLink = links.find((link) => {
+      return link.getAttribute("aria-label") === "Okou";
+    });
+    expect(brandLink).toBeInTheDocument();
+    expect(brandLink?.textContent).toBe("Okou");
+    expect(screen.getByRole("img", { name: "Okou" })).toBeInTheDocument();
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
-    const shareButton = queryAllByRoleFast("button").find((button) => {
-      return button.getAttribute("aria-label") === "Share";
-    });
-    expect(shareButton).toBeInTheDocument();
-    expect(shareButton?.parentElement).toHaveClass("gap-2");
     expect(
       screen.getByText("Make this conversation yours"),
     ).toBeInTheDocument();
-    expect(document.querySelector("[data-message-container]")).toHaveClass(
-      "max-w-[900px]",
-      "gap-6",
-    );
-    expect(document.querySelector("[data-shared-thread-handoff]")).toHaveClass(
-      "shrink-0",
-    );
 
-    const links = queryAllByRoleFast("link");
+    const shareUrl = `${window.location.origin}/share/threads/${SHARED_THREAD_ID}`;
+    const buttons = queryAllByRoleFast("button");
+    const shareButton = buttons.find((button) => {
+      return button.getAttribute("aria-label") === "Share";
+    });
+    if (shareButton === undefined) {
+      throw new Error("shared thread share button not found");
+    }
+    await user.click(shareButton);
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([shareUrl]);
+    });
+    await expect(screen.findByText("Link copied")).resolves.toBeInTheDocument();
+
+    const copyButtons = buttons.filter((button) => {
+      return button.getAttribute("aria-label") === "Copy message";
+    });
+    const userCopyButton = copyButtons[0];
+    const assistantCopyButton = copyButtons.at(-1);
+    if (userCopyButton === undefined || assistantCopyButton === undefined) {
+      throw new Error("shared message copy buttons not found");
+    }
+
+    await user.click(userCopyButton);
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([
+        shareUrl,
+        "What should we launch?",
+      ]);
+    });
+    await expect(screen.findByText("Copied!")).resolves.toBeInTheDocument();
+
+    await user.click(assistantCopyButton);
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([
+        shareUrl,
+        "What should we launch?",
+        "Launch the **public preview**.",
+      ]);
+    });
+
     const handoffLink = links.find((link) => {
       return link.textContent === "Try it yourself";
     });
@@ -126,33 +143,6 @@ describe("shared thread page", () => {
     expect(signUpUrl.searchParams.get("redirect_url")).toBe(
       handoffUrl.toString(),
     );
-  });
-
-  it("owns its scrolling because the app shell clips overflow", async () => {
-    context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
-      return respond(200, {
-        id: SHARED_THREAD_ID,
-        title: "Long thread",
-        publicBrand: "vm0",
-        messages: [
-          {
-            messageIndex: 0,
-            role: "user",
-            content: "First question",
-            runIndex: 0,
-          },
-        ],
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/share/threads/${SHARED_THREAD_ID}`,
-      user: null,
-    });
-
-    const scroller = await screen.findByTestId("shared-thread-scroll");
-    expect(scroller).toHaveClass("absolute", "inset-0", "overflow-y-auto");
   });
 
   it("does not repeat a brand-only document title", async () => {

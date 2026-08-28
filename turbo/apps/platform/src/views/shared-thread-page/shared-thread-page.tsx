@@ -13,6 +13,7 @@ import {
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
 
+import type { BrandName } from "../../signals/branding.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
@@ -306,7 +307,7 @@ function SharedThreadHeader({
   signUpUrl,
   title,
 }: {
-  readonly brandName: string;
+  readonly brandName: BrandName;
   readonly homeUrl: string;
   readonly shareUrl: string | null;
   readonly signInUrl: string;
@@ -322,7 +323,7 @@ function SharedThreadHeader({
           aria-label={brandName}
           className="shrink-0 text-foreground transition-opacity hover:opacity-70"
         >
-          <ProductBrandMark size="small" />
+          <ProductBrandMark brandName={brandName} size="small" />
         </a>
         {title !== null ? (
           <h1 className="min-w-0 truncate text-sm font-medium text-foreground">

@@ -1,6 +1,6 @@
 import { useGet } from "ccstate-react";
 
-import { brandName$ } from "../../signals/branding.ts";
+import { brandName$, type BrandName } from "../../signals/branding.ts";
 
 type ProductBrandMarkSize = "default" | "compact" | "small";
 
@@ -66,11 +66,14 @@ function Vm0BrandMark({
 }
 
 export function ProductBrandMark({
+  brandName: explicitBrandName,
   size = "default",
 }: {
+  brandName?: BrandName;
   size?: ProductBrandMarkSize;
 }) {
-  const brandName = useGet(brandName$);
+  const hostnameBrandName = useGet(brandName$);
+  const brandName = explicitBrandName ?? hostnameBrandName;
 
   if (brandName === "VM0") {
     return <Vm0BrandMark size={size} label={brandName} />;
