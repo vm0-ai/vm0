@@ -495,6 +495,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: CloseRec
 
         let mut retry_immediately = immediate_retry;
         let mut disconnected_retry_count: u32 = 0;
+        let mut pending_reconnect_token: Option<PendingReconnectToken> = None;
         loop {
             if p.session.should_enter_suspended_retry()
                 && !enter_suspended_retry(&mut p, &mut close_rx).await
@@ -563,7 +564,11 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: CloseRec
                     }
                     continue;
                 }
-                result = attempt_reconnect(&mut p, refresh_token) => result,
+                result = attempt_reconnect(
+                    &mut p,
+                    &mut refresh_token,
+                    &mut pending_reconnect_token,
+                ) => result,
             };
 
             match reconnect_result {
@@ -660,6 +665,11 @@ enum ReconnectOutcome {
         transport: WsTransport,
     },
     Closed,
+}
+
+struct PendingReconnectToken {
+    details: TokenDetails,
+    renewal_at: Option<Instant>,
 }
 
 async fn send_attach(p: &mut EventLoopState, close_rx: &mut CloseReceiver) -> LoopAction {
@@ -785,7 +795,7 @@ async fn handle_message(
             let refresh_token = msg
                 .error
                 .as_ref()
-                .is_some_and(|error| error.code == error_code::TOKEN_EXPIRED);
+                .is_some_and(|error| error_code::is_token_error(error.code));
             let reason = Some(protocol_disconnect_reason(msg.error));
             p.session.notify_protocol_disconnected();
             close_websocket_transport(p);
@@ -1012,81 +1022,118 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 /// caller moves the channel into suspended retry, matching ably-js.
 async fn attempt_reconnect(
     p: &mut EventLoopState,
-    refresh_token: bool,
+    refresh_token: &mut bool,
+    pending_reconnect_token: &mut Option<PendingReconnectToken>,
 ) -> Result<ReconnectOutcome, Error> {
     let reconnect_timeout = p.timing.reconnect_timeout;
-    let (connected_msg, mut transport, new_token) =
-        tokio::time::timeout(reconnect_timeout, async {
-            let use_resume = p.session.can_resume();
+    let reconnect_setup = tokio::time::timeout(reconnect_timeout, async {
+        let use_resume = p.session.can_resume();
+        let use_pending_token = *refresh_token || !use_resume;
 
-            // Obtain a new token for fresh connects or after the server rejects
-            // the active token. Keep it local until the transport connects.
-            let new_token = if refresh_token || !use_resume {
-                let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
-                Some(exchange_token(&p.http, &token_request, &p.rest_host).await?)
-            } else {
-                None
+        let active_token = if use_pending_token {
+            if pending_reconnect_token.as_ref().is_some_and(|pending| {
+                pending
+                    .renewal_at
+                    .is_some_and(|renewal_at| renewal_at <= Instant::now())
+            }) {
+                pending_reconnect_token.take();
+            }
+
+            let pending = match pending_reconnect_token {
+                Some(pending) => pending,
+                None => {
+                    let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
+                    let details = exchange_token(&p.http, &token_request, &p.rest_host).await?;
+                    let renewal_at = super::state::ConnState::compute_renewal_at(
+                        &details,
+                        p.timing.token_renewal_margin,
+                    );
+                    pending_reconnect_token.insert(PendingReconnectToken {
+                        details,
+                        renewal_at,
+                    })
+                }
             };
+            pending.details.token.clone()
+        } else {
+            p.session.token().to_string()
+        };
 
-            let active_token = new_token
-                .as_ref()
-                .map_or_else(|| p.session.token().to_string(), |t| t.token.clone());
+        let resume = if use_resume {
+            p.session.connection_key().map(str::to_string)
+        } else {
+            None
+        };
 
-            let resume = if use_resume {
-                p.session.connection_key().map(str::to_string)
-            } else {
-                None
-            };
+        let ws_url = build_ws_url(&p.realtime_host, &active_token, resume.as_deref())?;
+        let mut transport = connect_pending(
+            &ws_url,
+            p.timing.close_timeout,
+            p.transport_close_tracker.clone(),
+        )
+        .await?;
 
-            let ws_url = build_ws_url(&p.realtime_host, &active_token, resume.as_deref())?;
-            let mut transport = connect_pending(
-                &ws_url,
-                p.timing.close_timeout,
-                p.transport_close_tracker.clone(),
-            )
+        let connected_msg = wait_for_connected(transport.read_mut()?).await?;
+
+        let resumed = use_resume
+            && connected_msg.connection_id.as_deref() == p.session.connection_id()
+            && connected_msg.error.is_none();
+
+        // Always re-attach the channel, even after a successful connection resume.
+        // The server may silently lose channel state without sending DETACHED,
+        // creating a "zombie subscription" where messages stop being delivered.
+        // ATTACH is idempotent — the server responds with ATTACHED regardless.
+        //
+        // This matches ably-js behavior: `Channels.onTransportActive()` calls
+        // `channel.requestState('attaching')` for every attached channel whenever
+        // a transport becomes active, including after resume.
+        // See: ably-js/src/common/lib/client/baserealtime.ts
+        if resumed {
+            tracing::info!(
+                channel_serial = ?p.session.channel_serial(),
+                "Connection resumed, re-attaching channel to verify state",
+            );
+        } else {
+            tracing::info!("Fresh connect, attaching channel");
+        }
+        let data = encode_attach_for_channel(
+            &p.channel,
+            p.channel_params.as_ref(),
+            p.session.channel_serial(),
+            p.session.attach_mode(),
+        )?;
+        transport
+            .write_mut()?
+            .send(tungstenite::Message::Binary(data.into()))
             .await?;
 
-            let connected_msg = wait_for_connected(transport.read_mut()?).await?;
-
-            let resumed = use_resume
-                && connected_msg.connection_id.as_deref() == p.session.connection_id()
-                && connected_msg.error.is_none();
-
-            // Always re-attach the channel, even after a successful connection resume.
-            // The server may silently lose channel state without sending DETACHED,
-            // creating a "zombie subscription" where messages stop being delivered.
-            // ATTACH is idempotent — the server responds with ATTACHED regardless.
-            //
-            // This matches ably-js behavior: `Channels.onTransportActive()` calls
-            // `channel.requestState('attaching')` for every attached channel whenever
-            // a transport becomes active, including after resume.
-            // See: ably-js/src/common/lib/client/baserealtime.ts
-            if resumed {
-                tracing::info!(
-                    channel_serial = ?p.session.channel_serial(),
-                    "Connection resumed, re-attaching channel to verify state",
-                );
-            } else {
-                tracing::info!("Fresh connect, attaching channel");
+        let new_token = if use_pending_token {
+            pending_reconnect_token
+                .as_ref()
+                .map(|pending| pending.details.clone())
+        } else {
+            None
+        };
+        Ok::<_, Error>((connected_msg, transport, new_token))
+    })
+    .await
+    .map_err(|_| Error::Protocol {
+        code: error_code::TIMEOUT,
+        message: "Reconnect attempt timed out".to_string(),
+    })?;
+    let (connected_msg, mut transport, new_token) = match reconnect_setup {
+        Ok(setup) => setup,
+        Err(error) => {
+            if matches!(
+                &error,
+                Error::Protocol { code, .. } if error_code::is_token_error(*code)
+            ) {
+                *refresh_token = true;
+                pending_reconnect_token.take();
             }
-            let data = encode_attach_for_channel(
-                &p.channel,
-                p.channel_params.as_ref(),
-                p.session.channel_serial(),
-                p.session.attach_mode(),
-            )?;
-            transport
-                .write_mut()?
-                .send(tungstenite::Message::Binary(data.into()))
-                .await?;
-
-            Ok::<_, Error>((connected_msg, transport, new_token))
-        })
-        .await
-        .map_err(|_| Error::Protocol {
-            code: error_code::TIMEOUT,
-            message: "Reconnect attempt timed out".to_string(),
-        })??;
+            return Err(error);
+        }
+    };
 
     let attach_outcome = match tokio::time::timeout(p.timing.realtime_request_timeout, async {
         loop {
@@ -1115,27 +1162,35 @@ async fn attempt_reconnect(
     .await
     {
         Ok(Ok(outcome)) => outcome,
-        Ok(Err(e)) => return Err(e),
+        Ok(Err(error)) => {
+            if matches!(
+                &error,
+                Error::Protocol { code, .. } if error_code::is_token_error(*code)
+            ) {
+                *refresh_token = true;
+                pending_reconnect_token.take();
+            }
+            return Err(error);
+        }
         Err(_) => AttachOutcome::TimedOut,
     };
 
-    Ok(match attach_outcome {
-        AttachOutcome::Attached { channel_serial } => ReconnectOutcome::Attached {
-            connected_msg,
-            channel_serial,
-            token: new_token,
-            transport: transport.into_transport()?,
-        },
+    let attached_channel_serial = match attach_outcome {
+        AttachOutcome::Attached { channel_serial } => Some(channel_serial),
         AttachOutcome::Detached(err) => {
+            if error_code::is_token_error(err.code) {
+                *refresh_token = true;
+                pending_reconnect_token.take();
+                return Err(Error::Protocol {
+                    code: err.code,
+                    message: protocol_error_message(err.message),
+                });
+            }
             tracing::warn!(
                 reason = %channel_detached_message(&err.message),
                 "Channel detached while re-attaching after reconnect",
             );
-            ReconnectOutcome::ChannelSuspended {
-                connected_msg,
-                token: new_token,
-                transport: transport.into_transport()?,
-            }
+            None
         }
         AttachOutcome::RetryAttach(err) => {
             return Err(Error::Protocol {
@@ -1156,12 +1211,26 @@ async fn attempt_reconnect(
                 timeout_ms = p.timing.realtime_request_timeout.as_millis(),
                 "Channel attach timed out while re-attaching after reconnect",
             );
-            ReconnectOutcome::ChannelSuspended {
-                connected_msg,
-                token: new_token,
-                transport: transport.into_transport()?,
-            }
+            None
         }
+    };
+
+    let transport = transport.into_transport()?;
+    if new_token.is_some() {
+        pending_reconnect_token.take();
+    }
+    Ok(match attached_channel_serial {
+        Some(channel_serial) => ReconnectOutcome::Attached {
+            connected_msg,
+            channel_serial,
+            token: new_token,
+            transport,
+        },
+        None => ReconnectOutcome::ChannelSuspended {
+            connected_msg,
+            token: new_token,
+            transport,
+        },
     })
 }
 
