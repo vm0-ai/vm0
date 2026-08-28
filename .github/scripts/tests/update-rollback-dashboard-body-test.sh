@@ -18,15 +18,27 @@ cat >"${fake_bin}/gh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 [ "${1:-}" = "api" ]
-release_prefix=repos/vm0-ai/vm0/releases/tags/
-[[ "${2:-}" == "${release_prefix}"* ]]
-release_tag=${2#"$release_prefix"}
-jq -e --arg release_tag "$release_tag" \
-  --arg returned_tag "${MOCK_RETURNED_RELEASE_TAG:-}" \
-  '.[]
-   | select(.tag_name == $release_tag)
-   | if $returned_tag == "" then . else .tag_name = $returned_tag end' \
-  "$MOCK_RELEASES_FILE"
+if [ -n "${MOCK_GH_LOG:-}" ]; then
+  printf '%s\n' "${2:-}" >>"$MOCK_GH_LOG"
+fi
+case "${2:-}" in
+  repos/vm0-ai/vm0/releases\?per_page=100)
+    jq . "$MOCK_RELEASES_FILE"
+    ;;
+  repos/vm0-ai/vm0/releases/tags/*)
+    release_prefix=repos/vm0-ai/vm0/releases/tags/
+    release_tag=${2#"$release_prefix"}
+    jq -e --arg release_tag "$release_tag" \
+      --arg returned_tag "${MOCK_RETURNED_RELEASE_TAG:-}" \
+      '.[]
+       | select(.tag_name == $release_tag)
+       | if $returned_tag == "" then . else .tag_name = $returned_tag end' \
+      "$MOCK_RELEASES_FILE"
+    ;;
+  *)
+    exit 2
+    ;;
+esac
 SH
 chmod +x "${fake_bin}/gh"
 
@@ -133,11 +145,33 @@ jq -n --arg target "$target_commit" '[
   }
 ]' >"$releases_file"
 
+exact_lookup_log="${tmp_dir}/exact-lookups.log"
 PATH="${fake_bin}:$PATH" \
   GITHUB_REPOSITORY=vm0-ai/vm0 \
+  MOCK_GH_LOG="$exact_lookup_log" \
   MOCK_RELEASES_FILE="$releases_file" \
   "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
   "$(release_tags_for_target "$target_commit")" >"$output_file"
+if grep -Fqx \
+  'repos/vm0-ai/vm0/releases?per_page=100' \
+  "$exact_lookup_log"; then
+  fail "exact-tag invocation listed repository releases"
+fi
+
+legacy_output_file="${tmp_dir}/legacy-output.md"
+legacy_lookup_log="${tmp_dir}/legacy-lookups.log"
+PATH="${fake_bin}:$PATH" \
+  GITHUB_REPOSITORY=vm0-ai/vm0 \
+  MOCK_GH_LOG="$legacy_lookup_log" \
+  MOCK_RELEASES_FILE="$releases_file" \
+  "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
+  >"$legacy_output_file"
+cmp "$output_file" "$legacy_output_file" || \
+  fail "legacy workflow invocation did not preserve dashboard output"
+grep -Fqx \
+  'repos/vm0-ai/vm0/releases?per_page=100' \
+  "$legacy_lookup_log" || \
+  fail "legacy workflow invocation did not use compatibility discovery"
 
 grep -Fqx -- "[Rollback](${rollback_url})" "$output_file"
 grep -Fqx -- "<summary>07-23-2026 07:39:40 SGT</summary>" "$output_file"

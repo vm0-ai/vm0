@@ -464,7 +464,6 @@ ruby -e '
     "queue-production-deploy" => "main",
     "refresh-release-pull-request" => "main",
     "publish-desktop-update-manifest" => desktop_target,
-    "update-rollback-dashboard" => "main",
   }
   release.each do |job_name, job|
     checkout_steps = job.fetch("steps", []).select do |step|
