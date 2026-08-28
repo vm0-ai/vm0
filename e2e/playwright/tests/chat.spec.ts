@@ -1249,12 +1249,28 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
-test("home content stays fixed while the growth entry loads", async ({
+test("home content keeps its reserved offset while the growth entry loads", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  const orgRequested = deferred();
+  const releaseOrg = deferred();
   const slackStatusRequested = deferred();
   const releaseSlackStatus = deferred();
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      orgRequested.resolve();
+      await releaseOrg.promise;
+      await route.fulfill({
+        json: { id: "org_admin", name: "Admin Org", role: "admin" },
+      });
+    },
+  );
   await page.route("**/api/integrations/slack", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
@@ -1284,7 +1300,7 @@ test("home content stays fixed while the growth entry loads", async ({
 
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
-  await slackStatusRequested.promise;
+  await orgRequested.promise;
 
   const growthEntry = page.getByTestId("growth-entry");
   const main = page.locator("main");
@@ -1296,9 +1312,20 @@ test("home content stays fixed while the growth entry loads", async ({
   if (!mainBefore || !taglineBefore) {
     throw new Error("Home content has no measurable layout before entry load");
   }
-  // The async entry is absolute, but its former 56px header slot remains in
-  // flow so the landing content does not jump upward.
+  // Reserve the former 56px header slot before either async dependency resolves.
   expect(mainBefore.y).toBe(56);
+
+  releaseOrg.resolve();
+  await slackStatusRequested.promise;
+  await expect(growthEntry).not.toBeAttached();
+  const mainAfterRole = await main.boundingBox();
+  const taglineAfterRole = await tagline.boundingBox();
+  if (!mainAfterRole || !taglineAfterRole) {
+    throw new Error("Home content has no measurable layout after role load");
+  }
+  expect(mainAfterRole.y).toBe(mainBefore.y);
+  expect(mainAfterRole.height).toBe(mainBefore.height);
+  expect(taglineAfterRole.y).toBe(taglineBefore.y);
 
   releaseSlackStatus.resolve();
   await expect(growthEntry).toBeVisible();
@@ -1314,7 +1341,9 @@ test("home content stays fixed while the growth entry loads", async ({
   expect(taglineAfter.y).toBe(taglineBefore.y);
 });
 
-test("non-admin home content keeps its original top edge", async ({ page }) => {
+test("non-admin home content keeps the reserved desktop offset", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.route(
     (url) => url.pathname === "/api/org",
@@ -1359,7 +1388,7 @@ test("non-admin home content keeps its original top edge", async ({ page }) => {
   if (!mainBox) {
     throw new Error("Non-admin home content has no measurable layout");
   }
-  expect(mainBox.y).toBe(0);
+  expect(mainBox.y).toBe(56);
 });
 
 test("checkmark keeps its column across selection states and previews deactivation", async ({
