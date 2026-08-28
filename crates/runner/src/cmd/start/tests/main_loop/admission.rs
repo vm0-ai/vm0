@@ -882,6 +882,82 @@ async fn reserved_reuse_running_status_write_error_recovers_claim_and_sandbox() 
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test]
+async fn uncertain_activation_destroy_keeps_active_status_for_orphan_reconciliation() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+    overrides.push_destroy_panic("simulated activation recovery destroy panic");
+    let (mut config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = RunId::new_v4().to_string();
+    let sandbox_id = seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        &reuse_key,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let status_dir = env._temp_dir.path().join("uncertain-destroy-status");
+    tokio::fs::create_dir(&status_dir).await.unwrap();
+    let status_path = status_dir.join("status.json");
+    let status = Arc::new(StatusTracker::new(status_path.clone(), 1, None, None));
+    config.shared.status = Arc::clone(&status);
+    let preparing_gate = env.start_observer.gate_reserved_preparing_commit();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, &reuse_key)));
+    env.handle
+        .discover_tx
+        .send(matching_preference_candidate(run_id, &reuse_key))
+        .unwrap();
+    tokio::select! {
+        () = preparing_gate.entered.notified() => {}
+        completion = env.handle.wait_completion(run_id, Duration::from_secs(5)) => {
+            panic!("run completed before reserved preparing gate: {completion:?}");
+        }
+    }
+    tokio::fs::remove_file(&status_path).await.unwrap();
+    tokio::fs::remove_dir(&status_dir).await.unwrap();
+    preparing_gate.release();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("uncertain recovery should still complete the provider claim");
+    assert!(
+        completion
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("write runner status"))
+    );
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+
+    tokio::fs::create_dir(&status_dir).await.unwrap();
+    status.set_mode(RunnerMode::Running).await.unwrap();
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert_eq!(active_runs, vec![run_id.to_string()]);
+    let raw = tokio::fs::read_to_string(&status_path).await.unwrap();
+    let status_json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        status_json["active_runs"][0]["sandbox_id"],
+        sandbox_id.to_string()
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
 #[tokio::test(start_paused = true)]
 async fn reserved_reuse_activation_task_abort_recovers_claim_and_sandbox() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());

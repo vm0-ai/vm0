@@ -38,8 +38,9 @@ pub type StatusResult<T> = Result<T, StatusPersistenceError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ActiveRunPhase {
-    /// The run is claimed and visible in `active_runs`, but a fresh sandbox is
-    /// still being prepared. Its Firecracker process may not exist yet.
+    /// The run is claimed and visible in `active_runs`, but sandbox activation
+    /// has not committed. A fresh Firecracker process may not exist yet, while
+    /// a reused process may still be parked.
     Preparing,
     /// The sandbox is prepared, and the run is expected to be associated with
     /// a Firecracker process.
@@ -230,9 +231,8 @@ impl StatusTracker {
         self.add_running_run(run_id, sandbox_id).await
     }
 
-    /// Register an active run that has been claimed while its fresh sandbox is
-    /// still being prepared. Its Firecracker process may not exist or be ready
-    /// yet.
+    /// Register an active run whose sandbox has not committed running ownership.
+    /// Its Firecracker process may not exist yet or may still be parked.
     pub async fn add_preparing_run(
         &self,
         run_id: RunId,
@@ -270,13 +270,6 @@ impl StatusTracker {
         self.persist_snapshot(snapshot).await
     }
 
-    /// Register an active run and replace the idle sandbox list in the same status
-    /// write if the idle snapshot is current. On duplicate `run_id`, the
-    /// previous `sandbox_id` is overwritten.
-    ///
-    /// This avoids a transient status.json gap during idle reuse where a sandbox
-    /// has been removed from `idle_sandboxes` but has not yet appeared in
-    /// `active_runs`.
     /// Register a running active run and replace the idle sandbox list in the same
     /// status write if the idle snapshot is current.
     pub async fn add_running_run_with_idle_info_at_revision(

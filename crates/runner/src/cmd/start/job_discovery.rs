@@ -632,6 +632,7 @@ pub(super) struct ClaimedJobSetup {
 struct ActivationRecoveryContext {
     provider: Arc<dyn JobProvider>,
     status: Arc<StatusTracker>,
+    orphaned_active_runs: super::orphan_reap::OrphanedActiveRuns,
     reuse_state_notify: Arc<tokio::sync::Notify>,
 }
 
@@ -640,6 +641,7 @@ impl ActivationRecoveryContext {
         Self {
             provider: Arc::clone(&ctx.provider),
             status: Arc::clone(&ctx.status),
+            orphaned_active_runs: ctx.orphaned_active_runs.clone(),
             reuse_state_notify: Arc::clone(&ctx.reuse_state_notify),
         }
     }
@@ -877,18 +879,32 @@ async fn recover_claimed_activation_failure(
             completion_auth,
         )
         .await;
-    if let Some(reuse_entry) = reuse_entry {
-        let promoted = reuse_entry
+    let cleanup_completed = if let Some(reuse_entry) = reuse_entry {
+        let cleanup = reuse_entry
             .into_destroy_job(factory, active_lease, reason)
-            .run_with_context(reason)
+            .run_retaining_lease(reason)
             .await;
-        if promoted {
+        if cleanup.workspace_cache_promoted {
             ctx.reuse_state_notify.notify_one();
         }
+        drop(cleanup.budget_lease);
+        cleanup.outcome == DestroyOutcome::Completed
     } else {
         drop(active_lease);
+        true
+    };
+    if cleanup_completed {
+        remove_failed_activation_status(&ctx.status, run_id, sandbox_id).await;
+    } else {
+        warn!(
+            run_id = %run_id,
+            sandbox_id = %sandbox_id,
+            recovery_reason = reason,
+            recovery_outcome = "orphaned_after_uncertain_destroy",
+            "activation recovery could not prove sandbox destruction; keeping active status for orphan reconciliation"
+        );
+        ctx.orphaned_active_runs.insert(run_id, sandbox_id);
     }
-    remove_failed_activation_status(&ctx.status, run_id, sandbox_id).await;
     drop(active_run_guard);
     cancellation
 }
