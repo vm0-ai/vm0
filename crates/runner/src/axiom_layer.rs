@@ -457,5 +457,4 @@ fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
 }
 
 #[cfg(test)]
-#[path = "axiom_layer_tests.rs"]
 mod tests;
