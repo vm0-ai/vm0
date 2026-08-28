@@ -105,6 +105,11 @@
 //! - `0x00`: ordinary contained workload.
 //! - `0x01`: controlled Agent operation.
 //!
+//! `lifecycle`, `process_role`, and `control_policy` are validated as one
+//! process contract. See [`ExecStartEncodeRequest`] for the complete matrix;
+//! [`validate_exec_process_contract`] is applied by both
+//! [`encode_exec_start_with_expected_exit_codes`] and [`decode_exec_start`].
+//!
 //! `timeout_policy` values:
 //!
 //! - `0x00`: `[4B positive timeout_ms]`.
