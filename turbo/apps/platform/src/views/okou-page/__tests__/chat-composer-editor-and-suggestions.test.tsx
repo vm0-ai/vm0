@@ -702,12 +702,27 @@ describe("chat composer models", () => {
 
   it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
-    let workflows: ReturnType<typeof workflowSummary>[] = [];
+    const initialWorkflowsRequested = context.mocks.deferred<void>();
+    const releaseInitialWorkflows = context.mocks.deferred<void>();
+    const reloadedWorkflow = workflowSummary({
+      name: "new-chat-workflow",
+      displayName: "New Chat Workflow",
+      description: "Created by the current chat run",
+      agentId: AGENT_ID,
+    });
+    let workflowPhase: "initial" | "reloaded" = "initial";
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
-    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
-      return respond(200, workflows);
+    context.mocks.api(workflowsCollectionContract.list, async ({ respond }) => {
+      if (workflowPhase === "initial") {
+        if (!initialWorkflowsRequested.settled()) {
+          initialWorkflowsRequested.resolve();
+        }
+        await releaseInitialWorkflows.promise;
+        return respond(200, []);
+      }
+      return respond(200, [reloadedWorkflow]);
     });
 
     detachedSetupPage({
@@ -726,21 +741,19 @@ describe("chat composer models", () => {
         "true",
       );
     });
-    const editor = await findComposerEditor();
-    await user.click(editor);
+    await initialWorkflowsRequested.promise;
+    await user.click(await findComposerEditor());
     await user.keyboard("/");
+    await expect(
+      screen.findByText("Loading workflows..."),
+    ).resolves.toBeInTheDocument();
+    releaseInitialWorkflows.resolve();
     await expect(
       screen.findByText("No matching workflows"),
     ).resolves.toBeInTheDocument();
+    const editor = await findComposerEditor();
 
-    workflows = [
-      workflowSummary({
-        name: "new-chat-workflow",
-        displayName: "New Chat Workflow",
-        description: "Created by the current chat run",
-        agentId: AGENT_ID,
-      }),
-    ];
+    workflowPhase = "reloaded";
     act(() => {
       context.mocks.ably.trigger(
         `chatThreadWorkflowsChanged:${THREAD_ID}`,
