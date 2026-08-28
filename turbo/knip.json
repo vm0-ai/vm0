@@ -35,7 +35,6 @@
         "src/main.ts",
         "i18next.config.ts",
         "scripts/bench-p90-reporter.ts",
-        "scripts/check-stable-chunks.node.ts",
         "src/**/__benches__/**/*.bench.tsx",
         "**/*.{test,spec}.ts?(x)"
       ],

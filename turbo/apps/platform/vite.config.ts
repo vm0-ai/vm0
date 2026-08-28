@@ -1,5 +1,3 @@
-import { fileURLToPath } from "node:url";
-
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -7,13 +5,8 @@ import { defineConfig } from "vite";
 
 import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
-import { createStableChunkName } from "./src/lib/stable-chunks.ts";
 
 process.env.VITE_APP_VERSION = platformPackage.version;
-
-const stableChunkName = createStableChunkName(
-  fileURLToPath(new URL("./src/main.ts", import.meta.url)),
-);
 
 export default defineConfig({
   base: "/",
@@ -47,9 +40,6 @@ export default defineConfig({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        codeSplitting: {
-          groups: [{ name: stableChunkName }],
-        },
         // Mangle identifiers for smaller bundles while preserving runtime
         // function and class names for framework semantics and diagnostics.
         keepNames: true,
