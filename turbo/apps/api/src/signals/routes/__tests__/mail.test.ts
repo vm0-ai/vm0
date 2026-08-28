@@ -62,6 +62,8 @@ function gmailPayload(
   imageAttachmentId: string | null = GMAIL_IMAGE_ATTACHMENT_ID,
   pdfAttachmentId: string | null = "attachment-1",
   includeTextAttachment = false,
+  subject: string | null = "Attachment review",
+  body = "Mail body",
 ) {
   return {
     partId: "",
@@ -71,7 +73,7 @@ function gmailPayload(
       { name: "From", value: "Sender <sender@example.com>" },
       { name: "To", value: "recipient@example.com" },
       { name: "Cc", value: "copy@example.com" },
-      { name: "Subject", value: "Attachment review" },
+      ...(subject === null ? [] : [{ name: "Subject", value: subject }]),
     ],
     body: { size: 0 },
     parts: [
@@ -87,7 +89,10 @@ function gmailPayload(
             mimeType: "text/plain",
             filename: "",
             headers: [],
-            body: { size: 9, data: encodedBody("Mail body") },
+            body: {
+              size: Buffer.byteLength(body),
+              data: encodedBody(body),
+            },
           },
           {
             partId: "0.1",
@@ -162,6 +167,8 @@ interface GmailDraftTestState {
   insufficientScope: boolean;
   permissionDenied: boolean;
   unauthorized: boolean;
+  subject: string | null;
+  body: string;
   draftReadCount: number;
   sendCount: number;
   deleteCount: number;
@@ -178,6 +185,8 @@ function mockGmailDraftApi(options?: {
     insufficientScope: false,
     permissionDenied: false,
     unauthorized: false,
+    subject: "Attachment review",
+    body: "Mail body",
     draftReadCount: 0,
     sendCount: 0,
     deleteCount: 0,
@@ -250,6 +259,8 @@ function mockGmailDraftApi(options?: {
             options?.inlineImageData ? null : currentImageAttachmentId,
             options?.regularAttachmentData ? null : "attachment-1",
             options?.textAttachmentData,
+            state.subject,
+            state.body,
           ),
         },
       });
@@ -719,6 +730,34 @@ describe("POST /api/mail/drafts/link", () => {
 
     const page = await chat.listThreadEvents(fixture.actor, fixture.thread.id);
     expect(page.events).toHaveLength(0);
+  });
+
+  it("refreshes a linked draft whose subject was initially empty", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    gmail.subject = null;
+    gmail.body = "";
+
+    const linked = await linkDraft(fixture);
+    expect(gmail.draftReadCount).toBe(1);
+
+    gmail.subject = "Updated subject";
+    gmail.body = "Updated body";
+
+    const loaded = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+
+    expect(gmail.draftReadCount).toBe(2);
+    expect(loaded.body.mailDraft).toMatchObject({
+      subject: "Updated subject",
+      body: "Updated body",
+      status: "draft",
+    });
   });
 
   it("serves an inline image stored directly in the Gmail MIME body", async () => {
