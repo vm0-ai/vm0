@@ -534,6 +534,8 @@ async function validateRefreshMigrationArtifacts(): Promise<void> {
   assert.ok(
     guard.includes("workflow_automations compatibility view shape mismatch"),
   );
+  assert.ok(guard.includes("expected.relation_position"));
+  assert.ok(guard.includes('COLLATE "C"'));
   assert.ok(guard.includes("zero_workflows physical table shape mismatch"));
   assert.ok(
     guard.includes("zero_workflow_automations physical table shape mismatch"),
@@ -604,7 +606,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname"
+      ORDER BY "pg_class"."relname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -644,7 +646,9 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
         AND "pg_class"."relname" = ANY($1::text[])
         AND "pg_attribute"."attnum" > 0
         AND NOT "pg_attribute"."attisdropped"
-      ORDER BY "pg_class"."relname", "pg_attribute"."attnum"
+      ORDER BY
+        "pg_class"."relname" COLLATE "C",
+        "pg_attribute"."attnum"
     `,
     [legacyRelationNames],
   );
@@ -681,7 +685,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
         AND "pg_constraint"."contype" IN ('p', 'u', 'x')
       WHERE "pg_namespace"."nspname" = 'public'
         AND "table_relation"."relname" = ANY($1::text[])
-      ORDER BY "index_relation"."relname"
+      ORDER BY "index_relation"."relname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -724,7 +728,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
           "source_relation"."relname" = ANY($1::text[])
           OR "referenced_relation"."relname" = ANY($1::text[])
         )
-      ORDER BY "pg_constraint"."conname"
+      ORDER BY "pg_constraint"."conname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -751,7 +755,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
       WHERE "pg_constraint"."contype" = 'c'
         AND "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_constraint"."conname"
+      ORDER BY "pg_constraint"."conname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -780,7 +784,7 @@ async function readPhysicalCatalog(client: Client): Promise<PhysicalCatalog> {
       WHERE "sequence_relation"."relkind" = 'S'
         AND "pg_namespace"."nspname" = 'public'
         AND "table_relation"."relname" = ANY($1::text[])
-      ORDER BY "sequence_relation"."relname"
+      ORDER BY "sequence_relation"."relname" COLLATE "C"
     `,
     [legacyRelationNames],
   );
@@ -812,7 +816,7 @@ async function readCanonicalRelationIdentities(
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname"
+      ORDER BY "pg_class"."relname" COLLATE "C"
     `,
     [canonicalRelationNames],
   );
@@ -959,7 +963,10 @@ async function readRelationRows(
 ): Promise<string> {
   const rows = await client.query<{ rows: string }>(`
     SELECT COALESCE(
-      jsonb_agg(to_jsonb("relation_row") ORDER BY to_jsonb("relation_row")::text),
+      jsonb_agg(
+        to_jsonb("relation_row")
+        ORDER BY to_jsonb("relation_row")::text COLLATE "C"
+      ),
       '[]'::jsonb
     )::text AS "rows"
     FROM "${relationName}" AS "relation_row"
@@ -1234,7 +1241,7 @@ async function validateExpandedCatalog(
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname"
+      ORDER BY "pg_class"."relname" COLLATE "C"
     `,
     [allRelationNames],
   );
@@ -1248,7 +1255,13 @@ async function validateExpandedCatalog(
         return { relationKind: "v", relationName };
       }),
     ].sort((left, right) => {
-      return left.relationName.localeCompare(right.relationName);
+      if (left.relationName < right.relationName) {
+        return -1;
+      }
+      if (left.relationName > right.relationName) {
+        return 1;
+      }
+      return 0;
     }),
   );
 
@@ -1340,7 +1353,7 @@ async function validateExpandedCatalog(
     const dependencies = await client.query<{ relationName: string }>(
       `
         SELECT DISTINCT
-          "referenced_relation"."relname" AS "relationName"
+          "referenced_relation"."relname" COLLATE "C" AS "relationName"
         FROM "pg_rewrite"
         INNER JOIN "pg_depend"
           ON "pg_depend"."objid" = "pg_rewrite"."oid"
@@ -1351,7 +1364,7 @@ async function validateExpandedCatalog(
         WHERE "pg_rewrite"."ev_class" = $1::regclass
           AND "pg_namespace"."nspname" = 'public'
           AND "referenced_relation"."relkind" = 'r'
-        ORDER BY "referenced_relation"."relname"
+        ORDER BY "relationName"
       `,
       [`public.${canonical}`],
     );
@@ -1389,7 +1402,9 @@ async function validateExpandedCatalog(
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname", "pg_rewrite"."rulename"
+      ORDER BY
+        "pg_class"."relname" COLLATE "C",
+        "pg_rewrite"."rulename" COLLATE "C"
     `,
     [canonicalRelationNames],
   );
@@ -3180,7 +3195,7 @@ async function validatePreExpansionCatalog(client: Client): Promise<void> {
         ON "pg_namespace"."oid" = "pg_class"."relnamespace"
       WHERE "pg_namespace"."nspname" = 'public'
         AND "pg_class"."relname" = ANY($1::text[])
-      ORDER BY "pg_class"."relname"
+      ORDER BY "pg_class"."relname" COLLATE "C"
     `,
     [allRelationNames],
   );

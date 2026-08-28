@@ -6,46 +6,42 @@ DECLARE
   actual_workflow_automation_view_columns text[];
   actual_workflow_columns text[];
   actual_workflow_view_columns text[];
+  expected_relations text[];
 BEGIN
-  SELECT array_agg(
-    expected.relation_name || ':' || COALESCE(relation.relkind::text, 'missing')
-    ORDER BY expected.relation_name
-  )
-  INTO actual_relations
+  SELECT
+    array_agg(
+      expected.relation_name || ':' || COALESCE(relation.relkind::text, 'missing')
+      ORDER BY expected.relation_position
+    ),
+    array_agg(
+      expected.relation_name || ':' || expected.relation_kind
+      ORDER BY expected.relation_position
+    )
+  INTO actual_relations, expected_relations
   FROM (
     VALUES
-      ('workflow_automations', 'v'),
-      ('workflow_github_processed_events', 'v'),
-      ('workflow_strapi_automations', 'v'),
-      ('workflow_webhook_automations', 'v'),
-      ('workflow_webhook_deliveries', 'v'),
-      ('workflows', 'v'),
-      ('zero_workflow_automations', 'r'),
-      ('zero_workflow_github_processed_events', 'r'),
-      ('zero_workflow_strapi_automations', 'r'),
-      ('zero_workflow_webhook_automations', 'r'),
-      ('zero_workflow_webhook_deliveries', 'r'),
-      ('zero_workflows', 'r')
-  ) AS expected(relation_name, relation_kind)
+      (1, 'workflow_automations', 'v'),
+      (2, 'workflow_github_processed_events', 'v'),
+      (3, 'workflow_strapi_automations', 'v'),
+      (4, 'workflow_webhook_automations', 'v'),
+      (5, 'workflow_webhook_deliveries', 'v'),
+      (6, 'workflows', 'v'),
+      (7, 'zero_workflow_automations', 'r'),
+      (8, 'zero_workflow_github_processed_events', 'r'),
+      (9, 'zero_workflow_strapi_automations', 'r'),
+      (10, 'zero_workflow_webhook_automations', 'r'),
+      (11, 'zero_workflow_webhook_deliveries', 'r'),
+      (12, 'zero_workflows', 'r')
+  ) AS expected(relation_position, relation_name, relation_kind)
   LEFT JOIN pg_class AS relation
     ON relation.relname = expected.relation_name
     AND relation.relnamespace = 'public'::regnamespace;
 
-  IF actual_relations IS DISTINCT FROM ARRAY[
-    'workflow_automations:v',
-    'workflow_github_processed_events:v',
-    'workflow_strapi_automations:v',
-    'workflow_webhook_automations:v',
-    'workflow_webhook_deliveries:v',
-    'workflows:v',
-    'zero_workflow_automations:r',
-    'zero_workflow_github_processed_events:r',
-    'zero_workflow_strapi_automations:r',
-    'zero_workflow_webhook_automations:r',
-    'zero_workflow_webhook_deliveries:r',
-    'zero_workflows:r'
-  ]::text[] THEN
-    RAISE EXCEPTION 'workflow compatibility relation identity mismatch: %', actual_relations;
+  IF actual_relations IS DISTINCT FROM expected_relations THEN
+    RAISE EXCEPTION
+      'workflow compatibility relation identity mismatch: actual %, expected %',
+      actual_relations,
+      expected_relations;
   END IF;
 
   SELECT array_agg(
@@ -184,7 +180,9 @@ BEGIN
 
   SELECT array_agg(
     dependency.view_name || '->' || dependency.referenced_relation_name
-    ORDER BY dependency.view_name, dependency.referenced_relation_name
+    ORDER BY
+      dependency.view_name COLLATE "C",
+      dependency.referenced_relation_name COLLATE "C"
   )
   INTO actual_dependencies
   FROM (
