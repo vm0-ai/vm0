@@ -5422,10 +5422,14 @@
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Esta conversa compartilhada não existe.",
+    "handoffDescription": "{{assistantName}} leva o contexto para uma nova conversa",
+    "handoffPrompt": "Continue esta conversa compartilhada comigo: {{url}}",
+    "makeConversationYours": "Torne esta conversa sua",
     "notFoundTitle": "Conversa compartilhada não encontrada",
-    "tryOkou": "Experimentar o {{assistantName}}"
+    "share": "Compartilhar",
+    "signIn": "Entrar",
+    "signUp": "Criar conta",
+    "tryItYourself": "Experimente você mesmo"
   },
   "usage": {
     "displayNames": {

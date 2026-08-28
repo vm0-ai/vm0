@@ -13,8 +13,9 @@ use std::time::Duration;
 
 use super::{
     AxiomGuard, AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, ERROR_SOURCE_MAX_DEPTH,
-    FLUSH_DEADLINE, INTERNAL_TARGET, Msg, TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER,
-    init_from_env_values, init_with_base_url, init_with_base_url_and_hostname, with_ingest_filter,
+    FLUSH_DEADLINE, INTERNAL_TARGET, MITMDUMP_RUNTIME_RECONCILIATION_TARGET, Msg,
+    TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER, init_from_env_values, init_with_base_url,
+    init_with_base_url_and_hostname, with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -447,6 +448,105 @@ async fn configured_hostname_and_version_are_common_axiom_dimensions() {
     let warning = event_with_message(&events, "attributed warning");
     assert_eq!(warning["runner_hostname"], json!("prod-1.aws.vm3.ai"));
     assert_eq!(warning["runner_version"], json!(env!("CARGO_PKG_VERSION")));
+}
+
+#[tokio::test]
+async fn exact_reconciliation_info_target_is_ingested_without_broadening_info() {
+    const REJECTED_PATH: &str = "/private/rejected-path-should-not-leak";
+    const REJECTED_PROCESS: &str = "pid=4242 uid=1000 command=should-not-leak";
+
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let (layer, guard) = init_with_base_url_and_hostname(
+        &server.base_url(),
+        "test-token",
+        "test",
+        Some("prod-1.aws.vm3.ai".to_string()),
+    )
+    .expect("init must succeed");
+
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::info!(
+            target: MITMDUMP_RUNTIME_RECONCILIATION_TARGET,
+            legacy_only_seen = false,
+            canonical_only_seen = true,
+            equal_dual_seen = false,
+            stale_launch_directory_count = 1_u64,
+            "completed initial mitmdump runtime reconciliation"
+        );
+        tracing::info!(
+            rejected_path = REJECTED_PATH,
+            rejected_process = REJECTED_PROCESS,
+            "unrelated informational event"
+        );
+        tracing::event!(
+            target: MITMDUMP_RUNTIME_RECONCILIATION_TARGET,
+            tracing::Level::DEBUG,
+            rejected_path = REJECTED_PATH,
+            "dedicated target below info"
+        );
+        tracing::warn!("existing warning behavior");
+        tracing::warn!(target: INTERNAL_TARGET, "internal warning");
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    assert_eq!(events.len(), 2, "unexpected ingested events: {events:#?}");
+
+    let summary = event_with_message(&events, "completed initial mitmdump runtime reconciliation");
+    assert_eq!(
+        summary["context"],
+        json!(MITMDUMP_RUNTIME_RECONCILIATION_TARGET)
+    );
+    assert_eq!(summary["level"], json!("info"));
+    assert_eq!(summary["service"], json!("runner"));
+    assert_eq!(summary["runner_hostname"], json!("prod-1.aws.vm3.ai"));
+    assert_eq!(summary["runner_version"], json!(env!("CARGO_PKG_VERSION")));
+    assert_eq!(summary["legacy_only_seen"], json!(false));
+    assert_eq!(summary["canonical_only_seen"], json!(true));
+    assert_eq!(summary["equal_dual_seen"], json!(false));
+    assert_eq!(summary["stale_launch_directory_count"], json!(1));
+    let mut summary_keys = summary
+        .as_object()
+        .expect("summary should be a JSON object")
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    summary_keys.sort_unstable();
+    assert_eq!(
+        summary_keys,
+        [
+            "_time",
+            "canonical_only_seen",
+            "context",
+            "equal_dual_seen",
+            "legacy_only_seen",
+            "level",
+            "message",
+            "runner_hostname",
+            "runner_version",
+            "service",
+            "stale_launch_directory_count",
+        ],
+    );
+    assert!(!json_contains_string(summary, REJECTED_PATH));
+    assert!(!json_contains_string(summary, REJECTED_PROCESS));
+
+    let warning = event_with_message(&events, "existing warning behavior");
+    assert_eq!(warning["level"], json!("warn"));
+    for rejected_message in [
+        "unrelated informational event",
+        "dedicated target below info",
+        "internal warning",
+    ] {
+        assert!(
+            !has_event_with_message(&events, rejected_message),
+            "filtered event {rejected_message:?} reached ingest: {events:#?}",
+        );
+    }
 }
 
 #[tokio::test]

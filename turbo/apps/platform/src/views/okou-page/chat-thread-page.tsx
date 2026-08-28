@@ -300,6 +300,21 @@ import {
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import {
+  ChatAssistantMessageBody,
+  ChatUserMessageBubble,
+  CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS,
+  CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS,
+  CHAT_THREAD_CONTENT_MAIN_CLASS,
+  CHAT_THREAD_MESSAGE_LIST_CLASS,
+  CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
+  CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
+} from "./chat-message-surface.tsx";
 
 type RecommendedFollowup = ChatRecommendedFollowup;
 
@@ -2990,8 +3005,6 @@ function resolveSessionError(
   return null;
 }
 
-const CHAT_THREAD_CONTENT_MAIN_CLASS =
-  "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
 function renderedChatEventKeys(
@@ -3190,7 +3203,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
         ref={scrollContentOnRef}
         data-message-container
         className={cn(
-          "w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible",
+          CHAT_THREAD_MESSAGE_LIST_CLASS,
           sharingPhase !== "idle" && "pr-10 lg:pr-0",
         )}
         style={{ visibility: renderedGroupsReady ? "visible" : "hidden" }}
@@ -4227,12 +4240,6 @@ const RUN_SECTION_LABEL_CLASS =
 const RUN_SECTION_ROW_CLASS =
   "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
-// Consecutive user messages read as one burst, which means an even rhythm: the
-// copy button sits the same distance from the text above it as from the next
-// message. The button already sits `mt-1` under its own message, so this pull
-// cancels the thread's 24px gap down to that same 4px on the other side of it.
-const MESSAGE_STACK_PULL_CLASS = "-mt-5";
-
 function RunSectionDivider({
   label,
   labelPosition = "left",
@@ -4567,7 +4574,12 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
       className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
     >
       <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
-        <div className="zero-chat-skeleton-reveal w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
+        <div
+          className={cn(
+            "zero-chat-skeleton-reveal",
+            CHAT_THREAD_MESSAGE_LIST_CLASS,
+          )}
+        >
           <ChatSkeleton />
         </div>
       </main>
@@ -6215,7 +6227,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
     <Link
       pathname="/agents/:agentId"
       options={{ pathParams: { agentId } }}
-      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-state-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className={`${CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS} transition-colors duration-150 hover:bg-state-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
       aria-label={t(($) => {
         return $.chat.agentPage.viewAgentProfile;
       })}
@@ -6223,7 +6235,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
       <AgentAvatarImg
         name={agentId}
         alt=""
-        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
+        className={CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS}
       />
     </Link>
   );
@@ -6697,7 +6709,7 @@ function UserMessageActions({
     return null;
   }
   return (
-    <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+    <div className={CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS}>
       <IconTooltipButton
         type="button"
         onClick={onCopy}
@@ -7442,14 +7454,6 @@ function isElevatedUserMessagePart(
   );
 }
 
-function UserMessageBubble({ children }: { children: ReactNode }) {
-  return (
-    <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
-      {children}
-    </div>
-  );
-}
-
 function UserMessageContent({
   document,
   attachments,
@@ -7484,14 +7488,14 @@ function UserMessageContent({
         onImageClick={onImageClick}
       />
       {hasBody ? (
-        <UserMessageBubble>
+        <ChatUserMessageBubble>
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
               elevatedFileIds={elevatedFileIds}
             />
           </div>
-        </UserMessageBubble>
+        </ChatUserMessageBubble>
       ) : null}
     </>
   );
@@ -7535,7 +7539,7 @@ function WorkflowUserMessage({
       data-turn-created-at={event.createdAt}
       className="group"
     >
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_USER_MESSAGE_ROW_CLASS}>
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <MessageAnnotation renderPart={renderPart} />
@@ -7588,7 +7592,7 @@ function GoalUserMessage({
       data-turn-created-at={event.createdAt}
       className="group"
     >
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_USER_MESSAGE_ROW_CLASS}>
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <MessageAnnotation renderPart={renderPart} />
@@ -7718,9 +7722,12 @@ function PagedUserMessage({
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
       data-turn-created-at={event.createdAt}
-      className={cn("group", stackedOnPrevious && MESSAGE_STACK_PULL_CLASS)}
+      className={cn(
+        "group",
+        stackedOnPrevious && CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+      )}
     >
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_USER_MESSAGE_ROW_CLASS}>
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           {annotationPart ? (
@@ -7807,9 +7814,9 @@ function PagedAssistantGroup({
       data-role="assistant"
       data-chat-run-id={runId}
       data-turn-created-at={group.events[0]?.createdAt}
-      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className={CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS}
     >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-2">
           {runGroupFolds?.map((fold) => {
@@ -7853,20 +7860,17 @@ function PagedAssistantEventItem({
   const error = chatEventError(event);
   if (error) {
     return (
-      <div
+      <ChatAssistantMessageBody
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
-        className={cn(
-          "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
-          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
-        )}
+        compactTop={compactTop}
       >
         <AssistantErrorContent
           error={error}
           eventId={event.id}
           thread={thread}
         />
-      </div>
+      </ChatAssistantMessageBody>
     );
   }
 
@@ -7875,16 +7879,13 @@ function PagedAssistantEventItem({
     hasChatEventBodyContent(event)
   ) {
     return (
-      <div
+      <ChatAssistantMessageBody
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
-        className={cn(
-          "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
-          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
-        )}
+        compactTop={compactTop}
       >
         <MarkdownEventBody tree={event.tree} mediaPreview />
-      </div>
+      </ChatAssistantMessageBody>
     );
   }
 
@@ -8151,9 +8152,9 @@ function PagedGroupActions({
   };
 
   return (
-    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+    <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS}>
       <div className="hidden @[900px]:block" />
-      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+      <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS}>
         <PagedGroupPrimaryActions
           firstRunId={firstRunId}
           hasContent={hasContent}

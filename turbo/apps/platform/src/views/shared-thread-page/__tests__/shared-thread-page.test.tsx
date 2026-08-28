@@ -1,5 +1,6 @@
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +14,8 @@ const SHARED_THREAD_ID = "30000000-0000-4000-8000-000000000702";
 
 describe("shared thread page", () => {
   it("renders the immutable public DTO without owner or agent identity", async () => {
+    const user = userEvent.setup({ delay: null });
+    const clipboard = context.mocks.browser.clipboardWriteText();
     context.mocks.api(sharedThreadsContract.get, ({ params, respond }) => {
       expect(params.id).toBe(SHARED_THREAD_ID);
       return respond(200, {
@@ -28,6 +31,12 @@ describe("shared thread page", () => {
           },
           {
             messageIndex: 1,
+            role: "user",
+            content: "Keep it concise.",
+            runIndex: 0,
+          },
+          {
+            messageIndex: 2,
             role: "assistant",
             content: "Launch the **public preview**.",
             runIndex: 0,
@@ -46,45 +55,94 @@ describe("shared thread page", () => {
       screen.findByRole("heading", { name: "Public launch plan" }),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("What should we launch?")).toBeInTheDocument();
+    expect(screen.getByText("Keep it concise.")).toBeInTheDocument();
     expect(screen.getByText("public preview").tagName).toBe("STRONG");
-    expect(document.querySelector("[data-role='user']")).toBeInTheDocument();
-    expect(
-      document.querySelector("[data-role='assistant']"),
-    ).toBeInTheDocument();
+    const links = queryAllByRoleFast("link");
+    const brandLink = links.find((link) => {
+      return link.getAttribute("aria-label") === "Okou";
+    });
+    expect(brandLink).toBeInTheDocument();
+    expect(brandLink?.textContent).toBe("Okou");
+    expect(screen.getByRole("img", { name: "Okou" })).toBeInTheDocument();
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
-    const tryOkouLink = queryAllByRoleFast("link").find((link) => {
-      return link.textContent === "Try Okou";
-    });
-    expect(tryOkouLink).toBeInTheDocument();
-    expect(tryOkouLink).toHaveAttribute("href", window.location.origin);
-  });
+    expect(
+      screen.getByText("Make this conversation yours"),
+    ).toBeInTheDocument();
 
-  it("owns its scrolling because the app shell clips overflow", async () => {
-    context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
-      return respond(200, {
-        id: SHARED_THREAD_ID,
-        title: "Long thread",
-        publicBrand: "vm0",
-        messages: [
-          {
-            messageIndex: 0,
-            role: "user",
-            content: "First question",
-            runIndex: 0,
-          },
-        ],
-      });
+    const shareUrl = `${window.location.origin}/share/threads/${SHARED_THREAD_ID}`;
+    const buttons = queryAllByRoleFast("button");
+    const shareButton = buttons.find((button) => {
+      return button.getAttribute("aria-label") === "Share";
+    });
+    if (shareButton === undefined) {
+      throw new Error("shared thread share button not found");
+    }
+    await user.click(shareButton);
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([shareUrl]);
+    });
+    await expect(screen.findByText("Link copied")).resolves.toBeInTheDocument();
+
+    const copyButtons = buttons.filter((button) => {
+      return button.getAttribute("aria-label") === "Copy message";
+    });
+    const userCopyButton = copyButtons[0];
+    const assistantCopyButton = copyButtons.at(-1);
+    if (userCopyButton === undefined || assistantCopyButton === undefined) {
+      throw new Error("shared message copy buttons not found");
+    }
+
+    await user.click(userCopyButton);
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([
+        shareUrl,
+        "What should we launch?",
+      ]);
+    });
+    await expect(screen.findByText("Copied!")).resolves.toBeInTheDocument();
+
+    await user.click(assistantCopyButton);
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([
+        shareUrl,
+        "What should we launch?",
+        "Launch the **public preview**.",
+      ]);
     });
 
-    detachedSetupPage({
-      context,
-      path: `/share/threads/${SHARED_THREAD_ID}`,
-      user: null,
+    const handoffLink = links.find((link) => {
+      return link.textContent === "Try it yourself";
     });
+    expect(handoffLink).toBeInTheDocument();
+    const handoffUrl = new URL(handoffLink?.getAttribute("href") ?? "");
+    expect(handoffUrl.origin).toBe(window.location.origin);
+    expect(handoffUrl.pathname).toBe("/");
+    expect(handoffUrl.searchParams.get("prompt")).toContain(
+      `/share/threads/${SHARED_THREAD_ID}`,
+    );
 
-    const scroller = await screen.findByTestId("shared-thread-scroll");
-    expect(scroller).toHaveClass("h-full", "overflow-y-auto");
+    const signInLinks = links.filter((link) => {
+      return link.textContent === "Sign in";
+    });
+    expect(signInLinks).toHaveLength(2);
+    for (const signInLink of signInLinks) {
+      const signInUrl = new URL(signInLink.getAttribute("href") ?? "");
+      expect(signInUrl.pathname).toBe("/sign-in");
+      expect(signInUrl.searchParams.get("redirect_url")).toBe(
+        handoffUrl.toString(),
+      );
+    }
+
+    const signUpLink = links.find((link) => {
+      return link.textContent === "Sign up";
+    });
+    expect(signUpLink).toBeInTheDocument();
+    const signUpUrl = new URL(signUpLink?.getAttribute("href") ?? "");
+    expect(signUpUrl.pathname).toBe("/sign-up");
+    expect(signUpUrl.searchParams.get("redirect_url")).toBe(
+      handoffUrl.toString(),
+    );
   });
 
   it("does not repeat a brand-only document title", async () => {
@@ -128,12 +186,12 @@ describe("shared thread page", () => {
     const links = queryAllByRoleFast("link");
     expect(
       links.find((link) => {
-        return link.textContent === "VM0";
+        return link.getAttribute("aria-label") === "VM0";
       }),
     ).toBeInTheDocument();
     expect(
       links.find((link) => {
-        return link.textContent === "Try Zero";
+        return link.textContent === "Sign up";
       }),
     ).toBeInTheDocument();
   });

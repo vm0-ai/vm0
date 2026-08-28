@@ -5355,10 +5355,14 @@
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Percakapan yang dibagikan ini tidak ada.",
+    "handoffDescription": "{{assistantName}} membawa konteks ke percakapan baru",
+    "handoffPrompt": "Lanjutkan percakapan yang dibagikan ini dengan saya: {{url}}",
+    "makeConversationYours": "Jadikan percakapan ini milik Anda",
     "notFoundTitle": "Percakapan yang dibagikan tidak ditemukan",
-    "tryOkou": "Coba {{assistantName}}"
+    "share": "Bagikan",
+    "signIn": "Masuk",
+    "signUp": "Daftar",
+    "tryItYourself": "Coba sendiri"
   },
   "usage": {
     "displayNames": {

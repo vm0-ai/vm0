@@ -5355,10 +5355,14 @@
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "This shared conversation does not exist.",
+    "handoffDescription": "{{assistantName}} carries the context into a new chat",
+    "handoffPrompt": "Continue this shared conversation with me: {{url}}",
+    "makeConversationYours": "Make this conversation yours",
     "notFoundTitle": "Shared conversation not found",
-    "tryOkou": "Try {{assistantName}}"
+    "share": "Share",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "tryItYourself": "Try it yourself"
   },
   "usage": {
     "displayNames": {
