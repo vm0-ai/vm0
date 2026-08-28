@@ -723,7 +723,7 @@ describe("Feishu integration", () => {
     oauthUserOpenId = "ou_oauth_user";
     mockEnv("APP_URL", APP_ORIGIN);
     mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.test");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
     mockEnv("FEISHU_CALLBACK_BASE_URL", FEISHU_CALLBACK_ORIGIN);
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");

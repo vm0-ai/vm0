@@ -344,6 +344,9 @@ _BARE_DOMAIN_CANDIDATE_RE = re.compile(
     re.IGNORECASE,
 )
 _MAX_DOMAIN_LABEL_CHARS = 63
+# This stays above the 127 one-character labels that fit in a DNS name while
+# leaving a fixed ceiling for non-host text inspected by billing.
+_MAX_BILLING_DOMAIN_LABEL_CLASSIFICATIONS = 256
 _DOMAIN_LABEL_RE = re.compile(rf"^[a-z0-9-]{{1,{_MAX_DOMAIN_LABEL_CHARS}}}$")
 _INVALID_TLD_FOLLOWING_CHARS = "@+-"
 
@@ -404,7 +407,12 @@ def _normalize_billing_domain_label(label: str) -> _BillingDomainLabelNormalizat
         return _BillingDomainLabelNormalization(None, False)
 
 
-def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: str) -> bool:
+def _bare_domain_candidate_likely_contains_url(
+    candidate: str,
+    following_char: str,
+    label_normalizations: dict[str, _BillingDomainLabelNormalization],
+    label_tld_prefixes: dict[str, bool],
+) -> bool:
     if candidate.isascii():
         simple_ascii_candidate = candidate.lower()
         # Canonical A-label validation remains owned by the shared IDNA path.
@@ -413,13 +421,20 @@ def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: s
     else:
         use_simple_ascii_labels = False
         labels = candidate.split(".")
-    label_normalizations: dict[str, _BillingDomainLabelNormalization] = {}
-    label_tld_prefixes: dict[str, bool] = {}
     last_label_index = len(labels) - 1
     for index, label in enumerate(labels):
         if use_simple_ascii_labels:
             normalized_label = label
         else:
+            normalization = label_normalizations.get(label)
+            if (
+                normalization is None
+                and len(label_normalizations) >= _MAX_BILLING_DOMAIN_LABEL_CLASSIFICATIONS
+            ):
+                # Exhausted inspection is ambiguous, so keep the conservative
+                # with-URL billing bucket.
+                return True
+
             if index > 0:
                 has_tld_prefix = label_tld_prefixes.get(label)
                 if has_tld_prefix is None:
@@ -428,7 +443,6 @@ def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: s
                 if has_tld_prefix:
                     return True
 
-            normalization = label_normalizations.get(label)
             if normalization is None:
                 normalization = _normalize_billing_domain_label(label)
                 label_normalizations[label] = normalization
@@ -458,9 +472,15 @@ def _tweet_text_likely_contains_url(text: str) -> bool:
         return True
     if "." not in text:
         return False
+    # Share bounded classification state across every candidate in this body.
+    label_normalizations: dict[str, _BillingDomainLabelNormalization] = {}
+    label_tld_prefixes: dict[str, bool] = {}
     return any(
         _bare_domain_candidate_likely_contains_url(
-            match.group(1), text[match.end(1) : match.end(1) + 1]
+            match.group(1),
+            text[match.end(1) : match.end(1) + 1],
+            label_normalizations,
+            label_tld_prefixes,
         )
         for match in _BARE_DOMAIN_CANDIDATE_RE.finditer(text)
     )

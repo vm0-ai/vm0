@@ -637,7 +637,7 @@ beforeEach(() => {
   setupTeamsConnectTestEnv(APP_URL);
   mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-  mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
   mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.test");
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   context.mocks.axiom.query.mockResolvedValue([]);

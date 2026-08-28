@@ -161,7 +161,7 @@ class TestOpenAIResponsesSseUsage:
         assert model_sse_parse_warnings(flow) == []
 
     @pytest.mark.parametrize("capture_body", [False, True])
-    def test_brotli_sse_does_not_use_model_json_fallback(self, tmp_path, real_flow, capture_body):
+    def test_brotli_sse_is_rejected_without_body_capture(self, tmp_path, real_flow, capture_body):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         assert flow.response is not None
         flow.response.headers["content-encoding"] = "br"
@@ -174,9 +174,10 @@ class TestOpenAIResponsesSseUsage:
         )
 
         mitm_addon.responseheaders(flow)
-        response_stream(flow)(brotli.compress(plaintext))
-        assert (metadata_keys.STREAM_BUFFER in flow.metadata) is capture_body
-        assert (metadata_keys.STREAM_BUFFER_STATE in flow.metadata) is capture_body
+        assert flow.response.status_code == 502
+        assert response_stream(flow)(brotli.compress(plaintext)) == b""
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
         webhook = run_response(flow, self._usage_webhook_api)
 

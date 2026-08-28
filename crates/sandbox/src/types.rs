@@ -778,6 +778,7 @@ impl GuestProcessControlHandle {
 /// [`Sandbox::wait_process`](crate::Sandbox::wait_process). When stdout streaming is
 /// enabled, callers may use [`take_stdout_receiver`](Self::take_stdout_receiver)
 /// before waiting; if they do, they must drain it while the process runs.
+#[must_use = "retain this process handle and complete supervision with Sandbox::wait_process"]
 pub struct GuestProcessHandle {
     /// Guest process id reported by the provider.
     ///
@@ -872,6 +873,7 @@ impl GuestProcessHandle {
 /// A successful Agent start always includes the process-control capability.
 /// The process handle remains the sole owner of wait, cancellation, stdout,
 /// and drop cleanup state.
+#[must_use = "retain this Agent process handle and complete supervision with Sandbox::wait_process"]
 pub struct GuestAgentProcessHandle {
     process: GuestProcessHandle,
     control: GuestProcessControlHandle,

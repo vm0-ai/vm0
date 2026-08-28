@@ -84,9 +84,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reserve_port_returns_nonzero() {
+    fn reservation_holds_tcp_and_udp_until_drop() {
         let reservation = reserve_port().unwrap();
-        assert!(reservation.port() > 0);
+        let port = reservation.port();
+
+        let tcp_error = std::net::TcpListener::bind(("0.0.0.0", port)).unwrap_err();
+        assert_eq!(tcp_error.kind(), std::io::ErrorKind::AddrInUse);
+
+        let udp_error = std::net::UdpSocket::bind(("0.0.0.0", port)).unwrap_err();
+        assert_eq!(udp_error.kind(), std::io::ErrorKind::AddrInUse);
+
+        drop(reservation);
+
+        let _tcp_listener = std::net::TcpListener::bind(("0.0.0.0", port)).unwrap();
+        let _udp_socket = std::net::UdpSocket::bind(("0.0.0.0", port)).unwrap();
     }
 
     fn bind_tcp_udp_pair() -> std::io::Result<(ReservedTcpPort, std::net::UdpSocket)> {

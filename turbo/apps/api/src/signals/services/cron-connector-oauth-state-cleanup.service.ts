@@ -6,6 +6,7 @@ import { nowDate } from "../../lib/time";
 import { type Db, writeDb$ } from "../external/db";
 
 const DELETE_BATCH_SIZE = 1000;
+const TEST_DELETE_BATCH_SIZE = 1;
 const MAX_BATCHES = 10;
 
 interface ConnectorOauthStateCleanupOwner {
@@ -17,6 +18,7 @@ async function cleanupConnectorOauthStates(
   db: Db,
   cutoff: Date,
   owner: ConnectorOauthStateCleanupOwner | undefined,
+  batchSize: number,
   signal: AbortSignal,
 ): Promise<number> {
   const expiredWhere = owner
@@ -34,7 +36,7 @@ async function cleanupConnectorOauthStates(
       .from(connectorOauthStates)
       .where(expiredWhere)
       .orderBy(asc(connectorOauthStates.expiresAt))
-      .limit(DELETE_BATCH_SIZE);
+      .limit(batchSize);
     const { rowCount } = await db
       .delete(connectorOauthStates)
       .where(inArray(connectorOauthStates.id, expiredStates));
@@ -42,7 +44,7 @@ async function cleanupConnectorOauthStates(
 
     const batchDeleted = rowCount ?? 0;
     totalDeleted += batchDeleted;
-    if (batchDeleted < DELETE_BATCH_SIZE) {
+    if (batchDeleted < batchSize) {
       break;
     }
   }
@@ -56,6 +58,7 @@ export const cleanupConnectorOauthStates$ = command(
       set(writeDb$),
       nowDate(),
       undefined,
+      DELETE_BATCH_SIZE,
       signal,
     );
   },
@@ -67,6 +70,7 @@ export const cleanupConnectorOauthStatesForTest$ = command(
       set(writeDb$),
       nowDate(),
       { userId: marker, orgId: marker },
+      TEST_DELETE_BATCH_SIZE,
       signal,
     );
   },

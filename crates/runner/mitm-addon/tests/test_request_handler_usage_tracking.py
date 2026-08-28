@@ -8,6 +8,7 @@ from typing import Never
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mitmproxy import http
 from mitmproxy.flow import Error
 
 import auth
@@ -16,6 +17,7 @@ import mitm_addon
 import terminal_usage
 import usage
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.flow_helpers import response_stream
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
@@ -802,6 +804,67 @@ async def test_billable_model_provider_records_model_usage_provider(
         buffered=0,
         reports=0,
         flush_request_id="request-1",
+    )
+
+
+async def test_billable_model_provider_rejects_uninspectable_response_and_drains_tracking(
+    tmp_path,
+    usage_pending_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    usage_webhook_server,
+):
+    reg_path = _write_model_provider_tracking_registry(
+        tmp_path,
+        billable=True,
+        sandbox_fields={"modelUsageProvider": "claude-sonnet-4-6"},
+    )
+    flow = _model_provider_tracking_flow(real_flow)
+    flow.request.headers["Accept-Encoding"] = "br, identity;q=0"
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+        assert flow.request.headers["Accept-Encoding"] == "br, identity;q=0"
+        usage.write_pending_snapshot(flush_request_id="before-response")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="before-response",
+        )
+
+        flow.response = http.Response.make(
+            200,
+            b"",
+            {
+                "Content-Type": "text/event-stream",
+                "Content-Encoding": "br",
+            },
+        )
+        mitm_addon.responseheaders(flow)
+
+        assert flow.response.status_code == 502
+        assert flow.response.content == b""
+        stream = response_stream(flow)
+        assert stream(b"uninspectable upstream bytes") == b""
+        assert stream(b"") == b""
+        mitm_addon.response(flow)
+        assert usage.flush_usage_events(trigger="test") == 0
+
+    assert usage_webhook_server.request_count == 0
+    usage.write_pending_snapshot(flush_request_id="after-response")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-response",
     )
 
 

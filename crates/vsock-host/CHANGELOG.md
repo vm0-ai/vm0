@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.17.108](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.107...vsock-host-v0.17.108) (2026-08-28)
+
+## [0.17.107](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.106...vsock-host-v0.17.107) (2026-08-28)
+
+
+### Documentation
+
+* **vsock-host:** document copy byte limit ([#30058](https://github.com/vm0-ai/vm0/issues/30058)) ([fbdae7a](https://github.com/vm0-ai/vm0/commit/fbdae7a49e02e0df37eaa5fb2701e8d9a082257e))
+
+## [0.17.106](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.105...vsock-host-v0.17.106) (2026-08-28)
+
 ## [0.17.105](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.104...vsock-host-v0.17.105) (2026-08-28)
 
 ## [0.17.104](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.103...vsock-host-v0.17.104) (2026-08-28)

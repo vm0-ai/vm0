@@ -3841,7 +3841,7 @@ describe("connector catalog valid lifecycle", () => {
 
   it("executes an external OpenID grant with catalog-owned storage", async () => {
     mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     mockEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     mockOptionalEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     configureSource();
@@ -5925,7 +5925,7 @@ describe("connector catalog executable compatibility", () => {
   });
 
   it("accepts inline confidential test clients and applies rollout at request time", async () => {
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     const provider = mockTestOAuthAuthCodeProvider({
       refreshToken: "catalog-test-oauth-refresh",
     });
@@ -6106,7 +6106,7 @@ describe("connector catalog executable compatibility", () => {
 
   it("ignores filtered sibling methods when choosing the callback origin", async () => {
     configureSource();
-    mockEnv("VM0_WEB_URL", "https://app.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://app.vm0.test");
     mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_ID", "cloudflare-client-id");
     mockOptionalEnv(
       "CLOUDFLARE_OAUTH_CLIENT_SECRET",

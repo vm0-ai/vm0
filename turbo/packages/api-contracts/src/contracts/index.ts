@@ -832,6 +832,11 @@ export {
   type UpdateUserPreferencesRequest,
   sendModeSchema,
   type SendMode,
+  themePreferenceSchema,
+  type ThemePreference,
+  COLOR_THEMES,
+  colorThemeSchema,
+  type ColorTheme,
   userLocaleSchema,
   type UserLocale,
 } from "./user-preferences";

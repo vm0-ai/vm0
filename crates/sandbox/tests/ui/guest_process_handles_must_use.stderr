@@ -1,0 +1,76 @@
+error: unused `GuestProcessHandle` that must be used
+  --> tests/ui/guest_process_handles_must_use.rs:14:5
+   |
+14 |     process_handle().unwrap();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: retain this process handle and complete supervision with Sandbox::wait_process
+note: the lint level is defined here
+  --> tests/ui/guest_process_handles_must_use.rs:1:9
+   |
+ 1 | #![deny(unused_must_use)]
+   |         ^^^^^^^^^^^^^^^
+help: use `let _ = ...` to ignore the resulting value
+   |
+14 |     let _ = process_handle().unwrap();
+   |     +++++++
+
+error: unused `GuestProcessHandle` that must be used
+  --> tests/ui/guest_process_handles_must_use.rs:18:5
+   |
+18 |     process_handle().expect("process start should succeed");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: retain this process handle and complete supervision with Sandbox::wait_process
+help: use `let _ = ...` to ignore the resulting value
+   |
+18 |     let _ = process_handle().expect("process start should succeed");
+   |     +++++++
+
+error: unused `GuestProcessHandle` that must be used
+  --> tests/ui/guest_process_handles_must_use.rs:22:5
+   |
+22 |     process_handle()?;
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = note: retain this process handle and complete supervision with Sandbox::wait_process
+help: use `let _ = ...` to ignore the resulting value
+   |
+22 |     let _ = process_handle()?;
+   |     +++++++
+
+error: unused `GuestAgentProcessHandle` that must be used
+  --> tests/ui/guest_process_handles_must_use.rs:27:5
+   |
+27 |     agent_process_handle().unwrap();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: retain this Agent process handle and complete supervision with Sandbox::wait_process
+help: use `let _ = ...` to ignore the resulting value
+   |
+27 |     let _ = agent_process_handle().unwrap();
+   |     +++++++
+
+error: unused `GuestAgentProcessHandle` that must be used
+  --> tests/ui/guest_process_handles_must_use.rs:31:5
+   |
+31 |     agent_process_handle().expect("Agent process start should succeed");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: retain this Agent process handle and complete supervision with Sandbox::wait_process
+help: use `let _ = ...` to ignore the resulting value
+   |
+31 |     let _ = agent_process_handle().expect("Agent process start should succeed");
+   |     +++++++
+
+error: unused `GuestAgentProcessHandle` that must be used
+  --> tests/ui/guest_process_handles_must_use.rs:35:5
+   |
+35 |     agent_process_handle()?;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: retain this Agent process handle and complete supervision with Sandbox::wait_process
+help: use `let _ = ...` to ignore the resulting value
+   |
+35 |     let _ = agent_process_handle()?;
+   |     +++++++

@@ -152,7 +152,7 @@ describe("Teams OAuth API routes", () => {
 
   beforeEach(() => {
     setupTeamsConnectTestEnv(APP_ORIGIN, API_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     mockEnv("MICROSOFT_OAUTH_CLIENT_ID", "test-microsoft-client-id");
     mockEnv("MICROSOFT_OAUTH_CLIENT_SECRET", "test-microsoft-client-secret");
   });

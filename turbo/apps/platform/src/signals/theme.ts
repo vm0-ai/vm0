@@ -1,20 +1,19 @@
 import { command, computed, state } from "ccstate";
+import {
+  COLOR_THEMES,
+  type ColorTheme,
+  type ThemePreference,
+  type UserPreferencesResponse,
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { localStorageSignals } from "./external/local-storage.ts";
+import { clerk$ } from "./auth.ts";
+import {
+  updateUserPreference$,
+  userPreferences$,
+} from "./okou-page/settings/user-preferences.ts";
 
-export type ThemePreference = "light" | "dark" | "system";
-
-export const COLOR_THEMES = [
-  "golden-hour",
-  "citrus-spark",
-  "berry-blush",
-  "cotton-sky",
-  "blue-horizon",
-  "daydream",
-  "deep-lagoon",
-  "limelight",
-] as const;
-
-export type ColorTheme = (typeof COLOR_THEMES)[number];
+export { COLOR_THEMES };
+export type { ColorTheme, ThemePreference };
 
 export const DEFAULT_COLOR_THEME: ColorTheme = "blue-horizon";
 
@@ -94,6 +93,92 @@ export const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
   set(internalColorTheme$, colorTheme);
   set(colorThemeStorageSet$, colorTheme);
 });
+
+type CurrentAppearancePreferences = UserPreferencesResponse & {
+  readonly theme: ThemePreference | null;
+  readonly colorTheme: ColorTheme | null;
+};
+
+/**
+ * New web/app -> old API compatibility for the GA theme preference. Keep the
+ * theme local while an API from before #30051 is serving or retained for
+ * rollback. Remove this guard and its page test after that gate closes in
+ * #30076. The non-GA color theme does not use an independent update fallback.
+ */
+function hasServerAppearancePreferences(
+  preferences: UserPreferencesResponse,
+): preferences is CurrentAppearancePreferences {
+  const hasTheme = preferences.theme !== undefined;
+  const hasColorTheme = preferences.colorTheme !== undefined;
+  if (hasTheme !== hasColorTheme) {
+    throw new Error("Appearance preference response is incomplete");
+  }
+  return hasTheme;
+}
+
+/**
+ * Apply a theme choice immediately, then persist it when the current API
+ * advertises server-backed theme preferences.
+ */
+export const updateThemePreference$ = command(
+  async ({ get, set }, preference: ThemePreference, signal: AbortSignal) => {
+    set(setTheme$, preference);
+    const preferences = await get(userPreferences$);
+    signal.throwIfAborted();
+    if (!hasServerAppearancePreferences(preferences)) {
+      return;
+    }
+    await set(updateUserPreference$, { theme: preference }, signal);
+  },
+);
+
+/**
+ * Apply a color theme immediately, then persist it when supported by the API.
+ */
+export const updateColorThemePreference$ = command(
+  async ({ set }, colorTheme: ColorTheme, signal: AbortSignal) => {
+    set(setColorTheme$, colorTheme);
+    await set(updateUserPreference$, { colorTheme }, signal);
+  },
+);
+
+/**
+ * Reconcile the fast local bootstrap cache with the workspace preference.
+ * Null server values migrate the current device choice; missing keys mean an
+ * older API is still serving this frontend, so local-only behavior continues.
+ */
+export const syncThemePreferences$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
+      return;
+    }
+
+    const preferences = await get(userPreferences$);
+    signal.throwIfAborted();
+    if (!hasServerAppearancePreferences(preferences)) {
+      return;
+    }
+
+    const theme = preferences.theme ?? get(themePreference$);
+    const colorTheme = preferences.colorTheme ?? get(colorTheme$);
+
+    set(setTheme$, theme);
+    set(setColorTheme$, colorTheme);
+
+    if (preferences.theme === null || preferences.colorTheme === null) {
+      await set(
+        updateUserPreference$,
+        {
+          ...(preferences.theme === null && { theme }),
+          ...(preferences.colorTheme === null && { colorTheme }),
+        },
+        signal,
+      );
+    }
+  },
+);
 
 /**
  * Keep palette theme attributes on the document while a themed app shell is

@@ -26,6 +26,49 @@ def assert_usage_buffer_drained(enqueue: RecordingEnqueue) -> None:
     enqueue.assert_not_called()
 
 
+def test_pre_admission_failure_retains_source_event_and_releases_delivery_ownership(
+    tmp_path,
+):
+    enqueue = RecordingEnqueue()
+    pending_path = tmp_path / "usage-pending"
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    usage.set_pending_path(str(pending_path))
+    usage.buffer_source_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    with (
+        patch(
+            "usage.buffer.orchestrator._log_flush_summaries",
+            side_effect=[RuntimeError("pre-admission summary failed"), None],
+        ),
+        pytest.raises(RuntimeError, match="pre-admission summary failed"),
+    ):
+        usage.flush_usage_events(trigger="test")
+
+    enqueue.assert_not_called()
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="pre-admission-failed",
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    retry_payload = enqueue.last_call.payload
+    assert retry_payload["runId"] == "run-1"
+    assert retry_payload["events"][0]["quantity"] == 10
+    assert retry_payload["events"][0]["idempotencyKey"] == "source-1"
+    assert_usage_buffer_drained(enqueue)
+
+
 def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp_path):
     failed_payloads = []
     pending_path = tmp_path / "usage-pending"

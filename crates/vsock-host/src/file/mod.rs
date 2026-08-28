@@ -12,7 +12,7 @@ use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 
 use crate::exec_operation;
 
-pub use copy::{CopyFileOptions, CopyFileResult};
+pub use copy::{COPY_FILE_STREAM_MAX_BYTES, CopyFileOptions, CopyFileResult};
 pub use write::WriteFileEntry;
 
 const MISSING_FILE_EXIT_CODE: i32 = 66;

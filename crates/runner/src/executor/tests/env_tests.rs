@@ -12,10 +12,10 @@ use super::super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::super::env::{
-    HostEnv, build_env_json_with_host_env, build_run_payload_for_run, build_user_env_json,
-    guest_connector_account_context_file_path, is_runner_owned_env_key,
-    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
-    write_connector_account_context_file,
+    HostEnv, build_env_json_with_host_env, build_env_json_with_host_env_for_run,
+    build_run_payload_for_run, build_user_env_json, guest_connector_account_context_file_path,
+    is_runner_owned_env_key, validate_execution_context_before_sandbox,
+    validate_model_provider_env_placeholders, write_connector_account_context_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
@@ -32,6 +32,7 @@ use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 use crate::types::{
     ConnectorRuntimeTargetRegistration, ExecutionContext, ResumeSession, SandboxReuseResult,
+    WorkspaceReuseResult,
 };
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
@@ -279,7 +280,7 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
 }
 
 #[test]
-fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
+fn execution_context_validation_rejects_translated_tuning_env_nul_before_sandbox() {
     let secret = "3\0";
     let ctx = context_with_env(HashMap::from([(
         "VM0_STUCK_TOOL_TIMEOUT_SECS".into(),
@@ -290,7 +291,7 @@ fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
 
     assert!(error.contains("bootstrap environment"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    assert!(error.contains(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV));
     assert!(!error.contains(secret));
 }
 
@@ -434,7 +435,16 @@ fn model_provider_env_placeholder_validation_accepts_codex_oauth_placeholders() 
 #[test]
 fn build_env_json_required_keys() {
     let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "https://api.example.com");
+    let sandbox_id = "00000000-0000-4000-8000-000000000abc";
+    let env = build_env_json_with_host_env_for_run(
+        &ctx,
+        "https://api.example.com",
+        sandbox_id,
+        SandboxReuseResult::Reused,
+        WorkspaceReuseResult::SandboxReused,
+        &HostEnv::default(),
+    )
+    .expect("test env should build");
 
     assert_eq!(
         env.get("VM0_API_BACKEND_URL").unwrap(),
@@ -467,17 +477,20 @@ fn build_env_json_required_keys() {
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
     // checkpoint lands before sandbox teardown.
-    assert!(
-        env.get("VM0_SANDBOX_ID")
-            .unwrap()
-            .parse::<uuid::Uuid>()
-            .is_ok()
-    );
-    assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), "reused");
     assert_eq!(
-        env.get(guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV)
-            .unwrap(),
-        "sandboxReused"
+        env.get(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV)
+            .map(String::as_str),
+        Some(sandbox_id)
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV)
+            .map(String::as_str),
+        Some("reused")
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV)
+            .map(String::as_str),
+        Some("sandboxReused")
     );
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_API_START_TIME_ENV)
@@ -485,14 +498,14 @@ fn build_env_json_required_keys() {
         ""
     );
     assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
-    for canonical_key in [
-        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+    for legacy_key in [
+        guest_contracts::env::SANDBOX_ID_ENV,
+        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
     ] {
         assert!(
-            !env.contains_key(canonical_key),
-            "reader Stage 1 must not emit canonical key {canonical_key}"
+            !env.contains_key(legacy_key),
+            "canonical writer emitted legacy key {legacy_key}"
         );
     }
 }
@@ -536,7 +549,30 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
             &HostEnv::default(),
         )
         .expect("test env should build");
-        assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), expected);
+        assert_eq!(
+            env.get(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV)
+                .map(String::as_str),
+            Some(sid.as_str())
+        );
+        assert_eq!(
+            env.get(guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV)
+                .map(String::as_str),
+            Some(expected)
+        );
+        assert!(
+            !env.contains_key(guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV),
+            "no-workspace builder emitted canonical workspace reuse metadata"
+        );
+        for legacy_key in [
+            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+        ] {
+            assert!(
+                !env.contains_key(legacy_key),
+                "canonical writer emitted legacy key {legacy_key}"
+            );
+        }
     }
 }
 
@@ -913,44 +949,64 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
 }
 
 #[test]
-fn build_env_json_keeps_guest_agent_tuning_writer_legacy_only() {
+fn build_env_json_translates_guest_agent_tuning_inputs_to_canonical_outputs() {
     let mut ctx = minimal_context();
-    ctx.environment = Some(HashMap::from([
-        ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
-        ("VM0_POST_RESULT_SIGTERM_GRACE_SECS".into(), "1".into()),
-        ("VM0_POST_RESULT_TOTAL_CAP_SECS".into(), "4".into()),
-        ("VM0_POST_RESULT_SIGKILL_GRACE_SECS".into(), "2".into()),
-        (
-            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-    ]));
+    let expected_values = ["3", "", " 4 ", "not-a-duration"];
+    let mut environment = HashMap::new();
+    for ((legacy_input, canonical_bootstrap_output), expected_value) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+            .into_iter()
+            .zip(expected_values)
+    {
+        environment.insert(legacy_input.into(), expected_value.into());
+        environment.insert(
+            canonical_bootstrap_output.into(),
+            "hostile-canonical-must-not-override".into(),
+        );
+    }
+    ctx.environment = Some(environment);
 
     let env = build_env_for_test(&ctx, "http://localhost");
 
-    assert_eq!(env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
-    assert_eq!(env.get("VM0_POST_RESULT_SIGTERM_GRACE_SECS").unwrap(), "1");
-    assert_eq!(env.get("VM0_POST_RESULT_TOTAL_CAP_SECS").unwrap(), "4");
-    assert_eq!(env.get("VM0_POST_RESULT_SIGKILL_GRACE_SECS").unwrap(), "2");
-    for key in [
-        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    ] {
-        assert!(!env.contains_key(key), "runner writer emitted {key}");
+    for ((legacy_input, canonical_bootstrap_output), expected_value) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+            .into_iter()
+            .zip(expected_values)
+    {
+        assert_eq!(
+            env.get(canonical_bootstrap_output).map(String::as_str),
+            Some(expected_value)
+        );
+        assert!(
+            !env.contains_key(legacy_input),
+            "runner writer emitted legacy output {legacy_input}"
+        );
+    }
+}
+
+#[test]
+fn build_env_json_does_not_author_guest_agent_tuning_output_without_legacy_inputs() {
+    let canonical_only_environment = guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+        .into_iter()
+        .map(|(_, canonical_bootstrap_output)| {
+            (
+                canonical_bootstrap_output.into(),
+                "hostile-canonical-must-not-author".into(),
+            )
+        })
+        .collect();
+
+    for environment in [None, Some(canonical_only_environment)] {
+        let mut ctx = minimal_context();
+        ctx.environment = environment;
+        let env = build_env_for_test(&ctx, "http://localhost");
+
+        for (legacy_input, canonical_bootstrap_output) in
+            guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+        {
+            assert!(!env.contains_key(legacy_input));
+            assert!(!env.contains_key(canonical_bootstrap_output));
+        }
     }
 }
 

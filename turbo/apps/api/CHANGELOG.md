@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.506.2](https://github.com/vm0-ai/vm0/compare/api-v1.506.1...api-v1.506.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* **platform:** persist appearance preferences ([#30051](https://github.com/vm0-ai/vm0/issues/30051)) ([21d2954](https://github.com/vm0-ai/vm0/commit/21d2954bebb4336546670465bcee7796959f5cad))
+
+
+### Refactoring
+
+* **api:** retire legacy web URL reader ([#29989](https://github.com/vm0-ai/vm0/issues/29989)) ([ff7b0cc](https://github.com/vm0-ai/vm0/commit/ff7b0cc5f961aa467b38e0202cb7df08a7e170c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.379.1
+    * @okouai/connectors bumped to 1.210.6
+    * @okouai/core bumped to 8.600.1
+    * @okouai/db bumped to 1.228.2
+
+## [1.506.1](https://github.com/vm0-ai/vm0/compare/api-v1.506.0...api-v1.506.1) (2026-08-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.228.1
+
 ## [1.506.0](https://github.com/vm0-ai/vm0/compare/api-v1.505.2...api-v1.506.0) (2026-08-28)
 
 

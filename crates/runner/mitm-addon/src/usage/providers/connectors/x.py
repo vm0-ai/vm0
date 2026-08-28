@@ -39,6 +39,7 @@ from .x_billing import (
 )
 from .x_response_inspection import (
     as_non_negative_response_count,
+    is_stream_path,
     parse_json_response_fields_from_body,
 )
 
@@ -618,7 +619,8 @@ def _response_usage_context(flow: http.HTTPFlow) -> _ResponseUsageContext | None
 
 def needs_response_buffer_fallback(flow: http.HTTPFlow) -> bool:
     """Return whether X billing may consume a buffered response body."""
-    return _response_usage_context(flow) is not None
+    context = _response_usage_context(flow)
+    return context is not None and not is_stream_path(context.request_path)
 
 
 def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:

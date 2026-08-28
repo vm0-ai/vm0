@@ -566,7 +566,7 @@ describe("POST /api/image-io/generate", () => {
 
   beforeEach(() => {
     mockEnv("OKOU_API_BACKEND_URL", WEB_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,

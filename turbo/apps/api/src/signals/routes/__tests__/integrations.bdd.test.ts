@@ -5707,7 +5707,7 @@ describe("INT-02: Telegram integration", () => {
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     await installApiTestConnectorCatalog();
 
@@ -5837,7 +5837,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
 
   it("starts configured GitHub user OAuth with connector state", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "bdd-github-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "bdd-github-client-secret");
@@ -5888,7 +5888,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
 
   it("preserves signed GitHub install brand across provider callbacks", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     integrations.configureGithubAppInstallProvider();
 

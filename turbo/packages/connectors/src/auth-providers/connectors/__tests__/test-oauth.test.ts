@@ -39,7 +39,6 @@ describe("test-oauth provider URLs", () => {
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", undefined);
     vi.stubEnv("OKOU_WEB_URL", undefined);
-    vi.stubEnv("VM0_WEB_URL", undefined);
     vi.stubEnv("APP_URL", undefined);
     vi.stubEnv("VERCEL_URL", undefined);
   });
@@ -90,7 +89,7 @@ describe("test-oauth provider URLs", () => {
 
   it("uses the current deployment URL when the API URL is a PR placeholder", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://{pr}.vm6.ai");
-    vi.stubEnv("VM0_WEB_URL", "https://pr-12962-www.vm6.ai");
+    vi.stubEnv("OKOU_WEB_URL", "https://pr-12962-www.vm6.ai");
     vi.stubEnv("VERCEL_URL", "pr-12962-api.vm6.ai");
 
     const authorizationUrl = new URL(
@@ -105,60 +104,49 @@ describe("test-oauth provider URLs", () => {
     expect(authorizationUrl.origin).toBe("https://pr-12962-api.vm6.ai");
   });
 
-  it.each([
-    {
-      state: "canonical-only",
-      canonical: "https://canonical-web.example.test",
-      legacy: undefined,
-      expectedOrigin: "https://canonical-web.example.test",
-    },
-    {
-      state: "legacy-only",
-      canonical: undefined,
-      legacy: "https://legacy-web.example.test",
-      expectedOrigin: "https://legacy-web.example.test",
-    },
-    {
-      state: "equal-dual",
-      canonical: "https://equal-web.example.test",
-      legacy: "https://equal-web.example.test",
-      expectedOrigin: "https://equal-web.example.test",
-    },
-  ])(
-    "resolves $state web aliases before the APP_URL fallback",
-    ({ canonical, legacy, expectedOrigin }) => {
-      vi.stubEnv("OKOU_WEB_URL", canonical);
-      vi.stubEnv("VM0_WEB_URL", legacy);
-      vi.stubEnv("APP_URL", "https://app-fallback.example.test");
-
-      const authorizationUrl = new URL(
-        buildTestOAuthAuthorizationUrl(
-          authCodeGrant(),
-          "test-client",
-          "https://app.vm0.ai/callback",
-          "state-123",
-        ),
-      );
-
-      expect(authorizationUrl.origin).toBe(expectedOrigin);
-    },
-  );
-
-  it("fails on unequal web aliases before URL normalization or API fallback", () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api-backend.example.test");
-    vi.stubEnv("OKOU_WEB_URL", "https://same-origin.example.test");
-    vi.stubEnv("VM0_WEB_URL", "https://same-origin.example.test/");
+  it("uses the canonical Web URL before the APP_URL fallback", () => {
+    vi.stubEnv("OKOU_WEB_URL", "https://pr-12962-www.vm6.ai/");
     vi.stubEnv("APP_URL", "https://app-fallback.example.test");
 
-    expect(() => {
+    const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
         authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
-      );
-    }).toThrow(
-      "Test OAuth web URL aliases conflict: canonicalKey=OKOU_WEB_URL legacyKey=VM0_WEB_URL state=conflicting-dual",
+      ),
+    );
+
+    expect(authorizationUrl.origin).toBe("https://pr-12962-api.vm6.ai");
+  });
+
+  it("ignores the retired Web URL input with or without canonical config", () => {
+    vi.stubEnv("VM0_WEB_URL", "https://legacy-web.example.test");
+    vi.stubEnv("APP_URL", "https://app-fallback.example.test");
+
+    const fallbackAuthorizationUrl = new URL(
+      buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
+        "test-client",
+        "https://app.vm0.ai/callback",
+        "state-123",
+      ),
+    );
+    expect(fallbackAuthorizationUrl.origin).toBe(
+      "https://app-fallback.example.test",
+    );
+
+    vi.stubEnv("OKOU_WEB_URL", "https://canonical-web.example.test");
+    const canonicalAuthorizationUrl = new URL(
+      buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
+        "test-client",
+        "https://app.vm0.ai/callback",
+        "state-123",
+      ),
+    );
+    expect(canonicalAuthorizationUrl.origin).toBe(
+      "https://canonical-web.example.test",
     );
   });
 
@@ -212,6 +200,19 @@ describe("test-oauth provider URLs", () => {
     );
 
     expect(authorizationUrl.origin).toBe("https://app.vm0.ai");
+  });
+
+  it("defaults to localhost when no configured URL is available", () => {
+    const authorizationUrl = new URL(
+      buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
+        "test-client",
+        "https://app.vm0.ai/callback",
+        "state-123",
+      ),
+    );
+
+    expect(authorizationUrl.origin).toBe("http://localhost:3000");
   });
 
   it("fails fast when a PR placeholder has no concrete Vercel URL", () => {

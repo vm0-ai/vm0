@@ -1,19 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  onTestFinished,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { createFixtureOperationOwner } from "./helpers/fixture-operation-owner";
 import { createRouteMocks } from "./helpers/route-test";
 import {
   type TestCronDeleteCleanupsStateActionBody,
@@ -64,16 +58,33 @@ async function requestFixture(
   return response.body;
 }
 
-function registerFixtureCleanup(marker: string): void {
-  onTestFinished(async () => {
+function createConnectorFixture(marker: string) {
+  const owner = createFixtureOperationOwner(async () => {
     await requestFixture({ action: "delete-connector", marker });
   });
+  return {
+    cleanup: async () => {
+      return await owner.run(async () => {
+        return await requestFixture({ action: "cleanup-connector", marker });
+      });
+    },
+    read: async () => {
+      return await owner.run(async () => {
+        return await requestFixture({ action: "read-connector", marker });
+      });
+    },
+    startOauth: async () => {
+      return await owner.run(async () => {
+        return await startGithubOauth(marker);
+      });
+    },
+  };
 }
 
 describe("connector OAuth state cleanup cron", () => {
   beforeEach(() => {
     mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
   });
@@ -83,26 +94,29 @@ describe("connector OAuth state cleanup cron", () => {
   });
 
   it("deletes expired states while preserving unexpired states", async () => {
-    const marker = `connector-oauth-cleanup-${randomUUID()}`;
-    const unrelatedMarker = `connector-oauth-cleanup-${randomUUID()}`;
-    registerFixtureCleanup(marker);
-    registerFixtureCleanup(unrelatedMarker);
+    const fixture = createConnectorFixture(
+      `connector-oauth-cleanup-${randomUUID()}`,
+    );
+    const unrelatedFixture = createConnectorFixture(
+      `connector-oauth-cleanup-${randomUUID()}`,
+    );
 
     mockNow(now() - 20 * 60 * 1000);
-    const expiredState = await startGithubOauth(marker);
-    const unrelatedExpiredState = await startGithubOauth(unrelatedMarker);
+    const expiredState = await fixture.startOauth();
+    const unrelatedExpiredState = await unrelatedFixture.startOauth();
     clearMockNow();
-    const unexpiredState = await startGithubOauth(marker);
+    const unexpiredState = await fixture.startOauth();
 
-    await expect(
-      requestFixture({ action: "cleanup-connector", marker }),
-    ).resolves.toStrictEqual({ ok: true, remaining: [], deleted: 1 });
-    await expect(
-      requestFixture({ action: "read-connector", marker }),
-    ).resolves.toStrictEqual({ ok: true, remaining: [unexpiredState] });
-    await expect(
-      requestFixture({ action: "read-connector", marker: unrelatedMarker }),
-    ).resolves.toStrictEqual({
+    await expect(fixture.cleanup()).resolves.toStrictEqual({
+      ok: true,
+      remaining: [],
+      deleted: 1,
+    });
+    await expect(fixture.read()).resolves.toStrictEqual({
+      ok: true,
+      remaining: [unexpiredState],
+    });
+    await expect(unrelatedFixture.read()).resolves.toStrictEqual({
       ok: true,
       remaining: [unrelatedExpiredState],
     });

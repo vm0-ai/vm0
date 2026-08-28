@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { SupportedLocale } from "../i18n/resources.ts";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
-import { initTheme$ } from "./theme.ts";
+import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
@@ -467,6 +467,7 @@ const setupFeatureSwitches$ = command(
   ) => {
     await set(reloadFeatureSwitch$, signal);
     await set(syncLocalePreference$, initialLocaleLoadFailure, signal);
+    await set(syncThemePreferences$, signal);
   },
 );
 

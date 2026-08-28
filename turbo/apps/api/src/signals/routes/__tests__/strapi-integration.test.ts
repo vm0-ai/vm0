@@ -185,7 +185,7 @@ async function workflowAutomationRuns(threadId: string, workflowId: string) {
 
 beforeEach(() => {
   clearMockNow();
-  mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
   context.mocks.s3.send.mockResolvedValue({});
 });
 
@@ -349,7 +349,7 @@ describe("Strapi integration", () => {
   });
 
   it("projects webhook credentials by request brand without changing the endpoint", async () => {
-    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
     const actor = workflows.user({
       orgId: STAFF_ORG_ID,
       orgRole: "org:admin",

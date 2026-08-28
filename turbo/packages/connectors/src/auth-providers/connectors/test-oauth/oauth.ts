@@ -17,10 +17,6 @@ import { reportedOAuthScopes } from "../../oauth/scope";
 
 const TEST_OAUTH_AUTHORIZATION_URL = "/api/test/oauth-provider/authorize";
 const TEST_OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";
-const TEST_OAUTH_CANONICAL_WEB_URL_KEY = "OKOU_WEB_URL";
-const TEST_OAUTH_LEGACY_WEB_URL_KEY = "VM0_WEB_URL";
-const TEST_OAUTH_WEB_URL_ALIAS_CONFLICT_ERROR =
-  "Test OAuth web URL aliases conflict: canonicalKey=OKOU_WEB_URL legacyKey=VM0_WEB_URL state=conflicting-dual";
 
 interface TokenResponse {
   accessToken: string;
@@ -65,22 +61,6 @@ function isPreviewPlaceholder(url: string | undefined): boolean {
   return url?.includes("{pr}") ?? false;
 }
 
-function resolveTestOAuthWebUrlAliases(): string | undefined {
-  // This synthetic connector is test-only and intentionally outside the
-  // production Turbo writer/pass-through contract for this reader foundation.
-  const runtimeEnvironment: Readonly<Record<string, string | undefined>> =
-    process.env;
-  const canonical = runtimeEnvironment[TEST_OAUTH_CANONICAL_WEB_URL_KEY];
-  const legacy = runtimeEnvironment[TEST_OAUTH_LEGACY_WEB_URL_KEY];
-  if (canonical === undefined) {
-    return legacy;
-  }
-  if (legacy === undefined || canonical === legacy) {
-    return canonical;
-  }
-  throw new Error(TEST_OAUTH_WEB_URL_ALIAS_CONFLICT_ERROR);
-}
-
 function apiPreviewAliasFromWebUrl(
   url: string | undefined,
 ): string | undefined {
@@ -100,7 +80,7 @@ function apiPreviewAliasFromWebUrl(
 }
 
 function runtimeBaseUrl(): string {
-  const configuredWebUrl = resolveTestOAuthWebUrlAliases();
+  const configuredWebUrl = process.env.OKOU_WEB_URL;
   const configuredApiUrl = process.env.VM0_API_BACKEND_URL;
   if (configuredApiUrl && !isPreviewPlaceholder(configuredApiUrl)) {
     return (

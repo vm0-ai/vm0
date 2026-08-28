@@ -1080,6 +1080,26 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <script>
+      // iOS can report standalone display mode one paint after document
+      // startup. Resolve it synchronously from navigator.standalone so the
+      // skeleton never paints at 100dvh before moving to 100lvh.
+      (function () {
+        var standalone =
+          navigator.standalone === true ||
+          window.matchMedia("(display-mode: standalone)").matches;
+        if (
+          standalone &&
+          window.CSS &&
+          window.CSS.supports("height", "100lvh")
+        ) {
+          document.documentElement.style.setProperty(
+            "--zero-viewport-height",
+            "100lvh",
+          );
+        }
+      })();
+    </script>
+    <script>
       // Inline theme detection — mirrors signals/theme.ts resolveTheme() + applyTheme()
       (function () {
         var p = localStorage.getItem("theme");

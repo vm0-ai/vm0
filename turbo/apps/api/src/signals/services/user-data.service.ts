@@ -1,7 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  colorThemeSchema,
+  type ColorTheme,
   SUPPORTED_USER_LOCALES,
   type SendMode,
+  themePreferenceSchema,
+  type ThemePreference,
   type UserLocale,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
@@ -52,6 +56,20 @@ function normalizePinnedAgentIds(ids: readonly string[]): string[] {
 
 function parseSendMode(value: unknown): SendMode {
   return value === "cmd-enter" ? "cmd-enter" : "enter";
+}
+
+function parseThemePreference(value: unknown): ThemePreference | null {
+  if (value === null) {
+    return null;
+  }
+  return themePreferenceSchema.parse(value);
+}
+
+function parseColorTheme(value: unknown): ColorTheme | null {
+  if (value === null) {
+    return null;
+  }
+  return colorThemeSchema.parse(value);
 }
 
 function parseUserLocale(value: unknown): UserLocale | null {
@@ -110,6 +128,8 @@ export function userPreferences({
         locale: orgMembersMetadata.locale,
         pinnedAgentIds: orgMembersMetadata.pinnedAgentIds,
         sendMode: orgMembersMetadata.sendMode,
+        theme: orgMembersMetadata.theme,
+        colorTheme: orgMembersMetadata.colorTheme,
         morningBriefEnabled: orgMembersMetadata.morningBriefEnabled,
         captureNetworkBodiesRemaining:
           orgMembersMetadata.captureNetworkBodiesRemaining,
@@ -130,6 +150,8 @@ export function userPreferences({
         supportedLocales: [...SUPPORTED_USER_LOCALES],
         pinnedAgentIds: [],
         sendMode: "enter",
+        theme: null,
+        colorTheme: null,
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
@@ -144,6 +166,8 @@ export function userPreferences({
         toStringArray(row.pinnedAgentIds),
       ),
       sendMode: parseSendMode(row.sendMode),
+      theme: parseThemePreference(row.theme),
+      colorTheme: parseColorTheme(row.colorTheme),
       morningBriefEnabled: row.morningBriefEnabled,
       morningBriefNextRunAt: await loadMorningBriefNextRunAt(db, orgId, userId),
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
@@ -209,6 +233,64 @@ type UpdateUserPreferencesResult =
   | { readonly ok: true; readonly data: UserPreferencesResponse }
   | { readonly ok: false; readonly message: string };
 
+type StoredUserPreferences = Omit<
+  UserPreferencesResponse,
+  "morningBriefNextRunAt" | "theme" | "colorTheme"
+> & {
+  readonly theme: ThemePreference | null;
+  readonly colorTheme: ColorTheme | null;
+};
+
+function mergeUserPreferences(
+  existing: UserPreferencesResponse,
+  preferences: UpdateUserPreferencesRequest,
+): StoredUserPreferences {
+  return {
+    timezone: preferences.timezone ?? existing.timezone,
+    locale: preferences.locale ?? existing.locale,
+    supportedLocales: [...SUPPORTED_USER_LOCALES],
+    pinnedAgentIds:
+      preferences.pinnedAgentIds === undefined
+        ? existing.pinnedAgentIds
+        : normalizePinnedAgentIds(preferences.pinnedAgentIds),
+    sendMode: preferences.sendMode ?? existing.sendMode,
+    theme: preferences.theme ?? existing.theme ?? null,
+    colorTheme: preferences.colorTheme ?? existing.colorTheme ?? null,
+    morningBriefEnabled:
+      preferences.morningBriefEnabled ?? existing.morningBriefEnabled,
+    captureNetworkBodiesRemaining:
+      preferences.captureNetworkBodiesRemaining ??
+      existing.captureNetworkBodiesRemaining,
+  };
+}
+
+function userPreferenceUpdateColumns(
+  preferences: UpdateUserPreferencesRequest,
+): Partial<typeof orgMembersMetadata.$inferInsert> {
+  return {
+    ...(preferences.timezone !== undefined && {
+      timezone: preferences.timezone,
+    }),
+    ...(preferences.locale !== undefined && { locale: preferences.locale }),
+    ...(preferences.pinnedAgentIds !== undefined && {
+      pinnedAgentIds: normalizePinnedAgentIds(preferences.pinnedAgentIds),
+    }),
+    ...(preferences.sendMode !== undefined && {
+      sendMode: preferences.sendMode,
+    }),
+    ...(preferences.theme !== undefined && { theme: preferences.theme }),
+    ...(preferences.colorTheme !== undefined && {
+      colorTheme: preferences.colorTheme,
+    }),
+    ...(preferences.morningBriefEnabled !== undefined && {
+      morningBriefEnabled: preferences.morningBriefEnabled,
+    }),
+    ...(preferences.captureNetworkBodiesRemaining !== undefined && {
+      captureNetworkBodiesRemaining: preferences.captureNetworkBodiesRemaining,
+    }),
+  };
+}
+
 export const updateUserPreferences$ = command(
   async (
     { get, set },
@@ -231,35 +313,7 @@ export const updateUserPreferences$ = command(
     );
     signal.throwIfAborted();
 
-    const merged: Omit<UserPreferencesResponse, "morningBriefNextRunAt"> & {
-      readonly locale: UserLocale | null;
-    } = {
-      timezone:
-        preferences.timezone !== undefined
-          ? preferences.timezone
-          : existing.timezone,
-      locale:
-        preferences.locale !== undefined
-          ? preferences.locale
-          : (existing.locale ?? null),
-      supportedLocales: [...SUPPORTED_USER_LOCALES],
-      pinnedAgentIds:
-        preferences.pinnedAgentIds !== undefined
-          ? normalizePinnedAgentIds(preferences.pinnedAgentIds)
-          : existing.pinnedAgentIds,
-      sendMode:
-        preferences.sendMode !== undefined
-          ? preferences.sendMode
-          : existing.sendMode,
-      morningBriefEnabled:
-        preferences.morningBriefEnabled !== undefined
-          ? preferences.morningBriefEnabled
-          : existing.morningBriefEnabled,
-      captureNetworkBodiesRemaining:
-        preferences.captureNetworkBodiesRemaining !== undefined
-          ? preferences.captureNetworkBodiesRemaining
-          : existing.captureNetworkBodiesRemaining,
-    };
+    const merged = mergeUserPreferences(existing, preferences);
 
     const updatedAt = nowDate();
     const writeDb = set(writeDb$);
@@ -272,6 +326,8 @@ export const updateUserPreferences$ = command(
         locale: merged.locale,
         pinnedAgentIds: merged.pinnedAgentIds,
         sendMode: merged.sendMode,
+        theme: merged.theme,
+        colorTheme: merged.colorTheme,
         morningBriefEnabled: merged.morningBriefEnabled,
         captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
         createdAt: updatedAt,
@@ -280,25 +336,7 @@ export const updateUserPreferences$ = command(
       .onConflictDoUpdate({
         target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
         set: {
-          ...(preferences.timezone !== undefined && {
-            timezone: preferences.timezone,
-          }),
-          ...(preferences.locale !== undefined && {
-            locale: preferences.locale,
-          }),
-          ...(preferences.pinnedAgentIds !== undefined && {
-            pinnedAgentIds: normalizePinnedAgentIds(preferences.pinnedAgentIds),
-          }),
-          ...(preferences.sendMode !== undefined && {
-            sendMode: preferences.sendMode,
-          }),
-          ...(preferences.morningBriefEnabled !== undefined && {
-            morningBriefEnabled: preferences.morningBriefEnabled,
-          }),
-          ...(preferences.captureNetworkBodiesRemaining !== undefined && {
-            captureNetworkBodiesRemaining:
-              preferences.captureNetworkBodiesRemaining,
-          }),
+          ...userPreferenceUpdateColumns(preferences),
           updatedAt,
         },
       });

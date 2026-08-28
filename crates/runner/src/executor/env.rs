@@ -595,7 +595,7 @@ fn build_env_json_with_host_env_inner(
         context.sandbox_token.clone(),
     );
     env.insert(
-        guest_contracts::env::SANDBOX_ID_ENV.into(),
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV.into(),
         sandbox_id.into(),
     );
     env.insert(
@@ -603,12 +603,12 @@ fn build_env_json_with_host_env_inner(
         guest_runtime_dir(context.run_id)?,
     );
     env.insert(
-        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV.into(),
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
     );
     if let Some(workspace_reuse_result) = workspace_reuse_result {
         env.insert(
-            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV.into(),
+            guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV.into(),
             workspace_reuse_result.as_wire().into(),
         );
     }
@@ -830,9 +830,11 @@ pub(super) fn insert_guest_agent_tuning_env(
     let Some(user_env) = &context.environment else {
         return;
     };
-    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
-        if let Some(value) = user_env.get(*key) {
-            env.insert((*key).into(), value.clone());
+    for (legacy_input, canonical_bootstrap_output) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+    {
+        if let Some(value) = user_env.get(legacy_input) {
+            env.insert(canonical_bootstrap_output.into(), value.clone());
         }
     }
 }
