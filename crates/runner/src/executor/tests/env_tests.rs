@@ -447,9 +447,11 @@ fn build_env_json_required_keys() {
     .expect("test env should build");
 
     assert_eq!(
-        env.get("VM0_API_BACKEND_URL").unwrap(),
+        env.get(guest_contracts::env::CANONICAL_API_URL_ENV)
+            .unwrap(),
         "https://api.example.com"
     );
+    assert!(!env.contains_key(guest_contracts::env::API_URL_ENV));
     assert_eq!(
         env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &RunId::nil().to_string()
@@ -511,18 +513,18 @@ fn build_env_json_required_keys() {
 }
 
 #[test]
-fn build_env_json_keeps_api_url_writer_legacy_only() {
+fn build_env_json_keeps_api_url_writer_canonical_only() {
     let ctx = minimal_context();
     let env = build_env_for_test(&ctx, "https://api.example.com");
 
     assert_eq!(
-        env.get(guest_contracts::env::API_URL_ENV)
+        env.get(guest_contracts::env::CANONICAL_API_URL_ENV)
             .map(String::as_str),
         Some("https://api.example.com")
     );
     assert!(
-        !env.contains_key(guest_contracts::env::CANONICAL_API_URL_ENV),
-        "Runner bootstrap writer emitted the reader-only canonical API URL alias"
+        !env.contains_key(guest_contracts::env::API_URL_ENV),
+        "canonical Runner bootstrap writer emitted the legacy API URL alias"
     );
 }
 

@@ -340,6 +340,41 @@ class TestUsagePendingCounter:
 
     # ---- one-shot error signal on write failure (issue #10483) ----
 
+    def test_replace_failure_preserves_snapshot_cleans_temp_and_recovers(self, tmp_path, mitm_ctx):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="state-1")
+        baseline_state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
+        usage.increment_in_flight_flows()
+
+        with (
+            mitm_ctx() as mock_log,
+            patch.object(
+                usage.counters.Path,
+                "replace",
+                side_effect=OSError("replace failed\nretry"),
+            ),
+        ):
+            usage.write_pending_snapshot(flush_request_id="failed-1")
+            usage.write_pending_snapshot(flush_request_id="failed-2")
+
+        assert json.loads(pending_path.read_text()) == baseline_state
+        assert list(tmp_path.glob(f"{pending_path.name}.*.tmp")) == []
+        assert mock_log.error.call_count == 1
+        assert mock_log.warn.call_count == 0
+        message = mock_log.error.call_args.args[0]
+        assert "reason=pending_snapshot_write_failed" in message
+        assert "error=replace\\sfailed\\nretry" in message
+        assert "\n" not in message
+
+        usage.write_pending_snapshot(flush_request_id="recovered")
+        assert_pending(
+            pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="recovered",
+        )
+
     def test_write_failure_logs_underbilling_once_per_process(self, tmp_path, mitm_ctx):
         """Repeated OSErrors from pending snapshot writes emit exactly one
         ``ctx.log.error`` per addon process — enough to seed FS-trouble
