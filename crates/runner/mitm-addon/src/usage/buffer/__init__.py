@@ -236,8 +236,10 @@ def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
     retained work for a later timer when timers are enabled; shutdown does not
     schedule another timer.
     """
-    billing_batches = flush_billable_usage_events(trigger=trigger)
-    observation_batches = _model_usage_observation_buffer.flush_usage_events(trigger=trigger)
+    try:
+        billing_batches = flush_billable_usage_events(trigger=trigger)
+    finally:
+        observation_batches = _model_usage_observation_buffer.flush_usage_events(trigger=trigger)
     return billing_batches + observation_batches
 
 
@@ -252,9 +254,11 @@ def seen_source_idempotency_keys(source_keys: Iterable[str]) -> set[str]:
 
 
 def drain_usage_events_after_executor_shutdown() -> None:
-    """Synchronously drain usage retained after the executor has stopped."""
-    _usage_event_buffer.drain_usage_events_after_executor_shutdown()
-    _model_usage_observation_buffer.drain_usage_events_after_executor_shutdown()
+    """Synchronously drain usage retained after both executors have stopped."""
+    try:
+        _usage_event_buffer.drain_usage_events_after_executor_shutdown()
+    finally:
+        _model_usage_observation_buffer.drain_usage_events_after_executor_shutdown()
 
 
 def reset_usage_buffer_for_tests(
