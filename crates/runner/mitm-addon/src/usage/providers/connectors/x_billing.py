@@ -344,6 +344,8 @@ _BARE_DOMAIN_CANDIDATE_RE = re.compile(
     re.IGNORECASE,
 )
 _MAX_DOMAIN_LABEL_CHARS = 63
+# This stays above the 127 one-character labels that fit in a DNS name while
+# leaving a fixed ceiling for non-host text inspected by billing.
 _MAX_BILLING_DOMAIN_LABEL_CLASSIFICATIONS = 256
 _DOMAIN_LABEL_RE = re.compile(rf"^[a-z0-9-]{{1,{_MAX_DOMAIN_LABEL_CHARS}}}$")
 _INVALID_TLD_FOLLOWING_CHARS = "@+-"
