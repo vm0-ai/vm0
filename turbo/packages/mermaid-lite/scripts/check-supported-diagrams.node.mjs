@@ -15,7 +15,7 @@ const entryPath = path.join(distDirectory, "mermaid.esm.min.mjs");
 const expectedDigests = new Map([
   [
     "dist/mermaid.esm.min.mjs",
-    "1b7360f53257614f150cb8c79aa31016047d8d65ddb07bd54405b8b4f48b98a1",
+    "98d350b1e1fcaf90fc1160df2257896fd3d27fcd421ee726e013407113ca7f7d",
   ],
 ]);
 
@@ -23,7 +23,7 @@ function sha256(contents) {
   return createHash("sha256").update(contents).digest("hex");
 }
 
-await test("keeps the pinned static flowchart-only distribution", async () => {
+await test("keeps the pinned static supported-diagrams distribution", async () => {
   assert.deepEqual((await readdir(distDirectory)).sort(), [
     "index.d.ts",
     "mermaid.esm.min.mjs",
@@ -39,7 +39,7 @@ await test("keeps the pinned static flowchart-only distribution", async () => {
   assert.doesNotMatch(entry, /(?:^|\n)import(?:\s|\{|\*|["'])/u);
 });
 
-await test("parses Flowchart and rejects other Mermaid diagram types", async () => {
+await test("parses Flowchart and Sequence Diagram and rejects other types", async () => {
   const { default: mermaid } = await import(pathToFileURL(entryPath).href);
 
   const flowchart = await mermaid.parse("flowchart TD\n  A --> B", {
@@ -51,8 +51,13 @@ await test("parses Flowchart and rejects other Mermaid diagram types", async () 
   assert.equal(flowchart.diagramType, "flowchart-v2");
   assert.equal(graph.diagramType, "flowchart-v2");
 
+  const sequence = await mermaid.parse(
+    "sequenceDiagram\n  Alice->>Bob: hello",
+    { suppressErrors: true },
+  );
+  assert.equal(sequence.diagramType, "sequence");
+
   const unsupportedSources = [
-    "sequenceDiagram\n  A->>B: hello",
     "classDiagram\n  A <|-- B",
     "stateDiagram-v2\n  [*] --> Ready",
     "erDiagram\n  USER ||--o{ ORDER : places",

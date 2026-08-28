@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import emojiGroups from "unicode-emoji-json/data-by-group.json";
+import emojiGroups from "../../data/chat-thread-emoji.json";
 
 export interface ChatThreadEmojiItem {
   emoji: string;
@@ -12,14 +12,7 @@ interface ChatThreadEmojiGroup {
 }
 
 export const chatThreadEmojiGroups$ = computed((): ChatThreadEmojiGroup[] => {
-  return emojiGroups.map((group) => {
-    return {
-      name: group.name,
-      emojis: group.emojis.map((entry) => {
-        return { emoji: entry.emoji, name: entry.name };
-      }),
-    };
-  });
+  return emojiGroups;
 });
 
 const internalChatThreadEmojiQuery$ = state("");

@@ -18,6 +18,7 @@ const FORBIDDEN_BUNDLED_PACKAGES = [
   "rehype-katex",
   "rehype-prism-plus",
   "remark-math",
+  "tr46",
 ] as const;
 
 interface GeneratedChunk {

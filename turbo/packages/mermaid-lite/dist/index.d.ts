@@ -1,4 +1,4 @@
-export interface MermaidFlowchartThemeVariables {
+export interface MermaidThemeVariables {
   readonly fontSize?: string;
 }
 
@@ -8,13 +8,13 @@ export interface MermaidFlowchartOptions {
   readonly padding?: number;
 }
 
-export interface MermaidFlowchartConfig {
+export interface MermaidLiteConfig {
   readonly startOnLoad?: boolean;
   readonly securityLevel?: "strict";
   readonly suppressErrorRendering?: boolean;
   readonly theme?: "redux" | "redux-dark";
   readonly fontFamily?: string;
-  readonly themeVariables?: MermaidFlowchartThemeVariables;
+  readonly themeVariables?: MermaidThemeVariables;
   readonly flowchart?: MermaidFlowchartOptions;
 }
 
@@ -33,8 +33,8 @@ export interface MermaidRenderResult {
   readonly diagramType?: string;
 }
 
-export interface MermaidFlowchartApi {
-  initialize(config: MermaidFlowchartConfig): void;
+export interface MermaidLiteApi {
+  initialize(config: MermaidLiteConfig): void;
   parse(
     text: string,
     options?: MermaidParseOptions,
@@ -42,6 +42,6 @@ export interface MermaidFlowchartApi {
   render(id: string, text: string): Promise<MermaidRenderResult>;
 }
 
-declare const mermaid: MermaidFlowchartApi;
+declare const mermaid: MermaidLiteApi;
 
 export default mermaid;

@@ -24,7 +24,7 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { r2ImageTransformUrl } from "@okouai/core";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ChatSearchResult } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ArtifactCatalogKind } from "@okouai/api-contracts/contracts/artifact-catalog";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";

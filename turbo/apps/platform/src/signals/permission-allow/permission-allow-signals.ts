@@ -9,7 +9,7 @@ import {
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
-} from "@okouai/connectors/firewall-types";
+} from "@okouai/connectors/firewall-contracts";
 import { apiClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";

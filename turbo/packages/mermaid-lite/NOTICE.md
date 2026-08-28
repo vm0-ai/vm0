@@ -9,9 +9,11 @@ the MIT License in [LICENSE](./LICENSE).
 
 vm0's build makes these functional changes:
 
-- registers only Mermaid's `flowchart` and legacy `graph` syntaxes;
+- registers only Mermaid's `flowchart`, legacy `graph`, and `sequenceDiagram`
+  syntaxes;
 - retains only the Dagre layout loader;
-- statically links the Flowchart parser and Dagre renderer into one ESM file;
+- statically links the Flowchart and Sequence Diagram parsers plus the Dagre
+  renderer into one ESM file;
 - excludes the other diagram detectors, ELK/Cytoscape layouts, and
   diagram-specific KaTeX code from the generated module graph; and
 - exposes only the Mermaid API surface used by the vm0 platform.

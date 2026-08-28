@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@okouai/ui";
 import { AlertTriangle, Ban, Check, Loader2 } from "lucide-react";
 import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/user-permission-grants";
-import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-contracts";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,

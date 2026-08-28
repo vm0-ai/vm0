@@ -38,7 +38,7 @@ import {
   userPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@okouai/api-contracts/contracts/user-permission-grants";
-import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-contracts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

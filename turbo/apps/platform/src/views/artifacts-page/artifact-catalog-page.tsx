@@ -11,7 +11,7 @@ import {
   Video,
   Globe,
 } from "lucide-react";
-import { r2ImageTransformUrl } from "@okouai/core";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { cn } from "@okouai/ui";

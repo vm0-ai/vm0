@@ -542,9 +542,9 @@ importers:
       '@okouai/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@okouai/mermaid-flowchart':
+      '@okouai/mermaid-lite':
         specifier: workspace:*
-        version: link:../../packages/mermaid-flowchart
+        version: link:../../packages/mermaid-lite
       '@okouai/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -656,9 +656,6 @@ importers:
       signal-timers:
         specifier: ^1.0.4
         version: 1.0.4
-      unicode-emoji-json:
-        specifier: ^0.9.0
-        version: 0.9.0
       unified:
         specifier: ^11.0.5
         version: 11.0.5
@@ -741,6 +738,9 @@ importers:
       typescript-eslint:
         specifier: ^8.66.0
         version: 8.66.0(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
+      unicode-emoji-json:
+        specifier: ^0.9.0
+        version: 0.9.0
       vite:
         specifier: ^8.0.16
         version: 8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0)
@@ -1054,7 +1054,7 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(happy-dom@20.11.1)(msw@2.13.2(@types/node@24.3.0)(typescript@6.0.3))(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
 
-  packages/mermaid-flowchart: {}
+  packages/mermaid-lite: {}
 
   packages/pi-agent-runtime:
     dependencies:

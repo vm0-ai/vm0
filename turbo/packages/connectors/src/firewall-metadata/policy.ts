@@ -3,7 +3,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicy,
   type FirewallPolicyValue,
-} from "../firewall-types";
+} from "../firewall-contracts";
 import { createFirewallMetadataPolicyResolver } from "./policy-resolver";
 
 export type {

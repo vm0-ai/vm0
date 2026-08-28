@@ -84,13 +84,14 @@ await test("rejects JavaScript imports and forbidden bundled packages", () => {
         moduleIds: [
           "/repo/node_modules/@clerk/clerk-js/dist/clerk.mjs",
           "/repo/node_modules/katex/dist/katex.mjs",
+          "/repo/node_modules/tr46/index.js",
         ],
         type: "chunk",
       },
       workerAsset(),
     ]),
     [
-      "assets/index.js: forbidden packages reached the bundle: @clerk/clerk-js, katex",
+      "assets/index.js: forbidden packages reached the bundle: @clerk/clerk-js, katex, tr46",
     ],
   );
 });

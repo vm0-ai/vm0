@@ -451,7 +451,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       mermaidImport: (beforeImport: () => void | Promise<void> = () => {}) => {
         const mockedImport = vi.fn<() => Promise<MermaidModule>>(async () => {
           await beforeImport();
-          return import("@okouai/mermaid-flowchart");
+          return import("@okouai/mermaid-lite");
         });
         const previousImporter = window.vm0MermaidImporterForTest;
         window.vm0MermaidImporterForTest = mockedImport;

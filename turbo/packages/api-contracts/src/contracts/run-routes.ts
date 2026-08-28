@@ -5,7 +5,7 @@ import {
   executionFirewallBuiltinEntrySchema,
   executionFirewallInlineEntrySchema,
   networkPoliciesSchema,
-} from "@okouai/connectors/firewall-types";
+} from "@okouai/connectors/firewall-contracts";
 import {
   getRunResponseSchema,
   cancelRunResponseSchema,

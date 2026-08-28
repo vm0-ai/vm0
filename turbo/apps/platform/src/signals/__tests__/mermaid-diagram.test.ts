@@ -11,6 +11,7 @@ const context = testContext();
 warmMermaidParser();
 
 const FLOWCHART = "flowchart TD\n  A --> B";
+const SEQUENCE_DIAGRAM = "sequenceDiagram\n  Alice->>Bob: Hello";
 
 function diagramMarkup(
   image: MermaidDiagramImage | null,
@@ -27,9 +28,23 @@ function diagramMarkup(
 }
 
 describe("mermaid diagram rendering", () => {
-  it("rejects diagram types other than flowcharts", async () => {
+  it("renders sequence diagrams", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
     const signals = createMermaidDiagramSignals(
-      "sequenceDiagram\n  Alice->>Bob: Hello",
+      SEQUENCE_DIAGRAM,
+      context.signal,
+    );
+
+    const markup = await diagramMarkup(
+      await context.store.get(signals.diagram$),
+      objectUrls,
+    );
+    expect(markup).toContain('data-testid="mermaid-svg"');
+  });
+
+  it("rejects unsupported diagram types", async () => {
+    const signals = createMermaidDiagramSignals(
+      "classDiagram\n  A <|-- B",
       context.signal,
     );
 

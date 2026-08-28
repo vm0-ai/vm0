@@ -717,7 +717,7 @@ describe("assistant markdown", () => {
 
   it("keeps unsupported mermaid diagram types as ordinary code blocks", async () => {
     context.mocks.browser.blobDownload();
-    const source = "sequenceDiagram\n  Alice->>Bob: Hello";
+    const source = "classDiagram\n  A <|-- B";
     mockThread(`\`\`\`mermaid\n${source}\n\`\`\``);
 
     detachedSetupPage({
