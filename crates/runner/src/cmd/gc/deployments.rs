@@ -1230,9 +1230,12 @@ async fn managed_service_paths_are_safe(
         }
     }
     for (label, path) in [
-        ("executable", executable_path),
-        ("activation config", activation_config_path),
+        ("executable", bin_dir.map(|_| executable_path)),
+        ("activation config", Some(activation_config_path)),
     ] {
+        let Some(path) = path else {
+            continue;
+        };
         match tokio::fs::symlink_metadata(path).await {
             Ok(metadata) if metadata.file_type().is_file() => {}
             Ok(_) => {

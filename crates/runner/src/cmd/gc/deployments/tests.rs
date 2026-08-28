@@ -819,8 +819,15 @@ async fn external_executable_does_not_claim_a_managed_binary() {
     install_fake_systemctl(dir.path());
     let home = HomePaths::with_root(dir.path().join("home"));
     create_managed_resources(&home, "unregistered", "config-opaque", old_mtime(1_000_000));
+    let external_target = home.bin_dir().parent().unwrap().join("external-runner");
+    std::fs::write(&external_target, "runner").unwrap();
+    let external_executable = home.bin_dir().parent().unwrap().join("outside/runner");
+    std::fs::create_dir_all(external_executable.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&external_target, &external_executable).unwrap();
 
     run_systemctl_scenario(dir.path(), &home, "external-executable").await;
+
+    assert!(external_executable.exists());
 }
 
 #[tokio::test]
@@ -886,11 +893,14 @@ async fn managed_resource_gc_systemctl_child() {
             .unwrap();
             let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
 
-            assert_eq!(report.activity_count, 3);
-            assert!(retained_config_paths.is_empty());
+            assert_eq!(report.activity_count, 1);
+            assert_eq!(
+                retained_config_paths,
+                [home.runners_dir().join("config-opaque/runner.yaml")]
+            );
             assert!(inventory_complete);
             assert!(!home.bin_dir().join("unregistered").exists());
-            assert!(!home.runners_dir().join("config-opaque").exists());
+            assert!(home.runners_dir().join("config-opaque").exists());
         }
         "invalid-snapshot" | "invalid-base-dir" | "invalid-managed-executable" => {
             let outcome = gc_managed_resources(
