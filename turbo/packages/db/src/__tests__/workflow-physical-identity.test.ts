@@ -87,14 +87,32 @@ describe("workflow schema physical identity", () => {
     expect(schema.strapiWorkflowAutomations).toBe(strapiWorkflowAutomations);
   });
 
-  it("keeps the Official result-email projection on the legacy Automation relation", () => {
-    expect(getTableConfig(workflowAutomations).columns).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "official_result_email_enabled",
-        }),
-      ]),
-    );
+  it("keeps every Official projection on the legacy Workflow relations", () => {
+    const officialColumnNames = (
+      table: Parameters<typeof getTableConfig>[0],
+    ): string[] => {
+      return getTableConfig(table)
+        .columns.map(({ name }) => {
+          return name;
+        })
+        .filter((name) => {
+          return name.startsWith("official_");
+        });
+    };
+    expect({
+      workflows: officialColumnNames(workflows),
+      workflowAutomations: officialColumnNames(workflowAutomations),
+    }).toEqual({
+      workflows: ["official_definition_name", "official_installation_state"],
+      workflowAutomations: [
+        "official_blueprint_key",
+        "official_applied_fingerprint",
+        "official_reconciliation_status",
+        "official_parameter_bindings",
+        "official_intended_enabled",
+        "official_result_email_enabled",
+      ],
+    });
   });
 
   it("keeps every explicit index and check name in the touched schemas", () => {
