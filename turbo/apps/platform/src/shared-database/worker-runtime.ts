@@ -49,6 +49,7 @@ import {
 import {
   SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
   type SharedDatabaseConnectionStatus,
+  type SharedDatabaseHeartbeatResult,
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
 import { createSharedDatabaseContractClient } from "./worker-client.ts";
@@ -458,27 +459,45 @@ export class SharedDatabaseWorkerRuntime {
     if (this.clients.has(clientId)) {
       throw new Error("Shared database client is already connected");
     }
-    this.clients.set(clientId, {
+    this.registerClient(clientId, emit);
+  }
+
+  private registerClient(
+    clientId: string,
+    emit: WorkerClientEmitter,
+  ): WorkerClientRegistration {
+    const client: WorkerClientRegistration = {
       clientId,
       emit,
       subscriptions: new Map(),
       identity: null,
       apiBaseUrl: null,
       lastHeartbeatAt: now(),
-    });
+    };
+    this.clients.set(clientId, client);
     L.debug("client.register", { clientId });
     emit({ type: "status", status: "connecting" });
+    return client;
   }
 
   async heartbeat(
     clientId: string,
+    emit: WorkerClientEmitter | undefined,
     identity: SharedDatabaseIdentity,
     apiBaseUrl: string,
     vercelProtectionBypass: string | undefined,
-  ): Promise<void> {
+  ): Promise<SharedDatabaseHeartbeatResult> {
     this.rootSignal.throwIfAborted();
+    let client = this.clients.get(clientId);
+    const clientReconnected = client === undefined;
+    if (!client) {
+      if (!emit) {
+        throw new SharedDatabaseClientNotConnectedError();
+      }
+      client = this.registerClient(clientId, emit);
+    }
+    client.lastHeartbeatAt = now();
     this.pruneStaleClients();
-    const client = this.requireClient(clientId);
     const previousCredentialId = client.identity
       ? sharedDatabaseCredentialId(client.identity)
       : null;
@@ -494,7 +513,6 @@ export class SharedDatabaseWorkerRuntime {
     }
     client.identity = identity;
     client.apiBaseUrl = apiBaseUrl;
-    client.lastHeartbeatAt = now();
 
     let credential = this.credentials.get(nextCredentialId);
     if (!credential) {
@@ -541,12 +559,18 @@ export class SharedDatabaseWorkerRuntime {
     L.debug("client.heartbeat", {
       authBlocked: credential.authBlocked,
       clientId,
+      clientReconnected,
       orgId: identity.orgId,
       userId: identity.userId,
     });
+    return { clientReconnected };
   }
 
   disconnectClient(clientId: string): void {
+    this.expireClient(clientId);
+  }
+
+  private expireClient(clientId: string): void {
     const client = this.clients.get(clientId);
     if (!client) {
       return;
@@ -1762,7 +1786,7 @@ export class SharedDatabaseWorkerRuntime {
       },
     );
     for (const clientId of staleClientIds) {
-      this.disconnectClient(clientId);
+      this.expireClient(clientId);
     }
   }
 

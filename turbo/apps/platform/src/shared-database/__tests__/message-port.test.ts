@@ -380,7 +380,7 @@ describe("shared database MessagePort protocol", () => {
       const recoveredAttach = context.mocks.ably.deferNextSubscribe();
       await staleTab.heartbeat(heartbeat(), staleOwner.signal);
       await recoveredAttach.started;
-      expect(staleTabTransports).toBe(2);
+      expect(staleTabTransports).toBe(1);
       recoveredAttach.attach();
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
@@ -423,7 +423,7 @@ describe("shared database MessagePort protocol", () => {
         serverPort.postMessage({
           type: "result",
           requestId: message.requestId,
-          value: null,
+          value: { clientReconnected: false },
         });
         return;
       }

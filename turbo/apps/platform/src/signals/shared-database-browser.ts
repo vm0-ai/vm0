@@ -4,9 +4,21 @@ import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
 import { authRecovery$, authenticatedIdentity$ } from "./auth.ts";
 import { logger } from "./log.ts";
-import { jsonParseOr, onDomEventFn, setLoop } from "./utils.ts";
+import {
+  createChildAbortController,
+  createDeferredPromise,
+  jsonParseOr,
+  onDomEventFn,
+  setLoop,
+  settle,
+  withCleanup,
+} from "./utils.ts";
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
-import { ReconnectingSharedDatabaseBridge } from "../shared-database/reconnecting-client.ts";
+import {
+  ReconnectingSharedDatabaseBridge,
+  SharedDatabaseTransportError,
+  type SharedDatabaseTransportRecovery,
+} from "../shared-database/reconnecting-client.ts";
 import {
   heartbeatSharedDatabase$,
   installSharedDatabaseBridge$,
@@ -64,6 +76,67 @@ function heartbeatInterval(token: string): number {
   );
 }
 
+function isJavaScriptResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type")?.toLowerCase();
+  return (
+    contentType?.includes("javascript") === true ||
+    contentType?.includes("ecmascript") === true
+  );
+}
+
+async function waitForWorkerRetry(signal: AbortSignal): Promise<void> {
+  const controller = createChildAbortController(signal);
+  const ready = createDeferredPromise<void>(controller.signal);
+  const resolve = (): void => {
+    if (!ready.settled()) {
+      ready.resolve();
+    }
+  };
+  const resolveWhenVisible = (): void => {
+    if (document.visibilityState === "visible") {
+      resolve();
+    }
+  };
+  window.addEventListener("online", resolve, { signal: controller.signal });
+  window.addEventListener("focus", resolve, { signal: controller.signal });
+  document.addEventListener("visibilitychange", resolveWhenVisible, {
+    signal: controller.signal,
+  });
+  await withCleanup(ready.promise, () => {
+    controller.abort(new DOMException("Worker retry resumed", "AbortError"));
+  });
+}
+
+async function resolveWorkerRecovery(
+  workerUrl: string,
+  signal: AbortSignal,
+): Promise<SharedDatabaseTransportRecovery> {
+  if (!workerUrl) {
+    await waitForWorkerRetry(signal);
+    return "reconnect";
+  }
+  const probe = await settle(
+    fetch(new URL(workerUrl, location.href), { cache: "no-store", signal }),
+    signal,
+  );
+  if (!probe.ok) {
+    await waitForWorkerRetry(signal);
+    return "reconnect";
+  }
+  if (
+    probe.value.status === 404 ||
+    probe.value.status === 410 ||
+    !isJavaScriptResponse(probe.value)
+  ) {
+    return "reload";
+  }
+  if (probe.value.ok) {
+    return "reconnect";
+  }
+  await waitForWorkerRetry(signal);
+  return "reconnect";
+}
+
 export const setupSharedDatabaseBridge$ = command(
   ({ get, set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
@@ -77,10 +150,21 @@ export const setupSharedDatabaseBridge$ = command(
           new URL("../shared-database-worker.ts", import.meta.url),
           { name: "okou core service", type: "module" },
         );
+        const portBridge = new MessagePortSharedDatabaseBridge(
+          worker.port,
+          apiBaseUrl,
+          events,
+        );
+        let recoveryStarted = false;
         worker.addEventListener(
           "error",
           (event) => {
+            if (recoveryStarted) {
+              return;
+            }
+            recoveryStarted = true;
             const workerError: unknown = event.error;
+            const workerUrl = event.filename;
             L.error(
               "Shared database worker failed to load",
               workerError instanceof Error ? workerError : event.message,
@@ -91,14 +175,18 @@ export const setupSharedDatabaseBridge$ = command(
                 },
               }),
             );
+            portBridge.fail(
+              new SharedDatabaseTransportError(
+                "Shared database worker failed to load",
+                async () => {
+                  return await resolveWorkerRecovery(workerUrl, signal);
+                },
+              ),
+            );
           },
           { signal },
         );
-        return new MessagePortSharedDatabaseBridge(
-          worker.port,
-          apiBaseUrl,
-          events,
-        );
+        return portBridge;
       },
       events: {
         reloadRequired: () => {

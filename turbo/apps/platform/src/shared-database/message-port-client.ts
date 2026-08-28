@@ -11,8 +11,10 @@ import type {
   SharedDatabasePortLike,
 } from "./bridge.ts";
 import {
+  sharedDatabaseHeartbeatResultSchema,
   sharedDatabaseWorkerMessageSchema,
   type SharedDatabaseClientMessage,
+  type SharedDatabaseHeartbeatResult,
 } from "./protocol.ts";
 import { createDeferredPromise, onRejection } from "../signals/utils.ts";
 
@@ -32,6 +34,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly handleMessage: (event: MessageEvent<unknown>) => void;
   private ownerSignal: AbortSignal | null = null;
   private closed = false;
+  private closeReason: unknown = new Error("Shared database bridge is closed");
 
   constructor(
     private readonly port: SharedDatabasePortLike,
@@ -75,9 +78,9 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<SharedDatabaseHeartbeatResult> {
     this.bindOwner(signal);
-    await this.request(
+    const value = await this.request(
       {
         type: "heartbeat",
         requestId: crypto.randomUUID(),
@@ -89,6 +92,11 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       },
       signal,
     );
+    return sharedDatabaseHeartbeatResultSchema.parse(value);
+  }
+
+  fail(reason: unknown): void {
+    this.close(reason, false);
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -165,7 +173,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   ): Promise<unknown> {
     signal.throwIfAborted();
     if (this.closed) {
-      throw new Error("Shared database bridge is closed");
+      throw this.closeReason;
     }
     const deferred = createDeferredPromise<unknown>(signal);
     const requestId = message.requestId;
@@ -192,11 +200,12 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     return deferred.promise;
   }
 
-  private close(reason: unknown): void {
+  private close(reason: unknown, reportDisconnected = true): void {
     if (this.closed) {
       return;
     }
     this.closed = true;
+    this.closeReason = reason;
     this.port.postMessage({ type: "disconnect" });
     this.port.removeEventListener("message", this.handleMessage);
     this.port.close();
@@ -205,6 +214,8 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       pending.reject(reason);
     }
     this.pendingRequests.clear();
-    this.events.statusChanged("disconnected");
+    if (reportDisconnected) {
+      this.events.statusChanged("disconnected");
+    }
   }
 }
