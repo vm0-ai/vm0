@@ -177,6 +177,7 @@ pub(in super::super) async fn publish_idle_status(pool: &SharedIdlePool, status:
         status
             .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
             .await
+            .unwrap()
     );
 }
 

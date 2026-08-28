@@ -218,20 +218,23 @@ pub struct JobParams {
 
 #[derive(Clone)]
 pub(crate) struct SandboxPreparedNotifier {
-    callback: Arc<dyn Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync>,
+    callback: Arc<dyn Fn(RunId, SandboxId) -> BoxFuture<'static, RunnerResult<()>> + Send + Sync>,
 }
 
 impl SandboxPreparedNotifier {
     pub(crate) fn new(
-        callback: impl Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync + 'static,
+        callback: impl Fn(RunId, SandboxId) -> BoxFuture<'static, RunnerResult<()>>
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         Self {
             callback: Arc::new(callback),
         }
     }
 
-    async fn notify(&self, run_id: RunId, sandbox_id: SandboxId) {
-        (self.callback)(run_id, sandbox_id).await;
+    async fn notify(&self, run_id: RunId, sandbox_id: SandboxId) -> RunnerResult<()> {
+        (self.callback)(run_id, sandbox_id).await
     }
 }
 

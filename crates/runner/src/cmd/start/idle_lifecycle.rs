@@ -1,7 +1,10 @@
 //! Idle-pool lifecycle and status helpers for `runner start`.
 
+use std::ops::Deref;
 use std::sync::Arc;
+use std::{future::Future, panic::AssertUnwindSafe};
 
+use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, SandboxId};
 use tokio::sync::Notify;
 use tokio::task::JoinSet;
@@ -14,7 +17,7 @@ use crate::idle_pool::{
 };
 use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
-use crate::status::StatusTracker;
+use crate::status::{StatusResult, StatusTracker};
 
 pub(super) type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
 
@@ -49,6 +52,18 @@ impl IdleDestroyTracker {
             let result = destroy_idle_payload_and_wait(payload, context).await;
             if result.workspace_cache_promoted {
                 reuse_state_notify.notify_one();
+            }
+        }));
+    }
+
+    pub(super) fn spawn_cleanup(
+        &self,
+        cleanup: impl Future<Output = ()> + Send + 'static,
+        context: &'static str,
+    ) {
+        drop(self.tasks.spawn(async move {
+            if AssertUnwindSafe(cleanup).catch_unwind().await.is_err() {
+                warn!(context, "tracked activation cleanup panicked");
             }
         }));
     }
@@ -98,9 +113,38 @@ pub(super) struct IdlePressureRequest<'a> {
 }
 
 pub(super) enum IdlePressureSelection {
-    Reusable(Box<ReservedIdleSandbox>),
+    Reusable(ReservedIdleActivation),
     Retiring(RetiringIdleEntry),
     Empty,
+}
+
+/// A parked sandbox reservation paired with the idle snapshot captured by the
+/// same pool mutation. Keeping both together lets claimed activation publish
+/// active ownership before unpark without reacquiring the pool.
+pub(super) struct ReservedIdleActivation {
+    reservation: Box<ReservedIdleSandbox>,
+    idle_snapshot: IdlePoolSnapshot,
+}
+
+impl ReservedIdleActivation {
+    pub(super) fn new(reservation: ReservedIdleSandbox, idle_snapshot: IdlePoolSnapshot) -> Self {
+        Self {
+            reservation: Box::new(reservation),
+            idle_snapshot,
+        }
+    }
+
+    pub(super) fn into_parts(self) -> (ReservedIdleSandbox, IdlePoolSnapshot) {
+        (*self.reservation, self.idle_snapshot)
+    }
+}
+
+impl Deref for ReservedIdleActivation {
+    type Target = ReservedIdleSandbox;
+
+    fn deref(&self) -> &Self::Target {
+        &self.reservation
+    }
 }
 
 impl RetiringIdleEntry {
@@ -145,36 +189,49 @@ pub(super) async fn select_idle_entry_for_pressure(
         let snapshot = pool.status_snapshot();
         (selection, snapshot)
     };
-    let selection = match selection {
+    match selection {
         IdlePoolPressureSelection::Reusable(reservation) => {
-            IdlePressureSelection::Reusable(reservation)
+            IdlePressureSelection::Reusable(ReservedIdleActivation {
+                reservation,
+                idle_snapshot: snapshot,
+            })
         }
         IdlePoolPressureSelection::Evicted(job) => {
             let reuse_key = job.reuse_key().to_owned();
             let profile_name = job.profile_name().to_owned();
             let budget_lease =
                 spawn_idle_destroy_job_retaining_lease(tracker, *job, request.context);
-            IdlePressureSelection::Retiring(RetiringIdleEntry {
+            let selection = IdlePressureSelection::Retiring(RetiringIdleEntry {
                 budget_lease,
                 reuse_key,
                 profile_name,
-            })
+            });
+            set_idle_status_snapshot(status, snapshot).await;
+            selection
         }
-        IdlePoolPressureSelection::Empty => return IdlePressureSelection::Empty,
-    };
-    set_idle_status_snapshot(status, snapshot).await;
-    selection
+        IdlePoolPressureSelection::Empty => IdlePressureSelection::Empty,
+    }
 }
 
 pub(super) async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: IdlePoolSnapshot) {
-    let applied = status
+    let result = status
         .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
         .await;
-    if !applied {
-        info!(
-            revision = snapshot.revision,
-            "ignored stale idle pool status snapshot"
-        );
+    match result {
+        Ok(false) => {
+            info!(
+                revision = snapshot.revision,
+                "ignored stale idle pool status snapshot"
+            );
+        }
+        Ok(true) => {}
+        Err(error) => {
+            warn!(
+                revision = snapshot.revision,
+                %error,
+                "failed to persist idle pool status snapshot"
+            );
+        }
     }
 }
 
@@ -183,7 +240,7 @@ pub(super) async fn add_running_run_with_idle_status_snapshot(
     run_id: RunId,
     sandbox_id: SandboxId,
     snapshot: IdlePoolSnapshot,
-) {
+) -> StatusResult<()> {
     let applied = status
         .add_running_run_with_idle_info_at_revision(
             run_id,
@@ -191,13 +248,14 @@ pub(super) async fn add_running_run_with_idle_status_snapshot(
             snapshot.revision,
             snapshot.idle_sandboxes,
         )
-        .await;
+        .await?;
     if !applied {
         info!(
             revision = snapshot.revision,
             "ignored stale idle pool status snapshot while adding active run"
         );
     }
+    Ok(())
 }
 
 pub(super) async fn add_preparing_run_with_idle_status_snapshot(
@@ -205,7 +263,7 @@ pub(super) async fn add_preparing_run_with_idle_status_snapshot(
     run_id: RunId,
     sandbox_id: SandboxId,
     snapshot: IdlePoolSnapshot,
-) {
+) -> StatusResult<()> {
     let applied = status
         .add_preparing_run_with_idle_info_at_revision(
             run_id,
@@ -213,13 +271,14 @@ pub(super) async fn add_preparing_run_with_idle_status_snapshot(
             snapshot.revision,
             snapshot.idle_sandboxes,
         )
-        .await;
+        .await?;
     if !applied {
         info!(
             revision = snapshot.revision,
             "ignored stale idle pool status snapshot while adding preparing run"
         );
     }
+    Ok(())
 }
 
 pub(super) fn spawn_idle_destroy_job(

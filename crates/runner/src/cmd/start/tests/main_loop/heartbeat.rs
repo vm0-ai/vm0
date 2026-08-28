@@ -122,11 +122,11 @@ async fn blocked_heartbeat_does_not_block_job_discovery_or_reaping() {
 
 #[tokio::test(start_paused = true)]
 async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        Arc::clone(&gate),
-    ));
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let status_path = env._temp_dir.path().join("status.json");
     env.handle.block_heartbeats();
     let run_handle = tokio::spawn(run(config));
 
@@ -134,6 +134,10 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
     let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("job should finish pre-spawn before heartbeat time advances");
 
     tokio::time::advance(HEARTBEAT_PERIOD).await;
     assert!(
@@ -157,6 +161,7 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
     });
     let second_tick_cursor = env.start_observer.cursor();
     tokio::time::advance(HEARTBEAT_PERIOD).await;
+    tokio::task::yield_now().await;
     env.start_observer
         .wait_routine_heartbeat_requested_after(
             second_tick_cursor,
@@ -164,11 +169,13 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
             Duration::from_secs(5),
         )
         .await;
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
 
     // A further tick while the first request is blocked must collapse into
     // the same dirty follow-up rather than overlap or queue another payload.
     let third_tick_cursor = env.start_observer.cursor();
     tokio::time::advance(HEARTBEAT_PERIOD).await;
+    tokio::task::yield_now().await;
     env.start_observer
         .wait_routine_heartbeat_requested_after(
             third_tick_cursor,
@@ -218,7 +225,7 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
     }
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 
-    gate.notify_one();
+    wait_gate.release_one();
     assert!(
         env.handle
             .wait_completion(run_id, Duration::from_secs(5))

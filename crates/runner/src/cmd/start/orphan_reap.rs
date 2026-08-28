@@ -352,7 +352,7 @@ mod tests {
         }
 
         async fn add_active_orphan(&self, run_id: RunId, sandbox_id: SandboxId) {
-            self.status.add_run(run_id, sandbox_id).await;
+            self.status.add_run(run_id, sandbox_id).await.unwrap();
             self.orphans.insert(run_id, sandbox_id);
         }
 

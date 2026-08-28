@@ -436,6 +436,7 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
             assert_eq!(run_id, expected_run_id);
             assert_eq!(prepared_sandbox_id, sandbox_id);
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -465,6 +466,51 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
 }
 
 #[tokio::test]
+async fn execute_new_sandbox_destroys_before_workload_when_prepared_notification_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let notifier = SandboxPreparedNotifier::new(move |_run_id, _sandbox_id| {
+        async move {
+            Err(RunnerError::Internal(
+                "status publication failed".to_owned(),
+            ))
+        }
+        .boxed()
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox_with_prepared_notifier(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        NewSandboxHooks {
+            controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
+            sandbox_prepared: Some(&notifier),
+        },
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("prepared notification failure should stop sandbox execution"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("status publication failed"));
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -483,6 +529,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
         async move {
             assert_eq!(prepared_sandbox_id, sandbox_id);
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -859,6 +906,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
         let notifications = Arc::clone(&notifications_for_callback);
         async move {
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -902,6 +950,7 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
         let notifications = Arc::clone(&notifications_for_callback);
         async move {
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });

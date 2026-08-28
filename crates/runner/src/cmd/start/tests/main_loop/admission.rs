@@ -4,8 +4,9 @@ use super::super::support::{
     context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
     push_job, seed_idle_pool, seed_idle_pool_with_history_generation,
     seed_idle_pool_with_overrides, seed_idle_pool_with_speculative_timezone,
-    seed_workspace_cache_state, shutdown, test_profiles, two_profiles, wait_budget_count,
-    wait_cancel_handle, wait_cancel_token, wait_cancel_token_removed, wait_discover_entered,
+    seed_workspace_cache_state, shutdown, status_idle_reuse_keys_and_active_runs, test_profiles,
+    two_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token,
+    wait_cancel_token_removed, wait_discover_entered, wait_idle_pool_len,
     wait_status_idle_reuse_keys_and_active_runs,
 };
 use std::sync::Arc;
@@ -561,6 +562,447 @@ async fn reusable_claim_without_generation_target_reuses_sandbox() {
     );
 
     shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn reserved_reuse_persists_preparing_before_unpark_without_post_unpark_pool_wait() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = RunId::new_v4().to_string();
+    let sandbox_id = seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        &reuse_key,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let preparing_gate = env.start_observer.gate_reserved_preparing_commit();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, &reuse_key)));
+    env.handle
+        .discover_tx
+        .send(matching_preference_candidate(run_id, &reuse_key))
+        .unwrap();
+
+    tokio::select! {
+        () = preparing_gate.entered.notified() => {}
+        completion = env.handle.wait_completion(run_id, Duration::from_secs(5)) => {
+            panic!("run completed before reserved preparing gate: {completion:?}");
+        }
+    }
+    let status_path = env._temp_dir.path().join("status.json");
+    let raw = tokio::fs::read_to_string(&status_path).await.unwrap();
+    let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert!(
+        status
+            .get("idle_sandboxes")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(Vec::is_empty)
+    );
+    let active = status["active_runs"].as_array().unwrap();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0]["run_id"], run_id.to_string());
+    assert_eq!(active[0]["sandbox_id"], sandbox_id.to_string());
+    assert_eq!(active[0]["phase"], "preparing");
+    assert_eq!(overrides.unpark_call_count(), 0);
+    assert!(overrides.start_agent_process_calls().is_empty());
+
+    let pool_guard = env.idle_pool.lock().await;
+    preparing_gate.release();
+    env.start_observer
+        .wait_for(
+            Duration::from_secs(5),
+            "running status while idle pool is held",
+            |event| match event {
+                StartLoopEvent::ActiveRunStatusPublished {
+                    run_id: observed_run_id,
+                } if *observed_run_id == run_id => Some(()),
+                _ => None,
+            },
+        )
+        .await;
+    assert_eq!(overrides.unpark_call_count(), 1);
+    let raw = tokio::fs::read_to_string(&status_path).await.unwrap();
+    let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(status["active_runs"][0]["phase"], "running");
+    drop(pool_guard);
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(30))
+        .await
+        .expect("reserved reuse should complete after running publication");
+    assert_eq!(completion.sandbox_id, Some(sandbox_id));
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn reserved_reuse_running_status_timeout_recovers_claim_and_sandbox() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+    let (mut config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = RunId::new_v4().to_string();
+    seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        &reuse_key,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let status_path = env._temp_dir.path().join("status.json");
+    let write_started = Arc::new(tokio::sync::Notify::new());
+    config.shared.status = Arc::new(StatusTracker::new_with_write_gate(
+        status_path.clone(),
+        4,
+        Arc::clone(&write_started),
+        Arc::new(tokio::sync::Semaphore::new(0)),
+    ));
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, &reuse_key)));
+    let running_write_started = write_started.notified();
+    env.handle
+        .discover_tx
+        .send(matching_preference_candidate(run_id, &reuse_key))
+        .unwrap();
+    tokio::select! {
+        () = running_write_started => {}
+        completion = env.handle.wait_completion(run_id, Duration::from_secs(5)) => {
+            panic!("run completed before running status write gate: {completion:?}");
+        }
+    }
+
+    let raw = tokio::fs::read_to_string(&status_path).await.unwrap();
+    let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(status["active_runs"][0]["run_id"], run_id.to_string());
+    assert_eq!(status["active_runs"][0]["phase"], "preparing");
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+
+    tokio::time::advance(Duration::from_secs(5)).await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("status timeout should complete the provider claim");
+    assert!(
+        completion
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("timed out"))
+    );
+    assert_eq!(completion.sandbox_id, None);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert!(active_runs.is_empty());
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn hard_shutdown_during_reserved_reuse_running_status_stall_converges() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+    let (mut config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = RunId::new_v4().to_string();
+    seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        &reuse_key,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let status_path = env._temp_dir.path().join("status.json");
+    let write_started = Arc::new(tokio::sync::Notify::new());
+    config.shared.status = Arc::new(StatusTracker::new_with_write_gate(
+        status_path.clone(),
+        4,
+        Arc::clone(&write_started),
+        Arc::new(tokio::sync::Semaphore::new(0)),
+    ));
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, &reuse_key)));
+    let running_write_started = write_started.notified();
+    env.handle
+        .discover_tx
+        .send(matching_preference_candidate(run_id, &reuse_key))
+        .unwrap();
+    tokio::select! {
+        () = running_write_started => {}
+        completion = env.handle.wait_completion(run_id, Duration::from_secs(5)) => {
+            panic!("run completed before running status write gate: {completion:?}");
+        }
+    }
+    assert_eq!(overrides.unpark_call_count(), 1);
+
+    let cancel = env.cancel.clone();
+    let cancel_tokens = env.cancel_tokens.clone();
+    let lifecycle = env.lifecycle.clone();
+    let stopping = tokio::spawn(async move {
+        handle_stopping_signal("TEST", &cancel, &cancel_tokens, &lifecycle).await;
+    });
+    tokio::task::yield_now().await;
+    assert!(
+        !stopping.is_finished(),
+        "hard shutdown should wait for the claimed activation transfer"
+    );
+    tokio::time::advance(Duration::from_secs(5)).await;
+    stopping.await.unwrap();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("hard shutdown should recover the stalled provider claim");
+    assert!(
+        completion
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("timed out"))
+    );
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should finish after the bounded status failure",
+    )
+    .await;
+    let raw = tokio::fs::read_to_string(&status_path).await.unwrap();
+    let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(status["mode"], "stopped");
+    assert!(status["active_runs"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn reserved_reuse_running_status_write_error_recovers_claim_and_sandbox() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+    let (mut config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = RunId::new_v4().to_string();
+    seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        &reuse_key,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let status_dir = env._temp_dir.path().join("status-write-error");
+    tokio::fs::create_dir(&status_dir).await.unwrap();
+    let status_path = status_dir.join("status.json");
+    let status = Arc::new(StatusTracker::new(status_path.clone(), 1, None, None));
+    config.shared.status = Arc::clone(&status);
+    let preparing_gate = env.start_observer.gate_reserved_preparing_commit();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, &reuse_key)));
+    env.handle
+        .discover_tx
+        .send(matching_preference_candidate(run_id, &reuse_key))
+        .unwrap();
+    tokio::select! {
+        () = preparing_gate.entered.notified() => {}
+        completion = env.handle.wait_completion(run_id, Duration::from_secs(5)) => {
+            panic!("run completed before reserved preparing gate: {completion:?}");
+        }
+    }
+    tokio::fs::remove_file(&status_path).await.unwrap();
+    tokio::fs::remove_dir(&status_dir).await.unwrap();
+    preparing_gate.release();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("status write error should complete the provider claim");
+    assert!(
+        completion
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("write runner status"))
+    );
+    assert_eq!(completion.sandbox_id, None);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+
+    tokio::fs::create_dir(&status_dir).await.unwrap();
+    status.set_mode(RunnerMode::Running).await.unwrap();
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert!(active_runs.is_empty());
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn reserved_reuse_activation_task_abort_recovers_claim_and_sandbox() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+    let (mut config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = RunId::new_v4().to_string();
+    seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        &reuse_key,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let status_path = env._temp_dir.path().join("status.json");
+    let write_started = Arc::new(tokio::sync::Notify::new());
+    config.shared.status = Arc::new(StatusTracker::new_with_write_gate(
+        status_path.clone(),
+        4,
+        Arc::clone(&write_started),
+        Arc::new(tokio::sync::Semaphore::new(0)),
+    ));
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, &reuse_key)));
+    let running_write_started = write_started.notified();
+    env.handle
+        .discover_tx
+        .send(matching_preference_candidate(run_id, &reuse_key))
+        .unwrap();
+    tokio::select! {
+        () = running_write_started => {}
+        completion = env.handle.wait_completion(run_id, Duration::from_secs(5)) => {
+            panic!("run completed before running status write gate: {completion:?}");
+        }
+    }
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+
+    run_handle.abort();
+    assert!(run_handle.await.unwrap_err().is_cancelled());
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("dropping the activation task should complete the provider claim");
+    assert!(
+        completion
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("task dropped"))
+    );
+    assert_eq!(completion.sandbox_id, None);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert!(active_runs.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn reserved_reuse_activation_panic_recovers_claim_and_sandbox() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+    let (mut config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
+    config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::ClaimedActivation);
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = RunId::new_v4().to_string();
+    seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        &reuse_key,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, &reuse_key)));
+    env.handle
+        .discover_tx
+        .send(matching_preference_candidate(run_id, &reuse_key))
+        .unwrap();
+
+    assert!(run_handle.await.unwrap_err().is_panic());
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("activation panic should complete the provider claim");
+    assert_eq!(
+        completion.error.as_deref(),
+        Some("claimed activation setup panicked")
+    );
+    assert_eq!(completion.sandbox_id, None);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert!(active_runs.is_empty());
 }
 
 #[tokio::test(start_paused = true)]

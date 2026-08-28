@@ -1,15 +1,38 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use sandbox::SandboxId;
 use serde::Serialize;
 use tokio::sync::Mutex;
-use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::lifecycle::RunnerMode;
+
+const STATUS_PERSISTENCE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Failure to publish one whole runner status snapshot.
+#[derive(Debug, thiserror::Error)]
+pub enum StatusPersistenceError {
+    #[error("serialize runner status for {path}: {source}")]
+    Serialize {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("write runner status {path}: {source}")]
+    Write {
+        path: PathBuf,
+        #[source]
+        source: RunnerError,
+    },
+    #[error("runner status persistence for {path} timed out after {timeout:?}")]
+    Timeout { path: PathBuf, timeout: Duration },
+}
+
+pub type StatusResult<T> = Result<T, StatusPersistenceError>;
 
 /// Active run lifecycle phase serialized as `active_runs[*].phase`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -91,6 +114,7 @@ struct PersistenceState {
 #[cfg(test)]
 #[derive(Clone)]
 struct StatusWriteGate {
+    generation: u64,
     started: std::sync::Arc<tokio::sync::Notify>,
     release: std::sync::Arc<tokio::sync::Semaphore>,
 }
@@ -172,24 +196,29 @@ impl StatusTracker {
     }
 
     #[cfg(test)]
-    fn new_with_write_gate(
+    pub(crate) fn new_with_write_gate(
         path: PathBuf,
+        generation: u64,
         started: std::sync::Arc<tokio::sync::Notify>,
         release: std::sync::Arc<tokio::sync::Semaphore>,
     ) -> Self {
         let mut tracker = Self::new(path, 4, None, None);
-        tracker.write_gate = Some(StatusWriteGate { started, release });
+        tracker.write_gate = Some(StatusWriteGate {
+            generation,
+            started,
+            release,
+        });
         tracker
     }
 
     /// Transition the reported lifecycle mode and flush the status file.
-    pub async fn set_mode(&self, mode: RunnerMode) {
+    pub async fn set_mode(&self, mode: RunnerMode) -> StatusResult<()> {
         let snapshot = {
             let mut state = self.state.lock().await;
             state.mode = mode;
             self.capture_changed_snapshot(&mut state)
         };
-        self.persist_snapshot(snapshot).await;
+        self.persist_snapshot(snapshot).await
     }
 
     /// Register an active run as running and flush the status file.
@@ -197,23 +226,27 @@ impl StatusTracker {
     /// This preserves the old helper semantics for tests and cleanup fixtures.
     /// Freshly claimed new-sandbox jobs should use [`add_preparing_run`].
     #[cfg(test)]
-    pub async fn add_run(&self, run_id: RunId, sandbox_id: SandboxId) {
-        self.add_running_run(run_id, sandbox_id).await;
+    pub async fn add_run(&self, run_id: RunId, sandbox_id: SandboxId) -> StatusResult<()> {
+        self.add_running_run(run_id, sandbox_id).await
     }
 
     /// Register an active run that has been claimed while its fresh sandbox is
     /// still being prepared. Its Firecracker process may not exist or be ready
     /// yet.
-    pub async fn add_preparing_run(&self, run_id: RunId, sandbox_id: SandboxId) {
+    pub async fn add_preparing_run(
+        &self,
+        run_id: RunId,
+        sandbox_id: SandboxId,
+    ) -> StatusResult<()> {
         self.add_run_with_phase(run_id, sandbox_id, ActiveRunPhase::Preparing)
-            .await;
+            .await
     }
 
     /// Register an active run whose Firecracker VM should already exist.
     #[cfg(test)]
-    pub async fn add_running_run(&self, run_id: RunId, sandbox_id: SandboxId) {
+    pub async fn add_running_run(&self, run_id: RunId, sandbox_id: SandboxId) -> StatusResult<()> {
         self.add_run_with_phase(run_id, sandbox_id, ActiveRunPhase::Running)
-            .await;
+            .await
     }
 
     async fn add_run_with_phase(
@@ -221,7 +254,7 @@ impl StatusTracker {
         run_id: RunId,
         sandbox_id: SandboxId,
         phase: ActiveRunPhase,
-    ) {
+    ) -> StatusResult<()> {
         let snapshot = {
             let mut state = self.state.lock().await;
             state.active_runs.insert(
@@ -234,7 +267,7 @@ impl StatusTracker {
             );
             self.capture_changed_snapshot(&mut state)
         };
-        self.persist_snapshot(snapshot).await;
+        self.persist_snapshot(snapshot).await
     }
 
     /// Register an active run and replace the idle sandbox list in the same status
@@ -252,7 +285,7 @@ impl StatusTracker {
         sandbox_id: SandboxId,
         revision: u64,
         idle_sandboxes: Vec<IdleSandbox>,
-    ) -> bool {
+    ) -> StatusResult<bool> {
         self.add_run_with_idle_info_at_revision(
             run_id,
             sandbox_id,
@@ -271,7 +304,7 @@ impl StatusTracker {
         sandbox_id: SandboxId,
         revision: u64,
         idle_sandboxes: Vec<IdleSandbox>,
-    ) -> bool {
+    ) -> StatusResult<bool> {
         self.add_run_with_idle_info_at_revision(
             run_id,
             sandbox_id,
@@ -289,7 +322,7 @@ impl StatusTracker {
         phase: ActiveRunPhase,
         revision: u64,
         idle_sandboxes: Vec<IdleSandbox>,
-    ) -> bool {
+    ) -> StatusResult<bool> {
         let (applied, snapshot) = {
             let mut state = self.state.lock().await;
             state.active_runs.insert(
@@ -304,45 +337,53 @@ impl StatusTracker {
             let snapshot = self.capture_changed_snapshot(&mut state);
             (applied, snapshot)
         };
-        self.persist_snapshot(snapshot).await;
-        applied
+        self.persist_snapshot(snapshot).await?;
+        Ok(applied)
     }
 
     /// Transition a preparing active run to running only if it still points at
     /// the expected sandbox.
-    pub async fn mark_run_running_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
+    pub async fn mark_run_running_if_matching(
+        &self,
+        run_id: RunId,
+        sandbox_id: SandboxId,
+    ) -> StatusResult<bool> {
         let snapshot = {
             let mut state = self.state.lock().await;
             let Some(current) = state.active_runs.get_mut(&run_id) else {
-                return false;
+                return Ok(false);
             };
             if current.sandbox_id != sandbox_id {
-                return false;
+                return Ok(false);
             }
             current.phase = ActiveRunPhase::Running;
             current.phase_started_at = Utc::now();
             self.capture_changed_snapshot(&mut state)
         };
-        self.persist_snapshot(snapshot).await;
-        true
+        self.persist_snapshot(snapshot).await?;
+        Ok(true)
     }
 
     /// Drop an active run only if it still points at the expected sandbox.
     ///
     /// Returns `false` if another task already removed the run or reused the
     /// `run_id` with a different sandbox.
-    pub async fn remove_run_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
+    pub async fn remove_run_if_matching(
+        &self,
+        run_id: RunId,
+        sandbox_id: SandboxId,
+    ) -> StatusResult<bool> {
         let snapshot = {
             let mut state = self.state.lock().await;
             let removed = matches!(state.active_runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
             if !removed {
-                return false;
+                return Ok(false);
             }
             state.active_runs.remove(&run_id);
             self.capture_changed_snapshot(&mut state)
         };
-        self.persist_snapshot(snapshot).await;
-        true
+        self.persist_snapshot(snapshot).await?;
+        Ok(true)
     }
 
     /// Replace the idle sandbox list only if the snapshot is at least as new as the
@@ -354,26 +395,26 @@ impl StatusTracker {
         &self,
         revision: u64,
         idle_sandboxes: Vec<IdleSandbox>,
-    ) -> bool {
+    ) -> StatusResult<bool> {
         let snapshot = {
             let mut state = self.state.lock().await;
             let applied = apply_idle_info_at_revision(&mut state, revision, idle_sandboxes);
             if !applied {
-                return false;
+                return Ok(false);
             }
             self.capture_changed_snapshot(&mut state)
         };
-        self.persist_snapshot(snapshot).await;
-        true
+        self.persist_snapshot(snapshot).await?;
+        Ok(true)
     }
 
     /// Write the initial status file.
-    pub async fn write_initial(&self) {
+    pub async fn write_initial(&self) -> StatusResult<()> {
         let snapshot = {
             let mut state = self.state.lock().await;
             self.capture_changed_snapshot(&mut state)
         };
-        self.persist_snapshot(snapshot).await;
+        self.persist_snapshot(snapshot).await
     }
 
     fn capture_changed_snapshot(&self, state: &mut MutableState) -> StatusSnapshot {
@@ -407,39 +448,50 @@ impl StatusTracker {
     }
 
     /// Publish an owned snapshot through same-directory atomic replacement.
-    async fn persist_snapshot(&self, snapshot: StatusSnapshot) {
-        let json = match serde_json::to_string_pretty(&snapshot.status) {
-            Ok(j) => j,
-            Err(e) => {
-                warn!(error = %e, "failed to serialize status");
-                return;
+    async fn persist_snapshot(&self, snapshot: StatusSnapshot) -> StatusResult<()> {
+        let path = self.path.clone();
+        let persist = async {
+            let json = serde_json::to_string_pretty(&snapshot.status).map_err(|source| {
+                StatusPersistenceError::Serialize {
+                    path: path.clone(),
+                    source,
+                }
+            })?;
+
+            let mut persistence = self.persistence.lock().await;
+            if persistence.published_generation >= snapshot.generation {
+                return Ok(());
             }
+
+            #[cfg(test)]
+            if let Some(gate) = &self.write_gate
+                && gate.generation == snapshot.generation
+            {
+                gate.started.notify_one();
+                let permit = gate
+                    .release
+                    .acquire()
+                    .await
+                    .expect("status write gate closed");
+                permit.forget();
+            }
+
+            crate::private_fs::write_private_file(&path, json.as_bytes())
+                .await
+                .map_err(|source| StatusPersistenceError::Write {
+                    path: path.clone(),
+                    source,
+                })?;
+            persistence.published_generation = snapshot.generation;
+            Ok(())
         };
 
-        let mut persistence = self.persistence.lock().await;
-        if persistence.published_generation >= snapshot.generation {
-            return;
-        }
-
-        #[cfg(test)]
-        if let Some(gate) = &self.write_gate {
-            gate.started.notify_one();
-            let permit = gate
-                .release
-                .acquire()
-                .await
-                .expect("status write gate closed");
-            permit.forget();
-        }
-
-        match crate::private_fs::write_private_file(&self.path, json.as_bytes()).await {
-            Ok(()) => {
-                persistence.published_generation = snapshot.generation;
-            }
-            Err(e) => {
-                warn!(error = %e, path = %self.path.display(), "failed to write status file");
-            }
-        }
+        tokio::time::timeout(STATUS_PERSISTENCE_TIMEOUT, persist)
+            .await
+            .map_err(|_| StatusPersistenceError::Timeout {
+                path: self.path.clone(),
+                timeout: STATUS_PERSISTENCE_TIMEOUT,
+            })?
     }
 }
 
@@ -491,7 +543,7 @@ mod tests {
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
 
         let status = read_status(&path);
         assert_eq!(status["mode"], "starting");
@@ -509,6 +561,7 @@ mod tests {
         let release = Arc::new(Semaphore::new(0));
         let tracker = Arc::new(StatusTracker::new_with_write_gate(
             path.clone(),
+            1,
             Arc::clone(&started),
             Arc::clone(&release),
         ));
@@ -518,7 +571,10 @@ mod tests {
         let first_write_started = started.notified();
         let first_tracker = Arc::clone(&tracker);
         let first = tokio::spawn(async move {
-            first_tracker.add_preparing_run(run_id, sandbox_id).await;
+            first_tracker
+                .add_preparing_run(run_id, sandbox_id)
+                .await
+                .unwrap();
         });
         first_write_started.await;
 
@@ -544,7 +600,7 @@ mod tests {
 
         release.add_permits(2);
         first.await.unwrap();
-        second.await;
+        second.await.unwrap();
 
         let status = read_status(&path);
         assert_eq!(status["mode"], "draining");
@@ -553,6 +609,49 @@ mod tests {
         assert_eq!(runs[0]["run_id"], run_id.to_string());
         assert_eq!(runs[0]["sandbox_id"], sandbox_id.to_string());
         assert_eq!(runs[0]["phase"], "preparing");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn blocked_status_write_times_out_and_releases_persistence_ordering() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let tracker = Arc::new(StatusTracker::new_with_write_gate(
+            path.clone(),
+            1,
+            Arc::clone(&started),
+            release,
+        ));
+
+        let write_started = started.notified();
+        let write_tracker = Arc::clone(&tracker);
+        let write = tokio::spawn(async move { write_tracker.write_initial().await });
+        write_started.await;
+        tokio::time::advance(STATUS_PERSISTENCE_TIMEOUT).await;
+
+        let error = write.await.unwrap().unwrap_err();
+        assert!(matches!(error, StatusPersistenceError::Timeout { .. }));
+
+        tracker.set_mode(RunnerMode::Running).await.unwrap();
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "running");
+    }
+
+    #[tokio::test]
+    async fn failed_status_write_is_reported_and_newer_generation_can_publish() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("missing");
+        let path = parent.join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+
+        let error = tracker.write_initial().await.unwrap_err();
+        assert!(matches!(error, StatusPersistenceError::Write { .. }));
+
+        tokio::fs::create_dir(&parent).await.unwrap();
+        tracker.set_mode(RunnerMode::Running).await.unwrap();
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "running");
     }
 
     #[tokio::test]
@@ -570,8 +669,8 @@ mod tests {
             (older, newer)
         };
 
-        tracker.persist_snapshot(newer).await;
-        tracker.persist_snapshot(older).await;
+        tracker.persist_snapshot(newer).await.unwrap();
+        tracker.persist_snapshot(older).await.unwrap();
 
         let status = read_status(&path);
         assert_eq!(status["mode"], "draining");
@@ -588,7 +687,7 @@ mod tests {
         std::os::unix::fs::symlink(&stale_target, &stale_tmp).unwrap();
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
 
         assert_eq!(std::fs::read(&stale_target).unwrap(), b"do not overwrite");
         assert!(
@@ -643,8 +742,8 @@ mod tests {
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        tracker.write_initial().await;
-        tracker.set_mode(RunnerMode::Draining).await;
+        tracker.write_initial().await.unwrap();
+        tracker.set_mode(RunnerMode::Draining).await.unwrap();
 
         let status = read_status(&path);
         assert_eq!(status["mode"], "draining");
@@ -659,8 +758,8 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
 
-        tracker.write_initial().await;
-        tracker.add_run(run_id, sandbox_id).await;
+        tracker.write_initial().await.unwrap();
+        tracker.add_run(run_id, sandbox_id).await.unwrap();
 
         let status = read_status(&path);
         let runs = status["active_runs"].as_array().unwrap();
@@ -680,8 +779,8 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
 
-        tracker.write_initial().await;
-        tracker.add_preparing_run(run_id, sandbox_id).await;
+        tracker.write_initial().await.unwrap();
+        tracker.add_preparing_run(run_id, sandbox_id).await.unwrap();
 
         let status = read_status(&path);
         let runs = status["active_runs"].as_array().unwrap();
@@ -703,14 +802,21 @@ mod tests {
         let stale_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
 
-        tracker.write_initial().await;
-        tracker.add_preparing_run(run_id, stale_sandbox_id).await;
-        tracker.add_preparing_run(run_id, current_sandbox_id).await;
+        tracker.write_initial().await.unwrap();
+        tracker
+            .add_preparing_run(run_id, stale_sandbox_id)
+            .await
+            .unwrap();
+        tracker
+            .add_preparing_run(run_id, current_sandbox_id)
+            .await
+            .unwrap();
 
         assert!(
             !tracker
                 .mark_run_running_if_matching(run_id, stale_sandbox_id)
                 .await
+                .unwrap()
         );
         let status = read_status(&path);
         let runs = status["active_runs"].as_array().unwrap();
@@ -722,6 +828,7 @@ mod tests {
             tracker
                 .mark_run_running_if_matching(run_id, current_sandbox_id)
                 .await
+                .unwrap()
         );
         let status = read_status(&path);
         let runs = status["active_runs"].as_array().unwrap();
@@ -741,14 +848,14 @@ mod tests {
         let run2 = RunId::new_v4();
         let sb2 = SandboxId::new_v4();
 
-        tracker.write_initial().await;
-        tracker.add_run(run1, sb1).await;
-        tracker.add_run(run2, sb2).await;
+        tracker.write_initial().await.unwrap();
+        tracker.add_run(run1, sb1).await.unwrap();
+        tracker.add_run(run2, sb2).await.unwrap();
 
         let status = read_status(&path);
         assert_eq!(status["active_runs"].as_array().unwrap().len(), 2);
 
-        assert!(tracker.remove_run_if_matching(run1, sb1).await);
+        assert!(tracker.remove_run_if_matching(run1, sb1).await.unwrap());
 
         let status = read_status(&path);
         let runs = status["active_runs"].as_array().unwrap();
@@ -767,11 +874,16 @@ mod tests {
         let old_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
 
-        tracker.write_initial().await;
-        tracker.add_run(run_id, old_sandbox_id).await;
-        tracker.add_run(run_id, current_sandbox_id).await;
+        tracker.write_initial().await.unwrap();
+        tracker.add_run(run_id, old_sandbox_id).await.unwrap();
+        tracker.add_run(run_id, current_sandbox_id).await.unwrap();
 
-        assert!(!tracker.remove_run_if_matching(run_id, old_sandbox_id).await);
+        assert!(
+            !tracker
+                .remove_run_if_matching(run_id, old_sandbox_id)
+                .await
+                .unwrap()
+        );
 
         let status = read_status(&path);
         let runs = status["active_runs"].as_array().unwrap();
@@ -783,6 +895,7 @@ mod tests {
             tracker
                 .remove_run_if_matching(run_id, current_sandbox_id)
                 .await
+                .unwrap()
         );
 
         let status = read_status(&path);
@@ -794,7 +907,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, Some(8080), None);
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
 
         let status = read_status(&path);
         assert_eq!(status["proxy_port"], 8080);
@@ -806,7 +919,7 @@ mod tests {
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
 
         let status = read_status(&path);
         assert!(status.get("proxy_port").is_none());
@@ -818,7 +931,7 @@ mod tests {
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
 
         let status = read_status(&path);
         let started = status["started_at"].as_str().unwrap();
@@ -834,7 +947,7 @@ mod tests {
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
 
         let status = read_status(&path);
         assert!(status.get("idle_sandboxes").is_none());
@@ -858,6 +971,7 @@ mod tests {
                     ],
                 )
                 .await
+                .unwrap()
         );
 
         let status = read_status(&path);
@@ -878,7 +992,7 @@ mod tests {
         let stale_id = SandboxId::new_v4();
         let fresh_id = SandboxId::new_v4();
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
         assert!(
             tracker
                 .set_idle_info_at_revision(
@@ -889,6 +1003,7 @@ mod tests {
                     }],
                 )
                 .await
+                .unwrap()
         );
         assert!(
             !tracker
@@ -900,6 +1015,7 @@ mod tests {
                     }],
                 )
                 .await
+                .unwrap()
         );
 
         let status = read_status(&path);
@@ -917,7 +1033,7 @@ mod tests {
         let original_id = SandboxId::new_v4();
         let replacement_id = SandboxId::new_v4();
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
         assert!(
             tracker
                 .set_idle_info_at_revision(
@@ -928,6 +1044,7 @@ mod tests {
                     }],
                 )
                 .await
+                .unwrap()
         );
 
         // A cleanup/pressure eviction path captured this empty snapshot after
@@ -946,12 +1063,14 @@ mod tests {
                     }],
                 )
                 .await
+                .unwrap()
         );
 
         assert!(
             !tracker
                 .set_idle_info_at_revision(delayed_cleanup_revision, delayed_cleanup_snapshot)
                 .await
+                .unwrap()
         );
 
         let status = read_status(&path);
@@ -971,7 +1090,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let active_id = SandboxId::new_v4();
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
         assert!(
             tracker
                 .set_idle_info_at_revision(
@@ -982,6 +1101,7 @@ mod tests {
                     }],
                 )
                 .await
+                .unwrap()
         );
         assert!(
             !tracker
@@ -995,6 +1115,7 @@ mod tests {
                     }],
                 )
                 .await
+                .unwrap()
         );
 
         let status = read_status(&path);
@@ -1018,7 +1139,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let active_id = SandboxId::new_v4();
 
-        tracker.write_initial().await;
+        tracker.write_initial().await.unwrap();
         assert!(
             tracker
                 .add_preparing_run_with_idle_info_at_revision(
@@ -1031,6 +1152,7 @@ mod tests {
                     }],
                 )
                 .await
+                .unwrap()
         );
 
         let status = read_status(&path);
@@ -1051,7 +1173,7 @@ mod tests {
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        assert!(tracker.set_idle_info_at_revision(1, vec![]).await);
+        assert!(tracker.set_idle_info_at_revision(1, vec![]).await.unwrap());
 
         let status = read_status(&path);
         assert!(
