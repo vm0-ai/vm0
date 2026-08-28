@@ -96,8 +96,8 @@ const setVideoModel$ = command(
     const explicitDefaultActionEnabled =
       get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
     if (explicitDefaultActionEnabled) {
-      // The composer notice carries an explicit "Set as default" instead, so
-      // picking a video model only scopes the next new chat.
+      // The composer footer carries an explicit "Use for future chats" action,
+      // so picking a video model only scopes the next new chat.
       return;
     }
     const userPreference = await get(userModelPreference$);
