@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.505.1](https://github.com/vm0-ai/vm0/compare/api-v1.505.0...api-v1.505.1) (2026-08-28)
+
+
+### Refactoring
+
+* **api:** retire legacy machine secret reader ([#29993](https://github.com/vm0-ai/vm0/issues/29993)) ([076afce](https://github.com/vm0-ai/vm0/commit/076afcef21eda68013427bb5636c971d506c992c))
+
 ## [1.505.0](https://github.com/vm0-ai/vm0/compare/api-v1.504.2...api-v1.505.0) (2026-08-28)
 
 
