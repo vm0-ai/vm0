@@ -1,5 +1,6 @@
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import type { OrgPlanEntitlementSourceMetadata } from "@okouai/db/jsonb-contracts/org-plan-entitlement";
+import { orgPlanEntitlementsLegacyWrites } from "@okouai/db/operations/org-plan-entitlement-legacy-write";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
@@ -123,10 +124,10 @@ export async function upsertOrgPlanEntitlement(
     updatedAt,
   };
   await tx
-    .insert(orgPlanEntitlements)
+    .insert(orgPlanEntitlementsLegacyWrites)
     .values(values)
     .onConflictDoUpdate({
-      target: orgPlanEntitlements.orgId,
+      target: orgPlanEntitlementsLegacyWrites.orgId,
       set: {
         planKey: values.planKey,
         planRank: values.planRank,
