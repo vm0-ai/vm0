@@ -10,6 +10,15 @@ const PRODUCTION_API_ORIGINS = new Map([
   ["app.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
+const PRODUCTION_ROOT_DOMAINS = ["okou.ai", "vm0.ai"];
+const CLERK_SATELLITE_DOMAIN = "app.okou.ai";
+const CLERK_SCRIPT_SELECTOR = "script[data-clerk-js-script]";
+const CLERK_PRODUCTION_PUBLISHABLE_KEY_ATTRIBUTE =
+  "data-vm0-clerk-production-publishable-key";
+const CLERK_PRODUCTION_SCRIPT_URL_ATTRIBUTE =
+  "data-vm0-clerk-production-script-url";
+const CLERK_SATELLITE_SCRIPT_URL_ATTRIBUTE =
+  "data-vm0-clerk-satellite-script-url";
 
 const VM0_APP_METADATA = {
   brandName: "VM0",
@@ -125,6 +134,47 @@ function addStaticAssetHandlers(rewriter, metadata) {
     .on("img", rewriteStaticAssetAttribute("src", metadata.staticAssetsOrigin));
 }
 
+function isProductionHostname(hostname) {
+  return PRODUCTION_ROOT_DOMAINS.some((domain) => {
+    return hostname === domain || hostname.endsWith(`.${domain}`);
+  });
+}
+
+function isClerkSatelliteHostname(hostname) {
+  return (
+    hostname === CLERK_SATELLITE_DOMAIN ||
+    hostname.endsWith(`.${CLERK_SATELLITE_DOMAIN}`)
+  );
+}
+
+function addClerkScriptHandler(rewriter, hostname) {
+  const normalizedHostname = hostname.toLowerCase();
+  if (!isProductionHostname(normalizedHostname)) {
+    return;
+  }
+  rewriter.on(CLERK_SCRIPT_SELECTOR, {
+    element(element) {
+      const publishableKey = element.getAttribute(
+        CLERK_PRODUCTION_PUBLISHABLE_KEY_ATTRIBUTE,
+      );
+      const satellite = isClerkSatelliteHostname(normalizedHostname);
+      const scriptUrl = element.getAttribute(
+        satellite
+          ? CLERK_SATELLITE_SCRIPT_URL_ATTRIBUTE
+          : CLERK_PRODUCTION_SCRIPT_URL_ATTRIBUTE,
+      );
+      if (publishableKey === null || scriptUrl === null) {
+        throw new Error("Clerk production script configuration is unavailable");
+      }
+      element.setAttribute("data-clerk-publishable-key", publishableKey);
+      element.setAttribute("src", scriptUrl);
+      if (satellite) {
+        element.setAttribute("data-clerk-domain", CLERK_SATELLITE_DOMAIN);
+      }
+    },
+  });
+}
+
 function htmlResponse(indexHtml, assetResponse, status, cacheControl) {
   const headers = new Headers(assetResponse.headers);
   headers.delete("Content-Encoding");
@@ -149,7 +199,7 @@ function noIndexResponse(response) {
   });
 }
 
-function rewriteAppPage(response, metadata, productionApiOrigin) {
+function rewriteAppPage(response, metadata, productionApiOrigin, hostname) {
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on("title", {
@@ -203,6 +253,7 @@ function rewriteAppPage(response, metadata, productionApiOrigin) {
       },
     });
   addStaticAssetHandlers(rewriter, metadata);
+  addClerkScriptHandler(rewriter, hostname);
   if (productionApiOrigin) {
     rewriter.on(
       'meta[name="vm0-api-origin"]',
@@ -231,7 +282,14 @@ async function rewriteManifest(response, metadata) {
   });
 }
 
-function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
+function rewriteFound(
+  response,
+  title,
+  canonicalUrl,
+  metadata,
+  apiOrigin,
+  hostname,
+) {
   const sharedDescription = `A conversation shared from ${metadata.brandName}`;
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
@@ -273,10 +331,11 @@ function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
       },
     });
   addStaticAssetHandlers(rewriter, metadata);
+  addClerkScriptHandler(rewriter, hostname);
   return rewriter.transform(response);
 }
 
-function rewriteNotFound(response, metadata, apiOrigin) {
+function rewriteNotFound(response, metadata, apiOrigin, hostname) {
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on('meta[name="vm0-api-origin"]', setMetaContent(apiOrigin))
@@ -302,6 +361,7 @@ function rewriteNotFound(response, metadata, apiOrigin) {
       },
     });
   addStaticAssetHandlers(rewriter, metadata);
+  addClerkScriptHandler(rewriter, hostname);
   return rewriter.transform(response);
 }
 
@@ -367,6 +427,7 @@ export default {
           ),
           appMetadata(requestUrl.hostname),
           origin,
+          requestUrl.hostname,
         );
       }
       if (!metaResponse.ok) {
@@ -403,6 +464,7 @@ export default {
         canonicalUrl,
         sharedAppMetadata,
         origin,
+        requestUrl.hostname,
       );
     }
 
@@ -427,6 +489,7 @@ export default {
       assetResponse,
       metadata,
       PRODUCTION_API_ORIGINS.get(requestUrl.hostname),
+      requestUrl.hostname,
     );
   },
 };

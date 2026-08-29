@@ -9,6 +9,18 @@
     <title>AI Agents for Real Work — Your Trustworthy AI Teammate | VM0</title>
     <meta charset="UTF-8" />
     <meta name="vm0-api-origin" content="" />
+    <script
+      defer=""
+      crossorigin="anonymous"
+      data-clerk-js-script=""
+      data-clerk-publishable-key="%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%"
+      data-vm0-clerk-production-publishable-key="%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
+      data-vm0-clerk-production-script-url="__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
+      data-vm0-clerk-satellite-script-url="__VM0_CLERK_SATELLITE_SCRIPT_URL__"
+      onerror="this.remove()"
+      src="__VM0_CLERK_PREVIEW_SCRIPT_URL__"
+      type="text/javascript"
+    ></script>
     <style>
       body {
         margin: 0;
@@ -915,60 +927,6 @@
       // Mark <head> parse start as early as possible so we can measure the
       // total white-screen duration up to the first `hideAppSkeleton$` call.
       window.__appBootstrapStart = performance.now();
-    </script>
-    <script>
-      // Start the Clerk core request before the application bundle. The
-      // publishable key is shaped pk_<env>_<base64(host$)>; decoding it here
-      // avoids hard-coding an instance host. Clerk.load() remains in the app.
-      (function () {
-        if (window.__vm0BrowserSupported !== true) return;
-
-        var h = location.hostname.toLowerCase();
-        var production =
-          h === "vm0.ai" ||
-          h.endsWith(".vm0.ai") ||
-          h === "okou.ai" ||
-          h.endsWith(".okou.ai");
-        var k = production
-          ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
-          : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        var m = /^pk_(?:test|live)_(.+)$/.exec(k);
-        if (!m) return;
-        var frontendApiHost = atob(m[1]).replace(/\$+$/, "");
-        if (!/^[a-z0-9.-]+$/i.test(frontendApiHost)) return;
-
-        var domain =
-          h === "app.okou.ai" || h.endsWith(".app.okou.ai")
-            ? "app.okou.ai"
-            : null;
-        var scriptHost = domain ? "clerk." + domain : frontendApiHost;
-        var l = document.createElement("link");
-        l.rel = "preconnect";
-        l.href = "https://" + scriptHost;
-        l.crossOrigin = "anonymous";
-        document.head.appendChild(l);
-
-        var s = document.createElement("script");
-        s.async = true;
-        s.crossOrigin = "anonymous";
-        s.setAttribute("data-clerk-js-script", "");
-        s.setAttribute("data-clerk-publishable-key", k);
-        if (domain) s.setAttribute("data-clerk-domain", domain);
-        s.addEventListener(
-          "error",
-          function () {
-            // A failed existing script makes Clerk's runtime loader wait for
-            // its timeout. Remove it so the runtime retries immediately.
-            s.remove();
-          },
-          { once: true },
-        );
-        s.src =
-          "https://" +
-          scriptHost +
-          "/npm/@clerk/clerk-js@6.25.8/dist/clerk.browser.js";
-        document.head.appendChild(s);
-      })();
     </script>
     <link
       rel="icon"

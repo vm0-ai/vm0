@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
+
 import indexHtml from "../../index.html?raw";
-import { setupPage } from "./page-helper.ts";
-import { mockedClerk, mockedClerkLoad } from "./mock-auth.ts";
+import { transformClerkCoreScriptUrls } from "../../scripts/clerk-html.ts";
+import { CLERK_JS_VERSION } from "../lib/clerk-versions.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
+import { mockedClerk, mockedClerkLoad } from "./mock-auth.ts";
+import { setupPage } from "./page-helper.ts";
 
 vi.unmock("@clerk/shared/loadClerkJsScript");
 
-const CLERK_JS_VERSION = "6.25.8";
 const PREVIEW_FRONTEND_API_HOST = "informed-calf-6.clerk.accounts.dev";
 const PRODUCTION_FRONTEND_API_HOST = "clerk.vm0.ai";
 const PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
@@ -21,15 +23,9 @@ interface ClerkEntrypointHarness {
   readonly clerkLoaderWatchingEarlyScript: Promise<void>;
   readonly earlyScript: HTMLScriptElement;
   readonly requests: ClerkScriptRequest[];
+  readonly retryStarted: Promise<void>;
   readonly setup: Promise<void>;
 }
-
-type ClerkEntrypointScript = (
-  windowObject: Window,
-  documentObject: Document,
-  locationObject: Location,
-  atobFunction: typeof atob,
-) => void;
 
 const context = testContext();
 
@@ -46,37 +42,46 @@ const PRODUCTION_PUBLISHABLE_KEY = publishableKey(
   PRODUCTION_FRONTEND_API_HOST,
 );
 
-function clerkEntrypointSource(): string {
-  const source = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/giu)]
-    .map((match) => {
-      return match[1];
-    })
-    .find((script) => {
-      return script?.includes('s.setAttribute("data-clerk-js-script", "")');
-    });
-  if (source === undefined) {
-    throw new Error("Unable to locate the Clerk loader in index.html");
-  }
-  return source
-    .replaceAll("%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%", PREVIEW_PUBLISHABLE_KEY)
-    .replaceAll(
-      "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
-      PRODUCTION_PUBLISHABLE_KEY,
-    );
-}
-
 function expectedClerkScriptUrl(host: string): string {
   return `https://${host}/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 }
 
-function startClerkPage(hostname: string): ClerkEntrypointHarness {
+function builtIndexHtml(): string {
+  return transformClerkCoreScriptUrls(
+    indexHtml
+      .replaceAll(
+        "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%",
+        PREVIEW_PUBLISHABLE_KEY,
+      )
+      .replaceAll(
+        "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
+        PRODUCTION_PUBLISHABLE_KEY,
+      ),
+    {
+      previewPublishableKey: PREVIEW_PUBLISHABLE_KEY,
+      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
+    },
+  );
+}
+
+function clerkScriptFromHtml(html: string): HTMLScriptElement {
+  const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+  const script = parsedDocument.querySelector(CLERK_SCRIPT_SELECTOR);
+  if (!(script instanceof HTMLScriptElement)) {
+    throw new Error("Built index.html does not contain the Clerk core script");
+  }
+  return script;
+}
+
+function startClerkPage(): ClerkEntrypointHarness {
   const requests: ClerkScriptRequest[] = [];
   const clerkLoaderWatchingEarlyScript = context.mocks.deferred<void>();
+  const retryStarted = context.mocks.deferred<void>();
   let earlyScript: HTMLScriptElement | undefined;
 
   const setup = setupPage({
     beforeBootstrap: (signal) => {
-      context.mocks.browser.url(`https://${hostname}/`);
+      context.mocks.browser.url("https://pr-30199-app.omby.ai/");
       const previousPreviewKey = import.meta.env
         .VITE_CLERK_PUBLISHABLE_KEY_PREVIEW;
       const previousProductionKey = import.meta.env
@@ -86,52 +91,20 @@ function startClerkPage(hostname: string): ClerkEntrypointHarness {
       window.__vm0BrowserSupported = true;
       Reflect.deleteProperty(globalThis, "Clerk");
 
-      const observeScript = (
-        append: typeof document.head.appendChild,
-        node: Node,
-      ): Node => {
-        if (!(node instanceof HTMLScriptElement) || !node.src) {
-          return append(node);
+      const parsedEarlyScript = clerkScriptFromHtml(builtIndexHtml());
+      const earlyScriptUrl = parsedEarlyScript.src;
+      parsedEarlyScript.removeAttribute("src");
+      document.head.appendChild(parsedEarlyScript);
+      requests.push({ element: parsedEarlyScript, url: earlyScriptUrl });
+      parsedEarlyScript.addEventListener("error", () => {
+        if (parsedEarlyScript.getAttribute("onerror") === "this.remove()") {
+          parsedEarlyScript.remove();
         }
-
-        const request = { element: node, url: node.src };
-        requests.push(request);
-        // Keep Happy DOM from making an external request. The real Clerk
-        // loader still observes the connected data-clerk-js-script element.
-        node.removeAttribute("src");
-        const appended = append(node);
-
-        if (requests.length > 1) {
-          Reflect.set(globalThis, "Clerk", mockedClerk);
-          node.dispatchEvent(new Event("load"));
-        }
-        return appended;
-      };
-
-      const appendToHead = document.head.appendChild.bind(document.head);
-      vi.spyOn(document.head, "appendChild").mockImplementation((node) => {
-        return observeScript(appendToHead, node);
-      });
-      const appendToBody = document.body.appendChild.bind(document.body);
-      vi.spyOn(document.body, "appendChild").mockImplementation((node) => {
-        return observeScript(appendToBody, node);
       });
 
-      const executeEntrypointScript = new Function(
-        "window",
-        "document",
-        "location",
-        "atob",
-        `${clerkEntrypointSource()}\n//# sourceURL=platform-clerk-entrypoint-test.js`,
-      ) as ClerkEntrypointScript;
-      executeEntrypointScript(window, document, location, atob);
-
-      earlyScript = document.querySelector(CLERK_SCRIPT_SELECTOR) ?? undefined;
-      if (!earlyScript) {
-        throw new Error("Clerk entrypoint did not append its core script");
-      }
-      const addEventListener = earlyScript.addEventListener.bind(earlyScript);
-      vi.spyOn(earlyScript, "addEventListener").mockImplementation(
+      const addEventListener =
+        parsedEarlyScript.addEventListener.bind(parsedEarlyScript);
+      vi.spyOn(parsedEarlyScript, "addEventListener").mockImplementation(
         (type, listener, options) => {
           if (type === "error") {
             clerkLoaderWatchingEarlyScript.resolve(undefined);
@@ -140,9 +113,42 @@ function startClerkPage(hostname: string): ClerkEntrypointHarness {
         },
       );
 
+      const observeScript = (
+        append: typeof document.body.appendChild,
+        node: Node,
+      ): Node => {
+        if (!(node instanceof HTMLScriptElement) || !node.src) {
+          return append(node);
+        }
+
+        requests.push({ element: node, url: node.src });
+        node.removeAttribute("src");
+        const appended = append(node);
+        retryStarted.resolve(undefined);
+        Reflect.set(globalThis, "Clerk", mockedClerk);
+        node.dispatchEvent(new Event("load"));
+        return appended;
+      };
+
+      const appendToHead = document.head.appendChild.bind(document.head);
+      const headAppendSpy = vi
+        .spyOn(document.head, "appendChild")
+        .mockImplementation((node) => {
+          return observeScript(appendToHead, node);
+        });
+      const appendToBody = document.body.appendChild.bind(document.body);
+      const bodyAppendSpy = vi
+        .spyOn(document.body, "appendChild")
+        .mockImplementation((node) => {
+          return observeScript(appendToBody, node);
+        });
+
+      earlyScript = parsedEarlyScript;
       signal.addEventListener(
         "abort",
         () => {
+          headAppendSpy.mockRestore();
+          bodyAppendSpy.mockRestore();
           for (const request of requests) {
             request.element.remove();
           }
@@ -166,6 +172,7 @@ function startClerkPage(hostname: string): ClerkEntrypointHarness {
     clerkLoaderWatchingEarlyScript: clerkLoaderWatchingEarlyScript.promise,
     earlyScript,
     requests,
+    retryStarted: retryStarted.promise,
     setup,
   };
 }
@@ -180,8 +187,47 @@ async function completeEarlyClerkScript(
 }
 
 describe("platform Clerk entrypoint", () => {
-  it("starts the preview Clerk core request with the official attributes", async () => {
-    const harness = startClerkPage("pr-30199-app.omby.ai");
+  it("builds the official static core script with exact environment URLs", () => {
+    const html = builtIndexHtml();
+    const script = clerkScriptFromHtml(html);
+    const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+
+    expect(parsedDocument.querySelectorAll(CLERK_SCRIPT_SELECTOR)).toHaveLength(
+      1,
+    );
+    expect(
+      html.indexOf(expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST)),
+    ).toBeLessThan(
+      html.indexOf('<script type="module" src="/src/main.ts"></script>'),
+    );
+    expect(script.src).toBe(expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST));
+    expect(script.defer).toBeTruthy();
+    expect(script.async).toBeFalsy();
+    expect(script.crossOrigin).toBe("anonymous");
+    expect(script).toHaveAttribute("data-clerk-js-script", "");
+    expect(script).toHaveAttribute(
+      "data-clerk-publishable-key",
+      PREVIEW_PUBLISHABLE_KEY,
+    );
+    expect(script).toHaveAttribute(
+      "data-vm0-clerk-production-publishable-key",
+      PRODUCTION_PUBLISHABLE_KEY,
+    );
+    expect(script).toHaveAttribute(
+      "data-vm0-clerk-production-script-url",
+      expectedClerkScriptUrl(PRODUCTION_FRONTEND_API_HOST),
+    );
+    expect(script).toHaveAttribute(
+      "data-vm0-clerk-satellite-script-url",
+      expectedClerkScriptUrl(`clerk.${PRODUCTION_SATELLITE_DOMAIN}`),
+    );
+    expect(script).toHaveAttribute("onerror", "this.remove()");
+    expect(script.textContent).toBe("");
+    expect(html).not.toContain("@clerk/ui");
+  });
+
+  it("merges the in-flight script and lets TypeScript call Clerk.load", async () => {
+    const harness = startClerkPage();
 
     expect(mockedClerkLoad).not.toHaveBeenCalled();
     await completeEarlyClerkScript(harness);
@@ -189,54 +235,17 @@ describe("platform Clerk entrypoint", () => {
     expect(harness.requests.map(({ url }) => url)).toStrictEqual([
       expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
     ]);
-    expect(harness.earlyScript.async).toBeTruthy();
-    expect(harness.earlyScript.crossOrigin).toBe("anonymous");
-    expect(harness.earlyScript).toHaveAttribute("data-clerk-js-script", "");
-    expect(harness.earlyScript).toHaveAttribute(
-      "data-clerk-publishable-key",
-      PREVIEW_PUBLISHABLE_KEY,
-    );
-    expect(harness.earlyScript).not.toHaveAttribute("data-clerk-domain");
+    expect(document.querySelectorAll(CLERK_SCRIPT_SELECTOR)).toHaveLength(1);
+    expect(document.querySelector("script[data-clerk-ui-script]")).toBeNull();
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
   });
 
-  it("uses the production Frontend API host without a satellite domain", async () => {
-    const harness = startClerkPage("app.vm0.ai");
-
-    await completeEarlyClerkScript(harness);
-
-    expect(harness.requests.map(({ url }) => url)).toStrictEqual([
-      expectedClerkScriptUrl(PRODUCTION_FRONTEND_API_HOST),
-    ]);
-    expect(harness.earlyScript).toHaveAttribute(
-      "data-clerk-publishable-key",
-      PRODUCTION_PUBLISHABLE_KEY,
-    );
-    expect(harness.earlyScript).not.toHaveAttribute("data-clerk-domain");
-  });
-
-  it("uses Clerk's satellite script host and domain on app.okou.ai", async () => {
-    const harness = startClerkPage(PRODUCTION_SATELLITE_DOMAIN);
-
-    await completeEarlyClerkScript(harness);
-
-    expect(harness.requests.map(({ url }) => url)).toStrictEqual([
-      expectedClerkScriptUrl(`clerk.${PRODUCTION_SATELLITE_DOMAIN}`),
-    ]);
-    expect(harness.earlyScript).toHaveAttribute(
-      "data-clerk-publishable-key",
-      PRODUCTION_PUBLISHABLE_KEY,
-    );
-    expect(harness.earlyScript).toHaveAttribute(
-      "data-clerk-domain",
-      PRODUCTION_SATELLITE_DOMAIN,
-    );
-  });
-
-  it("retries immediately after the early request fails", async () => {
-    const harness = startClerkPage("pr-30199-app.omby.ai");
+  it("falls back immediately when the static request fails", async () => {
+    const harness = startClerkPage();
     await harness.clerkLoaderWatchingEarlyScript;
+
     harness.earlyScript.dispatchEvent(new Event("error"));
+    await harness.retryStarted;
     await harness.setup;
 
     expect(harness.earlyScript.isConnected).toBeFalsy();
@@ -244,5 +253,6 @@ describe("platform Clerk entrypoint", () => {
       expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
       expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
     ]);
+    expect(mockedClerkLoad).toHaveBeenCalledOnce();
   });
 });
