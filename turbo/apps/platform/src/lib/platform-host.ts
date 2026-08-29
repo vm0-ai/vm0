@@ -28,6 +28,7 @@ const OKOU_ROOT_DOMAINS = [
   OKOU_PAGES_DOMAIN,
 ] as const;
 const PREVIEW_API_DOMAIN = "vm6.ai";
+const CLERK_PUBLISHABLE_KEY_ATTRIBUTE = "data-vm0-clerk-publishable-key";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
 export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
@@ -166,17 +167,20 @@ function optionalBuildValue(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function requiredBuildValue(value: unknown, name: string): string {
-  const normalized = optionalBuildValue(value);
-  if (!normalized) {
-    throw new Error(`Missing ${name} environment variable`);
+function resolveClerkPublishableKey(): string {
+  const publishableKey = document.documentElement.getAttribute(
+    CLERK_PUBLISHABLE_KEY_ATTRIBUTE,
+  );
+  if (!publishableKey) {
+    throw new Error("Missing Clerk publishable key from platform bootstrap");
   }
-  return normalized;
+  return publishableKey;
 }
 
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const environment = resolvePlatformEnvironment();
   const publicBrand = resolvePlatformPublicBrand(browserHostname());
+  const clerkPublishableKey = resolveClerkPublishableKey();
   const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
     "https://static.vm0.io",
     publicBrand,
@@ -186,10 +190,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
     return {
       environment,
       publicBrand,
-      clerkPublishableKey: requiredBuildValue(
-        import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PROD,
-        "VITE_CLERK_PUBLISHABLE_KEY_PROD",
-      ),
+      clerkPublishableKey,
       publicArtifactsBaseUrl: "https://cdn.vm0.io",
       publicStaticAssetsBaseUrl,
       zeroHostDomain: "sites.vm0.io",
@@ -207,10 +208,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   return {
     environment,
     publicBrand,
-    clerkPublishableKey: requiredBuildValue(
-      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PREVIEW,
-      "VITE_CLERK_PUBLISHABLE_KEY_PREVIEW",
-    ),
+    clerkPublishableKey,
     publicArtifactsBaseUrl: "https://cdn.vm7.io",
     publicStaticAssetsBaseUrl,
     zeroHostDomain: "sites.vm7.io",
