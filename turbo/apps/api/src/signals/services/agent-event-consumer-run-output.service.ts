@@ -405,10 +405,6 @@ async function materializeRunOutputEvents(
           payload.runId,
           signal,
         );
-        if (status === "timeout") {
-          return { outcome: "ignored-timeout" };
-        }
-
         const thread = await chatThreadForRunFromDb(tx, payload.runId);
         signal.throwIfAborted();
         if (thread?.chatThreadId !== expectedThread?.chatThreadId) {
@@ -416,6 +412,9 @@ async function materializeRunOutputEvents(
         }
         if (expectedThread && !threadLocked) {
           throw new Error("Agent run retained a missing chat thread");
+        }
+        if (status === "timeout") {
+          return { outcome: "ignored-timeout" };
         }
 
         return await materializeAdmittedRunOutputEvents(

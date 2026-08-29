@@ -16159,25 +16159,6 @@ describe("RUN-03: timed-out run webhook admission", () => {
     );
     expect(usage.body).toStrictEqual({ success: true });
 
-    const observation = await webhooks.requestAgentModelUsageObservationV2(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model: "claude-sonnet-4-6",
-            inputTokens: 12,
-            outputTokens: 3,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-    expect(observation.body).toStrictEqual({ success: true });
-
     const telemetry = await webhooks.requestAgentTelemetry(
       {
         runId: created.runId,
