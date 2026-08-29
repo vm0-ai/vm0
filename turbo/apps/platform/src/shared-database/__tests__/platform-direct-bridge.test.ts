@@ -456,10 +456,7 @@ describe("shared database direct Platform bridge", () => {
     });
 
     availableEvents = [firstRename, secondRename];
-    context.mocks.ably.triggerOnChannel(
-      realtimeChannel(),
-      "threadListChanged",
-    );
+    context.mocks.ably.triggerOnChannel(realtimeChannel(), "threadListChanged");
     await vi.waitFor(() => {
       expect(
         context.store.get(eventDrivenChatThreads$).find((thread) => {
