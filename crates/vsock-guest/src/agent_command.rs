@@ -130,7 +130,7 @@ fn cloexec_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
 mod tests {
     use std::io::{Read, Write};
 
-    use tempfile::{NamedTempFile, TempDir, TempPath};
+    use tempfile::{NamedTempFile, TempDir};
     use vsock_proto::ExecProcessRole;
 
     use super::*;
@@ -143,15 +143,6 @@ mod tests {
             ExecProcessRole::Agent,
         )
         .unwrap()
-    }
-
-    fn executable_file(contents: &[u8]) -> TempPath {
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(contents).unwrap();
-        let mut permissions = file.as_file().metadata().unwrap().permissions();
-        permissions.set_mode(0o755);
-        file.as_file().set_permissions(permissions).unwrap();
-        file.into_temp_path()
     }
 
     #[test]
@@ -194,8 +185,11 @@ mod tests {
 
     #[test]
     fn direct_agent_reports_exec_format_failure() {
-        let file = executable_file(b"not an executable image");
-        let error = spawn_agent_executable_with_pipes(file.as_ref(), &[], test_containment(4))
+        let executable = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/invalid-executable-image"
+        ));
+        let error = spawn_agent_executable_with_pipes(executable, &[], test_containment(4))
             .err()
             .unwrap();
 
@@ -204,11 +198,12 @@ mod tests {
 
     #[test]
     fn direct_agent_merges_stderr_into_streamed_stdout() {
-        let file = executable_file(
-            b"#!/bin/sh\nprintf 'stdout:%s\\n' \"$VM0_TEST_VALUE\"\nprintf 'stderr\\n' >&2\n",
-        );
+        let executable = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/agent-stdio-probe.sh"
+        ));
         let mut spawned = spawn_agent_executable_with_pipes(
-            file.as_ref(),
+            executable,
             &[("VM0_TEST_VALUE", "direct-env")],
             test_containment(5),
         )
