@@ -5,6 +5,7 @@ import json
 import pytest
 
 import usage
+from tests.process_log_helpers import capture_addon_process_events
 from tests.usage_buffer_helpers import (
     DeliveryOutcomeCallback,
     RecordingEnqueue,
@@ -55,7 +56,7 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
     assert entries[1]["duration_ms"] >= 0
 
 
-def test_successful_model_observation_flush_does_not_log_to_process_stderr(tmp_path, capsys):
+def test_successful_model_observation_flush_does_not_log_process_event(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
@@ -73,12 +74,13 @@ def test_successful_model_observation_flush_does_not_log_to_process_stderr(tmp_p
         str(tmp_path / "secret-proxy.jsonl"),
     )
 
-    assert usage.flush_model_usage_observations(trigger="test") == 1
+    with capture_addon_process_events() as log:
+        assert usage.flush_model_usage_observations(trigger="test") == 1
 
-    assert capsys.readouterr().err == ""
+    assert log.mock_calls == []
 
 
-def test_retained_model_observation_flush_logs_scalar_only_process_summary(tmp_path, capsys):
+def test_retained_model_observation_flush_logs_scalar_only_process_summary(tmp_path):
     enqueue = RecordingEnqueue(return_value=False)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
@@ -96,18 +98,28 @@ def test_retained_model_observation_flush_logs_scalar_only_process_summary(tmp_p
         str(tmp_path / "secret-proxy.jsonl"),
     )
 
-    assert usage.flush_model_usage_observations(trigger="test") == 0
+    with capture_addon_process_events() as log:
+        assert usage.flush_model_usage_observations(trigger="test") == 0
 
-    [line] = capsys.readouterr().err.splitlines()
-    assert line.startswith("type=model_usage_observation_buffer_flush ")
-    assert "phase=enqueued" in line
-    assert "trigger=test" in line
-    assert "source_event_count=1" in line
-    assert "aggregate_event_count=1" in line
-    assert "webhook_batch_count=1" in line
-    assert "retained_webhook_batch_count=1" in line
+    log.warn.assert_called_once()
+    message, fields = log.warn.call_args.args
+    assert message == "Model usage observation buffer flush anomaly"
+    assert fields == {
+        "type": "model_usage_observation_buffer_flush",
+        "phase": "enqueued",
+        "trigger": "test",
+        "flush_sequence": 1,
+        "source_event_count": 1,
+        "aggregate_event_count": 1,
+        "webhook_batch_count": 1,
+        "dropped_webhook_batch_count": 0,
+        "retained_webhook_batch_count": 1,
+        "retained_source_event_count": 1,
+        "duration_ms": fields["duration_ms"],
+    }
+    assert isinstance(fields["duration_ms"], int)
     assert not any(
-        sensitive in line
+        sensitive in json.dumps(fields)
         for sensitive in (
             "secret-runner-token",
             "secret-run-id",
@@ -119,7 +131,7 @@ def test_retained_model_observation_flush_logs_scalar_only_process_summary(tmp_p
     )
 
 
-def test_failed_model_observation_flush_logs_process_summary(tmp_path, capsys):
+def test_failed_model_observation_flush_logs_process_summary(tmp_path):
     def fail_enqueue(
         url: str,
         runner_token: str,
@@ -139,13 +151,19 @@ def test_failed_model_observation_flush_logs_process_summary(tmp_path, capsys):
         str(tmp_path / "secret-proxy.jsonl"),
     )
 
-    with pytest.raises(RuntimeError, match="sensitive failure"):
+    with (
+        capture_addon_process_events() as log,
+        pytest.raises(RuntimeError, match="sensitive failure"),
+    ):
         usage.flush_model_usage_observations(trigger="test")
 
-    [line] = capsys.readouterr().err.splitlines()
-    assert "phase=failed" in line
-    assert "error_type=RuntimeError" in line
-    assert "sensitive" not in line
+    log.error.assert_called_once()
+    message, fields = log.error.call_args.args
+    assert message == "Model usage observation buffer flush anomaly"
+    assert fields["type"] == "model_usage_observation_buffer_flush"
+    assert fields["phase"] == "failed"
+    assert fields["error_type"] == "RuntimeError"
+    assert "sensitive" not in json.dumps(fields)
 
 
 @pytest.mark.parametrize(
@@ -154,7 +172,6 @@ def test_failed_model_observation_flush_logs_process_summary(tmp_path, capsys):
 )
 def test_model_observation_delivery_anomaly_logs_process_summary(
     tmp_path,
-    capsys,
     mitm_ctx,
     max_retained_batch_retries,
     expected_phase,
@@ -185,17 +202,19 @@ def test_model_observation_delivery_anomaly_logs_process_summary(
         str(tmp_path / "secret-proxy.jsonl"),
     )
 
-    assert usage.flush_model_usage_observations(trigger="test") == 1
-    assert capsys.readouterr().err == ""
-
-    with mitm_ctx():
+    with mitm_ctx() as log:
+        assert usage.flush_model_usage_observations(trigger="test") == 1
+        assert log.mock_calls == []
         callbacks[0]("retryable_failure")
 
-    [line] = capsys.readouterr().err.splitlines()
-    assert f"phase={expected_phase}" in line
-    assert "source_event_count=1" in line
-    assert "webhook_batch_count=1" in line
-    assert "sensitive" not in line
+    process_call = (log.warn if expected_phase == "retained" else log.error).call_args_list[0]
+    message, fields = process_call.args
+    assert message == "Model usage observation buffer flush anomaly"
+    assert fields["type"] == "model_usage_observation_buffer_flush"
+    assert fields["phase"] == expected_phase
+    assert fields["source_event_count"] == 1
+    assert fields["webhook_batch_count"] == 1
+    assert "sensitive" not in json.dumps(fields)
 
 
 def test_flush_logs_isolate_summaries_across_proxy_log_paths(tmp_path):
