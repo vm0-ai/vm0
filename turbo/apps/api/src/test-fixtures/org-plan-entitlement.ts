@@ -5,6 +5,7 @@
  * capabilities, so integration tests use this narrow boundary to verify those
  * reads and persisted webhook side effects.
  */
+import { orgPlanEntitlementsLegacyWrites } from "@okouai/db/operations/org-plan-entitlement-legacy-write";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { createStore } from "ccstate";
@@ -72,10 +73,10 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   };
   await createStore()
     .set(writeDb$)
-    .insert(orgPlanEntitlements)
+    .insert(orgPlanEntitlementsLegacyWrites)
     .values(row)
     .onConflictDoUpdate({
-      target: orgPlanEntitlements.orgId,
+      target: orgPlanEntitlementsLegacyWrites.orgId,
       set: {
         planKey: row.planKey,
         planRank: row.planRank,

@@ -1506,6 +1506,13 @@
       "when": 1787903227138,
       "tag": "1022_workflow_physical_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 1023,
+      "version": "7",
+      "when": 1787964065933,
+      "tag": "1023_org_plan_entitlement_restriction_expand",
+      "breakpoints": true
     }
   ]
 }

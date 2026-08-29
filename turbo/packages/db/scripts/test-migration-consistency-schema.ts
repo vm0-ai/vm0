@@ -68,6 +68,15 @@ import { validateConnectorAuthorizationAccountMutationPresence } from "./test-co
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
+import { validateOrgPlanEntitlementRestrictionExpansion } from "./test-org-plan-entitlement-restriction-expansion";
+import {
+  installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema,
+  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
+  validatePermanentOrgPlanEntitlementRestrictionState,
+} from "./test-org-plan-entitlement-restriction-permanent";
 import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
 import { validateWorkflowCompatibilityViews } from "./test-workflow-compatibility-views";
@@ -2435,6 +2444,9 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
+  // Temporary #30162 expand/mirror bridge. Remove only with #28368 after the
+  // canonical reader/writer switch, backfill, and rollback drain are accepted.
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_can_buy_credits()",
@@ -2575,13 +2587,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
-  {
-    bodyHash: "903925177de13d29257fec494957b1cd",
-    functionName: "ensure_legacy_org_metadata_plan_entitlement",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
+  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -2603,6 +2609,8 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
+  // Same temporary #30162 bridge and #28368 removal gate as its trigger.
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
   {
     bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
@@ -10991,6 +10999,7 @@ async function main(): Promise<void> {
     await validateAgentDraftsCompatibilityRelation();
     await validateWorkflowCompatibilityViews();
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -11011,6 +11020,7 @@ async function main(): Promise<void> {
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl1);
     await validatePermanentBuiltInProviderDiscriminatorState(dbUrl1);
     await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
@@ -11030,6 +11040,13 @@ async function main(): Promise<void> {
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
+    const orgPlanEntitlementRestrictionMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
     await backupMigrations();
     migrationsBackedUp = true;
     await generateFreshMigrations();
@@ -11039,6 +11056,11 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionMigrationSql,
+    );
+    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl2);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
@@ -11082,6 +11104,9 @@ async function main(): Promise<void> {
         "   ✅ Old run creation paths synchronize metadata into agent_runs",
       );
       console.log("   ✅ Agent-run model-key canonical schemas match");
+      console.log(
+        "   ✅ Org plan restriction expansion and mirror invariants match",
+      );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",

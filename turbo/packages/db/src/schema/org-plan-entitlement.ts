@@ -14,14 +14,14 @@ import { sql } from "drizzle-orm";
 import type { OrgPlanEntitlementSourceMetadata } from "../jsonb-contracts/org-plan-entitlement";
 
 /**
- * Current org plan capability snapshot.
+ * Legacy insert projection for the org plan capability snapshot.
  *
- * Stripe product metadata and Atom grants are copied here at delivery time so
- * runtime admission can make local decisions without reading Stripe.
+ * Keep this factory free of expand-only columns while pre-expand application
+ * versions remain deployable. Drizzle emits every mapped column in INSERT, so
+ * active inserts use the compatibility table built from this projection.
  */
-export const orgPlanEntitlements = pgTable(
-  "org_plan_entitlements",
-  {
+export function orgPlanEntitlementLegacyColumns() {
+  return {
     orgId: text("org_id").primaryKey(),
     planKey: text("plan_key").notNull(),
     planRank: integer("plan_rank").notNull(),
@@ -71,6 +71,21 @@ export const orgPlanEntitlements = pgTable(
       .default({}),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  };
+}
+
+/**
+ * Current org plan capability snapshot.
+ *
+ * Stripe product metadata and Atom grants are copied here at delivery time so
+ * runtime admission can make local decisions without reading Stripe.
+ */
+export const orgPlanEntitlements = pgTable(
+  "org_plan_entitlements",
+  {
+    ...orgPlanEntitlementLegacyColumns(),
+    // Expand-only mapping; active application contracts remain legacy.
+    restrictedBuiltInModels: boolean("restricted_built_in_models"),
   },
   (table) => {
     return [

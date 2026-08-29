@@ -1,4 +1,5 @@
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
+import { orgPlanEntitlementsLegacyWrites } from "@okouai/db/operations/org-plan-entitlement-legacy-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
@@ -67,7 +68,7 @@ const setupUsageSettlement$ = command(
       });
     signal.throwIfAborted();
     await db
-      .insert(orgPlanEntitlements)
+      .insert(orgPlanEntitlementsLegacyWrites)
       .values({
         orgId: bodyResult.data.org_id,
         planKey: "usage-pack-test",
@@ -77,7 +78,7 @@ const setupUsageSettlement$ = command(
         restrictedVm0Models: false,
       })
       .onConflictDoUpdate({
-        target: orgPlanEntitlements.orgId,
+        target: orgPlanEntitlementsLegacyWrites.orgId,
         set: {
           status: "active",
           restrictedVm0Models: false,
