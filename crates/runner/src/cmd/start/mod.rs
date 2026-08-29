@@ -169,6 +169,38 @@ async fn sleep_until_optional_instant(deadline: Option<Instant>) {
     }
 }
 
+enum RoutineHeartbeatTrigger {
+    Interval(tokio::time::Interval),
+    #[cfg(test)]
+    Manual(mpsc::UnboundedReceiver<()>),
+}
+
+impl RoutineHeartbeatTrigger {
+    fn interval() -> Self {
+        let mut interval = tokio::time::interval_at(
+            tokio::time::Instant::now() + HEARTBEAT_PERIOD,
+            HEARTBEAT_PERIOD,
+        );
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        Self::Interval(interval)
+    }
+
+    async fn tick(&mut self) {
+        match self {
+            Self::Interval(interval) => {
+                interval.tick().await;
+            }
+            #[cfg(test)]
+            Self::Manual(receiver) => {
+                receiver
+                    .recv()
+                    .await
+                    .expect("manual routine heartbeat sender should remain open");
+            }
+        }
+    }
+}
+
 type WorkspaceCacheChangeFuture = BoxFuture<
     'static,
     (
@@ -935,6 +967,7 @@ async fn run_start_with_home(
             test_observer: StartLoopTestObserver::default(),
             before_initial_workspace_cache_scan: None,
             after_initial_workspace_cache_scan: None,
+            manual_routine_heartbeat_rx: None,
         },
     };
 
@@ -1034,6 +1067,7 @@ struct RunTestHooks {
     test_observer: StartLoopTestObserver,
     before_initial_workspace_cache_scan: Option<StartLoopTestGate>,
     after_initial_workspace_cache_scan: Option<StartLoopTestGate>,
+    manual_routine_heartbeat_rx: Option<mpsc::UnboundedReceiver<()>>,
 }
 
 enum SignalSource {
@@ -1580,7 +1614,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         signals,
         orphan_reap,
         #[cfg(test)]
-        test_hooks,
+        mut test_hooks,
     } = config;
     let SandboxRuntimeConfig {
         mut runtime,
@@ -1759,13 +1793,17 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
 
     // -----------------------------------------------------------------------
-    // Heartbeat interval — same first-tick delay as above.
+    // Heartbeat interval — same first-tick delay as above. One integration
+    // test injects manual ticks so its coalescing assertions do not advance
+    // unrelated Runner timers.
     // -----------------------------------------------------------------------
-    let mut heartbeat_tick = tokio::time::interval_at(
-        tokio::time::Instant::now() + HEARTBEAT_PERIOD,
-        HEARTBEAT_PERIOD,
-    );
-    heartbeat_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    #[cfg(test)]
+    let mut heartbeat_tick = match test_hooks.manual_routine_heartbeat_rx.take() {
+        Some(receiver) => RoutineHeartbeatTrigger::Manual(receiver),
+        None => RoutineHeartbeatTrigger::interval(),
+    };
+    #[cfg(not(test))]
+    let mut heartbeat_tick = RoutineHeartbeatTrigger::interval();
 
     // -----------------------------------------------------------------------
     // Main loop
