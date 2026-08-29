@@ -35,7 +35,6 @@ import { morningBriefRoutes } from "./routes/morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { healthRoutes } from "./routes/health";
 import { buildInfoRoutes } from "./routes/build-info";
-import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { presentationImagesRoutes } from "./routes/presentation-images";
@@ -204,7 +203,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
   ...desktopUpdateRoutes,
-  ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...userExportRoutes,
   ...webhooksClerkRoutes,

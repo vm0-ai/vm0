@@ -11,14 +11,14 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
-  healthAuthProbeContract,
-  healthAuthProbeRoutes,
-} from "../health-auth-probe";
-import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import {
+  testAuthProbeContract,
+  testAuthProbeRoutes,
+} from "./helpers/auth-probe";
 import { createRouteMocks } from "./helpers/route-test";
 import { buildInfoRoutes } from "../build-info";
 import { healthRoutes } from "../health";
@@ -43,9 +43,9 @@ function buildInfoClient() {
   return setupApp({ context, routes: buildInfoRoutes })(buildInfoContract);
 }
 
-function healthAuthClient() {
-  return setupApp({ context, routes: healthAuthProbeRoutes })(
-    healthAuthProbeContract,
+function authProbeClient() {
+  return setupApp({ context, routes: testAuthProbeRoutes })(
+    testAuthProbeContract,
   );
 }
 
@@ -103,14 +103,14 @@ describe("OPS-02: API health and auth boundary", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
-  it("checks public health and authenticated health probe through HTTP routes", async () => {
+  it("checks public health and the auth boundary through HTTP routes", async () => {
     const admin = api.user();
 
     const health = await accept(healthClient().check(), [200]);
     expect(health.body).toStrictEqual({ status: "ok" });
 
     const unauthorized = await accept(
-      healthAuthClient().check({
+      authProbeClient().check({
         headers: headersFor(null),
         query: {},
       }),
@@ -120,7 +120,7 @@ describe("OPS-02: API health and auth boundary", () => {
     expect(unauthorized.body.error.code).toBe("UNAUTHORIZED");
 
     const authenticated = await accept(
-      healthAuthClient().check({
+      authProbeClient().check({
         headers: headersFor(admin),
         query: {},
       }),
