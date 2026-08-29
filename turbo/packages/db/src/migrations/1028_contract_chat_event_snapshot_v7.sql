@@ -1,3 +1,4 @@
+SET LOCAL statement_timeout = '2min';--> statement-breakpoint
 ALTER TABLE "chat_event_snapshots" DROP CONSTRAINT "chat_event_snapshots_canonical_projection_check";--> statement-breakpoint
 ALTER TABLE "chat_event_snapshots" DROP CONSTRAINT "chat_event_snapshots_projection_check";--> statement-breakpoint
 ALTER TABLE "chat_event_snapshots" DROP CONSTRAINT "chat_event_snapshots_terminal_cursor_check";--> statement-breakpoint
@@ -12,4 +13,5 @@ ALTER TABLE "chat_event_snapshots" ADD CONSTRAINT "chat_event_snapshots_terminal
           "chat_event_snapshots"."terminal_event_id" IS NOT NULL
           AND "chat_event_snapshots"."terminal_seq_id" > 0
           AND "chat_event_snapshots"."terminal_seq_id" <= "chat_event_snapshots"."last_seq_id"
-        ));
+        ));--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';

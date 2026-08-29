@@ -1,6 +1,7 @@
 -- Contract the converged Chat Event Snapshot pointer set to canonical V7.
 -- Immutable R2 objects are intentionally untouched here. The permanent,
 -- reference-aware R2 garbage collector owns deletion after its grace period.
+SET LOCAL statement_timeout = '2min';--> statement-breakpoint
 DO $$
 DECLARE
   uncovered_legacy_count bigint;
@@ -44,4 +45,5 @@ END;
 $$;--> statement-breakpoint
 
 DELETE FROM "chat_event_snapshots"
-WHERE "archive_schema_version" < 7;
+WHERE "archive_schema_version" < 7;--> statement-breakpoint
+SET LOCAL statement_timeout = '10s';
