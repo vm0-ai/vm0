@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.510.4](https://github.com/vm0-ai/vm0/compare/api-v1.510.3...api-v1.510.4) (2026-08-29)
+
+
+### Refactoring
+
+* **db:** enforce canonical entitlement restriction nullability ([#30218](https://github.com/vm0-ai/vm0/issues/30218)) ([9f44688](https://github.com/vm0-ai/vm0/commit/9f44688041abf98c131c3a3a70f25dae75e451e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.3
+    * @okouai/connector-catalog-validation bumped to 2.0.5
+    * @okouai/core bumped to 8.601.4
+    * @okouai/db bumped to 1.228.9
+
 ## [1.510.3](https://github.com/vm0-ai/vm0/compare/api-v1.510.2...api-v1.510.3) (2026-08-29)
 
 
