@@ -820,11 +820,15 @@ describe("shared database worker runtime", () => {
       chatThreadEventsContract.rows,
       ({ query: requestQuery, respond }) => {
         rowsRequests += 1;
-        return respond(200, {
-          rows: availableRows.filter((row) => {
-            return row.seqId > requestQuery.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            availableRows.filter((row) => {
+              return row.seqId > requestQuery.sinceSeqId;
+            }),
+            requestQuery,
+          ),
+        );
       },
     );
 
@@ -925,11 +929,15 @@ describe("shared database worker runtime", () => {
           request.headers.get("authorization") === "Bearer org-a-token"
             ? [orgARow]
             : [orgBRow];
-        return respond(200, {
-          rows: rows.filter((row) => {
-            return row.seqId > requestQuery.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            rows.filter((row) => {
+              return row.seqId > requestQuery.sinceSeqId;
+            }),
+            requestQuery,
+          ),
+        );
       },
     );
 
