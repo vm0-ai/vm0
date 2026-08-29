@@ -16048,6 +16048,54 @@ describe("HOOK-01: callback authentication failures", () => {
 });
 
 describe("RUN-03: timed-out run webhook admission", () => {
+  it("rejects heartbeats after ordinary terminal transitions", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const completed = await api.createRun(actor, {
+      agentId,
+      prompt: "complete before heartbeat",
+      modelProvider: "anthropic-api-key",
+    });
+    const failed = await api.createRun(actor, {
+      agentId,
+      prompt: "fail before heartbeat",
+      modelProvider: "anthropic-api-key",
+    });
+    const cancelled = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel before heartbeat",
+      modelProvider: "anthropic-api-key",
+    });
+
+    await webhooks.requestAgentComplete(
+      { runId: completed.runId, exitCode: 0 },
+      {
+        authorization: `Bearer ${api.sandboxTokenForRun(actor, completed.runId)}`,
+      },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: failed.runId, exitCode: 1 },
+      {
+        authorization: `Bearer ${api.sandboxTokenForRun(actor, failed.runId)}`,
+      },
+      [200],
+    );
+    await api.requestCancelRun(actor, cancelled.runId, [200]);
+
+    for (const runId of [completed.runId, failed.runId, cancelled.runId]) {
+      const heartbeat = await webhooks.requestAgentHeartbeat(
+        { runId },
+        {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, runId)}`,
+        },
+        [404],
+      );
+      expect(heartbeat.status).toBe(404);
+    }
+  });
+
   it("rejects runtime mutations while accepting reporting webhooks", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -16255,6 +16303,38 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: `msg_${randomUUID()}`,
+              content: [{ type: "text", text: "retained pre-timeout output" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await expect(chat.listThreadEvents(actor, threadId)).resolves.toMatchObject(
+      {
+        events: expect.arrayContaining([
+          expect.objectContaining({
+            runId,
+            content: "retained pre-timeout output",
+          }),
+        ]),
+      },
+    );
+
     await timeoutRunWithoutCallbacksFixture({ runId });
     await flushWaitUntilForTest();
     context.mocks.ably.publish.mockClear();
@@ -16281,7 +16361,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         events: [
           {
             type: "assistant",
-            sequenceNumber: 0,
+            sequenceNumber: 1,
             message: {
               id: `msg_${randomUUID()}`,
               content: [{ type: "text", text: "ignored timed-out output" }],
@@ -16289,17 +16369,23 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
           },
         ],
       },
-      { authorization: `Bearer ${claim.sandboxToken}` },
+      sandboxHeaders,
       [200],
     );
     expect(response.body).toStrictEqual({
       received: 1,
-      firstSequence: 0,
-      lastSequence: 0,
+      firstSequence: 1,
+      lastSequence: 1,
     });
     await flushWaitUntilForTest();
 
     const messages = await chat.listThreadEvents(actor, threadId);
+    expect(messages.events).toContainEqual(
+      expect.objectContaining({
+        runId,
+        content: "retained pre-timeout output",
+      }),
+    );
     expect(messages.events).not.toContainEqual(
       expect.objectContaining({
         runId,

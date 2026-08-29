@@ -62,11 +62,10 @@ event batches retain their existing sequence acknowledgement but are ignored,
 and new checkpoint or checkpoint-history preparation requests return `400`.
 The existing completed Pi checkpoint exact-retry behavior is unchanged.
 
-Usage events, model-usage observations, and telemetry remain accepted after
-timeout because they report work that may already have happened. Storage and
-firewall admission, together with the atomic timeout-versus-completion boundary,
-are separate rollout stages; timeout alone still does not release an active
-input delivery.
+Usage events and telemetry remain accepted after timeout because they report
+work that may already have happened. Storage and firewall admission, together
+with the atomic timeout-versus-completion boundary, are separate rollout stages;
+timeout alone still does not release an active input delivery.
 
 Codex execution timeout and cancellation first allow an in-flight `turn/steer`
 to settle within the bounded sink window. A successful response still persists
