@@ -1170,6 +1170,99 @@ async function installResultEmailLoopScenario(
   };
 }
 
+async function installOfficialWorkflowLifecycleScenario() {
+  installCatalogStorageFixture();
+  const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+  const definitionName = `api-test-lifecycle-${suffix}`;
+  const zeroBlueprintName = `api-test-lifecycle-zero-${suffix}`;
+  await syncCatalog(
+    catalog([
+      activeDefinition(definitionName, [
+        scheduledBlueprint(true),
+        onceBlueprint(),
+        loopBlueprint(),
+      ]),
+      activeDefinition(zeroBlueprintName, []),
+    ]),
+  );
+
+  const { actor } = await workflowBdd.setupWorkflowOrg({
+    timezone: "Asia/Shanghai",
+  });
+  if (!actor.orgId) {
+    throw new Error("Expected organization-scoped lifecycle actor");
+  }
+  const { agentId } = await workflowBdd.createAgent(actor);
+  onTestFinished(async () => {
+    installCatalogStorageFixture();
+    await bdd.deleteAgent(actor, agentId);
+    await cleanupCatalog();
+  });
+  const headers = authHeaders(actor);
+  await setOfficialWorkflowsEnabled(actor, true);
+  await updateFeatureSwitchesForUser(
+    context,
+    { orgId: actor.orgId, userId: actor.userId },
+    { [FeatureSwitchKey.WorkflowConnectorReadiness]: true },
+  );
+
+  const installBody = {
+    agentId,
+    blueprints: [
+      {
+        blueprintKey: "daily",
+        bindings: [
+          { key: "cron-expression", value: "0 7 * * *" },
+          { key: "include-weekends", value: true },
+        ],
+      },
+      {
+        blueprintKey: "one-shot",
+        bindings: [
+          { key: "at-time", value: "2099-01-01T00:00:00Z" },
+          { key: "callback-url", value: "https://example.com/callback" },
+          {
+            key: "correlation-id",
+            value: "00000000-0000-4000-8000-000000000001",
+          },
+        ],
+      },
+      {
+        blueprintKey: "pulse",
+        bindings: [{ key: "interval-seconds", value: 3600 }],
+      },
+    ],
+  };
+  const installed = await accept(
+    officialClient().install({
+      headers,
+      params: { definitionName },
+      body: installBody,
+    }),
+    [201],
+  );
+  const dailyAutomation = installed.body.workflow.automations.find(
+    (automation) => {
+      return automation.official?.blueprintKey === "daily";
+    },
+  );
+  if (!dailyAutomation) {
+    throw new Error("Expected Official Workflow daily automation");
+  }
+
+  return {
+    actor,
+    agentId,
+    dailyAutomation,
+    definitionName,
+    headers,
+    installBody,
+    installed,
+    orgId: actor.orgId,
+    zeroBlueprintName,
+  };
+}
+
 beforeEach(async () => {
   mockEnv("CRON_SECRET", CRON_SECRET);
   mockEnv(
@@ -1266,7 +1359,7 @@ describe.sequential("Official Workflow installations", () => {
     });
   });
 
-  it("installs, guards, reconfigures, retires, and uninstalls through public boundaries", async () => {
+  it("guards access and validates concurrent installations through public boundaries", async () => {
     installCatalogStorageFixture();
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-install-${suffix}`;
@@ -1341,6 +1434,7 @@ describe.sequential("Official Workflow installations", () => {
       ownerUserId: actor.userId,
       visibility: "private",
     });
+    expect(publicAgentInstallation.body.workflow.automations).toStrictEqual([]);
     await accept(
       installationClient().uninstall({
         headers,
@@ -1551,18 +1645,20 @@ describe.sequential("Official Workflow installations", () => {
         })
         .sort(),
     ).toStrictEqual([201, 409]);
-    const installed = concurrent.find((response) => {
-      return response.status === 201;
-    });
-    if (!installed || installed.status !== 201) {
-      throw new Error("Expected one successful concurrent installation");
-    }
+  });
+
+  it("projects installed state, guards mutations, and preserves reconfiguration identity", async () => {
+    const {
+      actor,
+      agentId,
+      dailyAutomation,
+      definitionName,
+      headers,
+      installBody,
+      installed,
+      orgId,
+    } = await installOfficialWorkflowLifecycleScenario();
     const firstWorkflowId = installed.body.workflow.id;
-    const dailyAutomation = installed.body.workflow.automations.find(
-      (automation) => {
-        return automation.official?.blueprintKey === "daily";
-      },
-    );
     const automationIds = installed.body.workflow.automations.map(
       (automation) => {
         return automation.id;
@@ -1617,9 +1713,6 @@ describe.sequential("Official Workflow installations", () => {
       },
       automation: { official: { reconciliationStatus: "current" } },
     });
-    if (!dailyAutomation) {
-      throw new Error("Expected Official Workflow automation");
-    }
     expect(dailyAutomation).toMatchObject({
       kind: "schedule",
       enabled: true,
@@ -1664,7 +1757,7 @@ describe.sequential("Official Workflow installations", () => {
       storageClient().action({
         body: {
           action: "read-storage-state",
-          org_id: actor.orgId,
+          org_id: orgId,
           user_id: VOLUME_ORG_USER_ID,
           storage_name: getCustomSkillStorageName(firstWorkflowId),
         },
@@ -1905,6 +1998,49 @@ describe.sequential("Official Workflow installations", () => {
       }),
     ).toBeTruthy();
 
+    await accept(
+      automationClient().enable({
+        headers,
+        params: { id: dailyAutomation.id },
+      }),
+      [200],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, dailyAutomation.id),
+    ).resolves.toMatchObject({
+      autonomyBudget: 4,
+      enabled: true,
+      officialResultEmailEnabled: true,
+    });
+  });
+
+  it("copies active installations and compensates rejected storage writes", async () => {
+    const { actor, dailyAutomation, definitionName, headers, installed } =
+      await installOfficialWorkflowLifecycleScenario();
+    const firstWorkflowId = installed.body.workflow.id;
+    await accept(
+      automationClient().disable({
+        headers,
+        params: { id: dailyAutomation.id },
+      }),
+      [200],
+    );
+    await accept(
+      installationClient().reconfigure({
+        headers,
+        params: { workflowId: firstWorkflowId },
+        body: {
+          blueprints: [
+            {
+              blueprintKey: "daily",
+              bindings: [{ key: "cron-expression", value: "0 9 * * *" }],
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+
     const { agentId: activeCopyAgentId } = await workflowBdd.createAgent(actor);
     let activeCopyAgentDeleted = false;
     onTestFinished(async () => {
@@ -2001,21 +2137,19 @@ describe.sequential("Official Workflow installations", () => {
     expect(failedCopyTargetWorkflows.body).toStrictEqual([]);
     await bdd.deleteAgent(actor, failedCopyAgentId);
     failedCopyAgentDeleted = true;
+  });
 
-    await accept(
-      automationClient().enable({
-        headers,
-        params: { id: dailyAutomation.id },
-      }),
-      [200],
-    );
-    await expect(
-      readWorkflowAutomationAutonomyFixture(context, dailyAutomation.id),
-    ).resolves.toMatchObject({
-      autonomyBudget: 4,
-      enabled: true,
-      officialResultEmailEnabled: true,
-    });
+  it("uninstalls, reinstalls, retires, and copies through lifecycle boundaries", async () => {
+    const {
+      actor,
+      agentId,
+      definitionName,
+      headers,
+      installBody,
+      installed,
+      zeroBlueprintName,
+    } = await installOfficialWorkflowLifecycleScenario();
+    const firstWorkflowId = installed.body.workflow.id;
 
     await accept(
       installationClient().uninstall({
