@@ -116,6 +116,7 @@ async function loadRuntimeSurfaces() {
     auth,
     attachmentUrl,
     userMessageFiles,
+    clerkBootstrap,
     platformHost,
     plausible,
     posthog,
@@ -125,6 +126,7 @@ async function loadRuntimeSurfaces() {
     import("../signals/auth.ts"),
     import("../views/okou-page/attachment-url.ts"),
     import("../signals/chat-page/user-message-files.ts"),
+    import("../lib/clerk-bootstrap.ts"),
     import("../lib/platform-host.ts"),
     import("../lib/plausible.ts"),
     import("../lib/posthog.ts"),
@@ -136,6 +138,7 @@ async function loadRuntimeSurfaces() {
     attachmentUrl,
     auth,
     userMessageFiles,
+    clerkBootstrap,
     platformHost,
     plausible,
     posthog,
@@ -175,10 +178,12 @@ describe("portable platform runtime environment", () => {
       environment: "production",
       publicBrand: "okou",
       publicStaticAssetsBaseUrl: "https://static.okou.io",
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
       sentryDsn: SENTRY_DSN,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
     });
+    expect(runtime.clerkBootstrap.resolveClerkPublishableKey()).toBe(
+      PRODUCTION_CLERK_KEY,
+    );
     const plausibleController = new AbortController();
     await runtime.plausible.initPlausible(plausibleController.signal);
     plausibleController.abort();
@@ -212,6 +217,9 @@ describe("portable platform runtime environment", () => {
       publicBrand: "vm0",
       publicStaticAssetsBaseUrl: "https://static.vm0.io",
     });
+    expect(runtime.clerkBootstrap.resolveClerkPublishableKey()).toBe(
+      PRODUCTION_CLERK_KEY,
+    );
   });
 
   it.each([
@@ -254,9 +262,11 @@ describe("portable platform runtime environment", () => {
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "vm0",
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
     });
+    expect(runtime.clerkBootstrap.resolveClerkPublishableKey()).toBe(
+      PRODUCTION_CLERK_KEY,
+    );
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
         "/artifacts/user_1/artifact_1/report.html",
@@ -323,9 +333,11 @@ describe("portable platform runtime environment", () => {
       environment: "preview",
       publicBrand: "okou",
       publicStaticAssetsBaseUrl: "https://static.okou.io",
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
     });
+    expect(runtime.clerkBootstrap.resolveClerkPublishableKey()).toBe(
+      PREVIEW_CLERK_KEY,
+    );
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
         "/artifacts/user_1/artifact_1/report.html",
@@ -453,9 +465,11 @@ describe("portable platform runtime environment", () => {
     );
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "preview",
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
     });
+    expect(runtime.clerkBootstrap.resolveClerkPublishableKey()).toBe(
+      PREVIEW_CLERK_KEY,
+    );
   });
 
   it("uses the configured API for an immutable Pages deployment", async () => {
@@ -474,6 +488,9 @@ describe("portable platform runtime environment", () => {
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "okou",
     });
+    expect(runtime.clerkBootstrap.resolveClerkPublishableKey()).toBe(
+      PREVIEW_CLERK_KEY,
+    );
   });
 
   it("rejects an invalid API origin on an immutable Pages deployment", async () => {

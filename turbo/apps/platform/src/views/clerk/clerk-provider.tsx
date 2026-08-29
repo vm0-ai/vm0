@@ -4,7 +4,7 @@ import { useGet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { clerkLocalizations$ } from "../../i18n/clerk-localization.ts";
-import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
+import { resolveClerkPublishableKey } from "../../lib/clerk-bootstrap.ts";
 import { locale$ } from "../../signals/locale.ts";
 import {
   getAllowedAuthRedirectOriginsForCurrentPage,
@@ -27,7 +27,7 @@ export function VM0ClerkProvider({ children, clerk }: ClerkProviderProps) {
   const locale = useGet(locale$);
   const clerkBrandName = resolveAuthBrandContext().brandName;
 
-  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  const publishableKey = resolveClerkPublishableKey();
   const appUrl = resolveAppUrl();
   const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
   const satelliteConfig = resolveClerkSatelliteConfig();

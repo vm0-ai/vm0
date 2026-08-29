@@ -1,7 +1,7 @@
 import type { DBSchema, IDBPDatabase, OpenDBCallbacks, openDB } from "idb";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import { CHAT_EVENT_ROWS_STORE, CHAT_IDB_VERSION } from "./chat-idb-schema.ts";
-import { createChatIdbOpener } from "./chat-idb-store.ts";
+import { createChatIdbOpener } from "./chat-idb-opener.ts";
 
 type VersionChangeListener = (event: IDBVersionChangeEvent) => void;
 

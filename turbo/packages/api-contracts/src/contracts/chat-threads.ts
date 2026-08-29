@@ -739,18 +739,18 @@ export function parseChatFollowupsContent(
 export function resolveChatEventRecommendedFollowups(event: {
   readonly content: string | null;
 }): readonly ChatRecommendedFollowup[] {
-  const document = parseChatFollowupsContent(event.content);
-  return document?.followups ?? [];
+  const content = parseChatFollowupsContent(event.content);
+  return content?.followups ?? [];
 }
 
 export function serializeChatFollowupsContent(
   followups: readonly ChatRecommendedFollowup[],
 ): string {
-  const document: ChatFollowupsContentDocument = {
+  const content: ChatFollowupsContentDocument = {
     version: 1,
     followups: [...followups],
   };
-  return JSON.stringify(chatFollowupsContentDocumentSchema.parse(document));
+  return JSON.stringify(chatFollowupsContentDocumentSchema.parse(content));
 }
 
 const inputPromptEventSchema = chatEventBaseSchema

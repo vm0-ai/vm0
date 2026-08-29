@@ -5,10 +5,14 @@ type PlatformPublicBrand = "vm0" | "okou";
 
 export type PlatformService = "api" | "www" | "app" | "platform";
 
+// Resolved from `location` alone so the shared database SharedWorker, which
+// has no DOM, can read the same runtime configuration as the page. The Clerk
+// publishable key is deliberately not part of this shape: it comes from the
+// HTML bootstrap and is only available on the page, so it is resolved through
+// resolveClerkPublishableKey() from ./clerk-bootstrap.ts instead.
 interface PlatformRuntimeConfig {
   readonly environment: PlatformEnvironment;
   readonly publicBrand: PlatformPublicBrand;
-  readonly clerkPublishableKey: string;
   readonly publicArtifactsBaseUrl: "https://cdn.vm0.io" | "https://cdn.vm7.io";
   readonly publicStaticAssetsBaseUrl: string;
   readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
@@ -28,7 +32,6 @@ const OKOU_ROOT_DOMAINS = [
   OKOU_PAGES_DOMAIN,
 ] as const;
 const PREVIEW_API_DOMAIN = "vm6.ai";
-const CLERK_PUBLISHABLE_KEY_ATTRIBUTE = "data-vm0-clerk-publishable-key";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
 export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
@@ -167,20 +170,9 @@ function optionalBuildValue(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function resolveClerkPublishableKey(): string {
-  const publishableKey = document.documentElement.getAttribute(
-    CLERK_PUBLISHABLE_KEY_ATTRIBUTE,
-  );
-  if (!publishableKey) {
-    throw new Error("Missing Clerk publishable key from platform bootstrap");
-  }
-  return publishableKey;
-}
-
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const environment = resolvePlatformEnvironment();
   const publicBrand = resolvePlatformPublicBrand(browserHostname());
-  const clerkPublishableKey = resolveClerkPublishableKey();
   const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
     "https://static.vm0.io",
     publicBrand,
@@ -190,7 +182,6 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
     return {
       environment,
       publicBrand,
-      clerkPublishableKey,
       publicArtifactsBaseUrl: "https://cdn.vm0.io",
       publicStaticAssetsBaseUrl,
       zeroHostDomain: "sites.vm0.io",
@@ -208,7 +199,6 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   return {
     environment,
     publicBrand,
-    clerkPublishableKey,
     publicArtifactsBaseUrl: "https://cdn.vm7.io",
     publicStaticAssetsBaseUrl,
     zeroHostDomain: "sites.vm7.io",
