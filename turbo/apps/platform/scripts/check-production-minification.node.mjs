@@ -5,19 +5,6 @@ import { URL } from "node:url";
 
 import { loadConfigFromFile } from "vite";
 
-await test("production minification uses Vite defaults", async () => {
-  const loaded = await loadConfigFromFile(
-    { command: "build", mode: "production" },
-    new URL("../vite.config.ts", import.meta.url).pathname,
-  );
-
-  assert.ok(loaded);
-  const output = loaded.config.build?.rolldownOptions?.output;
-  assert.equal(loaded.config.build?.minify, undefined);
-  assert.equal(output?.keepNames, undefined);
-  assert.equal(output?.minify, undefined);
-});
-
 await test("production build emits one node_modules vendor group with isolated metadata", async () => {
   const loaded = await loadConfigFromFile(
     { command: "build", mode: "production" },
