@@ -917,11 +917,12 @@
       window.__appBootstrapStart = performance.now();
     </script>
     <script>
-      // Preconnect to the Clerk Frontend API host so the DNS+TCP+TLS
-      // handshake overlaps with bundle download. The publishable key is
-      // shaped pk_<env>_<base64(host$)>; decoding it here avoids hard-coding
-      // the FAPI domain per environment.
+      // Start the Clerk core request before the application bundle. The
+      // publishable key is shaped pk_<env>_<base64(host$)>; decoding it here
+      // avoids hard-coding an instance host. Clerk.load() remains in the app.
       (function () {
+        if (window.__vm0BrowserSupported !== true) return;
+
         var h = location.hostname.toLowerCase();
         var production =
           h === "vm0.ai" ||
@@ -933,13 +934,40 @@
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
         var m = /^pk_(?:test|live)_(.+)$/.exec(k);
         if (!m) return;
-        var host = atob(m[1]).replace(/\$+$/, "");
-        if (!/^[a-z0-9.-]+$/i.test(host)) return;
+        var frontendApiHost = atob(m[1]).replace(/\$+$/, "");
+        if (!/^[a-z0-9.-]+$/i.test(frontendApiHost)) return;
+
+        var domain =
+          h === "app.okou.ai" || h.endsWith(".app.okou.ai")
+            ? "app.okou.ai"
+            : null;
+        var scriptHost = domain ? "clerk." + domain : frontendApiHost;
         var l = document.createElement("link");
         l.rel = "preconnect";
-        l.href = "https://" + host;
+        l.href = "https://" + scriptHost;
         l.crossOrigin = "anonymous";
         document.head.appendChild(l);
+
+        var s = document.createElement("script");
+        s.async = true;
+        s.crossOrigin = "anonymous";
+        s.setAttribute("data-clerk-js-script", "");
+        s.setAttribute("data-clerk-publishable-key", k);
+        if (domain) s.setAttribute("data-clerk-domain", domain);
+        s.addEventListener(
+          "error",
+          function () {
+            // A failed existing script makes Clerk's runtime loader wait for
+            // its timeout. Remove it so the runtime retries immediately.
+            s.remove();
+          },
+          { once: true },
+        );
+        s.src =
+          "https://" +
+          scriptHost +
+          "/npm/@clerk/clerk-js@6.25.8/dist/clerk.browser.js";
+        document.head.appendChild(s);
       })();
     </script>
     <link

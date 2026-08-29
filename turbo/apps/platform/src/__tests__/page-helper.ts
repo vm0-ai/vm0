@@ -84,6 +84,7 @@ function ensureTestLocalStorage(): void {
 export interface SetupBootstrapOptions {
   context: TestContext;
   path: string;
+  beforeBootstrap?: (signal: AbortSignal) => void;
   user?: {
     id: string;
     fullName: string;
@@ -130,6 +131,7 @@ export async function setupBootstrap(
   // customize a handler. Start the lazy mock lifecycle so abort resets any
   // fixture mutations made by the application during this test.
   void options.context.mocks;
+  options.beforeBootstrap?.(options.context.signal);
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
