@@ -485,17 +485,36 @@ const setupFeatureSwitches$ = command(
   },
 );
 
+function notificationChatThreadId(data: unknown): string | null {
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !("type" in data) ||
+    data.type !== "NOTIFICATION_CLICK" ||
+    !("url" in data) ||
+    typeof data.url !== "string" ||
+    !URL.canParse(data.url, window.location.origin)
+  ) {
+    return null;
+  }
+
+  const url = new URL(data.url, window.location.origin);
+  if (url.origin !== window.location.origin) {
+    return null;
+  }
+
+  return /^\/chats\/([^/]+)$/u.exec(url.pathname)?.[1] ?? null;
+}
+
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
   navigator.serviceWorker?.addEventListener(
     "message",
-    onDomEventFn((event: MessageEvent): void => {
-      if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
-        const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
-        if (match) {
-          set(detachedNavigateTo$, "/chats/:threadId", {
-            pathParams: { threadId: match[1] },
-          });
-        }
+    onDomEventFn((event: MessageEvent<unknown>): void => {
+      const threadId = notificationChatThreadId(event.data);
+      if (threadId) {
+        set(detachedNavigateTo$, ROUTES.chat, {
+          pathParams: { threadId },
+        });
       }
     }),
     {

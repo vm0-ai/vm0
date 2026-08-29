@@ -119,6 +119,10 @@ interface BrowserDownloadMock {
   readonly revokedUrls: string[];
 }
 
+interface BrowserServiceWorkerMock {
+  readonly dispatchMessage: (data: unknown) => void;
+}
+
 interface ImageDimensionsMockValue {
   width: number;
   height: number;
@@ -295,6 +299,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
         mockMatchMedia((query) => {
           return query === "(display-mode: standalone)" ? enabled : false;
         });
+      },
+      serviceWorker: (): BrowserServiceWorkerMock => {
+        return mockServiceWorker(getSignal());
       },
       userAgent: (ua: string): void => {
         vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
@@ -566,6 +573,24 @@ function mockMatchMedia(matches: boolean | ((query: string) => boolean)): void {
     };
     return mediaQueryList;
   });
+}
+
+function mockServiceWorker(signal: AbortSignal): BrowserServiceWorkerMock {
+  const serviceWorker = new EventTarget();
+  const descriptor = defineWindowProperty(
+    navigator,
+    "serviceWorker",
+    serviceWorker,
+  );
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(navigator, "serviceWorker", descriptor);
+  });
+
+  return {
+    dispatchMessage(data: unknown): void {
+      serviceWorker.dispatchEvent(new MessageEvent("message", { data }));
+    },
+  };
 }
 
 function mockClipboardWriteText(): ClipboardWriteMock {
