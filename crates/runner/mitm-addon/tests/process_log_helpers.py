@@ -21,10 +21,10 @@ def capture_addon_process_events() -> Iterator[MagicMock]:
         payload = json.JSONDecoder().decode(record[len(prefix) :].decode())
         assert isinstance(payload, dict)
         level = payload.get("level")
-        detail = payload.get("detail")
+        message = payload.get("message")
         assert level in ("warn", "error")
-        assert isinstance(detail, str)
-        getattr(log, level)(detail)
+        assert isinstance(message, str)
+        getattr(log, level)(message)
         return len(record)
 
     stderr = MagicMock()

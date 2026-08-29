@@ -1365,7 +1365,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 "warn",
                 "addon_process_integrity",
                 "missing_client_ip",
-                detail="No client IP available, passing through",
+                message="No client IP available, passing through",
             )
             return
         if isinstance(classification, request_classification.BlockingRequestClassification):

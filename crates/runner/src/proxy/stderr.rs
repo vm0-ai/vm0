@@ -26,7 +26,7 @@ struct AddonProcessEvent {
     reason: String,
     component: String,
     fields: BTreeMap<String, String>,
-    detail: String,
+    message: String,
 }
 
 fn is_event_name(value: &str) -> bool {
@@ -56,32 +56,38 @@ fn parse_addon_process_event(line: &str) -> Option<AddonProcessEvent> {
 }
 
 fn log_addon_process_event(event: AddonProcessEvent) {
+    let AddonProcessEvent {
+        level,
+        event_type,
+        reason,
+        component,
+        fields,
+        message,
+        ..
+    } = event;
     let axiom_fields = serde_json::Value::Object(
-        event
-            .fields
+        fields
             .into_iter()
             .map(|(name, value)| (name, serde_json::Value::String(value)))
             .collect(),
     )
     .to_string();
-    match event.level {
+    match level {
         AddonProcessEventLevel::Warn => warn!(
             target: "mitmdump_addon",
-            r#type = event.event_type,
-            reason = event.reason,
-            component = event.component,
+            r#type = event_type,
+            reason,
+            component,
             axiom_fields = axiom_fields.as_str(),
-            addon_detail = event.detail,
-            "mitmdump addon process event"
+            message = message.as_str(),
         ),
         AddonProcessEventLevel::Error => error!(
             target: "mitmdump_addon",
-            r#type = event.event_type,
-            reason = event.reason,
-            component = event.component,
+            r#type = event_type,
+            reason,
+            component,
             axiom_fields = axiom_fields.as_str(),
-            addon_detail = event.detail,
-            "mitmdump addon process event"
+            message = message.as_str(),
         ),
     }
 }
@@ -135,7 +141,7 @@ mod tests {
     #[test]
     fn parses_versioned_underbilling_event() {
         let event = parse_addon_process_event(
-            r#"VM0_ADDON_EVENT {"version":1,"level":"error","type":"usage_underbilling","reason":"pending_snapshot_write_failed","component":"mitm_addon","fields":{"underbilling_class":"risk","counter":"reports"},"detail":"Failed to write pending count"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"error","type":"usage_underbilling","reason":"pending_snapshot_write_failed","component":"mitm_addon","fields":{"underbilling_class":"risk","counter":"reports"},"message":"Failed to write pending count"}"#,
         )
         .unwrap();
 
@@ -151,7 +157,7 @@ mod tests {
                     ("counter".to_string(), "reports".to_string()),
                     ("underbilling_class".to_string(), "risk".to_string()),
                 ]),
-                detail: "Failed to write pending count".to_string(),
+                message: "Failed to write pending count".to_string(),
             }
         );
     }
@@ -159,14 +165,14 @@ mod tests {
     #[test]
     fn parses_process_integrity_event() {
         let event = parse_addon_process_event(
-            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"jsonl_writer_append_failed","component":"mitm_addon","fields":{},"detail":"write failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"jsonl_writer_append_failed","component":"mitm_addon","fields":{},"message":"write failed"}"#,
         )
         .unwrap();
 
         assert_eq!(event.level, AddonProcessEventLevel::Warn);
         assert_eq!(event.event_type, "addon_process_integrity");
         assert_eq!(event.reason, "jsonl_writer_append_failed");
-        assert_eq!(event.detail, "write failed");
+        assert_eq!(event.message, "write failed");
     }
 
     #[test]
@@ -174,11 +180,11 @@ mod tests {
         for line in [
             "ordinary mitmdump warning",
             r#"prefix VM0_ADDON_EVENT {"version":1}"#,
-            r#"VM0_ADDON_EVENT {"version":2,"level":"warn","type":"addon_process_integrity","reason":"test_failure","component":"mitm_addon","fields":{},"detail":"failed"}"#,
-            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"test_failure","component":"other","fields":{},"detail":"failed"}"#,
-            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"bad type","reason":"test_failure","component":"mitm_addon","fields":{},"detail":"failed"}"#,
-            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"test_failure","component":"mitm_addon","fields":{"bad field":"value"},"detail":"failed"}"#,
-            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"test_failure","component":"mitm_addon","fields":{},"extra":"unexpected","detail":"failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":2,"level":"warn","type":"addon_process_integrity","reason":"test_failure","component":"mitm_addon","fields":{},"message":"failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"test_failure","component":"other","fields":{},"message":"failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"bad type","reason":"test_failure","component":"mitm_addon","fields":{},"message":"failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"test_failure","component":"mitm_addon","fields":{"bad field":"value"},"message":"failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"test_failure","component":"mitm_addon","fields":{},"extra":"unexpected","message":"failed"}"#,
         ] {
             assert!(
                 parse_addon_process_event(line).is_none(),
@@ -190,15 +196,15 @@ mod tests {
     #[test]
     fn reemits_underbilling_as_structured_error() {
         let event = capture_mitmdump_stderr_log(
-            r#"VM0_ADDON_EVENT {"version":1,"level":"error","type":"usage_underbilling","reason":"pending_snapshot_write_failed","component":"mitm_addon","fields":{"underbilling_class":"risk"},"detail":"Failed to write pending count"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"error","type":"usage_underbilling","reason":"pending_snapshot_write_failed","component":"mitm_addon","fields":{"underbilling_class":"risk"},"message":"Failed to write pending count"}"#,
         );
 
         assert_eq!(event.level, Level::ERROR);
-        assert_event_field(&event, "message", "mitmdump addon process event");
+        assert_event_field(&event, "message", "Failed to write pending count");
         assert_event_field(&event, "type", "usage_underbilling");
         assert_event_field(&event, "reason", "pending_snapshot_write_failed");
         assert_event_field(&event, "component", "mitm_addon");
-        assert_event_field(&event, "addon_detail", "Failed to write pending count");
+        assert!(!event.fields.contains_key("addon_detail"));
         assert_axiom_fields(
             &event,
             BTreeMap::from([("underbilling_class".to_string(), "risk".to_string())]),
@@ -208,14 +214,15 @@ mod tests {
     #[test]
     fn reemits_process_integrity_as_structured_warn() {
         let event = capture_mitmdump_stderr_log(
-            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"jsonl_writer_append_failed","component":"mitm_addon","fields":{},"detail":"write failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","type":"addon_process_integrity","reason":"jsonl_writer_append_failed","component":"mitm_addon","fields":{},"message":"write failed"}"#,
         );
 
         assert_eq!(event.level, Level::WARN);
         assert_event_field(&event, "type", "addon_process_integrity");
         assert_event_field(&event, "reason", "jsonl_writer_append_failed");
         assert_event_field(&event, "component", "mitm_addon");
-        assert_event_field(&event, "addon_detail", "write failed");
+        assert_event_field(&event, "message", "write failed");
+        assert!(!event.fields.contains_key("addon_detail"));
         assert_axiom_fields(&event, BTreeMap::new());
     }
 

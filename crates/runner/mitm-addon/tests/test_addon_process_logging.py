@@ -21,7 +21,7 @@ def test_emits_one_versioned_stderr_record() -> None:
             "error",
             "usage_underbilling",
             "pending_snapshot_write_failed",
-            detail="Failed to write pending count",
+            message="Failed to write pending count",
             fields={"underbilling_class": "risk", "counter": "reports"},
         )
 
@@ -35,27 +35,27 @@ def test_emits_one_versioned_stderr_record() -> None:
         "reason": "pending_snapshot_write_failed",
         "component": "mitm_addon",
         "fields": {"counter": "reports", "underbilling_class": "risk"},
-        "detail": "Failed to write pending count",
+        "message": "Failed to write pending count",
     }
 
 
-def test_bounds_and_single_lines_control_heavy_detail() -> None:
-    detail = "\x00\n" * 4096
+def test_bounds_and_single_lines_control_heavy_message() -> None:
+    message = "\x00\n" * 4096
 
     with patch.object(addon_process_logging.os, "write", return_value=1) as write:
         addon_process_logging.emit_addon_process_event(
             "warn",
             "addon_process_integrity",
             "jsonl_writer_append_failed",
-            detail=detail,
+            message=message,
         )
 
     [record] = [write.call_args.args[1]]
     assert len(record) <= addon_process_logging.MAX_ADDON_PROCESS_EVENT_BYTES
     assert record.count(b"\n") == 1
     event = _event_from_record(record)
-    assert isinstance(event["detail"], str)
-    assert event["detail"].endswith("...")
+    assert isinstance(event["message"], str)
+    assert event["message"].endswith("...")
 
 
 @pytest.mark.parametrize(
@@ -76,7 +76,7 @@ def test_rejects_unstable_root_field_names(
             "warn",
             event_type,
             reason,
-            detail="failed",
+            message="failed",
             fields=fields,
         )
 
@@ -91,7 +91,7 @@ def test_rejects_oversized_generic_fields() -> None:
             "error",
             "usage_underbilling",
             "test_failure",
-            detail="failed",
+            message="failed",
             fields=fields,
         )
 
@@ -102,5 +102,5 @@ def test_stderr_write_failure_does_not_escape() -> None:
             "warn",
             "addon_process_integrity",
             "jsonl_writer_append_failed",
-            detail="write failed",
+            message="write failed",
         )

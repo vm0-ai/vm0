@@ -248,7 +248,7 @@ def log_usage_underbilling(
         "error",
         USAGE_UNDERBILLING_LOG_TYPE,
         reason,
-        detail=" ".join(parts),
+        message=" ".join(parts),
         fields=event_fields,
     )
 

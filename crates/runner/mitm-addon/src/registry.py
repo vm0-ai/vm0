@@ -528,7 +528,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
                 "warn",
                 "addon_process_integrity",
                 "proxy_registry_stat_failed",
-                detail=f"Failed to stat proxy registry: {message}",
+                message=f"Failed to stat proxy registry: {message}",
             )
         return _mark_unavailable(state, reason="stat_failed", message=message)
 
@@ -562,7 +562,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
                     "warn",
                     "addon_process_integrity",
                     "proxy_registry_read_failed",
-                    detail=f"Failed to read proxy registry: {message}",
+                    message=f"Failed to read proxy registry: {message}",
                 )
             return _mark_unavailable(state, reason="read_failed", message=message)
         except (ValueError, RecursionError) as e:
@@ -573,7 +573,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
                 "warn",
                 "addon_process_integrity",
                 "proxy_registry_parse_failed",
-                detail=f"Failed to parse proxy registry: {message}",
+                message=f"Failed to parse proxy registry: {message}",
             )
             return _mark_unavailable(state, reason="parse_failed", message=message)
 
@@ -593,7 +593,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
             "warn",
             "addon_process_integrity",
             "proxy_registry_entries_rejected",
-            detail=(f"Rejected {len(invalid_sandboxes)} invalid proxy registry sandbox entries"),
+            message=(f"Rejected {len(invalid_sandboxes)} invalid proxy registry sandbox entries"),
         )
     new_compiled_registry, new_compiled_policy_registry = _compile_registry(
         new_registry,

@@ -12,7 +12,7 @@ ADDON_PROCESS_EVENT_PREFIX = "VM0_ADDON_EVENT "
 ADDON_PROCESS_EVENT_VERSION = 1
 MAX_ADDON_PROCESS_EVENT_BYTES = 4096
 MAX_ADDON_PROCESS_EVENT_FIELDS = 16
-_MAX_DETAIL_CHARACTERS = 2048
+_MAX_MESSAGE_CHARACTERS = 2048
 _MAX_FIELD_VALUE_CHARACTERS = 256
 _EVENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,79}\Z")
 _TRUNCATION_SUFFIX = "..."
@@ -31,24 +31,24 @@ def _serialize_event(payload: dict[str, object]) -> bytes:
     )
 
 
-def _bounded_event(payload: dict[str, object], detail: str) -> bytes:
-    bounded_detail = detail[:_MAX_DETAIL_CHARACTERS]
-    payload["detail"] = bounded_detail
+def _bounded_event(payload: dict[str, object], message: str) -> bytes:
+    bounded_message = message[:_MAX_MESSAGE_CHARACTERS]
+    payload["message"] = bounded_message
     record = _serialize_event(payload)
     if len(record) <= MAX_ADDON_PROCESS_EVENT_BYTES:
         return record
 
-    payload["detail"] = ""
+    payload["message"] = ""
     if len(_serialize_event(payload)) > MAX_ADDON_PROCESS_EVENT_BYTES:
         raise ValueError("addon process event fields exceed the record size limit")
 
     low = 0
-    high = len(bounded_detail)
+    high = len(bounded_message)
     best = ""
     while low <= high:
         middle = (low + high) // 2
-        candidate = bounded_detail[:middle] + _TRUNCATION_SUFFIX
-        payload["detail"] = candidate
+        candidate = bounded_message[:middle] + _TRUNCATION_SUFFIX
+        payload["message"] = candidate
         record = _serialize_event(payload)
         if len(record) <= MAX_ADDON_PROCESS_EVENT_BYTES:
             best = candidate
@@ -56,7 +56,7 @@ def _bounded_event(payload: dict[str, object], detail: str) -> bytes:
         else:
             high = middle - 1
 
-    payload["detail"] = best
+    payload["message"] = best
     return _serialize_event(payload)
 
 
@@ -83,7 +83,7 @@ def emit_addon_process_event(
     reason: str,
     /,
     *,
-    detail: str,
+    message: str,
     fields: Mapping[str, str] | None = None,
 ) -> None:
     """Write one bounded addon event directly to mitmdump stderr.
@@ -105,7 +105,7 @@ def emit_addon_process_event(
         "fields": _validated_fields(fields),
     }
 
-    record = _bounded_event(payload, detail)
+    record = _bounded_event(payload, message)
     try:
         os.write(2, record)
     except OSError:

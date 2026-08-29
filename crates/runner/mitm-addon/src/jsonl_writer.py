@@ -402,10 +402,10 @@ def _warn_drop_once(log_name: str) -> None:
     )
 
 
-def _warn(reason: str, detail: str) -> None:
+def _warn(reason: str, message: str) -> None:
     addon_process_logging.emit_addon_process_event(
         "warn",
         "addon_process_integrity",
         reason,
-        detail=detail,
+        message=message,
     )

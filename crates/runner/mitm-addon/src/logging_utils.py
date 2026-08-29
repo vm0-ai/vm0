@@ -63,7 +63,7 @@ def _encode_jsonl_entry(entry: dict, log_name: str) -> bytes | None:
             "warn",
             "addon_process_integrity",
             "log_encoding_failed",
-            detail=f"Failed to encode {log_name} log: {type(e).__name__}: {e}",
+            message=f"Failed to encode {log_name} log: {type(e).__name__}: {e}",
         )
 
     return None

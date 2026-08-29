@@ -245,7 +245,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
                 "warn",
                 "addon_process_integrity",
                 "builtin_firewall_catalog_cache_read_failed",
-                detail=f"Failed to read builtin firewall catalog cache: {exc}",
+                message=f"Failed to read builtin firewall catalog cache: {exc}",
             )
             return BuiltinFirewallCatalogSnapshot(
                 key,
