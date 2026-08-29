@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.510.2](https://github.com/vm0-ai/vm0/compare/api-v1.510.1...api-v1.510.2) (2026-08-29)
+
+
+### Refactoring
+
+* **api:** switch entitlement restriction authority ([#30210](https://github.com/vm0-ai/vm0/issues/30210)) ([85c3779](https://github.com/vm0-ai/vm0/commit/85c3779c382264ef2036ffaf270f73dd33eedd9a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.228.7
+
 ## [1.510.1](https://github.com/vm0-ai/vm0/compare/api-v1.510.0...api-v1.510.1) (2026-08-29)
 
 
