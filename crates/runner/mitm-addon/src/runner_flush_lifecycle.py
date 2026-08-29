@@ -216,9 +216,7 @@ def _flush_usage_for_runner_request() -> None:
     except Exception as exc:
         addon_process_logging.emit_addon_process_event(
             "warn",
-            "addon_process_integrity",
-            "runner_usage_flush_failed",
-            message=f"Failed to flush delivery work after runner request ({type(exc).__name__})",
+            f"Failed to flush delivery work after runner request ({type(exc).__name__})",
         )
     finally:
         usage.write_pending_snapshot(flush_request_id=flush_request_id)
@@ -267,17 +265,13 @@ def _flush_jsonl_for_runner_request(request_path: Path, state_path: Path) -> Non
             timed_out = True
             addon_process_logging.emit_addon_process_event(
                 "warn",
-                "addon_process_integrity",
-                "runner_jsonl_flush_timeout",
-                message="JSONL flush did not complete before timeout",
+                "JSONL flush did not complete before timeout",
             )
     except Exception as exc:
         pending = 1
         addon_process_logging.emit_addon_process_event(
             "warn",
-            "addon_process_integrity",
-            "runner_jsonl_flush_failed",
-            message=f"Failed to flush JSONL logs after runner request ({type(exc).__name__})",
+            f"Failed to flush JSONL logs after runner request ({type(exc).__name__})",
         )
     finally:
         state_written = _write_jsonl_flush_state(
@@ -343,9 +337,7 @@ def _write_jsonl_flush_state(
                 tmp_path.unlink()
             addon_process_logging.emit_addon_process_event(
                 "warn",
-                "addon_process_integrity",
-                "runner_jsonl_flush_state_write_failed",
-                message=f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}",
+                f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}",
             )
             return False
 

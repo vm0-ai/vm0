@@ -526,9 +526,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
             state.stat_error_logged = True
             addon_process_logging.emit_addon_process_event(
                 "warn",
-                "addon_process_integrity",
-                "proxy_registry_stat_failed",
-                message=f"Failed to stat proxy registry: {message}",
+                f"Failed to stat proxy registry: {message}",
             )
         return _mark_unavailable(state, reason="stat_failed", message=message)
 
@@ -560,9 +558,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
                 state.read_error_key = key
                 addon_process_logging.emit_addon_process_event(
                     "warn",
-                    "addon_process_integrity",
-                    "proxy_registry_read_failed",
-                    message=f"Failed to read proxy registry: {message}",
+                    f"Failed to read proxy registry: {message}",
                 )
             return _mark_unavailable(state, reason="read_failed", message=message)
         except (ValueError, RecursionError) as e:
@@ -571,9 +567,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
             state.read_error_key = None
             addon_process_logging.emit_addon_process_event(
                 "warn",
-                "addon_process_integrity",
-                "proxy_registry_parse_failed",
-                message=f"Failed to parse proxy registry: {message}",
+                f"Failed to parse proxy registry: {message}",
             )
             return _mark_unavailable(state, reason="parse_failed", message=message)
 
@@ -591,9 +585,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
     if invalid_sandboxes:
         addon_process_logging.emit_addon_process_event(
             "warn",
-            "addon_process_integrity",
-            "proxy_registry_entries_rejected",
-            message=(f"Rejected {len(invalid_sandboxes)} invalid proxy registry sandbox entries"),
+            f"Rejected {len(invalid_sandboxes)} invalid proxy registry sandbox entries",
         )
     new_compiled_registry, new_compiled_policy_registry = _compile_registry(
         new_registry,

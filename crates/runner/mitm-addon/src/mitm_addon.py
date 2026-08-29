@@ -1363,9 +1363,7 @@ async def request(flow: http.HTTPFlow) -> None:
         if classification.kind == "no_client_ip":
             addon_process_logging.emit_addon_process_event(
                 "warn",
-                "addon_process_integrity",
-                "missing_client_ip",
-                message="No client IP available, passing through",
+                "No client IP available, passing through",
             )
             return
         if isinstance(classification, request_classification.BlockingRequestClassification):

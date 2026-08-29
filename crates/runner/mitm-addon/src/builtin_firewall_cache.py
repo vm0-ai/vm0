@@ -243,9 +243,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
             state.catalog = None
             addon_process_logging.emit_addon_process_event(
                 "warn",
-                "addon_process_integrity",
-                "builtin_firewall_catalog_cache_read_failed",
-                message=f"Failed to read builtin firewall catalog cache: {exc}",
+                f"Failed to read builtin firewall catalog cache: {exc}",
             )
             return BuiltinFirewallCatalogSnapshot(
                 key,

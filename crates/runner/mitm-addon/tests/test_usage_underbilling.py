@@ -38,11 +38,15 @@ def test_underbilling_writes_proxy_row_and_process_event(tmp_path, capfd):
     process_record = capfd.readouterr().err.strip()
     payload = process_record.removeprefix(addon_process_logging.ADDON_PROCESS_EVENT_PREFIX)
     event = json.loads(payload)
-    assert event["level"] == "error"
-    assert event["type"] == "usage_underbilling"
-    assert event["reason"] == "expected_reason"
-    assert event["component"] == "mitm_addon"
-    assert event["fields"] == {"underbilling_class": "risk"}
+    assert event == {
+        "version": 1,
+        "level": "error",
+        "message": (
+            "type=usage_underbilling reason=expected_reason "
+            "underbilling_class=risk component=mitm_addon run_id=run-1 "
+            "Usage underbilling signal"
+        ),
+    }
 
 
 def test_underbilling_log_without_proxy_path_uses_process_event(mitm_ctx):

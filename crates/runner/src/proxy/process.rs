@@ -1090,7 +1090,7 @@ mod tests {
 
     #[tokio::test]
     async fn stderr_monitor_discards_oversized_record_and_recovers() {
-        let next_record = br#"VM0_ADDON_EVENT {"version":1,"level":"error","type":"usage_underbilling","reason":"test_failure","component":"mitm_addon","fields":{"underbilling_class":"risk"},"message":"failed"}"#;
+        let next_record = br#"VM0_ADDON_EVENT {"version":1,"level":"error","message":"failed"}"#;
         let (writer, reader) = tokio::io::duplex(1024);
         let future = async {
             let (_, port_in_use) = tokio::join!(
@@ -1125,10 +1125,10 @@ mod tests {
 
         let recovered = captured_event(&events, "failed");
         assert_eq!(
-            recovered.fields.get("reason").map(String::as_str),
-            Some("test_failure")
+            recovered.fields.len(),
+            1,
+            "unexpected fields: {recovered:#?}"
         );
-        assert!(!recovered.fields.contains_key("addon_detail"));
     }
 
     fn write_fake_listening_mitmdump(path: &Path) {

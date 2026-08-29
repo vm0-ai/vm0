@@ -68,11 +68,6 @@ const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
 const AXIOM_TOKEN_ENV: &str = "AXIOM_TOKEN_TELEMETRY";
 const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
-/// A tracing string field containing a JSON object whose entries are expanded
-/// into the Axiom event. Static tracing fields and Runner-owned metadata win
-/// on collisions.
-const AXIOM_FIELDS_FIELD: &str = "axiom_fields";
-const AXIOM_FIELDS_MAX_ENTRIES: usize = 32;
 /// Target used for this layer's own diagnostics. Dispatcher diagnostics
 /// (non-success ingest responses, HTTP errors) remain visible to local
 /// logging, while the Axiom per-layer filter keeps any observed diagnostics
@@ -367,43 +362,32 @@ async fn flush(client: &Client, ingest_url: &str, token: &str, batch: &mut Vec<V
 /// (lowercase), `message`, `context`, plus any user-supplied fields —
 /// augmented with a Rust-only `service` discriminator.
 fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
-    struct V {
-        fields: Map<String, Value>,
-        axiom_fields: Map<String, Value>,
-    }
-
+    struct V(Map<String, Value>);
     impl Visit for V {
         fn record_str(&mut self, f: &Field, v: &str) {
-            if f.name() == AXIOM_FIELDS_FIELD
-                && let Some(fields) = parse_axiom_fields(v)
-            {
-                self.axiom_fields = fields;
-                return;
-            }
-            self.fields.insert(
+            self.0.insert(
                 f.name().into(),
                 Value::String(format_bounded(format_args!("{v}"))),
             );
         }
         fn record_i64(&mut self, f: &Field, v: i64) {
-            self.fields.insert(f.name().into(), v.into());
+            self.0.insert(f.name().into(), v.into());
         }
         fn record_u64(&mut self, f: &Field, v: u64) {
-            self.fields.insert(f.name().into(), v.into());
+            self.0.insert(f.name().into(), v.into());
         }
         fn record_u128(&mut self, f: &Field, v: u128) {
             if let Ok(v) = u64::try_from(v) {
-                self.fields.insert(f.name().into(), v.into());
+                self.0.insert(f.name().into(), v.into());
             } else {
-                self.fields
-                    .insert(f.name().into(), Value::String(v.to_string()));
+                self.0.insert(f.name().into(), Value::String(v.to_string()));
             }
         }
         fn record_f64(&mut self, f: &Field, v: f64) {
-            self.fields.insert(f.name().into(), v.into());
+            self.0.insert(f.name().into(), v.into());
         }
         fn record_bool(&mut self, f: &Field, v: bool) {
-            self.fields.insert(f.name().into(), v.into());
+            self.0.insert(f.name().into(), v.into());
         }
         fn record_error(&mut self, f: &Field, err: &(dyn std::error::Error + 'static)) {
             // Mirror TS `serializeError` shape: an object with `message` and a
@@ -429,12 +413,12 @@ fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
             if !chain.is_empty() {
                 obj.insert("chain".into(), Value::Array(chain));
             }
-            self.fields.insert(f.name().into(), Value::Object(obj));
+            self.0.insert(f.name().into(), Value::Object(obj));
         }
         fn record_debug(&mut self, f: &Field, v: &dyn std::fmt::Debug) {
             // Cap per-field size so a user who logs a huge struct via `?v`
             // can't blow past Axiom's body limit or starve the dispatcher.
-            self.fields.insert(
+            self.0.insert(
                 f.name().into(),
                 Value::String(format_bounded(format_args!("{v:?}"))),
             );
@@ -442,28 +426,10 @@ fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
     }
 
     let meta = event.metadata();
-    let mut v = V {
-        fields: Map::new(),
-        axiom_fields: Map::new(),
-    };
+    let mut v = V(Map::new());
     event.record(&mut v);
 
-    let mut out = v.fields;
-    for (name, value) in v.axiom_fields {
-        if !matches!(
-            name.as_str(),
-            AXIOM_FIELDS_FIELD
-                | "_time"
-                | "level"
-                | "message"
-                | "context"
-                | "service"
-                | "runner_hostname"
-                | "runner_version"
-        ) {
-            out.entry(name).or_insert(value);
-        }
-    }
+    let mut out = v.0;
     out.insert(
         "_time".into(),
         Value::String(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
@@ -485,28 +451,6 @@ fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
         Value::String(env!("CARGO_PKG_VERSION").into()),
     );
     Value::Object(out)
-}
-
-fn parse_axiom_fields(encoded: &str) -> Option<Map<String, Value>> {
-    let mut fields = serde_json::from_str::<Map<String, Value>>(encoded).ok()?;
-    if fields.len() > AXIOM_FIELDS_MAX_ENTRIES {
-        return None;
-    }
-    for (name, value) in &mut fields {
-        let mut bytes = name.bytes();
-        if !matches!(bytes.next(), Some(byte) if byte.is_ascii_alphabetic())
-            || name.len() > 80
-            || !bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-        {
-            return None;
-        }
-        match value {
-            Value::String(value) => *value = format_bounded(format_args!("{value}")),
-            Value::Null | Value::Bool(_) | Value::Number(_) => {}
-            Value::Array(_) | Value::Object(_) => return None,
-        }
-    }
-    Some(fields)
 }
 
 #[cfg(test)]

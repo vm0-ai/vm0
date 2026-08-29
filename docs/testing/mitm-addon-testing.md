@@ -13,7 +13,7 @@ diagnostics on separate paths:
 | --- | --- | --- |
 | Proxied traffic | `network-{run_id}.jsonl` | Per-run network records. Runner flushes, reads, and uploads this file through the network-log pipeline. |
 | Addon run diagnostics | `proxy-{run_id}.jsonl` | Per-run structured diagnostics. This file is local and best effort; its row level does not automatically send a record to Axiom. |
-| Important addon process events | Exact `VM0_ADDON_EVENT` envelope on mitmdump stderr | Process-global failures and explicit dual-sink alerts. Each producer supplies the bounded `message`; Runner preserves it as the tracing and Axiom message. Stable `type` and `reason` fields identify the event, and the generic `fields` map expands into queryable Axiom fields. Underbilling also retains its proxy JSONL row when a run path is available. |
+| Important addon process events | Exact `VM0_ADDON_EVENT` envelope on mitmdump stderr | Process-global failures and explicit dual-sink alerts. The envelope carries only the bounded addon-owned level and message; Runner re-emits them without parsing or adding log fields, and warning/error events are eligible for Axiom. Underbilling owns its canonical message format and also retains its structured proxy JSONL row when a run path is available. |
 | Mitmproxy-native output | Mitmdump stdout or unmatched stderr | Runner-owned process logging. Stdout remains local at info because its text stream does not preserve severity; unmatched stderr keeps the existing warning path. Neither enters proxy JSONL. |
 
 Addon code must not use `ctx.log` for active logging: mitmproxy's terminal

@@ -240,16 +240,9 @@ def log_usage_underbilling(
     if rendered_fields := _render_process_event_extra_fields(fields):
         parts.append(rendered_fields)
     parts.append(_render_process_event_message(str(message)))
-    counter = extra.get("counter")
-    event_fields = {"underbilling_class": underbilling_class}
-    if isinstance(counter, str):
-        event_fields["counter"] = counter
     addon_process_logging.emit_addon_process_event(
         "error",
-        USAGE_UNDERBILLING_LOG_TYPE,
-        reason,
-        message=" ".join(parts),
-        fields=event_fields,
+        " ".join(parts),
     )
 
     if proxy_log_path:

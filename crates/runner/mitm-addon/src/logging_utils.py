@@ -61,9 +61,7 @@ def _encode_jsonl_entry(entry: dict, log_name: str) -> bytes | None:
     except Exception as e:
         addon_process_logging.emit_addon_process_event(
             "warn",
-            "addon_process_integrity",
-            "log_encoding_failed",
-            message=f"Failed to encode {log_name} log: {type(e).__name__}: {e}",
+            f"Failed to encode {log_name} log: {type(e).__name__}: {e}",
         )
 
     return None
