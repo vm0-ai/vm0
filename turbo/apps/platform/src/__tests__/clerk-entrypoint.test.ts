@@ -189,16 +189,25 @@ async function completeEarlyClerkScript(
 describe("platform Clerk entrypoint", () => {
   it("builds the official static core script with exact environment URLs", () => {
     const html = builtIndexHtml();
-    const script = clerkScriptFromHtml(html);
     const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+    const script = parsedDocument.querySelector(CLERK_SCRIPT_SELECTOR);
+    const mainScript = parsedDocument.querySelector(
+      'script[type="module"][src="/src/main.ts"]',
+    );
+    if (!(script instanceof HTMLScriptElement)) {
+      throw new Error(
+        "Built index.html does not contain the Clerk core script",
+      );
+    }
+    if (!(mainScript instanceof HTMLScriptElement)) {
+      throw new Error("Built index.html does not contain the app module");
+    }
 
     expect(parsedDocument.querySelectorAll(CLERK_SCRIPT_SELECTOR)).toHaveLength(
       1,
     );
-    expect(
-      html.indexOf(expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST)),
-    ).toBeLessThan(
-      html.indexOf('<script type="module" src="/src/main.ts"></script>'),
+    expect(script.compareDocumentPosition(mainScript)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(script.src).toBe(expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST));
     expect(script.defer).toBeTruthy();
