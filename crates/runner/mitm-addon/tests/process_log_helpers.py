@@ -24,7 +24,15 @@ def capture_addon_process_events() -> Iterator[MagicMock]:
         message = payload.get("message")
         assert level in ("warn", "error")
         assert isinstance(message, str)
-        getattr(log, level)(message)
+        fields = {
+            key: value
+            for key, value in payload.items()
+            if key not in ("version", "level", "message")
+        }
+        if fields:
+            getattr(log, level)(message, fields)
+        else:
+            getattr(log, level)(message)
         return len(record)
 
     stderr = MagicMock()

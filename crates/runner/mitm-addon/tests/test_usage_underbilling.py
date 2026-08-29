@@ -7,6 +7,13 @@ from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from usage.underbilling import log_usage_underbilling
 
 
+def _captured_process_log(log) -> tuple[str, dict[str, object]]:
+    message, fields = log.error.call_args.args
+    assert isinstance(message, str)
+    assert isinstance(fields, dict)
+    return message, fields
+
+
 def test_underbilling_writes_proxy_row_and_process_event(tmp_path, capfd):
     proxy_log_path = tmp_path / "proxy.jsonl"
 
@@ -41,11 +48,12 @@ def test_underbilling_writes_proxy_row_and_process_event(tmp_path, capfd):
     assert event == {
         "version": 1,
         "level": "error",
-        "message": (
-            "type=usage_underbilling reason=expected_reason "
-            "underbilling_class=risk component=mitm_addon run_id=run-1 "
-            "Usage underbilling signal"
-        ),
+        "message": "Usage underbilling signal",
+        "type": "usage_underbilling",
+        "reason": "expected_reason",
+        "underbilling_class": "risk",
+        "component": "mitm_addon",
+        "run_id": "run-1",
     }
 
 
@@ -63,12 +71,14 @@ def test_underbilling_log_without_proxy_path_uses_process_event(mitm_ctx):
         )
 
     log.error.assert_called_once()
-    message = log.error.call_args.args[0]
-    assert message.startswith(
-        "type=usage_underbilling reason=expected_reason "
-        "underbilling_class=risk component=mitm_addon "
-    )
-    assert message.endswith("Usage underbilling signal")
+    message, fields = _captured_process_log(log)
+    assert message == "Usage underbilling signal"
+    assert fields == {
+        "type": "usage_underbilling",
+        "reason": "expected_reason",
+        "underbilling_class": "risk",
+        "component": "mitm_addon",
+    }
 
 
 def test_underbilling_process_event_preserves_context(mitm_ctx):
@@ -94,24 +104,20 @@ def test_underbilling_process_event_preserves_context(mitm_ctx):
         )
 
     log.error.assert_called_once()
-    message = log.error.call_args.args[0]
-    assert message.startswith(
-        "type=usage_underbilling reason=missing_reporting_context "
-        "underbilling_class=confirmed component=mitm_addon "
-    )
-    assert "run_id=run-1" in message
-    assert "firewall_name=model-provider:anthropic" in message
-    assert "permission=messages:create" in message
-    assert "missing_sandbox_token=true" in message
-    assert "missing_api_url=false" in message
-    assert "dropped_webhook_batch_count=2" in message
-    assert "type=usage_event" not in message
-    assert "wrong_reason" not in message
-    assert "wrong_component" not in message
-    assert "level=debug" not in message
-    assert "message=wrong_message" not in message
-    assert "timestamp=wrong_timestamp" not in message
-    assert message.endswith("Cannot report usage event")
+    message, fields = _captured_process_log(log)
+    assert message == "Cannot report usage event"
+    assert fields == {
+        "type": "usage_underbilling",
+        "reason": "missing_reporting_context",
+        "underbilling_class": "confirmed",
+        "component": "mitm_addon",
+        "run_id": "run-1",
+        "firewall_name": "model-provider:anthropic",
+        "permission": "messages:create",
+        "missing_sandbox_token": True,
+        "missing_api_url": False,
+        "dropped_webhook_batch_count": 2,
+    }
 
 
 def test_underbilling_process_event_sanitizes_url(mitm_ctx):
@@ -124,11 +130,8 @@ def test_underbilling_process_event_sanitizes_url(mitm_ctx):
             url="https://user:pass@example.com/v1/search?token=secret#fragment",
         )
 
-    message = log.error.call_args.args[0]
-    assert "url=https://example.com/v1/search" in message
-    assert "user:pass" not in message
-    assert "token=secret" not in message
-    assert "#fragment" not in message
+    _, fields = _captured_process_log(log)
+    assert fields["url"] == "https://example.com/v1/search"
 
 
 def test_underbilling_process_event_redacts_secret_strings_not_boolean_flags(mitm_ctx):
@@ -148,12 +151,12 @@ def test_underbilling_process_event_redacts_secret_strings_not_boolean_flags(mit
             **sensitive_context,
         )
 
-    message = log.error.call_args.args[0]
-    assert "sandbox_token=[redacted]" in message
-    assert "authorization_header=[redacted]" in message
-    assert "missing_sandbox_token=true" in message
-    assert "retained_retry_count=3" in message
-    assert "secret-token" not in message
+    _, fields = _captured_process_log(log)
+    assert fields["sandbox_token"] == "[redacted]"
+    assert fields["authorization_header"] == "[redacted]"
+    assert fields["missing_sandbox_token"] is True
+    assert fields["retained_retry_count"] == 3
+    assert "secret-token" not in json.dumps(fields)
 
 
 def test_underbilling_process_event_redacts_common_key_fields(mitm_ctx):
@@ -199,68 +202,50 @@ def test_underbilling_process_event_redacts_common_key_fields(mitm_ctx):
             },
         )
 
-    message = log.error.call_args.args[0]
-    assert "api_key=[redacted]" in message
-    assert "access_key_id=[redacted]" in message
-    assert "private_key=[redacted]" in message
-    assert "credential_value=[redacted]" in message
-    assert "bearer=[redacted]" in message
-    assert "jwt=[redacted]" in message
-    assert "passwd=[redacted]" in message
-    assert "pwd=[redacted]" in message
-    assert "auth_header=[redacted]" in message
-    assert "authentication_header=[redacted]" in message
-    assert "oauth_token=[redacted]" in message
-    assert "sandbox_token_bytes=[redacted]" in message
-    assert "api-key=[redacted]" in message
-    assert "api_key_number=[redacted]" in message
-    assert "spaced_api_key=[redacted]" in message
-    assert "access_key_number=[redacted]" in message
-    assert "accessKeyId=[redacted]" in message
-    assert "private.key=[redacted]" in message
-    assert "privateKey=[redacted]" in message
-    assert "APIToken=[redacted]" in message
-    assert "XApiKey=[redacted]" in message
-    assert "AWSACCESSKEYID=[redacted]" in message
-    assert "github_accesstoken=[redacted]" in message
-    assert "openai_apikey=[redacted]" in message
-    assert "sessioncookie=[redacted]" in message
-    assert "signedjwt=[redacted]" in message
-    assert "dbpasswd=[redacted]" in message
-    assert "bearerCredential=[redacted]" in message
-    assert "ssh_privatekey=[redacted]" in message
-    assert "idempotency_key=diagnostic-key" in message
-    assert "input_tokens=42" in message
-    assert "tokenizer_name=usage-tokenizer" in message
-    assert "api-key-value" not in message
-    assert "123456" not in message
-    assert "access-key-value" not in message
-    assert "456789" not in message
-    assert "private-key-value" not in message
-    assert "credential-value" not in message
-    assert "bearer-value" not in message
-    assert "jwt-value" not in message
-    assert "passwd-value" not in message
-    assert "pwd-value" not in message
-    assert "short-auth-header-value" not in message
-    assert "authentication-header-value" not in message
-    assert "oauth-token-value" not in message
-    assert "upper-api-token-value" not in message
-    assert "prefixed-api-key-value" not in message
-    assert "upper-compact-access-key-value" not in message
-    assert "compact-access-token-value" not in message
-    assert "compact-api-key-value" not in message
-    assert "compact-cookie-value" not in message
-    assert "compact-jwt-value" not in message
-    assert "compact-passwd-value" not in message
-    assert "compact-bearer-value" not in message
-    assert "bytes-token-value" not in message
-    assert "hyphen-api-key-value" not in message
-    assert "spaced-api-key-value" not in message
-    assert "camel-access-key-value" not in message
-    assert "dotted-private-key-value" not in message
-    assert "camel-private-key-value" not in message
-    assert "compact-private-key-value" not in message
+    _, fields = _captured_process_log(log)
+    redacted_fields = {
+        "api_key",
+        "access_key_id",
+        "private_key",
+        "credential_value",
+        "bearer",
+        "jwt",
+        "passwd",
+        "pwd",
+        "auth_header",
+        "authentication_header",
+        "oauth_token",
+        "sandbox_token_bytes",
+        "api-key",
+        "api key number",
+        "spaced api key",
+        "access key number",
+        "accessKeyId",
+        "private.key",
+        "privateKey",
+        "APIToken",
+        "XApiKey",
+        "AWSACCESSKEYID",
+        "github_accesstoken",
+        "openai_apikey",
+        "sessioncookie",
+        "signedjwt",
+        "dbpasswd",
+        "bearerCredential",
+        "ssh_privatekey",
+    }
+    assert all(fields[name] == "[redacted]" for name in redacted_fields)
+    assert fields["idempotency_key"] == "diagnostic-key"
+    assert fields["input_tokens"] == "42"
+    assert fields["tokenizer_name"] == "usage-tokenizer"
+    serialized = json.dumps(fields)
+    assert "api-key-value" not in serialized
+    assert "access-key-value" not in serialized
+    assert "private-key-value" not in serialized
+    assert "credential-value" not in serialized
+    assert "bearer-value" not in serialized
+    assert "jwt-value" not in serialized
+    assert "bytes-token-value" not in serialized
 
 
 def test_underbilling_process_event_bounds_multiline_values(mitm_ctx):
@@ -275,15 +260,17 @@ def test_underbilling_process_event_bounds_multiline_values(mitm_ctx):
             parse_error=long_value,
         )
 
-    message = log.error.call_args.args[0]
+    _, fields = _captured_process_log(log)
+    parse_error = fields["parse_error"]
+    assert isinstance(parse_error, str)
     assert log.error.call_count == 1
-    assert "\n" not in message
-    assert "parse_error=first\\sline\\n" in message
-    assert "last line" not in message
-    assert len(message) < 420
+    assert parse_error.startswith("first line\n")
+    assert parse_error.endswith("...")
+    assert "last line" not in parse_error
+    assert len(parse_error) == 256
 
 
-def test_underbilling_process_event_truncates_on_escape_boundaries(mitm_ctx):
+def test_underbilling_process_event_preserves_structured_field_whitespace(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -293,11 +280,8 @@ def test_underbilling_process_event_truncates_on_escape_boundaries(mitm_ctx):
             parse_error="\t" * 129,
         )
 
-    message = log.error.call_args.args[0]
-    assert "parse_error=" in message
-    assert "\\..." not in message
-    assert "\\t... Usage underbilling signal" in message
-    assert len(message) < 420
+    _, fields = _captured_process_log(log)
+    assert fields["parse_error"] == "\t" * 129
 
 
 def test_underbilling_process_event_bounds_non_scalar_values(mitm_ctx):
@@ -310,13 +294,14 @@ def test_underbilling_process_event_bounds_non_scalar_values(mitm_ctx):
             debug_payload={"items": ["x" * 400] * 20},
         )
 
-    message = log.error.call_args.args[0]
-    assert "debug_payload=" in message
-    assert "x" * 300 not in message
-    assert len(message) < 420
+    _, fields = _captured_process_log(log)
+    debug_payload = fields["debug_payload"]
+    assert isinstance(debug_payload, str)
+    assert "x" * 300 not in debug_payload
+    assert len(debug_payload) <= 256
 
 
-def test_underbilling_process_event_sanitizes_field_keys(mitm_ctx):
+def test_underbilling_process_event_preserves_field_keys(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -326,9 +311,8 @@ def test_underbilling_process_event_sanitizes_field_keys(mitm_ctx):
             **{"bad key\nname": "value with spaces"},
         )
 
-    message = log.error.call_args.args[0]
-    assert "bad_key_name=value\\swith\\sspaces" in message
-    assert "bad key" not in message
+    _, fields = _captured_process_log(log)
+    assert fields["bad key\nname"] == "value with spaces"
 
 
 def test_underbilling_process_event_escapes_nonstandard_whitespace_and_controls(
@@ -343,11 +327,8 @@ def test_underbilling_process_event_escapes_nonstandard_whitespace_and_controls(
             parse_error="left\u00a0middle\f\x1b[31mright",
         )
 
-    message = log.error.call_args.args[0]
-    assert "parse_error=left\\smiddle\\s\\u001b[31mright" in message
-    assert "\u00a0" not in message
-    assert "\f" not in message
-    assert "\x1b" not in message
+    _, fields = _captured_process_log(log)
+    assert fields["parse_error"] == "left\u00a0middle\f\x1b[31mright"
 
 
 def test_underbilling_process_event_escapes_message_controls(mitm_ctx):
@@ -360,10 +341,10 @@ def test_underbilling_process_event_escapes_message_controls(mitm_ctx):
             run_id="run-1",
         )
 
-    message = log.error.call_args.args[0]
-    assert "reason=expected_reason" in message
-    assert "run_id=run-1" in message
-    assert message.endswith("Usage underbilling\\nsignal\\twith\\u001bcontrols")
+    message, fields = _captured_process_log(log)
+    assert fields["reason"] == "expected_reason"
+    assert fields["run_id"] == "run-1"
+    assert message == "Usage underbilling\\nsignal\\twith\\u001bcontrols"
     assert "\n" not in message
     assert "\t" not in message
     assert "\x1b" not in message

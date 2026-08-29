@@ -1123,11 +1123,24 @@ mod tests {
             "overflow event leaked record content"
         );
 
-        let recovered = captured_event(&events, "failed");
+        let recovered = events
+            .iter()
+            .find(|event| event.level == Level::ERROR)
+            .unwrap_or_else(|| panic!("missing recovered addon event; events={events:#?}"));
         assert_eq!(
             recovered.fields.len(),
             1,
             "unexpected fields: {recovered:#?}"
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                recovered
+                    .fields
+                    .get("message")
+                    .expect("recovered addon event should have a message"),
+            )
+            .expect("recovered addon event should contain a JSON log"),
+            serde_json::json!({"level": "error", "message": "failed"})
         );
     }
 

@@ -13,14 +13,18 @@ diagnostics on separate paths:
 | --- | --- | --- |
 | Proxied traffic | `network-{run_id}.jsonl` | Per-run network records. Runner flushes, reads, and uploads this file through the network-log pipeline. |
 | Addon run diagnostics | `proxy-{run_id}.jsonl` | Per-run structured diagnostics. This file is local and best effort; its row level does not automatically send a record to Axiom. |
-| Important addon process events | Exact `VM0_ADDON_EVENT` envelope on mitmdump stderr | Process-global failures and explicit dual-sink alerts. The envelope carries only the bounded addon-owned level and message; Runner re-emits them without parsing or adding log fields, and warning/error events are eligible for Axiom. Underbilling owns its canonical message format and also retains its structured proxy JSONL row when a run path is available. |
+| Important addon process events | Exact `VM0_ADDON_EVENT` envelope on mitmdump stderr | Process-global failures and explicit dual-sink alerts. The versioned envelope carries one bounded addon-owned JSON log record: `level`, `message`, and any additional fields supplied by the addon logger. Runner does not maintain an event-family schema; it forwards the complete record so the additional fields remain top-level Axiom fields. Underbilling owns its canonical fields and also retains its structured proxy JSONL row when a run path is available. |
 | Mitmproxy-native output | Mitmdump stdout or unmatched stderr | Runner-owned process logging. Stdout remains local at info because its text stream does not preserve severity; unmatched stderr keeps the existing warning path. Neither enters proxy JSONL. |
 
 Addon code must not use `ctx.log` for active logging: mitmproxy's terminal
 handler does not preserve the addon/native ownership boundary at the Runner
 pipe. Use `log_proxy_entry` for ordinary attributable diagnostics and
 `emit_addon_process_event` only for the explicit process-integrity or alert
-events that need the independent Runner path.
+events that need the independent Runner path. The emitter owns `level` and
+`message`; callers may add other JSON-serializable fields directly without a
+nested fields map. Runner-owned Axiom metadata (`_time`, `context`, `service`,
+`runner_hostname`, and `runner_version`) remains authoritative. Callers remain
+responsible for redaction and bounded values.
 
 ## Environment Setup
 

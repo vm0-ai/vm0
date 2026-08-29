@@ -11,13 +11,18 @@ from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 
 
-def assert_counter_underflow_message(message: str, counter: str) -> None:
+def assert_counter_underflow_log(call, counter: str) -> None:
+    message, fields = call.args
     assert message == (
-        "type=usage_underbilling reason=usage_pending_counter_underflow "
-        "underbilling_class=risk component=mitm_addon "
-        f"counter={counter} Usage pending counter release had no matching admission; "
-        "keeping counter non-negative."
+        "Usage pending counter release had no matching admission; keeping counter non-negative."
     )
+    assert fields == {
+        "type": "usage_underbilling",
+        "reason": "usage_pending_counter_underflow",
+        "underbilling_class": "risk",
+        "component": "mitm_addon",
+        "counter": counter,
+    }
 
 
 class TestUsagePendingCounter:
@@ -66,11 +71,11 @@ class TestUsagePendingCounter:
 
         assert mock_log.error.call_count == 2
         assert mock_log.warn.call_count == 0
-        messages = [call.args[0] for call in mock_log.error.call_args_list]
-        assert all("type=usage_underbilling" in message for message in messages)
-        assert all("reason=pending_snapshot_write_failed" in message for message in messages)
-        assert all("underbilling_class=risk" in message for message in messages)
-        assert all("component=mitm_addon" in message for message in messages)
+        fields = [call.args[1] for call in mock_log.error.call_args_list]
+        assert all(field["type"] == "usage_underbilling" for field in fields)
+        assert all(field["reason"] == "pending_snapshot_write_failed" for field in fields)
+        assert all(field["underbilling_class"] == "risk" for field in fields)
+        assert all(field["component"] == "mitm_addon" for field in fields)
 
     def test_increment_decrement_in_flight_flows(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -253,7 +258,7 @@ class TestUsagePendingCounter:
         )
 
         assert mock_log.error.call_count == 1
-        assert_counter_underflow_message(mock_log.error.call_args[0][0], "flows")
+        assert_counter_underflow_log(mock_log.error.call_args, "flows")
         assert mock_log.warn.call_count == 0
 
     @pytest.mark.parametrize(
@@ -305,7 +310,7 @@ class TestUsagePendingCounter:
             flush_request_id="first-released",
         )
         assert mock_log.error.call_count == 1
-        assert_counter_underflow_message(mock_log.error.call_args[0][0], counter)
+        assert_counter_underflow_log(mock_log.error.call_args, counter)
 
         second.release()
         assert_current_pending(
@@ -322,9 +327,8 @@ class TestUsagePendingCounter:
             usage.decrement_in_flight_flows()
 
         assert mock_log.error.call_count == 2
-        messages = [call.args[0] for call in mock_log.error.call_args_list]
-        assert_counter_underflow_message(messages[0], "flows")
-        assert_counter_underflow_message(messages[1], "flows")
+        assert_counter_underflow_log(mock_log.error.call_args_list[0], "flows")
+        assert_counter_underflow_log(mock_log.error.call_args_list[1], "flows")
 
     def test_no_op_when_path_not_set(self, tmp_path):
         usage.set_pending_path("")
@@ -361,10 +365,13 @@ class TestUsagePendingCounter:
         assert list(tmp_path.glob(f"{pending_path.name}.*.tmp")) == []
         assert mock_log.error.call_count == 1
         assert mock_log.warn.call_count == 0
-        message = mock_log.error.call_args.args[0]
-        assert "reason=pending_snapshot_write_failed" in message
-        assert "error=replace\\sfailed\\nretry" in message
-        assert "\n" not in message
+        message, fields = mock_log.error.call_args.args
+        assert message == (
+            "Failed to write pending count. Subsequent failures in this process will be silent; "
+            "runner shutdown may hit the bounded proxy stop timeout."
+        )
+        assert fields["reason"] == "pending_snapshot_write_failed"
+        assert fields["error"] == "replace failed\nretry"
 
         usage.write_pending_snapshot(flush_request_id="recovered")
         assert_pending(
@@ -392,36 +399,23 @@ class TestUsagePendingCounter:
 
         assert mock_log.error.call_count == 1
         assert mock_log.warn.call_count == 0
-        message = mock_log.error.call_args[0][0]
-        rendered_fields, rendered_message = message.split(" Failed to write pending count.", 1)
-        field_tokens = rendered_fields.split()
-        assert [token.split("=", 1)[0] for token in field_tokens] == [
-            "type",
-            "reason",
-            "underbilling_class",
-            "component",
-            "error",
-            "error_type",
-            "pending_path",
-        ]
-        fields = dict(token.split("=", 1) for token in field_tokens)
+        message, fields = mock_log.error.call_args.args
         assert fields["type"] == "usage_underbilling"
         assert fields["reason"] == "pending_snapshot_write_failed"
         assert fields["underbilling_class"] == "risk"
         assert fields["component"] == "mitm_addon"
         assert fields["error_type"] == "OSError"
-        assert fields["error"].startswith("disk\\sfull\\n")
+        assert fields["error"].startswith("disk full\n")
         assert fields["pending_path"].startswith(str(tmp_path))
-        assert "\\n" in fields["pending_path"]
+        assert "\n" in fields["pending_path"]
         assert len(fields["error"]) == 256
         assert len(fields["pending_path"]) == 256
         assert fields["error"].endswith("...")
         assert fields["pending_path"].endswith("...")
-        assert rendered_message == (
-            " Subsequent failures in this process will be silent; runner shutdown may hit the "
-            "bounded proxy stop timeout."
+        assert message == (
+            "Failed to write pending count. Subsequent failures in this process will be silent; "
+            "runner shutdown may hit the bounded proxy stop timeout."
         )
-        assert "\n" not in message
 
     def test_write_failure_does_not_raise(self, tmp_path, mitm_ctx):
         """Write failures stay best-effort after the one-shot error signal — callers
