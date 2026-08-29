@@ -119,6 +119,85 @@ def test_retained_model_observation_flush_logs_scalar_only_process_summary(tmp_p
     )
 
 
+def test_failed_model_observation_flush_logs_process_summary(tmp_path, capsys):
+    def fail_enqueue(
+        url: str,
+        runner_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+    ) -> bool:
+        del url, runner_token, payload, path, log_type
+        raise RuntimeError("sensitive failure")
+
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=RecordingEnqueue(side_effect=fail_enqueue))
+    usage.buffer_model_usage_observations(
+        "https://sensitive-api.test/api/runners/model-usage-observations",
+        "secret-runner-token",
+        "secret-run-id",
+        [observation(source_key="secret-source-key", model="secret-model")],
+        str(tmp_path / "secret-proxy.jsonl"),
+    )
+
+    with pytest.raises(RuntimeError, match="sensitive failure"):
+        usage.flush_model_usage_observations(trigger="test")
+
+    [line] = capsys.readouterr().err.splitlines()
+    assert "phase=failed" in line
+    assert "error_type=RuntimeError" in line
+    assert "sensitive" not in line
+
+
+@pytest.mark.parametrize(
+    ("max_retained_batch_retries", "expected_phase"),
+    [(20, "retained"), (0, "dropped")],
+)
+def test_model_observation_delivery_anomaly_logs_process_summary(
+    tmp_path,
+    capsys,
+    mitm_ctx,
+    max_retained_batch_retries,
+    expected_phase,
+):
+    callbacks: list[DeliveryOutcomeCallback] = []
+
+    def enqueue_webhook(
+        url: str,
+        runner_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
+    ) -> bool:
+        del url, runner_token, payload, path, log_type
+        callbacks.append(delivery_outcome_callback)
+        return True
+
+    usage.reset_usage_buffer_for_tests(
+        enqueue_webhook=enqueue_webhook,
+        max_retained_batch_retries=max_retained_batch_retries,
+    )
+    usage.buffer_model_usage_observations(
+        "https://sensitive-api.test/api/runners/model-usage-observations",
+        "secret-runner-token",
+        "secret-run-id",
+        [observation(source_key="secret-source-key", model="secret-model")],
+        str(tmp_path / "secret-proxy.jsonl"),
+    )
+
+    assert usage.flush_model_usage_observations(trigger="test") == 1
+    assert capsys.readouterr().err == ""
+
+    with mitm_ctx():
+        callbacks[0]("retryable_failure")
+
+    [line] = capsys.readouterr().err.splitlines()
+    assert f"phase={expected_phase}" in line
+    assert "source_event_count=1" in line
+    assert "webhook_batch_count=1" in line
+    assert "sensitive" not in line
+
+
 def test_flush_logs_isolate_summaries_across_proxy_log_paths(tmp_path):
     enqueue = RecordingEnqueue(return_value=False)
     usage.reset_usage_buffer_for_tests(
