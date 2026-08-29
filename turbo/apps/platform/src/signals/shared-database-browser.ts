@@ -4,6 +4,7 @@ import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
 import { authRecovery$, authenticatedIdentity$ } from "./auth.ts";
+import type { AuthRecovery } from "./auth-retry.ts";
 import { logger } from "./log.ts";
 import {
   createChildAbortController,
@@ -15,6 +16,7 @@ import {
   withCleanup,
 } from "./utils.ts";
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
+import { AuthRecoveringSharedDatabaseBridge } from "../shared-database/auth-recovering-client.ts";
 import {
   ReconnectingSharedDatabaseBridge,
   SharedDatabaseTransportError,
@@ -28,6 +30,7 @@ import {
 } from "./shared-database.ts";
 
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
+const AUTHENTICATION_REQUIRED_EVENT = "authentication-required";
 const L = logger("SharedDatabaseBrowser");
 
 interface JwtLifetime {
@@ -139,13 +142,14 @@ async function resolveWorkerRecovery(
 }
 
 export const setupSharedDatabaseBridge$ = command(
-  ({ get, set }, signal: AbortSignal): void => {
+  ({ get, set }, authRecovery: AuthRecovery, signal: AbortSignal): void => {
     signal.throwIfAborted();
     if (get(sharedDatabaseBridgeInstalled$)) {
       return;
     }
     const apiBaseUrl = resolveApiBaseForTarget("api");
-    const bridge = new ReconnectingSharedDatabaseBridge({
+    const authenticationRequiredTarget = new EventTarget();
+    const reconnectingBridge = new ReconnectingSharedDatabaseBridge({
       createBridge: (events) => {
         const worker = new SharedDatabaseWorker({ name: "okou core service" });
         const portBridge = new MessagePortSharedDatabaseBridge(
@@ -187,6 +191,11 @@ export const setupSharedDatabaseBridge$ = command(
         return portBridge;
       },
       events: {
+        authenticationRequired: () => {
+          authenticationRequiredTarget.dispatchEvent(
+            new Event(AUTHENTICATION_REQUIRED_EVENT),
+          );
+        },
         reloadRequired: () => {
           location.reload();
         },
@@ -195,6 +204,20 @@ export const setupSharedDatabaseBridge$ = command(
         },
       },
     });
+    const bridge = new AuthRecoveringSharedDatabaseBridge(
+      reconnectingBridge,
+      async (recoverySignal) => {
+        return await authRecovery.forceRefreshToken(recoverySignal);
+      },
+      signal,
+    );
+    authenticationRequiredTarget.addEventListener(
+      AUTHENTICATION_REQUIRED_EVENT,
+      onDomEventFn(async () => {
+        await bridge.authenticationRequired();
+      }),
+      { signal },
+    );
     set(installSharedDatabaseBridge$, bridge);
   },
 );

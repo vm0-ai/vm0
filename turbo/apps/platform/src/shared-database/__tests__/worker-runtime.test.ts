@@ -53,7 +53,13 @@ function chatEventSchemaVersionResponseHeaders(): Record<string, string> {
 
 type WorkerEvent = Extract<
   SharedDatabaseWorkerMessage,
-  { readonly type: "append" | "reload-required" | "status" }
+  {
+    readonly type:
+      | "append"
+      | "authentication-required"
+      | "reload-required"
+      | "status";
+  }
 >;
 
 function identity(): SharedDatabaseIdentity {
@@ -1654,7 +1660,9 @@ describe("shared database worker runtime", () => {
 
   it("blocks on 401 until heartbeat supplies a different token", async () => {
     const workerEvents: WorkerEvent[] = [];
+    const secondClientEvents: WorkerEvent[] = [];
     const clientId = await connectRuntime(workerEvents);
+    await connectRuntime(secondClientEvents);
     const dataKey = chatEventKey(crypto.randomUUID());
     const recoveredRow = chatEventRow(dataKey.threadId, 1);
     let authorized = false;
@@ -1705,6 +1713,16 @@ describe("shared database worker runtime", () => {
       }),
     ).rejects.toMatchObject({ name: "SharedDatabaseAuthBlockedError" });
     expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "authentication-required";
+      }),
+    ).toHaveLength(1);
+    expect(
+      secondClientEvents.filter((event) => {
+        return event.type === "authentication-required";
+      }),
+    ).toHaveLength(1);
 
     context.mocks.ably.triggerOnChannel(
       realtimeChannel(),
@@ -1728,6 +1746,11 @@ describe("shared database worker runtime", () => {
       }),
     ).rejects.toMatchObject({ name: "SharedDatabaseAuthBlockedError" });
     expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "authentication-required";
+      }),
+    ).toHaveLength(1);
 
     authorized = true;
     await context.workerStore.set(

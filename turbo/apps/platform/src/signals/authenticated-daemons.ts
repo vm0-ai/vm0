@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { clerk$ } from "./auth.ts";
+import { authRecovery$, clerk$ } from "./auth.ts";
 import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
@@ -39,7 +39,9 @@ export const setupAuthenticatedDaemons$ = command(
       get(featureSwitch$)[FeatureSwitchKey.SharedChatDatabase] ?? false;
     set(selectSharedDatabaseMode$, sharedDatabaseEnabled);
     if (sharedDatabaseEnabled) {
-      set(setupSharedDatabaseBridge$, signal);
+      const authRecovery = await get(authRecovery$);
+      signal.throwIfAborted();
+      set(setupSharedDatabaseBridge$, authRecovery, signal);
       await set(heartbeatSharedDatabaseNow$, signal);
       signal.throwIfAborted();
     }

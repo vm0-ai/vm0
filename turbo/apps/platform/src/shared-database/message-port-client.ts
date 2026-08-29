@@ -54,6 +54,10 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         this.events.reloadRequired();
         return;
       }
+      if (message.type === "authentication-required") {
+        this.events.authenticationRequired();
+        return;
+      }
       if (message.type === "status") {
         this.events.statusChanged(message.status);
         return;

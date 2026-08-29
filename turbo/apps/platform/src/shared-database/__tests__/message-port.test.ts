@@ -149,6 +149,7 @@ function installProtocolBridge(): {
     platformPort,
     location.origin,
     {
+      authenticationRequired: vi.fn<() => void>(),
       reloadRequired: vi.fn<() => void>(),
       statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
     },
@@ -316,6 +317,7 @@ describe("shared database MessagePort protocol", () => {
         return connectProtocolTransport(events);
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged:
           vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
@@ -327,6 +329,7 @@ describe("shared database MessagePort protocol", () => {
         return connectProtocolTransport(events);
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged: (status) => {
           staleTabStatuses.push(status);
@@ -413,6 +416,7 @@ describe("shared database MessagePort protocol", () => {
         return connectProtocolTransport(events);
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged:
           vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
@@ -463,6 +467,7 @@ describe("shared database MessagePort protocol", () => {
   it("validates results and handles callback cleanup plus control messages", async () => {
     const [platformPort, serverPort] = messagePortPair();
     const statuses: SharedDatabaseConnectionStatus[] = [];
+    let authenticationRequests = 0;
     let reloads = 0;
     let subscriptionId: string | null = null;
     let observedHeartbeat: SharedDatabaseClientMessage | null = null;
@@ -472,6 +477,9 @@ describe("shared database MessagePort protocol", () => {
       platformPort,
       location.origin,
       {
+        authenticationRequired: () => {
+          authenticationRequests += 1;
+        },
         reloadRequired: () => {
           reloads += 1;
         },
@@ -562,10 +570,12 @@ describe("shared database MessagePort protocol", () => {
       ),
     ).rejects.toMatchObject({ name: "ZodError" });
 
+    serverPort.postMessage({ type: "authentication-required" });
     serverPort.postMessage({ type: "status", status: "disconnected" });
     serverPort.postMessage({ type: "reload-required" });
     await vi.waitFor(() => {
       expect(statuses).toStrictEqual(["disconnected"]);
+      expect(authenticationRequests).toBe(1);
       expect(reloads).toBe(1);
     });
   });

@@ -31,7 +31,13 @@ import { createDeferredPromise } from "../signals/utils.ts";
 
 type DirectWorkerEvent = Extract<
   SharedDatabaseWorkerMessage,
-  { readonly type: "append" | "reload-required" | "status" }
+  {
+    readonly type:
+      | "append"
+      | "authentication-required"
+      | "reload-required"
+      | "status";
+  }
 >;
 
 async function waitForWorkerOperation<T>(
@@ -72,6 +78,9 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     }
     if (event.type === "reload-required") {
       location.reload();
+      return;
+    }
+    if (event.type === "authentication-required") {
       return;
     }
     this.platformStore.set(setSharedDatabaseConnectionStatus$, event.status);
