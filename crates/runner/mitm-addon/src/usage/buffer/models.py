@@ -50,7 +50,7 @@ ResourceFieldName = Literal["provider", "model"]
 @dataclass(frozen=True)
 class _DestinationKey:
     url: str
-    sandbox_token: str
+    bearer_credential: str
     proxy_log_path: str
     resource_field_name: ResourceFieldName
     include_kind: bool
@@ -105,7 +105,7 @@ class _FlushEvent:
 @dataclass(frozen=True)
 class _FlushBatch:
     url: str
-    sandbox_token: str
+    bearer_credential: str
     payload: dict
     proxy_log_path: str
     log_type: str

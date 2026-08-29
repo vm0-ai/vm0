@@ -26,9 +26,11 @@ idempotency key.
 
 Flushes are triggered by buffer bounds, the lazy timer, or explicit lifecycle
 calls. Flush summaries include the conventional trigger labels captured by
-``UsageFlushTrigger``. Most summaries are ``usage_event_buffer_flush`` proxy-log
-records; retained or dropped batches can become ``usage_underbilling`` records
-under the contract documented by ``usage.buffer.logging``.
+``UsageFlushTrigger``. Billing summaries are ``usage_event_buffer_flush``
+proxy-log records, with billing-impacting retained or dropped batches promoted
+to ``usage_underbilling``. Successful model observation flushes are silent;
+their admission, delivery, retention, and drop anomalies use the generic addon
+process-event path documented by ``usage.buffer.logging``.
 """
 
 from __future__ import annotations

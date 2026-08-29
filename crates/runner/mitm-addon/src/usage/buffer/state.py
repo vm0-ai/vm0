@@ -186,12 +186,12 @@ class _UsageBufferState:
         buckets: dict[_AggregateKey, list[_AggregateBucket]] | None = None
         source_events: list[_BufferedSourceEvent] | None = None
         destination = _DestinationKey(
-            url,
-            sandbox_token,
-            proxy_log_path,
-            resource_field_name,
-            include_kind,
-            log_type,
+            url=url,
+            bearer_credential=sandbox_token,
+            proxy_log_path=proxy_log_path,
+            resource_field_name=resource_field_name,
+            include_kind=include_kind,
+            log_type=log_type,
         )
         accepted_count = 0
         for event in events:
@@ -244,12 +244,12 @@ class _UsageBufferState:
         accepted_source_keys: set[str] | None,
     ) -> int:
         destination = _DestinationKey(
-            url,
-            runner_token,
-            "",
-            "model",
-            False,
-            "model_usage_observation",
+            url=url,
+            bearer_credential=runner_token,
+            proxy_log_path="",
+            resource_field_name="model",
+            include_kind=False,
+            log_type="model_usage_observation",
         )
         buckets: dict[_ObservationAggregateKey, list[_ObservationAggregateBucket]] | None = None
         source_observations: list[_BufferedSourceObservation] | None = None
@@ -597,7 +597,7 @@ class _UsageBufferState:
             key=lambda item: (
                 _destination_priority(item),
                 item.url,
-                item.sandbox_token,
+                item.bearer_credential,
                 item.proxy_log_path,
                 item.resource_field_name,
                 item.include_kind,
@@ -612,7 +612,7 @@ class _UsageBufferState:
                     batches.append(
                         _FlushBatch(
                             url=destination.url,
-                            sandbox_token=destination.sandbox_token,
+                            bearer_credential=destination.bearer_credential,
                             payload={
                                 "runId": run_id,
                                 "events": [event.payload for event in batch_events],
@@ -636,7 +636,7 @@ class _UsageBufferState:
             key=lambda item: (
                 _destination_priority(item),
                 item.url,
-                item.sandbox_token,
+                item.bearer_credential,
                 item.proxy_log_path,
                 item.resource_field_name,
                 item.include_kind,
@@ -658,7 +658,7 @@ class _UsageBufferState:
                     batches.append(
                         _FlushBatch(
                             url=destination.url,
-                            sandbox_token=destination.sandbox_token,
+                            bearer_credential=destination.bearer_credential,
                             payload={
                                 "runId": run_id,
                                 "events": [event.payload for event in batch_events],
@@ -686,7 +686,7 @@ class _UsageBufferState:
             key=lambda item: (
                 _destination_priority(item),
                 item.url,
-                item.sandbox_token,
+                item.bearer_credential,
                 item.proxy_log_path,
                 item.log_type,
             ),
@@ -729,7 +729,7 @@ class _UsageBufferState:
             key=lambda item: (
                 _destination_priority(item),
                 item.url,
-                item.sandbox_token,
+                item.bearer_credential,
                 item.proxy_log_path,
                 item.log_type,
             ),
@@ -795,7 +795,7 @@ class _UsageBufferState:
                 self._buffer_id,
                 str(flush_sequence),
                 destination.url,
-                destination.sandbox_token,
+                destination.bearer_credential,
                 destination.proxy_log_path,
                 aggregate_key.run_id,
                 aggregate_key.kind,
@@ -860,7 +860,7 @@ def _observation_flush_batches(
         batches.append(
             _FlushBatch(
                 url=destination.url,
-                sandbox_token=destination.sandbox_token,
+                bearer_credential=destination.bearer_credential,
                 payload={
                     "events": [observation.payload for observation in batch_observations],
                 },
@@ -914,7 +914,7 @@ def _flush_batch_sort_key(batch: _FlushBatch) -> tuple[object, ...]:
     return (
         _batch_priority(batch),
         batch.url,
-        batch.sandbox_token,
+        batch.bearer_credential,
         batch.proxy_log_path,
         batch.log_type,
         run_id if isinstance(run_id, str) else "",

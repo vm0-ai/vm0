@@ -100,9 +100,9 @@ def _raw_webhook_url_log_text_variants(raw_url: str) -> tuple[str, ...]:
     return tuple(sorted(variants, key=len, reverse=True))
 
 
-def _post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
+def _post_webhook(url: str, bearer_credential: str, data: bytes) -> None:
     """POST JSON data to a platform webhook.  Raises on failure."""
-    req = make_api_request(url, data, sandbox_token)
+    req = make_api_request(url, data, bearer_credential)
     try:
         with _opener.open(req, timeout=10):
             pass
@@ -115,7 +115,7 @@ def _post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
 
 def _post_webhook_with_retry(
     url: str,
-    sandbox_token: str,
+    bearer_credential: str,
     payload: dict,
     proxy_log_path: str,
     log_type: str,
@@ -132,7 +132,7 @@ def _post_webhook_with_retry(
     """
     try:
         outcome = _do_post_webhook_attempts(
-            url, sandbox_token, payload, proxy_log_path, log_type, max_retries
+            url, bearer_credential, payload, proxy_log_path, log_type, max_retries
         )
     except Exception:
         if delivery_outcome_callback is not None:
@@ -190,7 +190,7 @@ def _handle_retryable_webhook_failure(
 
 def _do_post_webhook_attempts(
     url: str,
-    sandbox_token: str,
+    bearer_credential: str,
     payload: dict,
     proxy_log_path: str,
     log_type: str,
@@ -214,7 +214,7 @@ def _do_post_webhook_attempts(
     payload_bytes = len(data)
     for attempt in range(max_retries + 1):
         try:
-            _post_webhook(url, sandbox_token, data)
+            _post_webhook(url, bearer_credential, data)
             _log_webhook_entry(
                 proxy_log_path,
                 "info",

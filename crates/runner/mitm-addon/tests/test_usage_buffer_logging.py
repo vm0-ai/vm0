@@ -80,7 +80,11 @@ def test_successful_model_observation_flush_does_not_log_process_event(tmp_path)
     assert log.mock_calls == []
 
 
-def test_retained_model_observation_flush_logs_scalar_only_process_summary(tmp_path):
+@pytest.mark.parametrize("trigger", ["test", "shutdown"])
+def test_retained_model_observation_flush_logs_scalar_only_process_summary(
+    tmp_path,
+    trigger,
+):
     enqueue = RecordingEnqueue(return_value=False)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
@@ -99,15 +103,16 @@ def test_retained_model_observation_flush_logs_scalar_only_process_summary(tmp_p
     )
 
     with capture_addon_process_events() as log:
-        assert usage.flush_model_usage_observations(trigger="test") == 0
+        assert usage.flush_model_usage_observations(trigger=trigger) == 0
 
     log.warn.assert_called_once()
+    log.error.assert_not_called()
     message, fields = log.warn.call_args.args
     assert message == "Model usage observation buffer flush anomaly"
     assert fields == {
         "type": "model_usage_observation_buffer_flush",
         "phase": "enqueued",
-        "trigger": "test",
+        "trigger": trigger,
         "flush_sequence": 1,
         "source_event_count": 1,
         "aggregate_event_count": 1,
@@ -167,13 +172,18 @@ def test_failed_model_observation_flush_logs_process_summary(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("max_retained_batch_retries", "expected_phase"),
-    [(20, "retained"), (0, "dropped")],
+    ("max_retained_batch_retries", "delivery_outcome", "expected_phase"),
+    [
+        (20, "retryable_failure", "retained"),
+        (0, "retryable_failure", "dropped"),
+        (20, "permanent_failure", "failed"),
+    ],
 )
 def test_model_observation_delivery_anomaly_logs_process_summary(
     tmp_path,
     mitm_ctx,
     max_retained_batch_retries,
+    delivery_outcome,
     expected_phase,
 ):
     callbacks: list[DeliveryOutcomeCallback] = []
@@ -205,15 +215,25 @@ def test_model_observation_delivery_anomaly_logs_process_summary(
     with mitm_ctx() as log:
         assert usage.flush_model_usage_observations(trigger="test") == 1
         assert log.mock_calls == []
-        callbacks[0]("retryable_failure")
+        callbacks[0](delivery_outcome)
 
-    process_call = (log.warn if expected_phase == "retained" else log.error).call_args_list[0]
+    process_call = (log.warn if expected_phase == "retained" else log.error).call_args
+    if expected_phase == "retained":
+        log.warn.assert_called_once()
+        log.error.assert_not_called()
+    else:
+        log.error.assert_called_once()
+        log.warn.assert_not_called()
     message, fields = process_call.args
     assert message == "Model usage observation buffer flush anomaly"
     assert fields["type"] == "model_usage_observation_buffer_flush"
     assert fields["phase"] == expected_phase
     assert fields["source_event_count"] == 1
     assert fields["webhook_batch_count"] == 1
+    if delivery_outcome == "permanent_failure":
+        assert fields["delivery_outcome"] == "permanent_failure"
+    else:
+        assert "delivery_outcome" not in fields
     assert "sensitive" not in json.dumps(fields)
 
 

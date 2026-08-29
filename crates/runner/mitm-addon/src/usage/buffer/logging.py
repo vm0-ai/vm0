@@ -6,23 +6,27 @@ retained or dropped batches can be billing-impacting underbilling signals:
 - ``started`` marks enqueue/admission start.
 - ``enqueued`` marks enqueue/admission completion and may include retained
   counters for batches kept for retry.
-- ``failed`` marks an enqueue exception and logs at error level.
+- ``failed`` marks an enqueue exception or permanent asynchronous delivery
+  failure and logs at error level.
 - ``retained`` marks asynchronous delivery outcomes kept for retry.
 - ``dropped`` marks retained batches whose retry budget was exhausted.
 
-Dropped retained batches always emit ``usage_underbilling`` with
+Dropped retained billing batches always emit ``usage_underbilling`` with
 ``reason=retry_budget_exhausted`` and ``underbilling_class=confirmed``.
-Shutdown-retained batches emit ``usage_underbilling`` with
+Shutdown-retained billing batches emit ``usage_underbilling`` with
 ``reason=shutdown_retained_without_retry`` and ``underbilling_class=risk``.
 Failed shutdown admission remains an ordinary error record; its separate
 retained-only summary emits the shutdown underbilling signal.
+
+Model observation anomalies instead use their dedicated process event. They do
+not affect billing and must not also emit ``usage_underbilling``.
 
 Operators should use ``retained_source_event_count`` and
 ``retained_webhook_batch_count`` for retained work, and
 ``dropped_source_event_count`` and ``dropped_webhook_batch_count`` for confirmed
 drops. Dropped retained batches also include ``retained_retry_count``. When no
-proxy log path exists, ordinary flush records are skipped; underbilling records
-use the process event in ``log_usage_underbilling``.
+proxy log path exists, ordinary flush records are skipped. Billing underbilling
+and model observation anomalies use their respective generic process events.
 """
 
 from __future__ import annotations
@@ -94,6 +98,23 @@ def _log_dropped_batches(
     )
 
 
+def _log_permanent_delivery_failure(
+    trigger: UsageFlushTrigger,
+    flush_sequence: int,
+    pending_batch: _PendingBatch,
+) -> None:
+    """Emit the process-level anomaly for one lost observation batch."""
+    if pending_batch.batch.log_type != _MODEL_OBSERVATION_LOG_TYPE:
+        return
+    _log_flush_summaries(
+        "failed",
+        trigger,
+        flush_sequence,
+        _build_flush_summaries([pending_batch.batch]),
+        delivery_outcome="permanent_failure",
+    )
+
+
 def _log_flush_summaries(
     phase: _UsageFlushPhase,
     trigger: UsageFlushTrigger,
@@ -103,6 +124,7 @@ def _log_flush_summaries(
     duration_ms: int | None = None,
     error_type: str | None = None,
     retained_retry_count: int | None = None,
+    delivery_outcome: Literal["permanent_failure"] | None = None,
 ) -> None:
     for summary in summaries:
         retained_webhook_batch_count = summary.retained_webhook_batch_count
@@ -135,6 +157,8 @@ def _log_flush_summaries(
             extra["reason"] = _RETRY_BUDGET_EXHAUSTED_REASON
         if retained_retry_count is not None:
             extra["retained_retry_count"] = retained_retry_count
+        if delivery_outcome is not None:
+            extra["delivery_outcome"] = delivery_outcome
         level = "error" if phase == "failed" else "info"
         message = f"Usage event buffer flush {phase}"
         if phase == "retained":
@@ -151,7 +175,7 @@ def _log_flush_summaries(
                 "error" if phase in ("failed", "dropped") else "warn"
             )
             _log_model_observation_process_summary(level=process_level, fields=extra)
-        if phase == "dropped":
+        if phase == "dropped" and summary.log_type != _MODEL_OBSERVATION_LOG_TYPE:
             log_usage_underbilling(
                 summary.proxy_log_path,
                 message,
@@ -161,7 +185,8 @@ def _log_flush_summaries(
             )
             continue
         if (
-            phase in ("enqueued", "retained")
+            summary.log_type != _MODEL_OBSERVATION_LOG_TYPE
+            and phase in ("enqueued", "retained")
             and trigger == "shutdown"
             and retained_webhook_batch_count
         ):
@@ -203,6 +228,7 @@ def _log_model_observation_process_summary(
         "duration_ms",
         "retained_retry_count",
         "error_type",
+        "delivery_outcome",
     )
     process_fields = {key: fields[key] for key in ordered_keys if key in fields}
     addon_process_logging.emit_addon_process_event(
