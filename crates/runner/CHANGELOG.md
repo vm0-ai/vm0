@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.178.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.2...runner-rs-v0.178.3) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+* **runner:** remove legacy mitmdump runtime reader ([#30166](https://github.com/vm0-ai/vm0/issues/30166)) ([45e9dad](https://github.com/vm0-ai/vm0/commit/45e9dad1fa23af2e2645a9b1141fabdaec6cdb2d))
+
 ## [0.178.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.1...runner-rs-v0.178.2) (2026-08-28)
 
 

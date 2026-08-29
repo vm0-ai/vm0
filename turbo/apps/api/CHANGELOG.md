@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.510.0](https://github.com/vm0-ai/vm0/compare/api-v1.509.0...api-v1.510.0) (2026-08-29)
+
+
+### Features
+
+* **platform:** use flowchart-only mermaid build ([#30170](https://github.com/vm0-ai/vm0/issues/30170)) ([683db88](https://github.com/vm0-ai/vm0/commit/683db889dd2d31920c6294df75b7904be6db7747))
+
+
+### Refactoring
+
+* **db:** expand built-in model restriction entitlement ([#30189](https://github.com/vm0-ai/vm0/issues/30189)) ([279f4f5](https://github.com/vm0-ai/vm0/commit/279f4f5d9eaeae57efdfbd039f7a2fa34f16cb35))
+
+
+### Performance Improvements
+
+* **platform:** trim vendors and ship one app bundle ([#30175](https://github.com/vm0-ai/vm0/issues/30175)) ([48d88b9](https://github.com/vm0-ai/vm0/commit/48d88b92e7ffdf98de82e57c5681506da891986a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.1
+    * @okouai/connector-catalog-validation bumped to 2.0.3
+    * @okouai/connectors bumped to 1.210.7
+    * @okouai/core bumped to 8.601.2
+    * @okouai/db bumped to 1.228.5
+
 ## [1.509.0](https://github.com/vm0-ai/vm0/compare/api-v1.508.0...api-v1.509.0) (2026-08-28)
 
 
