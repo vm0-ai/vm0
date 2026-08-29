@@ -25,6 +25,8 @@ import {
   type SessionHeader,
 } from "@earendil-works/pi-coding-agent";
 
+import { UnsupportedPiSessionVersionError } from "./errors";
+
 interface CreateMemoryPiSessionOptions {
   readonly cwd: string;
   readonly id: string;
@@ -63,8 +65,6 @@ type NewMemorySessionEntry =
 // this default when opening a new session, and when opening an older session
 // that has messages but no explicit thinking_level_change entry.
 const PI_DEFAULT_THINKING_LEVEL: ModelThinkingLevel = "medium";
-
-export class UnsupportedPiSessionVersionError extends Error {}
 
 function assertSessionHeader(entry: FileEntry | undefined): SessionHeader {
   if (entry?.type !== "session" || typeof entry.id !== "string") {
