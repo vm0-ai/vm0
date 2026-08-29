@@ -928,6 +928,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stop_fails_closed_when_gate_unit_state_is_unavailable() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            gate_active_results: VecDeque::from([Err(fake_error("systemd unavailable"))]),
+            ..FakeStopOps::default()
+        };
+
+        let error = stop_with_ops(&unit, &home, false, None, &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("vm0-runner-test"));
+        assert!(message.contains("before service stop"));
+        assert!(message.contains("systemd unavailable"));
+        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
+    }
+
+    #[tokio::test]
     async fn stop_default_reports_drain_cleanup_failure() {
         let unit = service_unit();
         let home = fake_home();

@@ -1368,6 +1368,29 @@ profiles:
         assert!(error.draining);
     }
 
+    #[tokio::test]
+    async fn uninstall_fails_closed_when_gate_unit_state_is_unavailable() {
+        let unit = service_unit();
+        let home = HomePaths::with_root(PathBuf::from("/tmp/vm0-runner-test"));
+        let mut ops = FakeUninstallOps {
+            events: Vec::new(),
+            gate_active_results: VecDeque::from([Err(RunnerError::Internal(
+                "systemd unavailable".to_string(),
+            ))]),
+            gate_config_path: None,
+        };
+
+        let error = uninstall_with_ops(&unit, &home, false, &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("vm0-runner-test"));
+        assert!(message.contains("before service uninstall"));
+        assert!(message.contains("systemd unavailable"));
+        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
+    }
+
     #[test]
     fn readiness_base_dir_waits_without_live_record() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
