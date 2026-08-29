@@ -205,17 +205,18 @@ fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
                 ch if ch == quote_char => quote = None,
                 '\\' => match chars.next() {
                     Some(next @ ('\\' | '"' | '\'')) => token.push(next),
-                    Some(next) => {
-                        token.push('\\');
-                        token.push(next);
-                    }
-                    None => return None,
+                    Some(_) | None => return None,
                 },
                 '%' if chars.peek() == Some(&'%') => {
                     chars.next();
                     token.push('%');
                 }
-                '%' => token.push('%'),
+                '%' => return None,
+                '$' if chars.peek() == Some(&'$') => {
+                    chars.next();
+                    token.push('$');
+                }
+                '$' => return None,
                 _ => token.push(ch),
             }
         } else {
@@ -234,11 +235,7 @@ fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
                     has_token = true;
                     match chars.next() {
                         Some(next @ ('\\' | '"' | '\'')) => token.push(next),
-                        Some(next) => {
-                            token.push('\\');
-                            token.push(next);
-                        }
-                        None => token.push('\\'),
+                        Some(_) | None => return None,
                     }
                 }
                 '%' if chars.peek() == Some(&'%') => {
@@ -246,10 +243,13 @@ fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
                     token.push('%');
                     has_token = true;
                 }
-                '%' => {
-                    token.push('%');
+                '%' => return None,
+                '$' if chars.peek() == Some(&'$') => {
+                    chars.next();
+                    token.push('$');
                     has_token = true;
                 }
+                '$' => return None,
                 _ => {
                     token.push(ch);
                     has_token = true;
@@ -374,6 +374,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_config_unescapes_literal_dollar() {
+        let line = r#""/usr/bin/runner" start --config=/data/runner$$config.yaml"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner$config.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_rejects_dynamic_systemd_expansion() {
+        for line in [
+            r#""/usr/bin/runner" start --config=/data/%i/runner.yaml"#,
+            r#""/usr/bin/runner" start --config=/data/${RUNNER_DIR}/runner.yaml"#,
+            r#""/usr/bin/runner" start --config=/data/$RUNNER_DIR/runner.yaml"#,
+        ] {
+            assert_eq!(parse_exec_start_config(line), None, "line: {line}");
+        }
+    }
+
+    #[test]
+    fn parse_config_rejects_unhandled_systemd_escape() {
+        let line = r#""/usr/bin/runner" start --config="/data/runner\x20config.yaml""#;
+        assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
     fn parse_config_ignores_flag_substring_in_exe_path() {
         let line = r#""/opt/nice-cli/runner" start -c "/data/runner.yaml""#;
         assert_eq!(
@@ -447,6 +473,22 @@ ExecStart="/var/lib/vm0-runner/bin/binary-blue/runner" start --config "/var/lib/
             paths.activation_config_path(),
             PathBuf::from("/var/lib/vm0-runner/runners/config-green/runner.yaml")
         );
+    }
+
+    #[test]
+    fn parse_unit_command_paths_rejects_dynamic_systemd_expansion() {
+        for content in [
+            r#"
+[Service]
+ExecStart="/var/lib/vm0-runner/bin/%i/runner" start --config "/var/lib/vm0-runner/runners/config-green/runner.yaml"
+"#,
+            r#"
+[Service]
+ExecStart="/var/lib/vm0-runner/bin/binary-blue/runner" start --config "/var/lib/vm0-runner/runners/${RUNNER_DIR}/runner.yaml"
+"#,
+        ] {
+            assert_eq!(parse_unit_command_paths(content), None);
+        }
     }
 
     #[test]

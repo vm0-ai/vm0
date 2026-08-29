@@ -53,14 +53,22 @@ fn escape_systemd_value(input: &str) -> String {
     out
 }
 
+/// Escape an argument for an `ExecStart=` command in addition to the common
+/// quoted-value escapes. Unlike `Environment=`, command arguments expand
+/// `$NAME` and `${NAME}`; `$$` is the literal-dollar escape.
+fn escape_systemd_exec_arg(input: &str) -> String {
+    escape_systemd_value(input).replace('$', "$$")
+}
+
 /// Generate the systemd unit file content.
 ///
-/// User-controllable values (`ExecStart=` paths, `Environment=` values) go
-/// through [`escape_systemd_value`] so that input cannot break out of the
-/// quotes or trigger systemd specifier expansion. `unit` is not escaped
-/// because [`RunnerServiceUnit`] already restricts it to lowercase alphanumeric,
-/// hyphens, and dots — no `%`, `\`, `"`, or other systemd special chars
-/// can reach `Description=` or `SyslogIdentifier=`.
+/// User-controllable values (`ExecStart=` paths, `Environment=` values) receive
+/// the common quoted-value escapes so that input cannot break out of quotes or
+/// trigger systemd specifier expansion. `ExecStart=` paths additionally escape
+/// dollar signs to prevent environment expansion. `unit` is not escaped because
+/// [`RunnerServiceUnit`] already restricts it to lowercase alphanumeric, hyphens,
+/// and dots — no `%`, `\`, `"`, or other systemd special chars can reach
+/// `Description=` or `SyslogIdentifier=`.
 pub(super) fn generate_unit_file(
     unit: &RunnerServiceUnit,
     exe_path: &Path,
@@ -74,8 +82,8 @@ pub(super) fn generate_unit_file(
         env_lines.push_str(&format!("Environment=\"{escaped}\"\n"));
     }
     let local_flag = if local { " --local" } else { "" };
-    let exe = escape_systemd_value(&exe_path.display().to_string());
-    let activation_config = escape_systemd_value(&activation_config_path.display().to_string());
+    let exe = escape_systemd_exec_arg(&exe_path.display().to_string());
+    let activation_config = escape_systemd_exec_arg(&activation_config_path.display().to_string());
     let unit_name = unit.unit_name();
     format!(
         "\
@@ -595,6 +603,9 @@ mod tests {
             // `%H` in user input must reach the runner process literally,
             // not be expanded to the host's hostname by systemd. See #9470.
             "MSG=job %H done".to_string(),
+            // `Environment=` stores this literally; ExecStart-style dollar
+            // escaping must not change environment values.
+            "PRICE=$5".to_string(),
         ];
         let content = generate_unit_file(
             &service_unit("v0.1.0"),
@@ -607,6 +618,7 @@ mod tests {
         assert!(content.contains(r#"Environment="PATH=C:\\Users""#));
         assert!(content.contains(r#"Environment="K=a\"\\b""#));
         assert!(content.contains(r#"Environment="MSG=job %%H done""#));
+        assert!(content.contains(r#"Environment="PRICE=$5""#));
     }
 
     #[test]
@@ -616,14 +628,23 @@ mod tests {
         // ExecStart at the wrong file. Same root cause as #9470.
         let content = generate_unit_file(
             &service_unit("v0.1.0"),
-            Path::new("/opt/runner-v1%2.0/bin/runner"),
-            Path::new("/etc/cache%20.yaml"),
+            Path::new("/opt/runner-v1%2.0/$channel/runner"),
+            Path::new("/etc/cache%20/$config.yaml"),
             &[],
             false,
         );
         assert!(content.contains(
-            r#"ExecStart="/opt/runner-v1%%2.0/bin/runner" start --config "/etc/cache%%20.yaml""#
+            r#"ExecStart="/opt/runner-v1%%2.0/$$channel/runner" start --config "/etc/cache%%20/$$config.yaml""#
         ));
+        let command_paths = super::super::unit_config::parse_unit_command_paths(&content).unwrap();
+        assert_eq!(
+            command_paths.executable_path(),
+            Path::new("/opt/runner-v1%2.0/$channel/runner")
+        );
+        assert_eq!(
+            command_paths.activation_config_path(),
+            Path::new("/etc/cache%20/$config.yaml")
+        );
     }
 
     #[test]

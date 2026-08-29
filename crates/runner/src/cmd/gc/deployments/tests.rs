@@ -1,6 +1,9 @@
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::PermissionsExt;
+use std::process::Stdio;
 use std::time::Duration;
+
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use super::*;
 use crate::live_runner_instances::LiveRunnerInstanceMetadata;
@@ -13,6 +16,11 @@ const DEPLOYMENT_CHILD_TEST: &str =
 const DEPLOYMENT_SCENARIO_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_SCENARIO";
 const DEPLOYMENT_HOME_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_HOME";
 const DEPLOYMENT_INVOCATIONS_ENV: &str = "OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS";
+const MANAGED_EXECUTABLE_CHILD_TEST: &str =
+    "cmd::gc::deployments::tests::managed_executable_gc_child";
+const MANAGED_EXECUTABLE_SCENARIO_ENV: &str = "OKOU_RUN_GC_MANAGED_EXECUTABLE_SCENARIO";
+const MANAGED_EXECUTABLE_HOME_ENV: &str = "OKOU_RUN_GC_MANAGED_EXECUTABLE_HOME";
+const LIVE_EXECUTABLE_READY: &str = "managed live executable ready";
 const SNAPSHOT_DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const FAKE_SYSTEMCTL: &str = r#"#!/bin/sh
 printf '%s\n' "$*" >> "$OKOU_RUN_GC_DEPLOYMENT_INVOCATIONS"
@@ -56,6 +64,12 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
       printf '%s\n' \
         '[Service]' \
         "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/bin/binary-opaque/nested/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runners/config-opaque/runner.yaml"
+      exit 0
+      ;;
+    expanded-command)
+      printf '%s\n' \
+        '[Service]' \
+        "ExecStart=$OKOU_RUN_GC_DEPLOYMENT_HOME/bin/%i/runner start --config $OKOU_RUN_GC_DEPLOYMENT_HOME/runners/\${RUNNER_DIR}/runner.yaml"
       exit 0
       ;;
     *)
@@ -149,6 +163,35 @@ fn install_fake_systemctl(dir: &Path) {
     let mut permissions = std::fs::metadata(&fake_systemctl).unwrap().permissions();
     permissions.set_mode(0o755);
     std::fs::set_permissions(fake_systemctl, permissions).unwrap();
+}
+
+fn install_current_test_binary(path: &Path) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let current_exe = std::env::current_exe().unwrap();
+    std::fs::copy(&current_exe, path).unwrap();
+    let permissions = std::fs::metadata(&current_exe).unwrap().permissions();
+    std::fs::set_permissions(path, permissions).unwrap();
+}
+
+fn managed_executable_child_command(
+    executable: &Path,
+    scenario: &str,
+    home: &HomePaths,
+) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(executable);
+    command
+        .arg("--exact")
+        .arg(MANAGED_EXECUTABLE_CHILD_TEST)
+        .arg("--ignored")
+        .arg("--nocapture")
+        .arg("--test-threads=1")
+        .env(MANAGED_EXECUTABLE_SCENARIO_ENV, scenario)
+        .env(
+            MANAGED_EXECUTABLE_HOME_ENV,
+            home.bin_dir().parent().unwrap(),
+        )
+        .kill_on_drop(true);
+    command
 }
 
 fn create_managed_resources(
@@ -514,6 +557,94 @@ async fn live_instance_retains_its_managed_runner_directory() {
     assert!(inventory_complete);
     assert!(home.runners_dir().join("live-runner").exists());
     assert!(handle.remove_if_current().await.unwrap());
+}
+
+#[tokio::test]
+async fn current_managed_executable_is_retained() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("home"));
+    create_managed_resources(&home, "current-bin", "current-runner", old_mtime(1_000_000));
+    create_managed_resources(&home, "orphan-bin", "orphan-runner", old_mtime(1_000_000));
+    let executable = home.bin_dir().join("current-bin").join(RUNNER_BINARY_NAME);
+    install_current_test_binary(&executable);
+    set_tree_mtime(&home.bin_dir().join("current-bin"), old_mtime(1_000_000));
+
+    let output = tokio::time::timeout(
+        Duration::from_secs(10),
+        managed_executable_child_command(&executable, "current", &home).output(),
+    )
+    .await
+    .expect("managed current executable child timed out")
+    .unwrap();
+    assert!(
+        output.status.success(),
+        "managed current executable child failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(home.bin_dir().join("current-bin").exists());
+    assert!(!home.bin_dir().join("orphan-bin").exists());
+}
+
+#[tokio::test]
+async fn live_managed_executable_is_retained() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("home"));
+    create_managed_resources(&home, "live-bin", "live-runner", old_mtime(1_000_000));
+    create_managed_resources(&home, "orphan-bin", "orphan-runner", old_mtime(1_000_000));
+    let executable = home.bin_dir().join("live-bin").join(RUNNER_BINARY_NAME);
+    install_current_test_binary(&executable);
+    set_tree_mtime(&home.bin_dir().join("live-bin"), old_mtime(1_000_000));
+
+    let mut command = managed_executable_child_command(&executable, "live", &home);
+    command.stdin(Stdio::piped()).stdout(Stdio::piped());
+    let mut child = command.spawn().unwrap();
+    let stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let wait_for_ready = async {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            assert_ne!(stdout.read_line(&mut line).await.unwrap(), 0);
+            if line.contains(LIVE_EXECUTABLE_READY) {
+                break;
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), wait_for_ready)
+        .await
+        .expect("managed live executable child did not become ready");
+
+    let outcome = gc_managed_resources(
+        &home,
+        (&[], &[]),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+        Some(0),
+        false,
+    )
+    .await
+    .unwrap();
+    let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+    assert_eq!(report.activity_count, 2);
+    assert_eq!(
+        retained_config_paths,
+        [home.runners_dir().join("live-runner/runner.yaml")]
+    );
+    assert!(inventory_complete);
+    assert!(home.bin_dir().join("live-bin").exists());
+    assert!(home.runners_dir().join("live-runner").exists());
+    assert!(!home.bin_dir().join("orphan-bin").exists());
+    assert!(!home.runners_dir().join("orphan-runner").exists());
+
+    drop(stdin);
+    let status = tokio::time::timeout(Duration::from_secs(10), child.wait())
+        .await
+        .expect("managed live executable child did not exit")
+        .unwrap();
+    assert!(status.success());
 }
 
 #[tokio::test]
@@ -948,6 +1079,21 @@ async fn invalid_managed_executable_layout_makes_inventory_incomplete() {
 }
 
 #[tokio::test]
+async fn dynamic_systemd_command_paths_make_inventory_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_systemctl(dir.path());
+    let home = HomePaths::with_root(dir.path().join("home"));
+    create_managed_resources(
+        &home,
+        "binary-opaque",
+        "config-opaque",
+        old_mtime(1_000_000),
+    );
+
+    run_systemctl_scenario(dir.path(), &home, "expanded-command").await;
+}
+
+#[tokio::test]
 #[ignore = "spawned by managed resource GC systemctl tests"]
 async fn managed_resource_gc_systemctl_child() {
     let Ok(scenario) = std::env::var(DEPLOYMENT_SCENARIO_ENV) else {
@@ -1035,7 +1181,10 @@ async fn managed_resource_gc_systemctl_child() {
             assert!(!home.bin_dir().join("unregistered").exists());
             assert!(home.runners_dir().join("config-opaque").exists());
         }
-        "invalid-snapshot" | "invalid-base-dir" | "invalid-managed-executable" => {
+        "invalid-snapshot"
+        | "invalid-base-dir"
+        | "invalid-managed-executable"
+        | "expanded-command" => {
             let outcome = gc_managed_resources(
                 &home,
                 (&persistent, &[]),
@@ -1308,5 +1457,68 @@ async fn managed_resource_gc_systemctl_child() {
             assert!(!unit.lock_path(&home).exists());
         }
         unexpected => panic!("unexpected deployment scenario: {unexpected}"),
+    }
+}
+
+#[tokio::test]
+#[ignore = "spawned by managed executable GC tests"]
+async fn managed_executable_gc_child() {
+    let Ok(scenario) = std::env::var(MANAGED_EXECUTABLE_SCENARIO_ENV) else {
+        return;
+    };
+    if !ignored_child_test_env_guard_enabled((MANAGED_EXECUTABLE_SCENARIO_ENV, &scenario)) {
+        return;
+    }
+    let home = HomePaths::with_root(PathBuf::from(
+        std::env::var(MANAGED_EXECUTABLE_HOME_ENV).unwrap(),
+    ));
+
+    match scenario.as_str() {
+        "current" => {
+            let outcome = gc_managed_resources(
+                &home,
+                (&[], &[]),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                Some(0),
+                false,
+            )
+            .await
+            .unwrap();
+            let (report, retained_config_paths, inventory_complete) = outcome.into_parts();
+
+            assert_eq!(report.activity_count, 3);
+            assert!(retained_config_paths.is_empty());
+            assert!(inventory_complete);
+            assert!(home.bin_dir().join("current-bin").exists());
+            assert!(!home.bin_dir().join("orphan-bin").exists());
+            assert!(!home.runners_dir().join("current-runner").exists());
+            assert!(!home.runners_dir().join("orphan-runner").exists());
+        }
+        "live" => {
+            let runner_dir = home
+                .runners_dir()
+                .join("live-runner")
+                .canonicalize()
+                .unwrap();
+            let handle = crate::live_runner_instances::publish(
+                &home,
+                LiveRunnerInstanceMetadata {
+                    config_path: runner_dir.join(RUNNER_CONFIG_NAME),
+                    base_dir: runner_dir,
+                    runner_group: "test".to_string(),
+                    subcommand: "start".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+            println!("{LIVE_EXECUTABLE_READY}");
+            std::io::Write::flush(&mut std::io::stdout()).unwrap();
+            let mut byte = [0_u8; 1];
+            assert_eq!(tokio::io::stdin().read(&mut byte).await.unwrap(), 0);
+            assert!(handle.remove_if_current().await.unwrap());
+        }
+        _ => panic!("unexpected managed executable scenario: {scenario}"),
     }
 }
