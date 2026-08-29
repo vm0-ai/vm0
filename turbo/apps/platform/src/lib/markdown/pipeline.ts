@@ -1,4 +1,5 @@
 import type { Data, Root, RootContent } from "hast";
+import { marked, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -6,25 +7,15 @@ import rehypeIgnore from "rehype-ignore";
 import rehypeRaw from "rehype-raw";
 import rehypeRewrite from "rehype-rewrite";
 import rehypeSlug from "rehype-slug";
-import remarkCjkFriendly from "remark-cjk-friendly";
-import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
-import remarkGfm from "remark-gfm";
-import { remarkAlert } from "remark-github-blockquote-alert";
-import remarkParse from "remark-parse";
-import remarkRehype from "remark-rehype";
 import { unified, type PluggableList } from "unified";
 import { visit } from "unist-util-visit";
 
 import { rehypeMermaid } from "../rehype-mermaid.ts";
-import {
-  rehypeRewriteHandle,
-  reservedMeta,
-  retrieveMeta,
-} from "./uiw-nodes.ts";
+import { rehypeRewriteHandle } from "./uiw-nodes.ts";
 
 /**
  * Markers the pipeline puts on a node so the view can swap it for a component.
- * They live on `data` rather than on properties because `rehype-raw` produces
+ * They live on `data` rather than on properties because parsed HTML produces
  * properties only — quoted HTML therefore cannot impersonate a marker.
  */
 declare module "hast" {
@@ -39,19 +30,14 @@ declare module "hast" {
 /**
  * Markdown source becomes a hast tree here rather than inside a React render.
  *
- * This is the pipeline `@uiw/react-markdown-preview/common` used to run
- * through `react-markdown`, reproduced so that parsing is a plain function of
- * the source: it can be memoized, moved off the render path, and kept out of
- * the view layer. The view only turns the tree into React elements.
+ * `marked` produces HTML, `rehype-raw` turns it into the shared tree, and the
+ * remaining rehype plugins add the application-owned behavior. Parsing
+ * remains a plain function of the source so it can stay outside the React
+ * render path. The view only turns the resulting tree into React elements.
  *
- * The plugin order is load-bearing and matches what the two packages built:
+ * The rehype plugin order is load-bearing:
  *
- *   remark  remarkAlert → cjk → gfm → cjkStrikethrough
- *   rehype  reservedMeta → raw → retrieveMeta → slug → autolinkHeadings →
- *           ignore → rewrite → attrs → cards → mermaid
- *
- * `remarkCjkFriendlyStrikethrough` has to sit behind `remarkGfm` because it
- * replaces gfm's own `~~` extension.
+ *   slug → autolinkHeadings → ignore → rewrite → attrs → cards → mermaid
  */
 
 type MarkdownCard = NonNullable<Data["card"]>;
@@ -120,6 +106,37 @@ function rehypeCards(options: { cards: ReadonlyMap<string, MarkdownCard> }) {
  */
 export function escapeHtmlTags(source: string): string {
   return source.replace(/</g, "&lt;");
+}
+
+const FENCE_OPENING = /^ {0,3}(`{3,}|~{3,})/u;
+
+function isMarkedCodeToken(token: Token): token is Tokens.Code {
+  return (
+    token.type === "code" && "text" in token && typeof token.text === "string"
+  );
+}
+
+function isMermaidCodeToken(token: Token): token is Tokens.Code {
+  if (!isMarkedCodeToken(token)) {
+    return false;
+  }
+  return /^mermaid(?:\s|$)/u.test(token.lang?.trimStart() ?? "");
+}
+
+function isClosedFence(raw: string): boolean {
+  const lines = raw.trimEnd().split("\n");
+  const opening = FENCE_OPENING.exec(lines[0] ?? "")?.[1];
+  const closing = lines.length > 1 ? lines[lines.length - 1] : undefined;
+  if (opening === undefined || closing === undefined) {
+    return true;
+  }
+  const trimmed = closing.replace(/^ {0,3}/u, "");
+  return (
+    trimmed.length >= opening.length &&
+    [...trimmed].every((character) => {
+      return character === opening[0];
+    })
+  );
 }
 
 /**
@@ -287,24 +304,17 @@ const rewriteUnknownTags = rehypeRewriteHandle((node, _index, parent) => {
   }
 });
 
-function remarkPlugins(): PluggableList {
-  return [
-    remarkAlert,
-    remarkCjkFriendly,
-    remarkGfm,
-    remarkCjkFriendlyStrikethrough,
-  ];
-}
-
-function rehypePlugins(options: MarkdownParseOptions): PluggableList {
+function rehypePlugins(
+  options: MarkdownParseOptions,
+  closedMermaidFences: readonly boolean[],
+): PluggableList {
   const cardPlugins: PluggableList = options.cards
     ? [[rehypeCards, { cards: options.cards }]]
     : [];
-  const mermaidPlugins: PluggableList = options.mermaid ? [rehypeMermaid] : [];
+  const mermaidPlugins: PluggableList = options.mermaid
+    ? [[rehypeMermaid, { closedFences: closedMermaidFences }]]
+    : [];
   return [
-    reservedMeta,
-    rehypeRaw,
-    retrieveMeta,
     rehypeSlug,
     rehypeAutolinkHeadings,
     rehypeIgnore,
@@ -348,14 +358,23 @@ export function parseMarkdownTree(
   source: string,
   options: MarkdownParseOptions,
 ): Root {
+  const closedMermaidFences: boolean[] = [];
+  const html = marked.parse(source, {
+    async: false,
+    walkTokens: options.mermaid
+      ? (token) => {
+          if (isMermaidCodeToken(token)) {
+            closedMermaidFences.push(isClosedFence(token.raw));
+          }
+        }
+      : null,
+  });
+  const tree: Root = {
+    type: "root",
+    children: [{ type: "raw", value: html }],
+  };
   const processor = unified()
-    .use(remarkParse)
-    .use(remarkPlugins())
-    .use(remarkRehype, { allowDangerousHtml: true })
-    .use(rehypePlugins(options));
-  // `rehypeMermaid` reads the original source off the file to tell a finished
-  // fence from one that is still streaming, so the file has to travel with the
-  // tree the way `react-markdown` passed it.
-  const tree = processor.runSync(processor.parse(source), source);
-  return postProcess(tree);
+    .use(rehypeRaw)
+    .use(rehypePlugins(options, closedMermaidFences));
+  return postProcess(processor.runSync(tree, source));
 }

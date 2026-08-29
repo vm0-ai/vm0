@@ -1,6 +1,5 @@
 import type { Element, Root, RootContent } from "hast";
 import { getCodeString } from "rehype-rewrite";
-import { visit } from "unist-util-visit";
 
 /**
  * Pieces of `@uiw/react-markdown-preview` that its `exports` map does not
@@ -42,7 +41,7 @@ function octiconLink(): Element {
  * `esm/nodes/copy.js` — a marker for the copy button appended to every code
  * block. Only the marker lives in the tree; the button itself is a React
  * component, so the click handler is an ordinary `onClick`. The payload rides
- * on `data`, which `rehype-raw` cannot produce, so quoted HTML cannot forge it.
+ * on `data`, which parsed HTML cannot produce, so quoted HTML cannot forge it.
  */
 function copyElement(code: string): Element {
   return {
@@ -51,41 +50,6 @@ function copyElement(code: string): Element {
     properties: {},
     data: { copyCode: code },
     children: [],
-  };
-}
-
-/** `esm/plugins/reservedMeta.js` — carry a fence's meta across rehype-raw. */
-export function reservedMeta() {
-  return (tree: Root): void => {
-    visit(tree, (node) => {
-      if (
-        node.type === "element" &&
-        node.tagName === "code" &&
-        node.data &&
-        "meta" in node.data
-      ) {
-        node.properties = {
-          ...node.properties,
-          "data-meta": String(node.data.meta),
-        };
-      }
-    });
-  };
-}
-
-/** `esm/plugins/retrieveMeta.js` — restore the meta that survived as a prop. */
-export function retrieveMeta() {
-  return (tree: Root): void => {
-    visit(tree, (node) => {
-      if (
-        node.type === "element" &&
-        node.tagName === "code" &&
-        typeof node.properties.dataMeta === "string"
-      ) {
-        node.data = { ...node.data, meta: node.properties.dataMeta };
-        delete node.properties.dataMeta;
-      }
-    });
   };
 }
 

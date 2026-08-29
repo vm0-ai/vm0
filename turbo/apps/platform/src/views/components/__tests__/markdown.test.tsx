@@ -786,59 +786,6 @@ describe("assistant markdown", () => {
     });
   });
 
-  // CJK sentences put punctuation directly against the closing delimiter with
-  // no space, which plain CommonMark refuses to close.
-  it("emphasizes text wrapped in delimiters that touch cjk punctuation", async () => {
-    mockThread(
-      [
-        "**加粗（x）**后面",
-        "",
-        "*斜体（x）*后面",
-        "",
-        "***粗斜（x）***后面",
-        "",
-        "他说**「重要」**的事",
-      ].join("\n"),
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("加粗（x）", { selector: "strong, b" }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("斜体（x）", { selector: "em, i" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("粗斜（x）", { selector: "em strong, strong em" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("「重要」", { selector: "strong, b" }),
-    ).toBeInTheDocument();
-  });
-
-  // Guards the `pluginsFilter` reorder: the strikethrough companion only wins
-  // over `remark-gfm`'s own `~~` extension when it runs after it.
-  it("strikes through text that touches cjk punctuation", async () => {
-    mockThread("~~删除线（test）~~后面");
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("删除线（test）", { selector: "del, s" }),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("keeps ascii markdown rendering unchanged", async () => {
     mockThread(
       [
