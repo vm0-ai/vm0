@@ -482,6 +482,138 @@ async function lockEntitlement(client: Client, orgId: string): Promise<void> {
   );
 }
 
+async function validateLockRetry(
+  databaseUrl: string,
+  setup: Client,
+): Promise<void> {
+  const rows = Array.from({ length: 3 }, (_, index) => {
+    return {
+      legacy: index % 2 === 0,
+      orgId: `org-plan-restriction-30193-lock-retry-${String(index).padStart(4, "0")}`,
+    };
+  });
+  const orgIds = rows.map((row) => {
+    return row.orgId;
+  });
+  await seedLegacyOnlyRows(setup, rows);
+  const locker = await connect(databaseUrl);
+  const runner = await connect(databaseUrl);
+  const concurrentOrgId = "org-plan-restriction-30193-lock-retry-concurrent";
+  try {
+    await lockEntitlement(locker, orgIds[0]!);
+    const running = runner.query(
+      `CALL "${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_PROCEDURE}"(interval '5 seconds')`,
+    );
+    await waitForEligibleRowCount(setup, orgIds, 1);
+
+    await setup.query(
+      `
+        INSERT INTO "org_plan_entitlements" (
+          "org_id", "plan_key", "plan_rank", "source",
+          "restricted_vm0_models"
+        ) VALUES ($1, 'fixture', 0, 'test_fixture', false)
+      `,
+      [concurrentOrgId],
+    );
+    await setup.query(
+      `
+        UPDATE "org_plan_entitlements"
+        SET "restricted_vm0_models" = true
+        WHERE "org_id" = $1
+      `,
+      [concurrentOrgId],
+    );
+    await setup.query(
+      `
+        UPDATE "org_plan_entitlements"
+        SET "restricted_built_in_models" = false
+        WHERE "org_id" = $1
+      `,
+      [concurrentOrgId],
+    );
+
+    await locker.query("COMMIT");
+    await running;
+    assert.equal(await eligibleRowCount(setup, orgIds), 0);
+    const concurrentRows = await readRestrictionRows(setup, [concurrentOrgId]);
+    assert.equal(concurrentRows.length, 1);
+    assert.deepEqual(
+      {
+        canonical: concurrentRows[0]?.canonical,
+        legacy: concurrentRows[0]?.legacy,
+        orgId: concurrentRows[0]?.orgId,
+      },
+      { canonical: false, legacy: false, orgId: concurrentOrgId },
+    );
+  } finally {
+    await locker.query("ROLLBACK").catch(() => {
+      return undefined;
+    });
+    await locker.end();
+    await runner.end();
+    await setup.query(
+      `DELETE FROM "org_plan_entitlements" WHERE "org_id" = ANY($1::text[])`,
+      [[...orgIds, concurrentOrgId]],
+    );
+  }
+}
+
+async function validateLockTimeout(
+  databaseUrl: string,
+  setup: Client,
+): Promise<void> {
+  const rows = Array.from({ length: 502 }, (_, index) => {
+    return {
+      legacy: index % 2 === 0,
+      orgId: `org-plan-restriction-30193-lock-timeout-${String(index).padStart(4, "0")}`,
+    };
+  });
+  const orgIds = rows.map((row) => {
+    return row.orgId;
+  });
+  await seedLegacyOnlyRows(setup, rows);
+  const locker = await connect(databaseUrl);
+  const runner = await connect(databaseUrl);
+  try {
+    await lockEntitlement(locker, orgIds[0]!);
+    await assert.rejects(
+      runner.query(
+        `CALL "${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_PROCEDURE}"(interval '250 milliseconds')`,
+      ),
+      /made no progress for 00:00:00.25 while eligible rows remained/u,
+    );
+    assert.equal(await eligibleRowCount(setup, orgIds), 1);
+    const committedBatches = await setup.query<{ count: number }>(
+      `
+        SELECT count(*)::integer AS "count"
+        FROM "org_plan_entitlements"
+        WHERE "org_id" = ANY($1::text[])
+          AND "restricted_built_in_models" IS NOT NULL
+        GROUP BY "xmin"::text
+        ORDER BY "count"
+      `,
+      [[...orgIds]],
+    );
+    assert.deepEqual(committedBatches.rows, [{ count: 1 }, { count: 500 }]);
+
+    await locker.query("COMMIT");
+    await runner.query(
+      `CALL "${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_PROCEDURE}"(interval '30 seconds')`,
+    );
+    assert.equal(await eligibleRowCount(setup, orgIds), 0);
+  } finally {
+    await locker.query("ROLLBACK").catch(() => {
+      return undefined;
+    });
+    await locker.end();
+    await runner.end();
+    await setup.query(
+      `DELETE FROM "org_plan_entitlements" WHERE "org_id" = ANY($1::text[])`,
+      [[...orgIds]],
+    );
+  }
+}
+
 async function validateLockRetryAndTimeout(
   databaseUrl: string,
   procedure: string,
@@ -489,134 +621,8 @@ async function validateLockRetryAndTimeout(
   const setup = await connect(databaseUrl);
   await setup.query(procedure);
   try {
-    {
-      const rows = Array.from({ length: 3 }, (_, index) => {
-        return {
-          legacy: index % 2 === 0,
-          orgId: `org-plan-restriction-30193-lock-retry-${String(index).padStart(4, "0")}`,
-        };
-      });
-      const orgIds = rows.map((row) => {
-        return row.orgId;
-      });
-      await seedLegacyOnlyRows(setup, rows);
-      const locker = await connect(databaseUrl);
-      const runner = await connect(databaseUrl);
-      const concurrentOrgId =
-        "org-plan-restriction-30193-lock-retry-concurrent";
-      try {
-        await lockEntitlement(locker, orgIds[0]!);
-        const running = runner.query(
-          `CALL "${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_PROCEDURE}"(interval '5 seconds')`,
-        );
-        await waitForEligibleRowCount(setup, orgIds, 1);
-
-        await setup.query(
-          `
-            INSERT INTO "org_plan_entitlements" (
-              "org_id", "plan_key", "plan_rank", "source",
-              "restricted_vm0_models"
-            ) VALUES ($1, 'fixture', 0, 'test_fixture', false)
-          `,
-          [concurrentOrgId],
-        );
-        await setup.query(
-          `
-            UPDATE "org_plan_entitlements"
-            SET "restricted_vm0_models" = true
-            WHERE "org_id" = $1
-          `,
-          [concurrentOrgId],
-        );
-        await setup.query(
-          `
-            UPDATE "org_plan_entitlements"
-            SET "restricted_built_in_models" = false
-            WHERE "org_id" = $1
-          `,
-          [concurrentOrgId],
-        );
-
-        await locker.query("COMMIT");
-        await running;
-        assert.equal(await eligibleRowCount(setup, orgIds), 0);
-        const concurrentRows = await readRestrictionRows(setup, [
-          concurrentOrgId,
-        ]);
-        assert.equal(concurrentRows.length, 1);
-        assert.deepEqual(
-          {
-            canonical: concurrentRows[0]?.canonical,
-            legacy: concurrentRows[0]?.legacy,
-            orgId: concurrentRows[0]?.orgId,
-          },
-          { canonical: false, legacy: false, orgId: concurrentOrgId },
-        );
-      } finally {
-        await locker.query("ROLLBACK").catch(() => {
-          return undefined;
-        });
-        await locker.end();
-        await runner.end();
-        await setup.query(
-          `DELETE FROM "org_plan_entitlements" WHERE "org_id" = ANY($1::text[])`,
-          [[...orgIds, concurrentOrgId]],
-        );
-      }
-    }
-
-    {
-      const rows = Array.from({ length: 502 }, (_, index) => {
-        return {
-          legacy: index % 2 === 0,
-          orgId: `org-plan-restriction-30193-lock-timeout-${String(index).padStart(4, "0")}`,
-        };
-      });
-      const orgIds = rows.map((row) => {
-        return row.orgId;
-      });
-      await seedLegacyOnlyRows(setup, rows);
-      const locker = await connect(databaseUrl);
-      const runner = await connect(databaseUrl);
-      try {
-        await lockEntitlement(locker, orgIds[0]!);
-        await assert.rejects(
-          runner.query(
-            `CALL "${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_PROCEDURE}"(interval '250 milliseconds')`,
-          ),
-          /made no progress for 00:00:00.25 while eligible rows remained/u,
-        );
-        assert.equal(await eligibleRowCount(setup, orgIds), 1);
-        const committedBatches = await setup.query<{ count: number }>(
-          `
-            SELECT count(*)::integer AS "count"
-            FROM "org_plan_entitlements"
-            WHERE "org_id" = ANY($1::text[])
-              AND "restricted_built_in_models" IS NOT NULL
-            GROUP BY "xmin"::text
-            ORDER BY "count"
-          `,
-          [[...orgIds]],
-        );
-        assert.deepEqual(committedBatches.rows, [{ count: 1 }, { count: 500 }]);
-
-        await locker.query("COMMIT");
-        await runner.query(
-          `CALL "${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_PROCEDURE}"(interval '30 seconds')`,
-        );
-        assert.equal(await eligibleRowCount(setup, orgIds), 0);
-      } finally {
-        await locker.query("ROLLBACK").catch(() => {
-          return undefined;
-        });
-        await locker.end();
-        await runner.end();
-        await setup.query(
-          `DELETE FROM "org_plan_entitlements" WHERE "org_id" = ANY($1::text[])`,
-          [[...orgIds]],
-        );
-      }
-    }
+    await validateLockRetry(databaseUrl, setup);
+    await validateLockTimeout(databaseUrl, setup);
   } finally {
     await setup.query(
       `DROP PROCEDURE IF EXISTS "${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_PROCEDURE}"(interval)`,
@@ -646,18 +652,10 @@ async function expectPreflightFailure(
   assert.match(errorMessage(preflightError), expected);
 }
 
-async function validateFailClosedPreflight(
+async function validateCatalogPreflightFailures(
   client: Client,
-  statements: readonly string[],
+  preflightStatements: readonly string[],
 ): Promise<void> {
-  const procedure = backfillProcedureStatement(statements);
-  const preflightStatements = statements.slice(
-    0,
-    statements.indexOf(procedure),
-  );
-  const targetOrgId = "org-plan-restriction-30193-preflight-target";
-  await seedLegacyOnlyRows(client, [{ legacy: false, orgId: targetOrgId }]);
-
   await client.query(
     `ALTER TABLE "org_plan_entitlements" DISABLE TRIGGER "${bridgeTriggerName}"`,
   );
@@ -672,7 +670,6 @@ async function validateFailClosedPreflight(
       `ALTER TABLE "org_plan_entitlements" ENABLE TRIGGER "${bridgeTriggerName}"`,
     );
   }
-  assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
 
   await client.query(
     `ALTER TABLE "org_metadata" DISABLE TRIGGER "${helperTriggerName}"`,
@@ -688,8 +685,12 @@ async function validateFailClosedPreflight(
       `ALTER TABLE "org_metadata" ENABLE TRIGGER "${helperTriggerName}"`,
     );
   }
-  assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
+}
 
+async function validateCanonicalOnlyPreflightFailure(
+  client: Client,
+  preflightStatements: readonly string[],
+): Promise<void> {
   const canonicalOnlyOrgId =
     "org-plan-restriction-30193-preflight-canonical-only";
   await client.query(
@@ -732,8 +733,12 @@ async function validateFailClosedPreflight(
       `ALTER TABLE "org_plan_entitlements" ALTER COLUMN "restricted_vm0_models" SET NOT NULL`,
     );
   }
-  assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
+}
 
+async function validateColumnShapePreflightFailure(
+  client: Client,
+  preflightStatements: readonly string[],
+): Promise<void> {
   await client.query(
     `ALTER TABLE "org_plan_entitlements" ALTER COLUMN "restricted_built_in_models" SET DEFAULT false`,
   );
@@ -748,8 +753,12 @@ async function validateFailClosedPreflight(
       `ALTER TABLE "org_plan_entitlements" ALTER COLUMN "restricted_built_in_models" DROP DEFAULT`,
     );
   }
-  assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
+}
 
+async function validateUnequalPreflightFailure(
+  client: Client,
+  preflightStatements: readonly string[],
+): Promise<void> {
   const unequalOrgId = "org-plan-restriction-30193-preflight-unequal";
   await client.query("BEGIN");
   try {
@@ -778,12 +787,38 @@ async function validateFailClosedPreflight(
     preflightStatements,
     /found unequal dual rows/u,
   );
-  assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
-
   await client.query(
-    `DELETE FROM "org_plan_entitlements" WHERE "org_id" = ANY($1::text[])`,
-    [[targetOrgId, unequalOrgId]],
+    `DELETE FROM "org_plan_entitlements" WHERE "org_id" = $1`,
+    [unequalOrgId],
   );
+}
+
+async function validateFailClosedPreflight(
+  client: Client,
+  statements: readonly string[],
+): Promise<void> {
+  const procedure = backfillProcedureStatement(statements);
+  const preflightStatements = statements.slice(
+    0,
+    statements.indexOf(procedure),
+  );
+  const targetOrgId = "org-plan-restriction-30193-preflight-target";
+  await seedLegacyOnlyRows(client, [{ legacy: false, orgId: targetOrgId }]);
+  try {
+    await validateCatalogPreflightFailures(client, preflightStatements);
+    assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
+    await validateCanonicalOnlyPreflightFailure(client, preflightStatements);
+    assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
+    await validateColumnShapePreflightFailure(client, preflightStatements);
+    assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
+    await validateUnequalPreflightFailure(client, preflightStatements);
+    assert.equal(await eligibleRowCount(client, [targetOrgId]), 1);
+  } finally {
+    await client.query(
+      `DELETE FROM "org_plan_entitlements" WHERE "org_id" = $1`,
+      [targetOrgId],
+    );
+  }
 }
 
 async function seedBackfillProofRows(
