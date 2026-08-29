@@ -12,9 +12,9 @@ import {
   webhookCheckpointsPrepareHistoryContract,
 } from "@okouai/api-contracts/contracts/webhooks";
 import {
-  MemoryPiSession,
+  inspectPiSessionJsonl,
   UnsupportedPiSessionVersionError,
-} from "@okouai/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/api";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
@@ -354,7 +354,7 @@ function validatePiCheckpointSession(
   }
   const parsed = safeSync(() => {
     const jsonl = new TextDecoder("utf-8", { fatal: true }).decode(raw);
-    return MemoryPiSession.fromJsonl(jsonl);
+    return inspectPiSessionJsonl(jsonl);
   });
   if ("error" in parsed) {
     return piCheckpointError(
@@ -367,13 +367,13 @@ function validatePiCheckpointSession(
     );
   }
   const session = parsed.ok;
-  if (session.getSessionId() !== sessionId) {
+  if (session.sessionId !== sessionId) {
     return piCheckpointError(
       "PI_H2_SESSION_MISMATCH",
       "Pi H2 native session id does not match the launch session",
     );
   }
-  if (!session.isSettledCheckpoint()) {
+  if (!session.isSettledCheckpoint) {
     return piCheckpointError(
       "PI_H2_NOT_SETTLED",
       "Pi H2 is not a settled native session checkpoint",

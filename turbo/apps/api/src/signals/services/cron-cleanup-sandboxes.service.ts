@@ -10,8 +10,8 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
-  publishUserSignal,
 } from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
 import { settle, tapError } from "../utils";
@@ -109,13 +109,15 @@ function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
 }
 
 async function publishQueueMarkerNotificationSafely(
+  orgId: string,
   notification: QueueMarkerRevokeNotification,
 ): Promise<void> {
-  await publishUserSignal(
-    [notification.userId],
-    `chatThreadMessageCreated:${notification.chatThreadId}`,
-  );
-  await publishThreadListChanged(notification.userId);
+  await publishChatThreadMessageCreatedSafely({
+    userId: notification.userId,
+    orgId,
+    threadId: notification.chatThreadId,
+  });
+  await publishThreadListChanged({ userId: notification.userId, orgId });
 }
 
 const cleanupExportJobs$ = command(
@@ -222,7 +224,10 @@ const dispatchMaintenanceTerminalSideEffects$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     if (input.queueMarkerNotification) {
-      await publishQueueMarkerNotificationSafely(input.queueMarkerNotification);
+      await publishQueueMarkerNotificationSafely(
+        input.orgId,
+        input.queueMarkerNotification,
+      );
     }
 
     await set(

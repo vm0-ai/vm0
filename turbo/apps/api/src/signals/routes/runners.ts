@@ -2935,10 +2935,11 @@ const recordActiveInputDeliveryReceiptInner$ = command(
       return forbidden("Active input delivery is not available");
     }
     if (result.replacementsAppended) {
-      await publishChatThreadMessageCreatedSafely(
-        auth.userId,
-        result.chatThreadId,
-      );
+      await publishChatThreadMessageCreatedSafely({
+        userId: auth.userId,
+        orgId: auth.orgId,
+        threadId: result.chatThreadId,
+      });
       signal.throwIfAborted();
       await notifyRunningChatRunOfPendingInput(
         set(writeDb$),

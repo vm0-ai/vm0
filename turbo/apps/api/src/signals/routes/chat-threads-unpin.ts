@@ -3,17 +3,18 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { chatThreadUnpinContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
-import { authContext$ } from "../auth/auth-context";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { appendChatThreadEvent } from "../services/chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
 import type { RouteEntry } from "../route-entry";
 
 const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(authContext$);
+  const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(chatThreadUnpinContract.unpin));
   const query = get(queryOf(chatThreadUnpinContract.unpin));
   signal.throwIfAborted();
@@ -28,6 +29,7 @@ const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         and(
           eq(chatThreads.id, params.id),
           eq(chatThreads.userId, auth.userId),
+          chatThreadOrganizationCondition(tx, auth.orgId),
           isNotNull(chatThreads.agentId),
         ),
       )
@@ -54,7 +56,7 @@ const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Chat thread not found");
   }
 
-  await publishThreadListChanged(auth.userId);
+  await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
   signal.throwIfAborted();
 
   return { status: 204 as const, body: undefined };
@@ -63,6 +65,9 @@ const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 export const chatThreadUnpinRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadUnpinContract.unpin,
-    handler: authRoute({}, unpinInner$),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      unpinInner$,
+    ),
   },
 ];

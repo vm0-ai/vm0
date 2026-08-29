@@ -17,7 +17,7 @@ import {
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { generateText } from "../external/openrouter";
-import { publishUserSignal } from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { tapError } from "../utils";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import {
@@ -237,6 +237,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly runId: string;
   readonly currentPrompt: string;
 }): Promise<boolean> {
@@ -296,9 +297,6 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return false;
   }
 
-  await publishUserSignal(
-    [args.userId],
-    `chatThreadMessageCreated:${args.threadId}`,
-  );
+  await publishChatThreadMessageCreatedSafely(args);
   return true;
 }

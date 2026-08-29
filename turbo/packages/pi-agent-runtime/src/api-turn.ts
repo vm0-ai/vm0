@@ -1,33 +1,67 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 import { piAgentStream } from "./model";
-import type { PiPreheatedResourceSnapshot } from "./resources";
 import { MemoryPiSession, runPiFirstModelTurn } from "./session-memory";
 import { createPiAgentSessionForRuntime } from "./session-runtime";
-import type { PiAgentModelConfig } from "./types";
+import type {
+  PiApiAssistantContent,
+  PiApiAssistantMessage,
+  PiApiFirstTurnArgs,
+  PiApiFirstTurnResult,
+} from "./api-types";
+import { UnsupportedPiResourceSnapshotError } from "./errors";
 
-export interface PiApiFirstTurnResult {
-  readonly assistantMessage: Awaited<
-    ReturnType<typeof runPiFirstModelTurn>
-  >["assistantMessage"];
-  readonly handoffRequired: boolean;
-  readonly sessionJsonl: string;
+function projectAssistantContent(
+  message: AssistantMessage,
+): PiApiAssistantContent[] {
+  return message.content.flatMap((content): PiApiAssistantContent[] => {
+    switch (content.type) {
+      case "text": {
+        return [{ type: "text", text: content.text }];
+      }
+      case "toolCall": {
+        return [
+          {
+            type: "toolCall",
+            id: content.id,
+            name: content.name,
+            arguments: content.arguments,
+          },
+        ];
+      }
+      case "thinking": {
+        return [];
+      }
+      default: {
+        const unsupportedContent: never = content;
+        return unsupportedContent;
+      }
+    }
+  });
 }
 
-export class UnsupportedPiResourceSnapshotError extends Error {}
+export function projectPiApiAssistantMessage(
+  message: AssistantMessage,
+): PiApiAssistantMessage {
+  return {
+    content: projectAssistantContent(message),
+    model: message.model,
+    responseId: message.responseId,
+    stopReason: message.stopReason,
+    timestamp: message.timestamp,
+    usage: {
+      input: message.usage.input,
+      output: message.usage.output,
+      cacheRead: message.usage.cacheRead,
+      cacheWrite: message.usage.cacheWrite,
+    },
+  };
+}
 
 /** Run exactly one provider request using Pi's official prompt and tool schemas. */
 export async function runPiApiFirstTurn(
-  args: {
-    readonly cwd: string;
-    readonly agentDir: string;
-    readonly sessionId: string;
-    readonly sessionJsonl?: string;
-    readonly prompt: string;
-    readonly appendSystemPrompt: string | null;
-    readonly model: PiAgentModelConfig;
-    readonly resourceSnapshot: PiPreheatedResourceSnapshot;
-  },
+  args: PiApiFirstTurnArgs,
   signal?: AbortSignal,
 ): Promise<PiApiFirstTurnResult> {
   const memorySession = args.sessionJsonl
@@ -70,7 +104,11 @@ export async function runPiApiFirstTurn(
         signal,
       },
     });
-    return { ...turn, sessionJsonl: memorySession.toJsonl() };
+    return {
+      assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
+      handoffRequired: turn.handoffRequired,
+      sessionJsonl: memorySession.toJsonl(),
+    };
   } finally {
     shell.session.dispose();
   }

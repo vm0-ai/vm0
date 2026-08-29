@@ -257,6 +257,7 @@ async function markIngressFailed(
 }
 
 interface PersistedCanonicalFeishuIngress {
+  readonly orgId: string;
   readonly userId: string;
   readonly chatThreadId: string;
   readonly message: FeishuInboundMessage;
@@ -420,6 +421,7 @@ async function persistCanonicalFeishuIngress(
   });
   signal.throwIfAborted();
   return {
+    orgId: args.installation.orgId,
     userId: args.connection.userId,
     chatThreadId: route.chatThreadId,
     message: args.message,
@@ -734,12 +736,16 @@ export const processCanonicalFeishuIngress$ = command(
       success: true,
     });
 
-    await publishChatThreadMessageCreatedSafely(
-      result.value.userId,
-      result.value.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: result.value.userId,
+      orgId: result.value.orgId,
+      threadId: result.value.chatThreadId,
+    });
     signal.throwIfAborted();
-    await publishThreadListChanged(result.value.userId);
+    await publishThreadListChanged({
+      userId: result.value.userId,
+      orgId: result.value.orgId,
+    });
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,

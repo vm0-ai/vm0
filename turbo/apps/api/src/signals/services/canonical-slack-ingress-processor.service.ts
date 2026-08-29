@@ -231,6 +231,7 @@ async function markIngressFailed(
 }
 
 interface PersistedCanonicalSlackIngress {
+  readonly orgId: string;
   readonly userId: string;
   readonly chatThreadId: string;
   readonly channelId: string;
@@ -240,10 +241,12 @@ interface PersistedCanonicalSlackIngress {
 
 function persistedCanonicalSlackIngress(
   ingress: NonNullable<Awaited<ReturnType<typeof loadClaimedIngress>>>,
+  orgId: string,
   threadTs: string,
   chatThreadId: string,
 ): PersistedCanonicalSlackIngress {
   return {
+    orgId,
     userId: ingress.userId,
     chatThreadId,
     channelId: ingress.channelId,
@@ -502,7 +505,12 @@ const persistClaimedCanonicalSlackIngress$ = command(
       signal,
     );
     signal.throwIfAborted();
-    return persistedCanonicalSlackIngress(ingress, threadTs, chatThreadId);
+    return persistedCanonicalSlackIngress(
+      ingress,
+      orgId,
+      threadTs,
+      chatThreadId,
+    );
   },
 );
 
@@ -527,12 +535,16 @@ export const processCanonicalSlackIngress$ = command(
           signal,
         );
         signal.throwIfAborted();
-        await publishChatThreadMessageCreatedSafely(
-          ingress.userId,
-          ingress.chatThreadId,
-        );
+        await publishChatThreadMessageCreatedSafely({
+          userId: ingress.userId,
+          orgId: ingress.orgId,
+          threadId: ingress.chatThreadId,
+        });
         signal.throwIfAborted();
-        await publishThreadListChanged(ingress.userId);
+        await publishThreadListChanged({
+          userId: ingress.userId,
+          orgId: ingress.orgId,
+        });
         signal.throwIfAborted();
         await set(
           drainChatThreadQueueForThread$,

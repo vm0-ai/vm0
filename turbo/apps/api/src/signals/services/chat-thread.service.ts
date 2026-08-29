@@ -59,6 +59,7 @@ import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "./chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "./chat-thread-organization.service";
 import { cancelRun$, type CancelRunResult } from "./run-cancel.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./chat-active-run.service";
@@ -745,11 +746,16 @@ export const createChatThread$ = command(
 export async function chatThreadForRunFromDb(
   db: Pick<Db, "select">,
   runId: string,
-): Promise<{ readonly chatThreadId: string; readonly userId: string } | null> {
+): Promise<{
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+} | null> {
   const [row] = await db
     .select({
       chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
+      orgId: agentRuns.orgId,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
@@ -759,7 +765,11 @@ export async function chatThreadForRunFromDb(
   if (!row?.chatThreadId) {
     return null;
   }
-  return { chatThreadId: row.chatThreadId, userId: row.userId };
+  return {
+    chatThreadId: row.chatThreadId,
+    userId: row.userId,
+    orgId: row.orgId,
+  };
 }
 
 interface ThreadRunToCancel {
@@ -791,7 +801,7 @@ export const deleteChatThread$ = command(
     args: {
       readonly threadId: string;
       readonly userId: string;
-      readonly orgId?: string | null;
+      readonly orgId: string;
       readonly eventId?: string;
     },
     signal: AbortSignal,
@@ -812,6 +822,7 @@ export const deleteChatThread$ = command(
           and(
             eq(chatThreads.id, args.threadId),
             eq(chatThreads.userId, args.userId),
+            chatThreadOrganizationCondition(tx, args.orgId),
           ),
         )
         .for("update");
