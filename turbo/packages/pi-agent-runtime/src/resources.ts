@@ -3,25 +3,10 @@ import {
   type Skill,
 } from "@earendil-works/pi-coding-agent";
 
-export interface PiPreheatedAgentsFile {
-  readonly path: string;
-  readonly content: string;
-}
-
-export interface PiPreheatedSkill {
-  readonly name: string;
-  readonly description: string;
-  readonly filePath: string;
-  readonly baseDir: string;
-  readonly scope: "user" | "project" | "temporary";
-  readonly disableModelInvocation: boolean;
-}
-
-export interface PiPreheatedResourceSnapshot {
-  readonly schemaVersion: 1;
-  readonly agentsFiles: readonly PiPreheatedAgentsFile[];
-  readonly skills: readonly PiPreheatedSkill[];
-}
+import type {
+  PiPreheatedResourceSnapshot,
+  PiPreheatedSkill,
+} from "./api-types";
 
 function officialSkill(skill: PiPreheatedSkill): Skill {
   return {

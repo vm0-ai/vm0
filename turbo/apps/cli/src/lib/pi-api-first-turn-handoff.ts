@@ -8,7 +8,10 @@ import {
   type PiApiFirstTurnConfig,
   type PiApiFirstTurnManifest,
 } from "@okouai/api-contracts/contracts/runners";
-import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
+import {
+  inspectPiSessionJsonl,
+  type PiSessionInspection,
+} from "@okouai/pi-agent-runtime/api";
 
 const MANIFEST_MAX_BYTES = 16 * 1024;
 const INITIAL_POLL_DELAY_MS = 100;
@@ -309,10 +312,10 @@ async function restoreSession(args: {
     );
   }
 
-  let session: MemoryPiSession;
+  let session: PiSessionInspection;
   try {
     const jsonl = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    session = MemoryPiSession.fromJsonl(jsonl);
+    session = inspectPiSessionJsonl(jsonl);
   } catch (error) {
     throw new PiApiFirstTurnHandoffError(
       "PI_HANDOFF_H1_INVALID",
@@ -320,13 +323,13 @@ async function restoreSession(args: {
       { cause: error },
     );
   }
-  if (session.getSessionId() !== args.sessionId) {
+  if (session.sessionId !== args.sessionId) {
     throw new PiApiFirstTurnHandoffError(
       "PI_HANDOFF_SESSION_MISMATCH",
       "Pi API first-turn H1 session id does not match the launch",
     );
   }
-  if (!session.hasPendingToolCalls()) {
+  if (!session.hasPendingToolCalls) {
     throw new PiApiFirstTurnHandoffError(
       "PI_HANDOFF_H1_INVALID",
       "Pi API first-turn H1 contains no pending Sandbox tool calls",
