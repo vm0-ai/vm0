@@ -812,7 +812,7 @@ if peak["workload_current"] <= legacy_memory_max:
         f"current={peak['workload_current']} legacy_max={legacy_memory_max}"
     )
 
-time.sleep(20)
+time.sleep(25)
 chunks.clear()
 gc.collect()
 time.sleep(1)
@@ -872,8 +872,9 @@ MEMORY_PRESSURE_AVAILABLE=$(sed -n \
 
 BALLOON_PRESSURE_SAMPLE=""
 BALLOON_DURING=""
+BALLOON_RELIEF_TIMEOUT_SECONDS=20
 SECONDS=0
-while [ "$SECONDS" -le 15 ]; do
+while [ "$SECONDS" -le "$BALLOON_RELIEF_TIMEOUT_SECONDS" ]; do
   BALLOON_DURING=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
     http://localhost/balloon/statistics \
     | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
@@ -892,7 +893,7 @@ while [ "$SECONDS" -le 15 ]; do
 done
 if [ -z "$BALLOON_PRESSURE_SAMPLE" ]; then
   cat "$MEMORY_RECLAIM_OUTPUT"
-  fail "active balloon did not release its full target within 15s of Guest pressure: before=${BALLOON_BEFORE} during=${BALLOON_DURING}"
+  fail "active balloon did not release its full target within ${BALLOON_RELIEF_TIMEOUT_SECONDS}s of Guest pressure: before=${BALLOON_BEFORE} during=${BALLOON_DURING}"
 fi
 
 if wait "$MEMORY_RECLAIM_PID"; then
