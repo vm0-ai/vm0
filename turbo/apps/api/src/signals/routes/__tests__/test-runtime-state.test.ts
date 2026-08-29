@@ -17,7 +17,6 @@ import { holdBuiltInModelRouteLockFixture } from "../../../test-fixtures/built-i
 import {
   deleteVm0BuiltInCandidateCooldownFixture,
   resolveVm0BuiltInModelRouteFixture,
-  readRunChatToolActivityDecision,
   registerVm0BuiltInCandidateCooldownCleanup,
   seedVm0BuiltInModelCandidateKeys,
   seedVm0BuiltInModelKey,
@@ -75,55 +74,6 @@ async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
 }
 
 describe("POST /api/test/runtime-state/action", () => {
-  it("captures the effective tool-activity switch once per run", async () => {
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Expected the run actor to have an org");
-    }
-    const featureActor = { ...actor, orgId: actor.orgId };
-    bdd.acceptAgentStorageWrites();
-    await runs.grantProEntitlement(actor);
-    await runs.ensureOrgModelProvider(actor);
-    const agent = await bdd.createAgent(actor, {
-      displayName: "BDD immutable tool activity decision agent",
-    });
-
-    await updateFeatureSwitchesForUser(context, featureActor, {
-      [FeatureSwitchKey.ChatToolActivity]: true,
-    });
-    const enabledRun = await runs.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "capture enabled tool activity",
-    });
-    onTestFinished(async () => {
-      await runs.requestCancelRun(actor, enabledRun.runId, [200, 400]);
-    });
-
-    await updateFeatureSwitchesForUser(context, featureActor, {
-      [FeatureSwitchKey.ChatToolActivity]: false,
-    });
-    const disabledRun = await runs.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "capture disabled tool activity",
-    });
-    onTestFinished(async () => {
-      await runs.requestCancelRun(actor, disabledRun.runId, [200, 400]);
-    });
-
-    await expect(
-      readRunChatToolActivityDecision(context, enabledRun.runId),
-    ).resolves.toStrictEqual({
-      run_id: enabledRun.runId,
-      chat_tool_activity_enabled: true,
-    });
-    await expect(
-      readRunChatToolActivityDecision(context, disabledRun.runId),
-    ).resolves.toStrictEqual({
-      run_id: disabledRun.runId,
-      chat_tool_activity_enabled: false,
-    });
-  });
-
   it("keeps overlapping VM0 built-in model-key fixtures independently releasable", async () => {
     const first = await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
     const second = await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");

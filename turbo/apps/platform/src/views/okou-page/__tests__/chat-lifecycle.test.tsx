@@ -1,3 +1,4 @@
+import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.ts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -801,10 +802,13 @@ describe("chat lifecycle", () => {
     const prompt = "Show this while the initial list is blocked";
     const initialEventRows = context.mocks.deferred<void>();
     mockChatLifecycle(context);
-    context.mocks.api(chatThreadEventsContract.rows, async ({ respond }) => {
-      await initialEventRows.promise;
-      return respond(200, { rows: [] });
-    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      async ({ query, respond }) => {
+        await initialEventRows.promise;
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
@@ -912,11 +916,15 @@ describe("chat lifecycle", () => {
             },
           ]);
         }
-        return respond(200, {
-          rows: mockChatEventRows(events).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(events).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
 

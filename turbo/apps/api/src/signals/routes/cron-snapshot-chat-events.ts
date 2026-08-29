@@ -20,8 +20,6 @@ interface ChatEventSnapshotCompletionCounters {
   readonly duplicateEventIdConflicts: number;
   readonly duplicateEventIdsRemapped: number;
   readonly duplicateEventReferencesRemapped: number;
-  readonly canonicalSnapshotHeads: number;
-  readonly pendingCanonicalSnapshotMigrations: number;
 }
 
 export function recordChatEventSnapshotCompleted(
@@ -46,9 +44,6 @@ export function recordChatEventSnapshotCompleted(
       duplicateEventIdsRemapped: counters.duplicateEventIdsRemapped,
       duplicateEventReferencesRemapped:
         counters.duplicateEventReferencesRemapped,
-      canonicalSnapshotHeads: counters.canonicalSnapshotHeads,
-      pendingCanonicalSnapshotMigrations:
-        counters.pendingCanonicalSnapshotMigrations,
     },
   ]);
 }

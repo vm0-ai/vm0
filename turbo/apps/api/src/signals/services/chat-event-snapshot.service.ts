@@ -6,7 +6,7 @@ import {
   type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, desc, eq, gt, gte, lt, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lt } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -14,11 +14,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { env } from "../../lib/env";
 import { db$, type ReadonlyDb } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
-import {
-  chatEventRowFromDbRow,
-  migrateCurrentChatEventSnapshot$,
-} from "./cron-snapshot-chat-events.service";
-import { projectChatEventSnapshotRows } from "./chat-event-snapshot-body.service";
+import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
 
 const SNAPSHOT_URL_TTL_SECONDS = 900;
 /** Cursor that reads a thread from its very first event. */
@@ -52,7 +48,6 @@ interface ChatEventRowsBaseArgs {
   readonly userId: string;
   readonly limit: number;
   readonly projection: ChatEventSnapshotProjection;
-  readonly pagination: "physical" | "visible";
   readonly schemaVersion: number;
 }
 
@@ -62,7 +57,7 @@ type ChatEventRowsArgs = ChatEventRowsBaseArgs &
     | {
         readonly sinceSeqId: number;
         readonly sinceEventId: string;
-        readonly sinceProjection?: ChatEventSnapshotProjection;
+        readonly sinceProjection: ChatEventSnapshotProjection;
       }
   );
 
@@ -418,7 +413,7 @@ export function chatThreadEventSnapshot(args: {
 }) {
   return command(
     async (
-      { get, set },
+      { get },
       signal: AbortSignal,
     ): Promise<ChatEventSnapshotDownload> => {
       const db = get(db$);
@@ -432,22 +427,8 @@ export function chatThreadEventSnapshot(args: {
         return { kind: "thread-not-found" } as const;
       }
 
-      let pointer = await compatibleSnapshotPointer(db, args);
+      const pointer = await compatibleSnapshotPointer(db, args);
       signal.throwIfAborted();
-      if (
-        pointer === null &&
-        args.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
-      ) {
-        const migrated = await set(
-          migrateCurrentChatEventSnapshot$,
-          { chatThreadId: args.threadId, projection: args.projection },
-          signal,
-        );
-        if (migrated) {
-          pointer = await compatibleSnapshotPointer(db, args);
-          signal.throwIfAborted();
-        }
-      }
       if (pointer === null) {
         return { kind: "snapshot-not-found" };
       }
@@ -525,18 +506,13 @@ export function chatThreadEventRows(
         and(
           eq(chatEvents.chatThreadId, args.threadId),
           gt(chatEvents.seqId, continuationSeqId),
-          args.pagination === "visible"
-            ? ne(chatEvents.eventType, "output.tool")
-            : undefined,
         ),
       )
       .orderBy(asc(chatEvents.seqId))
       .limit(args.limit);
 
     const rows = physicalRows.map(chatEventRowFromDbRow);
-    const projectedRows = projectChatEventSnapshotRows(rows, args.projection);
-    const cursorLast =
-      args.pagination === "visible" ? projectedRows.at(-1) : rows.at(-1);
+    const cursorLast = rows.at(-1);
     const priorCursor: ChatEventCursor =
       args.sinceSeqId === THREAD_START_SEQ_ID
         ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
@@ -560,7 +536,7 @@ export function chatThreadEventRows(
 
     return {
       kind: "ok",
-      rows: projectedRows,
+      rows,
       cursor,
       hasMore: physicalRows.length === args.limit,
       projection: args.projection,

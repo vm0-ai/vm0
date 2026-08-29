@@ -360,7 +360,7 @@ export async function listChatEventRows(
     | {
         readonly sinceEventId: string;
         readonly sinceSeqId: number;
-        readonly sinceProjection?: ChatEventSnapshotProjection;
+        readonly sinceProjection: ChatEventSnapshotProjection;
       }
   ),
 ): Promise<ZeroChatEventRowsPage> {
@@ -377,9 +377,7 @@ export async function listChatEventRows(
             : {
                 sinceSeqId: options.sinceSeqId,
                 sinceEventId: options.sinceEventId,
-                ...(options.sinceProjection === undefined
-                  ? {}
-                  : { sinceProjection: options.sinceProjection }),
+                sinceProjection: options.sinceProjection,
                 limit: options.limit,
               },
       });

@@ -2307,48 +2307,6 @@
       "copied": "コピーされました",
       "deleted": "チャットが削除されました"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "複数のファイルを変更中",
-            "singular": "ファイルを変更中"
-          },
-          "terminal": {
-            "plural": "複数のファイルを変更",
-            "singular": "ファイルを変更"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "複数のファイルを読み取り中",
-            "singular": "ファイルを読み取り中"
-          },
-          "terminal": {
-            "plural": "複数のファイルを読み取り",
-            "singular": "ファイルを読み取り"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "複数のコマンドを実行中",
-            "singular": "コマンドを実行中"
-          },
-          "terminal": {
-            "plural": "複数のコマンドを実行",
-            "singular": "コマンドを実行"
-          }
-        }
-      },
-      "collapse": "ツールアクティビティを折りたたむ",
-      "expand": "ツールアクティビティを展開",
-      "status": {
-        "cancelled": "キャンセル済み",
-        "error": "失敗",
-        "pending": "進行中",
-        "success": "完了"
-      }
-    },
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
       "input": "音声入力",

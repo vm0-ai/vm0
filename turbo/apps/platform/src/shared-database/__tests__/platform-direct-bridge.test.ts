@@ -10,7 +10,10 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
-import { testContext } from "../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../signals/__tests__/test-helpers.ts";
 import { createChatEventSignals } from "../../signals/chat-page/chat-event-signals.ts";
 import { eventDrivenChatThreads$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { writeConnectionDiagnostic$ } from "../../signals/connection-diagnostics.ts";
@@ -80,6 +83,7 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
         schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         lastEventId: cachedRow.id,
         lastSeqId: cachedRow.seqId,
+        projection: "tool-redacted",
       }),
       tx.done,
     ]);
@@ -120,17 +124,21 @@ describe("shared database direct Platform bridge", () => {
       async ({ params, query, respond }) => {
         if (params.threadId === unreadThreadId) {
           prewarmedThreadIds.push(params.threadId);
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
         requestedSeqIds.push(query.sinceSeqId);
         if (query.sinceSeqId === 1) {
           await initialPage.promise;
         }
-        return respond(200, {
-          rows: availableRows.filter((candidate) => {
-            return candidate.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            availableRows.filter((candidate) => {
+              return candidate.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
 
@@ -289,9 +297,10 @@ describe("shared database direct Platform bridge", () => {
     });
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       requestedSeqIds.push(query.sinceSeqId);
-      return respond(200, {
-        rows: query.sinceSeqId === 0 ? [remoteRow] : [],
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(query.sinceSeqId === 0 ? [remoteRow] : [], query),
+      );
     });
 
     await setupPage({

@@ -187,16 +187,6 @@ const mockChatEventOverrides = {
         serializeChatFollowupsContent(message.followups ?? []),
     };
   },
-  "output.tool": (message, id) => {
-    return {
-      content: null,
-      runId: message.runId ?? `mock-run-${id}`,
-      toolUseId: message.toolUseId ?? `mock-tool-use-${id}`,
-      action: message.action ?? "run",
-      status: message.status ?? "success",
-      summary: message.summary ?? "Run mock tool",
-    };
-  },
   "run.queued": (message, id) => {
     return {
       runId: message.runId ?? `mock-run-${id}`,
@@ -400,14 +390,6 @@ function mockChatEventRowPayload(event: ChatEvent): ChatEventRow["payload"] {
     }
     case "output.thinking": {
       return { thinking: event.thinking };
-    }
-    case "output.tool": {
-      return {
-        toolUseId: event.toolUseId,
-        action: event.action,
-        status: event.status,
-        summary: event.summary,
-      };
     }
     case "run.failed":
     case "run.cancelled": {

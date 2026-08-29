@@ -2355,48 +2355,6 @@
       "copied": "Copié",
       "deleted": "Chat supprimé"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Modification de fichiers",
-            "singular": "Modification d’un fichier"
-          },
-          "terminal": {
-            "plural": "Fichiers modifiés",
-            "singular": "Fichier modifié"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Lecture de fichiers",
-            "singular": "Lecture d’un fichier"
-          },
-          "terminal": {
-            "plural": "Fichiers lus",
-            "singular": "Fichier lu"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Exécution de commandes",
-            "singular": "Exécution d’une commande"
-          },
-          "terminal": {
-            "plural": "Commandes exécutées",
-            "singular": "Commande exécutée"
-          }
-        }
-      },
-      "collapse": "Réduire l’activité des outils",
-      "expand": "Développer l’activité des outils",
-      "status": {
-        "cancelled": "Annulé",
-        "error": "Échec",
-        "pending": "En cours",
-        "success": "Terminé"
-      }
-    },
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
       "input": "Entrée vocale",

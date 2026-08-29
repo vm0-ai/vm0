@@ -337,12 +337,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatToolActivity]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Generate and deliver redacted tool activity events in Chat history.",
-    enabled: false,
-  },
   [FeatureSwitchKey.BuiltInModelProviderFallback]: {
     maintainer: "liangyou@vm0.ai",
     description: "Select healthy fallback routes for built-in platform models.",

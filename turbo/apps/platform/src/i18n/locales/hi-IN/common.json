@@ -2311,48 +2311,6 @@
       "copied": "कॉपी किया गया",
       "deleted": "चैट हटा दी गई"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "फ़ाइलें बदल रहे हैं",
-            "singular": "एक फ़ाइल बदल रहे हैं"
-          },
-          "terminal": {
-            "plural": "फ़ाइलें बदलीं",
-            "singular": "एक फ़ाइल बदली"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "फ़ाइलें पढ़ रहे हैं",
-            "singular": "एक फ़ाइल पढ़ रहे हैं"
-          },
-          "terminal": {
-            "plural": "फ़ाइलें पढ़ीं",
-            "singular": "एक फ़ाइल पढ़ी"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "कमांड चला रहे हैं",
-            "singular": "एक कमांड चला रहे हैं"
-          },
-          "terminal": {
-            "plural": "कमांड चलाए",
-            "singular": "एक कमांड चलाया"
-          }
-        }
-      },
-      "collapse": "टूल गतिविधि संक्षिप्त करें",
-      "expand": "टूल गतिविधि विस्तृत करें",
-      "status": {
-        "cancelled": "रद्द",
-        "error": "विफल",
-        "pending": "जारी",
-        "success": "पूरा हुआ"
-      }
-    },
     "voice": {
       "checkingLimit": "ध्वनि इनपुट सीमा की जाँच की जा रही है",
       "input": "ध्वनि इनपुट",

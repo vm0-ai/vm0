@@ -11,18 +11,14 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
   coverRetentionThread$,
-  failRetentionToolCleanupAfterMutation$,
   holdChatEventRetentionLockFixture,
-  holdRetentionToolWriterFixture,
   openRetentionActiveInput$,
   readRetentionEvents$,
-  readRetentionSnapshotHeads$,
   revokeRetentionEvent$,
   seedRetentionOutputEvent$,
   seedRetentionOutputEvents$,
   seedRetentionPendingEvent$,
   seedRetentionRun$,
-  seedRetentionToolEvent$,
   setRetentionRunStatus$,
   settleRetentionActiveInput$,
 } from "../../../test-fixtures/chat-event-retention";
@@ -65,26 +61,10 @@ async function createFixtureThread(label: string): Promise<string> {
 }
 
 async function retainFixtures(...chatThreadIds: readonly string[]) {
-  return await retainFixtureBatch({ chatThreadIds });
-}
-
-async function retainFixtureBatch(args: {
-  readonly chatThreadIds: readonly string[];
-  readonly toolCleanupThreadScanLimit?: number;
-  readonly toolCleanupDeleteLimit?: number;
-}) {
   const response = await accept(
     fixtureClient().retain({
       body: {
-        chat_thread_ids: [...args.chatThreadIds],
-        ...(args.toolCleanupThreadScanLimit === undefined
-          ? {}
-          : {
-              tool_cleanup_thread_scan_limit: args.toolCleanupThreadScanLimit,
-            }),
-        ...(args.toolCleanupDeleteLimit === undefined
-          ? {}
-          : { tool_cleanup_delete_limit: args.toolCleanupDeleteLimit }),
+        chat_thread_ids: [...chatThreadIds],
       },
     }),
     [200],
@@ -94,14 +74,6 @@ async function retainFixtureBatch(args: {
 
 async function eventRows(...eventIds: readonly string[]) {
   return await store.set(readRetentionEvents$, eventIds, context.signal);
-}
-
-async function snapshotHeads(chatThreadId: string) {
-  return await store.set(
-    readRetentionSnapshotHeads$,
-    chatThreadId,
-    context.signal,
-  );
 }
 
 function retentionCompletionEvents(): readonly Record<string, unknown>[] {
@@ -219,11 +191,6 @@ describe("chat event retention cron", () => {
       skippedNonterminalRun: 0,
       skippedActiveInput: 0,
       skippedBatchLimit: 1,
-      toolCleanupRowsDeleted: 0,
-      toolCleanupFullPointersRetired: 0,
-      toolCleanupRemainingRows: 0,
-      toolCleanupRemainingFullPointers: 0,
-      toolCleanupHasMore: false,
       hasMore: true,
     });
 
@@ -344,344 +311,6 @@ describe("chat event retention cron", () => {
     expect(released.deleted).toBe(3);
     await expect(
       eventRows(snapshotEventId, searchEventId, projectionEventId),
-    ).resolves.toHaveLength(0);
-  }, 60_000);
-
-  it("cleans only tool threads covered by the durable redacted physical head", async () => {
-    const coveredThreadId = await createFixtureThread("covered-tool");
-    const blockedThreadId = await createFixtureThread("stale-tool-tail");
-    const missingHeadThreadId = await createFixtureThread(
-      "missing-redacted-head",
-    );
-
-    const coveredToolId = await store.set(
-      seedRetentionToolEvent$,
-      { chatThreadId: coveredThreadId },
-      context.signal,
-    );
-    const coveredSeqId = await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: coveredThreadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-      },
-      context.signal,
-    );
-    const safeTailId = await store.set(
-      seedRetentionOutputEvent$,
-      { chatThreadId: coveredThreadId },
-      context.signal,
-    );
-
-    const blockedFirstToolId = await store.set(
-      seedRetentionToolEvent$,
-      { chatThreadId: blockedThreadId },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: blockedThreadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-      },
-      context.signal,
-    );
-    const blockedTailToolId = await store.set(
-      seedRetentionToolEvent$,
-      { chatThreadId: blockedThreadId },
-      context.signal,
-    );
-
-    const missingHeadToolId = await store.set(
-      seedRetentionToolEvent$,
-      { chatThreadId: missingHeadThreadId },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: missingHeadThreadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-        snapshotProjections: ["full"],
-      },
-      context.signal,
-    );
-
-    const partial = await retainFixtures(
-      coveredThreadId,
-      blockedThreadId,
-      missingHeadThreadId,
-    );
-    expect(partial).toMatchObject({
-      toolCleanupToolThreadsScanned: 3,
-      toolCleanupToolThreadsCovered: 1,
-      toolCleanupToolThreadsBlockedMissingRedactedHead: 1,
-      toolCleanupToolThreadsBlockedRedactedCoverage: 1,
-      toolCleanupRowsSelected: 1,
-      toolCleanupRowsDeleted: 1,
-      toolCleanupFullPointersCovered: 1,
-      toolCleanupFullPointersRetired: 1,
-      toolCleanupRemainingRows: 3,
-      toolCleanupRemainingFullPointers: 2,
-      toolCleanupHasMore: true,
-    });
-    await expect(eventRows(coveredToolId)).resolves.toHaveLength(0);
-    await expect(eventRows(safeTailId)).resolves.toMatchObject([
-      {
-        eventType: "output.message",
-        id: safeTailId,
-        seqId: coveredSeqId + 1,
-      },
-    ]);
-    await expect(
-      eventRows(blockedFirstToolId, blockedTailToolId, missingHeadToolId),
-    ).resolves.toHaveLength(3);
-    await expect(snapshotHeads(coveredThreadId)).resolves.toMatchObject([
-      { lastSeqId: coveredSeqId, projection: "tool-redacted" },
-    ]);
-
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: blockedThreadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-        snapshotProjections: ["tool-redacted"],
-      },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: missingHeadThreadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-        snapshotProjections: ["tool-redacted"],
-      },
-      context.signal,
-    );
-
-    const resumed = await retainFixtures(
-      coveredThreadId,
-      blockedThreadId,
-      missingHeadThreadId,
-    );
-    expect(resumed).toMatchObject({
-      toolCleanupRowsDeleted: 3,
-      toolCleanupFullPointersRetired: 2,
-      toolCleanupRemainingRows: 0,
-      toolCleanupRemainingFullPointers: 0,
-      toolCleanupHasMore: false,
-    });
-    await expect(
-      eventRows(blockedFirstToolId, blockedTailToolId, missingHeadToolId),
-    ).resolves.toHaveLength(0);
-    await expect(snapshotHeads(blockedThreadId)).resolves.toMatchObject([
-      { projection: "tool-redacted" },
-    ]);
-    await expect(snapshotHeads(missingHeadThreadId)).resolves.toMatchObject([
-      { projection: "tool-redacted" },
-    ]);
-
-    const idempotent = await retainFixtures(
-      coveredThreadId,
-      blockedThreadId,
-      missingHeadThreadId,
-    );
-    expect(idempotent).toMatchObject({
-      toolCleanupThreadsScanned: 0,
-      toolCleanupRowsDeleted: 0,
-      toolCleanupFullPointersRetired: 0,
-      toolCleanupRemainingRows: 0,
-      toolCleanupRemainingFullPointers: 0,
-      toolCleanupHasMore: false,
-    });
-  }, 60_000);
-
-  it("resumes tool cleanup across bounded thread and row batches", async () => {
-    const firstThreadId = await createFixtureThread("bounded-tool-first");
-    const secondThreadId = await createFixtureThread("bounded-tool-second");
-    const firstToolId = await store.set(
-      seedRetentionToolEvent$,
-      { chatThreadId: firstThreadId },
-      context.signal,
-    );
-    const secondToolId = await store.set(
-      seedRetentionToolEvent$,
-      { chatThreadId: secondThreadId },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: firstThreadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-      },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: secondThreadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-      },
-      context.signal,
-    );
-
-    const firstBatch = await retainFixtureBatch({
-      chatThreadIds: [firstThreadId, secondThreadId],
-      toolCleanupThreadScanLimit: 1,
-      toolCleanupDeleteLimit: 1,
-    });
-    expect(firstBatch).toMatchObject({
-      toolCleanupThreadScanLimit: 1,
-      toolCleanupDeleteLimit: 1,
-      toolCleanupThreadsScanned: 1,
-      toolCleanupRowsDeleted: 1,
-      toolCleanupFullPointersRetired: 1,
-      toolCleanupRemainingRows: 1,
-      toolCleanupRemainingFullPointers: 1,
-      toolCleanupHasMore: true,
-    });
-    await expect(eventRows(firstToolId, secondToolId)).resolves.toHaveLength(1);
-
-    const resumed = await retainFixtureBatch({
-      chatThreadIds: [firstThreadId, secondThreadId],
-      toolCleanupThreadScanLimit: 1,
-      toolCleanupDeleteLimit: 1,
-    });
-    expect(resumed).toMatchObject({
-      toolCleanupThreadsScanned: 1,
-      toolCleanupRowsDeleted: 1,
-      toolCleanupFullPointersRetired: 1,
-      toolCleanupRemainingRows: 0,
-      toolCleanupRemainingFullPointers: 0,
-      toolCleanupHasMore: false,
-    });
-    await expect(eventRows(firstToolId, secondToolId)).resolves.toHaveLength(0);
-
-    const finalRetry = await retainFixtureBatch({
-      chatThreadIds: [firstThreadId, secondThreadId],
-      toolCleanupThreadScanLimit: 1,
-      toolCleanupDeleteLimit: 1,
-    });
-    expect(finalRetry).toMatchObject({
-      toolCleanupThreadsScanned: 0,
-      toolCleanupRowsDeleted: 0,
-      toolCleanupFullPointersRetired: 0,
-      toolCleanupHasMore: false,
-    });
-  }, 60_000);
-
-  it("rolls back a partial cleanup failure and resumes on restart", async () => {
-    const threadId = await createFixtureThread("tool-cleanup-restart");
-    const toolId = await store.set(
-      seedRetentionToolEvent$,
-      { chatThreadId: threadId },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: threadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-      },
-      context.signal,
-    );
-
-    await expect(
-      store.set(
-        failRetentionToolCleanupAfterMutation$,
-        [threadId],
-        context.signal,
-      ),
-    ).rejects.toThrow("Injected failure after tool cleanup mutation");
-    await expect(eventRows(toolId)).resolves.toHaveLength(1);
-    await expect(snapshotHeads(threadId)).resolves.toHaveLength(2);
-
-    const restarted = await retainFixtures(threadId);
-    expect(restarted).toMatchObject({
-      toolCleanupRowsDeleted: 1,
-      toolCleanupFullPointersRetired: 1,
-      toolCleanupRemainingRows: 0,
-      toolCleanupRemainingFullPointers: 0,
-      toolCleanupHasMore: false,
-    });
-    await expect(eventRows(toolId)).resolves.toHaveLength(0);
-    await expect(snapshotHeads(threadId)).resolves.toMatchObject([
-      { projection: "tool-redacted" },
-    ]);
-  }, 60_000);
-
-  it("skips a stale writer and rechecks its committed physical tail", async () => {
-    const threadId = await createFixtureThread("stale-tool-writer");
-    const coveredToolId = await store.set(
-      seedRetentionToolEvent$,
-      { chatThreadId: threadId },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: threadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-      },
-      context.signal,
-    );
-    const writer = await holdRetentionToolWriterFixture(
-      threadId,
-      context.signal,
-    );
-    onTestFinished(async () => {
-      writer.release();
-      await writer.done;
-    });
-
-    const skipped = await retainFixtures(threadId);
-    expect(skipped).toMatchObject({
-      toolCleanupThreadsScanned: 0,
-      toolCleanupRowsDeleted: 0,
-      toolCleanupFullPointersRetired: 0,
-      toolCleanupRemainingRows: 1,
-      toolCleanupRemainingFullPointers: 1,
-      toolCleanupHasMore: true,
-    });
-    await expect(eventRows(coveredToolId)).resolves.toHaveLength(1);
-    await expect(snapshotHeads(threadId)).resolves.toHaveLength(2);
-
-    writer.release();
-    const staleTailToolId = await writer.done;
-    const blocked = await retainFixtures(threadId);
-    expect(blocked).toMatchObject({
-      toolCleanupThreadsScanned: 1,
-      toolCleanupToolThreadsBlockedRedactedCoverage: 1,
-      toolCleanupRowsDeleted: 0,
-      toolCleanupFullPointersRetired: 0,
-      toolCleanupRemainingRows: 2,
-      toolCleanupRemainingFullPointers: 1,
-      toolCleanupHasMore: true,
-    });
-    await expect(
-      eventRows(coveredToolId, staleTailToolId),
-    ).resolves.toHaveLength(2);
-
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: threadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-        snapshotProjections: ["tool-redacted"],
-      },
-      context.signal,
-    );
-    const covered = await retainFixtures(threadId);
-    expect(covered).toMatchObject({
-      toolCleanupRowsDeleted: 2,
-      toolCleanupFullPointersRetired: 1,
-      toolCleanupRemainingRows: 0,
-      toolCleanupRemainingFullPointers: 0,
-      toolCleanupHasMore: false,
-    });
-    await expect(
-      eventRows(coveredToolId, staleTailToolId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 

@@ -10,7 +10,6 @@ export const CHAT_EVENT_TYPES = [
   "output.error",
   "output.thinking",
   "output.followups",
-  "output.tool",
   "run.queued",
   "run.dequeued",
   "run.completed",
@@ -31,30 +30,6 @@ export type ChatEventType = z.infer<typeof chatEventTypeSchema>;
 export type ChatEventCompatibilityRole = "user" | "assistant";
 export type ChatEventRunLifecycle = "completed" | "failed" | "cancelled";
 export type ChatRunFoldState = "queued" | "dequeued" | ChatEventRunLifecycle;
-
-export const OUTPUT_TOOL_ACTIONS = ["run", "read", "write", "edit"] as const;
-export const OUTPUT_TOOL_STATUSES = [
-  "pending",
-  "success",
-  "error",
-  "cancelled",
-] as const;
-
-export const outputToolPayloadSchema = z
-  .object({
-    toolUseId: z.string(),
-    action: z.enum(OUTPUT_TOOL_ACTIONS),
-    status: z.enum(OUTPUT_TOOL_STATUSES),
-    summary: z
-      .string()
-      .max(240)
-      .refine((summary) => {
-        return !summary.includes("\n") && !summary.includes("\r");
-      }, "Tool summary must be one line"),
-  })
-  .strict();
-
-export type OutputToolPayload = z.infer<typeof outputToolPayloadSchema>;
 
 export const CHAT_EVENT_USER_MESSAGE_TEXT_TYPES = [
   "input.prompt",
@@ -95,7 +70,6 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   "output.error": [],
   "output.thinking": [],
   "output.followups": [],
-  "output.tool": [],
   "run.queued": [],
   "run.dequeued": ["run.queued"],
   "run.completed": [],
@@ -126,7 +100,6 @@ const CHAT_RUN_FOLD_STATES = {
   "output.error": null,
   "output.thinking": null,
   "output.followups": null,
-  "output.tool": null,
   "run.queued": "queued",
   "run.dequeued": "dequeued",
   "run.completed": "completed",
@@ -172,7 +145,6 @@ const CHAT_EVENT_COMPATIBILITY_ROLES = {
   "output.error": "assistant",
   "output.thinking": "assistant",
   "output.followups": "assistant",
-  "output.tool": "assistant",
   "run.queued": "assistant",
   "run.dequeued": "assistant",
   "run.completed": "assistant",
@@ -236,8 +208,7 @@ export function isChatOutputEventType(
   | "output.message"
   | "output.error"
   | "output.thinking"
-  | "output.followups"
-  | "output.tool" {
+  | "output.followups" {
   return eventType.startsWith("output.");
 }
 

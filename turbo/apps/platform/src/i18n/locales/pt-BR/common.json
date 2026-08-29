@@ -2355,48 +2355,6 @@
       "copied": "Copiado",
       "deleted": "Conversa excluída"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Alterando arquivos",
-            "singular": "Alterando um arquivo"
-          },
-          "terminal": {
-            "plural": "Arquivos alterados",
-            "singular": "Arquivo alterado"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Lendo arquivos",
-            "singular": "Lendo um arquivo"
-          },
-          "terminal": {
-            "plural": "Arquivos lidos",
-            "singular": "Arquivo lido"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Executando comandos",
-            "singular": "Executando um comando"
-          },
-          "terminal": {
-            "plural": "Comandos executados",
-            "singular": "Comando executado"
-          }
-        }
-      },
-      "collapse": "Recolher atividade de ferramentas",
-      "expand": "Expandir atividade de ferramentas",
-      "status": {
-        "cancelled": "Cancelado",
-        "error": "Falhou",
-        "pending": "Em andamento",
-        "success": "Concluído"
-      }
-    },
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",
       "input": "Entrada de voz",

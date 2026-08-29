@@ -210,10 +210,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("read-run-chat-tool-activity-decision"),
-    run_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal("read-official-workflow-run-state"),
     run_id: z.uuid(),
   }),
@@ -392,13 +388,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
         .strict()
         .nullable(),
     })
-    .optional(),
-  run_chat_tool_activity_decision: z
-    .object({
-      run_id: z.uuid(),
-      chat_tool_activity_enabled: z.boolean(),
-    })
-    .nullable()
     .optional(),
   official_workflow_run_state: z
     .object({

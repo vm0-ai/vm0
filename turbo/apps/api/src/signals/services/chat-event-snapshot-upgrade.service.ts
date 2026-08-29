@@ -1,9 +1,94 @@
-import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  chatEventRowSchema,
+  type ChatEventRow,
+} from "@okouai/api-contracts/contracts/chat-event-rows";
+import { z } from "zod";
 
 import {
   decodeChatEventSnapshotBody,
   encodeChatEventSnapshotBody,
 } from "./chat-event-snapshot-body.service";
+import { safeJsonParse } from "../utils";
+
+/**
+ * Private R2-only reader for immutable V6 objects retained behind #29362.
+ * `output.tool` is deliberately absent from every current API/DB contract;
+ * this schema exists only so an old full Snapshot can be validated and
+ * upgraded without discarding the surrounding logical history.
+ */
+const legacyV6OutputToolRowSchema = z
+  .object({
+    id: z.string(),
+    chatThreadId: z.string(),
+    runId: z.string().nullable(),
+    revokesEventId: z.string().nullable(),
+    contextType: z.string().nullable(),
+    contextId: z.string().nullable(),
+    runEventSequenceNumber: z.number().int().nullable(),
+    runEventId: z.string().nullable(),
+    seqId: z.number().int(),
+    createdAt: z.iso.datetime(),
+    eventType: z.literal("output.tool"),
+    payload: z
+      .object({
+        toolUseId: z.string(),
+        action: z.enum(["run", "read", "write", "edit"]),
+        status: z.enum(["pending", "success", "error", "cancelled"]),
+        summary: z
+          .string()
+          .max(240)
+          .refine((summary) => {
+            return !summary.includes("\n") && !summary.includes("\r");
+          }, "Tool summary must be one line"),
+      })
+      .strict(),
+  })
+  .strict();
+
+type StoredChatEventSnapshotRow =
+  | ChatEventRow
+  | z.infer<typeof legacyV6OutputToolRowSchema>;
+
+function decodeStoredChatEventSnapshotBody(
+  body: Buffer,
+  sourceVersion: number,
+): readonly StoredChatEventSnapshotRow[] {
+  if (sourceVersion !== 6) {
+    return decodeChatEventSnapshotBody(body);
+  }
+  const text = body.toString("utf8");
+  if (text.length === 0) {
+    return [];
+  }
+  if (!text.endsWith("\n")) {
+    throw new Error("Chat Event snapshot must be newline-delimited JSON");
+  }
+  return text
+    .slice(0, -1)
+    .split("\n")
+    .map((line) => {
+      const parsed = safeJsonParse(line);
+      if (parsed === undefined) {
+        throw new Error("Chat Event snapshot contains invalid JSON");
+      }
+      return parsed;
+    })
+    .map((row) => {
+      const legacyTool = legacyV6OutputToolRowSchema.safeParse(row);
+      return legacyTool.success
+        ? legacyTool.data
+        : chatEventRowSchema.parse(row);
+    });
+}
+
+export function lastStoredChatEventSnapshotRowId(
+  body: Buffer,
+  sourceVersion: number,
+): string | null {
+  return (
+    decodeStoredChatEventSnapshotBody(body, sourceVersion).at(-1)?.id ?? null
+  );
+}
 
 /**
  * Every schema bump that can preserve historical data must register its
@@ -22,14 +107,11 @@ function adjacentSnapshotUpgrade(
       };
     }
     case 6: {
-      // Persisted V6 DB/R2 -> V7 API/backfill bridge: V7 makes redacted logical
-      // history canonical, so a legacy full prefix loses tool rows. Remove with
-      // #29362 after V7 convergence, App/CLI drain, rollback closure, and
-      // reference-aware GC removes retired V6 state.
+      // The private V6 decoder already removed validated legacy tool rows.
+      // Keep this adjacent identity step until #29362 permits deleting V6 R2
+      // readers and reference-aware GC has retired every referenced object.
       return (rows) => {
-        return rows.filter((row) => {
-          return row.eventType !== "output.tool";
-        });
+        return rows;
       };
     }
     default: {
@@ -49,7 +131,12 @@ export function upgradeChatEventSnapshotBody(
       "Chat Event Snapshot upgrade target is older than its source",
     );
   }
-  let rows = decodeChatEventSnapshotBody(body);
+  let rows: readonly ChatEventRow[] = decodeStoredChatEventSnapshotBody(
+    body,
+    sourceVersion,
+  ).flatMap((row): readonly ChatEventRow[] => {
+    return row.eventType === "output.tool" ? [] : [row];
+  });
   let version = sourceVersion;
   while (version < requestedVersion) {
     const upgrade = adjacentSnapshotUpgrade(version);

@@ -2355,48 +2355,6 @@
       "copied": "Copiado",
       "deleted": "Chat eliminado"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Modificando archivos",
-            "singular": "Modificando un archivo"
-          },
-          "terminal": {
-            "plural": "Archivos modificados",
-            "singular": "Archivo modificado"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Leyendo archivos",
-            "singular": "Leyendo un archivo"
-          },
-          "terminal": {
-            "plural": "Archivos leídos",
-            "singular": "Archivo leído"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Ejecutando comandos",
-            "singular": "Ejecutando un comando"
-          },
-          "terminal": {
-            "plural": "Comandos ejecutados",
-            "singular": "Comando ejecutado"
-          }
-        }
-      },
-      "collapse": "Contraer actividad de herramientas",
-      "expand": "Expandir actividad de herramientas",
-      "status": {
-        "cancelled": "Cancelado",
-        "error": "Fallido",
-        "pending": "En curso",
-        "success": "Completado"
-      }
-    },
     "voice": {
       "checkingLimit": "Comprobando el límite de entrada de voz",
       "input": "Entrada de voz",

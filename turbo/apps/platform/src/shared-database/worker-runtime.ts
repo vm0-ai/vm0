@@ -10,7 +10,6 @@ import {
 import {
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
-  type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import type { InboundMessage, TokenRequest } from "ably";
@@ -59,7 +58,7 @@ import {
 } from "./worker-realtime.ts";
 import {
   assertChatEventSchemaVersion,
-  requestWithChatEventSchemaVersionFallback,
+  CHAT_EVENT_SCHEMA_VERSION_HEADERS,
 } from "./chat-event-schema-version.ts";
 import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "./event-log-policy.ts";
 
@@ -78,37 +77,9 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
     : {
         sinceSeqId: cursor.lastSeqId,
         sinceEventId: cursor.lastEventId,
-        ...(cursor.projection === undefined
-          ? {}
-          : { sinceProjection: cursor.projection }),
+        sinceProjection: cursor.projection,
         limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
       };
-}
-
-function nextChatEventCursor(
-  cursor: ChatEventCursor,
-  pageRows: readonly ChatEventRow[],
-  serverCursor: ChatEventCursor | undefined,
-  serverProjection: ChatEventSnapshotProjection | undefined,
-): ChatEventCursor {
-  if (serverCursor !== undefined) {
-    return serverCursor;
-  }
-  const lastRow = pageRows.at(-1);
-  if (lastRow === undefined) {
-    return cursor;
-  }
-  // V5/V6 cursor -> V7 worker and V7 worker -> V6 API fallback. Remove with
-  // #29362 after the V7 app floor, pinned-client drain, and API rollback gates.
-  const projection =
-    serverProjection ??
-    ("projection" in cursor ? cursor.projection : undefined) ??
-    "full";
-  return {
-    lastEventId: lastRow.id,
-    lastSeqId: lastRow.seqId,
-    projection,
-  };
 }
 
 type WorkerClientEvent = Extract<
@@ -967,26 +938,18 @@ export class SharedDatabaseWorkerRuntime {
     let schemaVersion = initialState.schemaVersion;
     let loadNextPage = true;
     while (loadNextPage) {
-      const versionedPage = await requestWithChatEventSchemaVersionFallback(
-        async (headers) => {
-          return await client.rows({
-            headers,
-            params: { threadId: actor.dataKey.threadId },
-            query: chatEventRowsQuery(cursor),
-            fetchOptions: { signal },
-          });
-        },
-      );
-      const page = versionedPage.response;
+      const page = await client.rows({
+        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+        params: { threadId: actor.dataKey.threadId },
+        query: chatEventRowsQuery(cursor),
+        fetchOptions: { signal },
+      });
       signal.throwIfAborted();
       if (page.status === 401) {
         this.blockCredential(credential, requestToken);
         throw new SharedDatabaseAuthBlockedError();
       }
-      assertChatEventSchemaVersion(
-        page.headers,
-        versionedPage.requestedVersion,
-      );
+      assertChatEventSchemaVersion(page.headers);
       if (page.status === 410) {
         if (cursorFromServer) {
           throw new Error(
@@ -1011,22 +974,13 @@ export class SharedDatabaseWorkerRuntime {
       if (page.status !== 200) {
         throw new SharedDatabaseHttpError(page.status);
       }
-      schemaVersion = Math.min(schemaVersion, versionedPage.requestedVersion);
+      schemaVersion = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
       const pageRows = page.body.rows;
       remoteRows = mergeChatEventRows([remoteRows, pageRows]);
-      cursor = nextChatEventCursor(
-        cursor,
-        pageRows,
-        page.body.cursor,
-        page.body.projection,
-      );
+      cursor = page.body.cursor;
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
-      // V7 App worker -> V6 API fallback. Remove with #29362 after the V6 API
-      // leaves serving/rollback and the V7 app client-version floor is live.
-      loadNextPage =
-        confirmColdStartTail ||
-        (page.body.hasMore ?? pageRows.length === CHAT_EVENT_ROWS_PAGE_LIMIT);
+      loadNextPage = confirmColdStartTail || page.body.hasMore;
     }
     return {
       remoteRows,
@@ -1049,30 +1003,22 @@ export class SharedDatabaseWorkerRuntime {
     readonly cursor: ChatEventCursor;
     readonly schemaVersion: number;
   }> {
-    const versionedSnapshot = await requestWithChatEventSchemaVersionFallback(
-      async (headers) => {
-        return await client.snapshot({
-          headers,
-          params: { threadId: dataKey.threadId },
-          fetchOptions: { signal },
-        });
-      },
-    );
-    const snapshot = versionedSnapshot.response;
+    const snapshot = await client.snapshot({
+      headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+      params: { threadId: dataKey.threadId },
+      fetchOptions: { signal },
+    });
     signal.throwIfAborted();
     if (snapshot.status === 401) {
       this.blockCredential(credential, requestToken);
       throw new SharedDatabaseAuthBlockedError();
     }
-    assertChatEventSchemaVersion(
-      snapshot.headers,
-      versionedSnapshot.requestedVersion,
-    );
+    assertChatEventSchemaVersion(snapshot.headers);
     if (snapshot.status === 404) {
       return {
         rows: [],
         cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
-        schemaVersion: versionedSnapshot.requestedVersion,
+        schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       };
     }
     if (snapshot.status !== 200) {
@@ -1097,18 +1043,16 @@ export class SharedDatabaseWorkerRuntime {
               const parsed: unknown = JSON.parse(line);
               return chatEventRowSchema.parse(parsed);
             });
-    // V7 App worker -> V6 API fallback. Remove with #29362 after the V6 API
-    // leaves serving/rollback and the V7 app client-version floor is live.
     return {
       rows,
-      schemaVersion: versionedSnapshot.requestedVersion,
+      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       cursor:
         snapshot.body.lastEventId === null
           ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
           : {
               lastEventId: snapshot.body.lastEventId,
               lastSeqId: snapshot.body.lastSeqId,
-              projection: snapshot.body.projection ?? "full",
+              projection: snapshot.body.projection,
             },
     };
   }
