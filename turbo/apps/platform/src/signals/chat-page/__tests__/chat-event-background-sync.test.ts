@@ -1,6 +1,5 @@
 import { waitFor } from "@testing-library/react";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadEventsContract,
   chatThreadsContract,
@@ -292,7 +291,6 @@ describe("chat event background sync", () => {
           lastSeqId: lastCachedRow.seqId,
           projection: "tool-redacted",
         },
-        schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       },
       context.signal,
     );
@@ -348,7 +346,6 @@ describe("chat event background sync", () => {
           lastSeqId: lastCachedRow.seqId,
           projection: "tool-redacted",
         },
-        schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       },
       context.signal,
     );

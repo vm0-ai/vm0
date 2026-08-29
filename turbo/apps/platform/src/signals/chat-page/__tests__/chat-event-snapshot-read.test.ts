@@ -130,7 +130,6 @@ async function writeCachedRows(rows: readonly ChatEventRow[]): Promise<void> {
         lastSeqId: lastRow.seqId,
         projection: "tool-redacted",
       },
-      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     },
     context.signal,
   );

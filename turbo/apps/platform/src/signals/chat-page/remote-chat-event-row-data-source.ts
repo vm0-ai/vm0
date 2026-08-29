@@ -3,9 +3,9 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventCursor,
+import type {
+  ChatEventCursor,
+  ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -25,9 +25,8 @@ type ChatEventRowsPage =
       readonly rows: readonly ChatEventRow[];
       readonly cursor: ChatEventCursor;
       readonly hasMore: boolean;
-      readonly schemaVersion: number;
     }
-  | { readonly kind: "expired"; readonly schemaVersion: number };
+  | { readonly kind: "expired" };
 
 export const listRowsAfter$ = command(
   async (
@@ -64,10 +63,7 @@ export const listRowsAfter$ = command(
     assertChatEventSchemaVersion(result.headers);
     if (result.status === 410) {
       L.debug("listRowsAfter$: cursor expired", { threadId, cursor });
-      return {
-        kind: "expired",
-        schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-      };
+      return { kind: "expired" };
     }
     L.debug("listRowsAfter$", {
       threadId,
@@ -79,7 +75,6 @@ export const listRowsAfter$ = command(
       rows: result.body.rows,
       cursor: result.body.cursor,
       hasMore: result.body.hasMore,
-      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     };
   },
 );
@@ -97,12 +92,11 @@ export const fetchChatEventSnapshotRows$ = command(
     threadId: string,
     signal: AbortSignal,
   ): Promise<{
-    readonly schemaVersion: number;
     readonly snapshot: {
       readonly rows: readonly ChatEventRow[];
       readonly lastEventId: string | null;
       readonly lastSeqId: number;
-      readonly projection: "full" | "tool-redacted";
+      readonly projection: ChatEventSnapshotProjection;
     } | null;
   }> => {
     const client = get(apiClient$)(chatThreadEventsContract);
@@ -121,10 +115,7 @@ export const fetchChatEventSnapshotRows$ = command(
     assertChatEventSchemaVersion(download.headers);
     if (download.status === 404) {
       L.debug("fetchChatEventSnapshotRows$: no snapshot yet", { threadId });
-      return {
-        schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-        snapshot: null,
-      };
+      return { snapshot: null };
     }
     const snapshotResponse = await fetch(download.body.url, { signal });
     if (!snapshotResponse.ok) {
@@ -152,7 +143,6 @@ export const fetchChatEventSnapshotRows$ = command(
       lastSeqId: download.body.lastSeqId,
     });
     return {
-      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       snapshot: {
         rows,
         lastEventId: download.body.lastEventId,

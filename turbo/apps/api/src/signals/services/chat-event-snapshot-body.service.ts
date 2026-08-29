@@ -29,18 +29,3 @@ export function decodeChatEventSnapshotBody(
       return chatEventRowSchema.parse(row);
     });
 }
-
-export function encodeChatEventSnapshotBody(
-  rows: readonly ChatEventRow[],
-): Buffer {
-  if (rows.length === 0) {
-    return Buffer.alloc(0);
-  }
-  return Buffer.from(
-    rows
-      .map((row) => {
-        return JSON.stringify(row);
-      })
-      .join("\n") + "\n",
-  );
-}

@@ -37,14 +37,12 @@ interface ChatEventRowWriteStore {
     threadId: string,
     rows: readonly ChatEventRow[],
     cursor: ChatEventCursor,
-    schemaVersion: number,
     signal?: AbortSignal,
   ): Promise<void>;
   replaceRowsAndCursor(
     threadId: string,
     rows: readonly ChatEventRow[],
     cursor: ChatEventCursor,
-    schemaVersion: number,
     signal?: AbortSignal,
   ): Promise<void>;
   clearThread(threadId: string, signal?: AbortSignal): Promise<void>;
@@ -136,8 +134,8 @@ function createRowReadStore(
       if (rawCursor === undefined) {
         return [];
       }
-      // A cursor versions the whole row generation. Rejecting it before rows
-      // are exposed keeps a V6 fallback cache from being interpreted as V7.
+      // A cursor versions the whole row generation. Reject it before exposing
+      // rows so a retired cache shape cannot enter the current projection.
       storedChatEventCursor(rawCursor);
       const index = tx
         .objectStore(storeName)
@@ -159,7 +157,7 @@ function createRowWriteStore(
   getDb: GetDb,
 ): ChatEventRowWriteStore {
   return {
-    async upsertRowsAndCursor(threadId, rows, cursor, schemaVersion, signal) {
+    async upsertRowsAndCursor(threadId, rows, cursor, signal) {
       L.debug("upsertRows:start", { count: rows.length });
       const db = await getDb();
       signal?.throwIfAborted();
@@ -172,7 +170,7 @@ function createRowWriteStore(
       requests.push(
         tx.objectStore(cursorStoreName).put({
           threadId,
-          schemaVersion,
+          schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           lastEventId: cursor.lastEventId,
           lastSeqId: cursor.lastSeqId,
           ...(cursor.lastEventId === null || cursor.projection === undefined
@@ -183,7 +181,7 @@ function createRowWriteStore(
       await Promise.all([...requests, tx.done]);
       L.debug("upsertRows:done", { count: rows.length });
     },
-    async replaceRowsAndCursor(threadId, rows, cursor, schemaVersion, signal) {
+    async replaceRowsAndCursor(threadId, rows, cursor, signal) {
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction([storeName, cursorStoreName], "readwrite");
@@ -203,7 +201,7 @@ function createRowWriteStore(
         ...putRequests,
         tx.objectStore(cursorStoreName).put({
           threadId,
-          schemaVersion,
+          schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           lastEventId: cursor.lastEventId,
           lastSeqId: cursor.lastSeqId,
           ...(cursor.lastEventId === null || cursor.projection === undefined

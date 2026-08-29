@@ -8,10 +8,7 @@ import {
 } from "ccstate";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
-import {
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventCursor,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
@@ -175,7 +172,6 @@ function createSyncRemoteRowsCommand({
      */
     const loadColdStartCursor = async (): Promise<{
       readonly cursor: ChatEventCursor;
-      readonly schemaVersion: number;
     }> => {
       const result = await settle(
         set(fetchChatEventSnapshotRows$, threadId, signal),
@@ -199,13 +195,12 @@ function createSyncRemoteRowsCommand({
           threadId,
           rows: snapshot?.rows ?? [],
           cursor,
-          schemaVersion: result.value.schemaVersion,
         },
         signal,
       );
       signal.throwIfAborted();
       await mergeRows(snapshot?.rows ?? []);
-      return { cursor, schemaVersion: result.value.schemaVersion };
+      return { cursor };
     };
 
     // True once the cursor came from the server rather than the local cache.
@@ -217,7 +212,6 @@ function createSyncRemoteRowsCommand({
     // subscription is live. Confirm the server-derived cursor once more after
     // that first response so the event is not stranded in the gap.
     let needsColdStartTailConfirmation = false;
-    let cacheSchemaVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
     let cursor: ChatEventCursor;
     const cachedCursor = await set(
       loadIndexedDbChatEventCursor$,
@@ -228,7 +222,6 @@ function createSyncRemoteRowsCommand({
       const coldStart = await loadColdStartCursor();
       signal.throwIfAborted();
       cursor = coldStart.cursor;
-      cacheSchemaVersion = coldStart.schemaVersion;
       cursorFromServer = true;
       needsColdStartTailConfirmation = true;
     } else {
@@ -250,20 +243,17 @@ function createSyncRemoteRowsCommand({
         const coldStart = await loadColdStartCursor();
         signal.throwIfAborted();
         cursor = coldStart.cursor;
-        cacheSchemaVersion = coldStart.schemaVersion;
         cursorFromServer = true;
         needsColdStartTailConfirmation = true;
         continue;
       }
       cursor = page.cursor;
-      cacheSchemaVersion = Math.min(cacheSchemaVersion, page.schemaVersion);
       await set(
         writeIndexedDbChatEventRows$,
         {
           threadId,
           rows: page.rows,
           cursor,
-          schemaVersion: cacheSchemaVersion,
         },
         signal,
       );
