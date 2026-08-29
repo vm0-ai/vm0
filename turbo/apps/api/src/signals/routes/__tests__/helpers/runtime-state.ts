@@ -835,22 +835,6 @@ export async function readChatEventSnapshotHead(
   return response.chat_event_snapshot_head;
 }
 
-export async function readRunChatToolActivityDecision(
-  context: TestContext,
-  runId: string,
-): Promise<
-  NonNullable<TestRuntimeStateActionResponse["run_chat_tool_activity_decision"]>
-> {
-  const response = await postAction(context, {
-    action: "read-run-chat-tool-activity-decision",
-    run_id: runId,
-  });
-  if (!response.run_chat_tool_activity_decision) {
-    throw new Error("readRunChatToolActivityDecision missing run");
-  }
-  return response.run_chat_tool_activity_decision;
-}
-
 export async function insertHostedSiteAsPreviousApi(
   context: TestContext,
   args: {

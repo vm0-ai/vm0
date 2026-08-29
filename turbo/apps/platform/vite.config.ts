@@ -7,6 +7,7 @@ import { defineConfig } from "vite";
 
 import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
+import { clerkCoreHtmlPlugin } from "./scripts/clerk-html.ts";
 import {
   applicationJavaScriptBundlePlugin,
   singleWorkerJavaScriptBundlePlugin,
@@ -51,6 +52,7 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
     react(),
     devArtifactFetchProxy(),
+    clerkCoreHtmlPlugin(),
     applicationJavaScriptBundlePlugin(),
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&

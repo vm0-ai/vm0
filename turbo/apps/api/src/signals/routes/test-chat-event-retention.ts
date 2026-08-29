@@ -33,17 +33,6 @@ const retainChatEventFixturesRoute$ = command(
       {
         kind: "fixtures",
         chatThreadIds: bodyResult.data.chat_thread_ids,
-        ...(bodyResult.data.tool_cleanup_thread_scan_limit === undefined
-          ? {}
-          : {
-              toolCleanupThreadScanLimit:
-                bodyResult.data.tool_cleanup_thread_scan_limit,
-            }),
-        ...(bodyResult.data.tool_cleanup_delete_limit === undefined
-          ? {}
-          : {
-              toolCleanupDeleteLimit: bodyResult.data.tool_cleanup_delete_limit,
-            }),
       },
       signal,
     );

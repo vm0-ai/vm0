@@ -14,6 +14,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
+  chatEventRowsResponse,
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
@@ -61,21 +62,25 @@ function mockThread(
     chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
       if (query.sinceSeqId >= 1) {
-        return respond(200, { rows: [] });
+        return respond(200, chatEventRowsResponse([], query));
       }
 
-      return respond(200, {
-        rows: mockChatEventRows([
-          {
-            id: `msg-${params.threadId}`,
-            threadId: params.threadId,
-            eventType: "output.message" as const,
-            content,
-            seqId: 1,
-            createdAt: "2026-01-01T00:00:00Z",
-          },
-        ]),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows([
+            {
+              id: `msg-${params.threadId}`,
+              threadId: params.threadId,
+              eventType: "output.message" as const,
+              content,
+              seqId: 1,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          query,
+        ),
+      );
     },
   );
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {

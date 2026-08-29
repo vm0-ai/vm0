@@ -2311,48 +2311,6 @@
       "copied": "Copied",
       "deleted": "Chat deleted"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Changing files",
-            "singular": "Changing a file"
-          },
-          "terminal": {
-            "plural": "Changed files",
-            "singular": "Changed a file"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Reading files",
-            "singular": "Reading a file"
-          },
-          "terminal": {
-            "plural": "Read files",
-            "singular": "Read a file"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Running commands",
-            "singular": "Running a command"
-          },
-          "terminal": {
-            "plural": "Ran commands",
-            "singular": "Ran a command"
-          }
-        }
-      },
-      "collapse": "Collapse tool activity",
-      "expand": "Expand tool activity",
-      "status": {
-        "cancelled": "Cancelled",
-        "error": "Failed",
-        "pending": "In progress",
-        "success": "Completed"
-      }
-    },
     "voice": {
       "checkingLimit": "Checking voice input limit",
       "input": "Voice input",

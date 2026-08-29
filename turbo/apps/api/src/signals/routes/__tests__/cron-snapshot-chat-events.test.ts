@@ -10,12 +10,10 @@ import {
   version as uuidVersion,
   v5 as uuidv5,
 } from "uuid";
-import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { seedRetentionToolEvent$ } from "../../../test-fixtures/chat-event-retention";
 import { createDeferredPromise } from "../../utils";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
@@ -36,7 +34,6 @@ import {
 } from "./helpers/runtime-state";
 
 const context = testContext();
-const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
@@ -434,7 +431,7 @@ describe("cron snapshot chat events", () => {
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
-  it("publishes canonical V7 from V6 redacted history and retains V6", async () => {
+  it("publishes current V7 from retained V6 snapshot history", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Snapshot V6 upgrade agent",
@@ -448,15 +445,6 @@ describe("cron snapshot chat events", () => {
     await runSnapshotCron([threadId]);
 
     await setChatEventSnapshotHeadVersion(context, threadId, 6);
-    const toolEventId = await store.set(
-      seedRetentionToolEvent$,
-      {
-        chatThreadId: threadId,
-        toolUseId: "snapshot-v5-upgrade-tool",
-        summary: "Read the V5 upgrade fixture",
-      },
-      context.signal,
-    );
     await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       threadId,
@@ -467,9 +455,7 @@ describe("cron snapshot chat events", () => {
     const upgraded = await runSnapshotCron([threadId]);
     expect(upgraded).toMatchObject({
       success: true,
-      canonicalSnapshotHeads: 1,
-      pendingCanonicalSnapshotMigrations: 0,
-      nonCurrentSnapshotHeads: 1,
+      snapshots: 1,
     });
     const redactedHead = await readChatEventSnapshotHead(
       context,
@@ -491,7 +477,6 @@ describe("cron snapshot chat events", () => {
     const redactedBody = gunzipSync(redactedObject.body).toString("utf8");
     expect(redactedBody).toContain(`${marker}-prefix`);
     expect(redactedBody).toContain(`${marker}-tail`);
-    expect(redactedBody).not.toContain(toolEventId);
     await expect(
       readChatEventSnapshotHead(context, threadId, "full"),
     ).rejects.toThrow("missing snapshot head");
@@ -537,11 +522,7 @@ describe("cron snapshot chat events", () => {
     });
     expect(deletedRows).toBeGreaterThan(0);
 
-    const converged = await runSnapshotCron([threadId]);
-    expect(converged).toMatchObject({
-      canonicalSnapshotHeads: 1,
-      pendingCanonicalSnapshotMigrations: 0,
-    });
+    await runSnapshotCron([threadId]);
     const canonical = await readChatEventSnapshotHead(
       context,
       threadId,
@@ -589,6 +570,7 @@ describe("cron snapshot chat events", () => {
     const tailRows = await chat.listThreadEventRows(owner, threadId, {
       lastEventId: parentHead.last_event_id,
       lastSeqId: parentHead.last_seq_id,
+      projection: "tool-redacted",
     });
     await projectChatEventSearch(threadId);
 
@@ -835,7 +817,6 @@ describe("cron snapshot chat events", () => {
       duplicateEventIdConflicts: 1,
       duplicateEventIdsRemapped: 2,
       duplicateEventReferencesRemapped: 2,
-      nonCurrentSnapshotHeads: 0,
     });
     expectSnapshotCompletion({
       duplicateEventIdConflictThreads: 1,
@@ -1027,6 +1008,7 @@ describe("cron snapshot chat events", () => {
     const tail = await chat.listThreadEventRows(owner, threadId, {
       lastEventId: head.terminal_event_id ?? head.last_event_id,
       lastSeqId: head.terminal_seq_id ?? coveredSeqId,
+      projection: "tool-redacted",
     });
     expect(tail.length).toBeGreaterThan(0);
     let previousSeqId = coveredSeqId;

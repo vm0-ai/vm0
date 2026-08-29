@@ -3,7 +3,10 @@ import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-t
 import type { Store } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
 
-import { testContext } from "../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../signals/__tests__/test-helpers.ts";
 import { mockNow } from "../../lib/time.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import {
@@ -200,15 +203,15 @@ describe("shared database MessagePort protocol", () => {
       chatThreadEventsContract.rows,
       async ({ params, query, respond }) => {
         if (query.sinceSeqId > 0) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
         started.add(params.threadId);
         if (params.threadId === firstKey.threadId) {
           await firstGate.promise;
-          return respond(200, { rows: [firstRow] });
+          return respond(200, chatEventRowsResponse([firstRow], query));
         }
         await secondGate.promise;
-        return respond(200, { rows: [secondRow] });
+        return respond(200, chatEventRowsResponse([secondRow], query));
       },
     );
 
@@ -268,9 +271,9 @@ describe("shared database MessagePort protocol", () => {
         if (query.sinceSeqId === 0) {
           pageStarted = true;
           await pageGate.promise;
-          return respond(200, { rows: [canonicalRow] });
+          return respond(200, chatEventRowsResponse([canonicalRow], query));
         }
-        return respond(200, { rows: [] });
+        return respond(200, chatEventRowsResponse([], query));
       },
     );
 
@@ -364,9 +367,13 @@ describe("shared database MessagePort protocol", () => {
       });
       context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
         requestedSeqIds.push(query.sinceSeqId);
-        return respond(200, {
-          rows: query.sinceSeqId === 0 ? [canonicalRow] : [],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            query.sinceSeqId === 0 ? [canonicalRow] : [],
+            query,
+          ),
+        );
       });
 
       mockNow(start + 2 * 60 * 1000, context.signal);
@@ -425,8 +432,8 @@ describe("shared database MessagePort protocol", () => {
           },
         });
       });
-      context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
-        return respond(200, { rows: [] });
+      context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+        return respond(200, chatEventRowsResponse([], query));
       });
 
       await bridge.on(key, vi.fn<() => void>(), subscription.signal);

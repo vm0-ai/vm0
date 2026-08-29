@@ -51,7 +51,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { PLACEHOLDER, mockChatLifecycle } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 
@@ -1537,20 +1540,24 @@ describe("chat event action cards", () => {
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
         if (params.threadId !== rightThreadId || query.sinceSeqId >= 1) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
-        return respond(200, {
-          rows: mockChatEventRows([
-            {
-              id: "c0000000-0000-4000-a000-000000000034",
-              threadId: rightThreadId,
-              eventType: "output.message",
-              seqId: 1,
-              content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
-              createdAt,
-            },
-          ]),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows([
+              {
+                id: "c0000000-0000-4000-a000-000000000034",
+                threadId: rightThreadId,
+                eventType: "output.message",
+                seqId: 1,
+                content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
+                createdAt,
+              },
+            ]),
+            query,
+          ),
+        );
       },
     );
 

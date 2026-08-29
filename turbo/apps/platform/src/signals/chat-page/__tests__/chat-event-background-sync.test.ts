@@ -8,7 +8,10 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { setupBootstrap, setupPage } from "../../../__tests__/page-helper.ts";
-import { testContext } from "../../__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../__tests__/test-helpers.ts";
 import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
@@ -174,10 +177,13 @@ describe("chat event background sync", () => {
       });
     });
     mockMissingSnapshots();
-    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
-      requestedThreadIds.push(params.threadId);
-      return respond(200, { rows: [] });
-    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query, params, respond }) => {
+        requestedThreadIds.push(params.threadId);
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
 
     await setupAuthenticatedBackgroundSync();
 
@@ -215,10 +221,13 @@ describe("chat event background sync", () => {
       });
     });
     mockMissingSnapshots();
-    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
-      requestedThreadIds.push(params.threadId);
-      return respond(200, { rows: [] });
-    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query, params, respond }) => {
+        requestedThreadIds.push(params.threadId);
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
 
     await setupAuthenticatedBackgroundSync();
 
@@ -281,6 +290,7 @@ describe("chat event background sync", () => {
         cursor: {
           lastEventId: lastCachedRow.id,
           lastSeqId: lastCachedRow.seqId,
+          projection: "tool-redacted",
         },
         schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       },
@@ -291,7 +301,7 @@ describe("chat event background sync", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       cursors.push(query.sinceSeqId);
       if (query.sinceSeqId === lastCachedRow.seqId) {
-        return respond(200, { rows: [newRow] });
+        return respond(200, chatEventRowsResponse([newRow], query));
       }
       throw new Error(`Unexpected row cursor: ${JSON.stringify(query)}`);
     });
@@ -336,6 +346,7 @@ describe("chat event background sync", () => {
         cursor: {
           lastEventId: lastCachedRow.id,
           lastSeqId: lastCachedRow.seqId,
+          projection: "tool-redacted",
         },
         schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       },
@@ -345,15 +356,18 @@ describe("chat event background sync", () => {
     let cachedThreadRequests = 0;
     const otherThreadRequested = context.mocks.deferred<void>();
     mockMissingSnapshots();
-    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
-      if (params.threadId === THREAD_ID) {
-        cachedThreadRequests += 1;
-      }
-      if (params.threadId === OTHER_THREAD_ID) {
-        otherThreadRequested.resolve();
-      }
-      return respond(200, { rows: [] });
-    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query, params, respond }) => {
+        if (params.threadId === THREAD_ID) {
+          cachedThreadRequests += 1;
+        }
+        if (params.threadId === OTHER_THREAD_ID) {
+          otherThreadRequested.resolve();
+        }
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
 
     await context.store.set(setupRealtime$, context.signal);
     const subscriberSignal = context.store.set(

@@ -43,12 +43,12 @@ export const chatEventSnapshots = pgTable(
     terminalSeqId: bigint("terminal_seq_id", { mode: "number" }),
     /** Version of the NDJSON line shape inside the archive object. */
     archiveSchemaVersion: integer("archive_schema_version").notNull(),
-    /** Existing pointers are the full projection; redacted pointers are explicit. */
+    /** Legacy V5/V6 pointers may be full; every canonical V7 pointer is redacted. */
     projection: text("projection")
       .$type<ChatEventSnapshotProjection>()
       .default("full")
       .notNull(),
-    /** Multiple projections may safely reference the same content-addressed object. */
+    /** Retained V5/V6 projections may share one immutable content-addressed object. */
     objectKey: text("object_key").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

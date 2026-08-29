@@ -12,7 +12,10 @@ import {
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import {
   CHAT_EVENT_CURSOR_STORE,
   CHAT_EVENT_ROWS_STORE,
@@ -559,8 +562,8 @@ describe("okou chat thread IndexedDB fallback", () => {
         });
       },
     );
-    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
-      return respond(200, { rows: [] });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([], query));
     });
     const emptyThread = observeEmptyThreadMessage();
 
@@ -644,6 +647,7 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, {
         url: snapshotUrl,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: terminalSnapshotRow.id,
         lastSeqId: 3,
       });
@@ -659,8 +663,8 @@ describe("okou chat thread IndexedDB fallback", () => {
           .join("\n")}\n`,
       );
     });
-    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
-      return respond(200, { rows: [] });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([], query));
     });
     context.mocks.api(
       chatThreadMarkReadContract.markRead,

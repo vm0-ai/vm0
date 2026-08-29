@@ -5,7 +5,7 @@ import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CHAT_EVENT_SNAPSHOT_PROJECTIONS,
 } from "./chat-event-schema-version";
-import { CHAT_EVENT_TYPES, outputToolPayloadSchema } from "./chat-events";
+import { CHAT_EVENT_TYPES } from "./chat-events";
 import {
   connectorAccountConnectionSchema,
   connectorAccountSelectionSchema,
@@ -46,18 +46,14 @@ const chatEventCursorSchema = z.union([
     .object({
       lastEventId: z.string().uuid(),
       lastSeqId: z.number().int().positive(),
-      projection: chatEventSnapshotProjectionSchema.optional(),
+      projection: chatEventSnapshotProjectionSchema,
     })
     .strict(),
 ]);
 const chatEventSnapshotResponseBaseSchema = z.object({
   url: z.string().url(),
   expiresInSeconds: z.number().int().positive(),
-  /**
-   * New app/CLI -> old API fallback. Remove with #29362 after the old API
-   * leaves rollback and contexts pinned to this client have drained.
-   */
-  projection: chatEventSnapshotProjectionSchema.optional(),
+  projection: chatEventSnapshotProjectionSchema,
 });
 const chatEventSnapshotResponseSchema = z.union([
   chatEventSnapshotResponseBaseSchema.extend({
@@ -834,14 +830,6 @@ const outputFollowupsEventSchema = chatEventBaseSchema
   })
   .strict();
 
-const outputToolEventSchema = chatEventBaseSchema
-  .extend({
-    eventType: z.literal("output.tool"),
-    content: z.null(),
-    ...outputToolPayloadSchema.shape,
-  })
-  .strict();
-
 const runQueuedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("run.queued"),
@@ -967,7 +955,6 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   outputErrorEventSchema,
   outputThinkingEventSchema,
   outputFollowupsEventSchema,
-  outputToolEventSchema,
   runQueuedEventSchema,
   runDequeuedEventSchema,
   runCompletedEventSchema,
@@ -1848,26 +1835,16 @@ export const chatThreadEventsContract = c.router({
       z.object({
         sinceSeqId: z.coerce.number().int().positive(),
         sinceEventId: z.string().uuid(),
-        /**
-         * V5/V6 app and CLI -> V7 API fallback. Remove with #29362 after the
-         * V7 app floor is live and V5/V6 queued or claimed contexts drain.
-         */
-        sinceProjection: chatEventSnapshotProjectionSchema.optional(),
+        sinceProjection: chatEventSnapshotProjectionSchema,
         limit: z.coerce.number().min(1).max(50).default(50),
       }),
     ]),
     responses: {
       200: z.object({
         rows: z.array(chatEventRowSchema),
-        /**
-         * New app/CLI -> old API fallback. Remove with #29362 after the old API
-         * leaves rollback and contexts pinned to this client have drained.
-         */
-        cursor: chatEventCursorSchema.optional(),
-        /** Same bounded old-API fallback and removal gate as `cursor`. */
-        hasMore: z.boolean().optional(),
-        /** Same bounded old-API fallback and removal gate as `cursor`. */
-        projection: chatEventSnapshotProjectionSchema.optional(),
+        cursor: chatEventCursorSchema,
+        hasMore: z.boolean(),
+        projection: chatEventSnapshotProjectionSchema,
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -2072,7 +2049,6 @@ export type ChatFollowupsEvent = Extract<
   ChatEvent,
   { eventType: "output.followups" }
 >;
-export type ChatToolEvent = Extract<ChatEvent, { eventType: "output.tool" }>;
 export type ChatUsageEvent = Extract<
   ChatEvent,
   { eventType: "usage.recorded" }

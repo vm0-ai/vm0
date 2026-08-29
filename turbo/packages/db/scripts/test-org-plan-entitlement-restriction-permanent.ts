@@ -33,6 +33,8 @@ const BRIDGE_TRIGGER_NAME =
 const MIRROR_CONSTRAINT_NAME =
   "org_plan_entitlements_model_restriction_mirror_check";
 
+export type CanonicalRestrictionNullability = "not-null" | "nullable";
+
 interface RestrictionRow {
   readonly canonical: boolean | null;
   readonly legacy: boolean;
@@ -41,7 +43,7 @@ interface RestrictionRow {
 
 function databaseErrorField(
   error: unknown,
-  field: "code" | "constraint",
+  field: "code" | "column" | "constraint",
 ): string | undefined {
   if (typeof error !== "object" || error === null || !(field in error)) {
     return undefined;
@@ -69,7 +71,10 @@ async function readRestrictionRows(
   return result.rows;
 }
 
-async function validateCatalog(client: Client): Promise<void> {
+async function validateCatalog(
+  client: Client,
+  canonicalNullability: CanonicalRestrictionNullability,
+): Promise<void> {
   const columns = await client.query<{
     columnDefault: string | null;
     columnName: string;
@@ -105,7 +110,7 @@ async function validateCatalog(client: Client): Promise<void> {
       columnName: "restricted_built_in_models",
       formattedType: "boolean",
       hasMissing: false,
-      isNullable: "YES",
+      isNullable: canonicalNullability === "not-null" ? "NO" : "YES",
     },
     {
       columnDefault: "true",
@@ -336,9 +341,22 @@ async function seedLegacyOnlyRow(client: Client, orgId: string): Promise<void> {
 async function validateUpdatePolicy(
   client: Client,
   prefix: string,
+  canonicalNullability: CanonicalRestrictionNullability,
 ): Promise<void> {
   const legacyOnlyOrgId = `${prefix}-update-legacy-only`;
-  await seedLegacyOnlyRow(client, legacyOnlyOrgId);
+  if (canonicalNullability === "nullable") {
+    await seedLegacyOnlyRow(client, legacyOnlyOrgId);
+  } else {
+    await client.query(
+      `
+        INSERT INTO "org_plan_entitlements" (
+          "org_id", "plan_key", "plan_rank", "source",
+          "restricted_vm0_models"
+        ) VALUES ($1, 'fixture', 0, 'test_fixture', true)
+      `,
+      [legacyOnlyOrgId],
+    );
+  }
 
   await client.query(
     `UPDATE "org_plan_entitlements" SET "status" = 'suspended' WHERE "org_id" = $1`,
@@ -361,23 +379,67 @@ async function validateUpdatePolicy(
     [legacyOnlyOrgId],
   );
   assert.deepEqual(await readRestrictionRows(client, [legacyOnlyOrgId]), [
-    { canonical: null, legacy: true, orgId: legacyOnlyOrgId },
+    {
+      canonical: canonicalNullability === "nullable" ? null : true,
+      legacy: true,
+      orgId: legacyOnlyOrgId,
+    },
   ]);
 
-  await expectMirrorConstraintViolation(
-    client,
-    `
-      UPDATE "org_plan_entitlements"
-      SET
-        "restricted_vm0_models" = false,
-        "restricted_built_in_models" = true
-      WHERE "org_id" = $1
-    `,
-    [legacyOnlyOrgId],
-  );
-  assert.deepEqual(await readRestrictionRows(client, [legacyOnlyOrgId]), [
-    { canonical: null, legacy: true, orgId: legacyOnlyOrgId },
-  ]);
+  if (canonicalNullability === "nullable") {
+    await expectMirrorConstraintViolation(
+      client,
+      `
+        UPDATE "org_plan_entitlements"
+        SET
+          "restricted_vm0_models" = false,
+          "restricted_built_in_models" = true
+        WHERE "org_id" = $1
+      `,
+      [legacyOnlyOrgId],
+    );
+    assert.deepEqual(await readRestrictionRows(client, [legacyOnlyOrgId]), [
+      { canonical: null, legacy: true, orgId: legacyOnlyOrgId },
+    ]);
+  } else {
+    const conflictOrgId = `${prefix}-update-conflicting-dual`;
+    await client.query(
+      `ALTER TABLE "org_plan_entitlements" DISABLE TRIGGER "${BRIDGE_TRIGGER_NAME}"`,
+    );
+    try {
+      await client.query(
+        `
+          INSERT INTO "org_plan_entitlements" (
+            "org_id", "plan_key", "plan_rank", "source",
+            "restricted_vm0_models", "restricted_built_in_models"
+          ) VALUES ($1, 'fixture', 0, 'test_fixture', false, true)
+        `,
+        [conflictOrgId],
+      );
+    } finally {
+      await client.query(
+        `ALTER TABLE "org_plan_entitlements" ENABLE TRIGGER "${BRIDGE_TRIGGER_NAME}"`,
+      );
+    }
+    await expectMirrorConstraintViolation(
+      client,
+      `
+        UPDATE "org_plan_entitlements"
+        SET
+          "restricted_vm0_models" = true,
+          "restricted_built_in_models" = false
+        WHERE "org_id" = $1
+      `,
+      [conflictOrgId],
+    );
+    assert.deepEqual(await readRestrictionRows(client, [conflictOrgId]), [
+      { canonical: true, legacy: false, orgId: conflictOrgId },
+    ]);
+    await client.query(
+      `DELETE FROM "org_plan_entitlements" WHERE "org_id" = $1`,
+      [conflictOrgId],
+    );
+  }
 
   await client.query(
     `
@@ -480,11 +542,80 @@ async function validateConflictWrites(
     ],
   );
 
+  const locked = await client.query<RestrictionRow>(
+    `
+      SELECT
+        "org_id" AS "orgId",
+        "restricted_vm0_models" AS "legacy",
+        "restricted_built_in_models" AS "canonical"
+      FROM "org_plan_entitlements"
+      WHERE "org_id" = $1
+      FOR UPDATE
+    `,
+    [legacyOrgId],
+  );
+  assert.deepEqual(locked.rows, [
+    { canonical: true, legacy: true, orgId: legacyOrgId },
+  ]);
+
   await client.query(
     `DELETE FROM "org_plan_entitlements" WHERE "org_id" = $1`,
     [canonicalOrgId],
   );
   assert.deepEqual(await readRestrictionRows(client, [canonicalOrgId]), []);
+}
+
+async function validateBridgeDisabledNotNullConstraint(
+  client: Client,
+  prefix: string,
+): Promise<void> {
+  const orgId = `${prefix}-bridge-disabled-not-null`;
+  await client.query(
+    `
+      INSERT INTO "org_plan_entitlements" (
+        "org_id", "plan_key", "plan_rank", "source",
+        "restricted_built_in_models"
+      ) VALUES ($1, 'fixture', 0, 'test_fixture', false)
+    `,
+    [orgId],
+  );
+  await client.query(
+    `ALTER TABLE "org_plan_entitlements" DISABLE TRIGGER "${BRIDGE_TRIGGER_NAME}"`,
+  );
+  try {
+    await client.query("SAVEPOINT expected_canonical_not_null_violation");
+    let statementError: unknown;
+    try {
+      await client.query(
+        `
+          UPDATE "org_plan_entitlements"
+          SET "restricted_built_in_models" = NULL
+          WHERE "org_id" = $1
+        `,
+        [orgId],
+      );
+    } catch (error) {
+      statementError = error;
+    }
+    await client.query(
+      "ROLLBACK TO SAVEPOINT expected_canonical_not_null_violation",
+    );
+    await client.query(
+      "RELEASE SAVEPOINT expected_canonical_not_null_violation",
+    );
+    assert.equal(databaseErrorField(statementError, "code"), "23502");
+    assert.equal(
+      databaseErrorField(statementError, "column"),
+      "restricted_built_in_models",
+    );
+  } finally {
+    await client.query(
+      `ALTER TABLE "org_plan_entitlements" ENABLE TRIGGER "${BRIDGE_TRIGGER_NAME}"`,
+    );
+  }
+  assert.deepEqual(await readRestrictionRows(client, [orgId]), [
+    { canonical: false, legacy: false, orgId },
+  ]);
 }
 
 async function validateOrgMetadataHelper(
@@ -704,13 +835,20 @@ async function validateOrgMetadataHelper(
   ]);
 }
 
-async function validateBehavior(client: Client, prefix: string): Promise<void> {
+async function validateBehavior(
+  client: Client,
+  prefix: string,
+  canonicalNullability: CanonicalRestrictionNullability,
+): Promise<void> {
   await client.query("BEGIN");
   try {
     await validateInsertPolicy(client, prefix);
-    await validateUpdatePolicy(client, prefix);
+    await validateUpdatePolicy(client, prefix, canonicalNullability);
     await validateConflictWrites(client, prefix);
     await validateOrgMetadataHelper(client, prefix);
+    if (canonicalNullability === "not-null") {
+      await validateBridgeDisabledNotNullConstraint(client, prefix);
+    }
 
     const unequal = await client.query<{ count: number }>(
       `
@@ -766,6 +904,7 @@ export async function installOrgPlanEntitlementRestrictionArtifactsOnRegenerated
 
 export async function validatePermanentOrgPlanEntitlementRestrictionState(
   dbUrl: string,
+  canonicalNullability: CanonicalRestrictionNullability = "not-null",
 ): Promise<void> {
   console.log(
     "=== Phase 2.5.1.3: Validate permanent org plan entitlement restriction state ===\n",
@@ -773,10 +912,19 @@ export async function validatePermanentOrgPlanEntitlementRestrictionState(
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
   try {
-    await validateCatalog(client);
-    await validateBehavior(client, "org-plan-restriction-permanent-30162");
+    await validateCatalog(client, canonicalNullability);
+    await validateBehavior(
+      client,
+      "org-plan-restriction-permanent-30162",
+      canonicalNullability,
+    );
     console.log("   ✅ legacy default and canonical precedence are exact");
     console.log("   ✅ one-sided updates mirror and conflicts fail atomically");
+    if (canonicalNullability === "not-null") {
+      console.log(
+        "   ✅ bridge-disabled canonical NULL fails with SQLSTATE 23502",
+      );
+    }
     console.log(
       "   ✅ helper tier values and ON CONFLICT behavior are preserved\n",
     );

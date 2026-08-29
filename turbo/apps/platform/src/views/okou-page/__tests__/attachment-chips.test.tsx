@@ -15,7 +15,10 @@ import userEvent from "@testing-library/user-event";
 import { logsListContract } from "@okouai/api-contracts/contracts/logs";
 import { HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
   detachedSetupPage,
@@ -1190,34 +1193,38 @@ describe("zero attachment chips", () => {
           params.threadId !== leftThreadId &&
           params.threadId !== rightThreadId
         ) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
-        return respond(200, {
-          rows: mockChatEventRows([
-            {
-              id: `msg-${params.threadId}`,
-              threadId: params.threadId,
-              eventType: "input.prompt",
-              content: null,
-              userMessage: {
-                version: 1,
-                parts: [
-                  {
-                    type: "file",
-                    fileId,
-                    filenameSnapshot: "owner-scoped.png",
-                    contentType: "image/png",
-                  },
-                ],
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows([
+              {
+                id: `msg-${params.threadId}`,
+                threadId: params.threadId,
+                eventType: "input.prompt",
+                content: null,
+                userMessage: {
+                  version: 1,
+                  parts: [
+                    {
+                      type: "file",
+                      fileId,
+                      filenameSnapshot: "owner-scoped.png",
+                      contentType: "image/png",
+                    },
+                  ],
+                },
+                runId: `run-${params.threadId}`,
+                seqId: 1,
+                createdAt: "2026-03-10T00:00:00Z",
               },
-              runId: `run-${params.threadId}`,
-              seqId: 1,
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-          ]).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+            ]).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
 
@@ -2089,23 +2096,27 @@ describe("zero attachment chips", () => {
               ? rightSecondImageUrl
               : undefined;
         if (!secondImageUrl) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
-        return respond(200, {
-          rows: mockChatEventRows([
-            {
-              id: `msg-${params.threadId}`,
-              threadId: params.threadId,
-              eventType: "output.message",
-              content: `Generated images:\n\n${firstImageUrl}\n${secondImageUrl}`,
-              runId: `run-${params.threadId}`,
-              seqId: 1,
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-          ]).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows([
+              {
+                id: `msg-${params.threadId}`,
+                threadId: params.threadId,
+                eventType: "output.message",
+                content: `Generated images:\n\n${firstImageUrl}\n${secondImageUrl}`,
+                runId: `run-${params.threadId}`,
+                seqId: 1,
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+            ]).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
 

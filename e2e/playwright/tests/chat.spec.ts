@@ -1684,8 +1684,9 @@ test("chat composer keeps standard tool icons and Send inside on narrow screens"
   });
   const sendButton = composer.getByRole("button", { name: "Send" });
 
-  await expect(connectorsButton.locator("img")).toHaveCount(2);
+  await expect(connectorsButton.locator("img")).toHaveCount(0);
   await connectorsButton.click();
+  await expect(connectorsButton.locator("img")).toHaveCount(2);
   await expect(
     page.getByRole("switch", { name: "Disable Cloud browser" }),
   ).toBeVisible();

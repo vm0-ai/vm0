@@ -2627,29 +2627,6 @@ const postRuntimeStateAction$ = command(
         await setRunnerJobConnectorRuntimeTargets(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
       }
-      case "read-run-chat-tool-activity-decision": {
-        const [run] = await db
-          .select({
-            runId: agentRuns.id,
-            chatToolActivityEnabled: agentRuns.chatToolActivityEnabled,
-          })
-          .from(agentRuns)
-          .where(eq(agentRuns.id, body.run_id))
-          .limit(1);
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            run_chat_tool_activity_decision: run
-              ? {
-                  run_id: run.runId,
-                  chat_tool_activity_enabled: run.chatToolActivityEnabled,
-                }
-              : null,
-          },
-        };
-      }
       case "hold-org-admission-lock": {
         await holdOrgAdmissionLock(db, body.org_id, signal);
         return { status: 200 as const, body: { ok: true as const } };

@@ -45,7 +45,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { emptySearchImg } from "../platform-assets.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { setChatPageImageModelSelection$ } from "../../../signals/okou-page/chat-page.ts";
@@ -933,26 +936,30 @@ describe("zero sidebar", () => {
     context.mocks.api(
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        return respond(200, {
-          rows: mockChatEventRows(
-            params.threadId === INCIDENT_THREAD_ID
-              ? [
-                  {
-                    id: "incident-message-1",
-                    threadId: INCIDENT_THREAD_ID,
-                    eventType: "run.completed" as const,
-                    runId: "mock-run",
-                    content: null,
-                    runLifecycleEvent: "completed" as const,
-                    seqId: 1,
-                    createdAt: "2026-03-10T00:05:00Z",
-                  },
-                ]
-              : [],
-          ).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(
+              params.threadId === INCIDENT_THREAD_ID
+                ? [
+                    {
+                      id: "incident-message-1",
+                      threadId: INCIDENT_THREAD_ID,
+                      eventType: "run.completed" as const,
+                      runId: "mock-run",
+                      content: null,
+                      runLifecycleEvent: "completed" as const,
+                      seqId: 1,
+                      createdAt: "2026-03-10T00:05:00Z",
+                    },
+                  ]
+                : [],
+            ).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     context.mocks.api(

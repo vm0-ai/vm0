@@ -74,6 +74,7 @@ import {
   validateOrgPlanEntitlementRestrictionBackfill,
   validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema,
 } from "./test-org-plan-entitlement-restriction-backfill";
+import { validateOrgPlanEntitlementRestrictionNotNull } from "./test-org-plan-entitlement-restriction-not-null";
 import {
   installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema,
   ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
@@ -11006,6 +11007,7 @@ async function main(): Promise<void> {
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -11122,7 +11124,7 @@ async function main(): Promise<void> {
       );
       console.log("   ✅ Agent-run model-key canonical schemas match");
       console.log(
-        "   ✅ Org plan restriction expansion, backfill, and mirror invariants match",
+        "   ✅ Org plan restriction expansion, backfill, NOT NULL, and mirror invariants match",
       );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(

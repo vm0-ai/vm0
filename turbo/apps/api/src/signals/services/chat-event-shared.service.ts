@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import type { OutputToolPayload } from "@okouai/api-contracts/contracts/chat-events";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -18,10 +17,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { writeDb$, type Db } from "../external/db";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import {
-  assistantEventIdForRunEvent,
-  toolEventIdForRunEvent,
-} from "./assistant-event-id";
+import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./chat-event.service";
 import {
   chatEventTypeIn,
@@ -77,12 +73,7 @@ type InsertAssistantEventItem =
       readonly runEventSequenceNumber: number;
       readonly thinking: string;
       readonly runEventId: string;
-    }
-  | (OutputToolPayload & {
-      readonly eventType: "output.tool";
-      readonly runEventSequenceNumber: number;
-      readonly runEventId: string;
-    });
+    };
 
 export interface InsertAssistantEventsInput {
   readonly runId: string;
@@ -224,10 +215,7 @@ export async function insertAssistantEventsInTransaction(
     tx,
     args.items.map((item) => {
       const eventIdentity = {
-        id:
-          item.eventType === "output.tool"
-            ? toolEventIdForRunEvent(args.runId, item.runEventId)
-            : assistantEventIdForRunEvent(args.runId, item.runEventId),
+        id: assistantEventIdForRunEvent(args.runId, item.runEventId),
         chatThreadId: args.threadId,
         runId: args.runId,
         runGroupId: runContext.goalId,
@@ -241,20 +229,10 @@ export async function insertAssistantEventsInTransaction(
           content: item.content,
         };
       }
-      if (item.eventType === "output.thinking") {
-        return {
-          ...eventIdentity,
-          eventType: item.eventType,
-          thinking: item.thinking,
-        };
-      }
       return {
         ...eventIdentity,
         eventType: item.eventType,
-        toolUseId: item.toolUseId,
-        action: item.action,
-        status: item.status,
-        summary: item.summary,
+        thinking: item.thinking,
       };
     }),
   );

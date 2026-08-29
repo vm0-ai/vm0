@@ -33,7 +33,10 @@ import {
 
 import { fill } from "../../../__tests__/page-helper.ts";
 import { nowIso } from "../../../__tests__/time.ts";
-import type { TestContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  chatEventRowsResponse,
+  type TestContext,
+} from "../../../signals/__tests__/test-helpers.ts";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
@@ -683,7 +686,7 @@ export function mockChatLifecycle(
     if (query.sinceSeqId === 0) {
       options?.afterInitialEventsList?.();
     }
-    return respond(200, { rows });
+    return respond(200, chatEventRowsResponse(rows, query));
   });
   context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
     if (options?.threadGate) {
