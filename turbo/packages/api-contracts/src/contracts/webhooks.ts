@@ -2,7 +2,6 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
-import { modelUsageObservationEventsSchema } from "./model-usage-observations";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -1096,38 +1095,4 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-const webhookModelUsageObservationBodySchema = z
-  .object({
-    runId: z.string().min(1, "runId is required"),
-    events: modelUsageObservationEventsSchema,
-  })
-  .strict();
-
-/**
- * Compact model usage observation contract for
- * /api/webhooks/agent/model-usage-observation
- *
- * Each immutable event carries the four counters consumed by model rankings.
- */
-export const webhookModelUsageObservationContract = c.router({
-  send: {
-    method: "POST",
-    path: "/api/webhooks/agent/model-usage-observation",
-    headers: authHeadersSchema,
-    body: webhookModelUsageObservationBodySchema,
-    responses: {
-      200: z.object({
-        success: z.boolean(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Receive compact model usage observation data from sandbox",
-  },
-});
-
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
-export type WebhookModelUsageObservationContract =
-  typeof webhookModelUsageObservationContract;

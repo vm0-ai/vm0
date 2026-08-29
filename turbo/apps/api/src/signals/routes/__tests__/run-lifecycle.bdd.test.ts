@@ -17637,25 +17637,6 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       "sandbox_reuse_result",
     );
 
-    const observed = await webhooks.requestAgentModelUsageObservationV2(
-      {
-        runId: created.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model: "claude-sonnet-4-6",
-            inputTokens: 120,
-            outputTokens: 0,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-    expect(observed.body).toStrictEqual({ success: true });
-
     const artifactSnapshots = [
       {
         name: memoryArtifact.name,
@@ -18014,7 +17995,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("checkpoints direct compose runs without vars and accepts compact usage by event model", async () => {
+  it("checkpoints direct compose runs without vars", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -18044,35 +18025,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const sandboxHeaders = {
       authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
     };
-
-    // With no pinned model the event model drives canonicalization: the
-    // unsupported event is skipped while the supported one is recorded.
-    const observed = await webhooks.requestAgentModelUsageObservationV2(
-      {
-        runId: run.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            model: "claude-sonnet-4-6",
-            inputTokens: 50,
-            outputTokens: 0,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-          {
-            idempotencyKey: randomUUID(),
-            model: "custom-bdd-model",
-            inputTokens: 0,
-            outputTokens: 7,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-    expect(observed.body).toStrictEqual({ success: true });
 
     const historyHash = createHash("sha256")
       .update(`bdd null vars checkpoint ${run.runId}`)

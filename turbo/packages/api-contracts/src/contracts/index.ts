@@ -229,7 +229,6 @@ export {
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
-  webhookModelUsageObservationContract,
   webhookUsageEventContract,
   type WebhookClerkContract,
   type WebhookUsageEventContract,
