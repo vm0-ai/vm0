@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.809.0](https://github.com/vm0-ai/vm0/compare/app-v0.808.3...app-v0.809.0) (2026-08-29)
+
+
+### Features
+
+* **platform:** use flowchart-only mermaid build ([#30170](https://github.com/vm0-ai/vm0/issues/30170)) ([683db88](https://github.com/vm0-ai/vm0/commit/683db889dd2d31920c6294df75b7904be6db7747))
+
+
+### Bug Fixes
+
+* **app:** serve immutable bundles from r2 ([#30185](https://github.com/vm0-ai/vm0/issues/30185)) ([7d7188a](https://github.com/vm0-ai/vm0/commit/7d7188ab84a1a01344deb6e9e56e93e1bfe1cd89))
+* **platform:** pin bootstrap skeleton to initial viewport ([#30176](https://github.com/vm0-ai/vm0/issues/30176)) ([0a2d76a](https://github.com/vm0-ai/vm0/commit/0a2d76a09c1d1f18dd4aa4494e480ae8f5c570a3))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#30187](https://github.com/vm0-ai/vm0/issues/30187)) ([a9910df](https://github.com/vm0-ai/vm0/commit/a9910df72430a95969da7914975cd0b2d6d5fd9a))
+
+
+### Performance Improvements
+
+* **platform:** trim vendors and ship one app bundle ([#30175](https://github.com/vm0-ai/vm0/issues/30175)) ([48d88b9](https://github.com/vm0-ai/vm0/commit/48d88b92e7ffdf98de82e57c5681506da891986a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.1
+    * @okouai/connectors bumped to 1.210.7
+    * @okouai/core bumped to 8.601.2
+    * @okouai/ui bumped to 1.0.2
+
 ## [0.808.3](https://github.com/vm0-ai/vm0/compare/app-v0.808.2...app-v0.808.3) (2026-08-28)
 
 

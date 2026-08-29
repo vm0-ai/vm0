@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.10...guest-contracts-v0.12.11) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
 ## [0.12.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.9...guest-contracts-v0.12.10) (2026-08-28)
 
 

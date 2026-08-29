@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.60](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.59...sandbox-v0.19.60) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
 ## [0.19.59](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.58...sandbox-v0.19.59) (2026-08-28)
 
 
