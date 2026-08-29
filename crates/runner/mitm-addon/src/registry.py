@@ -5,8 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from mitmproxy import ctx
-
+import addon_process_logging
 import matching
 import registry_firewalls
 import state_file
@@ -525,7 +524,12 @@ def load_registry_state(registry_path: str) -> RegistryState:
         message = str(e)
         if not state.stat_error_logged:
             state.stat_error_logged = True
-            ctx.log.warn(f"Failed to stat proxy registry: {message}")
+            addon_process_logging.emit_addon_process_event(
+                "warn",
+                "addon_process_integrity",
+                "proxy_registry_stat_failed",
+                detail=f"Failed to stat proxy registry: {message}",
+            )
         return _mark_unavailable(state, reason="stat_failed", message=message)
 
     with opened_file:
@@ -554,13 +558,23 @@ def load_registry_state(registry_path: str) -> RegistryState:
             state.failed_key = None
             if key != state.read_error_key:
                 state.read_error_key = key
-                ctx.log.warn(f"Failed to read proxy registry: {message}")
+                addon_process_logging.emit_addon_process_event(
+                    "warn",
+                    "addon_process_integrity",
+                    "proxy_registry_read_failed",
+                    detail=f"Failed to read proxy registry: {message}",
+                )
             return _mark_unavailable(state, reason="read_failed", message=message)
         except (ValueError, RecursionError) as e:
             message = str(e)
             state.failed_key = key
             state.read_error_key = None
-            ctx.log.warn(f"Failed to parse proxy registry: {message}")
+            addon_process_logging.emit_addon_process_event(
+                "warn",
+                "addon_process_integrity",
+                "proxy_registry_parse_failed",
+                detail=f"Failed to parse proxy registry: {message}",
+            )
             return _mark_unavailable(state, reason="parse_failed", message=message)
 
     (
@@ -575,7 +589,12 @@ def load_registry_state(registry_path: str) -> RegistryState:
         builtin_firewall_catalog_cache_path=builtin_catalog_cache_path,
     )
     if invalid_sandboxes:
-        ctx.log.warn(f"Rejected {len(invalid_sandboxes)} invalid proxy registry sandbox entries")
+        addon_process_logging.emit_addon_process_event(
+            "warn",
+            "addon_process_integrity",
+            "proxy_registry_entries_rejected",
+            detail=(f"Rejected {len(invalid_sandboxes)} invalid proxy registry sandbox entries"),
+        )
     new_compiled_registry, new_compiled_policy_registry = _compile_registry(
         new_registry,
         builtin_cache_keys,

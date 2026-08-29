@@ -1,10 +1,10 @@
 """Tests for registry sandbox lookup and public compiled context behavior."""
 
 import json
-from unittest.mock import MagicMock, patch
 
 import matching
 import registry
+from tests.process_log_helpers import capture_addon_process_events
 from tests.registry_helpers import write_firewall_registry
 
 
@@ -38,7 +38,7 @@ class TestGetSandboxInfo:
             )
         )
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             sandbox_info = registry.get_sandbox_info("10.200.0.1", str(path))
             assert sandbox_info is not None
             assert sandbox_info["runId"] == "good-run"
@@ -52,7 +52,7 @@ class TestGetSandboxInfo:
         path = tmp_path / "registry.json"
         path.write_text(json.dumps({"sandboxes": {"10.200.0.1": {"runId": ""}}, "updatedAt": 0}))
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             invalid_state = registry.load_registry_state(str(path))
 
         assert not isinstance(invalid_state, registry.RegistryUnavailable)
@@ -151,7 +151,7 @@ class TestGetSandboxContext:
             )
         )
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             assert registry.get_sandbox_context("10.200.0.1", str(path)) is not None
             assert registry.get_sandbox_context("10.200.0.2", str(path)) is None
             state = registry.load_registry_state(str(path))

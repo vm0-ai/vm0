@@ -5,10 +5,9 @@ import queue
 import threading
 import time
 from collections import defaultdict
-from contextlib import suppress
 from dataclasses import dataclass
 
-from mitmproxy import ctx
+import addon_process_logging
 
 MAX_PENDING_JSONL_WRITES = 4096
 MAX_PENDING_JSONL_BYTES = 32 * 1024 * 1024
@@ -74,7 +73,10 @@ def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
         ):
             dropped = True
         elif not _ensure_worker_locked():
-            _warn(f"Failed to start JSONL writer for {log_name} log")
+            _warn(
+                "jsonl_writer_start_failed",
+                f"Failed to start JSONL writer for {log_name} log",
+            )
             return
         else:
             sequence = _accepted_by_path.get(log_path, 0) + 1
@@ -97,7 +99,7 @@ def flush_log_path(log_path: str, *, timeout: float | None = None) -> bool:
     """Wait until writes accepted so far for ``log_path`` have been processed.
 
     Processing includes append attempts that fail. Those failures are reported
-    through mitmproxy warnings and do not affect the return value. Return
+    through addon process events and do not affect the return value. Return
     ``False`` only when a configured timeout expires with accepted writes still
     pending; ``True`` does not confirm that every line was persisted.
     """
@@ -128,7 +130,7 @@ def flush_all_logs() -> None:
     """Wait until writes accepted so far for every path have been processed.
 
     Processing includes append attempts that fail. Those failures are reported
-    through mitmproxy warnings, and returning does not confirm that every line
+    through addon process events, and returning does not confirm that every line
     was persisted.
     """
     with _condition:
@@ -171,7 +173,7 @@ def shutdown_writer(*, timeout: float | None = SHUTDOWN_JOIN_TIMEOUT_SECONDS) ->
     if worker is not threading.current_thread():
         worker.join(timeout=timeout)
         if worker.is_alive():
-            _warn("JSONL writer shutdown timed out")
+            _warn("jsonl_writer_shutdown_timeout", "JSONL writer shutdown timed out")
             return False
 
     with _condition:
@@ -284,7 +286,10 @@ def _report_append_failure(log_name: str, exc: Exception) -> None:
         return
 
     _last_append_failure_warning_at = now
-    _warn(f"Failed to write {log_name} log: {type(exc).__name__}: {exc}")
+    _warn(
+        "jsonl_writer_append_failed",
+        f"Failed to write {log_name} log: {type(exc).__name__}: {exc}",
+    )
 
 
 def _report_append_recovery() -> None:
@@ -297,7 +302,7 @@ def _report_append_recovery() -> None:
 
     _last_append_failure_at = None
     _last_append_failure_warning_at = None
-    _warn("JSONL log writes recovered")
+    _warn("jsonl_writer_recovered", "JSONL log writes recovered")
 
 
 def _append_lines(log_path: str, lines: list[bytes]) -> None:
@@ -391,9 +396,16 @@ def _warn_drop_once(log_name: str) -> None:
         if _drop_warning_logged:
             return
         _drop_warning_logged = True
-    _warn(f"Dropping {log_name} log because the JSONL writer backlog is full")
+    _warn(
+        "jsonl_writer_backlog_full",
+        f"Dropping {log_name} log because the JSONL writer backlog is full",
+    )
 
 
-def _warn(message: str) -> None:
-    with suppress(Exception):
-        ctx.log.warn(message)
+def _warn(reason: str, detail: str) -> None:
+    addon_process_logging.emit_addon_process_event(
+        "warn",
+        "addon_process_integrity",
+        reason,
+        detail=detail,
+    )

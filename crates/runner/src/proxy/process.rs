@@ -155,11 +155,14 @@ async fn monitor_mitmdump_stdout<R>(stdout: R)
 where
     R: AsyncRead + Unpin,
 {
+    // The launch contract disables flow output and sets TermLog to WARN. Addon
+    // events bypass TermLog on stderr, so remaining stdout is mitmproxy-owned
+    // warning-or-higher output.
     let mut reader = tokio::io::BufReader::new(stdout);
     while let Ok(Some(record)) = read_mitmdump_log_record(&mut reader).await {
         match record {
             MitmdumpLogRecord::Line(line) if !line.is_empty() => {
-                info!(target: "mitmdump", "{line}");
+                warn!(target: "mitmdump", "{line}");
             }
             MitmdumpLogRecord::Line(_) => {}
             MitmdumpLogRecord::Oversized { observed_bytes } => {
@@ -975,6 +978,7 @@ mod tests {
     use crate::paths::HomePaths;
     use std::os::unix::fs::PermissionsExt;
     use tokio::io::AsyncWriteExt;
+    use tracing::Level;
     use tracing::instrument::WithSubscriber;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -1080,13 +1084,13 @@ mod tests {
             4,
             "overflow event leaked record content"
         );
-        captured_event(&events, "stdout recovered");
+        let recovered = captured_event(&events, "stdout recovered");
+        assert_eq!(recovered.level, Level::WARN);
     }
 
     #[tokio::test]
     async fn stderr_monitor_discards_oversized_record_and_recovers() {
-        let next_record = b"[error] type=usage_underbilling reason=test_failure \
-                            underbilling_class=risk component=mitm_addon";
+        let next_record = br#"VM0_ADDON_EVENT {"version":1,"level":"error","type":"usage_underbilling","reason":"test_failure","component":"mitm_addon","underbilling_class":"risk","detail":"failed"}"#;
         let (writer, reader) = tokio::io::duplex(1024);
         let future = async {
             let (_, port_in_use) = tokio::join!(
@@ -1119,14 +1123,14 @@ mod tests {
             "overflow event leaked record content"
         );
 
-        let recovered = captured_event(&events, "mitmdump usage underbilling signal");
+        let recovered = captured_event(&events, "mitmdump addon process event");
         assert_eq!(
             recovered.fields.get("reason").map(String::as_str),
             Some("test_failure")
         );
         assert_eq!(
-            recovered.fields.get("mitmdump_stderr").map(String::as_str),
-            Some(std::str::from_utf8(next_record).unwrap())
+            recovered.fields.get("addon_detail").map(String::as_str),
+            Some("failed")
         );
     }
 

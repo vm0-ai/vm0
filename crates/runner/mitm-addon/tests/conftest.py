@@ -8,9 +8,9 @@ Fixtures here exist for two reasons:
    :class:`mitmproxy.http.Headers` via ``mitmproxy.test`` helpers so tests
    exercise real attribute/property semantics (``pretty_host``,
    ``pretty_url``, ``content`` decompression, header casing, …).
-2. **Stubbing at the genuine external boundary (``mitmproxy.ctx``)**.
-   ``mitm_ctx`` replaces ``ctx.options`` and ``ctx.log`` for handler tests
-   that cannot rely on a running ``mitmdump`` process.
+2. **Stubbing at genuine external boundaries**. ``mitm_ctx`` replaces
+   ``ctx.options`` and captures addon process events for handler tests that
+   cannot rely on a running ``mitmdump`` process.
 """
 
 import contextlib
@@ -45,6 +45,7 @@ import upstream_admission
 import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import clear_auth_state
+from tests.process_log_helpers import capture_addon_process_events
 from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
 from usage.providers import connectors as _usage_connectors
 
@@ -357,12 +358,12 @@ class _StubOptions:
 
 @pytest.fixture
 def mitm_ctx(tmp_path):
-    """Stub ``mitmproxy.ctx.options`` and ``ctx.log`` for a test block.
+    """Stub ``mitmproxy.ctx.options`` and addon process events for a test block.
 
     Returns a context-manager factory: calling ``mitm_ctx(registry_path=...)``
-    patches in a concrete options stub for settings consumed by the addon and
-    modeled by these tests, plus a ``MagicMock`` log. The log stays on
-    ``MagicMock`` so tests that need to assert on warn/debug calls can do so;
+    patches in a concrete options stub for settings consumed by the addon and a
+    ``MagicMock`` process-event capture. WARN and ERROR event details are
+    exposed as ``log.warn`` and ``log.error`` calls for focused assertions.
     ``options`` stays concrete so unexpected attribute access fails instead of
     silently creating another mock.
 
@@ -398,10 +399,9 @@ def mitm_ctx(tmp_path):
             client_version=client_version,
             ssl_insecure=ssl_insecure,
         )
-        log = MagicMock()
         with (
             patch.object(mitm_addon.ctx, "options", options, create=True),
-            patch.object(mitm_addon.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
         ):
             platform_api.configure_client_headers(
                 client_session_id=client_session_id,

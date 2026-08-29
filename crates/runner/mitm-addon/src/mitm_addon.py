@@ -25,6 +25,8 @@ from typing import Literal, NoReturn
 from mitmproxy import connection, ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
+import addon_process_logging
+
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
@@ -1359,7 +1361,12 @@ async def request(flow: http.HTTPFlow) -> None:
             _start_request_timing(flow)
 
         if classification.kind == "no_client_ip":
-            ctx.log.warn("No client IP available, passing through")
+            addon_process_logging.emit_addon_process_event(
+                "warn",
+                "addon_process_integrity",
+                "missing_client_ip",
+                detail="No client IP available, passing through",
+            )
             return
         if isinstance(classification, request_classification.BlockingRequestClassification):
             if isinstance(classification, request_classification.PublicDestinationDenied):

@@ -1,12 +1,14 @@
 """Tests for usage underbilling log contracts."""
 
+import json
 from typing import cast
 
+import addon_process_logging
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from usage.underbilling import UnderbillingClass, log_usage_underbilling
 
 
-def test_underbilling_log_fields_cannot_be_overridden_by_context(tmp_path):
+def test_underbilling_writes_proxy_row_and_process_event(tmp_path, capfd):
     proxy_log_path = tmp_path / "proxy.jsonl"
 
     log_usage_underbilling(
@@ -34,8 +36,17 @@ def test_underbilling_log_fields_cannot_be_overridden_by_context(tmp_path):
     assert entry["message"] == "Usage underbilling signal"
     assert entry["timestamp"] != "wrong_timestamp"
 
+    process_record = capfd.readouterr().err.strip()
+    payload = process_record.removeprefix(addon_process_logging.ADDON_PROCESS_EVENT_PREFIX)
+    event = json.loads(payload)
+    assert event["level"] == "error"
+    assert event["type"] == "usage_underbilling"
+    assert event["reason"] == "expected_reason"
+    assert event["underbilling_class"] == "risk"
+    assert event["component"] == "mitm_addon"
 
-def test_underbilling_log_without_proxy_path_uses_stderr(mitm_ctx):
+
+def test_underbilling_log_without_proxy_path_uses_process_event(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -57,7 +68,7 @@ def test_underbilling_log_without_proxy_path_uses_stderr(mitm_ctx):
     assert message.endswith("Usage underbilling signal")
 
 
-def test_underbilling_stderr_fallback_preserves_context(mitm_ctx):
+def test_underbilling_process_event_preserves_context(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -100,7 +111,7 @@ def test_underbilling_stderr_fallback_preserves_context(mitm_ctx):
     assert message.endswith("Cannot report usage event")
 
 
-def test_underbilling_stderr_fallback_sanitizes_url(mitm_ctx):
+def test_underbilling_process_event_sanitizes_url(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -117,7 +128,7 @@ def test_underbilling_stderr_fallback_sanitizes_url(mitm_ctx):
     assert "#fragment" not in message
 
 
-def test_underbilling_stderr_fallback_redacts_secret_strings_not_boolean_flags(mitm_ctx):
+def test_underbilling_process_event_redacts_secret_strings_not_boolean_flags(mitm_ctx):
     sensitive_context = {
         "sandbox_token": "secret-token",
         "missing_sandbox_token": True,
@@ -142,7 +153,7 @@ def test_underbilling_stderr_fallback_redacts_secret_strings_not_boolean_flags(m
     assert "secret-token" not in message
 
 
-def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
+def test_underbilling_process_event_redacts_common_key_fields(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -249,7 +260,7 @@ def test_underbilling_stderr_fallback_redacts_common_key_fields(mitm_ctx):
     assert "compact-private-key-value" not in message
 
 
-def test_underbilling_stderr_fallback_bounds_multiline_values(mitm_ctx):
+def test_underbilling_process_event_bounds_multiline_values(mitm_ctx):
     long_value = f"first line\n{'x' * 400}\nlast line"
 
     with mitm_ctx() as log:
@@ -269,7 +280,7 @@ def test_underbilling_stderr_fallback_bounds_multiline_values(mitm_ctx):
     assert len(message) < 420
 
 
-def test_underbilling_stderr_fallback_truncates_on_escape_boundaries(mitm_ctx):
+def test_underbilling_process_event_truncates_on_escape_boundaries(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -286,7 +297,7 @@ def test_underbilling_stderr_fallback_truncates_on_escape_boundaries(mitm_ctx):
     assert len(message) < 420
 
 
-def test_underbilling_stderr_fallback_bounds_non_scalar_values(mitm_ctx):
+def test_underbilling_process_event_bounds_non_scalar_values(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -302,7 +313,7 @@ def test_underbilling_stderr_fallback_bounds_non_scalar_values(mitm_ctx):
     assert len(message) < 420
 
 
-def test_underbilling_stderr_fallback_sanitizes_field_keys(mitm_ctx):
+def test_underbilling_process_event_sanitizes_field_keys(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
@@ -317,7 +328,7 @@ def test_underbilling_stderr_fallback_sanitizes_field_keys(mitm_ctx):
     assert "bad key" not in message
 
 
-def test_underbilling_stderr_fallback_escapes_nonstandard_whitespace_and_controls(
+def test_underbilling_process_event_escapes_nonstandard_whitespace_and_controls(
     mitm_ctx,
 ):
     with mitm_ctx() as log:
@@ -336,7 +347,7 @@ def test_underbilling_stderr_fallback_escapes_nonstandard_whitespace_and_control
     assert "\x1b" not in message
 
 
-def test_underbilling_stderr_fallback_escapes_reason_and_message_controls(
+def test_underbilling_process_event_escapes_reason_and_message_controls(
     mitm_ctx,
 ):
     with mitm_ctx() as log:
@@ -357,7 +368,7 @@ def test_underbilling_stderr_fallback_escapes_reason_and_message_controls(
     assert "\x1b" not in message
 
 
-def test_underbilling_stderr_fallback_stringifies_prefix_values(mitm_ctx):
+def test_underbilling_process_event_stringifies_prefix_values(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",

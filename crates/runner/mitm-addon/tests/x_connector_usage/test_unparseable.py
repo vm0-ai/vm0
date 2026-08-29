@@ -227,7 +227,7 @@ def test_unparseable_no_hints_writes_error_to_proxy_log(x_usage, tmp_path, real_
     assert "parse_error" not in entry
 
 
-def test_unparseable_no_hints_without_proxy_log_path_logs_stderr(
+def test_unparseable_no_hints_without_proxy_log_path_emits_process_event(
     x_usage, tmp_path, real_flow, mitm_ctx
 ):
     flow = x_usage.make_flow(

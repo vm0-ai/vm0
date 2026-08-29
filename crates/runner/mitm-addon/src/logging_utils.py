@@ -10,8 +10,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from mitmproxy import ctx, http
+from mitmproxy import http
 
+import addon_process_logging
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import jsonl_writer
@@ -58,7 +59,12 @@ def _encode_jsonl_entry(entry: dict, log_name: str) -> bytes | None:
     try:
         return (json.dumps(entry) + "\n").encode()
     except Exception as e:
-        ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
+        addon_process_logging.emit_addon_process_event(
+            "warn",
+            "addon_process_integrity",
+            "log_encoding_failed",
+            detail=f"Failed to encode {log_name} log: {type(e).__name__}: {e}",
+        )
 
     return None
 

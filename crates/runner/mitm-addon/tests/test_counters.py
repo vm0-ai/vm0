@@ -377,7 +377,7 @@ class TestUsagePendingCounter:
 
     def test_write_failure_logs_underbilling_once_per_process(self, tmp_path, mitm_ctx):
         """Repeated OSErrors from pending snapshot writes emit exactly one
-        ``ctx.log.error`` per addon process — enough to seed FS-trouble
+        ERROR process event per addon process — enough to seed FS-trouble
         investigation without spamming logs on sustained failure."""
         pending_path = str(tmp_path / f"usage-pending\n{'p' * 400}")
         write_error = OSError(f"disk full\n{'e' * 400}")

@@ -926,7 +926,6 @@ def _validate_response_snapshot(
             body,
             headers,
             max_output=MAX_ENTRY_BYTES,
-            log_errors=False,
         )
         if decode_error == body_decoding.DECODED_BODY_LIMIT_EXCEEDED:
             return "response_size"
