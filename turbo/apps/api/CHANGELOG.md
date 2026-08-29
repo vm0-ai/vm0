@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.510.3](https://github.com/vm0-ai/vm0/compare/api-v1.510.2...api-v1.510.3) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat tool activity ([#30215](https://github.com/vm0-ai/vm0/issues/30215)) ([c475f9e](https://github.com/vm0-ai/vm0/commit/c475f9e59935ec292acd8b35ceb66e1f59708866))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.2
+    * @okouai/connector-catalog-validation bumped to 2.0.4
+    * @okouai/core bumped to 8.601.3
+    * @okouai/db bumped to 1.228.8
+
 ## [1.510.2](https://github.com/vm0-ai/vm0/compare/api-v1.510.1...api-v1.510.2) (2026-08-29)
 
 

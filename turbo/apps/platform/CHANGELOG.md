@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.809.1](https://github.com/vm0-ai/vm0/compare/app-v0.809.0...app-v0.809.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* **platform:** navigate on push notification click ([#30213](https://github.com/vm0-ai/vm0/issues/30213)) ([8f64daa](https://github.com/vm0-ai/vm0/commit/8f64daaceb57530641af457a222a7125de8b2ab1))
+
+
+### Refactoring
+
+* remove chat tool activity ([#30215](https://github.com/vm0-ai/vm0/issues/30215)) ([c475f9e](https://github.com/vm0-ai/vm0/commit/c475f9e59935ec292acd8b35ceb66e1f59708866))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.2
+    * @okouai/core bumped to 8.601.3
+
 ## [0.809.0](https://github.com/vm0-ai/vm0/compare/app-v0.808.3...app-v0.809.0) (2026-08-29)
 
 
