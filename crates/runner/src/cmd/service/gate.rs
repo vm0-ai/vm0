@@ -4,7 +4,7 @@ use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::paths::HomePaths;
 use crate::status_file::{self, StatusFileReadError, StatusForGate};
-use tracing::{info, warn};
+use tracing::info;
 
 use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
@@ -168,6 +168,8 @@ pub(super) async fn read_runner_status(
 /// the unit's selected config resolves to one verified live Runner record and
 /// that record's status is readable. Without that correlation, the gate cannot
 /// prove that teardown is safe. `--force` remains the explicit override.
+/// A systemd query error is likewise unknown state rather than confirmed
+/// inactivity, so it fails closed before selected-config or status inspection.
 ///
 /// When the runner's `mode == "draining"`, we still refuse but flip the
 /// `draining` flag so the error renders a wait-or-force message (the
@@ -201,10 +203,12 @@ pub(super) async fn check_active_jobs_gate(
     }
 
     // (1) Dead-runner short-circuit.
-    let active = ops.is_unit_active(unit).await.unwrap_or_else(|e| {
-        warn!(unit = %unit.unit_name(), error = %e, "cannot check unit state — skipping active-jobs gate");
-        false
-    });
+    let active = ops.is_unit_active(unit).await.map_err(|error| {
+        RunnerError::Internal(format!(
+            "cannot determine whether {} is active while checking active jobs before service {command_name}: {error}; retry or pass --force to override the active-jobs gate",
+            unit.unit_name()
+        ))
+    })?;
     if !active {
         return Ok(());
     }
@@ -641,24 +645,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn check_active_jobs_gate_bypasses_unavailable_unit_state() {
+    async fn check_active_jobs_gate_bypasses_confirmed_inactive_unit_state() {
         let dir = tempfile::tempdir().unwrap();
         let home = fake_home(&dir);
         let unit = service_unit();
+        let mut ops = FakeGateOps::from_results([Ok(false)]);
 
-        for result in [
-            Ok(false),
-            Err(RunnerError::Internal("systemd unavailable".to_string())),
-        ] {
-            let mut ops = FakeGateOps::from_results([result]);
+        check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
+            .await
+            .unwrap();
 
-            check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
-                .await
-                .unwrap();
+        assert_eq!(ops.active_queries, 1);
+        assert_eq!(ops.config_queries, 0);
+    }
 
-            assert_eq!(ops.active_queries, 1);
-            assert_eq!(ops.config_queries, 0);
-        }
+    #[tokio::test]
+    async fn check_active_jobs_gate_fails_closed_for_unavailable_unit_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+        let mut ops = FakeGateOps::from_results([Err(RunnerError::Internal(
+            "systemd unavailable".to_string(),
+        ))]);
+
+        let error = check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("cannot determine whether vm0-runner-test is active"));
+        assert!(message.contains("before service stop"));
+        assert!(message.contains("systemd unavailable"));
+        assert!(message.contains("--force"));
+        assert_eq!(ops.active_queries, 1);
+        assert_eq!(ops.config_queries, 0);
     }
 
     #[tokio::test]
