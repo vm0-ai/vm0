@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.809.2](https://github.com/vm0-ai/vm0/compare/app-v0.809.1...app-v0.809.2) (2026-08-29)
+
+
+### Performance Improvements
+
+* **platform:** declare clerk core in initial html ([#30211](https://github.com/vm0-ai/vm0/issues/30211)) ([cca1a34](https://github.com/vm0-ai/vm0/commit/cca1a3497bb8210c86a0a05abea588ac9242931a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.3
+    * @okouai/core bumped to 8.601.4
+
 ## [0.809.1](https://github.com/vm0-ai/vm0/compare/app-v0.809.0...app-v0.809.1) (2026-08-29)
 
 
