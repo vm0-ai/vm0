@@ -155,14 +155,14 @@ async fn monitor_mitmdump_stdout<R>(stdout: R)
 where
     R: AsyncRead + Unpin,
 {
-    // The launch contract disables flow output and sets TermLog to WARN. Addon
-    // events bypass TermLog on stderr, so remaining stdout is mitmproxy-owned
-    // warning-or-higher output.
+    // TermLog is warning-only, but its level is not preserved in the text
+    // stream. Keep native stdout in Runner-local logs; addon events that need
+    // Axiom bypass TermLog through the stderr envelope.
     let mut reader = tokio::io::BufReader::new(stdout);
     while let Ok(Some(record)) = read_mitmdump_log_record(&mut reader).await {
         match record {
             MitmdumpLogRecord::Line(line) if !line.is_empty() => {
-                warn!(target: "mitmdump", "{line}");
+                info!(target: "mitmdump", "{line}");
             }
             MitmdumpLogRecord::Line(_) => {}
             MitmdumpLogRecord::Oversized { observed_bytes } => {
@@ -1085,7 +1085,7 @@ mod tests {
             "overflow event leaked record content"
         );
         let recovered = captured_event(&events, "stdout recovered");
-        assert_eq!(recovered.level, Level::WARN);
+        assert_eq!(recovered.level, Level::INFO);
     }
 
     #[tokio::test]
