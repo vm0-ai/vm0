@@ -310,6 +310,24 @@ mod tests {
         HomePaths::with_root(dir.path().join("vm0-runner"))
     }
 
+    async fn publish_test_live_runner(
+        home: &HomePaths,
+        config_path: &Path,
+        base_dir: &Path,
+    ) -> crate::live_runner_instances::LiveRunnerInstanceHandle {
+        crate::live_runner_instances::publish(
+            home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: config_path.to_path_buf(),
+                base_dir: base_dir.to_path_buf(),
+                runner_group: "test".to_string(),
+                subcommand: "start".to_string(),
+            },
+        )
+        .await
+        .unwrap()
+    }
+
     // -----------------------------------------------------------------
     // status.json reader
     // -----------------------------------------------------------------
@@ -650,17 +668,7 @@ mod tests {
         let unit = service_unit();
         let config_path = dir.path().join("selected-config.yaml");
         let base_dir = home.runners_dir().join("runner-release");
-        let _live_instance = crate::live_runner_instances::publish(
-            &home,
-            crate::live_runner_instances::LiveRunnerInstanceMetadata {
-                config_path: config_path.clone(),
-                base_dir: base_dir.clone(),
-                runner_group: "test".to_string(),
-                subcommand: "start".to_string(),
-            },
-        )
-        .await
-        .unwrap();
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
 
         let mut missing_ops =
             FakeGateOps::from_results([Ok(true)]).with_config_path(Some(config_path.clone()));
@@ -694,6 +702,31 @@ mod tests {
         assert_eq!(missing_ops.config_queries, 1);
         assert_eq!(malformed_ops.active_queries, 1);
         assert_eq!(malformed_ops.config_queries, 1);
+    }
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_uses_selected_config_base_dir_for_safe_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            r#"{"mode":"running","active_runs":[],"started_at":"2026-04-13T00:00:00Z"}"#,
+        )
+        .await
+        .unwrap();
+        let mut ops = FakeGateOps::from_results([Ok(true)]).with_config_path(Some(config_path));
+
+        check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
+            .await
+            .unwrap();
+
+        assert_eq!(ops.active_queries, 1);
+        assert_eq!(ops.config_queries, 1);
     }
 
     #[tokio::test]
