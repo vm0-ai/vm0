@@ -12,9 +12,10 @@ use std::thread;
 use std::time::Duration;
 
 use super::{
-    AxiomGuard, AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, ERROR_SOURCE_MAX_DEPTH,
-    FLUSH_DEADLINE, INTERNAL_TARGET, Msg, TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER,
-    init_from_env_values, init_with_base_url, init_with_base_url_and_hostname, with_ingest_filter,
+    ADDON_LOG_TARGET, AxiomGuard, AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP,
+    ERROR_SOURCE_MAX_DEPTH, FLUSH_DEADLINE, INTERNAL_TARGET, Msg, TEXT_FIELD_MAX_BYTES,
+    TRUNCATION_MARKER, init_from_env_values, init_with_base_url, init_with_base_url_and_hostname,
+    with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -347,6 +348,63 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         !has_event_with_message(&events, "info is below threshold, should not be ingested"),
         "INFO event should not be ingested: {events:#?}",
     );
+}
+
+#[tokio::test]
+async fn addon_log_fields_are_passed_through_without_an_intermediate_field() {
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let (layer, guard) = init_with_base_url_and_hostname(
+        &server.base_url(),
+        "test-token",
+        "test",
+        Some("runner-host-1".to_string()),
+    )
+    .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    let addon_log = serde_json::json!({
+        "level": "error",
+        "message": "Failed to write pending count",
+        "type": "usage_underbilling",
+        "reason": "pending_snapshot_write_failed",
+        "underbilling_class": "risk",
+        "retry_count": 2,
+        "retryable": true,
+        "diagnostic": {"phase": "flush"},
+        "future.field-name": ["value", 3],
+        "context": "addon-owned-context",
+        "service": "addon-owned-service",
+        "runner_hostname": "addon-owned-host",
+        "runner_version": "addon-owned-version",
+    })
+    .to_string();
+
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::error!(
+            target: ADDON_LOG_TARGET,
+            message = addon_log.as_str(),
+        );
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "Failed to write pending count");
+    assert_eq!(event["level"], json!("error"));
+    assert_eq!(event["type"], json!("usage_underbilling"));
+    assert_eq!(event["reason"], json!("pending_snapshot_write_failed"));
+    assert_eq!(event["underbilling_class"], json!("risk"));
+    assert_eq!(event["retry_count"], json!(2));
+    assert_eq!(event["retryable"], json!(true));
+    assert_eq!(event["diagnostic"], json!({"phase": "flush"}));
+    assert_eq!(event["future.field-name"], json!(["value", 3]));
+    assert_eq!(event["context"], json!(ADDON_LOG_TARGET));
+    assert_eq!(event["service"], json!("runner"));
+    assert_eq!(event["runner_hostname"], json!("runner-host-1"));
+    assert_eq!(event["runner_version"], json!(env!("CARGO_PKG_VERSION")));
+    assert!(event.get("version").is_none());
+    assert!(event.get("addon_log").is_none());
 }
 
 #[tokio::test]

@@ -120,17 +120,12 @@ class TestXStreamPathRouting:
             {"content-type": "application/json", "content-encoding": "br"}
         )
 
-        with mitm_ctx() as log:
+        with mitm_ctx():
             mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
-        assert log.debug.call_count == 1
-        assert (
-            "Streaming decompression skipped: brotli streaming output cannot be bounded"
-            in log.debug.call_args[0][0]
-        )
 
     def test_unregistered_parser_factory_does_not_require_original_url(self, real_flow):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")

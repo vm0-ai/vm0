@@ -10,13 +10,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from typing import Self
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 import runner_flush_lifecycle
 import usage
 from tests.pending_helpers import assert_pending
+from tests.process_log_helpers import capture_addon_process_events
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 from tests.usage_helpers import install_recording_usage_timer
@@ -399,7 +400,7 @@ class TestRunnerUsageFlushSignal:
                 "write_pending_snapshot",
                 side_effect=write_pending_snapshot,
             ),
-            patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
+            capture_addon_process_events(),
         ):
             runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             assert snapshotted.wait(timeout=1)
@@ -415,10 +416,8 @@ class TestRunnerUsageFlushSignal:
         pending_report.release()
 
     def test_runner_flush_failure_warns_without_error_text(self):
-        log = MagicMock()
-
         with (
-            patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(
                 usage,
                 "flush_usage_events",
@@ -468,7 +467,7 @@ class TestRunnerUsageFlushSignal:
             str(runner_usage_flush_files.proxy_log_path),
         )
 
-        with patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             runner_flush_lifecycle._flush_usage_for_runner_request()
 
         assert enqueue_calls == 1
