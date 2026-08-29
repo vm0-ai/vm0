@@ -118,16 +118,18 @@ balloon_snapshot() {
     ' 2>/dev/null
 }
 
-# Helper: read the controller inputs needed during the pressure assertion from
-# one Firecracker response. available_memory is reported in bytes.
+# Helper: read the controller state and inputs needed during the pressure
+# assertion from one Firecracker response. available_memory is reported in
+# bytes.
 pressure_snapshot() {
   sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
     | jq -er '
-      [.actual_mib, .available_memory] as $values
+      [.target_mib, .actual_mib, .available_memory] as $values
       | select(all($values[]; type == "number" and . >= 0 and . == floor))
       | [
           $values[0],
-          ($values[1] / 1048576 | floor)
+          $values[1],
+          ($values[2] / 1048576 | floor)
         ]
       | @tsv
     ' 2>/dev/null
@@ -220,6 +222,7 @@ ALLOC_PID=$!
 # Wait for balloon to deflate (actual_mib decreases)
 DEFLATED=0
 PRESSURE_OBSERVED=0
+LAST_PRESSURE_TARGET_MIB=""
 LAST_AVAILABLE_MIB=""
 DEFLATE_DEADLINE=$(( SECONDS + DEFLATE_TIMEOUT_SECONDS ))
 while [ "$SECONDS" -lt "$DEFLATE_DEADLINE" ]; do
@@ -239,8 +242,8 @@ while [ "$SECONDS" -lt "$DEFLATE_DEADLINE" ]; do
   if ! SNAPSHOT=$(pressure_snapshot); then
     fail "failed to read valid balloon pressure statistics"
   fi
-  IFS=$'\t' read -r ACTUAL LAST_AVAILABLE_MIB <<< "$SNAPSHOT"
-  echo "Pressure snapshot: actual=${ACTUAL}MiB available=${LAST_AVAILABLE_MIB}MiB"
+  IFS=$'\t' read -r LAST_PRESSURE_TARGET_MIB ACTUAL LAST_AVAILABLE_MIB <<< "$SNAPSHOT"
+  echo "Pressure snapshot: target=${LAST_PRESSURE_TARGET_MIB}MiB actual=${ACTUAL}MiB available=${LAST_AVAILABLE_MIB}MiB"
 
   if [ "$LAST_AVAILABLE_MIB" -lt "$PRESSURE_AVAILABLE_BOUNDARY_MIB" ]; then
     PRESSURE_OBSERVED=1
@@ -257,8 +260,9 @@ if [ "$DEFLATED" -ne 1 ]; then
   fi
   fail "balloon controller did not deflate after observed pressure: actual=${ACTUAL}MiB initial=${INFLATE_MIB}MiB available=${LAST_AVAILABLE_MIB:-unknown}MiB boundary=${PRESSURE_AVAILABLE_BOUNDARY_MIB}MiB"
 fi
+DEFLATE_TARGET_MIB=$LAST_PRESSURE_TARGET_MIB
 DEFLATE_MIB=$ACTUAL
-echo "PASS: balloon deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB"
+echo "PASS: balloon deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB (target=${DEFLATE_TARGET_MIB}MiB)"
 
 # Test 3: re-inflate after pressure released — kill the host-side
 # exec first (prevents further output), then kill the guest-side
@@ -300,7 +304,8 @@ for _ in $(seq 1 5); do
 done
 [ "$ALLOCATOR_STOPPED" -eq 1 ] || fail "guest pressure allocator remained running"
 
-# Accept either realized re-inflation or a stable state inside the controller's
+# Accept either realized re-inflation from the lowest state observed across the
+# pressure-to-recovery transition or a stable state inside the controller's
 # hysteresis band. Both sides must persist for a complete observation window so
 # a single boundary crossing cannot determine the result.
 RECOVERY_DEADLINE=$(( SECONDS + RECOVERY_TIMEOUT_SECONDS ))
@@ -308,7 +313,9 @@ HIGH_FREE_SINCE=""
 LOW_FREE_SINCE=""
 TARGET_RAISED=0
 RECOVERY_RESULT=""
-LAST_TARGET=$DEFLATE_MIB
+MIN_TARGET_MIB=$DEFLATE_TARGET_MIB
+MIN_ACTUAL_MIB=$DEFLATE_MIB
+LAST_TARGET=$DEFLATE_TARGET_MIB
 LAST_ACTUAL=$DEFLATE_MIB
 LAST_FREE_MIB=""
 while [ "$SECONDS" -lt "$RECOVERY_DEADLINE" ]; do
@@ -321,10 +328,17 @@ while [ "$SECONDS" -lt "$RECOVERY_DEADLINE" ]; do
   IFS=$'\t' read -r LAST_TARGET LAST_ACTUAL LAST_FREE_MIB <<< "$SNAPSHOT"
   echo "Recovery snapshot: target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB}MiB"
 
-  if [ "$LAST_TARGET" -gt "$DEFLATE_MIB" ]; then
+  if [ "$LAST_TARGET" -lt "$MIN_TARGET_MIB" ]; then
+    MIN_TARGET_MIB=$LAST_TARGET
+  fi
+  if [ "$LAST_ACTUAL" -lt "$MIN_ACTUAL_MIB" ]; then
+    MIN_ACTUAL_MIB=$LAST_ACTUAL
+  fi
+
+  if [ "$LAST_TARGET" -gt "$MIN_TARGET_MIB" ]; then
     TARGET_RAISED=1
   fi
-  if [ "$LAST_ACTUAL" -gt "$DEFLATE_MIB" ]; then
+  if [ "$LAST_ACTUAL" -gt "$MIN_ACTUAL_MIB" ]; then
     RECOVERY_RESULT="re-inflated"
     break
   fi
@@ -337,7 +351,7 @@ while [ "$SECONDS" -lt "$RECOVERY_DEADLINE" ]; do
     fi
     if [ "$TARGET_RAISED" -eq 0 ] \
       && [ $(( NOW - HIGH_FREE_SINCE )) -ge "$CONTROLLER_OBSERVATION_SECONDS" ]; then
-      fail "balloon controller did not respond above inflate boundary: target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB}MiB boundary=${INFLATE_FREE_BOUNDARY_MIB}MiB"
+      fail "balloon controller did not respond above inflate boundary: target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB min_target=${MIN_TARGET_MIB}MiB min_actual=${MIN_ACTUAL_MIB}MiB free=${LAST_FREE_MIB}MiB boundary=${INFLATE_FREE_BOUNDARY_MIB}MiB"
     fi
   else
     HIGH_FREE_SINCE=""
@@ -356,16 +370,16 @@ done
 
 case "$RECOVERY_RESULT" in
   re-inflated)
-    echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${LAST_ACTUAL} MiB (target=${LAST_TARGET}MiB free=${LAST_FREE_MIB}MiB)"
+    echo "PASS: balloon re-inflated from observed minimum ${MIN_ACTUAL_MIB} to ${LAST_ACTUAL} MiB (pressure_deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB min_target=${MIN_TARGET_MIB}MiB free=${LAST_FREE_MIB}MiB)"
     ;;
   hysteresis-settled)
-    echo "PASS: balloon settled inside inflate hysteresis (deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB}MiB boundary=${INFLATE_FREE_BOUNDARY_MIB}MiB)"
+    echo "PASS: balloon settled inside inflate hysteresis (pressure_deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB min_target=${MIN_TARGET_MIB}MiB min_actual=${MIN_ACTUAL_MIB}MiB free=${LAST_FREE_MIB}MiB boundary=${INFLATE_FREE_BOUNDARY_MIB}MiB)"
     ;;
   *)
     if [ "$TARGET_RAISED" -eq 1 ]; then
-      fail "balloon target increase was not realized before timeout: deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB:-unknown}MiB"
+      fail "balloon target increase was not realized before timeout: pressure_deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB min_target=${MIN_TARGET_MIB}MiB min_actual=${MIN_ACTUAL_MIB}MiB free=${LAST_FREE_MIB:-unknown}MiB"
     fi
-    fail "balloon recovery did not reach a stable outcome: deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB free=${LAST_FREE_MIB:-unknown}MiB"
+    fail "balloon recovery did not reach a stable outcome: pressure_deflated=${DEFLATE_MIB}MiB target=${LAST_TARGET}MiB actual=${LAST_ACTUAL}MiB min_target=${MIN_TARGET_MIB}MiB min_actual=${MIN_ACTUAL_MIB}MiB free=${LAST_FREE_MIB:-unknown}MiB"
     ;;
 esac
 
