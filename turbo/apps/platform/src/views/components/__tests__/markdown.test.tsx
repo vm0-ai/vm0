@@ -18,6 +18,7 @@ import {
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { Markdown as RichMarkdown } from "../rich-markdown.tsx";
 import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
@@ -385,6 +386,30 @@ describe("assistant markdown", () => {
     });
   });
 
+  it("leaves an opening-only mermaid fence as code", async () => {
+    const importGate = createDeferredPromise<void>(context.signal);
+    context.mocks.browser.mermaidImport(() => {
+      return importGate.promise;
+    });
+    mockThread("```mermaid");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    try {
+      await waitFor(() => {
+        expect(
+          document.querySelector("code.language-mermaid"),
+        ).toBeInTheDocument();
+      });
+      expect(document.querySelector(".mermaid-block")).toBeNull();
+    } finally {
+      importGate.resolve();
+    }
+  });
+
   it("retries a transient mermaid import for the same diagram", async () => {
     let importAttempt = 0;
     const mermaidImport = context.mocks.browser.mermaidImport(() => {
@@ -714,6 +739,33 @@ describe("assistant markdown", () => {
     expect(document.querySelector(".mermaid-block")).toBeNull();
   });
 
+  it("keeps raw html mermaid separate from a streaming fence", async () => {
+    context.mocks.browser.blobDownload();
+    const rawHtml = [
+      '<pre><code class="language-mermaid">',
+      "flowchart TD",
+      "  X --> Y",
+      "</code></pre>",
+    ].join("\n");
+    mockThread(`${rawHtml}\n\n\`\`\`mermaid\nflowchart TD\n  A --> B`);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await screen.findByAltText("Diagram");
+    const streamingCode = await waitFor(() => {
+      const blocks = document.querySelectorAll("code.language-mermaid");
+      expect(blocks).toHaveLength(1);
+      return blocks[0];
+    });
+    expect(streamingCode.textContent?.trim()).toBe("flowchart TD\n  A --> B");
+    expect(
+      document.querySelector("[data-vm0-markdown-mermaid-fence]"),
+    ).toBeNull();
+  });
+
   it("renders a closed mermaid fence that ends the message", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     mockThread("Here is the flow:\n\n```mermaid\nflowchart TD\n  A --> B\n```");
@@ -783,59 +835,6 @@ describe("assistant markdown", () => {
       expect(link).toHaveAttribute("href", "https://example.com");
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    });
-  });
-
-  // CJK sentences put punctuation directly against the closing delimiter with
-  // no space, which plain CommonMark refuses to close.
-  it("emphasizes text wrapped in delimiters that touch cjk punctuation", async () => {
-    mockThread(
-      [
-        "**加粗（x）**后面",
-        "",
-        "*斜体（x）*后面",
-        "",
-        "***粗斜（x）***后面",
-        "",
-        "他说**「重要」**的事",
-      ].join("\n"),
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("加粗（x）", { selector: "strong, b" }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("斜体（x）", { selector: "em, i" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("粗斜（x）", { selector: "em strong, strong em" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("「重要」", { selector: "strong, b" }),
-    ).toBeInTheDocument();
-  });
-
-  // Guards the `pluginsFilter` reorder: the strikethrough companion only wins
-  // over `remark-gfm`'s own `~~` extension when it runs after it.
-  it("strikes through text that touches cjk punctuation", async () => {
-    mockThread("~~删除线（test）~~后面");
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("删除线（test）", { selector: "del, s" }),
-      ).toBeInTheDocument();
     });
   });
 

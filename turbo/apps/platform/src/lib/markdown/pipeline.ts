@@ -1,4 +1,5 @@
 import type { Data, Root, RootContent } from "hast";
+import { marked, Renderer, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -6,25 +7,18 @@ import rehypeIgnore from "rehype-ignore";
 import rehypeRaw from "rehype-raw";
 import rehypeRewrite from "rehype-rewrite";
 import rehypeSlug from "rehype-slug";
-import remarkCjkFriendly from "remark-cjk-friendly";
-import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
-import remarkGfm from "remark-gfm";
-import { remarkAlert } from "remark-github-blockquote-alert";
-import remarkParse from "remark-parse";
-import remarkRehype from "remark-rehype";
 import { unified, type PluggableList } from "unified";
 import { visit } from "unist-util-visit";
 
-import { rehypeMermaid } from "../rehype-mermaid.ts";
 import {
-  rehypeRewriteHandle,
-  reservedMeta,
-  retrieveMeta,
-} from "./uiw-nodes.ts";
+  MARKDOWN_MERMAID_FENCE_ATTRIBUTE,
+  rehypeMermaid,
+} from "../rehype-mermaid.ts";
+import { rehypeRewriteHandle } from "./uiw-nodes.ts";
 
 /**
  * Markers the pipeline puts on a node so the view can swap it for a component.
- * They live on `data` rather than on properties because `rehype-raw` produces
+ * They live on `data` rather than on properties because parsed HTML produces
  * properties only — quoted HTML therefore cannot impersonate a marker.
  */
 declare module "hast" {
@@ -39,19 +33,14 @@ declare module "hast" {
 /**
  * Markdown source becomes a hast tree here rather than inside a React render.
  *
- * This is the pipeline `@uiw/react-markdown-preview/common` used to run
- * through `react-markdown`, reproduced so that parsing is a plain function of
- * the source: it can be memoized, moved off the render path, and kept out of
- * the view layer. The view only turns the tree into React elements.
+ * `marked` produces HTML, `rehype-raw` turns it into the shared tree, and the
+ * remaining rehype plugins add the application-owned behavior. Parsing
+ * remains a plain function of the source so it can stay outside the React
+ * render path. The view only turns the resulting tree into React elements.
  *
- * The plugin order is load-bearing and matches what the two packages built:
+ * The rehype plugin order is load-bearing:
  *
- *   remark  remarkAlert → cjk → gfm → cjkStrikethrough
- *   rehype  reservedMeta → raw → retrieveMeta → slug → autolinkHeadings →
- *           ignore → rewrite → attrs → cards → mermaid
- *
- * `remarkCjkFriendlyStrikethrough` has to sit behind `remarkGfm` because it
- * replaces gfm's own `~~` extension.
+ *   slug → autolinkHeadings → ignore → rewrite → attrs → cards → mermaid
  */
 
 type MarkdownCard = NonNullable<Data["card"]>;
@@ -120,6 +109,61 @@ function rehypeCards(options: { cards: ReadonlyMap<string, MarkdownCard> }) {
  */
 export function escapeHtmlTags(source: string): string {
   return source.replace(/</g, "&lt;");
+}
+
+const FENCE_OPENING = /^ {0,3}(`{3,}|~{3,})/u;
+
+function isMarkedCodeToken(token: Token): token is Tokens.Code {
+  return (
+    token.type === "code" && "text" in token && typeof token.text === "string"
+  );
+}
+
+function isMermaidCodeToken(token: Token): token is Tokens.Code {
+  if (!isMarkedCodeToken(token)) {
+    return false;
+  }
+  return /^mermaid(?:\s|$)/u.test(token.lang?.trimStart() ?? "");
+}
+
+function isClosedFence(raw: string): boolean {
+  const lines = raw.trimEnd().split("\n");
+  const firstLine = lines.shift();
+  if (firstLine === undefined) {
+    throw new Error("Marked Mermaid token is missing its opening fence");
+  }
+  const opening = FENCE_OPENING.exec(firstLine)?.[1];
+  if (opening === undefined) {
+    throw new Error("Marked Mermaid token is missing its opening fence");
+  }
+  const closing = lines.at(-1);
+  if (closing === undefined) {
+    return false;
+  }
+  const trimmed = closing.replace(/^ {0,3}/u, "");
+  return (
+    trimmed.length >= opening.length &&
+    [...trimmed].every((character) => {
+      return character === opening[0];
+    })
+  );
+}
+
+function createMarkedRenderer(): Renderer {
+  const renderer = new Renderer();
+  const renderCode = renderer.code.bind(renderer);
+  renderer.code = (token) => {
+    const html = renderCode(token);
+    if (!isMermaidCodeToken(token)) {
+      return html;
+    }
+    if (!html.startsWith("<pre>")) {
+      throw new Error("Marked changed its fenced-code HTML contract");
+    }
+    const state = isClosedFence(token.raw) ? "closed" : "open";
+    return `<pre ${MARKDOWN_MERMAID_FENCE_ATTRIBUTE}="${state}">${html.slice("<pre>".length)}`;
+  };
+  return renderer;
 }
 
 /**
@@ -287,24 +331,12 @@ const rewriteUnknownTags = rehypeRewriteHandle((node, _index, parent) => {
   }
 });
 
-function remarkPlugins(): PluggableList {
-  return [
-    remarkAlert,
-    remarkCjkFriendly,
-    remarkGfm,
-    remarkCjkFriendlyStrikethrough,
-  ];
-}
-
 function rehypePlugins(options: MarkdownParseOptions): PluggableList {
   const cardPlugins: PluggableList = options.cards
     ? [[rehypeCards, { cards: options.cards }]]
     : [];
   const mermaidPlugins: PluggableList = options.mermaid ? [rehypeMermaid] : [];
   return [
-    reservedMeta,
-    rehypeRaw,
-    retrieveMeta,
     rehypeSlug,
     rehypeAutolinkHeadings,
     rehypeIgnore,
@@ -348,14 +380,14 @@ export function parseMarkdownTree(
   source: string,
   options: MarkdownParseOptions,
 ): Root {
-  const processor = unified()
-    .use(remarkParse)
-    .use(remarkPlugins())
-    .use(remarkRehype, { allowDangerousHtml: true })
-    .use(rehypePlugins(options));
-  // `rehypeMermaid` reads the original source off the file to tell a finished
-  // fence from one that is still streaming, so the file has to travel with the
-  // tree the way `react-markdown` passed it.
-  const tree = processor.runSync(processor.parse(source), source);
-  return postProcess(tree);
+  const html = marked.parse(source, {
+    async: false,
+    renderer: options.mermaid ? createMarkedRenderer() : null,
+  });
+  const tree: Root = {
+    type: "root",
+    children: [{ type: "raw", value: html }],
+  };
+  const processor = unified().use(rehypeRaw).use(rehypePlugins(options));
+  return postProcess(processor.runSync(tree, source));
 }
