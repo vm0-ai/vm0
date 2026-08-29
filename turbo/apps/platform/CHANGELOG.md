@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.809.3](https://github.com/vm0-ai/vm0/compare/app-v0.809.2...app-v0.809.3) (2026-08-29)
+
+
+### Bug Fixes
+
+* **platform:** align clerk ui release set ([#30223](https://github.com/vm0-ai/vm0/issues/30223)) ([52c7bb5](https://github.com/vm0-ai/vm0/commit/52c7bb52145e3b83161b6dc6b361c3697000fe75))
+
+
+### Refactoring
+
+* remove chat event version fallbacks ([#30226](https://github.com/vm0-ai/vm0/issues/30226)) ([713e58e](https://github.com/vm0-ai/vm0/commit/713e58e581c660f73f836511118cecef551d6d29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.4
+    * @okouai/core bumped to 8.601.5
+
 ## [0.809.2](https://github.com/vm0-ai/vm0/compare/app-v0.809.1...app-v0.809.2) (2026-08-29)
 
 
