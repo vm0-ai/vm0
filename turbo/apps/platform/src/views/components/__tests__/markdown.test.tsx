@@ -18,6 +18,7 @@ import {
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { Markdown as RichMarkdown } from "../rich-markdown.tsx";
 import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
@@ -383,6 +384,30 @@ describe("assistant markdown", () => {
         "Copy to clipboard",
       );
     });
+  });
+
+  it("leaves an opening-only mermaid fence as code", async () => {
+    const importGate = createDeferredPromise<void>(context.signal);
+    context.mocks.browser.mermaidImport(() => {
+      return importGate.promise;
+    });
+    mockThread("```mermaid");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    try {
+      await waitFor(() => {
+        expect(
+          document.querySelector("code.language-mermaid"),
+        ).toBeInTheDocument();
+      });
+      expect(document.querySelector(".mermaid-block")).toBeNull();
+    } finally {
+      importGate.resolve();
+    }
   });
 
   it("retries a transient mermaid import for the same diagram", async () => {

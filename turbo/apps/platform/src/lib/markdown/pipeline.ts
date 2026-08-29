@@ -128,10 +128,17 @@ function isMermaidCodeToken(token: Token): token is Tokens.Code {
 
 function isClosedFence(raw: string): boolean {
   const lines = raw.trimEnd().split("\n");
-  const opening = FENCE_OPENING.exec(lines[0] ?? "")?.[1];
-  const closing = lines.length > 1 ? lines[lines.length - 1] : undefined;
-  if (opening === undefined || closing === undefined) {
-    return true;
+  const firstLine = lines.shift();
+  if (firstLine === undefined) {
+    throw new Error("Marked Mermaid token is missing its opening fence");
+  }
+  const opening = FENCE_OPENING.exec(firstLine)?.[1];
+  if (opening === undefined) {
+    throw new Error("Marked Mermaid token is missing its opening fence");
+  }
+  const closing = lines.at(-1);
+  if (closing === undefined) {
+    return false;
   }
   const trimmed = closing.replace(/^ {0,3}/u, "");
   return (
