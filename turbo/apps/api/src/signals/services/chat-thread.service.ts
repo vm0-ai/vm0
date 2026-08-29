@@ -59,6 +59,7 @@ import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "./chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "./chat-thread-organization.service";
 import { cancelRun$, type CancelRunResult } from "./run-cancel.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./chat-active-run.service";
@@ -800,7 +801,7 @@ export const deleteChatThread$ = command(
     args: {
       readonly threadId: string;
       readonly userId: string;
-      readonly orgId?: string | null;
+      readonly orgId: string;
       readonly eventId?: string;
     },
     signal: AbortSignal,
@@ -821,6 +822,7 @@ export const deleteChatThread$ = command(
           and(
             eq(chatThreads.id, args.threadId),
             eq(chatThreads.userId, args.userId),
+            chatThreadOrganizationCondition(tx, args.orgId),
           ),
         )
         .for("update");

@@ -11,6 +11,7 @@ import { nowDate } from "../../lib/time";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { appendChatThreadEvent } from "../services/chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
 import type { RouteEntry } from "../route-entry";
 
 const renameBody$ = bodyResultOf(chatThreadRenameContract.rename);
@@ -35,6 +36,7 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         and(
           eq(chatThreads.id, params.id),
           eq(chatThreads.userId, auth.userId),
+          chatThreadOrganizationCondition(tx, auth.orgId),
           isNotNull(chatThreads.agentId),
         ),
       )

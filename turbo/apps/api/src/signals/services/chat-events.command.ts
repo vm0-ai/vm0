@@ -117,6 +117,7 @@ import {
   chatThreadServiceTierFromCodex,
   type ChatThreadEventTransaction,
 } from "./chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "./chat-thread-organization.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { registerCanonicalWebInputAssets } from "./canonical-asset.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
@@ -643,6 +644,7 @@ async function resolveClientEventId(
   db: Db,
   params: {
     readonly clientEventId: string;
+    readonly orgId: string;
     readonly threadId: string;
     readonly userId: string;
   },
@@ -682,7 +684,12 @@ async function resolveClientEventId(
         ne(replacementChatEvent.eventType, "control.interrupt"),
       ),
     )
-    .where(eq(chatEvents.id, params.clientEventId))
+    .where(
+      and(
+        eq(chatEvents.id, params.clientEventId),
+        chatThreadOrganizationCondition(db, params.orgId),
+      ),
+    )
     .limit(1);
   return resolveExistingClientEventIdRow(event, params);
 }
@@ -894,6 +901,7 @@ async function loadAgentForChatSend(
 
 async function resolveClientEventSend(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
   readonly clientEventId: string | undefined;
@@ -903,6 +911,7 @@ async function resolveClientEventSend(params: {
   }
   const resolution = await resolveClientEventId(params.db, {
     clientEventId: params.clientEventId,
+    orgId: params.orgId,
     threadId: params.threadId,
     userId: params.userId,
   });
@@ -1236,6 +1245,7 @@ async function maybePersistExplicitCodexServiceTier(params: {
         and(
           eq(chatThreads.id, params.threadId),
           eq(chatThreads.userId, params.userId),
+          chatThreadOrganizationCondition(tx, params.orgId),
           isNotNull(chatThreads.agentId),
         ),
       )
@@ -1287,6 +1297,7 @@ async function updateThreadComputerAccess(params: {
         and(
           eq(chatThreads.id, params.threadId),
           eq(chatThreads.userId, params.userId),
+          chatThreadOrganizationCondition(tx, params.orgId),
           isNotNull(chatThreads.agentId),
         ),
       )
@@ -1549,6 +1560,7 @@ function resolveInitialThreadModelPin(params: {
 
 function loadTimedExistingThreadSnapshot(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
   readonly timing?: ApiDispatchTimingCollector;
@@ -1572,6 +1584,7 @@ function loadTimedExistingThreadSnapshot(params: {
           and(
             eq(chatThreads.id, params.threadId),
             eq(chatThreads.userId, params.userId),
+            eq(agents.orgId, params.orgId),
           ),
         )
         .limit(1);
@@ -1626,6 +1639,7 @@ async function resolveThread(params: {
 
   const [thread] = await loadTimedExistingThreadSnapshot({
     db: params.db,
+    orgId: params.orgId,
     userId: params.userId,
     threadId: params.existingThreadId,
     timing: params.timing,
@@ -2244,11 +2258,18 @@ async function assertOwnedThread(
   db: Db,
   threadId: string,
   userId: string,
+  orgId: string,
 ): Promise<ReturnType<typeof notFound> | undefined> {
   const [thread] = await db
     .select({ id: chatThreads.id })
     .from(chatThreads)
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .where(
+      and(
+        eq(chatThreads.id, threadId),
+        eq(chatThreads.userId, userId),
+        chatThreadOrganizationCondition(db, orgId),
+      ),
+    )
     .limit(1);
   return thread ? undefined : notFound("Chat thread not found");
 }
@@ -2268,6 +2289,7 @@ const handleRecallSend$ = command(
       db,
       args.body.threadId,
       args.userId,
+      args.orgId,
     );
     signal.throwIfAborted();
     if (ownership) {
@@ -2317,6 +2339,7 @@ const handleInterruptSend$ = command(
       db,
       args.body.threadId,
       args.userId,
+      args.orgId,
     );
     signal.throwIfAborted();
     if (ownership) {
@@ -2584,6 +2607,7 @@ async function resolveTimedPreflightClientEvent(
         () => {
           return resolveClientEventSend({
             db,
+            orgId: args.orgId,
             userId: args.userId,
             threadId,
             clientEventId: args.body.clientEventId,
@@ -3442,12 +3466,14 @@ async function buildTimedCreateAgentRunArgs(params: {
 
 async function resolveQueueFirstEventAfterLostClaim(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly eventId: string;
 }) {
   const resolution = await resolveClientEventId(params.db, {
     clientEventId: params.eventId,
+    orgId: params.orgId,
     threadId: params.threadId,
     userId: params.userId,
   });
@@ -3568,6 +3594,7 @@ const createNormalChatRun$ = command(
     if (!queuedMessage || queuedMessage.id !== queueFirstEventId) {
       return await resolveQueueFirstEventAfterLostClaim({
         db: prepared.db,
+        orgId: args.orgId,
         threadId: prepared.thread.threadId,
         userId: args.userId,
         eventId: queueFirstEventId,
@@ -3613,6 +3640,7 @@ const createNormalChatRun$ = command(
     if (isQueueFirstRunClaimLost(runResult)) {
       return await resolveQueueFirstEventAfterLostClaim({
         db: prepared.db,
+        orgId: args.orgId,
         threadId: prepared.thread.threadId,
         userId: args.userId,
         eventId: queueFirstEventId,
@@ -3689,6 +3717,7 @@ export const sendNormalEvent$ = command(
             async () => {
               return await resolveClientEventSend({
                 db: prepared.db,
+                orgId: args.orgId,
                 userId: args.userId,
                 threadId: prepared.thread.threadId,
                 clientEventId: args.body.clientEventId,

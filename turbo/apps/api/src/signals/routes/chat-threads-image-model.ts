@@ -11,6 +11,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
 import { appendChatThreadEvent } from "../services/chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
 import type { RouteEntry } from "../route-entry";
 
 const imageModelBody$ = bodyResultOf(chatThreadImageModelContract.update);
@@ -36,6 +37,7 @@ const updateImageModelInner$ = command(
           and(
             eq(chatThreads.id, params.id),
             eq(chatThreads.userId, auth.userId),
+            chatThreadOrganizationCondition(tx, auth.orgId),
             isNotNull(chatThreads.agentId),
           ),
         )
