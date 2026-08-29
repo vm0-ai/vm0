@@ -334,6 +334,7 @@ describe("shared database MessagePort protocol", () => {
     const staleOwner = createChildAbortController(context.signal);
     const subscription = createChildAbortController(context.signal);
     try {
+      const initialAttach = context.mocks.ably.deferNextSubscribe();
       await firstTab.heartbeat(heartbeat(), firstOwner.signal);
       await staleTab.heartbeat(heartbeat(), staleOwner.signal);
 
@@ -341,7 +342,6 @@ describe("shared database MessagePort protocol", () => {
       const canonicalRow = row(key.threadId, 1);
       const requestedSeqIds: number[] = [];
       let appends = 0;
-      const initialAttach = context.mocks.ably.deferNextSubscribe();
       await staleTab.on(
         key,
         () => {
@@ -376,16 +376,13 @@ describe("shared database MessagePort protocol", () => {
 
       expect(firstTabTransports).toBe(1);
       expect(staleTabTransports).toBe(1);
-      expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
       initialAttach.attach();
-      const recoveredAttach = context.mocks.ably.deferNextSubscribe();
       await staleTab.heartbeat(heartbeat(), staleOwner.signal);
-      await recoveredAttach.started;
       expect(staleTabTransports).toBe(1);
-      recoveredAttach.attach();
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
         expect(staleTabStatuses.at(-1)).toBe("connected");
         expect(requestedSeqIds).toStrictEqual([0, 1]);
         expect(appends).toBe(1);
@@ -417,6 +414,7 @@ describe("shared database MessagePort protocol", () => {
     const owner = createChildAbortController(context.signal);
     const subscription = createChildAbortController(context.signal);
     try {
+      const initialAttach = context.mocks.ably.deferNextSubscribe();
       await bridge.heartbeat(heartbeat(), owner.signal);
       const key = dataKey(crypto.randomUUID());
       context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
@@ -431,7 +429,6 @@ describe("shared database MessagePort protocol", () => {
         return respond(200, { rows: [] });
       });
 
-      const initialAttach = context.mocks.ably.deferNextSubscribe();
       await bridge.on(key, vi.fn<() => void>(), subscription.signal);
       await initialAttach.started;
       initialAttach.attach();

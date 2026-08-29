@@ -415,6 +415,7 @@ interface AssistantEventInsertArgs {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly items: readonly AssistantEventItem[];
 }
 
@@ -1465,11 +1466,36 @@ async function insertGitHubChatDeliveryCallback(args: {
   return callback.id;
 }
 
+async function publishAssistantErrorEventSignals(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly threadId: string;
+  readonly lifecycleEvent: "failed" | "cancelled";
+  readonly hasCancellationRecoveryState: boolean;
+}): Promise<void> {
+  await publishChatThreadMessageCreatedSafely({
+    userId: args.userId,
+    orgId: args.orgId,
+    threadId: args.threadId,
+  });
+  await publishThreadListChangedSafely({
+    userId: args.userId,
+    orgId: args.orgId,
+  });
+  if (
+    args.lifecycleEvent === "cancelled" &&
+    args.hasCancellationRecoveryState
+  ) {
+    await publishChatThreadDetailChangedSafely(args.userId, args.threadId);
+  }
+}
+
 async function insertAssistantErrorEvent(args: {
   readonly db: Db;
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly lifecycleEvent: "failed" | "cancelled";
   readonly hasCancellationRecoveryState: boolean;
   readonly getFormattedError: () => Promise<string>;
@@ -1574,14 +1600,7 @@ async function insertAssistantErrorEvent(args: {
     return { inserted: false };
   }
 
-  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
-  await publishThreadListChangedSafely(args.userId);
-  if (
-    args.lifecycleEvent === "cancelled" &&
-    args.hasCancellationRecoveryState
-  ) {
-    await publishChatThreadDetailChangedSafely(args.userId, args.threadId);
-  }
+  await publishAssistantErrorEventSignals(args);
   return {
     displayErrorMessage,
     inserted: true,
@@ -1681,6 +1700,7 @@ interface RunLifecycleMarkerArgs {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly event: "completed" | "cancelled";
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -1870,8 +1890,15 @@ async function insertRunLifecycleMarker(
   if (!inserted) {
     return { inserted: false };
   }
-  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
-  await publishThreadListChangedSafely(args.userId);
+  await publishChatThreadMessageCreatedSafely({
+    userId: args.userId,
+    orgId: args.orgId,
+    threadId: args.threadId,
+  });
+  await publishThreadListChangedSafely({
+    userId: args.userId,
+    orgId: args.orgId,
+  });
   return {
     inserted: true,
     slackDeliveryCallbackId: inserted.slackDeliveryCallbackId,
@@ -1888,6 +1915,7 @@ async function insertRecommendedFollowupsEvent(args: {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly followups: readonly ChatRecommendedFollowup[];
 }): Promise<boolean> {
   const goalId = await goalIdForRun(args.db, args.runId);
@@ -1910,11 +1938,12 @@ async function insertRecommendedFollowupsEvent(args: {
     return false;
   }
 
-  await publishChatThreadMessageCreatedSafely(
-    args.userId,
-    args.threadId,
-    inserted.seqId,
-  );
+  await publishChatThreadMessageCreatedSafely({
+    userId: args.userId,
+    orgId: args.orgId,
+    threadId: args.threadId,
+    syncThroughSeqId: inserted.seqId,
+  });
   return true;
 }
 
@@ -2070,6 +2099,7 @@ async function handleCompletedChatCallback(
         runId: args.runId,
         threadId: args.chatThread.chatThreadId,
         userId: args.chatThread.userId,
+        orgId: args.chatThread.orgId,
         event: "completed",
         slackDelivery: args.slackDelivery,
         feishuDelivery: args.feishuDelivery,
@@ -2160,6 +2190,7 @@ async function runCompletedChatCallbackSideEffects(
         runId: args.runId,
         threadId: args.chatThread.chatThreadId,
         userId: args.chatThread.userId,
+        orgId: args.chatThread.orgId,
         followups,
       });
     }
@@ -2241,6 +2272,7 @@ async function handleFailedChatCallback(args: {
     runId: args.runId,
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
+    orgId: args.chatThread.orgId,
     lifecycleEvent,
     hasCancellationRecoveryState: args.hasCancellationRecoveryState,
     getFormattedError: args.getFormattedError,
@@ -3439,6 +3471,7 @@ async function appendAutoSentQueuedRunMarkerIfQueued(args: {
 async function publishAutoSentQueuedRunSignals(args: {
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly timing: ChatCallbackPreCreateTimingCollector;
 }): Promise<void> {
   await measureChatCallbackPreCreateTiming(
@@ -3446,8 +3479,15 @@ async function publishAutoSentQueuedRunSignals(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
-      await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
-      await publishThreadListChangedSafely(args.userId);
+      await publishChatThreadMessageCreatedSafely({
+        userId: args.userId,
+        orgId: args.orgId,
+        threadId: args.threadId,
+      });
+      await publishThreadListChangedSafely({
+        userId: args.userId,
+        orgId: args.orgId,
+      });
     },
   );
 }
@@ -3483,13 +3523,21 @@ function recordQueuedMessageAdmissionFailure(
 async function publishQueuedAdmissionFailureInvalidations(
   args: {
     readonly userId: string;
+    readonly orgId: string;
     readonly threadId: string;
   },
   signal: AbortSignal,
 ): Promise<void> {
-  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+  await publishChatThreadMessageCreatedSafely({
+    userId: args.userId,
+    orgId: args.orgId,
+    threadId: args.threadId,
+  });
   signal.throwIfAborted();
-  await publishThreadListChangedSafely(args.userId);
+  await publishThreadListChangedSafely({
+    userId: args.userId,
+    orgId: args.orgId,
+  });
   signal.throwIfAborted();
 }
 
@@ -3528,6 +3576,7 @@ async function handleWebQueuedMessageAdmissionFailure(
   await publishQueuedAdmissionFailureInvalidations(
     {
       userId: args.failure.userId,
+      orgId: args.failure.orgId,
       threadId: args.failure.threadId,
     },
     signal,
@@ -3571,6 +3620,7 @@ async function handleFeishuQueuedMessageAdmissionFailure(
   await publishQueuedAdmissionFailureInvalidations(
     {
       userId: args.failure.userId,
+      orgId: args.failure.orgId,
       threadId: args.failure.threadId,
     },
     signal,
@@ -3641,6 +3691,7 @@ async function handleSlackQueuedMessageAdmissionFailure(
   await publishQueuedAdmissionFailureInvalidations(
     {
       userId: args.failure.userId,
+      orgId: args.failure.orgId,
       threadId: args.failure.threadId,
     },
     signal,
@@ -3707,6 +3758,7 @@ async function handleTeamsQueuedMessageAdmissionFailure(
   await publishQueuedAdmissionFailureInvalidations(
     {
       userId: args.failure.userId,
+      orgId: args.failure.orgId,
       threadId: args.failure.threadId,
     },
     signal,
@@ -3768,6 +3820,7 @@ async function handleTelegramQueuedMessageAdmissionFailure(
   await publishQueuedAdmissionFailureInvalidations(
     {
       userId: args.failure.userId,
+      orgId: args.failure.orgId,
       threadId: args.failure.threadId,
     },
     signal,
@@ -3829,6 +3882,7 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(
   await publishQueuedAdmissionFailureInvalidations(
     {
       userId: args.failure.userId,
+      orgId: args.failure.orgId,
       threadId: args.failure.threadId,
     },
     signal,
@@ -3891,6 +3945,7 @@ async function handleGitHubQueuedMessageAdmissionFailure(
   await publishQueuedAdmissionFailureInvalidations(
     {
       userId: args.failure.userId,
+      orgId: args.failure.orgId,
       threadId: args.failure.threadId,
     },
     signal,
@@ -3970,6 +4025,7 @@ async function handleMorningBriefQueuedMessageAdmissionFailure(
   await publishQueuedAdmissionFailureInvalidations(
     {
       userId: args.failure.userId,
+      orgId: args.failure.orgId,
       threadId: args.failure.threadId,
     },
     signal,
@@ -4283,6 +4339,7 @@ async function autoSendQueuedMessageForThread(
       await publishAutoSentQueuedRunSignals({
         threadId,
         userId,
+        orgId: runInput.orgId,
         timing: args.timing,
       });
       return createdRun;
@@ -4432,6 +4489,7 @@ async function prepareCompletedTerminalChatCallbackWork(
                 runId: args.runId,
                 threadId: args.chatThread.chatThreadId,
                 userId: args.chatThread.userId,
+                orgId: args.chatThread.orgId,
                 items,
               },
               signal,

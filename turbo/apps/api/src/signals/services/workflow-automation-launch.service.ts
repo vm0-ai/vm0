@@ -536,6 +536,7 @@ async function recordWorkflowAutomationRunStart(
   const { automation, chatThreadId } = args.due;
   await finalizeClaimedRunUserMessage({
     db,
+    orgId: automation.orgId,
     threadId: chatThreadId,
     userId: automation.ownerUserId,
     runId,

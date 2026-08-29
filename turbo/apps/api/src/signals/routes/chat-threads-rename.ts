@@ -3,7 +3,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { chatThreadRenameContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
-import { authContext$ } from "../auth/auth-context";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
@@ -16,7 +16,7 @@ import type { RouteEntry } from "../route-entry";
 const renameBody$ = bodyResultOf(chatThreadRenameContract.rename);
 
 const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(authContext$);
+  const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(chatThreadRenameContract.rename));
   const body = await get(renameBody$);
   signal.throwIfAborted();
@@ -62,7 +62,7 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Chat thread not found");
   }
 
-  await publishThreadListChanged(auth.userId);
+  await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
   signal.throwIfAborted();
 
   return { status: 204 as const, body: undefined };
@@ -72,7 +72,11 @@ export const chatThreadRenameRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadRenameContract.rename,
     handler: authRoute(
-      { requiredCapability: "chat-thread:write" },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:write",
+      },
       renameInner$,
     ),
   },

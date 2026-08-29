@@ -297,7 +297,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(2);
 
     await webhooks.requestAgentEvents(
       { runId, events: orderedBatch },
@@ -305,7 +305,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(2);
 
     await webhooks.requestAgentEvents(
       {
@@ -332,7 +332,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(2);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(4);
 
     await webhooks.requestAgentEvents(
       {
@@ -358,7 +358,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(3);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(6);
 
     await webhooks.requestAgentEvents(
       {
@@ -438,7 +438,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(4);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(8);
 
     await webhooks.requestAgentEvents(
       {
@@ -491,7 +491,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(4);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(8);
 
     const redactedRows = await chat.listThreadEventRows(actor, threadId);
     expect(
@@ -851,7 +851,7 @@ describe("HOOK-02/CHAT-02: provider tool activity materialization", () => {
     context.mocks.ably.publish.mockClear();
     await webhooks.requestAgentEvents({ runId, events: batch }, headers, [200]);
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(2);
 
     context.mocks.ably.publish.mockClear();
     await webhooks.requestAgentEvents({ runId, events: batch }, headers, [200]);

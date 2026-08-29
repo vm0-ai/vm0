@@ -88,6 +88,7 @@ export interface InsertAssistantEventsInput {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly items: readonly InsertAssistantEventItem[];
 }
 
@@ -284,12 +285,17 @@ export async function insertAssistantEvents(
     if (result.shouldAttemptFirstAssistantEventClaim) {
       await publishFirstAssistantEventCreatedSafely({
         db: writeDb,
+        orgId: args.orgId,
         userId: args.userId,
         threadId: args.threadId,
         runId: args.runId,
       });
     } else {
-      await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+      await publishChatThreadMessageCreatedSafely({
+        userId: args.userId,
+        orgId: args.orgId,
+        threadId: args.threadId,
+      });
     }
     signal.throwIfAborted();
   }

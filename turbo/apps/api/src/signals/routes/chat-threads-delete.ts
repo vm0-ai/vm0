@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { chatThreadByIdContract } from "@okouai/api-contracts/contracts/chat-threads";
 
-import { authContext$ } from "../auth/auth-context";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
@@ -21,7 +21,7 @@ function chatThreadNotFound() {
 }
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(authContext$);
+  const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(chatThreadByIdContract.delete));
   const query = get(queryOf(chatThreadByIdContract.delete));
 
@@ -61,7 +61,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  await publishThreadListChanged(auth.userId);
+  await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
   signal.throwIfAborted();
 
   return { status: 204 as const, body: undefined };
@@ -70,6 +70,9 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 export const chatThreadDeleteRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadByIdContract.delete,
-    handler: authRoute({}, deleteInner$),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      deleteInner$,
+    ),
   },
 ];

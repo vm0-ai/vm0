@@ -34,8 +34,8 @@ import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
-  publishUserSignal,
 } from "../external/realtime";
 import { now, nowDate } from "../../lib/time";
 import {
@@ -2232,11 +2232,12 @@ function appendInterruptUserMessage(params: {
   });
 }
 
-async function publishChatEventCreated(
-  userId: string,
-  threadId: string,
-): Promise<void> {
-  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+async function publishChatEventCreated(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly threadId: string;
+}): Promise<void> {
+  await publishChatThreadMessageCreatedSafely(args);
 }
 
 async function assertOwnedThread(
@@ -2258,6 +2259,7 @@ const handleRecallSend$ = command(
     args: {
       readonly body: RecallSendBody;
       readonly userId: string;
+      readonly orgId: string;
     },
     signal: AbortSignal,
   ) => {
@@ -2283,7 +2285,11 @@ const handleRecallSend$ = command(
       return badRequestMessage(result.message);
     }
 
-    await publishChatEventCreated(args.userId, args.body.threadId);
+    await publishChatEventCreated({
+      userId: args.userId,
+      orgId: args.orgId,
+      threadId: args.body.threadId,
+    });
     signal.throwIfAborted();
     return {
       status: 201 as const,
@@ -2328,7 +2334,11 @@ const handleInterruptSend$ = command(
       return badRequestMessage(result.message);
     }
 
-    await publishChatEventCreated(args.userId, args.body.threadId);
+    await publishChatEventCreated({
+      userId: args.userId,
+      orgId: args.orgId,
+      threadId: args.body.threadId,
+    });
     signal.throwIfAborted();
 
     const cancelResult = await set(
@@ -2837,7 +2847,10 @@ async function queueUnassociatedNormalEvent(params: {
         }),
   });
   if (resolution.kind === "queued" && resolution.inserted) {
-    await publishThreadListChanged(params.userId);
+    await publishThreadListChanged({
+      userId: params.userId,
+      orgId: params.orgId,
+    });
   }
   const response = clientEventIdResolutionResponse(
     resolution,
@@ -2912,11 +2925,15 @@ function scheduleAssociatedUserMessage(params: {
         clearDraft: true,
       });
       if (inserted) {
-        await publishUserSignal(
-          [params.userId],
-          `chatThreadMessageCreated:${params.threadId}`,
-        );
-        await publishThreadListChanged(params.userId);
+        await publishChatEventCreated({
+          userId: params.userId,
+          orgId: params.orgId,
+          threadId: params.threadId,
+        });
+        await publishThreadListChanged({
+          userId: params.userId,
+          orgId: params.orgId,
+        });
       }
       if (params.appendInitialThinking) {
         await bestEffort(
@@ -2924,6 +2941,7 @@ function scheduleAssociatedUserMessage(params: {
             db: params.db,
             threadId: params.threadId,
             userId: params.userId,
+            orgId: params.orgId,
             runId: params.runId,
             currentPrompt: params.body.prompt,
           }),
@@ -2972,6 +2990,7 @@ function scheduleCreatedChatRunSideEffects(params: {
       body: params.body,
       threadId: params.thread.threadId,
       userId: params.userId,
+      orgId: params.orgId,
       runId: params.runId,
       createdAt: params.queueFirstClaim.createdAt,
       appendQueueMarker: params.runStatus === "queued",
@@ -3005,6 +3024,7 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
   readonly body: RuntimeNormalSendBody;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly runId: string;
   readonly createdAt: Date;
   readonly appendQueueMarker: boolean;
@@ -3021,13 +3041,18 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
           });
         });
       }
-      await publishChatEventCreated(params.userId, params.threadId);
+      await publishChatEventCreated({
+        userId: params.userId,
+        orgId: params.orgId,
+        threadId: params.threadId,
+      });
       if (params.appendInitialThinking) {
         await bestEffort(
           generateAndPersistInitialThinkingMessage({
             db: params.db,
             threadId: params.threadId,
             userId: params.userId,
+            orgId: params.orgId,
             runId: params.runId,
             currentPrompt: params.body.prompt,
           }),
@@ -3063,6 +3088,7 @@ async function buildInsufficientCreditsAssistantMessage(params: {
 async function appendQueueFirstInsufficientCreditsEvents(params: {
   readonly prepared: PreparedNormalSend;
   readonly userId: string;
+  readonly orgId: string;
   readonly eventId: string;
   readonly assistantContent: string;
 }): Promise<CreatedChatEventResponse> {
@@ -3129,7 +3155,11 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
     }
     return queuedMessage.createdAt;
   });
-  await publishChatEventCreated(params.userId, params.prepared.thread.threadId);
+  await publishChatEventCreated({
+    userId: params.userId,
+    orgId: params.orgId,
+    threadId: params.prepared.thread.threadId,
+  });
   return {
     status: 201,
     body: {
@@ -3158,6 +3188,7 @@ async function appendInsufficientCreditsEvents(params: {
     return appendQueueFirstInsufficientCreditsEvents({
       prepared: params.prepared,
       userId: params.userId,
+      orgId: params.orgId,
       eventId: params.queueFirstEventId,
       assistantContent,
     });
@@ -3223,9 +3254,16 @@ async function appendInsufficientCreditsEvents(params: {
     return { createdAt, inserted: userMessage !== null };
   });
 
-  await publishChatEventCreated(params.userId, params.prepared.thread.threadId);
+  await publishChatEventCreated({
+    userId: params.userId,
+    orgId: params.orgId,
+    threadId: params.prepared.thread.threadId,
+  });
   if (result.inserted) {
-    await publishThreadListChanged(params.userId);
+    await publishThreadListChanged({
+      userId: params.userId,
+      orgId: params.orgId,
+    });
   }
 
   return {
@@ -3763,7 +3801,11 @@ const sendQueueFirstNormalEvent$ = command(
     );
     signal.throwIfAborted();
     if (dispatch === "wait") {
-      await publishChatEventCreated(args.userId, threadId);
+      await publishChatEventCreated({
+        userId: args.userId,
+        orgId: args.orgId,
+        threadId,
+      });
       signal.throwIfAborted();
       await set(
         drainChatThreadQueueForThread$,
@@ -3780,7 +3822,11 @@ const sendQueueFirstNormalEvent$ = command(
       // The thread is idle but an older unclaimed message holds the queue
       // head (e.g. left behind by a cancelled run). Dispatch the head so the
       // thread keeps draining; this message stays queued behind it (#21392).
-      await publishChatEventCreated(args.userId, threadId);
+      await publishChatEventCreated({
+        userId: args.userId,
+        orgId: args.orgId,
+        threadId,
+      });
       signal.throwIfAborted();
       await set(
         drainChatThreadQueueForThread$,
@@ -3821,7 +3867,7 @@ export const handleSendChatEvent$ = command(
     if (isRecallSendBody(body)) {
       return await set(
         handleRecallSend$,
-        { body, userId: auth.userId },
+        { body, userId: auth.userId, orgId: auth.orgId },
         signal,
       );
     }

@@ -64,7 +64,7 @@ const updateImageModelInner$ = command(
       return notFound("Chat thread not found");
     }
 
-    await publishThreadListChanged(auth.userId);
+    await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
     signal.throwIfAborted();
 
     return { status: 204 as const, body: undefined };

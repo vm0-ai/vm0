@@ -85,11 +85,15 @@ const subscribeErrors = new Map<
   }
 >();
 
-function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
-  const deferred = createDeferredPromise<AuthCallbackToken>(
-    AbortSignal.any([]),
-  );
+function invokeAuthCallback(
+  cb: AuthCallback,
+  signal: AbortSignal = AbortSignal.any([]),
+): Promise<AuthCallbackToken> {
+  const deferred = createDeferredPromise<AuthCallbackToken>(signal);
   cb({}, (error, token) => {
+    if (deferred.settled()) {
+      return;
+    }
     if (error) {
       const message =
         typeof error === "string" ? error : (error.message ?? "auth error");
@@ -243,6 +247,7 @@ export class Realtime {
   readonly channels: { get: (_name: string) => FakeChannel };
 
   private readonly channelsByName = new Map<string, FakeChannel>();
+  private readonly authController = new AbortController();
 
   private readonly connectedOnceListeners = new Set<ConnectionEventListener>();
   private readonly failedOnceListeners = new Set<ConnectionEventListener>();
@@ -314,7 +319,7 @@ export class Realtime {
 
     if (config?.authCallback) {
       capturedAuthCallback = config.authCallback;
-      invokeAuthCallback(config.authCallback)
+      invokeAuthCallback(config.authCallback, this.authController.signal)
         .then(() => {
           this.connect();
         })
@@ -334,6 +339,9 @@ export class Realtime {
     if (this.connection.state === "closed") {
       return;
     }
+    this.authController.abort(
+      new DOMException("Ably client closed", "AbortError"),
+    );
     this.transition("closing");
     for (const channel of this.channelsByName.values()) {
       channel.clear();
@@ -605,6 +613,19 @@ export function hasChannelSubscription(): boolean {
       if (channel.hasChannelSubscription()) {
         return true;
       }
+    }
+  }
+  return false;
+}
+
+export function hasChannelSubscriptionOnChannel(channelName: string): boolean {
+  for (const realtime of realtimeInstances) {
+    if (
+      realtime.connection.state === "connected" &&
+      realtime.getExistingChannel(channelName)?.hasChannelSubscription() ===
+        true
+    ) {
+      return true;
     }
   }
   return false;

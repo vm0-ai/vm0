@@ -745,11 +745,16 @@ export const createChatThread$ = command(
 export async function chatThreadForRunFromDb(
   db: Pick<Db, "select">,
   runId: string,
-): Promise<{ readonly chatThreadId: string; readonly userId: string } | null> {
+): Promise<{
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+} | null> {
   const [row] = await db
     .select({
       chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
+      orgId: agentRuns.orgId,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
@@ -759,7 +764,11 @@ export async function chatThreadForRunFromDb(
   if (!row?.chatThreadId) {
     return null;
   }
-  return { chatThreadId: row.chatThreadId, userId: row.userId };
+  return {
+    chatThreadId: row.chatThreadId,
+    userId: row.userId,
+    orgId: row.orgId,
+  };
 }
 
 interface ThreadRunToCancel {

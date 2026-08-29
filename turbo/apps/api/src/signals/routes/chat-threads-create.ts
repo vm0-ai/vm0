@@ -197,7 +197,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage(thread.message);
   }
 
-  await publishThreadListChanged(auth.userId);
+  await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
   signal.throwIfAborted();
 
   return {

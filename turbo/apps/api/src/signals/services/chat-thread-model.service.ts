@@ -458,7 +458,10 @@ export async function resolvePersistedChatThreadModel(
 
   await Promise.all([
     result.publishThreadList
-      ? publishThreadListChangedSafely(params.userId)
+      ? publishThreadListChangedSafely({
+          userId: params.userId,
+          orgId: params.orgId,
+        })
       : Promise.resolve(),
     result.publishThreadDetail
       ? publishChatThreadDetailChangedSafely(params.userId, params.threadId)

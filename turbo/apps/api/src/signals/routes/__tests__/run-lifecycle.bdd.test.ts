@@ -16643,7 +16643,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     context.mocks.ably.publish.mockImplementation((topic: unknown) => {
       if (topic === `chatThreadMessageCreated:${threadId}`) {
         assistantPublishCount++;
-        if (assistantPublishCount === 2) {
+        if (assistantPublishCount === 4) {
           bothAssistantPublishesStarted.resolve(undefined);
         }
         return releaseAssistantPublishes.promise;
