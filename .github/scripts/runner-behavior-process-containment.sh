@@ -437,11 +437,11 @@ PRESSURE_SUBMIT_OUTPUT=$(mktemp)
 # Keep the final input after the pressure command so the mock turn cannot
 # finish first.
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-  --timeout 140 \
+  --timeout 200 \
   --chat-thread-id "$PRESSURE_CHAT_THREAD_ID" \
   --session-id "$PRESSURE_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt '@active-input-smoke-ready:8' \
+  --prompt '@active-input-smoke-ready:10' \
   --active-input 'after=1ms,text=cpu-pressure-ready' \
   --active-input 'after=2s,text=cpu-pressure-one' \
   --active-input 'after=4s,text=cpu-pressure-two' \
@@ -449,7 +449,9 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --active-input 'after=30s,text=memory-reclaim-one' \
   --active-input 'after=60s,text=memory-reclaim-two' \
   --active-input 'after=90s,text=memory-reclaim-three' \
-  --active-input 'after=120s,text=pressure-finish' \
+  --active-input 'after=120s,text=memory-reclaim-four' \
+  --active-input 'after=150s,text=memory-reclaim-five' \
+  --active-input 'after=180s,text=pressure-finish' \
   >"$PRESSURE_SUBMIT_OUTPUT" 2>&1 &
 PRESSURE_SUBMIT_PID=$!
 
@@ -652,11 +654,12 @@ LEAK_CLEANUP_MS=$PID_CLEANUP_MS
 
 echo "--- Pressure: cross the retired workload memory boundary through Guest reclaim ---"
 PRESSURE_API_SOCK="/run/vm0/sock/$PRESSURE_SANDBOX_ID/api.sock"
-BALLOON_MIN_STABLE_MIB=1536
+# Match the directly observed production checkpoint before applying pressure.
+BALLOON_MIN_STABLE_MIB=3072
 BALLOON_STABLE_TARGET=""
 BALLOON_STABLE_SAMPLES=0
 BALLOON_BEFORE=""
-for _ in $(seq 1 30); do
+for _ in $(seq 1 45); do
   BALLOON_SAMPLE=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
     http://localhost/balloon/statistics \
     | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
@@ -948,7 +951,7 @@ SUBMITTED_PRESSURE_RUN_ID=$(jq -r '.run_id // empty' <<<"$PRESSURE_SUBMIT_JSON")
 PRESSURE_STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${PRESSURE_RUN_ID}.log"
 PRESSURE_METRICS_LOG="/var/lib/vm0-runner/logs/metrics-${PRESSURE_RUN_ID}.jsonl"
 sudo grep -F -q \
-  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+memory-reclaim-one+memory-reclaim-two+memory-reclaim-three+pressure-finish' \
+  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+memory-reclaim-one+memory-reclaim-two+memory-reclaim-three+memory-reclaim-four+memory-reclaim-five+pressure-finish' \
   "$PRESSURE_STREAM_LOG" \
   || fail "CPU-pressure active inputs were not all consumed in order"
 
