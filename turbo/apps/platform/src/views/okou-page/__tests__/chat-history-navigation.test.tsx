@@ -1,3 +1,4 @@
+import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.ts";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -78,11 +79,15 @@ describe("chat lifecycle", () => {
       const events = exposeNewMessage
         ? [initialMessage, newMessage]
         : [initialMessage];
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, { lastReadAt: null, unreads: [] });
@@ -142,18 +147,22 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposePersistedMessage || persistedMessage === null) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
       }
       const events: ChatEvent[] = [initialMessage];
       if (exposePersistedMessage && persistedMessage !== null) {
         events.push(persistedMessage, acknowledgement);
       }
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       const clientEventId = body.clientEventId;
@@ -268,11 +277,15 @@ describe("chat lifecycle", () => {
         pendingSteer,
         ...(exposeReplacement ? [deliveredSteer] : []),
       ];
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
@@ -333,10 +346,10 @@ describe("chat lifecycle", () => {
             : sidebarInitialMessage;
         if (query.sinceSeqId === initialMessage.seqId) {
           if (params.threadId !== KEYBOARD_NEXT_THREAD_ID) {
-            return respond(200, { rows: [] });
+            return respond(200, chatEventRowsResponse([], query));
           }
           if (!exposeSidebarMessage) {
-            return respond(200, { rows: [] });
+            return respond(200, chatEventRowsResponse([], query));
           }
         }
         const events = [
@@ -346,11 +359,15 @@ describe("chat lifecycle", () => {
             ? [sidebarNewMessage]
             : []),
         ];
-        return respond(200, {
-          rows: mockChatEventRows(events).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(events).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {

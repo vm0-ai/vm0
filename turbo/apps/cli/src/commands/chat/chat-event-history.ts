@@ -158,12 +158,6 @@ function parseSnapshot(args: {
     if (row.chatThreadId !== args.threadId) {
       throw new Error("Chat event snapshot belongs to another thread");
     }
-    if (
-      args.projection === "tool-redacted" &&
-      row.eventType === "output.tool"
-    ) {
-      throw new Error("Redacted Chat event snapshot contains tool activity");
-    }
     if (lastRowSeqId !== undefined && row.seqId <= lastRowSeqId) {
       throw new Error(
         "Chat event snapshot rows must be ordered by sequence ID",
@@ -267,10 +261,9 @@ async function localHistoryState(args: {
       cursor = {
         lastEventId: row.id,
         lastSeqId: row.seqId,
-        // V5/V6 CLI cache -> V7 CLI fallback. Remove with #29362 after contexts
-        // created before the V7 package was selected have drained.
-        projection:
-          ("projection" in cursor ? cursor.projection : undefined) ?? "full",
+        // Legacy event-only CLI caches have no Snapshot projection marker.
+        // Keep interpreting those as full until #29362's context-drain gate.
+        projection: "projection" in cursor ? cursor.projection : "full",
       };
     } catch {
       return { kind: "invalid" };
@@ -349,9 +342,7 @@ async function syncRows(args: {
             threadId: args.threadId,
             sinceEventId: cursor.lastEventId,
             sinceSeqId: cursor.lastSeqId,
-            ...(cursor.projection === undefined
-              ? {}
-              : { sinceProjection: cursor.projection }),
+            sinceProjection: cursor.projection,
             limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
           },
     );

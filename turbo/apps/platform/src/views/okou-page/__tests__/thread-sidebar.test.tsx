@@ -37,6 +37,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import {
+  chatEventRowsResponse,
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
@@ -292,11 +293,15 @@ function setupChatThread({
         return { ...message, threadId: message.threadId ?? THREAD_ID };
       }),
     );
-    return respond(200, {
-      rows: mockChatEventRows(events).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      }),
-    });
+    return respond(
+      200,
+      chatEventRowsResponse(
+        mockChatEventRows(events).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+        query,
+      ),
+    );
   });
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, {

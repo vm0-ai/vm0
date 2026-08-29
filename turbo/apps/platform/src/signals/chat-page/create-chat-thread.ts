@@ -1389,17 +1389,13 @@ function semanticTranscriptEventsFromRaw(
   chatEvents: readonly ChatEvent[],
   trees: ReadonlyMap<string, Root>,
   richContentErrors: ReadonlySet<string>,
-  chatToolActivityEnabled: boolean,
 ): SemanticChatEvent[] {
   const renderDocumentByEventId = new Map(
     raw.map((entry) => {
       return [entry.event.id, entry.userMessageRenderDocument] as const;
     }),
   );
-  return semanticChatEventsFromChatEvents(
-    chatEvents,
-    chatToolActivityEnabled,
-  ).map((entry) => {
+  return semanticChatEventsFromChatEvents(chatEvents).map((entry) => {
     return {
       ...entry,
       tree: trees.get(entry.event.id),
@@ -1413,8 +1409,7 @@ function isRenderableAssistantSemanticEvent(entry: SemanticChatEvent): boolean {
   const { event } = entry;
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
-    (event.eventType === "output.tool" ||
-      (isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
+    ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
       ("error" in event && Boolean(event.error)))
   );
 }
@@ -2228,7 +2223,6 @@ function createPagedEventProjections({
       get(chatEvents$),
       get(eventTrees$),
       get(eventTreeErrors$),
-      get(featureSwitch$)[FeatureSwitchKey.ChatToolActivity] ?? false,
     );
   });
   const eventRunIndicatorState$ = createEventRunIndicatorState(chatEvents$);

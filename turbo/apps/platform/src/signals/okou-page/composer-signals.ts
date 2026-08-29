@@ -606,7 +606,7 @@ function pendingAutomationEventText(
 
 function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   const semanticEvents$ = computed((get) => {
-    return semanticChatEventsFromChatEvents(get(chatEvents$), false);
+    return semanticChatEventsFromChatEvents(get(chatEvents$));
   });
   const semanticGroups$ = computed((get) => {
     return groupSemanticChatEvents(get(semanticEvents$));

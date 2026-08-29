@@ -33,9 +33,5 @@ export type ChatEventCursor =
   | {
       readonly lastEventId: string;
       readonly lastSeqId: number;
-      /**
-       * V5/V6 client cursor -> V7 API fallback. Remove with #29362 after the
-       * V7 app floor is live, legacy caches rebuild, and pinned contexts drain.
-       */
-      readonly projection?: ChatEventSnapshotProjection;
+      readonly projection: ChatEventSnapshotProjection;
     };

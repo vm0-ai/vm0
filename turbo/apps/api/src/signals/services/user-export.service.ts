@@ -820,12 +820,7 @@ function collectConversationMessages(
 
     for (const thread of threads) {
       const rows = await get(
-        readCurrentChatEventHistory(
-          runtime,
-          thread.id,
-          "tool-redacted",
-          signal,
-        ),
+        readCurrentChatEventHistory(runtime, thread.id, signal),
       );
       signal.throwIfAborted();
 

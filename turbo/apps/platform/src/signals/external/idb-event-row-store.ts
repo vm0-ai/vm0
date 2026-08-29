@@ -87,14 +87,16 @@ function storedChatEventCursor(raw: unknown): ChatEventCursor {
   if (typeof raw.lastEventId !== "string" || raw.lastSeqId === 0) {
     throw new Error("Invalid cached Chat Event cursor");
   }
-  const projection =
-    "projection" in raw && isChatEventSnapshotProjection(raw.projection)
-      ? raw.projection
-      : undefined;
+  if (
+    !("projection" in raw) ||
+    !isChatEventSnapshotProjection(raw.projection)
+  ) {
+    throw new Error("Invalid cached Chat Event cursor");
+  }
   return {
     lastEventId: raw.lastEventId,
     lastSeqId: raw.lastSeqId,
-    ...(projection === undefined ? {} : { projection }),
+    projection: raw.projection,
   };
 }
 

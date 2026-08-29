@@ -99,62 +99,31 @@ export const cronProjectChatEventSearchResponseSchema = z.object({
   }),
 });
 
-const chatEventSnapshotConvergenceSchema = z.object({
-  snapshotHeads: z.number().int().nonnegative(),
-  nonCurrentSnapshotHeads: z.number().int().nonnegative(),
-  canonicalSnapshotHeads: z.number().int().nonnegative(),
-  pendingCanonicalSnapshotMigrations: z.number().int().nonnegative(),
-  snapshotHeadVersions: z.array(
-    z.object({
-      archiveSchemaVersion: z.number().int().positive(),
-      heads: z.number().int().positive(),
-    }),
-  ),
+const cronSnapshotChatEventsResponseSchema = z.object({
+  success: z.literal(true),
+  snapshots: z.number(),
+  archivedEvents: z.number(),
+  unreadableParents: z.number().int().nonnegative(),
+  skippedUnreadableHeads: z.number().int().nonnegative(),
+  skippedUndecodableHeads: z.number().int().nonnegative(),
+  skippedIncompleteHeads: z.number().int().nonnegative(),
+  skippedUnsupportedHeads: z.number().int().nonnegative(),
+  duplicateEventIdConflictThreads: z.number().int().nonnegative(),
+  duplicateEventIdConflicts: z.number().int().nonnegative(),
+  duplicateEventIdsRemapped: z.number().int().nonnegative(),
+  duplicateEventReferencesRemapped: z.number().int().nonnegative(),
+  retiredSnapshotReferencesDeleted: z.number().int().nonnegative(),
+  r2ObjectsScanned: z.number().int().nonnegative(),
+  r2ObjectsMeasured: z.number().int().nonnegative(),
+  r2ObjectsDeleted: z.number().int().nonnegative(),
+  r2BytesMeasured: z.number().int().nonnegative(),
+  r2BytesDeleted: z.number().int().nonnegative(),
+  r2GcShardsScanned: z.number().int().nonnegative(),
+  r2GcSubpartitionedShards: z.number().int().nonnegative(),
 });
-
-const cronSnapshotChatEventsResponseSchema =
-  chatEventSnapshotConvergenceSchema.extend({
-    success: z.literal(true),
-    snapshots: z.number(),
-    archivedEvents: z.number(),
-    unreadableParents: z.number().int().nonnegative(),
-    skippedUnreadableHeads: z.number().int().nonnegative(),
-    skippedUndecodableHeads: z.number().int().nonnegative(),
-    skippedIncompleteHeads: z.number().int().nonnegative(),
-    skippedUnsupportedHeads: z.number().int().nonnegative(),
-    duplicateEventIdConflictThreads: z.number().int().nonnegative(),
-    duplicateEventIdConflicts: z.number().int().nonnegative(),
-    duplicateEventIdsRemapped: z.number().int().nonnegative(),
-    duplicateEventReferencesRemapped: z.number().int().nonnegative(),
-    retiredSnapshotReferencesDeleted: z.number().int().nonnegative(),
-    r2ObjectsScanned: z.number().int().nonnegative(),
-    r2ObjectsMeasured: z.number().int().nonnegative(),
-    r2ObjectsDeleted: z.number().int().nonnegative(),
-    r2BytesMeasured: z.number().int().nonnegative(),
-    r2BytesDeleted: z.number().int().nonnegative(),
-    r2GcShardsScanned: z.number().int().nonnegative(),
-    r2GcSubpartitionedShards: z.number().int().nonnegative(),
-  });
 
 const cronRetainChatEventsResponseSchema = z.object({
   success: z.literal(true),
-  toolCleanupThreadScanLimit: z.number().int().positive(),
-  toolCleanupDeleteLimit: z.number().int().positive(),
-  toolCleanupThreadsScanned: z.number().int().nonnegative(),
-  toolCleanupToolThreadsScanned: z.number().int().nonnegative(),
-  toolCleanupToolThreadsCovered: z.number().int().nonnegative(),
-  toolCleanupToolThreadsBlockedMissingRedactedHead: z
-    .number()
-    .int()
-    .nonnegative(),
-  toolCleanupToolThreadsBlockedRedactedCoverage: z.number().int().nonnegative(),
-  toolCleanupRowsSelected: z.number().int().nonnegative(),
-  toolCleanupRowsDeleted: z.number().int().nonnegative(),
-  toolCleanupFullPointersCovered: z.number().int().nonnegative(),
-  toolCleanupFullPointersRetired: z.number().int().nonnegative(),
-  toolCleanupRemainingRows: z.number().int().nonnegative(),
-  toolCleanupRemainingFullPointers: z.number().int().nonnegative(),
-  toolCleanupHasMore: z.boolean(),
   cutoff: z.iso.datetime(),
   scanLimit: z.number().int().positive(),
   deleteLimit: z.number().int().positive(),

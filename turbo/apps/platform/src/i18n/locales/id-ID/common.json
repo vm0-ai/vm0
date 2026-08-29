@@ -2307,48 +2307,6 @@
       "copied": "Disalin",
       "deleted": "Chat dihapus"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Sedang mengubah file",
-            "singular": "Sedang mengubah sebuah file"
-          },
-          "terminal": {
-            "plural": "File telah diubah",
-            "singular": "Sebuah file telah diubah"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Sedang membaca file",
-            "singular": "Sedang membaca sebuah file"
-          },
-          "terminal": {
-            "plural": "File telah dibaca",
-            "singular": "Sebuah file telah dibaca"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Sedang menjalankan perintah",
-            "singular": "Sedang menjalankan sebuah perintah"
-          },
-          "terminal": {
-            "plural": "Perintah telah dijalankan",
-            "singular": "Sebuah perintah telah dijalankan"
-          }
-        }
-      },
-      "collapse": "Ciutkan aktivitas alat",
-      "expand": "Luaskan aktivitas alat",
-      "status": {
-        "cancelled": "Dibatalkan",
-        "error": "Gagal",
-        "pending": "Sedang berlangsung",
-        "success": "Selesai"
-      }
-    },
     "voice": {
       "checkingLimit": "Memeriksa batas input suara",
       "input": "Input suara",

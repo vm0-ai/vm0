@@ -28,7 +28,10 @@ import {
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import { expect, vi } from "vitest";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -367,13 +370,17 @@ export function mockThread(options?: {
     });
   });
   context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
-    return respond(200, {
-      rows: mockChatEventRows(
-        normalizeMockChatEvents(options?.messages ?? []),
-      ).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      }),
-    });
+    return respond(
+      200,
+      chatEventRowsResponse(
+        mockChatEventRows(
+          normalizeMockChatEvents(options?.messages ?? []),
+        ).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+        query,
+      ),
+    );
   });
 }
 

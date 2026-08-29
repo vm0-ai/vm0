@@ -2,7 +2,6 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 import { safeJsonParse } from "../utils";
 
@@ -44,15 +43,4 @@ export function encodeChatEventSnapshotBody(
       })
       .join("\n") + "\n",
   );
-}
-
-export function projectChatEventSnapshotRows(
-  rows: readonly ChatEventRow[],
-  projection: ChatEventSnapshotProjection,
-): readonly ChatEventRow[] {
-  return projection === "full"
-    ? rows
-    : rows.filter((row) => {
-        return row.eventType !== "output.tool";
-      });
 }

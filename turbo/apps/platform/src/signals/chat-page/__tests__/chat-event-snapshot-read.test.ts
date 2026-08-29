@@ -3,24 +3,22 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
 
 import { setupBootstrap } from "../../../__tests__/page-helper.ts";
-import { testContext } from "../../__tests__/test-helpers.ts";
 import {
-  CHAT_EVENT_CURSOR_STORE,
-  CHAT_EVENT_ROWS_STORE,
-} from "../../external/chat-idb-schema.ts";
+  testContext,
+  chatEventRowsResponse,
+} from "../../__tests__/test-helpers.ts";
+import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
 import { writeIndexedDbChatEventRows$ } from "../chat-event-row-indexed-db.ts";
 import { createChatEventSignals } from "../chat-event-signals.ts";
-import { semanticChatEventsFromChatEvents } from "../chat-event-state.ts";
 import { createChatEventStorageSignals } from "../chat-event-storage-signals.ts";
 
 vi.mock("idb", async () => {
@@ -88,20 +86,6 @@ function promptRow(
   };
 }
 
-function toolRow(threadId: string, seqId: number): ChatEventRow {
-  return {
-    ...baseRow(threadId, seqId),
-    runId: crypto.randomUUID(),
-    eventType: "output.tool",
-    payload: {
-      toolUseId: `tool-use-${seqId.toString()}`,
-      action: "read",
-      status: "success",
-      summary: "Read the requested file",
-    },
-  };
-}
-
 interface ThreadFixture {
   readonly threadId: string;
   readonly promptEventRow: ChatEventRow;
@@ -141,7 +125,11 @@ async function writeCachedRows(rows: readonly ChatEventRow[]): Promise<void> {
     {
       threadId: lastRow.chatThreadId,
       rows,
-      cursor: { lastEventId: lastRow.id, lastSeqId: lastRow.seqId },
+      cursor: {
+        lastEventId: lastRow.id,
+        lastSeqId: lastRow.seqId,
+        projection: "tool-redacted",
+      },
       schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     },
     context.signal,
@@ -183,6 +171,7 @@ describe("chat event snapshot read", () => {
         return respond(200, {
           url: SNAPSHOT_URL,
           expiresInSeconds: 900,
+          projection: "tool-redacted",
           lastEventId: assistantEventRow.id,
           lastSeqId: assistantEventRow.seqId,
         });
@@ -202,9 +191,9 @@ describe("chat event snapshot read", () => {
         rowRequests.push(query.sinceSeqId);
         rowEventIds.push(query.sinceEventId);
         if (query.sinceSeqId === assistantEventRow.seqId) {
-          return respond(200, { rows: [tailEventRow] });
+          return respond(200, chatEventRowsResponse([tailEventRow], query));
         }
-        return respond(200, { rows: [] });
+        return respond(200, chatEventRowsResponse([], query));
       },
     );
 
@@ -245,91 +234,6 @@ describe("chat event snapshot read", () => {
     ).resolves.toStrictEqual(tailEventRow);
   });
 
-  it("retries V6 once when an old API rejects V7 as ahead", async () => {
-    await setupAuthenticatedBootstrap();
-    const { threadId, promptEventRow, assistantEventRow } = threadFixture();
-    const appDb = await openTestChatDb();
-    const snapshotVersions: string[] = [];
-    const rowVersions: string[] = [];
-
-    context.mocks.api(
-      chatThreadEventsContract.snapshot,
-      ({ request, respond }) => {
-        const version = request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-        snapshotVersions.push(version ?? "missing");
-        if (version === CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
-          return respond(409, {
-            error: {
-              code: "CHAT_EVENT_SCHEMA_VERSION_AHEAD",
-              message:
-                "The requested Chat Event schema version is newer than this API",
-            },
-          });
-        }
-        expect(version).toBe(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString());
-        return respond(200, {
-          url: SNAPSHOT_URL,
-          expiresInSeconds: 900,
-          lastEventId: assistantEventRow.id,
-          lastSeqId: assistantEventRow.seqId,
-          projection: "tool-redacted",
-        });
-      },
-    );
-    context.mocks.http.get(SNAPSHOT_URL, () => {
-      return new Response(snapshotNdjson([promptEventRow, assistantEventRow]));
-    });
-    context.mocks.api(chatThreadEventsContract.rows, ({ request, respond }) => {
-      const version = request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-      rowVersions.push(version ?? "missing");
-      if (version === CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
-        return respond(409, {
-          error: {
-            code: "CHAT_EVENT_SCHEMA_VERSION_AHEAD",
-            message:
-              "The requested Chat Event schema version is newer than this API",
-          },
-        });
-      }
-      expect(version).toBe(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString());
-      return respond(200, {
-        rows: [],
-        cursor: {
-          lastEventId: assistantEventRow.id,
-          lastSeqId: assistantEventRow.seqId,
-          projection: "tool-redacted",
-        },
-        hasMore: false,
-        projection: "tool-redacted",
-      });
-    });
-
-    const signals = createSignals(threadId);
-    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
-    await context.store.set(signals.syncRemoteEvents$, context.signal);
-
-    expect(snapshotVersions).toStrictEqual([
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-    ]);
-    expect(rowVersions).toStrictEqual([
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-    ]);
-    expect(
-      context.store.get(signals.chatEvents$).map((event) => {
-        return event.id;
-      }),
-    ).toStrictEqual([promptEventRow.id, assistantEventRow.id]);
-    await expect(
-      appDb.get(CHAT_EVENT_CURSOR_STORE, threadId),
-    ).resolves.toMatchObject({
-      schemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-    });
-  });
-
   it("cold-starts from the rows endpoint when the thread has no snapshot yet", async () => {
     await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
@@ -347,11 +251,12 @@ describe("chat event snapshot read", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
       if (query.sinceSeqId === 0) {
-        return respond(200, {
-          rows: [promptEventRow, assistantEventRow],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse([promptEventRow, assistantEventRow], query),
+        );
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     const signals = createSignals(threadId);
@@ -370,107 +275,6 @@ describe("chat event snapshot read", () => {
     await expect(
       appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
     ).resolves.toStrictEqual(assistantEventRow);
-  });
-
-  it("keeps output.tool cache and cursors physical while the semantic gate changes", async () => {
-    await setupAuthenticatedBootstrap();
-    const threadId = crypto.randomUUID();
-    const toolEventRow = toolRow(threadId, 1);
-    const assistantEventRow = baseRow(threadId, 2);
-    const appDb = await openTestChatDb();
-
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-          message: "Chat event snapshot not found",
-        },
-      });
-    });
-    const requests: {
-      readonly seqId: number;
-      readonly projection: string | undefined;
-    }[] = [];
-    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
-      requests.push({
-        seqId: query.sinceSeqId,
-        projection:
-          "sinceProjection" in query ? query.sinceProjection : undefined,
-      });
-      if (query.sinceSeqId === 0) {
-        return respond(200, {
-          rows: [toolEventRow],
-          cursor: {
-            lastEventId: toolEventRow.id,
-            lastSeqId: toolEventRow.seqId,
-            projection: "full",
-          },
-          hasMore: true,
-          projection: "full",
-        });
-      }
-      if (query.sinceSeqId === toolEventRow.seqId) {
-        return respond(200, {
-          rows: [assistantEventRow],
-          cursor: {
-            lastEventId: assistantEventRow.id,
-            lastSeqId: assistantEventRow.seqId,
-            projection: "full",
-          },
-          hasMore: false,
-          projection: "full",
-        });
-      }
-      throw new Error(`Unexpected row cursor: ${JSON.stringify(query)}`);
-    });
-
-    const signals = createSignals(threadId);
-    await context.store.set(signals.initializeIndexedDbEvents$, context.signal);
-    await context.store.set(signals.syncRemoteEvents$, context.signal);
-
-    const events = context.store.get(signals.chatEvents$);
-    expect(
-      events.map((event) => {
-        return event.id;
-      }),
-    ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
-    expect(
-      semanticChatEventsFromChatEvents(events, false).map(({ event }) => {
-        return event.id;
-      }),
-    ).toStrictEqual([assistantEventRow.id]);
-    expect(
-      semanticChatEventsFromChatEvents(events, true).map(({ event }) => {
-        return event.id;
-      }),
-    ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
-    expect(requests).toStrictEqual([
-      { seqId: 0, projection: undefined },
-      { seqId: 1, projection: "full" },
-    ]);
-    await expect(
-      appDb.get(CHAT_EVENT_ROWS_STORE, toolEventRow.id),
-    ).resolves.toStrictEqual(toolEventRow);
-    await expect(
-      appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
-    ).resolves.toStrictEqual(assistantEventRow);
-
-    const replaySignals = createSignals(threadId);
-    await context.store.set(
-      replaySignals.initializeIndexedDbEvents$,
-      context.signal,
-    );
-    const replayEvents = context.store.get(replaySignals.chatEvents$);
-    expect(
-      replayEvents.map((event) => {
-        return event.id;
-      }),
-    ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
-    expect(
-      semanticChatEventsFromChatEvents(replayEvents, true).map(({ event }) => {
-        return event.id;
-      }),
-    ).toStrictEqual([toolEventRow.id, assistantEventRow.id]);
   });
 
   it("fails loudly when the rows cursor expires right after a cold start", async () => {
@@ -536,6 +340,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: 2,
       });
@@ -552,7 +357,7 @@ describe("chat event snapshot read", () => {
           },
         });
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     const signals = createSignals(threadId);
@@ -581,9 +386,9 @@ describe("chat event snapshot read", () => {
     await writeCachedRows([promptEventRow, assistantEventRow]);
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === 2) {
-        return respond(200, { rows: [tailEventRow] });
+        return respond(200, chatEventRowsResponse([tailEventRow], query));
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     await context.store.set(setupRealtime$, context.signal);
@@ -620,6 +425,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: assistantEventRow.seqId,
       });
@@ -631,9 +437,9 @@ describe("chat event snapshot read", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
       if (query.sinceSeqId === assistantEventRow.seqId) {
-        return respond(200, { rows: [tailEventRow] });
+        return respond(200, chatEventRowsResponse([tailEventRow], query));
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     const signals = createChatEventSignals(threadId);
@@ -689,9 +495,12 @@ describe("chat event snapshot read", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
       if (query.sinceSeqId === 0) {
-        return respond(200, { rows: [promptEventRow, assistantEventRow] });
+        return respond(
+          200,
+          chatEventRowsResponse([promptEventRow, assistantEventRow], query),
+        );
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     await context.store.set(setupRealtime$, context.signal);
@@ -731,6 +540,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: assistantEventRow.seqId,
       });
@@ -749,7 +559,7 @@ describe("chat event snapshot read", () => {
           },
         });
       }
-      return respond(200, { rows: [tailEventRow] });
+      return respond(200, chatEventRowsResponse([tailEventRow], query));
     });
 
     await context.store.set(setupRealtime$, context.signal);

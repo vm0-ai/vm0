@@ -96,10 +96,6 @@ export const agentRuns = pgTable(
     activeInputEnabled: boolean("active_input_enabled")
       .default(false)
       .notNull(),
-    /** Immutable effective generation decision captured once at Run creation. */
-    chatToolActivityEnabled: boolean("chat_tool_activity_enabled")
-      .default(false)
-      .notNull(),
     runnerGroup: varchar("runner_group", { length: 255 }),
     // Null discriminators identify accepted lifecycle-only history where all
     // product metadata is absent. Product runs write both fields together.

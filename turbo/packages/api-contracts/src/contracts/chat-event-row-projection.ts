@@ -20,7 +20,7 @@ function requiredRowField<T>(
  * ownership.
  */
 export function chatEventFromRow(row: ChatEventRow): ChatEvent {
-  const payload = row.eventType === "output.tool" ? null : row.payload;
+  const payload = row.payload;
   const base = {
     id: row.id,
     threadId: row.chatThreadId,
@@ -143,20 +143,6 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
           row.eventType,
           "content",
         ),
-      };
-    },
-    "output.tool": () => {
-      if (row.eventType !== "output.tool") {
-        throw new Error("output.tool projection received a different row");
-      }
-      return {
-        ...base,
-        eventType: "output.tool",
-        content: null,
-        toolUseId: row.payload.toolUseId,
-        action: row.payload.action,
-        status: row.payload.status,
-        summary: row.payload.summary,
       };
     },
     "run.queued": () => {

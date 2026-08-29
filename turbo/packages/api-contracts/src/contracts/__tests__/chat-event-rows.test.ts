@@ -60,15 +60,6 @@ function projectableRow(eventType: ChatEventType): ChatEventRow {
     },
     "output.thinking": { payload: { thinking: "thinking" } },
     "output.followups": { payload: { content: "followups" } },
-    "output.tool": {
-      runId,
-      payload: {
-        toolUseId: "tool-use-1",
-        action: "read",
-        status: "success",
-        summary: "Read package.json",
-      },
-    },
     "run.queued": { runId, payload: { content: "queued" } },
     "run.dequeued": { runId, revokesEventId },
     "run.completed": { runId },
@@ -135,25 +126,6 @@ describe("canonical chat event row schema", () => {
     expect(parsed).not.toHaveProperty("interruptsRunId");
     expect(parsed).not.toHaveProperty("runGroupId");
   });
-
-  it("enforces the exact output.tool payload boundary", () => {
-    const valid = projectableRow("output.tool");
-    if (valid.eventType !== "output.tool") {
-      throw new Error("Expected an output.tool row");
-    }
-    expect(chatEventRowSchema.safeParse(valid).success).toBe(true);
-    for (const payload of [
-      { ...valid.payload, action: "execute" },
-      { ...valid.payload, status: "running" },
-      { ...valid.payload, summary: "first\nsecond" },
-      { ...valid.payload, summary: "x".repeat(241) },
-      { ...valid.payload, stdout: "raw result" },
-    ]) {
-      expect(chatEventRowSchema.safeParse({ ...valid, payload }).success).toBe(
-        false,
-      );
-    }
-  });
 });
 
 describe("Chat Event Raw Event cursor contract", () => {
@@ -164,6 +136,7 @@ describe("Chat Event Raw Event cursor contract", () => {
       querySchema.safeParse({
         sinceSeqId: 9,
         sinceEventId: "00000000-0000-4000-8000-000000000009",
+        sinceProjection: "tool-redacted",
       }).success,
     ).toBeTruthy();
     expect(querySchema.safeParse({ sinceSeqId: 9 }).success).toBeFalsy();
@@ -204,6 +177,7 @@ describe("Chat Event versioned read contract", () => {
       chatThreadEventsContract.snapshot.responses[200].safeParse({
         ...snapshotResponse,
         lastEventId: "00000000-0000-4000-8000-000000000009",
+        projection: "tool-redacted",
       }).success,
     ).toBe(true);
   });

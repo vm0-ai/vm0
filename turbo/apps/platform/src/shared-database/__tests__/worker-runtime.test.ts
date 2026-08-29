@@ -14,7 +14,10 @@ import { openDB } from "idb";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
-import { testContext } from "../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../signals/__tests__/test-helpers.ts";
 import { CHAT_IDB_VERSION } from "../../signals/external/chat-idb-schema.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import type {
@@ -211,10 +214,13 @@ describe("shared database worker runtime", () => {
         });
       },
     );
-    context.mocks.api(chatThreadEventsContract.rows, ({ request, respond }) => {
-      recordBypass("chat-event-rows", request);
-      return respond(200, { rows: [] });
-    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query, request, respond }) => {
+        recordBypass("chat-event-rows", request);
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
     context.mocks.api(chatThreadsContract.snapshot, ({ request, respond }) => {
       recordBypass("chat-thread-snapshot", request);
       return respond(200, {
@@ -286,12 +292,15 @@ describe("shared database worker runtime", () => {
         });
       },
     );
-    context.mocks.api(chatThreadEventsContract.rows, ({ request, respond }) => {
-      observedBypassHeaders.push(
-        request.headers.get("x-vercel-protection-bypass"),
-      );
-      return respond(200, { rows: [] });
-    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query, request, respond }) => {
+        observedBypassHeaders.push(
+          request.headers.get("x-vercel-protection-bypass"),
+        );
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
 
     const clientId = await connectRuntime();
     await query(clientId, {
@@ -320,9 +329,9 @@ describe("shared database worker runtime", () => {
         },
       });
     });
-    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       networkRequests += 1;
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       networkRequests += 1;
@@ -376,12 +385,16 @@ describe("shared database worker runtime", () => {
     });
     context.mocks.api(
       chatThreadEventsContract.rows,
-      ({ query: requestQuery, respond }) => {
-        return respond(200, {
-          rows: availableRows.filter((row) => {
-            return row.seqId > requestQuery.sinceSeqId;
-          }),
-        });
+      ({ query, query: requestQuery, respond }) => {
+        return respond(
+          200,
+          chatEventRowsResponse(
+            availableRows.filter((row) => {
+              return row.seqId > requestQuery.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -552,7 +565,12 @@ describe("shared database worker runtime", () => {
       `*/api/chat-threads/${dataKey.threadId}/event-rows`,
       () => {
         return HttpResponse.json(
-          { rows: [] },
+          {
+            rows: [],
+            cursor: { lastEventId: null, lastSeqId: 0 },
+            hasMore: false,
+            projection: "tool-redacted",
+          },
           {
             headers: { [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "999" },
           },
@@ -581,6 +599,7 @@ describe("shared database worker runtime", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: snapshotRow.id,
         lastSeqId: 2,
       });
@@ -590,11 +609,15 @@ describe("shared database worker runtime", () => {
     });
     context.mocks.api(
       chatThreadEventsContract.rows,
-      ({ query: requestQuery, respond }) => {
+      ({ query, query: requestQuery, respond }) => {
         requestedSeqIds.push(requestQuery.sinceSeqId);
-        return respond(200, {
-          rows: requestQuery.sinceSeqId === 2 ? [tailRow] : [],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            requestQuery.sinceSeqId === 2 ? [tailRow] : [],
+            query,
+          ),
+        );
       },
     );
     context.workerStore.set(
@@ -646,13 +669,13 @@ describe("shared database worker runtime", () => {
     });
     context.mocks.api(
       chatThreadEventsContract.rows,
-      async ({ query: requestQuery, respond }) => {
+      async ({ query, query: requestQuery, respond }) => {
         requestedSeqIds.push(requestQuery.sinceSeqId);
         if (requestQuery.sinceSeqId === 0) {
           await firstPage.promise;
-          return respond(200, { rows: [row] });
+          return respond(200, chatEventRowsResponse([row], query));
         }
-        return respond(200, { rows: [] });
+        return respond(200, chatEventRowsResponse([], query));
       },
     );
 
@@ -702,7 +725,7 @@ describe("shared database worker runtime", () => {
     });
     context.mocks.api(
       chatThreadEventsContract.rows,
-      async ({ query: requestQuery, respond }) => {
+      async ({ query, query: requestQuery, respond }) => {
         requestedSeqIds.push(requestQuery.sinceSeqId);
         const rows = availableRows.filter((row) => {
           return row.seqId > requestQuery.sinceSeqId;
@@ -711,7 +734,7 @@ describe("shared database worker runtime", () => {
           realtimePageStarted.resolve(undefined);
           await releaseRealtimePage.promise;
         }
-        return respond(200, { rows });
+        return respond(200, chatEventRowsResponse(rows, query));
       },
     );
     context.workerStore.set(
@@ -787,11 +810,31 @@ describe("shared database worker runtime", () => {
         const sinceSeqId = Number(
           new URL(request.url).searchParams.get("sinceSeqId"),
         );
+        const rows = availableRows.filter((row) => {
+          return row.seqId > sinceSeqId;
+        });
+        const lastRow = rows.at(-1);
+        const requestUrl = new URL(request.url);
+        const sinceEventId = requestUrl.searchParams.get("sinceEventId");
         return HttpResponse.json(
           {
-            rows: availableRows.filter((row) => {
-              return row.seqId > sinceSeqId;
-            }),
+            rows,
+            cursor:
+              lastRow === undefined
+                ? sinceEventId === null
+                  ? { lastEventId: null, lastSeqId: 0 }
+                  : {
+                      lastEventId: sinceEventId,
+                      lastSeqId: sinceSeqId,
+                      projection: "tool-redacted" as const,
+                    }
+                : {
+                    lastEventId: lastRow.id,
+                    lastSeqId: lastRow.seqId,
+                    projection: "tool-redacted" as const,
+                  },
+            hasMore: false,
+            projection: "tool-redacted",
           },
           { headers: chatEventSchemaVersionResponseHeaders() },
         );
@@ -898,6 +941,7 @@ describe("shared database worker runtime", () => {
         return respond(200, {
           url: SNAPSHOT_URL,
           expiresInSeconds: 900,
+          projection: "tool-redacted",
           lastEventId: rebuiltRow.id,
           lastSeqId: 10,
         });
@@ -909,14 +953,18 @@ describe("shared database worker runtime", () => {
     let returnedExpiry = false;
     context.mocks.api(
       chatThreadEventsContract.rows,
-      ({ request, query: requestQuery, respond }) => {
+      ({ query, request, query: requestQuery, respond }) => {
         expect(request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
           CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
         );
         if (!expired) {
-          return respond(200, {
-            rows: requestQuery.sinceSeqId === 0 ? [oldRow] : [],
-          });
+          return respond(
+            200,
+            chatEventRowsResponse(
+              requestQuery.sinceSeqId === 0 ? [oldRow] : [],
+              query,
+            ),
+          );
         }
         if (requestQuery.sinceSeqId === 1 && !returnedExpiry) {
           returnedExpiry = true;
@@ -927,9 +975,13 @@ describe("shared database worker runtime", () => {
             },
           });
         }
-        return respond(200, {
-          rows: requestQuery.sinceSeqId === 10 ? [tailRow] : [],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            requestQuery.sinceSeqId === 10 ? [tailRow] : [],
+            query,
+          ),
+        );
       },
     );
 
@@ -1182,8 +1234,8 @@ describe("shared database worker runtime", () => {
         },
       });
     });
-    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
-      return respond(200, { rows: [remoteRow] });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([remoteRow], query));
     });
 
     await expect(
@@ -1325,11 +1377,15 @@ describe("shared database worker runtime", () => {
     );
     context.mocks.api(
       chatThreadEventsContract.rows,
-      ({ request, query: requestQuery, respond }) => {
+      ({ query, request, query: requestQuery, respond }) => {
         authorizationHeaders.push(request.headers.get("authorization"));
-        return respond(200, {
-          rows: requestQuery.sinceSeqId === 0 ? [recoveredRow] : [],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            requestQuery.sinceSeqId === 0 ? [recoveredRow] : [],
+            query,
+          ),
+        );
       },
     );
 
