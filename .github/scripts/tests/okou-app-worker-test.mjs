@@ -76,22 +76,16 @@ function applyHandler({ attributes, handler, innerContent = "" }) {
   return state;
 }
 
-function rewritePairedTag(html, tagName, selector, handler) {
+function rewritePairedTag(html, tagName, handler) {
   const pattern =
     tagName === "html"
       ? /<html([^>]*)>([\s\S]*?)<\/html>/iu
       : tagName === "head"
         ? /<head([^>]*)>([\s\S]*?)<\/head>/iu
-        : tagName === "script"
-          ? /<script([^>]*)>([\s\S]*?)<\/script>/giu
-          : /<title([^>]*)>([\s\S]*?)<\/title>/iu;
-  return html.replace(pattern, (tag, attributeSource, innerContent) => {
-    const attributes = parseAttributes(attributeSource);
-    if (!matchesSelector(tagName, attributes, selector)) {
-      return tag;
-    }
+        : /<title([^>]*)>([\s\S]*?)<\/title>/iu;
+  return html.replace(pattern, (_tag, attributeSource, innerContent) => {
     const state = applyHandler({
-      attributes,
+      attributes: parseAttributes(attributeSource),
       handler,
       innerContent,
     });
@@ -100,6 +94,34 @@ function rewritePairedTag(html, tagName, selector, handler) {
     }
     return `<${tagName}${serializeAttributes(state.attributes)}>${state.innerContent}${state.appendedContent}</${tagName}>`;
   });
+}
+
+function rewriteClerkScriptOpeningTag(html, handler) {
+  const marker = 'data-clerk-js-script=""';
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex === -1) {
+    return html;
+  }
+  const tagStart = html.lastIndexOf("<", markerIndex);
+  const tagEnd = html.indexOf(">", markerIndex);
+  if (tagStart === -1 || tagEnd === -1) {
+    throw new Error("Invalid Clerk script fixture");
+  }
+  const tag = html.slice(tagStart, tagEnd + 1);
+  const attributes = parseAttributes(tag);
+  if (!matchesSelector("script", attributes, "script[data-clerk-js-script]")) {
+    throw new Error("Invalid Clerk script selector fixture");
+  }
+  const state = applyHandler({ attributes, handler });
+  if (state.removed || state.appendedContent || state.innerContent) {
+    throw new Error("Unsupported Clerk script rewrite operation");
+  }
+  const tagNameEnd = tag.search(/\s/u);
+  if (tagNameEnd === -1) {
+    throw new Error("Invalid Clerk script opening tag");
+  }
+  const rewrittenTag = `${tag.slice(0, tagNameEnd)}${serializeAttributes(state.attributes)}>`;
+  return `${html.slice(0, tagStart)}${rewrittenTag}${html.slice(tagEnd + 1)}`;
 }
 
 function rewriteVoidTag(html, tagName, selector, handler) {
@@ -124,10 +146,10 @@ function rewriteVoidTag(html, tagName, selector, handler) {
 
 function rewriteHtml(html, selector, handler) {
   if (selector === "html" || selector === "head" || selector === "title") {
-    return rewritePairedTag(html, selector, selector, handler);
+    return rewritePairedTag(html, selector, handler);
   }
   if (selector === "script[data-clerk-js-script]") {
-    return rewritePairedTag(html, "script", selector, handler);
+    return rewriteClerkScriptOpeningTag(html, handler);
   }
   if (selector.startsWith("meta[")) {
     return rewriteVoidTag(html, "meta", selector, handler);
