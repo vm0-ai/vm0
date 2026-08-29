@@ -3,12 +3,15 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { orgPlanEntitlementsLegacyWrites } from "@okouai/db/operations/org-plan-entitlement-legacy-write";
-import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
+import { orgPlanEntitlementsCanonicalWrites } from "@okouai/db/operations/org-plan-entitlement-canonical-write";
+import {
+  orgPlanEntitlementLegacyColumns,
+  orgPlanEntitlements,
+} from "@okouai/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { getTableConfig } from "drizzle-orm/pg-core";
+import { getTableConfig, pgTable } from "drizzle-orm/pg-core";
 import { Client } from "pg";
 
 import { loadOrgPlanCapabilities } from "../../../apps/api/src/signals/services/org-plan-entitlement-read.service";
@@ -24,6 +27,10 @@ const repositoryDirectory = path.resolve(scriptDirectory, "../../../..");
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration = "1022_workflow_physical_switch";
 const testDatabaseName = "migration_org_plan_restriction_expand_30162";
+const orgPlanEntitlementsPreviousReleaseWrites = pgTable(
+  "org_plan_entitlements",
+  orgPlanEntitlementLegacyColumns(),
+);
 
 interface HistoricalRowSnapshot {
   readonly canonical: boolean | null;
@@ -102,6 +109,13 @@ function trackedFilesWithPattern(
 }
 
 async function validateApplicationStatementInventory(): Promise<void> {
+  const runtimePathspecs = [
+    "turbo/apps",
+    "turbo/packages/api-contracts",
+    "turbo/packages/core",
+    "crates",
+    "e2e",
+  ] as const;
   const applicationFiles = trackedFilesWithPattern("orgPlanEntitlements", [
     "turbo/apps",
   ]);
@@ -120,37 +134,81 @@ async function validateApplicationStatementInventory(): Promise<void> {
     "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
   ]);
   assert.deepEqual(
-    trackedFilesWithPattern("insert\\(orgPlanEntitlementsLegacyWrites\\)", [
-      "turbo/apps",
-    ]),
+    trackedFilesWithPattern(
+      "insert\\(orgPlanEntitlementsCanonicalWrites\\)",
+      runtimePathspecs,
+    ),
     [
       "turbo/apps/api/src/signals/routes/test-usage-settlement.ts",
       "turbo/apps/api/src/signals/services/org-plan-entitlements.service.ts",
       "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
     ],
   );
-
-  assert.ok(
-    getTableConfig(orgPlanEntitlements).columns.some((column) => {
-      return column.name === "restricted_built_in_models";
-    }),
+  assert.deepEqual(
+    trackedFilesWithPattern(
+      "orgPlanEntitlementsLegacyWrites|org-plan-entitlement-legacy-write",
+      runtimePathspecs,
+    ),
+    [],
   );
-  assert.ok(
-    getTableConfig(orgPlanEntitlementsLegacyWrites).columns.every((column) => {
-      return column.name !== "restricted_built_in_models";
-    }),
+
+  const currentColumnNames = getTableConfig(orgPlanEntitlements).columns.map(
+    (column) => {
+      return column.name;
+    },
+  );
+  assert.ok(currentColumnNames.includes("restricted_vm0_models"));
+  assert.ok(currentColumnNames.includes("restricted_built_in_models"));
+
+  const canonicalWriteColumnNames = getTableConfig(
+    orgPlanEntitlementsCanonicalWrites,
+  ).columns.map((column) => {
+    return column.name;
+  });
+  assert.ok(canonicalWriteColumnNames.includes("restricted_built_in_models"));
+  assert.equal(
+    canonicalWriteColumnNames.includes("restricted_vm0_models"),
+    false,
+  );
+
+  const previousReleaseWriteColumnNames = getTableConfig(
+    orgPlanEntitlementsPreviousReleaseWrites,
+  ).columns.map((column) => {
+    return column.name;
+  });
+  assert.ok(previousReleaseWriteColumnNames.includes("restricted_vm0_models"));
+  assert.equal(
+    previousReleaseWriteColumnNames.includes("restricted_built_in_models"),
+    false,
   );
 
   assert.deepEqual(
     trackedFilesWithPattern(
       "restrictedBuiltInModels|restricted_built_in_models",
-      [
-        "turbo/apps",
-        "turbo/packages/api-contracts",
-        "turbo/packages/core",
-        "crates",
-        "e2e",
-      ],
+      runtimePathspecs,
+    ),
+    [
+      "turbo/apps/api/src/signals/routes/test-usage-settlement.ts",
+      "turbo/apps/api/src/signals/services/org-plan-entitlement-read.service.ts",
+      "turbo/apps/api/src/signals/services/org-plan-entitlement-tier-values.ts",
+      "turbo/apps/api/src/signals/services/org-plan-entitlements.service.ts",
+      "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
+    ],
+  );
+  assert.deepEqual(
+    trackedFilesWithPattern(
+      "orgPlanEntitlements\\.restrictedBuiltInModels",
+      runtimePathspecs,
+    ),
+    [
+      "turbo/apps/api/src/signals/services/org-plan-entitlement-read.service.ts",
+      "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
+    ],
+  );
+  assert.deepEqual(
+    trackedFilesWithPattern(
+      "orgPlanEntitlements\\.restrictedVm0Models|restricted_vm0_models",
+      runtimePathspecs,
     ),
     [],
   );
@@ -171,16 +229,31 @@ async function validateApplicationStatementInventory(): Promise<void> {
       path.join(repositoryDirectory, filePath),
       "utf8",
     );
-    assert.equal(source.includes("restrictedBuiltInModels"), false, filePath);
-    assert.equal(
-      source.includes("restricted_built_in_models"),
-      false,
-      filePath,
-    );
     for (const hazard of hazards) {
       assert.doesNotMatch(source, hazard, filePath);
     }
   }
+
+  const readerSource = await fs.readFile(
+    path.join(
+      repositoryDirectory,
+      "turbo/apps/api/src/signals/services/org-plan-entitlement-read.service.ts",
+    ),
+    "utf8",
+  );
+  assert.match(
+    readerSource,
+    /restrictedBuiltInModels:\s*orgPlanEntitlements\.restrictedBuiltInModels/u,
+  );
+  assert.match(
+    readerSource,
+    /Unexpected NULL restricted_built_in_models for org plan entitlement/u,
+  );
+  assert.doesNotMatch(readerSource, /coalesce/iu);
+  assert.doesNotMatch(
+    readerSource,
+    /orgPlanEntitlements\.restrictedVm0Models/u,
+  );
 }
 
 async function validateMigrationStatementScope(): Promise<void> {
@@ -245,6 +318,65 @@ async function readHistoricalRows(
   return result.rows;
 }
 
+async function exercisePreviousReleaseApplicationStatements(
+  database: NodePgDatabase<Record<string, never>>,
+  orgId: string,
+): Promise<void> {
+  await database
+    .insert(orgPlanEntitlementsPreviousReleaseWrites)
+    .values({
+      orgId,
+      planKey: "fixture",
+      planRank: 0,
+      source: "test_fixture",
+      restrictedVm0Models: false,
+    })
+    .onConflictDoUpdate({
+      target: orgPlanEntitlementsPreviousReleaseWrites.orgId,
+      set: { restrictedVm0Models: false },
+    });
+  const [inserted] = await database
+    .select({
+      restrictedVm0Models:
+        orgPlanEntitlementsPreviousReleaseWrites.restrictedVm0Models,
+    })
+    .from(orgPlanEntitlementsPreviousReleaseWrites)
+    .where(eq(orgPlanEntitlementsPreviousReleaseWrites.orgId, orgId))
+    .limit(1);
+  assert.equal(inserted?.restrictedVm0Models, false);
+
+  await database
+    .insert(orgPlanEntitlementsPreviousReleaseWrites)
+    .values({
+      orgId,
+      planKey: "fixture",
+      planRank: 0,
+      source: "test_fixture",
+      restrictedVm0Models: true,
+    })
+    .onConflictDoUpdate({
+      target: orgPlanEntitlementsPreviousReleaseWrites.orgId,
+      set: { restrictedVm0Models: true },
+    });
+  await database
+    .update(orgPlanEntitlementsPreviousReleaseWrites)
+    .set({ restrictedVm0Models: false })
+    .where(eq(orgPlanEntitlementsPreviousReleaseWrites.orgId, orgId));
+
+  await database.transaction(async (tx) => {
+    const [locked] = await tx
+      .select({
+        restrictedVm0Models:
+          orgPlanEntitlementsPreviousReleaseWrites.restrictedVm0Models,
+      })
+      .from(orgPlanEntitlementsPreviousReleaseWrites)
+      .where(eq(orgPlanEntitlementsPreviousReleaseWrites.orgId, orgId))
+      .limit(1)
+      .for("update");
+    assert.equal(locked?.restrictedVm0Models, false);
+  });
+}
+
 async function exerciseCurrentApplicationStatements(
   database: NodePgDatabase<Record<string, never>>,
   orgId: string,
@@ -279,12 +411,23 @@ async function exerciseCurrentApplicationStatements(
       currentPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
       expiresAt: orgPlanEntitlements.expiresAt,
       autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
-      restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
+      restrictedBuiltInModels: orgPlanEntitlements.restrictedBuiltInModels,
     })
     .from(orgPlanEntitlements)
     .where(eq(orgPlanEntitlements.orgId, orgId))
     .limit(1);
   assert.equal(selection?.orgId, orgId);
+  assert.equal(selection?.restrictedBuiltInModels, false);
+
+  const [freePair] = await database
+    .select({
+      canonical: orgPlanEntitlements.restrictedBuiltInModels,
+      legacy: orgPlanEntitlements.restrictedVm0Models,
+    })
+    .from(orgPlanEntitlements)
+    .where(eq(orgPlanEntitlements.orgId, orgId))
+    .limit(1);
+  assert.deepEqual(freePair, { canonical: false, legacy: false });
 
   await database.transaction(async (tx) => {
     await upsertOrgPlanEntitlement(tx, {
@@ -295,6 +438,15 @@ async function exerciseCurrentApplicationStatements(
   });
   const suspended = await loadOrgPlanCapabilities(database, orgId);
   assert.equal(suspended?.restrictedVm0Models, true);
+  const [suspendedPair] = await database
+    .select({
+      canonical: orgPlanEntitlements.restrictedBuiltInModels,
+      legacy: orgPlanEntitlements.restrictedVm0Models,
+    })
+    .from(orgPlanEntitlements)
+    .where(eq(orgPlanEntitlements.orgId, orgId))
+    .limit(1);
+  assert.deepEqual(suspendedPair, { canonical: true, legacy: true });
 
   await database
     .update(orgPlanEntitlements)
@@ -302,12 +454,12 @@ async function exerciseCurrentApplicationStatements(
     .where(eq(orgPlanEntitlements.orgId, orgId));
 
   const deleteOrgId = `${orgId}-delete`;
-  await database.insert(orgPlanEntitlementsLegacyWrites).values({
+  await database.insert(orgPlanEntitlementsCanonicalWrites).values({
     orgId: deleteOrgId,
     planKey: "fixture",
     planRank: 0,
     source: "test_fixture",
-    restrictedVm0Models: false,
+    restrictedBuiltInModels: false,
   });
   await database
     .delete(orgPlanEntitlements)
@@ -317,6 +469,54 @@ async function exerciseCurrentApplicationStatements(
     .from(orgPlanEntitlements)
     .where(eq(orgPlanEntitlements.orgId, deleteOrgId));
   assert.equal(deleted, undefined);
+}
+
+async function validateCanonicalNullFailsClosed(
+  client: Client,
+  database: NodePgDatabase<Record<string, never>>,
+  orgId: string,
+): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "org_plan_entitlements" (
+        "org_id", "plan_key", "plan_rank", "source",
+        "restricted_vm0_models"
+      ) VALUES ($1, 'fixture', 0, 'test_fixture', true)
+    `,
+    [orgId],
+  );
+  await client.query(
+    `ALTER TABLE "org_plan_entitlements" DISABLE TRIGGER "sync_org_plan_entitlement_model_restrictions_1023"`,
+  );
+  try {
+    await client.query(
+      `
+        UPDATE "org_plan_entitlements"
+        SET "restricted_built_in_models" = NULL
+        WHERE "org_id" = $1
+      `,
+      [orgId],
+    );
+  } finally {
+    await client.query(
+      `ALTER TABLE "org_plan_entitlements" ENABLE TRIGGER "sync_org_plan_entitlement_model_restrictions_1023"`,
+    );
+  }
+
+  await assert.rejects(loadOrgPlanCapabilities(database, orgId), {
+    message: `Unexpected NULL restricted_built_in_models for org plan entitlement ${orgId}`,
+  });
+
+  await client.query(
+    `
+      UPDATE "org_plan_entitlements"
+      SET "restricted_vm0_models" = false
+      WHERE "org_id" = $1
+    `,
+    [orgId],
+  );
+  const repaired = await loadOrgPlanCapabilities(database, orgId);
+  assert.equal(repaired?.restrictedVm0Models, false);
 }
 
 export async function validateOrgPlanEntitlementRestrictionExpansion(
@@ -340,8 +540,8 @@ export async function validateOrgPlanEntitlementRestrictionExpansion(
       const database = drizzle(client);
       const historicalOrgId = "org-plan-restriction-30162-historical";
       const helperOrgId = "org-plan-restriction-30162-helper-before-expand";
-      const currentAppOrgId =
-        "org-plan-restriction-30162-current-app-before-expand";
+      const previousReleaseOrgId =
+        "org-plan-restriction-30162-previous-release-before-expand";
       await client.query(
         `
         INSERT INTO "org_plan_entitlements" (
@@ -355,10 +555,13 @@ export async function validateOrgPlanEntitlementRestrictionExpansion(
         `INSERT INTO "org_metadata" ("org_id", "tier", "credits") VALUES ($1, 'team', 0)`,
         [helperOrgId],
       );
-      await exerciseCurrentApplicationStatements(database, currentAppOrgId);
+      await exercisePreviousReleaseApplicationStatements(
+        database,
+        previousReleaseOrgId,
+      );
 
       const historicalOrgIds = [
-        currentAppOrgId,
+        previousReleaseOrgId,
         helperOrgId,
         historicalOrgId,
       ].sort();
@@ -394,6 +597,23 @@ export async function validateOrgPlanEntitlementRestrictionExpansion(
       );
       assert.deepEqual(afterCount.rows, beforeCount.rows);
 
+      const rollbackOrgId =
+        "org-plan-restriction-30207-previous-release-after-expand";
+      await exercisePreviousReleaseApplicationStatements(
+        database,
+        rollbackOrgId,
+      );
+      const rollbackRows = await readHistoricalRows(
+        client,
+        [rollbackOrgId],
+        true,
+      );
+      assert.deepEqual(rollbackRows[0]?.canonical, false);
+      assert.equal(
+        Reflect.get(rollbackRows[0]?.rest ?? {}, "restricted_vm0_models"),
+        false,
+      );
+
       const postExpandAppOrgId =
         "org-plan-restriction-30162-current-app-after-expand";
       await exerciseCurrentApplicationStatements(database, postExpandAppOrgId);
@@ -412,14 +632,18 @@ export async function validateOrgPlanEntitlementRestrictionExpansion(
       );
       assert.deepEqual(postExpand.rows, [{ canonical: true, legacy: true }]);
 
-      console.log(
-        "   ✅ current explicit application SQL runs before expansion",
+      await validateCanonicalNullFailsClosed(
+        client,
+        database,
+        "org-plan-restriction-30207-null-canonical",
       );
+
+      console.log("   ✅ previous-release SQL runs before and after expansion");
       console.log(
         "   ✅ historical rows retain ctid, xmin, and legacy-only state",
       );
       console.log(
-        "   ✅ current legacy writers remain mirrored after expansion\n",
+        "   ✅ canonical writes/read locks mirror and NULL reads fail closed\n",
       );
     } finally {
       await client.end();

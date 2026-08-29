@@ -5,7 +5,7 @@
  * capabilities, so integration tests use this narrow boundary to verify those
  * reads and persisted webhook side effects.
  */
-import { orgPlanEntitlementsLegacyWrites } from "@okouai/db/operations/org-plan-entitlement-legacy-write";
+import { orgPlanEntitlementsCanonicalWrites } from "@okouai/db/operations/org-plan-entitlement-canonical-write";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { createStore } from "ccstate";
@@ -67,16 +67,16 @@ export async function upsertOrgPlanEntitlementFixture(values: {
     memberInvitationAllowed: values.memberInvitationAllowed,
     autoRechargeAllowed: values.autoRechargeAllowed,
     supportByok: values.supportByok,
-    restrictedVm0Models: values.restrictedVm0Models,
+    restrictedBuiltInModels: values.restrictedVm0Models,
     videoGenerationAllowed: values.videoGenerationAllowed,
     workflowWebhookTriggerAllowed: values.workflowWebhookAutomationAllowed,
   };
   await createStore()
     .set(writeDb$)
-    .insert(orgPlanEntitlementsLegacyWrites)
+    .insert(orgPlanEntitlementsCanonicalWrites)
     .values(row)
     .onConflictDoUpdate({
-      target: orgPlanEntitlementsLegacyWrites.orgId,
+      target: orgPlanEntitlementsCanonicalWrites.orgId,
       set: {
         planKey: row.planKey,
         planRank: row.planRank,
@@ -103,9 +103,9 @@ export async function upsertOrgPlanEntitlementFixture(values: {
         ...(row.supportByok === undefined
           ? {}
           : { supportByok: row.supportByok }),
-        ...(row.restrictedVm0Models === undefined
+        ...(row.restrictedBuiltInModels === undefined
           ? {}
-          : { restrictedVm0Models: row.restrictedVm0Models }),
+          : { restrictedBuiltInModels: row.restrictedBuiltInModels }),
         ...(row.videoGenerationAllowed === undefined
           ? {}
           : { videoGenerationAllowed: row.videoGenerationAllowed }),
@@ -164,7 +164,7 @@ export async function readOrgPlanEntitlementFixture(
       memberInvitationAllowed: orgPlanEntitlements.memberInvitationAllowed,
       autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
       supportByok: orgPlanEntitlements.supportByok,
-      restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
+      restrictedBuiltInModels: orgPlanEntitlements.restrictedBuiltInModels,
       videoGenerationAllowed: orgPlanEntitlements.videoGenerationAllowed,
       workflowWebhookAutomationAllowed:
         orgPlanEntitlements.workflowWebhookTriggerAllowed,
@@ -186,8 +186,17 @@ export async function readOrgPlanEntitlementFixture(
     return null;
   }
 
+  if (row.restrictedBuiltInModels === null) {
+    throw new Error(
+      `Unexpected NULL restricted_built_in_models for org plan entitlement ${orgId}`,
+    );
+  }
+
+  const { restrictedBuiltInModels, ...entitlement } = row;
+
   return {
-    ...row,
+    ...entitlement,
+    restrictedVm0Models: restrictedBuiltInModels,
     currentPeriodStart: row.currentPeriodStart?.toISOString() ?? null,
     currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
     cancelAt: row.cancelAt?.toISOString() ?? null,

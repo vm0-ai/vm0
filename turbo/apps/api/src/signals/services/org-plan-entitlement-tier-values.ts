@@ -8,7 +8,7 @@ interface OrgTierLimits {
   readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
-  readonly restrictedVm0Models: boolean;
+  readonly restrictedBuiltInModels: boolean;
   readonly videoGenerationAllowed: boolean;
   readonly workflowWebhookAutomationAllowed: boolean;
   readonly audioLifetimeLimit: number | null;
@@ -30,7 +30,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: true,
-    restrictedVm0Models: false,
+    restrictedBuiltInModels: false,
     videoGenerationAllowed: true,
     workflowWebhookAutomationAllowed: false,
     audioLifetimeLimit: 10,
@@ -45,7 +45,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
-    restrictedVm0Models: true,
+    restrictedBuiltInModels: true,
     videoGenerationAllowed: false,
     workflowWebhookAutomationAllowed: false,
     audioLifetimeLimit: 10,
@@ -60,7 +60,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
-    restrictedVm0Models: true,
+    restrictedBuiltInModels: true,
     videoGenerationAllowed: false,
     workflowWebhookAutomationAllowed: false,
     audioLifetimeLimit: 0,
@@ -75,7 +75,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
-    restrictedVm0Models: false,
+    restrictedBuiltInModels: false,
     videoGenerationAllowed: true,
     workflowWebhookAutomationAllowed: false,
     audioLifetimeLimit: null,
@@ -90,7 +90,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
-    restrictedVm0Models: false,
+    restrictedBuiltInModels: false,
     videoGenerationAllowed: true,
     workflowWebhookAutomationAllowed: true,
     audioLifetimeLimit: null,
@@ -105,7 +105,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
-    restrictedVm0Models: false,
+    restrictedBuiltInModels: false,
     videoGenerationAllowed: true,
     workflowWebhookAutomationAllowed: true,
     audioLifetimeLimit: null,

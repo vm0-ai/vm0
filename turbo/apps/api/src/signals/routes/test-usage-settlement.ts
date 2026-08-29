@@ -1,5 +1,5 @@
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
-import { orgPlanEntitlementsLegacyWrites } from "@okouai/db/operations/org-plan-entitlement-legacy-write";
+import { orgPlanEntitlementsCanonicalWrites } from "@okouai/db/operations/org-plan-entitlement-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
@@ -68,20 +68,20 @@ const setupUsageSettlement$ = command(
       });
     signal.throwIfAborted();
     await db
-      .insert(orgPlanEntitlementsLegacyWrites)
+      .insert(orgPlanEntitlementsCanonicalWrites)
       .values({
         orgId: bodyResult.data.org_id,
         planKey: "usage-pack-test",
         planRank: 1,
         source: "test_fixture",
         status: "active",
-        restrictedVm0Models: false,
+        restrictedBuiltInModels: false,
       })
       .onConflictDoUpdate({
-        target: orgPlanEntitlementsLegacyWrites.orgId,
+        target: orgPlanEntitlementsCanonicalWrites.orgId,
         set: {
           status: "active",
-          restrictedVm0Models: false,
+          restrictedBuiltInModels: false,
         },
       });
     signal.throwIfAborted();
