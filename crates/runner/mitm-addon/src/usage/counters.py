@@ -32,10 +32,10 @@ _usage_state_id = str(uuid.uuid4())
 # filesystem trouble.  Emit one error signal per addon process on first failure —
 # enough to seed the operator investigation without spamming logs under
 # persistent FS pressure.  Deliberately uses the canonical underbilling
-# helper's stderr fallback because the per-job proxy log shares the same
+# helper's process event because the per-job proxy log shares the same
 # filesystem we just failed to write and is likely affected by the same root
-# cause.  The runner stderr bridge parses the leading key=value fields and
-# re-emits them as structured tracing fields.
+# cause. The runner parses the versioned event envelope and re-emits it as
+# structured tracing fields.
 _pending_write_error_logged = False
 _FLUSH_REQUEST_FILE = "usage-flush-request"
 

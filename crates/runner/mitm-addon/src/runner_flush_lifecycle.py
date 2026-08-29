@@ -9,8 +9,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Literal
 
-from mitmproxy import ctx
-
+import addon_process_logging
 import anthropic_accounting
 import claude_output_timing
 import codex_output_timing
@@ -215,7 +214,10 @@ def _flush_usage_for_runner_request() -> None:
     try:
         _flush_delivery_work(trigger="runner")
     except Exception as exc:
-        ctx.log.warn(f"Failed to flush delivery work after runner request ({type(exc).__name__})")
+        addon_process_logging.emit_addon_process_event(
+            "warn",
+            f"Failed to flush delivery work after runner request ({type(exc).__name__})",
+        )
     finally:
         usage.write_pending_snapshot(flush_request_id=flush_request_id)
 
@@ -261,10 +263,16 @@ def _flush_jsonl_for_runner_request(request_path: Path, state_path: Path) -> Non
         ):
             pending = 1
             timed_out = True
-            ctx.log.warn("JSONL flush did not complete before timeout")
+            addon_process_logging.emit_addon_process_event(
+                "warn",
+                "JSONL flush did not complete before timeout",
+            )
     except Exception as exc:
         pending = 1
-        ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
+        addon_process_logging.emit_addon_process_event(
+            "warn",
+            f"Failed to flush JSONL logs after runner request ({type(exc).__name__})",
+        )
     finally:
         state_written = _write_jsonl_flush_state(
             state_path,
@@ -327,7 +335,10 @@ def _write_jsonl_flush_state(
         except OSError as exc:
             with suppress(OSError):
                 tmp_path.unlink()
-            ctx.log.warn(f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}")
+            addon_process_logging.emit_addon_process_event(
+                "warn",
+                f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}",
+            )
             return False
 
 

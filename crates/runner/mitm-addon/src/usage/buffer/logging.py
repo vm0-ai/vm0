@@ -22,7 +22,7 @@ Operators should use ``retained_source_event_count`` and
 ``dropped_source_event_count`` and ``dropped_webhook_batch_count`` for confirmed
 drops. Dropped retained batches also include ``retained_retry_count``. When no
 proxy log path exists, ordinary flush records are skipped; underbilling records
-use the stderr fallback in ``log_usage_underbilling``.
+use the process event in ``log_usage_underbilling``.
 """
 
 from __future__ import annotations

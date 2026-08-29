@@ -68,6 +68,7 @@ const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
 const AXIOM_TOKEN_ENV: &str = "AXIOM_TOKEN_TELEMETRY";
 const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
+const ADDON_LOG_TARGET: &str = "mitmdump_addon";
 /// Target used for this layer's own diagnostics. Dispatcher diagnostics
 /// (non-success ingest responses, HTTP errors) remain visible to local
 /// logging, while the Axiom per-layer filter keeps any observed diagnostics
@@ -430,6 +431,13 @@ fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
     event.record(&mut v);
 
     let mut out = v.0;
+    if meta.target() == ADDON_LOG_TARGET
+        && let Some(encoded) = out.get("message").and_then(Value::as_str)
+        && let Ok(addon_log) = serde_json::from_str::<Map<String, Value>>(encoded)
+    {
+        out = addon_log;
+        out.remove("runner_hostname");
+    }
     out.insert(
         "_time".into(),
         Value::String(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),

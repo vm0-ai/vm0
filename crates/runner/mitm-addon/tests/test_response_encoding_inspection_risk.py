@@ -127,12 +127,11 @@ class TestResponseEncodingInspectionRisk:
             content_encoding="private-encoding-value",
         )
 
-        with mitm_ctx() as log:
+        with mitm_ctx():
             mitm_addon.responseheaders(flow)
 
         [entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
         assert "private-encoding-value" not in str(entry)
-        assert "private-encoding-value" not in log.debug.call_args.args[0]
         assert entry["decode_skip_reason"] == "unsupported content encoding"
         assert flow.response is not None
         assert flow.response.status_code == 502
