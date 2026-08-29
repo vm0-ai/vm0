@@ -90,14 +90,6 @@ export default defineConfig(({ command }) => ({
             },
           ],
         },
-        // Mangle identifiers for smaller bundles while preserving runtime
-        // function and class names for framework semantics and diagnostics.
-        keepNames: true,
-        minify: {
-          compress: true,
-          mangle: true,
-          codegen: true,
-        },
       },
     },
   },
