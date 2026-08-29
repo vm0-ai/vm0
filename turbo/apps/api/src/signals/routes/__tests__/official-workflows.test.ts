@@ -1645,6 +1645,27 @@ describe.sequential("Official Workflow installations", () => {
         })
         .sort(),
     ).toStrictEqual([201, 409]);
+    const installed = concurrent.find((response) => {
+      return response.status === 201;
+    });
+    if (!installed || installed.status !== 201) {
+      throw new Error("Expected one successful concurrent installation");
+    }
+    expect(installed.body.workflow).toMatchObject({
+      agentId,
+      official: {
+        definitionName,
+        installationState: "installed",
+        definitionLifecycle: "active",
+        readOnly: true,
+      },
+    });
+    expect(installed.body.workflow.automations).toHaveLength(3);
+    expect(
+      installed.body.workflow.automations.every((automation) => {
+        return automation.enabled;
+      }),
+    ).toBeTruthy();
   });
 
   it("projects installed state, guards mutations, and preserves reconfiguration identity", async () => {
