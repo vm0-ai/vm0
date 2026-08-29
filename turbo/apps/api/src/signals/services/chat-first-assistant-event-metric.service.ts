@@ -5,7 +5,7 @@ import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import { waitUntil } from "../context/wait-until";
 import type { Db } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import { now } from "../../lib/time";
 import { tapError } from "../utils";
@@ -81,25 +81,21 @@ export function recordFirstAssistantEventAcknowledgementMetric(args: {
 }
 
 export async function publishFirstAssistantEventCreatedSignalSafely(args: {
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
 }): Promise<void> {
-  await publishUserSignal(
-    [args.userId],
-    `chatThreadMessageCreated:${args.threadId}`,
-  );
+  await publishChatThreadMessageCreatedSafely(args);
 }
 
 async function publishFirstAssistantEventCreated(args: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;
 }): Promise<void> {
-  await publishUserSignal(
-    [args.userId],
-    `chatThreadMessageCreated:${args.threadId}`,
-  );
+  await publishChatThreadMessageCreatedSafely(args);
   const acknowledgedAt = now();
   waitUntil(
     tapError(
@@ -120,6 +116,7 @@ async function publishFirstAssistantEventCreated(args: {
 
 export async function publishFirstAssistantEventCreatedSafely(args: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;

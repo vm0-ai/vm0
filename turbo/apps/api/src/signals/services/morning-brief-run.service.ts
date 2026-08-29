@@ -380,9 +380,13 @@ const startMorningBriefRun$ = command(
       chatMessage,
     });
     signal.throwIfAborted();
-    await publishChatThreadMessageCreatedSafely(row.userId, chatThreadId);
+    await publishChatThreadMessageCreatedSafely({
+      userId: row.userId,
+      orgId: row.orgId,
+      threadId: chatThreadId,
+    });
     signal.throwIfAborted();
-    await publishThreadListChanged(row.userId);
+    await publishThreadListChanged({ userId: row.userId, orgId: row.orgId });
     signal.throwIfAborted();
 
     await set(

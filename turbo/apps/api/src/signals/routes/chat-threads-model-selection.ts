@@ -17,6 +17,7 @@ import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "../services/chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
 import {
   resolveModelSelectionPin,
   validateCodexServiceTier,
@@ -95,6 +96,7 @@ const updateModelSelectionInner$ = command(
           and(
             eq(chatThreads.id, params.id),
             eq(chatThreads.userId, auth.userId),
+            chatThreadOrganizationCondition(tx, auth.orgId),
             isNotNull(chatThreads.agentId),
           ),
         )
@@ -135,7 +137,7 @@ const updateModelSelectionInner$ = command(
       return notFound("Chat thread not found");
     }
 
-    await publishThreadListChanged(auth.userId);
+    await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
     signal.throwIfAborted();
 
     return { status: 204 as const, body: undefined };

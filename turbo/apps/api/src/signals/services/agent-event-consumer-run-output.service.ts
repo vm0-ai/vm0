@@ -33,6 +33,7 @@ export interface MaterializedChatProjection {
   readonly thread: {
     readonly chatThreadId: string;
     readonly userId: string;
+    readonly orgId: string;
   };
   readonly insertedRowCount: number;
   readonly firstAssistantAcknowledgement: {
@@ -221,6 +222,7 @@ async function insertRunOutputChatEvents(
       runId: payload.runId,
       threadId: thread.chatThreadId,
       userId: thread.userId,
+      orgId: thread.orgId,
       items: assistantItems,
     },
     signal,
@@ -386,6 +388,7 @@ export async function publishMaterializedChatProjection(
   if (projection.firstAssistantAcknowledgement) {
     await publishFirstAssistantEventCreatedSignalSafely({
       userId: projection.thread.userId,
+      orgId: projection.thread.orgId,
       threadId: projection.thread.chatThreadId,
     });
     recordFirstAssistantEventAcknowledgementMetric({
@@ -393,10 +396,11 @@ export async function publishMaterializedChatProjection(
       ...projection.firstAssistantAcknowledgement,
     });
   } else {
-    await publishChatThreadMessageCreatedSafely(
-      projection.thread.userId,
-      projection.thread.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: projection.thread.userId,
+      orgId: projection.thread.orgId,
+      threadId: projection.thread.chatThreadId,
+    });
   }
   signal.throwIfAborted();
 }

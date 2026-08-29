@@ -48,6 +48,10 @@ function orgId(): string {
   return `direct-bridge-org-${context.resourceId}`;
 }
 
+function realtimeChannel(): string {
+  return `user-org:${userId()}:${orgId()}`;
+}
+
 function row(threadId: string, seqId: number): ChatEventRow {
   return {
     id: crypto.randomUUID(),
@@ -185,7 +189,10 @@ describe("shared database direct Platform bridge", () => {
     ).toStrictEqual([1, 2]);
 
     availableRows = [caughtUpRow, realtimeRow];
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      `chatThreadMessageCreated:${threadId}`,
+    );
     await vi.waitFor(() => {
       expect(
         context.store.get(signals.chatEvents$).map((event) => {
@@ -221,7 +228,10 @@ describe("shared database direct Platform bridge", () => {
 
     owner.abort(new DOMException("chat closed", "AbortError"));
     const requestsBeforeAbort = requestedSeqIds.length;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      `chatThreadMessageCreated:${threadId}`,
+    );
     await Promise.resolve();
     await Promise.resolve();
     expect(requestedSeqIds).toHaveLength(requestsBeforeAbort);
@@ -343,7 +353,10 @@ describe("shared database direct Platform bridge", () => {
       upgradedDb.close();
     });
 
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      `chatThreadMessageCreated:${threadId}`,
+    );
     await vi.waitFor(() => {
       expect(
         context.store.get(signals.chatEvents$).map((event) => {
@@ -443,7 +456,7 @@ describe("shared database direct Platform bridge", () => {
     });
 
     availableEvents = [firstRename, secondRename];
-    context.mocks.ably.trigger("threadListChanged");
+    context.mocks.ably.triggerOnChannel(realtimeChannel(), "threadListChanged");
     await vi.waitFor(() => {
       expect(
         context.store.get(eventDrivenChatThreads$).find((thread) => {

@@ -1387,13 +1387,14 @@ export const stopComputerUseHost$ = command(
   ): Promise<StopComputerUseHostResult> => {
     const db = set(writeDb$);
     const now = nowDate();
-    const { result, userId, threadBindingsCleared } = await db.transaction(
-      async (tx) => {
+    const { result, userId, orgId, threadBindingsCleared } =
+      await db.transaction(async (tx) => {
         const host = await hostFromToken(tx, params.hostToken, signal);
         if (!host) {
           return {
             result: { status: "invalid_token" as const },
             userId: null,
+            orgId: null,
             threadBindingsCleared: false,
           };
         }
@@ -1423,16 +1424,16 @@ export const stopComputerUseHost$ = command(
         return {
           result: { status: "stopped" as const, hostId: host.id },
           userId: host.userId,
+          orgId: host.orgId,
           threadBindingsCleared,
         };
-      },
-    );
+      });
     signal.throwIfAborted();
     if (userId) {
       await publishComputerUseHostsChanged(userId);
       signal.throwIfAborted();
       if (threadBindingsCleared) {
-        await publishThreadListChanged(userId);
+        await publishThreadListChanged({ userId, orgId });
         signal.throwIfAborted();
       }
     }

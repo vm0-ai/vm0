@@ -4,8 +4,8 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { badRequestMessage } from "../../lib/error";
 import type { Db } from "../external/db";
 import {
+  publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
-  publishUserSignal,
 } from "../external/realtime";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { appendQueuedRunAssistantMarker } from "./chat-queue-marker.service";
@@ -50,11 +50,12 @@ export async function resolveRunChatThreadModelContext(params: {
 }
 
 async function publishRunUserMessageSignals(
+  orgId: string,
   userId: string,
   threadId: string,
 ): Promise<void> {
-  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
-  await publishThreadListChanged(userId);
+  await publishChatThreadMessageCreatedSafely({ orgId, userId, threadId });
+  await publishThreadListChanged({ orgId, userId });
 }
 
 /**
@@ -64,6 +65,7 @@ async function publishRunUserMessageSignals(
  */
 export async function finalizeClaimedRunUserMessage(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;
@@ -81,5 +83,9 @@ export async function finalizeClaimedRunUserMessage(params: {
       });
     });
   }
-  await publishRunUserMessageSignals(params.userId, params.threadId);
+  await publishRunUserMessageSignals(
+    params.orgId,
+    params.userId,
+    params.threadId,
+  );
 }

@@ -13,6 +13,7 @@ const L = logger("SharedDatabaseWorker");
 
 interface SharedDatabaseRealtimeOptions {
   readonly userId: string;
+  readonly orgId: string;
   readonly getTokenRequest: () => Promise<TokenRequest>;
   readonly onMessage: (message: InboundMessage) => void;
   readonly onStatus: (status: SharedDatabaseConnectionStatus) => void;
@@ -20,6 +21,11 @@ interface SharedDatabaseRealtimeOptions {
 
 export interface SharedDatabaseRealtimeSession {
   readonly ready: Promise<boolean>;
+  readonly close: () => void;
+}
+
+interface SharedDatabaseRealtimeAuth {
+  readonly callback: NonNullable<AuthOptions["authCallback"]>;
   readonly close: () => void;
 }
 
@@ -40,50 +46,71 @@ function connectionStatus(
   return "connecting";
 }
 
+function createSharedDatabaseRealtimeAuth(
+  options: SharedDatabaseRealtimeOptions,
+  signal: AbortSignal,
+): SharedDatabaseRealtimeAuth {
+  const pendingTasks = new Set<Promise<void>>();
+  return {
+    callback: (_params, callback) => {
+      const authenticate = async (): Promise<void> => {
+        L.debug("realtime.auth.start", {
+          orgId: options.orgId,
+          userId: options.userId,
+        });
+        const [result] = await Promise.allSettled([options.getTokenRequest()]);
+        if (signal.aborted) {
+          return;
+        }
+        if (result?.status === "fulfilled") {
+          L.debug("realtime.auth.finish", {
+            orgId: options.orgId,
+            userId: options.userId,
+          });
+          callback(null, result.value);
+          return;
+        }
+        L.debug("realtime.auth.error", {
+          error: result?.reason,
+          orgId: options.orgId,
+          userId: options.userId,
+        });
+        callback(
+          result?.reason instanceof Error
+            ? result.reason.message
+            : String(result?.reason),
+          null,
+        );
+      };
+      pendingTasks.clear();
+      pendingTasks.add(authenticate());
+    },
+    close: () => {
+      pendingTasks.clear();
+    },
+  };
+}
+
 export function createSharedDatabaseRealtimeSession(
   options: SharedDatabaseRealtimeOptions,
   signal: AbortSignal,
 ): SharedDatabaseRealtimeSession {
   const controller = createChildAbortController(signal);
-  const pendingAuthTasks = new Set<Promise<void>>();
-  L.debug("realtime.create", { userId: options.userId });
-  const authCallback: NonNullable<AuthOptions["authCallback"]> = (
-    _params,
-    callback,
-  ) => {
-    const authenticate = async (): Promise<void> => {
-      L.debug("realtime.auth.start", { userId: options.userId });
-      const [result] = await Promise.allSettled([options.getTokenRequest()]);
-      if (controller.signal.aborted) {
-        return;
-      }
-      if (result?.status === "fulfilled") {
-        L.debug("realtime.auth.finish", { userId: options.userId });
-        callback(null, result.value);
-        return;
-      }
-      L.debug("realtime.auth.error", {
-        error: result?.reason,
-        userId: options.userId,
-      });
-      callback(
-        result?.reason instanceof Error
-          ? result.reason.message
-          : String(result?.reason),
-        null,
-      );
-    };
-    pendingAuthTasks.clear();
-    pendingAuthTasks.add(authenticate());
-  };
+  L.debug("realtime.create", {
+    orgId: options.orgId,
+    userId: options.userId,
+  });
+  const auth = createSharedDatabaseRealtimeAuth(options, controller.signal);
 
   const ably = createAblyRealtime({
-    authCallback,
+    authCallback: auth.callback,
     autoConnect: true,
     disconnectedRetryTimeout: 5000,
     suspendedRetryTimeout: 15_000,
   });
-  const channel = ably.channels.get(`user:${options.userId}`);
+  const channel = ably.channels.get(
+    `user-org:${options.userId}:${options.orgId}`,
+  );
   let channelState: "attached" | "attaching" | "failed" = "attaching";
   const handleConnectionStateChange = (
     stateChange: ConnectionStateChange,
@@ -93,6 +120,7 @@ export function createSharedDatabaseRealtimeSession(
       previous: stateChange.previous,
       reason: stateChange.reason,
       retryIn: stateChange.retryIn,
+      orgId: options.orgId,
       userId: options.userId,
     });
     const status = connectionStatus(stateChange.current);
@@ -112,13 +140,17 @@ export function createSharedDatabaseRealtimeSession(
     if (!controller.signal.aborted) {
       L.debug("realtime.message", {
         name: message.name,
+        orgId: options.orgId,
         userId: options.userId,
       });
       options.onMessage(message);
     }
   };
   const subscribe = async (): Promise<boolean> => {
-    L.debug("realtime.channel.start", { userId: options.userId });
+    L.debug("realtime.channel.start", {
+      orgId: options.orgId,
+      userId: options.userId,
+    });
     const [result] = await Promise.allSettled([
       channel.subscribe(handleMessage),
     ]);
@@ -129,6 +161,7 @@ export function createSharedDatabaseRealtimeSession(
     channelState = attached ? "attached" : "failed";
     L.debug(attached ? "realtime.channel.finish" : "realtime.channel.error", {
       error: result?.status === "rejected" ? result.reason : undefined,
+      orgId: options.orgId,
       userId: options.userId,
     });
     options.onStatus(attached ? "connected" : "disconnected");
@@ -144,11 +177,14 @@ export function createSharedDatabaseRealtimeSession(
         return;
       }
       closed = true;
-      L.debug("realtime.close", { userId: options.userId });
+      L.debug("realtime.close", {
+        orgId: options.orgId,
+        userId: options.userId,
+      });
       controller.abort(
         new DOMException("Shared database realtime closed", "AbortError"),
       );
-      pendingAuthTasks.clear();
+      auth.close();
       channel.unsubscribe(handleMessage);
       ably.connection.off(handleConnectionStateChange);
       ably.close();

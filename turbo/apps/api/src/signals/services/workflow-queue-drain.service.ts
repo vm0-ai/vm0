@@ -195,7 +195,11 @@ async function publishQueueEventChanged(
   event: PendingWorkflowQueueEvent,
   signal: AbortSignal,
 ): Promise<void> {
-  await publishChatThreadMessageCreatedSafely(event.userId, event.chatThreadId);
+  await publishChatThreadMessageCreatedSafely({
+    userId: event.userId,
+    orgId: event.orgId,
+    threadId: event.chatThreadId,
+  });
   signal.throwIfAborted();
 }
 
