@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.270](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.269...sandbox-fc-v0.37.270) (2026-08-29)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** release balloon fully under guest pressure ([#30227](https://github.com/vm0-ai/vm0/issues/30227)) ([3bb5c13](https://github.com/vm0-ai/vm0/commit/3bb5c13907716ad7a18e8848a2057420aa92edab))
+
 ## [0.37.269](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.268...sandbox-fc-v0.37.269) (2026-08-29)
 
 

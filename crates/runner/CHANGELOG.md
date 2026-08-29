@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.178.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.5...runner-rs-v0.178.6) (2026-08-29)
+
+
+### Performance Improvements
+
+* **runner:** aggregate model observations across jobs ([#30183](https://github.com/vm0-ai/vm0/issues/30183)) ([3a4b21b](https://github.com/vm0-ai/vm0/commit/3a4b21b1e0039aa6f3b26da9520cc0d1ba7d7854))
+
 ## [0.178.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.4...runner-rs-v0.178.5) (2026-08-29)
 
 
