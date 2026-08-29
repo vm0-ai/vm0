@@ -46,6 +46,10 @@ function expectedClerkScriptUrl(host: string): string {
   return `https://${host}/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 }
 
+function expectedClerkUiScriptUrl(host: string): string {
+  return `https://${host}/npm/@clerk/ui@1.26.0/dist/ui.browser.js`;
+}
+
 function builtIndexHtml(): string {
   return transformClerkCoreScriptUrls(
     indexHtml
@@ -73,7 +77,7 @@ function clerkScriptFromHtml(html: string): HTMLScriptElement {
   return script;
 }
 
-function startClerkPage(): ClerkEntrypointHarness {
+function startClerkPage(path = "/error"): ClerkEntrypointHarness {
   const requests: ClerkScriptRequest[] = [];
   const clerkLoaderWatchingEarlyScript = context.mocks.deferred<void>();
   const retryStarted = context.mocks.deferred<void>();
@@ -90,6 +94,7 @@ function startClerkPage(): ClerkEntrypointHarness {
       vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", PRODUCTION_PUBLISHABLE_KEY);
       window.__vm0BrowserSupported = true;
       Reflect.deleteProperty(globalThis, "Clerk");
+      Reflect.deleteProperty(globalThis, "__internal_ClerkUICtor");
 
       const parsedEarlyScript = clerkScriptFromHtml(builtIndexHtml());
       const earlyScriptUrl = parsedEarlyScript.src;
@@ -122,10 +127,19 @@ function startClerkPage(): ClerkEntrypointHarness {
         }
 
         requests.push({ element: node, url: node.src });
+        const isClerkUiRequest = node.src.includes("/npm/@clerk/ui@");
         node.removeAttribute("src");
         const appended = append(node);
-        retryStarted.resolve(undefined);
-        Reflect.set(globalThis, "Clerk", mockedClerk);
+        if (isClerkUiRequest) {
+          Reflect.set(
+            globalThis,
+            "__internal_ClerkUICtor",
+            function ClerkUI() {},
+          );
+        } else {
+          retryStarted.resolve(undefined);
+          Reflect.set(globalThis, "Clerk", mockedClerk);
+        }
         node.dispatchEvent(new Event("load"));
         return appended;
       };
@@ -153,6 +167,7 @@ function startClerkPage(): ClerkEntrypointHarness {
             request.element.remove();
           }
           Reflect.deleteProperty(globalThis, "Clerk");
+          Reflect.deleteProperty(globalThis, "__internal_ClerkUICtor");
           Reflect.deleteProperty(window, "__vm0BrowserSupported");
           vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", previousPreviewKey);
           vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", previousProductionKey);
@@ -161,7 +176,7 @@ function startClerkPage(): ClerkEntrypointHarness {
       );
     },
     context,
-    path: "/error",
+    path,
     withoutRender: true,
   });
 
@@ -246,6 +261,18 @@ describe("platform Clerk entrypoint", () => {
     ]);
     expect(document.querySelectorAll(CLERK_SCRIPT_SELECTOR)).toHaveLength(1);
     expect(document.querySelector("script[data-clerk-ui-script]")).toBeNull();
+    expect(mockedClerkLoad).toHaveBeenCalledOnce();
+  });
+
+  it("loads the matching Clerk UI release only when the auth route requests it", async () => {
+    const harness = startClerkPage("/sign-in");
+
+    await completeEarlyClerkScript(harness);
+
+    expect(harness.requests.map(({ url }) => url)).toStrictEqual([
+      expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
+      expectedClerkUiScriptUrl(PREVIEW_FRONTEND_API_HOST),
+    ]);
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
   });
 
