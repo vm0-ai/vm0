@@ -41,8 +41,8 @@ def test_underbilling_writes_proxy_row_and_process_event(tmp_path, capfd):
     assert event["level"] == "error"
     assert event["type"] == "usage_underbilling"
     assert event["reason"] == "expected_reason"
-    assert event["underbilling_class"] == "risk"
     assert event["component"] == "mitm_addon"
+    assert event["fields"] == {"underbilling_class": "risk"}
 
 
 def test_underbilling_log_without_proxy_path_uses_process_event(mitm_ctx):

@@ -1090,7 +1090,7 @@ mod tests {
 
     #[tokio::test]
     async fn stderr_monitor_discards_oversized_record_and_recovers() {
-        let next_record = br#"VM0_ADDON_EVENT {"version":1,"level":"error","type":"usage_underbilling","reason":"test_failure","component":"mitm_addon","underbilling_class":"risk","detail":"failed"}"#;
+        let next_record = br#"VM0_ADDON_EVENT {"version":1,"level":"error","type":"usage_underbilling","reason":"test_failure","component":"mitm_addon","fields":{"underbilling_class":"risk"},"detail":"failed"}"#;
         let (writer, reader) = tokio::io::duplex(1024);
         let future = async {
             let (_, port_in_use) = tokio::join!(

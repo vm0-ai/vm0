@@ -1,7 +1,6 @@
 """Tests for the addon-to-Runner process event boundary."""
 
 import json
-from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -23,8 +22,7 @@ def test_emits_one_versioned_stderr_record() -> None:
             "usage_underbilling",
             "pending_snapshot_write_failed",
             detail="Failed to write pending count",
-            underbilling_class="risk",
-            counter="reports",
+            fields={"underbilling_class": "risk", "counter": "reports"},
         )
 
     write.assert_called_once()
@@ -36,8 +34,7 @@ def test_emits_one_versioned_stderr_record() -> None:
         "type": "usage_underbilling",
         "reason": "pending_snapshot_write_failed",
         "component": "mitm_addon",
-        "underbilling_class": "risk",
-        "counter": "reports",
+        "fields": {"counter": "reports", "underbilling_class": "risk"},
         "detail": "Failed to write pending count",
     }
 
@@ -62,17 +59,17 @@ def test_bounds_and_single_lines_control_heavy_detail() -> None:
 
 
 @pytest.mark.parametrize(
-    ("event_type", "reason", "counter"),
+    ("event_type", "reason", "fields"),
     [
         ("Bad Type", "valid_reason", None),
         ("valid_type", "bad reason", None),
-        ("valid_type", "valid_reason", "bad counter"),
+        ("valid_type", "valid_reason", {"bad field": "value"}),
     ],
 )
 def test_rejects_unstable_root_field_names(
     event_type: str,
     reason: str,
-    counter: str | None,
+    fields: dict[str, str] | None,
 ) -> None:
     with pytest.raises(ValueError, match="invalid addon process event"):
         addon_process_logging.emit_addon_process_event(
@@ -80,18 +77,22 @@ def test_rejects_unstable_root_field_names(
             event_type,
             reason,
             detail="failed",
-            counter=counter,
+            fields=fields,
         )
 
 
-def test_rejects_invalid_underbilling_class() -> None:
-    with pytest.raises(ValueError, match="invalid addon process event underbilling_class"):
+def test_rejects_oversized_generic_fields() -> None:
+    fields = {
+        f"field_{index}": "value"
+        for index in range(addon_process_logging.MAX_ADDON_PROCESS_EVENT_FIELDS + 1)
+    }
+    with pytest.raises(ValueError, match="too many addon process event fields"):
         addon_process_logging.emit_addon_process_event(
             "error",
             "usage_underbilling",
             "test_failure",
             detail="failed",
-            underbilling_class=cast(addon_process_logging.UnderbillingClass, "invalid"),
+            fields=fields,
         )
 
 

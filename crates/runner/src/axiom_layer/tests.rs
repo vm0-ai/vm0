@@ -792,6 +792,38 @@ async fn none_option_fields_are_omitted_from_axiom_payload() {
     );
 }
 
+#[tokio::test]
+async fn generic_axiom_fields_expand_without_overwriting_owned_fields() {
+    let server = MockServer::start_async().await;
+
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        let fields = r#"{"underbilling_class":"risk","counter":"reports","type":"spoofed","message":"spoofed","service":"spoofed","runner_hostname":"spoofed"}"#.to_string();
+        tracing::error!(
+            target: "mitmdump_addon",
+            r#type = "usage_underbilling",
+            axiom_fields = fields.as_str(),
+            "generic addon fields"
+        );
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "generic addon fields");
+    assert_eq!(event["type"].as_str(), Some("usage_underbilling"));
+    assert_eq!(event["underbilling_class"].as_str(), Some("risk"));
+    assert_eq!(event["counter"].as_str(), Some("reports"));
+    assert_eq!(event["service"].as_str(), Some("runner"));
+    assert!(event.get("runner_hostname").is_none());
+    assert!(event.get("axiom_fields").is_none());
+}
+
 #[test]
 fn burst_past_channel_cap_drops_without_blocking() {
     let (tx, receiver) = tokio::sync::mpsc::channel(CHANNEL_CAP);

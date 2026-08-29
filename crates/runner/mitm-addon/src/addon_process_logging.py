@@ -3,15 +3,17 @@
 import json
 import os
 import re
+from collections.abc import Mapping
 from typing import Literal
 
 AddonProcessEventLevel = Literal["warn", "error"]
-UnderbillingClass = Literal["confirmed", "risk"]
 
 ADDON_PROCESS_EVENT_PREFIX = "VM0_ADDON_EVENT "
 ADDON_PROCESS_EVENT_VERSION = 1
 MAX_ADDON_PROCESS_EVENT_BYTES = 4096
+MAX_ADDON_PROCESS_EVENT_FIELDS = 16
 _MAX_DETAIL_CHARACTERS = 2048
+_MAX_FIELD_VALUE_CHARACTERS = 256
 _EVENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,79}\Z")
 _TRUNCATION_SUFFIX = "..."
 
@@ -21,7 +23,7 @@ def _validate_event_name(name: str, field: str) -> None:
         raise ValueError(f"invalid addon process event {field}: {name!r}")
 
 
-def _serialize_event(payload: dict[str, str | int]) -> bytes:
+def _serialize_event(payload: dict[str, object]) -> bytes:
     return (
         ADDON_PROCESS_EVENT_PREFIX.encode()
         + json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
@@ -29,12 +31,16 @@ def _serialize_event(payload: dict[str, str | int]) -> bytes:
     )
 
 
-def _bounded_event(payload: dict[str, str | int], detail: str) -> bytes:
+def _bounded_event(payload: dict[str, object], detail: str) -> bytes:
     bounded_detail = detail[:_MAX_DETAIL_CHARACTERS]
     payload["detail"] = bounded_detail
     record = _serialize_event(payload)
     if len(record) <= MAX_ADDON_PROCESS_EVENT_BYTES:
         return record
+
+    payload["detail"] = ""
+    if len(_serialize_event(payload)) > MAX_ADDON_PROCESS_EVENT_BYTES:
+        raise ValueError("addon process event fields exceed the record size limit")
 
     low = 0
     high = len(bounded_detail)
@@ -54,6 +60,23 @@ def _bounded_event(payload: dict[str, str | int], detail: str) -> bytes:
     return _serialize_event(payload)
 
 
+def _validated_fields(fields: Mapping[str, str] | None) -> dict[str, str]:
+    if fields is None:
+        return {}
+    if len(fields) > MAX_ADDON_PROCESS_EVENT_FIELDS:
+        raise ValueError("too many addon process event fields")
+
+    validated: dict[str, str] = {}
+    for name, value in sorted(fields.items()):
+        _validate_event_name(name, "field name")
+        if not isinstance(value, str):
+            raise TypeError(f"addon process event field {name!r} must be a string")
+        if len(value) > _MAX_FIELD_VALUE_CHARACTERS:
+            raise ValueError(f"addon process event field {name!r} is too long")
+        validated[name] = value
+    return validated
+
+
 def emit_addon_process_event(
     level: AddonProcessEventLevel,
     event_type: str,
@@ -61,8 +84,7 @@ def emit_addon_process_event(
     /,
     *,
     detail: str,
-    underbilling_class: UnderbillingClass | None = None,
-    counter: str | None = None,
+    fields: Mapping[str, str] | None = None,
 ) -> None:
     """Write one bounded addon event directly to mitmdump stderr.
 
@@ -73,22 +95,15 @@ def emit_addon_process_event(
         raise ValueError(f"invalid addon process event level: {level!r}")
     _validate_event_name(event_type, "type")
     _validate_event_name(reason, "reason")
-    if underbilling_class not in (None, "confirmed", "risk"):
-        raise ValueError(f"invalid addon process event underbilling_class: {underbilling_class!r}")
-    if counter is not None:
-        _validate_event_name(counter, "counter")
 
-    payload: dict[str, str | int] = {
+    payload: dict[str, object] = {
         "version": ADDON_PROCESS_EVENT_VERSION,
         "level": level,
         "type": event_type,
         "reason": reason,
         "component": "mitm_addon",
+        "fields": _validated_fields(fields),
     }
-    if underbilling_class is not None:
-        payload["underbilling_class"] = underbilling_class
-    if counter is not None:
-        payload["counter"] = counter
 
     record = _bounded_event(payload, detail)
     try:
