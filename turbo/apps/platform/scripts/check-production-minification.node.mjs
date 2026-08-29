@@ -25,6 +25,12 @@ await test("production build emits one node_modules vendor group with isolated m
     true,
   );
   assert.equal(vendorGroup.test.test("/repo/src/main.ts"), false);
+  const aliases = loaded.config.resolve?.alias;
+  assert.ok(aliases && !Array.isArray(aliases));
+  assert.match(
+    aliases["virtual:mermaid"],
+    /src\/lib\/mermaid-browser-bundle\.ts$/u,
+  );
   assert.equal(
     loaded.config.define?.__OKOU_APP_GIT_COMMIT_SHA__,
     JSON.stringify(process.env.OKOU_APP_GIT_COMMIT_SHA ?? ""),

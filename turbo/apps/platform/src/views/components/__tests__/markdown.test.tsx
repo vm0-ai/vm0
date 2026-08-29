@@ -385,37 +385,6 @@ describe("assistant markdown", () => {
     });
   });
 
-  it("retries a transient mermaid import for the same diagram", async () => {
-    let importAttempt = 0;
-    const mermaidImport = context.mocks.browser.mermaidImport(() => {
-      importAttempt += 1;
-      if (importAttempt === 1) {
-        throw new Error("mermaid chunk unavailable");
-      }
-    });
-    const objectUrls = context.mocks.browser.blobDownload();
-    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const retry = await waitFor(() => {
-      return getButtonByText(document, "Try again");
-    });
-    expect(mermaidImport).toHaveBeenCalledTimes(1);
-    expect(document.querySelector("code.language-mermaid")).not.toBeNull();
-
-    click(retry);
-
-    const diagram = await screen.findByAltText("Diagram");
-    await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
-      'data-testid="mermaid-svg"',
-    );
-    expect(mermaidImport).toHaveBeenCalledTimes(2);
-  });
-
   it("renders mermaid code blocks as diagrams", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
@@ -748,8 +717,8 @@ describe("assistant markdown", () => {
     expect(screen.queryByAltText("Diagram")).toBeNull();
   });
 
-  it("keeps unsupported mermaid diagram types as ordinary code blocks", async () => {
-    context.mocks.browser.blobDownload();
+  it("renders Mermaid diagram types beyond flowcharts and sequences", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
     const source = "classDiagram\n  A <|-- B";
     mockThread(`\`\`\`mermaid\n${source}\n\`\`\``);
 
@@ -758,14 +727,10 @@ describe("assistant markdown", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await waitFor(() => {
-      expect(document.querySelector("code.language-mermaid")).not.toBeNull();
-    });
-    expect(document.querySelector("code.language-mermaid")?.textContent).toBe(
-      source,
+    const diagram = await screen.findByAltText("Diagram");
+    await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
+      'data-testid="mermaid-svg"',
     );
-    expect(document.querySelector(".mermaid-block")).toBeNull();
-    expect(screen.queryByAltText("Diagram")).toBeNull();
   });
 
   it("keeps external links safe", async () => {

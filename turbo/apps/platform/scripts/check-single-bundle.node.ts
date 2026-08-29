@@ -34,7 +34,10 @@ function vendorChunk() {
     code: "vendor",
     fileName: VENDOR_FILE,
     imports: [RUNTIME_FILE],
-    moduleIds: ["/repo/node_modules/react/index.js"],
+    moduleIds: [
+      "/repo/node_modules/react/index.js",
+      "/repo/node_modules/mermaid/dist/mermaid.min.js",
+    ],
     type: "chunk" as const,
   };
 }
@@ -132,6 +135,23 @@ await test("keeps third-party modules only in vendor and rejects extra edges", (
   );
 });
 
+await test("requires the static Mermaid browser bundle in vendor", () => {
+  assert.deepEqual(
+    applicationBundleViolations([
+      applicationChunk(),
+      {
+        ...vendorChunk(),
+        moduleIds: ["/repo/node_modules/react/index.js"],
+      },
+      runtimeChunk(),
+      workerAsset(),
+    ]),
+    [
+      `${VENDOR_FILE}: expected only the static Mermaid browser bundle, found none`,
+    ],
+  );
+});
+
 await test("rejects worker chunks with imports or forbidden packages", () => {
   assert.deepEqual(
     singleWorkerBundleViolations([
@@ -171,17 +191,19 @@ await test("emits the fixed page topology and one external worker", async () => 
   const root = await mkdtemp(path.join(tmpdir(), "okou-app-bundles-"));
   const sourceDirectory = path.join(root, "src");
   const vendorDirectory = path.join(root, "node_modules", "fixture-vendor");
+  const mermaidDirectory = path.join(root, "node_modules", "mermaid", "dist");
 
   try {
     await mkdir(sourceDirectory, { recursive: true });
     await mkdir(vendorDirectory, { recursive: true });
+    await mkdir(mermaidDirectory, { recursive: true });
     await writeFile(
       path.join(root, "index.html"),
       '<script type="module" src="/src/main.js"></script>',
     );
     await writeFile(
       path.join(sourceDirectory, "main.js"),
-      'import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import vendor from "fixture-vendor"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, vendor.value);',
+      'import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import vendor from "fixture-vendor"; import "mermaid/dist/mermaid.min.js"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, vendor.value);',
     );
     await writeFile(
       path.join(sourceDirectory, "shared-database-worker.js"),
@@ -198,6 +220,14 @@ await test("emits the fixed page topology and one external worker", async () => 
     await writeFile(
       path.join(vendorDirectory, "index.cjs"),
       'module.exports = { value: "vendor-static" };',
+    );
+    await writeFile(
+      path.join(root, "node_modules", "mermaid", "package.json"),
+      JSON.stringify({ name: "mermaid" }),
+    );
+    await writeFile(
+      path.join(mermaidDirectory, "mermaid.min.js"),
+      "globalThis.mermaid = {};",
     );
 
     const result = await build({

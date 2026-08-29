@@ -1,11 +1,13 @@
 import type { Plugin } from "vite";
 
-export const RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES = 8_500_000;
+export const RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES = 11_000_000;
 
 const SHARED_DATABASE_WORKER_FILE_PATTERN =
   /^assets\/shared-database-worker-[^/]+\.js$/u;
 const VENDOR_FILE_PATTERN = /^assets\/vendor-[^/]+\.js$/u;
 const ROLLDOWN_RUNTIME_FILE_PATTERN = /^assets\/rolldown-runtime-[^/]+\.js$/u;
+const MERMAID_BROWSER_BUNDLE_SUFFIX =
+  "/node_modules/mermaid/dist/mermaid.min.js";
 
 const FORBIDDEN_BUNDLED_PACKAGES = [
   "@base-org",
@@ -110,6 +112,25 @@ function chunkViolations(
   return violations;
 }
 
+function mermaidBundleViolations(vendorChunk: GeneratedChunk): string[] {
+  const bundledMermaidModules = (vendorChunk.moduleIds ?? []).filter(
+    (moduleId) => {
+      return normalizeModuleId(moduleId).includes("/node_modules/mermaid/");
+    },
+  );
+  if (
+    bundledMermaidModules.length === 1 &&
+    normalizeModuleId(bundledMermaidModules[0] ?? "").endsWith(
+      MERMAID_BROWSER_BUNDLE_SUFFIX,
+    )
+  ) {
+    return [];
+  }
+  return [
+    `${vendorChunk.fileName}: expected only the static Mermaid browser bundle, found ${bundledMermaidModules.length === 0 ? "none" : bundledMermaidModules.join(", ")}`,
+  ];
+}
+
 export function applicationBundleViolations(
   outputs: readonly GeneratedOutput[],
 ): string[] {
@@ -182,6 +203,7 @@ export function applicationBundleViolations(
       `${vendorChunk.fileName}: vendor chunk has no node_modules`,
     );
   }
+  violations.push(...mermaidBundleViolations(vendorChunk));
 
   const rawBytes = javaScriptOutputs.reduce((total, output) => {
     if (output.type === "chunk") {

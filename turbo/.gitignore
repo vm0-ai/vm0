@@ -26,8 +26,6 @@ coverage
 out/
 build
 dist
-!packages/mermaid-lite/dist/
-!packages/mermaid-lite/dist/**
 *.tsbuildinfo
 /apps/api/.typecheck/
 

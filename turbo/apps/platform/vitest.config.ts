@@ -24,11 +24,11 @@ export default defineConfig({
       // Stub Mermaid rendering in tests: the real renderer needs the SVG
       // measurement APIs of a browser layout engine, which happy-dom does not
       // implement. Parsing has no such needs, so the stub delegates it to the
-      // real supported-diagrams module via `mermaid-lite-real`.
-      "@okouai/mermaid-lite": path.resolve(__dirname, "./src/mocks/mermaid.ts"),
-      "mermaid-lite-real": path.resolve(
+      // real production module via `mermaid-real`.
+      "virtual:mermaid": path.resolve(__dirname, "./src/mocks/mermaid.ts"),
+      "mermaid-real": path.resolve(
         __dirname,
-        "../../packages/mermaid-lite/dist/mermaid.esm.min.mjs",
+        "./node_modules/mermaid/dist/mermaid.core.mjs",
       ),
       "virtual:shared-database-worker": `${path.resolve(
         __dirname,

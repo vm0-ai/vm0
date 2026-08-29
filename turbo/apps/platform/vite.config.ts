@@ -38,6 +38,9 @@ export default defineConfig(({ command }) => ({
   envPrefix: ["VITE_", "PUBLIC_"],
   resolve: {
     alias: {
+      "virtual:mermaid": fileURLToPath(
+        new URL("./src/lib/mermaid-browser-bundle.ts", import.meta.url),
+      ),
       "virtual:shared-database-worker": `${fileURLToPath(
         new URL("./src/shared-database-worker.ts", import.meta.url),
       )}?sharedworker`,
