@@ -74,7 +74,7 @@ function legacyModelRestrictionColumn() {
 }
 
 function canonicalModelRestrictionColumn() {
-  return boolean("restricted_built_in_models");
+  return boolean("restricted_built_in_models").notNull();
 }
 
 /**

@@ -1527,6 +1527,13 @@
       "when": 1787985501082,
       "tag": "1025_curved_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 1026,
+      "version": "7",
+      "when": 1787991804403,
+      "tag": "1026_org_plan_entitlement_restriction_not_null",
+      "breakpoints": true
     }
   ]
 }
