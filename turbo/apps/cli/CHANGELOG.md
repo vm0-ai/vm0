@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.297.6](https://github.com/vm0-ai/vm0/compare/cli-v9.297.5...cli-v9.297.6) (2026-08-29)
+
+
+### Performance Improvements
+
+* **api:** isolate Pi runtime declarations ([#30230](https://github.com/vm0-ai/vm0/issues/30230)) ([ab556ae](https://github.com/vm0-ai/vm0/commit/ab556ae809c27f77ab768925504ab5ce0383ef27))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.5
+    * @okouai/core bumped to 8.601.6
+    * @okouai/pi-agent-runtime bumped to 1.6.1
+
 ## [9.297.5](https://github.com/vm0-ai/vm0/compare/cli-v9.297.4...cli-v9.297.5) (2026-08-29)
 
 

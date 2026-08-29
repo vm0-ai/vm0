@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.810.0](https://github.com/vm0-ai/vm0/compare/app-v0.809.3...app-v0.810.0) (2026-08-29)
+
+
+### Features
+
+* isolate shared worker realtime by organization ([#30224](https://github.com/vm0-ai/vm0/issues/30224)) ([0283235](https://github.com/vm0-ai/vm0/commit/0283235bd5b730de3e7fd601b75b46a294f3cd14))
+
+
+### Refactoring
+
+* **platform:** select clerk bootstrap config in browser ([#30232](https://github.com/vm0-ai/vm0/issues/30232)) ([7b89569](https://github.com/vm0-ai/vm0/commit/7b89569f9eb24be4e35b4f8e09d504d66fa99558))
+
+
+### Performance Improvements
+
+* **platform:** use default production minification ([#30228](https://github.com/vm0-ai/vm0/issues/30228)) ([9491e71](https://github.com/vm0-ai/vm0/commit/9491e7196f3f6dee16c93adeb856e5705253aa8e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.5
+    * @okouai/core bumped to 8.601.6
+
 ## [0.809.3](https://github.com/vm0-ai/vm0/compare/app-v0.809.2...app-v0.809.3) (2026-08-29)
 
 

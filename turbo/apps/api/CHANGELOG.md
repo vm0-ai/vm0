@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.511.0](https://github.com/vm0-ai/vm0/compare/api-v1.510.5...api-v1.511.0) (2026-08-29)
+
+
+### Features
+
+* isolate shared worker realtime by organization ([#30224](https://github.com/vm0-ai/vm0/issues/30224)) ([0283235](https://github.com/vm0-ai/vm0/commit/0283235bd5b730de3e7fd601b75b46a294f3cd14))
+
+
+### Refactoring
+
+* **api:** remove unused authenticated health probe ([#30233](https://github.com/vm0-ai/vm0/issues/30233)) ([4c20183](https://github.com/vm0-ai/vm0/commit/4c2018344127717261b6440e3622cf28de9193f1))
+
+
+### Performance Improvements
+
+* **api:** isolate Pi runtime declarations ([#30230](https://github.com/vm0-ai/vm0/issues/30230)) ([ab556ae](https://github.com/vm0-ai/vm0/commit/ab556ae809c27f77ab768925504ab5ce0383ef27))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.5
+    * @okouai/connector-catalog-validation bumped to 2.0.7
+    * @okouai/core bumped to 8.601.6
+    * @okouai/db bumped to 1.228.11
+    * @okouai/pi-agent-runtime bumped to 1.6.1
+
 ## [1.510.5](https://github.com/vm0-ai/vm0/compare/api-v1.510.4...api-v1.510.5) (2026-08-29)
 
 
