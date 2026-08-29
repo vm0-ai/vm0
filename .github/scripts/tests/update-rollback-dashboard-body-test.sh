@@ -18,8 +18,15 @@ cat >"${fake_bin}/gh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 [ "${1:-}" = "api" ]
-[ "${2:-}" = "repos/vm0-ai/vm0/releases?per_page=100" ]
-jq . "$MOCK_RELEASES_FILE"
+release_prefix=repos/vm0-ai/vm0/releases/tags/
+[[ "${2:-}" == "${release_prefix}"* ]]
+release_tag=${2#"$release_prefix"}
+jq -e --arg release_tag "$release_tag" \
+  --arg returned_tag "${MOCK_RETURNED_RELEASE_TAG:-}" \
+  '.[]
+   | select(.tag_name == $release_tag)
+   | if $returned_tag == "" then . else .tag_name = $returned_tag end' \
+  "$MOCK_RELEASES_FILE"
 SH
 chmod +x "${fake_bin}/gh"
 
@@ -27,6 +34,17 @@ body_file="${tmp_dir}/body.md"
 output_file="${tmp_dir}/output.md"
 releases_file="${tmp_dir}/releases.json"
 rollback_url=https://github.com/vm0-ai/vm0/actions/workflows/rollback-production.yml
+
+release_tags_from_file() {
+  jq -c '[.[].tag_name]' "$releases_file"
+}
+
+release_tags_for_target() {
+  local target=$1
+  jq -c --arg target "$target" \
+    '[.[] | select(.target_commitish == $target) | .tag_name]' \
+    "$releases_file"
+}
 
 cat >"$body_file" <<'EOF'
 This issue is automatically maintained by CI. Do not edit manually.
@@ -100,6 +118,13 @@ jq -n --arg target "$target_commit" '[
     body: "## [0.618.0](https://example.test/app) (2026-07-22)\n\n### Features\n\n* app feature\n\n### Dependencies\n\n* app dependency"
   },
   {
+    tag_name: "okou-desktop-v0.618.0",
+    target_commitish: $target,
+    html_url: "https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v0.618.0",
+    published_at: "2026-07-22T23:39:35Z",
+    body: "Signed and notarized Okou release"
+  },
+  {
     tag_name: "unrelated-v9.9.9",
     target_commitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     html_url: "https://example.test/unrelated",
@@ -111,7 +136,8 @@ jq -n --arg target "$target_commit" '[
 PATH="${fake_bin}:$PATH" \
   GITHUB_REPOSITORY=vm0-ai/vm0 \
   MOCK_RELEASES_FILE="$releases_file" \
-  "$TARGET" "$body_file" "$target_commit" "$rollback_url" >"$output_file"
+  "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
+  "$(release_tags_for_target "$target_commit")" >"$output_file"
 
 grep -Fqx -- "[Rollback](${rollback_url})" "$output_file"
 grep -Fqx -- "<summary>07-23-2026 07:39:40 SGT</summary>" "$output_file"
@@ -120,6 +146,7 @@ grep -Fqx -- "* PDT 07-22-2026 16:39:40" "$output_file"
 grep -Fqx -- "### [app](https://github.com/vm0-ai/vm0/releases/tag/app-v0.618.0): \`0.618.0\`" "$output_file"
 grep -Fqx -- "### [api](https://github.com/vm0-ai/vm0/releases/tag/api-v1.303.0): \`1.303.0\`" "$output_file"
 grep -Fqx -- "### [runner-rs](https://github.com/vm0-ai/vm0/releases/tag/runner-rs-v0.147.2): \`0.147.2\`" "$output_file"
+grep -Fqx -- "### [okou-desktop](https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v0.618.0): \`0.618.0\`" "$output_file"
 grep -Fqx -- "### [core](https://github.com/vm0-ai/vm0/releases/tag/core-v8.452.0): \`8.452.0\`" "$output_file"
 grep -Fqx -- "### [zeta](https://github.com/vm0-ai/vm0/releases/tag/zeta-v2.0.0): \`2.0.0\`" "$output_file"
 grep -Fqx -- "#### Features" "$output_file"
@@ -142,11 +169,13 @@ app_line=$(grep -n '^### \[app\]' "$output_file" | cut -d: -f1)
 api_line=$(grep -n '^### \[api\]' "$output_file" | cut -d: -f1)
 runner_line=$(grep -n '^### \[runner-rs\]' "$output_file" | cut -d: -f1)
 core_line=$(grep -n '^### \[core\]' "$output_file" | cut -d: -f1)
+okou_desktop_line=$(grep -n '^### \[okou-desktop\]' "$output_file" | cut -d: -f1)
 zeta_line=$(grep -n '^### \[zeta\]' "$output_file" | cut -d: -f1)
 if ! [ "$app_line" -lt "$api_line" ] || \
   ! [ "$api_line" -lt "$runner_line" ] || \
   ! [ "$runner_line" -lt "$core_line" ] || \
-  ! [ "$core_line" -lt "$zeta_line" ]; then
+  ! [ "$core_line" -lt "$okou_desktop_line" ] || \
+  ! [ "$okou_desktop_line" -lt "$zeta_line" ]; then
   fail "release artifacts are not ordered by production priority"
 fi
 
@@ -169,7 +198,7 @@ if grep -Fq '#### Dependencies' "$output_file" || \
   grep -Fq 'trailing dependency' "$output_file"; then
   fail "dependency-only changelog sections were not removed"
 fi
-if sed -n '/^### \[core\]/,/^### \[zeta\]/p' "$output_file" |
+if sed -n '/^### \[core\]/,/^### \[okou-desktop\]/p' "$output_file" |
   grep -Fq '**Change Log**'; then
   fail "dependency-only release retained an empty changelog heading"
 fi
@@ -209,7 +238,8 @@ for digit in 2 3 4 5 6 7 8; do
   PATH="${fake_bin}:$PATH" \
     GITHUB_REPOSITORY=vm0-ai/vm0 \
     MOCK_RELEASES_FILE="$releases_file" \
-    "$TARGET" "$output_file" "$commit" "$rollback_url" >"${output_file}.next"
+    "$TARGET" "$output_file" "$commit" "$rollback_url" \
+    "$(release_tags_for_target "$commit")" >"${output_file}.next"
   mv "${output_file}.next" "$output_file"
 done
 
@@ -232,7 +262,8 @@ write_single_release "$latest_commit" "2026-07-22T23:39:48Z"
 PATH="${fake_bin}:$PATH" \
   GITHUB_REPOSITORY=vm0-ai/vm0 \
   MOCK_RELEASES_FILE="$releases_file" \
-  "$TARGET" "$output_file" "$latest_commit" "$rollback_url" >"${output_file}.next"
+  "$TARGET" "$output_file" "$latest_commit" "$rollback_url" \
+  "$(release_tags_for_target "$latest_commit")" >"${output_file}.next"
 duplicate_count=$(grep -c "ROLLBACK_ENTRY_START ${latest_commit}" "${output_file}.next")
 if [ "$duplicate_count" -ne 1 ]; then
   fail "duplicate target commit was not collapsed"
@@ -248,7 +279,8 @@ for digit in 1 2 3 4 5 6 7; do
   PATH="${fake_bin}:$PATH" \
     GITHUB_REPOSITORY=vm0-ai/vm0 \
     MOCK_RELEASES_FILE="$releases_file" \
-    "$TARGET" "$body_file" "$commit" "$rollback_url" >"${body_file}.next"
+    "$TARGET" "$body_file" "$commit" "$rollback_url" \
+    "$(release_tags_for_target "$commit")" >"${body_file}.next"
   mv "${body_file}.next" "$body_file"
 done
 
@@ -278,9 +310,56 @@ if PATH="${fake_bin}:$PATH" \
   GITHUB_REPOSITORY=vm0-ai/vm0 \
   MOCK_RELEASES_FILE="$releases_file" \
   "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
+  "$(release_tags_from_file)" \
   >"${tmp_dir}/missing.out" 2>"${tmp_dir}/missing.err"; then
   fail "missing release artifacts should fail"
 fi
-grep -Fq "No release artifacts found for target ${target_commit}" "${tmp_dir}/missing.err"
+grep -Fq "Release artifacts do not all target ${target_commit}" "${tmp_dir}/missing.err"
+
+if PATH="${fake_bin}:$PATH" \
+  GITHUB_REPOSITORY=vm0-ai/vm0 \
+  MOCK_RELEASES_FILE="$releases_file" \
+  MOCK_RETURNED_RELEASE_TAG=other-v1.2.3 \
+  "$TARGET" "$body_file" \
+  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  "$rollback_url" \
+  '["app-v1.2.3"]' \
+  >"${tmp_dir}/wrong-tag.out" 2>"${tmp_dir}/wrong-tag.err"; then
+  fail "mismatched release tag should fail"
+fi
+grep -Fq \
+  "Release artifacts do not match the requested release tags" \
+  "${tmp_dir}/wrong-tag.err"
+
+for invalid_release_tags in \
+  '[]' \
+  '[123]' \
+  '["not-a-version-tag"]' \
+  '["app-v1.2.3","app-v1.2.3"]' \
+  'not-json'; do
+  if PATH="${fake_bin}:$PATH" \
+    GITHUB_REPOSITORY=vm0-ai/vm0 \
+    MOCK_RELEASES_FILE="$releases_file" \
+    "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
+    "$invalid_release_tags" \
+    >"${tmp_dir}/invalid-tags.out" 2>"${tmp_dir}/invalid-tags.err"; then
+    fail "invalid release tag input should fail"
+  fi
+  grep -Fq \
+    "release tags must be a non-empty JSON array of unique version tags" \
+    "${tmp_dir}/invalid-tags.err"
+done
+
+if PATH="${fake_bin}:$PATH" \
+  GITHUB_REPOSITORY=vm0-ai/vm0 \
+  MOCK_RELEASES_FILE="$releases_file" \
+  "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
+  '["app-v1.2.3","missing-v1.0.0"]' \
+  >"${tmp_dir}/unavailable.out" 2>"${tmp_dir}/unavailable.err"; then
+  fail "partially unavailable release tags should fail"
+fi
+if [ -s "${tmp_dir}/unavailable.out" ]; then
+  fail "partially unavailable release tags produced a partial dashboard"
+fi
 
 echo "update-rollback-dashboard-body tests passed"
