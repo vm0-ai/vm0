@@ -301,7 +301,7 @@ describe("chat event snapshot read endpoints", () => {
         code: "CHAT_EVENT_SCHEMA_VERSION_INVALID",
       },
       {
-        version: "4",
+        version: (CURRENT_CHAT_EVENT_SCHEMA_VERSION - 1).toString(),
         status: 426,
         message: "The requested Chat Event schema version is retired",
         code: "CHAT_EVENT_SCHEMA_VERSION_RETIRED",
