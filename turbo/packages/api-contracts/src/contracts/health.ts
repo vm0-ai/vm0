@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { authHeadersSchema, initContract } from "./base";
-import { apiErrorSchema, type ApiErrorResponse } from "./errors";
+import { initContract } from "./base";
 
 const c = initContract();
 
@@ -19,39 +18,8 @@ export const healthContract = c.router({
   },
 });
 
-export const healthAuthContract = c.router({
-  check: {
-    method: "GET",
-    path: "/health/auth",
-    headers: authHeadersSchema,
-    query: z.object({
-      requiredCapability: z.string().optional(),
-      acceptAnySandboxCapability: z.string().optional(),
-      accept: z.string().optional(),
-    }),
-    responses: {
-      200: healthResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "Check authenticated API health",
-  },
-});
-
-export type HealthContract = typeof healthContract;
-export type HealthAuthContract = typeof healthAuthContract;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export type HealthRouteResponse = {
   readonly status: 200;
   readonly body: HealthResponse;
 };
-export type HealthAuthRouteResponse =
-  | HealthRouteResponse
-  | {
-      readonly status: 401;
-      readonly body: ApiErrorResponse;
-    }
-  | {
-      readonly status: 403;
-      readonly body: ApiErrorResponse;
-    };

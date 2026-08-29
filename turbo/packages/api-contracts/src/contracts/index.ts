@@ -14,12 +14,8 @@ export {
   type BuildInfoRouteResponse,
 } from "./build-info";
 export {
-  healthAuthContract,
   healthContract,
   healthResponseSchema,
-  type HealthAuthContract,
-  type HealthAuthRouteResponse,
-  type HealthContract,
   type HealthResponse,
   type HealthRouteResponse,
 } from "./health";
