@@ -36,10 +36,22 @@
     data_dir: /var/lib/vm0-runner
     bin_dir: "{{ data_dir }}/bin/{{ runner_release }}"
     runner_dir: "{{ data_dir }}/runners/{{ runner_release }}"
+    runner_host_env_file: /etc/vm0-runner/host.env
 
   tasks:
     - name: Validate runner architecture
       include_tasks: ../tasks/validate-runner-architecture.yml
+
+    - name: Migrate runner host tuning aliases atomically
+      script:
+        cmd: >-
+          ../files/runner-host-env-alias-cutover.py migrate
+          {{ runner_host_env_file | quote }}
+        executable: python3
+      register: runner_host_env_alias_migration
+      changed_when: >-
+        'host_env_alias_cutover=migrated'
+        in runner_host_env_alias_migration.stdout
 
     # ========================================
     # Phase 3b: Install systemd service (traffic cutover point)
@@ -73,12 +85,35 @@
       rescue:
         - name: Stop failed target runner service with runner cleanup
           command: "{{ bin_dir }}/runner service stop --name {{ runner_release }} --force --cleanup failed-start"
+          failed_when: false
+
+        - name: Restore runner host tuning aliases after target failure
+          script:
+            cmd: >-
+              ../files/runner-host-env-alias-cutover.py restore
+              {{ runner_host_env_file | quote }}
+            executable: python3
+          register: runner_host_env_alias_restoration
+          changed_when: >-
+            'host_env_alias_cutover=restored'
+            in runner_host_env_alias_restoration.stdout
 
         - name: Fail promote after target runner readiness failure
           fail:
             msg: >-
               Runner {{ runner_release }} failed readiness or health checks and
-              was stopped to avoid leaving a non-admitting service running.
+              the exact pre-promotion host configuration was restored.
+
+    - name: Finalize runner host tuning alias migration
+      script:
+        cmd: >-
+          ../files/runner-host-env-alias-cutover.py finalize
+          {{ runner_host_env_file | quote }}
+        executable: python3
+      register: runner_host_env_alias_finalization
+      changed_when: >-
+        'host_env_alias_cutover=migrated'
+        in runner_host_env_alias_finalization.stdout
 
     # ========================================
     # Phase 5: Drain old runners + Cleanup
