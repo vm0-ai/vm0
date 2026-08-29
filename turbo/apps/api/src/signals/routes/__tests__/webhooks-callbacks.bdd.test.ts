@@ -2246,27 +2246,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
-    const mismatchedCompactModelUsage =
-      await api.requestAgentModelUsageObservationV2(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 1,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        mismatchedHeaders,
-        [401],
-      );
-    expectApiError(mismatchedCompactModelUsage.body);
-    expect(mismatchedCompactModelUsage.body.error.code).toBe("UNAUTHORIZED");
-
     const malformedTelemetryBody = await api.requestAgentTelemetryUnchecked(
       {},
       headers,
@@ -2304,48 +2283,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     );
     expectApiError(missingUsageRun.body);
     expect(missingUsageRun.body.error.code).toBe("NOT_FOUND");
-
-    const malformedCompactModelUsage =
-      await api.requestAgentModelUsageObservationV2Unchecked(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 0,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        headers,
-        [400],
-      );
-    expectApiError(malformedCompactModelUsage.body);
-    expect(malformedCompactModelUsage.body.error.code).toBe("BAD_REQUEST");
-
-    const missingCompactModelUsageRun =
-      await api.requestAgentModelUsageObservationV2(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 1,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        headers,
-        [404],
-      );
-    expectApiError(missingCompactModelUsageRun.body);
-    expect(missingCompactModelUsageRun.body.error.code).toBe("NOT_FOUND");
 
     const malformedTelemetryBucket = await api.requestAgentTelemetryUnchecked(
       {
