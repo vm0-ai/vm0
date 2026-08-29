@@ -437,9 +437,11 @@ function AvatarTemplateCard({
 
 function AvatarCatalogFilters({
   signals,
+  compact = false,
   onAspectRatioChange,
 }: {
   readonly signals: ComposerSignals;
+  readonly compact?: boolean;
   readonly onAspectRatioChange?: (value: "portrait" | "landscape") => void;
 }) {
   const { t } = useTranslation();
@@ -459,7 +461,10 @@ function AvatarCatalogFilters({
   return (
     <div
       data-avatar-catalog-toolbar=""
-      className="flex w-full flex-wrap items-center justify-between gap-3"
+      className={cn(
+        "flex flex-wrap items-center gap-3",
+        compact ? "w-auto justify-start" : "w-full justify-between",
+      )}
     >
       <AvatarAspectRatioPicker
         value={filters.aspectRatio}
@@ -844,11 +849,13 @@ function AvatarVoiceCard({
   voice,
   selected,
   recommended,
+  highlightRecommendation,
   onSelect,
 }: {
   readonly voice: AvatarVideoVoice;
   readonly selected: boolean;
   readonly recommended: boolean;
+  readonly highlightRecommendation: boolean;
   readonly onSelect: (voice: AvatarVideoVoice) => void;
 }) {
   const { t } = useTranslation();
@@ -898,7 +905,7 @@ function AvatarVoiceCard({
         AVATAR_CARD_SHADOW,
         selected
           ? "border-primary bg-primary/[0.04]"
-          : recommended
+          : highlightRecommendation
             ? "border-primary/40 bg-primary/[0.025]"
             : "border-border",
       )}
@@ -1011,10 +1018,12 @@ function SelectedAvatarCard({
 
 function AvatarVoiceCatalog({
   signals,
+  selectionActive,
   selectedVoiceId,
   onSelect,
 }: {
   readonly signals: ComposerSignals;
+  readonly selectionActive: boolean;
   readonly selectedVoiceId: string | undefined;
   readonly onSelect: (voice: AvatarVideoVoice) => void;
 }) {
@@ -1074,12 +1083,14 @@ function AvatarVoiceCatalog({
         ) : visibleVoices.length > 0 ? (
           <div className="grid grid-cols-1 gap-2.5">
             {visibleVoices.map((voice) => {
+              const recommended = voice.id === recommendedVoice?.id;
               return (
                 <AvatarVoiceCard
                   key={voice.id}
                   voice={voice}
                   selected={voice.id === selectedVoiceId}
-                  recommended={voice.id === recommendedVoice?.id}
+                  recommended={recommended}
+                  highlightRecommendation={recommended && !selectionActive}
                   onSelect={onSelect}
                 />
               );
@@ -1132,6 +1143,7 @@ function AvatarVoicePickerContent({
         </div>
         <AvatarVoiceCatalog
           signals={signals}
+          selectionActive={selectedVoiceId !== undefined}
           selectedVoiceId={selectedVoiceId}
           onSelect={(voice) => {
             onSelect(avatar, voice);
@@ -1259,6 +1271,7 @@ export function AvatarLibraryToolbar({
   return (
     <AvatarCatalogFilters
       signals={signals}
+      compact
       onAspectRatioChange={onAspectRatioChange}
     />
   );
@@ -1293,10 +1306,12 @@ export function VoiceLibraryToolbar({
 
 export function VoiceLibraryContent({
   signals,
+  selectionActive,
   selectedVoiceId,
   onSelect,
 }: {
   readonly signals: ComposerSignals;
+  readonly selectionActive: boolean;
   readonly selectedVoiceId: string | undefined;
   readonly onSelect: (voice: AvatarVideoVoice) => void;
 }) {
@@ -1307,6 +1322,7 @@ export function VoiceLibraryContent({
     >
       <AvatarVoiceCatalog
         signals={signals}
+        selectionActive={selectionActive}
         selectedVoiceId={selectedVoiceId}
         onSelect={onSelect}
       />

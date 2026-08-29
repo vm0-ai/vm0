@@ -2042,7 +2042,7 @@
       "avatar": {
         "heading": "Escolha um avatar",
         "help": "Escolha um apresentador ou continue sem um",
-        "skip": "Pular avatar"
+        "none": "Sem avatar"
       },
       "cardDescription": "Transforme um arquivo ou gravação de tela em um vídeo finalizado",
       "description": "Adicione uma fonte, escolha um avatar e uma voz opcionais e crie o vídeo em uma conversa.",
@@ -2059,9 +2059,6 @@
         "back": "Voltar",
         "createInChat": "Criar na conversa",
         "download": "Baixar fonte",
-        "draftInTab": "Este rascunho será mantido até esta guia ser fechada",
-        "draftSaved": "Sua fonte está salva neste navegador",
-        "localUntilSend": "Os arquivos permanecem locais até você criar a conversa",
         "next": "Avançar",
         "startRecording": "Escolher tela e iniciar",
         "stopRecording": "Parar gravação"

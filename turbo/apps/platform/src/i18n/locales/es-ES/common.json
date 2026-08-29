@@ -2042,7 +2042,7 @@
       "avatar": {
         "heading": "Elige un avatar",
         "help": "Elige un presentador o continúa sin avatar",
-        "skip": "Omitir avatar"
+        "none": "Sin avatar"
       },
       "cardDescription": "Convierte un archivo o una grabación de pantalla en un vídeo terminado",
       "description": "Añade una fuente, elige un avatar y una voz opcionales y crea el vídeo en un hilo de chat.",
@@ -2059,9 +2059,6 @@
         "back": "Atrás",
         "createInChat": "Crear en el chat",
         "download": "Descargar fuente",
-        "draftInTab": "Este borrador se conserva hasta que cierres la pestaña",
-        "draftSaved": "La fuente está guardada en este navegador",
-        "localUntilSend": "Los archivos permanecen en local hasta que crees el hilo de chat",
         "next": "Siguiente",
         "startRecording": "Elegir pantalla e iniciar",
         "stopRecording": "Detener grabación"

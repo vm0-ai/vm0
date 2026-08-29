@@ -2006,7 +2006,7 @@
       "avatar": {
         "heading": "아바타 선택",
         "help": "발표자를 선택하거나 아바타 없이 계속하세요",
-        "skip": "아바타 건너뛰기"
+        "none": "아바타 없음"
       },
       "cardDescription": "파일이나 화면 녹화를 완성된 영상으로 변환",
       "description": "소스를 추가하고 선택적으로 아바타와 음성을 고른 뒤 채팅 스레드에서 영상을 만드세요.",
@@ -2023,9 +2023,6 @@
         "back": "뒤로",
         "createInChat": "채팅에서 만들기",
         "download": "소스 다운로드",
-        "draftInTab": "이 초안은 탭을 닫을 때까지 유지됩니다",
-        "draftSaved": "소스가 이 브라우저에 저장되었습니다",
-        "localUntilSend": "채팅 스레드를 만들기 전까지 파일은 로컬에 유지됩니다",
         "next": "다음",
         "startRecording": "화면 선택 후 시작",
         "stopRecording": "녹화 중지"

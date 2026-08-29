@@ -39,6 +39,8 @@ test ! -e "${pages_dist}/.gitkeep"
 grep -Fxq '/assets/*' "${pages_dist}/_headers"
 grep -Fq 'Cache-Control: public, max-age=31536000, immutable' \
   "${pages_dist}/_headers"
+grep -Fq 'display-capture=(self)' "${pages_dist}/_headers"
+! grep -Fq 'display-capture=()' "${pages_dist}/_headers"
 grep -Fq '<title>Not Found</title>' "${pages_dist}/assets/404.html"
 grep -Fq '<meta name="vm0-api-origin" content="" />' \
   "${pages_dist}/index.html"

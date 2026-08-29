@@ -735,9 +735,6 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
   const selectAvatarForVoice = useSet(
     composer.template.selectAvatarTemplateForVoice$,
   );
-  const clearAvatarForVoice = useSet(
-    composer.template.clearAvatarTemplateVoiceSelection$,
-  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -753,26 +750,10 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
             })}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant={avatar ? "outline" : "secondary"}
-            aria-pressed={!avatar}
-            onClick={() => {
-              clearAvatarForVoice();
-              setAvatar(null);
-            }}
-          >
-            <UserRound size={15} />
-            {t(($) => {
-              return $.chat.introVideo.avatar.skip;
-            })}
-          </Button>
-          <AvatarLibraryToolbar
-            signals={composer}
-            onAspectRatioChange={setAspectRatio}
-          />
-        </div>
+        <AvatarLibraryToolbar
+          signals={composer}
+          onAspectRatioChange={setAspectRatio}
+        />
       </div>
       <AvatarLibraryContent
         signals={composer}
@@ -890,6 +871,7 @@ function VoicePage({
       </div>
       <VoiceLibraryContent
         signals={composer}
+        selectionActive={voice !== null}
         selectedVoiceId={voice?.kind === "catalog" ? voice.voice.id : undefined}
         onSelect={(selectedVoice) => {
           setVoice({ kind: "catalog", voice: selectedVoice });
@@ -963,7 +945,7 @@ function ReviewPage({ source }: { readonly source: IntroVideoSource }) {
           value={
             avatar?.name ??
             t(($) => {
-              return $.chat.introVideo.avatar.skip;
+              return $.chat.introVideo.avatar.none;
             })
           }
           icon={<UserRound size={18} />}
@@ -1113,25 +1095,6 @@ function nextWizardStep(
   }
 }
 
-function draftStatusCopy(
-  t: TFunction<"common">,
-  source: IntroVideoSource | null,
-  sourcePersisted: boolean,
-): string {
-  if (!source) {
-    return t(($) => {
-      return $.chat.introVideo.footer.localUntilSend;
-    });
-  }
-  return sourcePersisted
-    ? t(($) => {
-        return $.chat.introVideo.footer.draftSaved;
-      })
-    : t(($) => {
-        return $.chat.introVideo.footer.draftInTab;
-      });
-}
-
 function WizardErrorBanner({
   error,
   source,
@@ -1163,7 +1126,6 @@ function WizardFooter({
   busy,
   error,
   source,
-  sourcePersisted,
   step,
   voice,
   composer,
@@ -1171,7 +1133,6 @@ function WizardFooter({
   readonly busy: boolean;
   readonly error: IntroVideoWizardError | null;
   readonly source: IntroVideoSource | null;
-  readonly sourcePersisted: boolean;
   readonly step: IntroVideoWizardStep;
   readonly voice: IntroVideoVoiceSelection | null;
   readonly composer: ComposerSignals;
@@ -1234,10 +1195,7 @@ function WizardFooter({
           onDownload={downloadSource}
         />
       ) : null}
-      <div className="flex items-center justify-between gap-4">
-        <span className="min-w-0 truncate text-xs text-muted-foreground">
-          {draftStatusCopy(t, source, sourcePersisted)}
-        </span>
+      <div className="flex items-center justify-end gap-4">
         <div className="flex shrink-0 items-center gap-2">
           {canGoBack ? (
             <Button type="button" variant="ghost" onClick={goBack}>
@@ -1439,7 +1397,6 @@ export function IntroVideoWizard({
           busy={busy}
           error={error}
           source={source}
-          sourcePersisted={sourcePersisted}
           step={step}
           voice={voice}
           composer={composer}

@@ -2,8 +2,10 @@ import type { ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Clapperboard, Play } from "lucide-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
-import { Button } from "@okouai/ui";
+import { Button, cn } from "@okouai/ui";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
 import { introVideoWizardSignals } from "../../signals/okou-page/intro-video.ts";
 import {
@@ -446,6 +448,9 @@ export function StartCards({
   const kinds = useGet(startCardKinds$);
   const workflowTemplate = useGet(startCardWorkflowTemplate$);
   const composerSignals = useGet(agentChatComposerSignals$);
+  const featureSwitches = useLastResolved(featureSwitch$);
+  const introVideoEnabled =
+    featureSwitches?.[FeatureSwitchKey.IntroVideo] ?? false;
   const pageSignal = useGet(pageSignal$);
   const introVideoAspectRatio = useGet(introVideoWizardSignals.aspectRatio$);
   const avatarFilters = useGet(composerSignals.template.avatarTemplateFilters$);
@@ -531,7 +536,10 @@ export function StartCards({
     <>
       <div
         data-testid="start-cards"
-        className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2"
+        className={cn(
+          "grid w-full grid-cols-1 gap-3",
+          introVideoEnabled ? "sm:grid-cols-2" : "sm:grid-cols-3",
+        )}
       >
         {kinds.map((kind) => {
           return (
@@ -547,9 +555,13 @@ export function StartCards({
             />
           );
         })}
-        <IntroVideoStartCard onOpen={openIntroVideo} />
+        {introVideoEnabled ? (
+          <IntroVideoStartCard onOpen={openIntroVideo} />
+        ) : null}
       </div>
-      <IntroVideoWizard composer={composerSignals} />
+      {introVideoEnabled ? (
+        <IntroVideoWizard composer={composerSignals} />
+      ) : null}
     </>
   );
 }

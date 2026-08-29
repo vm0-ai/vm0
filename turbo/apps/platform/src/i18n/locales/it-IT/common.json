@@ -2042,7 +2042,7 @@
       "avatar": {
         "heading": "Scegli un avatar",
         "help": "Scegli un presentatore o continua senza avatar",
-        "skip": "Salta avatar"
+        "none": "Nessun avatar"
       },
       "cardDescription": "Trasforma un file o una registrazione dello schermo in un video completo",
       "description": "Aggiungi una fonte, scegli facoltativamente avatar e voce, quindi crea il video in una chat.",
@@ -2059,9 +2059,6 @@
         "back": "Indietro",
         "createInChat": "Crea nella chat",
         "download": "Scarica fonte",
-        "draftInTab": "Questa bozza viene conservata finché non chiudi la scheda",
-        "draftSaved": "La fonte è salvata in questo browser",
-        "localUntilSend": "I file restano in locale finché non crei la chat",
         "next": "Avanti",
         "startRecording": "Scegli lo schermo e avvia",
         "stopRecording": "Interrompi registrazione"

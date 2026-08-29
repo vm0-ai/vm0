@@ -2009,7 +2009,7 @@
       "avatar": {
         "heading": "Avatar auswählen",
         "help": "Wähle einen Präsentator oder fahre ohne Avatar fort",
-        "skip": "Avatar überspringen"
+        "none": "Kein Avatar"
       },
       "cardDescription": "Eine Datei oder Bildschirmaufnahme in ein fertiges Video verwandeln",
       "description": "Füge eine Quelle hinzu, wähle optional Avatar und Stimme und erstelle das Video in einem Chat-Thread.",
@@ -2026,9 +2026,6 @@
         "back": "Zurück",
         "createInChat": "Im Chat erstellen",
         "download": "Quelle herunterladen",
-        "draftInTab": "Dieser Entwurf bleibt bis zum Schließen des Tabs erhalten",
-        "draftSaved": "Deine Quelle ist in diesem Browser gespeichert",
-        "localUntilSend": "Dateien bleiben lokal, bis du den Chat-Thread erstellst",
         "next": "Weiter",
         "startRecording": "Bildschirm wählen und starten",
         "stopRecording": "Aufnahme stoppen"

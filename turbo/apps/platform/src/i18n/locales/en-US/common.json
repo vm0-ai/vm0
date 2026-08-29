@@ -2009,7 +2009,7 @@
       "avatar": {
         "heading": "Choose an avatar",
         "help": "Choose a presenter or continue without one",
-        "skip": "Skip avatar"
+        "none": "No avatar"
       },
       "cardDescription": "Turn a file or screen recording into a finished video",
       "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
@@ -2026,9 +2026,6 @@
         "back": "Back",
         "createInChat": "Create in chat",
         "download": "Download source",
-        "draftInTab": "This draft is kept until this tab closes",
-        "draftSaved": "Your source is saved in this browser",
-        "localUntilSend": "Files stay local until you create the chat thread",
         "next": "Next",
         "startRecording": "Choose screen and start",
         "stopRecording": "Stop recording"

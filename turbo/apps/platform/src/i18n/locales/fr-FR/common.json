@@ -2042,7 +2042,7 @@
       "avatar": {
         "heading": "Choisir un avatar",
         "help": "Choisissez un présentateur ou continuez sans avatar",
-        "skip": "Ignorer l'avatar"
+        "none": "Aucun avatar"
       },
       "cardDescription": "Transformez un fichier ou un enregistrement d'écran en vidéo finalisée",
       "description": "Ajoutez une source, choisissez éventuellement un avatar et une voix, puis créez la vidéo dans un fil de discussion.",
@@ -2059,9 +2059,6 @@
         "back": "Retour",
         "createInChat": "Créer dans le chat",
         "download": "Télécharger la source",
-        "draftInTab": "Ce brouillon est conservé jusqu'à la fermeture de cet onglet",
-        "draftSaved": "Votre source est enregistrée dans ce navigateur",
-        "localUntilSend": "Les fichiers restent locaux jusqu'à la création du fil de discussion",
         "next": "Suivant",
         "startRecording": "Choisir l'écran et démarrer",
         "stopRecording": "Arrêter l'enregistrement"

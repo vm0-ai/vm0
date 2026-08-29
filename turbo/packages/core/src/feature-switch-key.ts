@@ -72,6 +72,7 @@ export enum FeatureSwitchKey {
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
   LatestPresentationTemplates = "latestPresentationTemplates",
+  IntroVideo = "introVideo",
   ChatConversationLocator = "chatConversationLocator",
   SharedChatDatabase = "sharedChatDatabase",
   ComposerImageAnnotation = "composerImageAnnotation",

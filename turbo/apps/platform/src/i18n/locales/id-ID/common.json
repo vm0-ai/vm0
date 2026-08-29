@@ -2006,7 +2006,7 @@
       "avatar": {
         "heading": "Pilih avatar",
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
-        "skip": "Lewati avatar"
+        "none": "Tanpa avatar"
       },
       "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
       "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
@@ -2023,9 +2023,6 @@
         "back": "Kembali",
         "createInChat": "Buat di chat",
         "download": "Unduh sumber",
-        "draftInTab": "Draf ini disimpan sampai tab ditutup",
-        "draftSaved": "Sumber Anda tersimpan di browser ini",
-        "localUntilSend": "File tetap lokal sampai Anda membuat utas chat",
         "next": "Berikutnya",
         "startRecording": "Pilih layar dan mulai",
         "stopRecording": "Hentikan perekaman"

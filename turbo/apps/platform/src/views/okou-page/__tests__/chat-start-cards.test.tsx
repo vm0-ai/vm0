@@ -1,5 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { WORKFLOW_TEMPLATE_ITEMS } from "@okouai/core/workflow-template-items";
 import { describe, expect, it, vi } from "vitest";
 
@@ -76,12 +78,17 @@ function renderedTitles(titles: readonly string[]): readonly string[] {
   });
 }
 
+function setupChatStartCards(introVideo = true): void {
+  detachedSetupPage({
+    context,
+    path: `/agents/${agentId}/chat`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: introVideo },
+  });
+}
+
 describe("chat start cards", () => {
   it("draws three catalog entries and the intro video flow", async () => {
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/chat`,
-    });
+    setupChatStartCards();
 
     await expect(
       screen.findByPlaceholderText(PLACEHOLDER),
@@ -98,6 +105,19 @@ describe("chat start cards", () => {
     expect(screen.getAllByText("Create")).toHaveLength(3);
     expect(templateButtons()).toHaveLength(3);
     expect(screen.getByText("Create an intro video")).toBeInTheDocument();
+    expect(screen.getByTestId("start-cards")).toHaveClass("sm:grid-cols-2");
+  });
+
+  it("keeps the original start cards when intro video is disabled", async () => {
+    setupChatStartCards(false);
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+
+    expect(startCards()).toHaveLength(3);
+    expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
+    expect(screen.getByTestId("start-cards")).toHaveClass("sm:grid-cols-3");
   });
 
   it("uploads an intro video source and creates its chat thread", async () => {
@@ -110,11 +130,29 @@ describe("chat start cards", () => {
       size: 4,
       url: "https://example.com/launch.pdf",
     });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/chat`,
+    context.mocks.api(avatarVideoContract.voices, ({ respond }) => {
+      return respond(200, {
+        voices: [
+          {
+            id: "en-US-RileyNeural",
+            name: "Riley",
+            sampleUrl: "https://example.com/riley.mp3",
+            language: "English",
+            gender: "female",
+            age: "young",
+            accent: "american",
+            useCase: "advertisement",
+          },
+        ],
+        hasMore: false,
+        filterOptions: {
+          languages: ["english"],
+          useCases: ["advertisement"],
+        },
+      });
     });
+
+    setupChatStartCards();
 
     await expect(
       screen.findByPlaceholderText(PLACEHOLDER),
@@ -142,11 +180,27 @@ describe("chat start cards", () => {
     await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Skip avatar")).toBeNull();
+    expect(dialog.querySelector("[data-avatar-catalog-toolbar]")).toHaveClass(
+      "w-auto",
+      "justify-start",
+    );
     click(buttonWithText("Next", dialog));
     await expect(
       screen.findByText("Choose a voice"),
     ).resolves.toBeInTheDocument();
+    const recommendedVoice = await screen.findByLabelText("Select voice Riley");
+    expect(recommendedVoice).toHaveClass(
+      "border-primary/40",
+      "bg-primary/[0.025]",
+    );
     click(buttonWithText("No voiceover", dialog, false));
+    expect(recommendedVoice).toHaveAttribute("aria-pressed", "false");
+    expect(recommendedVoice).toHaveClass("border-border");
+    expect(recommendedVoice).not.toHaveClass(
+      "border-primary/40",
+      "bg-primary/[0.025]",
+    );
     click(buttonWithText("Next", dialog));
     await expect(
       screen.findByText("Review your intro video"),
@@ -163,10 +217,7 @@ describe("chat start cards", () => {
 
   it("starts the intro video workflow directly in chat", async () => {
     mockChatLifecycle(context);
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/chat`,
-    });
+    setupChatStartCards();
 
     await expect(
       screen.findByPlaceholderText(PLACEHOLDER),
@@ -214,10 +265,7 @@ describe("chat start cards", () => {
 
   it("starts screen recording only after the three-second countdown", async () => {
     mockChatLifecycle(context);
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/chat`,
-    });
+    setupChatStartCards();
 
     await expect(
       screen.findByPlaceholderText(PLACEHOLDER),
@@ -356,10 +404,7 @@ describe("chat start cards", () => {
   });
 
   it("writes the card prompt into the composer", async () => {
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/chat`,
-    });
+    setupChatStartCards();
 
     const composer = (await screen.findByPlaceholderText(
       PLACEHOLDER,
@@ -372,10 +417,7 @@ describe("chat start cards", () => {
   });
 
   it("opens the template picker from a card", async () => {
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/chat`,
-    });
+    setupChatStartCards();
 
     await expect(
       screen.findByPlaceholderText(PLACEHOLDER),
@@ -393,10 +435,7 @@ describe("chat start cards", () => {
     });
     context.mocks.data.onboardingStatus({ defaultAgentId: null });
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/chat`,
-    });
+    setupChatStartCards();
 
     await expect(
       screen.findByPlaceholderText(PT_BR_PLACEHOLDER),
