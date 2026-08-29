@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.810.1](https://github.com/vm0-ai/vm0/compare/app-v0.810.0...app-v0.810.1) (2026-08-29)
+
+
+### Refactoring
+
+* **platform:** unify markdown and editor dependencies ([#30234](https://github.com/vm0-ai/vm0/issues/30234)) ([0b12df5](https://github.com/vm0-ai/vm0/commit/0b12df587c290e371c36f16d3dd9091d5ec2992b))
+* remove expired deployment compatibility ([#30262](https://github.com/vm0-ai/vm0/issues/30262)) ([e119d89](https://github.com/vm0-ai/vm0/commit/e119d898bc4926e8c67c54c1fa9fcf1f016b24fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.6
+    * @okouai/core bumped to 8.601.7
+
 ## [0.810.0](https://github.com/vm0-ai/vm0/compare/app-v0.809.3...app-v0.810.0) (2026-08-29)
 
 

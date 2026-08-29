@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.178.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.6...runner-rs-v0.178.7) (2026-08-29)
+
+
+### Bug Fixes
+
+* **runner:** fail closed on unit state query errors ([#30254](https://github.com/vm0-ai/vm0/issues/30254)) ([2659674](https://github.com/vm0-ai/vm0/commit/26596740185c3ba13f7c02036a202f887d262307))
+* **runner:** resolve service state from selected config ([#30242](https://github.com/vm0-ai/vm0/issues/30242)) ([04103da](https://github.com/vm0-ai/vm0/commit/04103da93c682e0793c03a0496a1b2338740389e))
+
+
+### Refactoring
+
+* **runner:** retire legacy service lock compatibility ([#30255](https://github.com/vm0-ai/vm0/issues/30255)) ([cd750bb](https://github.com/vm0-ai/vm0/commit/cd750bb3adb8eb080ccf8579bc80ce034a3e0abe))
+
 ## [0.178.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.5...runner-rs-v0.178.6) (2026-08-29)
 
 

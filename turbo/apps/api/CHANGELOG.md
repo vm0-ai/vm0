@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.511.1](https://github.com/vm0-ai/vm0/compare/api-v1.511.0...api-v1.511.1) (2026-08-29)
+
+
+### Refactoring
+
+* **api:** remove legacy sandbox observation ingestion ([#30251](https://github.com/vm0-ai/vm0/issues/30251)) ([96889ae](https://github.com/vm0-ai/vm0/commit/96889aec1fed1ef0519e4ff5f43028ceabf89f33))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.6
+    * @okouai/connector-catalog-validation bumped to 2.0.8
+    * @okouai/core bumped to 8.601.7
+    * @okouai/db bumped to 1.228.12
+
 ## [1.511.0](https://github.com/vm0-ai/vm0/compare/api-v1.510.5...api-v1.511.0) (2026-08-29)
 
 
