@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.510.5](https://github.com/vm0-ai/vm0/compare/api-v1.510.4...api-v1.510.5) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat event version fallbacks ([#30226](https://github.com/vm0-ai/vm0/issues/30226)) ([713e58e](https://github.com/vm0-ai/vm0/commit/713e58e581c660f73f836511118cecef551d6d29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.4
+    * @okouai/connector-catalog-validation bumped to 2.0.6
+    * @okouai/core bumped to 8.601.5
+    * @okouai/db bumped to 1.228.10
+
 ## [1.510.4](https://github.com/vm0-ai/vm0/compare/api-v1.510.3...api-v1.510.4) (2026-08-29)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.178.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.4...runner-rs-v0.178.5) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** separate addon process logging ([#30206](https://github.com/vm0-ai/vm0/issues/30206)) ([768c48b](https://github.com/vm0-ai/vm0/commit/768c48b7eda2385bf299d2d10eebc42bfe87e2fa))
+
 ## [0.178.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.3...runner-rs-v0.178.4) (2026-08-29)
 
 ## [0.178.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.2...runner-rs-v0.178.3) (2026-08-29)

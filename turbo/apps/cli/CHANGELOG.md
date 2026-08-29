@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.297.5](https://github.com/vm0-ai/vm0/compare/cli-v9.297.4...cli-v9.297.5) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat event version fallbacks ([#30226](https://github.com/vm0-ai/vm0/issues/30226)) ([713e58e](https://github.com/vm0-ai/vm0/commit/713e58e581c660f73f836511118cecef551d6d29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.4
+    * @okouai/core bumped to 8.601.5
+
 ## [9.297.4](https://github.com/vm0-ai/vm0/compare/cli-v9.297.3...cli-v9.297.4) (2026-08-29)
 
 
