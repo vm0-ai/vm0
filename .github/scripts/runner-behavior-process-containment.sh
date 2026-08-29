@@ -65,6 +65,8 @@ SESSION_ID="e2e-process-containment-session"
 CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 PRESSURE_SUBMIT_PID=""
 PRESSURE_SUBMIT_OUTPUT=""
+MEMORY_RECLAIM_PID=""
+MEMORY_RECLAIM_OUTPUT=""
 
 fail() { echo "FAIL: $1"; exit 1; }
 
@@ -80,6 +82,13 @@ wait_for_unit_inactive() {
 
 cleanup() {
   echo "--- Cleanup ---"
+  if [ -n "$MEMORY_RECLAIM_PID" ]; then
+    kill "$MEMORY_RECLAIM_PID" 2>/dev/null || true
+    wait "$MEMORY_RECLAIM_PID" 2>/dev/null || true
+  fi
+  if [ -n "$MEMORY_RECLAIM_OUTPUT" ]; then
+    rm -f "$MEMORY_RECLAIM_OUTPUT"
+  fi
   if [ -n "$PRESSURE_SUBMIT_PID" ]; then
     kill "$PRESSURE_SUBMIT_PID" 2>/dev/null || true
     wait "$PRESSURE_SUBMIT_PID" 2>/dev/null || true
@@ -428,19 +437,21 @@ PRESSURE_SUBMIT_OUTPUT=$(mktemp)
 # Keep the final input after the pressure command so the mock turn cannot
 # finish first.
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-  --timeout 80 \
+  --timeout 200 \
   --chat-thread-id "$PRESSURE_CHAT_THREAD_ID" \
   --session-id "$PRESSURE_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt '@active-input-smoke-ready:8' \
+  --prompt '@active-input-smoke-ready:10' \
   --active-input 'after=1ms,text=cpu-pressure-ready' \
   --active-input 'after=2s,text=cpu-pressure-one' \
   --active-input 'after=4s,text=cpu-pressure-two' \
   --active-input 'after=6s,text=cpu-pressure-three' \
-  --active-input 'after=15s,text=memory-reclaim-one' \
-  --active-input 'after=30s,text=memory-reclaim-two' \
-  --active-input 'after=45s,text=memory-reclaim-three' \
-  --active-input 'after=65s,text=pressure-finish' \
+  --active-input 'after=30s,text=memory-reclaim-one' \
+  --active-input 'after=60s,text=memory-reclaim-two' \
+  --active-input 'after=90s,text=memory-reclaim-three' \
+  --active-input 'after=120s,text=memory-reclaim-four' \
+  --active-input 'after=150s,text=memory-reclaim-five' \
+  --active-input 'after=180s,text=pressure-finish' \
   >"$PRESSURE_SUBMIT_OUTPUT" 2>&1 &
 PRESSURE_SUBMIT_PID=$!
 
@@ -643,10 +654,39 @@ LEAK_CLEANUP_MS=$PID_CLEANUP_MS
 
 echo "--- Pressure: cross the retired workload memory boundary through Guest reclaim ---"
 PRESSURE_API_SOCK="/run/vm0/sock/$PRESSURE_SANDBOX_ID/api.sock"
-BALLOON_BEFORE=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
-  http://localhost/balloon/statistics \
-  | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
-  || fail "failed to sample balloon before memory reclaim pressure"
+# Match the directly observed production checkpoint before applying pressure.
+BALLOON_MIN_STABLE_MIB=3072
+BALLOON_STABLE_TARGET=""
+BALLOON_STABLE_SAMPLES=0
+BALLOON_BEFORE=""
+for _ in $(seq 1 45); do
+  BALLOON_SAMPLE=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
+    http://localhost/balloon/statistics \
+    | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
+    || fail "failed to sample balloon before memory reclaim pressure"
+  BALLOON_TARGET=$(jq -r '.target_mib' <<<"$BALLOON_SAMPLE")
+  BALLOON_ACTUAL=$(jq -r '.actual_mib' <<<"$BALLOON_SAMPLE")
+  if [ "$BALLOON_TARGET" -ge "$BALLOON_MIN_STABLE_MIB" ] \
+    && [ "$BALLOON_ACTUAL" -eq "$BALLOON_TARGET" ]; then
+    if [ "$BALLOON_TARGET" = "$BALLOON_STABLE_TARGET" ]; then
+      BALLOON_STABLE_SAMPLES=$((BALLOON_STABLE_SAMPLES + 1))
+    else
+      BALLOON_STABLE_TARGET=$BALLOON_TARGET
+      BALLOON_STABLE_SAMPLES=1
+    fi
+    if [ "$BALLOON_STABLE_SAMPLES" -ge 2 ]; then
+      BALLOON_BEFORE=$BALLOON_SAMPLE
+      break
+    fi
+  else
+    BALLOON_STABLE_TARGET=""
+    BALLOON_STABLE_SAMPLES=0
+  fi
+  sleep 2
+done
+[ -n "$BALLOON_BEFORE" ] \
+  || fail "active balloon did not stabilize at or above ${BALLOON_MIN_STABLE_MIB} MiB"
+BALLOON_BEFORE_ACTUAL=$(jq -r '.actual_mib' <<<"$BALLOON_BEFORE")
 MEMORY_RECLAIM_COMMAND=$(cat <<'PYTHON'
 import gc
 import json
@@ -660,6 +700,7 @@ CHUNK_SIZE = 32 * MIB
 CONTROL_MEMORY_MIN = 384 * MIB
 WORKLOAD_MEMORY_RESERVE = 128 * MIB
 RETIRED_BOUNDARY_MARGIN = 64 * MIB
+PRESSURE_AVAILABLE = 192 * MIB
 
 
 def read_int(path):
@@ -740,6 +781,7 @@ if target >= configured_memory_max:
 before = snapshot(workload, control)
 deadline = time.monotonic() + 45
 chunks = []
+pressure_announced = False
 while read_int(workload / "memory.current") < target:
     if time.monotonic() >= deadline:
         current = read_int(workload / "memory.current")
@@ -750,16 +792,30 @@ while read_int(workload / "memory.current") < target:
     chunk = bytearray(CHUNK_SIZE)
     chunk[::PAGE_SIZE] = b"\x01" * (CHUNK_SIZE // PAGE_SIZE)
     chunks.append(chunk)
+    mem_available_bytes = (
+        read_key_values(pathlib.Path("/proc/meminfo"))["MemAvailable:"] * 1024
+    )
+    if not pressure_announced and mem_available_bytes < PRESSURE_AVAILABLE:
+        print(
+            f"memory-reclaim-pressure-ready available_bytes={mem_available_bytes}",
+            flush=True,
+        )
+        pressure_announced = True
     time.sleep(0.01)
 
 peak = snapshot(workload, control)
+if not pressure_announced:
+    raise RuntimeError(
+        "memory pressure did not cross the balloon pressure boundary: "
+        f"available={peak['mem_available_bytes']} boundary={PRESSURE_AVAILABLE}"
+    )
 if peak["workload_current"] <= legacy_memory_max:
     raise RuntimeError(
         "memory pressure did not cross the retired workload boundary: "
         f"current={peak['workload_current']} legacy_max={legacy_memory_max}"
     )
 
-time.sleep(6)
+time.sleep(25)
 chunks.clear()
 gc.collect()
 time.sleep(1)
@@ -783,12 +839,76 @@ print(
 )
 PYTHON
 )
-MEMORY_RECLAIM_RESULT=$(sudo "$BIN_DIR/runner" exec \
-  --timeout 60 \
+MEMORY_RECLAIM_OUTPUT=$(mktemp)
+sudo "$BIN_DIR/runner" exec \
+  --timeout 80 \
   --sandbox "$PRESSURE_SANDBOX_ID" \
-  -- python3 -c "$MEMORY_RECLAIM_COMMAND") \
-  || fail "workload could not cross the retired memory boundary"
+  -- python3 -c "$MEMORY_RECLAIM_COMMAND" \
+  >"$MEMORY_RECLAIM_OUTPUT" 2>&1 &
+MEMORY_RECLAIM_PID=$!
+
+MEMORY_PRESSURE_READY_LINE=""
+for _ in $(seq 1 60); do
+  MEMORY_PRESSURE_READY_LINE=$(grep -E \
+    '^memory-reclaim-pressure-ready available_bytes=[0-9]+$' \
+    "$MEMORY_RECLAIM_OUTPUT" | tail -1 || true)
+  [ -n "$MEMORY_PRESSURE_READY_LINE" ] && break
+  if ! kill -0 "$MEMORY_RECLAIM_PID" 2>/dev/null; then
+    if wait "$MEMORY_RECLAIM_PID"; then
+      MEMORY_RECLAIM_STATUS=0
+    else
+      MEMORY_RECLAIM_STATUS=$?
+    fi
+    MEMORY_RECLAIM_PID=""
+    cat "$MEMORY_RECLAIM_OUTPUT"
+    fail "workload exited with status ${MEMORY_RECLAIM_STATUS} before balloon pressure"
+  fi
+  sleep 1
+done
+[ -n "$MEMORY_PRESSURE_READY_LINE" ] \
+  || fail "workload did not reach the balloon pressure boundary"
+MEMORY_PRESSURE_AVAILABLE=$(sed -n \
+  's/^memory-reclaim-pressure-ready available_bytes=\([0-9][0-9]*\)$/\1/p' \
+  <<<"$MEMORY_PRESSURE_READY_LINE")
+[ "$MEMORY_PRESSURE_AVAILABLE" -lt $((192 * 1024 * 1024)) ] \
+  || fail "workload reported an invalid balloon pressure boundary"
+
+BALLOON_PRESSURE_SAMPLE=""
+BALLOON_DURING=""
+BALLOON_RELIEF_TIMEOUT_SECONDS=20
+SECONDS=0
+while [ "$SECONDS" -le "$BALLOON_RELIEF_TIMEOUT_SECONDS" ]; do
+  BALLOON_DURING=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
+    http://localhost/balloon/statistics \
+    | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
+    || fail "failed to sample balloon during memory reclaim pressure"
+  BALLOON_DURING_TARGET=$(jq -r '.target_mib' <<<"$BALLOON_DURING")
+  BALLOON_DURING_ACTUAL=$(jq -r '.actual_mib' <<<"$BALLOON_DURING")
+  if [ "$BALLOON_DURING_TARGET" -eq 0 ] \
+    && [ "$BALLOON_DURING_ACTUAL" -lt "$BALLOON_BEFORE_ACTUAL" ]; then
+    BALLOON_PRESSURE_SAMPLE=$BALLOON_DURING
+    break
+  fi
+  if ! kill -0 "$MEMORY_RECLAIM_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+if [ -z "$BALLOON_PRESSURE_SAMPLE" ]; then
+  cat "$MEMORY_RECLAIM_OUTPUT"
+  fail "active balloon did not release its full target within ${BALLOON_RELIEF_TIMEOUT_SECONDS}s of Guest pressure: before=${BALLOON_BEFORE} during=${BALLOON_DURING}"
+fi
+
+if wait "$MEMORY_RECLAIM_PID"; then
+  MEMORY_RECLAIM_STATUS=0
+else
+  MEMORY_RECLAIM_STATUS=$?
+fi
+MEMORY_RECLAIM_PID=""
+MEMORY_RECLAIM_RESULT=$(<"$MEMORY_RECLAIM_OUTPUT")
 printf '%s\n' "$MEMORY_RECLAIM_RESULT"
+[ "$MEMORY_RECLAIM_STATUS" -eq 0 ] \
+  || fail "workload could not cross the retired memory boundary"
 MEMORY_RECLAIM_JSON=$(awk '/^\{/{line=$0} END{print line}' <<<"$MEMORY_RECLAIM_RESULT")
 [ -n "$MEMORY_RECLAIM_JSON" ] \
   || fail "memory reclaim pressure did not emit a usage snapshot"
@@ -809,7 +929,9 @@ BALLOON_AFTER=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
   http://localhost/balloon/statistics \
   | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
   || fail "failed to sample balloon after memory reclaim pressure"
-echo "memory-reclaim-balloon before=$BALLOON_BEFORE after=$BALLOON_AFTER"
+echo "memory-reclaim-balloon before=$BALLOON_BEFORE pressure=$BALLOON_PRESSURE_SAMPLE after=$BALLOON_AFTER"
+rm -f "$MEMORY_RECLAIM_OUTPUT"
+MEMORY_RECLAIM_OUTPUT=""
 
 if wait "$PRESSURE_SUBMIT_PID"; then
   PRESSURE_SUBMIT_STATUS=0
@@ -829,7 +951,7 @@ SUBMITTED_PRESSURE_RUN_ID=$(jq -r '.run_id // empty' <<<"$PRESSURE_SUBMIT_JSON")
 PRESSURE_STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${PRESSURE_RUN_ID}.log"
 PRESSURE_METRICS_LOG="/var/lib/vm0-runner/logs/metrics-${PRESSURE_RUN_ID}.jsonl"
 sudo grep -F -q \
-  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+memory-reclaim-one+memory-reclaim-two+memory-reclaim-three+pressure-finish' \
+  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+memory-reclaim-one+memory-reclaim-two+memory-reclaim-three+memory-reclaim-four+memory-reclaim-five+pressure-finish' \
   "$PRESSURE_STREAM_LOG" \
   || fail "CPU-pressure active inputs were not all consumed in order"
 
@@ -865,8 +987,8 @@ echo "--- Pressure: group-kill only the high-memory Bash tool ---"
 # The mock CLI launches two Bash children directly from the managed runtime.
 # The launcher places them in distinct tool cgroups before either shell runs.
 # One tool drives the existing workload limit to OOM while the other remains alive.
-# Use a fresh sandbox so the preceding extreme balloon-reclaim scenario cannot
-# delay Guest Agent startup and obscure the tool-isolation assertion.
+# Use a fresh sandbox so the tool-isolation assertion has an independent
+# lifecycle after the preceding extreme balloon-reclaim scenario.
 MEMORY_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 MEMORY_SESSION_ID="e2e-process-containment-memory"
 SECONDS=0
