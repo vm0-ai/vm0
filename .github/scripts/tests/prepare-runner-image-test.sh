@@ -370,12 +370,6 @@ set_unit_state() {
   printf '%s\n' "$load_state" > "${case_dir}/load-state/${unit}"
 }
 
-add_list_row() {
-  local case_dir=$1
-  local row=$2
-  printf '%s\n' "$row" >> "${case_dir}/extra-list-rows"
-}
-
 run_remote_case() {
   local case_dir=$1
   local list_failure=${2:-}
@@ -461,7 +455,7 @@ grep -q 'mock list-units failure' "${discovery_failure_case}/out" || fail "expec
 
 malformed_loaded_case="${TMPDIR}/remote-malformed-loaded"
 prepare_remote_case "$malformed_loaded_case"
-add_list_row "$malformed_loaded_case" "vm0-runner-pr-123-2.service loaded active"
+printf '%s\n' "vm0-runner-pr-123-2.service loaded active" >> "${malformed_loaded_case}/extra-list-rows"
 run_remote_case "$malformed_loaded_case"
 if grep -q '^mutate ' "${malformed_loaded_case}/systemctl.log"; then
   fail "malformed loaded row must prevent shared-path mutation"
