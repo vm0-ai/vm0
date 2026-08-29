@@ -1,9 +1,9 @@
 """Webhook delivery (HTTP + thread pool).
 
-Background thread pool processes usage reports in parallel; the runner
+Background thread pools process usage reports in parallel; the runner
 first waits for the pending counters to drain, then ``done()`` flushes
-submitted futures during mitmproxy shutdown.  Falls back to synchronous
-delivery if the executor has been shut down (drain/shutdown race) so
+submitted futures during mitmproxy shutdown. Falls back to synchronous
+delivery if an executor has been shut down (drain/shutdown race) so
 reports are not silently lost.
 """
 
@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import Literal
 
 import network_log_sanitization
@@ -100,9 +100,9 @@ def _raw_webhook_url_log_text_variants(raw_url: str) -> tuple[str, ...]:
     return tuple(sorted(variants, key=len, reverse=True))
 
 
-def _post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
+def _post_webhook(url: str, bearer_credential: str, data: bytes) -> None:
     """POST JSON data to a platform webhook.  Raises on failure."""
-    req = make_api_request(url, data, sandbox_token)
+    req = make_api_request(url, data, bearer_credential)
     try:
         with _opener.open(req, timeout=10):
             pass
@@ -115,7 +115,7 @@ def _post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
 
 def _post_webhook_with_retry(
     url: str,
-    sandbox_token: str,
+    bearer_credential: str,
     payload: dict,
     proxy_log_path: str,
     log_type: str,
@@ -132,7 +132,7 @@ def _post_webhook_with_retry(
     """
     try:
         outcome = _do_post_webhook_attempts(
-            url, sandbox_token, payload, proxy_log_path, log_type, max_retries
+            url, bearer_credential, payload, proxy_log_path, log_type, max_retries
         )
     except Exception:
         if delivery_outcome_callback is not None:
@@ -190,7 +190,7 @@ def _handle_retryable_webhook_failure(
 
 def _do_post_webhook_attempts(
     url: str,
-    sandbox_token: str,
+    bearer_credential: str,
     payload: dict,
     proxy_log_path: str,
     log_type: str,
@@ -214,7 +214,7 @@ def _do_post_webhook_attempts(
     payload_bytes = len(data)
     for attempt in range(max_retries + 1):
         try:
-            _post_webhook(url, sandbox_token, data)
+            _post_webhook(url, bearer_credential, data)
             _log_webhook_entry(
                 proxy_log_path,
                 "info",
@@ -299,9 +299,15 @@ usage_executor = ThreadPoolExecutor(
     max_workers=USAGE_WEBHOOK_WORKERS,
     thread_name_prefix="usage",
 )
+model_usage_observation_executor = ThreadPoolExecutor(
+    max_workers=USAGE_WEBHOOK_WORKERS,
+    thread_name_prefix="model-usage-observation",
+)
 
 _delivery_capacity_lock = threading.Lock()
 _pending_delivery_payloads = 0
+_model_observation_delivery_capacity_lock = threading.Lock()
+_pending_model_observation_delivery_payloads = 0
 
 
 def _try_acquire_delivery_capacity() -> int | None:
@@ -331,24 +337,53 @@ def pending_delivery_payload_count_for_tests() -> int:
 
 
 def reset_delivery_capacity_for_tests() -> None:
-    global _pending_delivery_payloads
+    global _pending_delivery_payloads, _pending_model_observation_delivery_payloads
     with _delivery_capacity_lock:
         _pending_delivery_payloads = 0
+    with _model_observation_delivery_capacity_lock:
+        _pending_model_observation_delivery_payloads = 0
+
+
+def _try_acquire_model_observation_delivery_capacity() -> int | None:
+    global _pending_model_observation_delivery_payloads
+    with _model_observation_delivery_capacity_lock:
+        if _pending_model_observation_delivery_payloads >= MAX_PENDING_WEBHOOK_PAYLOADS:
+            return None
+        _pending_model_observation_delivery_payloads += 1
+        return _pending_model_observation_delivery_payloads
+
+
+def _release_model_observation_delivery_capacity() -> None:
+    global _pending_model_observation_delivery_payloads
+    with _model_observation_delivery_capacity_lock:
+        if _pending_model_observation_delivery_payloads <= 0:
+            raise RuntimeError("model observation delivery capacity released without acquire")
+        _pending_model_observation_delivery_payloads -= 1
+
+
+def _pending_model_observation_delivery_payload_count() -> int:
+    with _model_observation_delivery_capacity_lock:
+        return _pending_model_observation_delivery_payloads
+
+
+def pending_model_observation_delivery_payload_count_for_tests() -> int:
+    return _pending_model_observation_delivery_payload_count()
 
 
 def _post_admitted_webhook_with_retry(
     url: str,
-    sandbox_token: str,
+    bearer_credential: str,
     payload: dict,
     proxy_log_path: str,
     log_type: str,
     pending_report: PendingReportLease,
     delivery_outcome_callback: _DeliveryOutcomeCallback | None,
+    release_capacity: Callable[[], None],
 ) -> None:
     try:
         _post_webhook_with_retry(
             url,
-            sandbox_token,
+            bearer_credential,
             payload,
             proxy_log_path,
             log_type,
@@ -356,7 +391,7 @@ def _post_admitted_webhook_with_retry(
             delivery_outcome_callback=delivery_outcome_callback,
         )
     finally:
-        _release_delivery_capacity()
+        release_capacity()
 
 
 def enqueue_webhook_delivery(
@@ -391,19 +426,50 @@ def enqueue_webhook_delivery(
     Returns whether the payload was admitted to delivery.  ``False`` means
     delivery was saturated and the caller still owns retry handling.
     """
-    admitted_count = _try_acquire_delivery_capacity()
+    return _enqueue_webhook_delivery(
+        url=url,
+        bearer_credential=sandbox_token,
+        payload=payload,
+        proxy_log_path=proxy_log_path,
+        log_type=log_type,
+        delivery_outcome_callback=delivery_outcome_callback,
+        executor=usage_executor,
+        try_acquire_capacity=_try_acquire_delivery_capacity,
+        release_capacity=_release_delivery_capacity,
+        pending_delivery_count=_pending_delivery_payload_count,
+        saturation_label="usage delivery",
+        fallback_message="Webhook executor shut down, falling back to synchronous delivery",
+    )
+
+
+def _enqueue_webhook_delivery(
+    *,
+    url: str,
+    bearer_credential: str,
+    payload: dict,
+    proxy_log_path: str,
+    log_type: str,
+    delivery_outcome_callback: _DeliveryOutcomeCallback | None,
+    executor: Executor,
+    try_acquire_capacity: Callable[[], int | None],
+    release_capacity: Callable[[], None],
+    pending_delivery_count: Callable[[], int],
+    saturation_label: str,
+    fallback_message: str,
+) -> bool:
+    admitted_count = try_acquire_capacity()
     if admitted_count is None:
         _log_webhook_entry(
             proxy_log_path,
             "info",
-            "was not admitted because usage delivery is saturated",
+            f"was not admitted because {saturation_label} is saturated",
             url,
             log_type,
             payload,
             extra_fields={
                 "reason": "delivery_saturated",
                 "webhook_delivery_capacity": MAX_PENDING_WEBHOOK_PAYLOADS,
-                "webhook_delivery_pending": _pending_delivery_payload_count(),
+                "webhook_delivery_pending": pending_delivery_count(),
             },
         )
         return False
@@ -422,20 +488,21 @@ def enqueue_webhook_delivery(
             },
         )
     except Exception:
-        _release_delivery_capacity()
+        release_capacity()
         raise
 
     pending_report = admit_pending_report()
     try:
-        usage_executor.submit(
+        executor.submit(
             _post_admitted_webhook_with_retry,
             url,
-            sandbox_token,
+            bearer_credential,
             payload,
             proxy_log_path,
             log_type,
             pending_report,
             delivery_outcome_callback,
+            release_capacity,
         )
     except RuntimeError:
         # Executor shut down (done() already called during drain).
@@ -444,14 +511,14 @@ def enqueue_webhook_delivery(
             log_proxy_entry(
                 proxy_log_path,
                 "warn",
-                "Webhook executor shut down, falling back to synchronous delivery",
+                fallback_message,
                 type=log_type,
                 url=url,
             )
             fallback_started = True
             _post_webhook_with_retry(
                 url,
-                sandbox_token,
+                bearer_credential,
                 payload,
                 proxy_log_path,
                 log_type,
@@ -463,9 +530,45 @@ def enqueue_webhook_delivery(
                 pending_report.release()
             raise
         finally:
-            _release_delivery_capacity()
+            release_capacity()
     except Exception:
         pending_report.release()
-        _release_delivery_capacity()
+        release_capacity()
         raise
     return True
+
+
+def enqueue_model_usage_observation_delivery(
+    url: str,
+    runner_token: str,
+    payload: dict,
+    proxy_log_path: str,
+    log_type: str,
+    delivery_outcome_callback: _DeliveryOutcomeCallback | None = None,
+) -> bool:
+    """Submit a model observation without consuming billing delivery capacity."""
+    return _enqueue_webhook_delivery(
+        url=url,
+        bearer_credential=runner_token,
+        payload=payload,
+        proxy_log_path=proxy_log_path,
+        log_type=log_type,
+        delivery_outcome_callback=delivery_outcome_callback,
+        executor=model_usage_observation_executor,
+        try_acquire_capacity=_try_acquire_model_observation_delivery_capacity,
+        release_capacity=_release_model_observation_delivery_capacity,
+        pending_delivery_count=_pending_model_observation_delivery_payload_count,
+        saturation_label="model observation delivery",
+        fallback_message=(
+            "Model observation executor shut down, falling back to synchronous delivery"
+        ),
+    )
+
+
+def shutdown_delivery_executors(*, wait: bool) -> None:
+    """Shut down each configured delivery executor exactly once."""
+    try:
+        usage_executor.shutdown(wait=wait)
+    finally:
+        if model_usage_observation_executor is not usage_executor:
+            model_usage_observation_executor.shutdown(wait=wait)

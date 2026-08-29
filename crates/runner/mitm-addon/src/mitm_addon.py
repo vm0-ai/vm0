@@ -246,6 +246,10 @@ def configure(updated: set[str]) -> None:
         api_url=get_api_url(),
         bearer_credential=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
     )
+    usage.configure_model_usage_observation_reporting(
+        api_url=get_api_url(),
+        runner_token=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
+    )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
             flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
@@ -1987,7 +1991,7 @@ def done():
     The runner flush lifecycle waits for any active SIGUSR1 delivery worker,
     retries buffered usage and retained diagnostic reports, drains accepted
     requests, and closes admission before this hook shuts down the usage
-    executor. It also performs a final JSONL marker observation and joins the
+    executors. It also performs a final JSONL marker observation and joins the
     marker watcher before the JSONL writer stops. Any retryable usage outcome
     retained by completed workers is then retried synchronously.
     Auth.base forwarding does not need to finish running work during shutdown.
@@ -1996,16 +2000,16 @@ def done():
     upstream work without joining daemon workers or waiting for slow upstream
     responses. JSONL writer shutdown is also bounded and best-effort; if it times
     out, process shutdown continues with accepted log entries possibly still
-    pending. After joining the usage executor, retained billing and diagnostic
-    work is drained through synchronous delivery. Model-provider failure delivery
-    stops admission and receives one bounded drain window.
+    pending. After joining the usage executors, retained billing, observation,
+    and diagnostic work is drained through synchronous delivery. Model-provider
+    failure delivery stops admission and receives one bounded drain window.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
     finally:
         try:
             try:
-                usage.webhook.usage_executor.shutdown(wait=True)
+                usage.webhook.shutdown_delivery_executors(wait=True)
                 runner_flush_lifecycle.drain_delivery_work_after_executor_shutdown()
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)

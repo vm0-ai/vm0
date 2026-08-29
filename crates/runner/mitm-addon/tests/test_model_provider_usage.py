@@ -306,13 +306,22 @@ class TestReportModelProviderUsage:
             "tokens.input": 100,
         }
 
+        runner_token = str(uuid.uuid4())
         with usage_webhook_api() as webhook:
+            usage.configure_model_usage_observation_reporting(
+                api_url=webhook.api_url,
+                runner_token=runner_token,
+            )
             usage.report_model_provider_usage_observation(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
 
         assert webhook.request_count == 1
-        assert webhook.requests[0].path == "/api/webhooks/agent/model-usage-observation"
-        body = webhook.requests[0].json_body()
+        request = webhook.requests[0]
+        assert request.path == "/api/runners/model-usage-observations"
+        assert request.header("authorization") == f"Bearer {runner_token}"
+        assert "tok-xyz" not in request.body.decode()
+        body = request.json_body()
+        assert set(body) == {"events"}
         assert set(body["events"][0]) == {
             "idempotencyKey",
             "model",
@@ -346,12 +355,10 @@ class TestReportModelProviderUsage:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/runners/model-usage-observations",
         }
         usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
+        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
         assert usage_body["events"][0]["provider"] == "claude-sonnet-4-6"
         assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
         assert (
@@ -379,7 +386,7 @@ class TestReportModelProviderUsage:
         assert observed is False
         assert webhook.request_count == 0
 
-    def test_logs_warning_when_observation_missing_sandbox_token(
+    def test_logs_warning_when_observation_missing_runner_token(
         self, tmp_path, real_flow, mitm_ctx
     ):
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -392,6 +399,10 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log)
 
         with mitm_ctx(api_url="https://api.vm0.ai"):
+            usage.configure_model_usage_observation_reporting(
+                api_url="https://api.vm0.ai",
+                runner_token="",
+            )
             observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
 
         assert observed is False
@@ -400,9 +411,11 @@ class TestReportModelProviderUsage:
         assert entry["level"] == "warn"
         assert (
             entry["message"]
-            == "Cannot report model usage observation: missing sandbox_token or api_url"
+            == "Cannot report model usage observation: missing runner_token or api_url"
         )
         assert entry["type"] == "model_usage_observation"
+        assert entry["missing_runner_token"] is True
+        assert entry["missing_api_url"] is False
 
     def test_skips_non_model_provider(self, real_flow, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
@@ -580,12 +593,10 @@ class TestReportModelProviderUsage:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/runners/model-usage-observations",
         }
         usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
+        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
         assert [
             {key: value for key, value in event.items() if key != "idempotencyKey"}
             for event in usage_body["events"]
@@ -829,7 +840,7 @@ class TestModelProviderResponseHookUsage:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/runners/model-usage-observations",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-001"
@@ -837,9 +848,7 @@ class TestModelProviderResponseHookUsage:
         assert by_category["tokens.input"]["quantity"] == 100
         assert by_category["tokens.output"]["quantity"] == 500
         assert by_category["tokens.input"]["provider"] == "claude-sonnet-4-6"
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
+        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
         assert observation_body["events"] == [
             {
                 "idempotencyKey": observation_body["events"][0]["idempotencyKey"],

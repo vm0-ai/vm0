@@ -16,7 +16,7 @@ Model-provider usage reporting is separate from platform billing. Run contexts
 set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the canonical model
 id the proxy should report for model token usage. Billable rows go to
 ``/api/webhooks/agent/usage-event``; model usage statistics go to
-``/api/webhooks/agent/model-usage-observation``.
+``/api/runners/model-usage-observations``.
 """
 
 import uuid
@@ -55,8 +55,10 @@ from ..model_tokens import (
 )
 from ..quantities import is_usage_quantity
 from ..reporting_context import (
+    ModelUsageObservationReportingContext,
     UsageReportingContext,
     log_usage_reporting_context_missing,
+    model_usage_observation_reporting_context,
     usage_reporting_context,
 )
 from ..underbilling import log_usage_underbilling
@@ -211,7 +213,7 @@ def report_model_provider_usage_observation(
     """Buffer model usage statistics for observable model-provider responses.
 
     Observations are sent to
-    ``/api/webhooks/agent/model-usage-observation`` and are separate from
+    ``/api/runners/model-usage-observations`` and are separate from
     billable ``/api/webhooks/agent/usage-event`` rows. The function returns
     ``False`` when any of these gates fails:
 
@@ -222,7 +224,7 @@ def report_model_provider_usage_observation(
     - At least one observation is built from the available model-provider
       usage sources, including a positive integer quantity in
       ``MODEL_USAGE_CATEGORIES``.
-    - ``sandbox_token`` and ``get_api_url()`` are both non-empty.
+    - The process has both an API URL and runner token configured.
 
     It returns ``True`` when all gates pass, at least one observation is built,
     and the complete reporting context allows the process-local buffer to be
@@ -240,7 +242,7 @@ def report_model_provider_usage_observation(
 
     Non-billable BYOK model-provider flows with ``MODEL_USAGE_PROVIDER`` are
     expected to report observations without reporting billable usage events.
-    All failed gates are silent by design except missing sandbox token or API
+    All failed gates are silent by design except missing runner token or API
     URL, which writes a proxy warning because that indicates an
     environment/reporting setup problem.
     """
@@ -248,7 +250,12 @@ def report_model_provider_usage_observation(
         return False
     if not is_model_provider_usage_observable(flow):
         return False
-    observations = _build_model_provider_usage_observations(flow, run_id)
+    canonical_model = flow_metadata.model_usage_provider(flow.metadata)
+    observations = _build_model_provider_usage_observations(
+        flow,
+        run_id,
+        canonical_model,
+    )
     if not observations:
         return False
     return _buffer_model_provider_usage_observations(
@@ -286,6 +293,7 @@ def report_model_provider_usage_source(
     observations: list[ModelUsageObservation] = []
     source_id = f"{flow.id}:{message_id}"
     provider = _reported_model(flow, source_usage)
+    canonical_model = flow_metadata.model_usage_provider(flow.metadata)
     can_report_usage = _is_billable_model_provider(flow, run_id)
     can_report_observation = bool(run_id and is_model_provider_usage_observable(flow))
     if can_report_usage:
@@ -312,39 +320,45 @@ def report_model_provider_usage_source(
         observations = _build_model_usage_observations(
             run_id,
             source_id,
-            provider,
+            canonical_model,
             source_usage,
         )
 
     if not usage_events and not observations:
         return
 
-    context = usage_reporting_context(flow)
-    if not context.is_complete:
-        if usage_events:
-            firewall_name = flow_metadata.firewall_name(flow.metadata)
-            log_usage_reporting_context_missing(context, run_id, firewall_name)
-        if observations:
-            _log_model_usage_observation_context_missing(context)
-        return
-
     accepted_usage_keys: set[str] = set()
     accepted_observation_keys: set[str] = set()
     if usage_events:
-        _buffer_source_model_provider_usage_events(
-            context,
-            run_id,
-            source_id,
-            usage_events,
-            accepted_source_keys=accepted_usage_keys,
-        )
+        billing_context = usage_reporting_context(flow)
+        if billing_context.is_complete:
+            _buffer_source_model_provider_usage_events(
+                billing_context,
+                run_id,
+                source_id,
+                usage_events,
+                accepted_source_keys=accepted_usage_keys,
+            )
+        else:
+            firewall_name = flow_metadata.firewall_name(flow.metadata)
+            log_usage_reporting_context_missing(
+                billing_context,
+                run_id,
+                firewall_name,
+            )
     if observations:
-        _buffer_source_model_provider_usage_observations(
-            context,
-            run_id,
-            observations,
-            accepted_source_keys=accepted_observation_keys,
+        observation_context = model_usage_observation_reporting_context(
+            flow_metadata.proxy_log_path(flow.metadata)
         )
+        if observation_context.is_complete:
+            _buffer_source_model_provider_usage_observations(
+                observation_context,
+                run_id,
+                observations,
+                accepted_source_keys=accepted_observation_keys,
+            )
+        else:
+            _log_model_usage_observation_context_missing(observation_context)
     _log_model_provider_usage_source(
         flow,
         run_id,
@@ -485,13 +499,13 @@ def _buffer_model_provider_usage_observations(
     *,
     accepted_source_keys: set[str] | None,
 ) -> bool:
-    context = usage_reporting_context(flow)
+    context = model_usage_observation_reporting_context(flow_metadata.proxy_log_path(flow.metadata))
     if not context.is_complete:
         _log_model_usage_observation_context_missing(context)
         return False
     buffer_model_usage_observations(
-        context.model_usage_observation_url(),
-        context.sandbox_token,
+        context.url(),
+        context.runner_token,
         run_id,
         observations,
         context.proxy_log_path,
@@ -535,15 +549,15 @@ def _buffer_source_model_provider_usage_events(
 
 
 def _buffer_source_model_provider_usage_observations(
-    context: UsageReportingContext,
+    context: ModelUsageObservationReportingContext,
     run_id: str,
     observations: list[ModelUsageObservation],
     *,
     accepted_source_keys: set[str],
 ) -> None:
     buffer_source_model_usage_observations(
-        context.model_usage_observation_url(),
-        context.sandbox_token,
+        context.url(),
+        context.runner_token,
         run_id,
         observations,
         context.proxy_log_path,
@@ -577,12 +591,16 @@ def _model_input_partition_source_key(
     )
 
 
-def _log_model_usage_observation_context_missing(context: UsageReportingContext) -> None:
+def _log_model_usage_observation_context_missing(
+    context: ModelUsageObservationReportingContext,
+) -> None:
     log_proxy_entry(
         context.proxy_log_path,
         "warn",
-        "Cannot report model usage observation: missing sandbox_token or api_url",
+        "Cannot report model usage observation: missing runner_token or api_url",
         type="model_usage_observation",
+        missing_runner_token=context.missing_runner_token,
+        missing_api_url=context.missing_api_url,
     )
 
 
@@ -616,6 +634,7 @@ def _build_model_provider_usage_events(
 def _build_model_provider_usage_observations(
     flow: http.HTTPFlow,
     run_id: str,
+    canonical_model: str,
 ) -> list[ModelUsageObservation]:
     observations: list[ModelUsageObservation] = []
     for source in _iter_model_provider_usage_sources(flow):
@@ -623,7 +642,7 @@ def _build_model_provider_usage_observations(
             _build_model_usage_observations(
                 run_id,
                 source.source_id,
-                _reported_model(flow, source.usage),
+                canonical_model,
                 source.usage,
             )
         )

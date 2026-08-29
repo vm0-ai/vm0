@@ -39,7 +39,7 @@ def deferred_websocket_trim_scheduler(
 class TestModelProviderWebSocketUsageSourceRelease:
     """Tests for sources that cannot be delivered to the usage webhook."""
 
-    def test_model_websocket_missing_context_releases_positive_source(
+    def test_model_websocket_missing_billing_context_reports_observation_and_releases_source(
         self, tmp_path, real_flow, mitm_ctx
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -60,10 +60,8 @@ class TestModelProviderWebSocketUsageSourceRelease:
         assert model_provider_usage_sources(flow) == {}
         entries = read_jsonl_entries_after_flush(proxy_log)
         [entry] = [entry for entry in entries if entry.get("type") == "usage_underbilling"]
-        [observation_entry] = [
-            entry for entry in entries if entry.get("type") == "model_usage_observation"
-        ]
-        assert not any(entry.get("type") == "model_usage_source" for entry in entries)
+        [source_entry] = [entry for entry in entries if entry.get("type") == "model_usage_source"]
+        assert not any(entry.get("type") == "model_usage_observation" for entry in entries)
         assert entry["type"] == "usage_underbilling"
         assert entry["reason"] == "missing_reporting_context"
         assert entry["underbilling_class"] == "confirmed"
@@ -71,10 +69,10 @@ class TestModelProviderWebSocketUsageSourceRelease:
         assert entry["firewall_name"] == "model-provider:openai-api-key"
         assert entry["missing_sandbox_token"] is True
         assert entry["missing_api_url"] is False
-        assert observation_entry["level"] == "warn"
-        assert (
-            observation_entry["message"]
-            == "Cannot report model usage observation: missing sandbox_token or api_url"
+        assert all(event["buffer_accepted"] is False for event in source_entry["usage_events"])
+        assert all(
+            observation["buffer_accepted"] is True
+            for observation in source_entry["model_usage_observations"]
         )
 
     def test_model_websocket_missing_api_url_releases_positive_source(
