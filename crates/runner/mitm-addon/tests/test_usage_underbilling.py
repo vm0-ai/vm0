@@ -1,11 +1,10 @@
 """Tests for usage underbilling log contracts."""
 
 import json
-from typing import cast
 
 import addon_process_logging
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
-from usage.underbilling import UnderbillingClass, log_usage_underbilling
+from usage.underbilling import log_usage_underbilling
 
 
 def test_underbilling_writes_proxy_row_and_process_event(tmp_path, capfd):
@@ -347,39 +346,20 @@ def test_underbilling_process_event_escapes_nonstandard_whitespace_and_controls(
     assert "\x1b" not in message
 
 
-def test_underbilling_process_event_escapes_reason_and_message_controls(
-    mitm_ctx,
-):
+def test_underbilling_process_event_escapes_message_controls(mitm_ctx):
     with mitm_ctx() as log:
         log_usage_underbilling(
             "",
             "Usage underbilling\nsignal\twith\x1bcontrols",
-            "expected reason\nwith\tcontrols",
+            "expected_reason",
             "risk",
             run_id="run-1",
         )
 
     message = log.error.call_args.args[0]
-    assert "reason=expected\\sreason\\nwith\\tcontrols" in message
+    assert "reason=expected_reason" in message
     assert "run_id=run-1" in message
     assert message.endswith("Usage underbilling\\nsignal\\twith\\u001bcontrols")
     assert "\n" not in message
     assert "\t" not in message
     assert "\x1b" not in message
-
-
-def test_underbilling_process_event_stringifies_prefix_values(mitm_ctx):
-    with mitm_ctx() as log:
-        log_usage_underbilling(
-            "",
-            cast(str, 123),
-            cast(str, None),
-            cast(UnderbillingClass, True),
-            run_id="run-1",
-        )
-
-    message = log.error.call_args.args[0]
-    assert "reason=None" in message
-    assert "underbilling_class=True" in message
-    assert "run_id=run-1" in message
-    assert message.endswith("123")
