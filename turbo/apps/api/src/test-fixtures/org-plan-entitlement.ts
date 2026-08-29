@@ -74,7 +74,12 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   await createStore()
     .set(writeDb$)
     .insert(orgPlanEntitlementsCanonicalWrites)
-    .values(row)
+    .values({
+      ...row,
+      // Preserve the fixture's prior insert behavior without relying on a
+      // database default for the now-required canonical column.
+      restrictedBuiltInModels: row.restrictedBuiltInModels ?? true,
+    })
     .onConflictDoUpdate({
       target: orgPlanEntitlementsCanonicalWrites.orgId,
       set: {

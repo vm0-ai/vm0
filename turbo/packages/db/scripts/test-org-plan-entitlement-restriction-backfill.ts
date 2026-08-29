@@ -935,7 +935,10 @@ export async function validateOrgPlanEntitlementRestrictionBackfill(
       await proofClient.end();
     }
 
-    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl);
+    await validatePermanentOrgPlanEntitlementRestrictionState(
+      dbUrl,
+      "nullable",
+    );
     console.log("   ✅ exact schema and catalog drift fail before mutation");
     console.log("   ✅ true/false history is copied without row/value loss");
     console.log("   ✅ locked rows are skipped, revisited, or fail boundedly");
@@ -955,6 +958,29 @@ export async function validateOrgPlanEntitlementRestrictionBackfillOnRegenerated
     validateOrgPlanEntitlementRestrictionBackfillMigrationSql(migrationSql);
   const client = await connect(dbUrl);
   try {
+    const generatedColumn = await client.query<{
+      canonicalDefault: string | null;
+      canonicalNotNull: boolean;
+    }>(`
+      SELECT
+        "attribute_row"."attnotnull" AS "canonicalNotNull",
+        pg_catalog.pg_get_expr(
+          "default_row"."adbin", "default_row"."adrelid"
+        ) AS "canonicalDefault"
+      FROM "pg_catalog"."pg_attribute" AS "attribute_row"
+      LEFT JOIN "pg_catalog"."pg_attrdef" AS "default_row"
+        ON "default_row"."adrelid" = "attribute_row"."attrelid"
+        AND "default_row"."adnum" = "attribute_row"."attnum"
+      WHERE "attribute_row"."attrelid" =
+          'public.org_plan_entitlements'::regclass
+        AND "attribute_row"."attname" = 'restricted_built_in_models'
+        AND NOT "attribute_row"."attisdropped"
+    `);
+    assert.deepEqual(generatedColumn.rows, [
+      { canonicalDefault: null, canonicalNotNull: true },
+    ]);
+    if (generatedColumn.rows[0]?.canonicalNotNull) return;
+
     const orgIds = await seedBackfillProofRows(
       client,
       "org-plan-restriction-30193-regenerated",

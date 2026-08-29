@@ -335,7 +335,7 @@ async function readHistoricalRows(
   return result.rows;
 }
 
-async function exercisePreviousReleaseApplicationStatements(
+export async function exercisePreviousReleaseApplicationStatements(
   database: NodePgDatabase<Record<string, never>>,
   orgId: string,
 ): Promise<void> {
@@ -394,7 +394,7 @@ async function exercisePreviousReleaseApplicationStatements(
   });
 }
 
-async function exerciseCurrentApplicationStatements(
+export async function exerciseCurrentApplicationStatements(
   database: NodePgDatabase<Record<string, never>>,
   orgId: string,
 ): Promise<void> {
@@ -666,7 +666,10 @@ export async function validateOrgPlanEntitlementRestrictionExpansion(
       await client.end();
     }
 
-    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl);
+    await validatePermanentOrgPlanEntitlementRestrictionState(
+      dbUrl,
+      "nullable",
+    );
   } finally {
     await dropDatabase(baseDbUrl);
   }
