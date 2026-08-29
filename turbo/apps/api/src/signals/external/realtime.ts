@@ -8,11 +8,15 @@ import type {
   RunnerPreference,
 } from "@okouai/api-contracts/contracts/runners";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
+import { db } from "../../lib/db";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
 import { waitUntil } from "../context/wait-until";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort, tapError } from "../utils";
 
 const L = logger("Realtime");
@@ -115,27 +119,25 @@ async function publishUserSignalNow(
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
 }
 
-async function publishUserOrgSignalNow(
-  userId: string,
-  orgId: string,
-  topic: string,
-  payload: unknown,
-): Promise<void> {
-  const channelName = getUserOrgChannelName(userId, orgId);
-  const channel = ablyClient().channels.get(channelName);
-  await channel.publish(topic, payload);
-  L.debug(`Published "${topic}" to ${channelName}`);
-}
-
 async function publishChatDatabaseSignalNow(
   target: { readonly userId: string; readonly orgId: string },
   topic: string,
   payload: unknown,
 ): Promise<void> {
-  await Promise.all([
-    publishUserSignalNow([target.userId], topic, payload),
-    publishUserOrgSignalNow(target.userId, target.orgId, topic, payload),
-  ]);
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db(),
+    target.orgId,
+    target.userId,
+  );
+  const channelName = isFeatureEnabled(
+    FeatureSwitchKey.SharedChatDatabase,
+    featureSwitchContext,
+  )
+    ? getUserOrgChannelName(target.userId, target.orgId)
+    : getUserChannelName(target.userId);
+  const channel = ablyClient().channels.get(channelName);
+  await channel.publish(topic, payload);
+  L.debug(`Published "${topic}" to ${channelName}`);
 }
 
 function publishChatDatabaseSignal(
@@ -143,8 +145,6 @@ function publishChatDatabaseSignal(
   topic: string,
   payload: unknown = null,
 ): Promise<void> {
-  // Compatibility bridge: keep the legacy user-channel publication until the
-  // stale App-client and API rollback windows for this migration have closed.
   waitUntil(bestEffort(publishChatDatabaseSignalNow(target, topic, payload)));
   return Promise.resolve();
 }

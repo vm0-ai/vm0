@@ -34,6 +34,7 @@ import {
   querySharedDatabaseWorker$,
   subscribeSharedDatabaseWorker$,
 } from "../worker-signals.ts";
+import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -879,6 +880,62 @@ describe("shared database worker runtime", () => {
         return event.type === "append";
       }),
     ).toHaveLength(0);
+  });
+
+  it("releases an auth-blocked background actor after its last client disconnects", async () => {
+    const workerEvents: WorkerEvent[] = [];
+    const clientId = crypto.randomUUID();
+    const dataKey = chatEventKey(crypto.randomUUID());
+    const requestStarted = context.mocks.deferred<void>();
+    const releaseResponse = context.mocks.deferred<void>();
+    const runtime = new SharedDatabaseWorkerRuntime(context.signal);
+
+    context.mocks.api(
+      chatThreadEventsContract.snapshot,
+      async ({ respond }) => {
+        requestStarted.resolve(undefined);
+        await releaseResponse.promise;
+        return respond(401, {
+          error: { code: "UNAUTHORIZED", message: "token expired" },
+        });
+      },
+    );
+
+    runtime.connectClient(clientId, (event) => {
+      workerEvents.push(event);
+    });
+    await runtime.heartbeat(
+      clientId,
+      undefined,
+      identity(),
+      location.origin,
+      undefined,
+    );
+    await vi.waitFor(() => {
+      expect(workerEvents.at(-1)).toMatchObject({
+        type: "status",
+        status: "connected",
+      });
+    });
+
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      `chatThreadMessageCreated:${dataKey.threadId}`,
+    );
+    await requestStarted.promise;
+    runtime.disconnectClient(clientId);
+    releaseResponse.resolve(undefined);
+
+    await vi.waitFor(() => {
+      expect(runtime).toMatchObject({
+        actors: new Map(),
+        clients: new Map(),
+        credentials: new Map(),
+        databases: new Map(),
+        realtimeSessions: new Map(),
+        realtimeStatuses: new Map(),
+      });
+    });
   });
 
   it("isolates realtime sessions and background caches by user and org", async () => {

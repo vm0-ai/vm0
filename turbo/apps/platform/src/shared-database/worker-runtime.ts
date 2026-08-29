@@ -731,7 +731,7 @@ export class SharedDatabaseWorkerRuntime {
         this.notifyActor(actor.dataKey);
       }
       this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
-      this.removeUnusedActors();
+      this.cleanupActorAfterSync(actor);
       L.debug("sync.finish", {
         ...actorDiagnosticDetails(actor),
         changed: settled.value.changed,
@@ -744,7 +744,7 @@ export class SharedDatabaseWorkerRuntime {
     }
     credential.dirtyDataKeyIds.add(sharedDatabaseDataKeyId(actor.dataKey));
     this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
-    this.removeUnusedActors();
+    this.cleanupActorAfterSync(actor);
     reportActorError(actor, "sync.error", settled?.reason);
     throw settled?.reason;
   }
@@ -781,7 +781,7 @@ export class SharedDatabaseWorkerRuntime {
         this.notifyActor(actor.dataKey);
       }
       this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
-      this.removeUnusedActors();
+      this.cleanupActorAfterSync(actor);
       L.debug("sync.finish", {
         ...actorDiagnosticDetails(actor),
         changed: settled.value.changed,
@@ -791,7 +791,7 @@ export class SharedDatabaseWorkerRuntime {
     }
     credential.dirtyDataKeyIds.add(sharedDatabaseDataKeyId(actor.dataKey));
     this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
-    this.removeUnusedActors();
+    this.cleanupActorAfterSync(actor);
     reportActorError(actor, "sync.error", settled?.reason);
     throw settled?.reason;
   }
@@ -1818,6 +1818,11 @@ export class SharedDatabaseWorkerRuntime {
     }
   }
 
+  private cleanupActorAfterSync(actor: DatasetActor): void {
+    this.removeUnusedActors();
+    this.releaseCredentialIfUnused(sharedDatabaseCredentialId(actor.dataKey));
+  }
+
   private releaseCredentialIfUnused(credentialId: string): void {
     const stillUsed = Array.from(this.clients.values()).some((client) => {
       return (
@@ -1831,6 +1836,27 @@ export class SharedDatabaseWorkerRuntime {
     this.realtimeSessions.get(credentialId)?.close();
     this.realtimeSessions.delete(credentialId);
     this.realtimeStatuses.delete(credentialId);
+
+    for (const actor of this.actors.values()) {
+      if (sharedDatabaseCredentialId(actor.dataKey) !== credentialId) {
+        continue;
+      }
+      actor.invalidationPending = false;
+      if (actor.kind === "chat-event") {
+        actor.backgroundCatchUp = false;
+      }
+    }
+    this.removeUnusedActors();
+    const syncStillInFlight = Array.from(this.actors.values()).some((actor) => {
+      return (
+        sharedDatabaseCredentialId(actor.dataKey) === credentialId &&
+        actor.inFlight !== null
+      );
+    });
+    if (syncStillInFlight) {
+      return;
+    }
+
     this.credentials.delete(credentialId);
     const database = this.databases.get(credentialId);
     database?.database?.close();

@@ -20,9 +20,9 @@ client-side filtering or thread-to-organization inference.
 
 ## Consequences
 
-During migration, the API publishes `chatThreadMessageCreated` and
-`threadListChanged` to both the existing user channel and the new user-org
-channel so already-loaded clients continue to receive updates. The Shared
-Worker moves to the user-org channel only after its token grants that channel;
-the legacy publication can be removed after the stale App-client and API
-rollback windows close.
+While Shared Chat Database remains behind its feature switch, the API publishes
+`chatThreadMessageCreated` and `threadListChanged` to exactly one channel for
+each user-org identity. Feature-enabled identities receive them on the new
+user-org channel; feature-disabled identities continue to receive them on the
+existing user channel. This keeps the experimental and existing paths explicit
+without a dual-publication compatibility bridge.
