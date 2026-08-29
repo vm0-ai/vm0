@@ -1,4 +1,8 @@
 import { command } from "ccstate";
+import {
+  runStatusSchema,
+  type RunStatus,
+} from "@okouai/api-contracts/contracts/runs";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
@@ -21,6 +25,7 @@ import {
 } from "./chat-first-assistant-event-metric.service";
 import { chatThreadForRunFromDb } from "./chat-thread.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
+import { lockChatQueueThread } from "./chat-event-queue.service";
 
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
@@ -41,6 +46,13 @@ export interface MaterializedChatProjection {
     readonly acknowledgedAt: number;
   } | null;
 }
+
+type RunOutputMaterializationResult =
+  | {
+      readonly outcome: "accepted";
+      readonly chatProjection: MaterializedChatProjection | null;
+    }
+  | { readonly outcome: "ignored-timeout" };
 
 export class AgentEventRunNotFoundError extends Error {
   constructor(runId: string) {
@@ -251,108 +263,111 @@ async function lockAgentRunForOutputMaterialization(
   tx: Tx,
   runId: string,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<RunStatus> {
   const [run] = await tx
-    .select({ id: agentRuns.id })
+    .select({ status: agentRuns.status })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
-    .for("key share")
+    .for("update")
     .limit(1);
   signal.throwIfAborted();
   if (!run) {
     throw new AgentEventRunNotFoundError(runId);
   }
+  return runStatusSchema.parse(run.status);
 }
 
-async function materializeRunOutputEvents(
-  writeDb: Db,
-  payload: EventConsumerPayload,
+type OutputMaterializationTransactionResult =
+  | RunOutputMaterializationResult
+  | { readonly outcome: "retry" };
+
+async function materializeAdmittedRunOutputEvents(
+  args: {
+    readonly tx: Tx;
+    readonly payload: EventConsumerPayload;
+    readonly thread: MaterializedChatProjection["thread"] | null;
+    readonly latestResult: OutputCandidate | null;
+    readonly latestOutput: OutputCandidate | null;
+  },
   signal: AbortSignal,
-): Promise<MaterializedChatProjection | null> {
-  const latestResult = latestCandidate(payload.events, resultText);
-  const latestOutput = latestCandidate(payload.events, callbackOutputText);
-
-  return await writeDb.transaction(async (tx) => {
-    await lockRunOutputProjection(tx, payload.runId, signal);
-    await lockAgentRunForOutputMaterialization(tx, payload.runId, signal);
-
-    const thread = await chatThreadForRunFromDb(tx, payload.runId);
-    signal.throwIfAborted();
-
-    let insertedRowCount = 0;
-    let shouldAttemptFirstAssistantEventClaim = false;
-    if (thread) {
-      const insertion = await insertRunOutputChatEvents(
-        tx,
-        payload,
-        thread,
-        signal,
-      );
-      insertedRowCount = insertion.insertedRowCount;
-      shouldAttemptFirstAssistantEventClaim =
-        insertion.shouldAttemptFirstAssistantEventClaim;
-    }
-
-    if (latestResult !== null || latestOutput !== null) {
-      const updatedAt = nowDate();
-      await tx
-        .insert(runOutputMaterializations)
-        .values({
-          runId: payload.runId,
-          latestResultSequence: latestResult?.sequenceNumber,
-          latestResultText: latestResult?.content,
-          latestOutputSequence: latestOutput?.sequenceNumber,
-          latestOutputText: latestOutput?.content,
-          updatedAt,
-        })
-        .onConflictDoUpdate({
-          target: runOutputMaterializations.runId,
-          set: {
-            latestResultSequence:
-              latestResult === null
-                ? runOutputMaterializations.latestResultSequence
-                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.sequenceNumber} else ${runOutputMaterializations.latestResultSequence} end`,
-            latestResultText:
-              latestResult === null
-                ? runOutputMaterializations.latestResultText
-                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.content} else ${runOutputMaterializations.latestResultText} end`,
-            latestOutputSequence:
-              latestOutput === null
-                ? runOutputMaterializations.latestOutputSequence
-                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.sequenceNumber} else ${runOutputMaterializations.latestOutputSequence} end`,
-            latestOutputText:
-              latestOutput === null
-                ? runOutputMaterializations.latestOutputText
-                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.content} else ${runOutputMaterializations.latestOutputText} end`,
-            updatedAt,
-          },
-        });
-    }
-    signal.throwIfAborted();
-
-    if (!thread) {
-      return null;
-    }
-
-    const acknowledgedAt = nowDate();
-    const firstAssistantClaimWhere = and(
-      eq(agentRuns.id, payload.runId),
-      isNotNull(agentRuns.apiStartedAt),
-      isNull(agentRuns.firstAssistantEventAcknowledgedAt),
+): Promise<RunOutputMaterializationResult> {
+  const { tx, payload, thread, latestResult, latestOutput } = args;
+  let insertedRowCount = 0;
+  let shouldAttemptFirstAssistantEventClaim = false;
+  if (thread) {
+    const insertion = await insertRunOutputChatEvents(
+      tx,
+      payload,
+      thread,
+      signal,
     );
-    if (!firstAssistantClaimWhere) {
-      throw new Error("First assistant acknowledgement predicate is empty");
-    }
-    const [firstAssistantClaim] =
-      insertedRowCount > 0 && shouldAttemptFirstAssistantEventClaim
-        ? await writeRunMetadataInTransaction(tx, {
-            patch: { firstAssistantEventAcknowledgedAt: acknowledgedAt },
-            where: firstAssistantClaimWhere,
-          })
-        : [];
-    signal.throwIfAborted();
+    insertedRowCount = insertion.insertedRowCount;
+    shouldAttemptFirstAssistantEventClaim =
+      insertion.shouldAttemptFirstAssistantEventClaim;
+  }
 
-    return {
+  if (latestResult !== null || latestOutput !== null) {
+    const updatedAt = nowDate();
+    await tx
+      .insert(runOutputMaterializations)
+      .values({
+        runId: payload.runId,
+        latestResultSequence: latestResult?.sequenceNumber,
+        latestResultText: latestResult?.content,
+        latestOutputSequence: latestOutput?.sequenceNumber,
+        latestOutputText: latestOutput?.content,
+        updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: runOutputMaterializations.runId,
+        set: {
+          latestResultSequence:
+            latestResult === null
+              ? runOutputMaterializations.latestResultSequence
+              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.sequenceNumber} else ${runOutputMaterializations.latestResultSequence} end`,
+          latestResultText:
+            latestResult === null
+              ? runOutputMaterializations.latestResultText
+              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.content} else ${runOutputMaterializations.latestResultText} end`,
+          latestOutputSequence:
+            latestOutput === null
+              ? runOutputMaterializations.latestOutputSequence
+              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.sequenceNumber} else ${runOutputMaterializations.latestOutputSequence} end`,
+          latestOutputText:
+            latestOutput === null
+              ? runOutputMaterializations.latestOutputText
+              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.content} else ${runOutputMaterializations.latestOutputText} end`,
+          updatedAt,
+        },
+      });
+  }
+  signal.throwIfAborted();
+
+  if (!thread) {
+    return { outcome: "accepted", chatProjection: null };
+  }
+
+  const acknowledgedAt = nowDate();
+  const firstAssistantClaimWhere = and(
+    eq(agentRuns.id, payload.runId),
+    isNotNull(agentRuns.apiStartedAt),
+    isNull(agentRuns.firstAssistantEventAcknowledgedAt),
+  );
+  if (!firstAssistantClaimWhere) {
+    throw new Error("First assistant acknowledgement predicate is empty");
+  }
+  const [firstAssistantClaim] =
+    insertedRowCount > 0 && shouldAttemptFirstAssistantEventClaim
+      ? await writeRunMetadataInTransaction(tx, {
+          patch: { firstAssistantEventAcknowledgedAt: acknowledgedAt },
+          where: firstAssistantClaimWhere,
+        })
+      : [];
+  signal.throwIfAborted();
+
+  return {
+    outcome: "accepted",
+    chatProjection: {
       thread,
       insertedRowCount,
       firstAssistantAcknowledgement:
@@ -363,8 +378,58 @@ async function materializeRunOutputEvents(
               apiStartedAt: firstAssistantClaim.apiStartedAt.getTime(),
               acknowledgedAt: acknowledgedAt.getTime(),
             },
-    };
-  });
+    },
+  };
+}
+
+async function materializeRunOutputEvents(
+  writeDb: Db,
+  payload: EventConsumerPayload,
+  signal: AbortSignal,
+): Promise<RunOutputMaterializationResult> {
+  const latestResult = latestCandidate(payload.events, resultText);
+  const latestOutput = latestCandidate(payload.events, callbackOutputText);
+
+  let expectedThread = await chatThreadForRunFromDb(writeDb, payload.runId);
+  signal.throwIfAborted();
+  while (true) {
+    const result: OutputMaterializationTransactionResult =
+      await writeDb.transaction(async (tx) => {
+        await lockRunOutputProjection(tx, payload.runId, signal);
+        const threadLocked = expectedThread
+          ? await lockChatQueueThread(tx, expectedThread.chatThreadId)
+          : false;
+        signal.throwIfAborted();
+        const status = await lockAgentRunForOutputMaterialization(
+          tx,
+          payload.runId,
+          signal,
+        );
+        if (status === "timeout") {
+          return { outcome: "ignored-timeout" };
+        }
+
+        const thread = await chatThreadForRunFromDb(tx, payload.runId);
+        signal.throwIfAborted();
+        if (thread?.chatThreadId !== expectedThread?.chatThreadId) {
+          return { outcome: "retry" };
+        }
+        if (expectedThread && !threadLocked) {
+          throw new Error("Agent run retained a missing chat thread");
+        }
+
+        return await materializeAdmittedRunOutputEvents(
+          { tx, payload, thread, latestResult, latestOutput },
+          signal,
+        );
+      });
+    signal.throwIfAborted();
+    if (result.outcome !== "retry") {
+      return result;
+    }
+    expectedThread = await chatThreadForRunFromDb(writeDb, payload.runId);
+    signal.throwIfAborted();
+  }
 }
 
 export const materializeRunOutputEvents$ = command(
@@ -372,7 +437,7 @@ export const materializeRunOutputEvents$ = command(
     { set },
     payload: EventConsumerPayload,
     signal: AbortSignal,
-  ): Promise<MaterializedChatProjection | null> => {
+  ): Promise<RunOutputMaterializationResult> => {
     return await materializeRunOutputEvents(set(writeDb$), payload, signal);
   },
 );

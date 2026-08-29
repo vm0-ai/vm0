@@ -54,6 +54,20 @@ Cancellation is visible immediately, and heartbeat timeout records an unknown
 consumer state, but neither path releases a reservation. Cooperative Guest
 completion and Runner post-exit completion are the existing quiescence signals.
 
+### Post-timeout Webhook Admission
+
+While timeout still represents an uncertain consumer state, runtime mutation
+webhooks stop creating new canonical work for that run. Heartbeat returns `404`,
+event batches retain their existing sequence acknowledgement but are ignored,
+and new checkpoint or checkpoint-history preparation requests return `400`.
+The existing completed Pi checkpoint exact-retry behavior is unchanged.
+
+Usage events, model-usage observations, and telemetry remain accepted after
+timeout because they report work that may already have happened. Storage and
+firewall admission, together with the atomic timeout-versus-completion boundary,
+are separate rollout stages; timeout alone still does not release an active
+input delivery.
+
 Codex execution timeout and cancellation first allow an in-flight `turn/steer`
 to settle within the bounded sink window. A successful response still persists
 its receipt. If the response remains pending, Guest drops the non-reusable

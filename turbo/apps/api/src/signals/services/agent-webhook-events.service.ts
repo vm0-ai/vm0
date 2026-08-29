@@ -209,6 +209,24 @@ export const receiveAgentEvents$ = command(
       };
     }
 
+    if (projectionResult.value.outcome === "ignored-timeout") {
+      L.debug("Ignored events for timed-out run", {
+        runId: payload.runId,
+        status: "timeout",
+        eventCount: payload.events.length,
+        ...range,
+      });
+      return {
+        response: {
+          status: 200 as const,
+          body: {
+            received: payload.events.length,
+            ...range,
+          },
+        },
+      };
+    }
+
     L.debug(
       `Events ${range.firstSequence}-${range.lastSequence} accepted for run ${payload.runId} (${now() - startedAt}ms)`,
     );
@@ -222,7 +240,7 @@ export const receiveAgentEvents$ = command(
       },
       acceptedEvents: {
         payload,
-        chatProjection: projectionResult.value,
+        chatProjection: projectionResult.value.chatProjection,
       },
     };
   },
