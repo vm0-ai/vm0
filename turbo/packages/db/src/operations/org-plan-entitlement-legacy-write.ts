@@ -5,6 +5,7 @@ import { orgPlanEntitlementLegacyColumns } from "../schema/org-plan-entitlement"
 /**
  * #30162 old-database/new-application INSERT compatibility.
  *
+ * Surface: DB/API old/new schema skew, observed up to approximately 102 minutes.
  * Drizzle includes every mapped column in an INSERT target list, including
  * omitted nullable columns as DEFAULT. Keep active inserts on this legacy-only
  * projection until #28368 records that the pre-expand schema can no longer be

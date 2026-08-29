@@ -2,6 +2,7 @@ ALTER TABLE "org_plan_entitlements" ADD COLUMN "restricted_built_in_models" bool
 
 -- Temporary #30162 expand/mirror bridge. Keep it through the later canonical
 -- reader/writer switch, bounded backfill, and rollback drain owned by #28368.
+-- Surface: DB/API old/new schema skew, observed up to approximately 102 minutes.
 -- PostgreSQL applies the restricted_vm0_models default before BEFORE INSERT,
 -- so omission and an explicit default-valued legacy input are indistinguishable.
 -- Deterministic insert policy: a non-NULL canonical input wins; otherwise the
