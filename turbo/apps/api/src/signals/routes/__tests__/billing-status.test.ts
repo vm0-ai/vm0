@@ -431,7 +431,7 @@ describe("GET /api/billing/status", () => {
       memberInvitationAllowed: false,
       autoRechargeAllowed: false,
       supportByok: false,
-      restrictedVm0Models: true,
+      restrictedVm0Models: false,
       videoGenerationAllowed: false,
       workflowWebhookAutomationAllowed: true,
     });
@@ -453,7 +453,7 @@ describe("GET /api/billing/status", () => {
     expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
-    expect(response.body.restrictedVm0Models).toBeTruthy();
+    expect(response.body.restrictedVm0Models).toBeFalsy();
     expect(response.body.videoGenerationAllowed).toBeFalsy();
     expect(response.body.workflowWebhookAutomationAllowed).toBeTruthy();
     expect(response.body.concurrencyLimit).toBe(3);

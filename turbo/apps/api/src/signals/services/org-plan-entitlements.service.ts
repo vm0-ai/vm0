@@ -1,6 +1,6 @@
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import type { OrgPlanEntitlementSourceMetadata } from "@okouai/db/jsonb-contracts/org-plan-entitlement";
-import { orgPlanEntitlementsLegacyWrites } from "@okouai/db/operations/org-plan-entitlement-legacy-write";
+import { orgPlanEntitlementsCanonicalWrites } from "@okouai/db/operations/org-plan-entitlement-canonical-write";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
@@ -108,7 +108,7 @@ export async function upsertOrgPlanEntitlement(
     memberInvitationAllowed: limits.memberInvitationAllowed,
     autoRechargeAllowed: limits.autoRechargeAllowed,
     supportByok: limits.supportByok,
-    restrictedVm0Models: limits.restrictedVm0Models,
+    restrictedBuiltInModels: limits.restrictedBuiltInModels,
     videoGenerationAllowed: limits.videoGenerationAllowed,
     workflowWebhookTriggerAllowed: limits.workflowWebhookAutomationAllowed,
     audioLifetimeLimit: limits.audioLifetimeLimit,
@@ -124,10 +124,10 @@ export async function upsertOrgPlanEntitlement(
     updatedAt,
   };
   await tx
-    .insert(orgPlanEntitlementsLegacyWrites)
+    .insert(orgPlanEntitlementsCanonicalWrites)
     .values(values)
     .onConflictDoUpdate({
-      target: orgPlanEntitlementsLegacyWrites.orgId,
+      target: orgPlanEntitlementsCanonicalWrites.orgId,
       set: {
         planKey: values.planKey,
         planRank: values.planRank,
@@ -140,7 +140,7 @@ export async function upsertOrgPlanEntitlement(
         memberInvitationAllowed: limits.memberInvitationAllowed,
         autoRechargeAllowed: values.autoRechargeAllowed,
         supportByok: values.supportByok,
-        restrictedVm0Models: values.restrictedVm0Models,
+        restrictedBuiltInModels: values.restrictedBuiltInModels,
         videoGenerationAllowed: values.videoGenerationAllowed,
         workflowWebhookTriggerAllowed: values.workflowWebhookTriggerAllowed,
         audioLifetimeLimit: values.audioLifetimeLimit,

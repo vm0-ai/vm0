@@ -13,14 +13,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { OrgPlanEntitlementSourceMetadata } from "../jsonb-contracts/org-plan-entitlement";
 
-/**
- * Legacy insert projection for the org plan capability snapshot.
- *
- * Keep this factory free of expand-only columns while pre-expand application
- * versions remain deployable. Drizzle emits every mapped column in INSERT, so
- * active inserts use the compatibility table built from this projection.
- */
-export function orgPlanEntitlementLegacyColumns() {
+function orgPlanEntitlementColumnsBeforeModelRestriction() {
   return {
     orgId: text("org_id").primaryKey(),
     planKey: text("plan_key").notNull(),
@@ -42,9 +35,11 @@ export function orgPlanEntitlementLegacyColumns() {
       .notNull()
       .default(false),
     supportByok: boolean("support_byok").notNull().default(false),
-    restrictedVm0Models: boolean("restricted_vm0_models")
-      .notNull()
-      .default(true),
+  };
+}
+
+function orgPlanEntitlementColumnsAfterModelRestriction() {
+  return {
     videoGenerationAllowed: boolean("video_generation_allowed")
       .notNull()
       .default(false),
@@ -74,6 +69,42 @@ export function orgPlanEntitlementLegacyColumns() {
   };
 }
 
+function legacyModelRestrictionColumn() {
+  return boolean("restricted_vm0_models").notNull().default(true);
+}
+
+function canonicalModelRestrictionColumn() {
+  return boolean("restricted_built_in_models");
+}
+
+/**
+ * Previous-release insert projection used by mixed-version statement tests.
+ *
+ * Active application writers use the canonical projection below. This legacy
+ * shape remains available only to prove that rollback statements stay valid.
+ */
+export function orgPlanEntitlementLegacyColumns() {
+  return {
+    ...orgPlanEntitlementColumnsBeforeModelRestriction(),
+    restrictedVm0Models: legacyModelRestrictionColumn(),
+    ...orgPlanEntitlementColumnsAfterModelRestriction(),
+  };
+}
+
+/**
+ * Canonical insert projection for the org plan capability snapshot.
+ *
+ * Drizzle emits every mapped column in an INSERT target list, so active writes
+ * use this projection to exclude the legacy compatibility column.
+ */
+export function orgPlanEntitlementCanonicalColumns() {
+  return {
+    ...orgPlanEntitlementColumnsBeforeModelRestriction(),
+    restrictedBuiltInModels: canonicalModelRestrictionColumn(),
+    ...orgPlanEntitlementColumnsAfterModelRestriction(),
+  };
+}
+
 /**
  * Current org plan capability snapshot.
  *
@@ -83,9 +114,10 @@ export function orgPlanEntitlementLegacyColumns() {
 export const orgPlanEntitlements = pgTable(
   "org_plan_entitlements",
   {
-    ...orgPlanEntitlementLegacyColumns(),
-    // Expand-only mapping; active application contracts remain legacy.
-    restrictedBuiltInModels: boolean("restricted_built_in_models"),
+    ...orgPlanEntitlementColumnsBeforeModelRestriction(),
+    restrictedVm0Models: legacyModelRestrictionColumn(),
+    ...orgPlanEntitlementColumnsAfterModelRestriction(),
+    restrictedBuiltInModels: canonicalModelRestrictionColumn(),
   },
   (table) => {
     return [

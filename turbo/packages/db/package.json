@@ -20,9 +20,9 @@
       "import": "./src/operations/model-provider-built-in-identity.ts",
       "types": "./src/operations/model-provider-built-in-identity.ts"
     },
-    "./operations/org-plan-entitlement-legacy-write": {
-      "import": "./src/operations/org-plan-entitlement-legacy-write.ts",
-      "types": "./src/operations/org-plan-entitlement-legacy-write.ts"
+    "./operations/org-plan-entitlement-canonical-write": {
+      "import": "./src/operations/org-plan-entitlement-canonical-write.ts",
+      "types": "./src/operations/org-plan-entitlement-canonical-write.ts"
     },
     "./types": {
       "import": "./src/types.ts",
