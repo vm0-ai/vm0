@@ -736,6 +736,10 @@ describe("chat composer models", () => {
           `chatThreadWorkflowsChanged:${THREAD_ID}`,
         ),
       ).toBeTruthy();
+      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
     });
     await initialWorkflowsRequested.promise;
     const thread = await screen.findByLabelText("Chat thread");
