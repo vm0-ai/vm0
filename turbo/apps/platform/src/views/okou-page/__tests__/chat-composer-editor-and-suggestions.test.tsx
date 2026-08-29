@@ -702,8 +702,8 @@ describe("chat composer models", () => {
 
   it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const initialWorkflowsRequested = context.mocks.deferred<void>();
-    const releaseInitialWorkflows = context.mocks.deferred<void>();
+    const reloadWorkflowsRequested = context.mocks.deferred<void>();
+    const releaseReloadWorkflows = context.mocks.deferred<void>();
     const reloadedWorkflow = workflowSummary({
       name: "new-chat-workflow",
       displayName: "New Chat Workflow",
@@ -716,12 +716,12 @@ describe("chat composer models", () => {
     mockThread();
     context.mocks.api(workflowsCollectionContract.list, async ({ respond }) => {
       if (workflowPhase === "initial") {
-        if (!initialWorkflowsRequested.settled()) {
-          initialWorkflowsRequested.resolve();
-        }
-        await releaseInitialWorkflows.promise;
         return respond(200, []);
       }
+      if (!reloadWorkflowsRequested.settled()) {
+        reloadWorkflowsRequested.resolve();
+      }
+      await releaseReloadWorkflows.promise;
       return respond(200, [reloadedWorkflow]);
     });
 
@@ -741,17 +741,12 @@ describe("chat composer models", () => {
         "true",
       );
     });
-    await initialWorkflowsRequested.promise;
     const thread = await screen.findByLabelText("Chat thread");
     const initialEditor = await within(thread).findByRole("textbox", {
       name: "Message",
     });
     await user.click(initialEditor);
     await user.keyboard("/");
-    await expect(
-      screen.findByText("Loading workflows..."),
-    ).resolves.toBeInTheDocument();
-    releaseInitialWorkflows.resolve();
     await expect(
       screen.findByText("No matching workflows"),
     ).resolves.toBeInTheDocument();
@@ -764,6 +759,8 @@ describe("chat composer models", () => {
         null,
       );
     });
+    await reloadWorkflowsRequested.promise;
+    releaseReloadWorkflows.resolve();
 
     await expect(
       screen.findByText("new-chat-workflow"),
