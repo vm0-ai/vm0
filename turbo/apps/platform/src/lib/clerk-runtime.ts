@@ -5,9 +5,7 @@ import {
 import type { BrowserClerk, EnvironmentResource } from "@clerk/shared/types";
 import type { ClerkUIConstructor } from "@clerk/shared/ui";
 import { createDeferredPromise } from "../signals/utils.ts";
-import { CLERK_JS_VERSION } from "./clerk-versions.ts";
-
-const CLERK_UI_VERSION = "1.27.0";
+import { CLERK_JS_VERSION, CLERK_UI_VERSION } from "./clerk-versions.ts";
 
 interface ClerkRuntimeOptions {
   readonly publishableKey: string;
