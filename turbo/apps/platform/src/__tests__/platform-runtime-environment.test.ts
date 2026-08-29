@@ -66,6 +66,14 @@ const context = testContext();
 
 function setBrowserUrl(url: string, apiOriginMarker?: string | null): void {
   context.mocks.browser.url(url, { apiOriginMarker });
+  const hostname = new URL(url).hostname;
+  const production =
+    hostname === "vm0.ai" ||
+    hostname.endsWith(".vm0.ai") ||
+    isOkouProductionHostname(hostname);
+  document.documentElement.dataset.vm0ClerkPublishableKey = production
+    ? PRODUCTION_CLERK_KEY
+    : PREVIEW_CLERK_KEY;
 }
 
 function installImmediateIdleCallback(): void {

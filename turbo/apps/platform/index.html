@@ -9,18 +9,47 @@
     <title>AI Agents for Real Work — Your Trustworthy AI Teammate | VM0</title>
     <meta charset="UTF-8" />
     <meta name="vm0-api-origin" content="" />
-    <script
-      defer=""
-      crossorigin="anonymous"
-      data-clerk-js-script=""
-      data-clerk-publishable-key="%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%"
-      data-vm0-clerk-production-publishable-key="%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
-      data-vm0-clerk-production-script-url="__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
-      data-vm0-clerk-satellite-script-url="__VM0_CLERK_SATELLITE_SCRIPT_URL__"
-      onerror="this.remove()"
-      src="__VM0_CLERK_PREVIEW_SCRIPT_URL__"
-      type="text/javascript"
-    ></script>
+    <script data-vm0-clerk-bootstrap="">
+      (function () {
+        var hostname = location.hostname.toLowerCase();
+        var production =
+          hostname === "vm0.ai" ||
+          hostname.endsWith(".vm0.ai") ||
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
+        var satellite =
+          hostname === "app.okou.ai" || hostname.endsWith(".app.okou.ai");
+        var publishableKey = production
+          ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
+          : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
+        var scriptUrl = satellite
+          ? "__VM0_CLERK_SATELLITE_SCRIPT_URL__"
+          : production
+            ? "__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
+            : "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
+
+        document.documentElement.setAttribute(
+          "data-vm0-clerk-publishable-key",
+          publishableKey,
+        );
+
+        var script = document.createElement("script");
+        script.async = false;
+        script.defer = true;
+        script.crossOrigin = "anonymous";
+        script.dataset.clerkJsScript = "";
+        script.dataset.clerkPublishableKey = publishableKey;
+        if (satellite) {
+          script.dataset.clerkDomain = "app.okou.ai";
+        }
+        script.onerror = function () {
+          script.remove();
+        };
+        script.src = scriptUrl;
+        script.type = "text/javascript";
+        document.head.appendChild(script);
+      })();
+    </script>
     <style>
       body {
         margin: 0;

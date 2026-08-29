@@ -28,9 +28,6 @@ function matchesSelector(tagName, attributes, selector) {
   if (selector === tagName) {
     return true;
   }
-  if (selector === "script[data-clerk-js-script]") {
-    return tagName === "script" && attributes.has("data-clerk-js-script");
-  }
   const match = /^(meta|link)\[(name|property|rel)(\^?=)"([^"]+)"\]$/u.exec(
     selector,
   );
@@ -96,34 +93,6 @@ function rewritePairedTag(html, tagName, handler) {
   });
 }
 
-function rewriteClerkScriptOpeningTag(html, handler) {
-  const marker = 'data-clerk-js-script=""';
-  const markerIndex = html.indexOf(marker);
-  if (markerIndex === -1) {
-    return html;
-  }
-  const tagStart = html.lastIndexOf("<", markerIndex);
-  const tagEnd = html.indexOf(">", markerIndex);
-  if (tagStart === -1 || tagEnd === -1) {
-    throw new Error("Invalid Clerk script fixture");
-  }
-  const tag = html.slice(tagStart, tagEnd + 1);
-  const attributes = parseAttributes(tag);
-  if (!matchesSelector("script", attributes, "script[data-clerk-js-script]")) {
-    throw new Error("Invalid Clerk script selector fixture");
-  }
-  const state = applyHandler({ attributes, handler });
-  if (state.removed || state.appendedContent || state.innerContent) {
-    throw new Error("Unsupported Clerk script rewrite operation");
-  }
-  const tagNameEnd = tag.search(/\s/u);
-  if (tagNameEnd === -1) {
-    throw new Error("Invalid Clerk script opening tag");
-  }
-  const rewrittenTag = `${tag.slice(0, tagNameEnd)}${serializeAttributes(state.attributes)}>`;
-  return `${html.slice(0, tagStart)}${rewrittenTag}${html.slice(tagEnd + 1)}`;
-}
-
 function rewriteVoidTag(html, tagName, selector, handler) {
   const pattern =
     tagName === "meta"
@@ -147,9 +116,6 @@ function rewriteVoidTag(html, tagName, selector, handler) {
 function rewriteHtml(html, selector, handler) {
   if (selector === "html" || selector === "head" || selector === "title") {
     return rewritePairedTag(html, selector, handler);
-  }
-  if (selector === "script[data-clerk-js-script]") {
-    return rewriteClerkScriptOpeningTag(html, handler);
   }
   if (selector.startsWith("meta[")) {
     return rewriteVoidTag(html, "meta", selector, handler);
@@ -223,6 +189,7 @@ const builtIndexTemplate = indexTemplate
   .replaceAll("__VM0_CLERK_PREVIEW_SCRIPT_URL__", previewClerkScriptUrl)
   .replaceAll("__VM0_CLERK_PRODUCTION_SCRIPT_URL__", productionClerkScriptUrl)
   .replaceAll("__VM0_CLERK_SATELLITE_SCRIPT_URL__", satelliteClerkScriptUrl);
+const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
 const vm0Description =
   "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
 const okouDescription =
@@ -291,9 +258,7 @@ function tagAttribute(html, tagName, selectorAttribute, selectorValue, target) {
       ? /<meta\b[^>]*>/giu
       : tagName === "link"
         ? /<link\b[^>]*>/giu
-        : tagName === "script"
-          ? /<script\b[^>]*>/giu
-          : /<img\b[^>]*>/giu;
+        : /<img\b[^>]*>/giu;
   for (const match of html.matchAll(pattern)) {
     const attributes = parseAttributes(match[0]);
     if (attributes.get(selectorAttribute) === selectorValue) {
@@ -330,14 +295,15 @@ function htmlAttribute(html, attributeName) {
   return tag ? (parseAttributes(tag).get(attributeName) ?? null) : null;
 }
 
-function clerkAttribute(html, target) {
-  return tagAttribute(html, "script", "data-clerk-js-script", "", target);
-}
-
-function clerkScriptCount(html) {
-  return [...html.matchAll(/<script\b[^>]*>/giu)].filter((match) => {
-    return parseAttributes(match[0]).has("data-clerk-js-script");
-  }).length;
+function clerkBootstrap(html) {
+  const bootstrap =
+    /<script\b[^>]*data-vm0-clerk-bootstrap=""[^>]*>[\s\S]*?<\/script>/iu.exec(
+      html,
+    )?.[0];
+  if (!bootstrap) {
+    throw new Error("Clerk bootstrap script is unavailable");
+  }
+  return bootstrap;
 }
 
 async function requestAppPage(origin, apiOrigin = "") {
@@ -398,13 +364,7 @@ assert.equal(
   tagAttribute(vm0Page.html, "img", "alt", "", "src"),
   "https://static.vm0.io/platform/icon.svg",
 );
-assert.equal(clerkScriptCount(vm0Page.html), 1);
-assert.equal(
-  clerkAttribute(vm0Page.html, "data-clerk-publishable-key"),
-  productionClerkPublishableKey,
-);
-assert.equal(clerkAttribute(vm0Page.html, "src"), productionClerkScriptUrl);
-assert.equal(clerkAttribute(vm0Page.html, "data-clerk-domain"), null);
+assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
 
 const okouPage = await requestAppPage("https://app.okou.ai");
 assert.equal(
@@ -452,16 +412,7 @@ assert.equal(
   tagAttribute(okouPage.html, "img", "alt", "", "src"),
   "https://static.okou.io/platform/icon.svg",
 );
-assert.equal(clerkScriptCount(okouPage.html), 1);
-assert.equal(
-  clerkAttribute(okouPage.html, "data-clerk-publishable-key"),
-  productionClerkPublishableKey,
-);
-assert.equal(clerkAttribute(okouPage.html, "src"), satelliteClerkScriptUrl);
-assert.equal(
-  clerkAttribute(okouPage.html, "data-clerk-domain"),
-  clerkSatelliteDomain,
-);
+assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
 const okouPreview = await requestAppPage(
   "https://3508a2f5.okou-app.pages.dev",
@@ -476,17 +427,7 @@ assert.equal(
   metaContent(okouPreview.html, "name", "vm0-api-origin"),
   previewOrigin,
 );
-assert.equal(clerkScriptCount(okouPreview.html), 1);
-assert.equal(
-  clerkAttribute(okouPreview.html, "data-clerk-publishable-key"),
-  previewClerkPublishableKey,
-);
-assert.equal(clerkAttribute(okouPreview.html, "src"), previewClerkScriptUrl);
-assert.equal(clerkAttribute(okouPreview.html, "data-clerk-domain"), null);
-assert.equal(clerkAttribute(okouPreview.html, "defer"), "");
-assert.equal(clerkAttribute(okouPreview.html, "crossorigin"), "anonymous");
-assert.equal(clerkAttribute(okouPreview.html, "onerror"), "this.remove()");
-assert.equal(clerkAttribute(okouPreview.html, "type"), "text/javascript");
+assert.equal(clerkBootstrap(okouPreview.html), expectedClerkBootstrap);
 assert.equal(okouPreview.html.includes("/npm/@clerk/ui@"), false);
 
 const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");
