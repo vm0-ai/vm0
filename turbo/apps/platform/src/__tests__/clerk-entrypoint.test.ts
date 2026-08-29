@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import indexHtml from "../../index.html?raw";
-import { transformClerkCoreScriptUrls } from "../../scripts/clerk-html.ts";
+import { transformClerkCoreScriptUrls } from "../../scripts/clerk-html-transform.ts";
 import { CLERK_JS_VERSION } from "../lib/clerk-versions.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 import { mockedClerk, mockedClerkLoad } from "./mock-auth.ts";
