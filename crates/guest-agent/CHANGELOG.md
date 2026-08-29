@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.82.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.17...guest-agent-v0.82.18) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat tool activity ([#30215](https://github.com/vm0-ai/vm0/issues/30215)) ([c475f9e](https://github.com/vm0-ai/vm0/commit/c475f9e59935ec292acd8b35ceb66e1f59708866))
+
 ## [0.82.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.16...guest-agent-v0.82.17) (2026-08-29)
 
 ## [0.82.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.15...guest-agent-v0.82.16) (2026-08-28)

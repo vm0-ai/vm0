@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.601.3](https://github.com/vm0-ai/vm0/compare/core-v8.601.2...core-v8.601.3) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat tool activity ([#30215](https://github.com/vm0-ai/vm0/issues/30215)) ([c475f9e](https://github.com/vm0-ai/vm0/commit/c475f9e59935ec292acd8b35ceb66e1f59708866))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.2
+
 ## [8.601.2](https://github.com/vm0-ai/vm0/compare/core-v8.601.1...core-v8.601.2) (2026-08-29)
 
 

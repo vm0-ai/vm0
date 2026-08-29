@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.297.3](https://github.com/vm0-ai/vm0/compare/cli-v9.297.2...cli-v9.297.3) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat tool activity ([#30215](https://github.com/vm0-ai/vm0/issues/30215)) ([c475f9e](https://github.com/vm0-ai/vm0/commit/c475f9e59935ec292acd8b35ceb66e1f59708866))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.2
+    * @okouai/core bumped to 8.601.3
+
 ## [9.297.2](https://github.com/vm0-ai/vm0/compare/cli-v9.297.1...cli-v9.297.2) (2026-08-29)
 
 
