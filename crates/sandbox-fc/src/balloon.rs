@@ -306,11 +306,12 @@ async fn tick(client: &ApiClient, max_inflate: u32, tick_count: u64) {
     // Deflate decision: use available_memory (includes reclaimable cache).
     //
     // Inflation is deliberately gradual to avoid creating pressure, but
-    // pressure relief must not be proportional to the retained balloon size.
-    // A deficit-sized step every five seconds can otherwise take minutes from
-    // a highly inflated Guest and stall control work together with workload
-    // reclaim. Request the full active allocation back in one policy action;
-    // Firecracker still owns the physical deflation progress.
+    // pressure relief must not depend on physical convergence before the
+    // controller can request more. An actual-relative partial target can stay
+    // pinned when Firecracker's actual size stalls, retaining most of the
+    // balloon while control work competes with workload reclaim. Request the
+    // full active allocation back in one policy action; Firecracker still owns
+    // the physical deflation progress.
     if let Some(available_mib) = available_mib
         && available_mib < PRESSURE_AVAILABLE_MIB
     {
@@ -665,8 +666,9 @@ mod tests {
     #[tokio::test]
     async fn tick_releases_high_retention_near_pressure_boundary() {
         // A 4-GiB Guest can retain 3584 MiB. Just below the 192-MiB pressure
-        // boundary, the retired deficit-sized policy released only 65 MiB per
-        // five-second tick and could take minutes to reach target zero.
+        // boundary, the retired policy requested only partial relief. When
+        // physical actual stalled behind that pending target, its
+        // actual-relative candidate could not continue toward zero.
         let stats = r#"{"target_mib":3584,"actual_mib":3584,"target_pages":917504,"actual_pages":917504,"free_memory":52428800,"available_memory":200278016}"#;
         let patch = run_tick_with_mock(stats, 3584)
             .await
