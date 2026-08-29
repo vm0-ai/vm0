@@ -70,6 +70,11 @@ import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-membe
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
 import { validateOrgPlanEntitlementRestrictionExpansion } from "./test-org-plan-entitlement-restriction-expansion";
 import {
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION,
+  validateOrgPlanEntitlementRestrictionBackfill,
+  validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema,
+} from "./test-org-plan-entitlement-restriction-backfill";
+import {
   installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema,
   ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
   ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION,
@@ -11000,6 +11005,7 @@ async function main(): Promise<void> {
     await validateWorkflowCompatibilityViews();
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -11047,6 +11053,13 @@ async function main(): Promise<void> {
       ),
       "utf8",
     );
+    const orgPlanEntitlementRestrictionBackfillMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
     await backupMigrations();
     migrationsBackedUp = true;
     await generateFreshMigrations();
@@ -11059,6 +11072,10 @@ async function main(): Promise<void> {
     await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
       dbUrl2,
       orgPlanEntitlementRestrictionMigrationSql,
+    );
+    await validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionBackfillMigrationSql,
     );
     await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl2);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
@@ -11105,7 +11122,7 @@ async function main(): Promise<void> {
       );
       console.log("   ✅ Agent-run model-key canonical schemas match");
       console.log(
-        "   ✅ Org plan restriction expansion and mirror invariants match",
+        "   ✅ Org plan restriction expansion, backfill, and mirror invariants match",
       );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
