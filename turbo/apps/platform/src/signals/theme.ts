@@ -3,7 +3,6 @@ import {
   COLOR_THEMES,
   type ColorTheme,
   type ThemePreference,
-  type UserPreferencesResponse,
 } from "@okouai/api-contracts/contracts/user-preferences";
 import { localStorageSignals } from "./external/local-storage.ts";
 import { clerk$ } from "./auth.ts";
@@ -94,40 +93,12 @@ export const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
   set(colorThemeStorageSet$, colorTheme);
 });
 
-type CurrentAppearancePreferences = UserPreferencesResponse & {
-  readonly theme: ThemePreference | null;
-  readonly colorTheme: ColorTheme | null;
-};
-
 /**
- * New web/app -> old API compatibility for the GA theme preference. Keep the
- * theme local while an API from before #30051 is serving or retained for
- * rollback. Remove this guard and its page test after that gate closes in
- * #30076. The non-GA color theme does not use an independent update fallback.
- */
-function hasServerAppearancePreferences(
-  preferences: UserPreferencesResponse,
-): preferences is CurrentAppearancePreferences {
-  const hasTheme = preferences.theme !== undefined;
-  const hasColorTheme = preferences.colorTheme !== undefined;
-  if (hasTheme !== hasColorTheme) {
-    throw new Error("Appearance preference response is incomplete");
-  }
-  return hasTheme;
-}
-
-/**
- * Apply a theme choice immediately, then persist it when the current API
- * advertises server-backed theme preferences.
+ * Apply a theme choice immediately, then persist it to the workspace.
  */
 export const updateThemePreference$ = command(
-  async ({ get, set }, preference: ThemePreference, signal: AbortSignal) => {
+  async ({ set }, preference: ThemePreference, signal: AbortSignal) => {
     set(setTheme$, preference);
-    const preferences = await get(userPreferences$);
-    signal.throwIfAborted();
-    if (!hasServerAppearancePreferences(preferences)) {
-      return;
-    }
     await set(updateUserPreference$, { theme: preference }, signal);
   },
 );
@@ -144,8 +115,7 @@ export const updateColorThemePreference$ = command(
 
 /**
  * Reconcile the fast local bootstrap cache with the workspace preference.
- * Null server values migrate the current device choice; missing keys mean an
- * older API is still serving this frontend, so local-only behavior continues.
+ * Null server values migrate the current device choice.
  */
 export const syncThemePreferences$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -157,9 +127,6 @@ export const syncThemePreferences$ = command(
 
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
-    if (!hasServerAppearancePreferences(preferences)) {
-      return;
-    }
 
     const theme = preferences.theme ?? get(themePreference$);
     const colorTheme = preferences.colorTheme ?? get(colorTheme$);
