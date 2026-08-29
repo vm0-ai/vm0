@@ -48,6 +48,7 @@ export type ComposerConnectorAuthorizationTarget =
     };
 
 export interface ComposerConnectorUiState {
+  readonly connectorDataActivated: boolean;
   readonly showAddDialog: boolean;
   readonly pendingConnectorSlug: ConnectorSlug | null;
   readonly selectedConnectorSlug: ConnectorSlug | null;
@@ -179,6 +180,7 @@ const agentCustomConnectorAuthorizationRequestBroker$ = computed(() => {
 
 function initialComposerConnectorUiState(): ComposerConnectorUiState {
   return {
+    connectorDataActivated: false,
     showAddDialog: false,
     pendingConnectorSlug: null,
     selectedConnectorSlug: null,

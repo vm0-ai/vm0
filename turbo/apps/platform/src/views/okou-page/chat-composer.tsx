@@ -8601,6 +8601,7 @@ function ConnectorsPopoverButton({
 
   return (
     <Popover
+      defaultOpen
       onOpenChange={(open, eventDetails) => {
         if (
           !open &&
@@ -10536,13 +10537,7 @@ function ComposerConnectorConnectDialogs({
   );
 }
 
-function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
-  const { t } = useTranslation();
-  const mcpEnabled = useGet(customConnectorMcpEnabled$);
-  const connectorReadState = useComposerConnectorReadState(signals);
-  const agents = useLastResolved(agents$) ?? [];
-  const connectorUi = useGet(signals.connector.connectorUiState$);
-  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
   const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
   const cloudBrowserEnabled = useGet(signals.computer.cloudBrowserEnabled$);
   const setComputerUseHostId = useSet(signals.computer.setComputerUseHostId$);
@@ -10560,7 +10555,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     storedComputerUseHostId,
   );
   const composerPageSignal = useGet(pageSignal$);
-  const computerUse: ComposerComputerUse = {
+  return {
     hosts: visibleComputerUseHosts(computerUseHosts, resolvedComputerUseHostId),
     loading:
       computerUseHostsState.state === "loading" &&
@@ -10581,6 +10576,62 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     },
     downloadUrl: OKOU_DESKTOP_DOWNLOAD_URL,
   };
+}
+
+function ComposerConnectorsActivator({
+  computerUse,
+  onActivate,
+}: {
+  readonly computerUse: ComposerComputerUse;
+  readonly onActivate: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:min-w-9 sm:px-1.5",
+              COMPOSER_CONTROL_FOCUS_CLASS,
+            )}
+            aria-label={t(($) => {
+              return $.chat.connectors.title;
+            })}
+            onClick={onActivate}
+          >
+            <ConnectorTriggerIcons
+              connectors={[]}
+              customConnectors={[]}
+              hasComputerUse={Boolean(computerUse.selectedHostId)}
+              hasCloudBrowser={computerUse.cloudBrowserEnabled}
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {t(($) => {
+            return $.chat.connectors.title;
+          })}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ActivatedComposerConnectorsSlot({
+  signals,
+  computerUse,
+}: {
+  readonly signals: ComposerSignals;
+  readonly computerUse: ComposerComputerUse;
+}) {
+  const { t } = useTranslation();
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  const connectorReadState = useComposerConnectorReadState(signals);
+  const agents = useLastResolved(agents$) ?? [];
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const relatedCatalogItemsLoadable = connectorReadState.relatedCatalogItems;
@@ -10876,6 +10927,35 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         />
       )}
     </>
+  );
+}
+
+function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
+  const computerUse = useComposerComputerUse(signals);
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
+
+  if (connectorUi.connectorDataActivated) {
+    return (
+      <ActivatedComposerConnectorsSlot
+        signals={signals}
+        computerUse={computerUse}
+      />
+    );
+  }
+
+  return (
+    <ComposerConnectorsActivator
+      computerUse={computerUse}
+      onActivate={() => {
+        updateConnectorUi({
+          connectorDataActivated: true,
+          popoverSortOrder: [],
+        });
+        openAccountsPopover();
+      }}
+    />
   );
 }
 

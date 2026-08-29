@@ -5228,6 +5228,16 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
 
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
+
+  if (!active) {
+    return null;
+  }
+
+  return <ActiveChatConnectorActionConnectModal />;
+}
+
+function ActiveChatConnectorActionConnectModal() {
+  const active = useGet(activeChatConnectorAction$);
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
   const runCallback = useSet(runChatActionCallback$);
