@@ -753,9 +753,8 @@ jobs:
         run: .github/scripts/wait-runner-image.sh
 
   # Balance these scenarios by recent CI timings across four concurrent
-  # metal-host users.
-  # Run balloon first in lane A, exec last in lane B, and upgrade last in lane C
-  # to stagger the three heaviest scenarios during normal runs.
+  # metal-host users. Keep balloon and process containment isolated, and delay
+  # exec and upgrade behind shorter scenarios in lanes B and C.
   runner-behavior-lane-a:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -867,6 +866,12 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-keep-alive.sh
 
+      - name: Run benchmark
+        timeout-minutes: 8
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-benchmark.sh
+
       - name: Run upgrade test
         timeout-minutes: 5
         env:
@@ -895,12 +900,6 @@ jobs:
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Run benchmark
-        timeout-minutes: 8
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-benchmark.sh
 
       - name: Test exec process containment
         timeout-minutes: 5
