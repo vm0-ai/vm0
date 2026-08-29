@@ -10605,6 +10605,174 @@ const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION =
   "0928_contract_chat_event_snapshots";
 const CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION = "0929_cold_azazel";
 
+const CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_PREVIOUS_MIGRATION =
+  "1026_org_plan_entitlement_restriction_not_null";
+const CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_MIGRATION =
+  "1028_contract_chat_event_snapshot_v7";
+
+async function validateChatEventSnapshotV7Contraction(): Promise<void> {
+  console.log("=== Validate Chat Event Snapshot V7 contraction ===\n");
+  const testDb = "migration_chat_event_snapshot_v7_contract";
+  const testDbUrl = createTestDbUrl(testDb);
+  const coveredThreadId = "00000000-0000-4000-8000-000000102601";
+  const blockedThreadId = "00000000-0000-4000-8000-000000102602";
+
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: testDbUrl });
+  await client.connect();
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    await client.query("SET session_replication_role = replica");
+    await client.query(
+      `
+        INSERT INTO "chat_event_snapshots" (
+          "id", "chat_thread_id", "last_seq_id", "last_event_id",
+          "terminal_event_id", "terminal_seq_id",
+          "archive_schema_version", "projection", "object_key"
+        ) VALUES
+          (
+            '00000000-0000-4000-8000-000000102611', $1, 20,
+            '00000000-0000-4000-8000-000000102621', NULL, NULL,
+            6, 'full',
+            'chat-events/00000000-0000-4000-8000-000000102601/20-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.ndjson.gz'
+          ),
+          (
+            '00000000-0000-4000-8000-000000102612', $1, 20,
+            '00000000-0000-4000-8000-000000102622',
+            '00000000-0000-4000-8000-000000102622', 20,
+            7, 'tool-redacted',
+            'chat-events/00000000-0000-4000-8000-000000102601/20-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ndjson.gz'
+          ),
+          (
+            '00000000-0000-4000-8000-000000102613', $2, 30,
+            '00000000-0000-4000-8000-000000102623', NULL, NULL,
+            5, 'tool-redacted',
+            'chat-events/00000000-0000-4000-8000-000000102602/30-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ndjson.gz'
+          ),
+          (
+            '00000000-0000-4000-8000-000000102614', $2, 29,
+            '00000000-0000-4000-8000-000000102624',
+            '00000000-0000-4000-8000-000000102624', 29,
+            7, 'tool-redacted',
+            'chat-events/00000000-0000-4000-8000-000000102602/29-dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.ndjson.gz'
+          )
+      `,
+      [coveredThreadId, blockedThreadId],
+    );
+
+    await assert.rejects(
+      applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_MIGRATION,
+      ),
+      (error: unknown) => {
+        return (
+          error instanceof Error &&
+          error.message.includes(
+            "Chat Event Snapshot V7 contraction blocked: uncovered_legacy=1, future_version=0",
+          )
+        );
+      },
+    );
+    const preserved = await client.query<{ count: number }>(`
+      SELECT count(*)::integer AS "count"
+      FROM "chat_event_snapshots"
+      WHERE "archive_schema_version" < 7
+    `);
+    assert.deepEqual(preserved.rows, [{ count: 2 }]);
+
+    await client.query(
+      `
+        UPDATE "chat_event_snapshots"
+        SET
+          "last_seq_id" = 30,
+          "last_event_id" = '00000000-0000-4000-8000-000000102625',
+          "terminal_event_id" = '00000000-0000-4000-8000-000000102625',
+          "terminal_seq_id" = 30,
+          "object_key" = 'chat-events/00000000-0000-4000-8000-000000102602/30-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.ndjson.gz'
+        WHERE "id" = '00000000-0000-4000-8000-000000102614'
+      `,
+    );
+    await applyMigrationsUpToTag(
+      client,
+      CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_MIGRATION,
+    );
+
+    const contracted = await client.query<{
+      archiveSchemaVersion: number;
+      projection: string;
+    }>(`
+      SELECT
+        "archive_schema_version" AS "archiveSchemaVersion",
+        "projection"
+      FROM "chat_event_snapshots"
+      ORDER BY "chat_thread_id"
+    `);
+    assert.deepEqual(contracted.rows, [
+      { archiveSchemaVersion: 7, projection: "tool-redacted" },
+      { archiveSchemaVersion: 7, projection: "tool-redacted" },
+    ]);
+
+    await client.query(
+      `
+        INSERT INTO "chat_event_snapshots" (
+          "chat_thread_id", "last_seq_id", "last_event_id",
+          "terminal_event_id", "terminal_seq_id", "object_key"
+        ) VALUES (
+          '00000000-0000-4000-8000-000000102603', 1,
+          '00000000-0000-4000-8000-000000102626',
+          '00000000-0000-4000-8000-000000102626', 1,
+          'chat-events/00000000-0000-4000-8000-000000102603/1-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.ndjson.gz'
+        )
+      `,
+    );
+    const defaults = await client.query<{
+      archiveSchemaVersion: number;
+      projection: string;
+    }>(`
+      SELECT
+        "archive_schema_version" AS "archiveSchemaVersion",
+        "projection"
+      FROM "chat_event_snapshots"
+      WHERE "chat_thread_id" =
+        '00000000-0000-4000-8000-000000102603'
+    `);
+    assert.deepEqual(defaults.rows, [
+      { archiveSchemaVersion: 7, projection: "tool-redacted" },
+    ]);
+
+    await assert.rejects(
+      client.query(
+        `
+          INSERT INTO "chat_event_snapshots" (
+            "chat_thread_id", "last_seq_id", "last_event_id",
+            "terminal_event_id", "terminal_seq_id",
+            "archive_schema_version", "projection", "object_key"
+          ) VALUES (
+            '00000000-0000-4000-8000-000000102604', 1,
+            '00000000-0000-4000-8000-000000102627', NULL, NULL,
+            6, 'full', 'chat-events/retired.ndjson.gz'
+          )
+        `,
+      ),
+      (error: unknown) => {
+        return databaseErrorCode(error) === "23514";
+      },
+    );
+
+    console.log("   ✅ uncovered legacy physical coverage fails closed");
+    console.log("   ✅ failed contraction preserves every legacy pointer");
+    console.log("   ✅ covered V5/V6 pointers contract to canonical V7 only");
+    console.log("   ✅ defaults and constraints reject retired shapes\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateChatEventSnapshotContraction(): Promise<void> {
   console.log("=== Validate Chat Event Snapshot contraction ===\n");
   const testDb = "migration_chat_event_snapshot_contract";
@@ -10987,6 +11155,7 @@ async function main(): Promise<void> {
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateChatEventSnapshotContraction();
+    await validateChatEventSnapshotV7Contraction();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();

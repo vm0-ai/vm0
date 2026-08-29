@@ -32,10 +32,7 @@ import {
   readFakeChatEventObject,
   writeFakeChatEventObject,
 } from "./helpers/fake-chat-event-r2";
-import {
-  readChatEventSnapshotHead,
-  setChatEventSnapshotHeadVersion,
-} from "./helpers/runtime-state";
+import { readChatEventSnapshotHead } from "./helpers/runtime-state";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
@@ -136,32 +133,6 @@ async function sendNoCreditMessage(
   return sent.body.threadId;
 }
 
-async function replaceHeadWithRetiredVersion(
-  threadId: string,
-): Promise<string> {
-  const head = await readChatEventSnapshotHead(
-    context,
-    threadId,
-    "tool-redacted",
-  );
-  const body = readFakeChatEventObject(head.object_key);
-  if (body === undefined) {
-    throw new Error("Expected a current snapshot object");
-  }
-  const retiredKey = `chat-events/${threadId}/retired-v3-${randomUUID()}.ndjson.gz`;
-  writeFakeChatEventObject(retiredKey, body);
-  await trackFakeChatEventObject(Promise.resolve(retiredKey));
-  await setChatEventSnapshotHeadVersion(
-    context,
-    threadId,
-    3,
-    retiredKey,
-    undefined,
-    "tool-redacted",
-  );
-  return retiredKey;
-}
-
 describe("chat event snapshot read endpoints", () => {
   beforeEach(() => {
     installFakeChatEventR2(context);
@@ -254,7 +225,7 @@ describe("chat event snapshot read endpoints", () => {
     });
 
     await expect(
-      readChatEventSnapshotHead(context, threadId, "tool-redacted"),
+      readChatEventSnapshotHead(context, threadId),
     ).resolves.toMatchObject({
       archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       last_event_id: head.last_event_id,
@@ -330,7 +301,7 @@ describe("chat event snapshot read endpoints", () => {
         code: "CHAT_EVENT_SCHEMA_VERSION_INVALID",
       },
       {
-        version: "4",
+        version: (CURRENT_CHAT_EVENT_SCHEMA_VERSION - 1).toString(),
         status: 426,
         message: "The requested Chat Event schema version is retired",
         code: "CHAT_EVENT_SCHEMA_VERSION_RETIRED",
@@ -401,18 +372,18 @@ describe("chat event snapshot read endpoints", () => {
     }
     const firstSeqId = firstRow.seqId;
 
-    const v5Input = fromStart.body.rows
+    const canonicalInput = fromStart.body.rows
       .map((row) => {
         return chatEventFromRow(row);
       })
       .find((event) => {
         return event.eventType === "input.prompt";
       });
-    if (v5Input?.eventType !== "input.prompt") {
-      throw new Error("Expected the V5 feedback input");
+    if (canonicalInput?.eventType !== "input.prompt") {
+      throw new Error("Expected the canonical feedback input");
     }
     expect(
-      v5Input.userMessage.parts.find((part) => {
+      canonicalInput.userMessage.parts.find((part) => {
         return part.type === "feedback";
       }),
     ).toMatchObject({
@@ -513,43 +484,6 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
-  it("preserves and skips the only Snapshot when no lossless upgrade exists", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Snapshot fail-closed agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `snapshot-fail-closed-${randomUUID()}`,
-    });
-
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    const retiredKey = await replaceHeadWithRetiredVersion(threadId);
-
-    const unavailable = await accept(
-      eventsClient().snapshot({
-        headers: authenticate(owner),
-        params: { threadId },
-      }),
-      [404],
-    );
-    expect(unavailable.body.error.code).toBe("CHAT_EVENT_SNAPSHOT_NOT_FOUND");
-    await expect(runSnapshotCron([threadId])).resolves.toMatchObject({
-      snapshots: 0,
-      archivedEvents: 0,
-      skippedUnsupportedHeads: 1,
-    });
-    expect(readFakeChatEventObject(retiredKey)).toBeDefined();
-    await expect(
-      readChatEventSnapshotHead(context, threadId, "tool-redacted"),
-    ).resolves.toMatchObject({
-      archive_schema_version: 3,
-      object_key: retiredKey,
-      snapshot_count: 1,
-    });
-  }, 60_000);
-
   it("garbage-collects unreferenced snapshot objects", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
@@ -624,9 +558,7 @@ describe("chat event snapshot read endpoints", () => {
 
     const result = await runSnapshotCron([], keys);
 
-    expect(
-      result.retiredSnapshotReferencesDeleted + result.r2ObjectsDeleted,
-    ).toBe(1000);
+    expect(result.r2ObjectsDeleted).toBe(1000);
     const remaining = keys.filter((key) => {
       return readFakeChatEventObject(key) !== undefined;
     });

@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { testChatEventRetentionContract } from "@okouai/api-contracts/contracts/test-chat-event-retention";
 import { cronRetainChatEventsContract } from "@okouai/api-contracts/contracts/cron";
-import { PREVIOUS_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -209,9 +208,18 @@ describe("chat event retention cron", () => {
   it("uses a clean redacted head as retention authority", async () => {
     const snapshotThreadId = await createFixtureThread("snapshot-gate");
     const searchThreadId = await createFixtureThread("search-gate");
-    const projectionThreadId = await createFixtureThread("projection-gate");
     const redactedAuthorityThreadId =
       await createFixtureThread("redacted-authority");
+    await store.set(
+      seedRetentionOutputEvent$,
+      { chatThreadId: snapshotThreadId, offsetMs: NEW_OFFSET_MS },
+      context.signal,
+    );
+    await store.set(
+      coverRetentionThread$,
+      { chatThreadId: snapshotThreadId },
+      context.signal,
+    );
     const snapshotEventId = await store.set(
       seedRetentionOutputEvent$,
       { chatThreadId: snapshotThreadId, offsetMs: OLD_OFFSET_MS },
@@ -222,19 +230,9 @@ describe("chat event retention cron", () => {
       { chatThreadId: searchThreadId, offsetMs: OLD_OFFSET_MS },
       context.signal,
     );
-    const projectionEventId = await store.set(
-      seedRetentionOutputEvent$,
-      { chatThreadId: projectionThreadId, offsetMs: OLD_OFFSET_MS },
-      context.signal,
-    );
     const redactedAuthorityEventId = await store.set(
       seedRetentionOutputEvent$,
       { chatThreadId: redactedAuthorityThreadId, offsetMs: OLD_OFFSET_MS },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      { chatThreadId: snapshotThreadId, archiveSchemaVersion: 3 },
       context.signal,
     );
     const searchLastSeqId = await store.set(
@@ -252,41 +250,23 @@ describe("chat event retention cron", () => {
     );
     await store.set(
       coverRetentionThread$,
-      {
-        chatThreadId: projectionThreadId,
-        archiveSchemaVersion: PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-        snapshotProjections: ["full"],
-      },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      {
-        chatThreadId: redactedAuthorityThreadId,
-        snapshotProjections: ["tool-redacted"],
-      },
+      { chatThreadId: redactedAuthorityThreadId },
       context.signal,
     );
 
     const held = await retainFixtures(
       snapshotThreadId,
       searchThreadId,
-      projectionThreadId,
       redactedAuthorityThreadId,
     );
     expect(held).toMatchObject({
       deleted: 1,
-      skippedSnapshot: 2,
+      skippedSnapshot: 1,
       skippedSearchWatermark: 1,
     });
     await expect(
-      eventRows(
-        snapshotEventId,
-        searchEventId,
-        projectionEventId,
-        redactedAuthorityEventId,
-      ),
-    ).resolves.toHaveLength(3);
+      eventRows(snapshotEventId, searchEventId, redactedAuthorityEventId),
+    ).resolves.toHaveLength(2);
 
     await store.set(
       coverRetentionThread$,
@@ -298,19 +278,10 @@ describe("chat event retention cron", () => {
       { chatThreadId: searchThreadId },
       context.signal,
     );
-    await store.set(
-      coverRetentionThread$,
-      { chatThreadId: projectionThreadId },
-      context.signal,
-    );
-    const released = await retainFixtures(
-      snapshotThreadId,
-      searchThreadId,
-      projectionThreadId,
-    );
-    expect(released.deleted).toBe(3);
+    const released = await retainFixtures(snapshotThreadId, searchThreadId);
+    expect(released.deleted).toBe(2);
     await expect(
-      eventRows(snapshotEventId, searchEventId, projectionEventId),
+      eventRows(snapshotEventId, searchEventId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 

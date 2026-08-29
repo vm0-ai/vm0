@@ -93,7 +93,7 @@ runner_chat_event_rows() {
         fi
         response="$(runner_api_curl \
             "$request_path" \
-            -H "X-Chat-Event-Schema-Version: 5")" || return
+            -H "X-Chat-Event-Schema-Version: 7")" || return
         rows="$(jq -ce \
             '.rows | if type == "array" then . else error("invalid rows") end' \
             <<<"$response")" || {

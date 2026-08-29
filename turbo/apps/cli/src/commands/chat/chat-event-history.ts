@@ -11,9 +11,9 @@ import { join } from "node:path";
 
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
+  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
-  type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 import {
@@ -23,13 +23,12 @@ import {
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
-const SNAPSHOT_FILE_PATTERN =
-  /^snapshot(?:-(full|tool-redacted))?-to-(\d+)\.ndjson$/;
+const SNAPSHOT_FILE_PATTERN = /^snapshot-tool-redacted-to-(\d+)\.ndjson$/;
 const EVENT_FILE_PATTERN = /^event-SEQ_ID_(\d+)\.json$/;
-const CACHE_SCHEMA_VERSION_FILE = ".okou-chat-event-schema-version";
+const CACHE_FORMAT_FILE = ".okou-chat-event-schema-version";
 
-function cacheSchemaVersionBody(version: number): string {
-  return `${version.toString()}\n`;
+function cacheFormatBody(): string {
+  return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION}\n`;
 }
 
 type ManagedHistoryFile =
@@ -37,7 +36,6 @@ type ManagedHistoryFile =
       readonly name: string;
       readonly kind: "snapshot";
       readonly seqId: number;
-      readonly projection: ChatEventSnapshotProjection;
     }
   | {
       readonly name: string;
@@ -70,8 +68,7 @@ function managedHistoryFile(name: string): ManagedHistoryFile | null {
     return {
       name,
       kind: "snapshot",
-      seqId: Number(snapshot[2]),
-      projection: snapshot[1] === "tool-redacted" ? "tool-redacted" : "full",
+      seqId: Number(snapshot[1]),
     };
   }
   const event = EVENT_FILE_PATTERN.exec(name);
@@ -106,11 +103,11 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
-async function currentCacheSchemaVersion(directory: string): Promise<boolean> {
+async function hasCurrentCacheFormat(directory: string): Promise<boolean> {
   try {
     return (
-      (await readFile(join(directory, CACHE_SCHEMA_VERSION_FILE), "utf8")) ===
-      cacheSchemaVersionBody(CURRENT_CHAT_EVENT_SCHEMA_VERSION)
+      (await readFile(join(directory, CACHE_FORMAT_FILE), "utf8")) ===
+      cacheFormatBody()
     );
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
@@ -120,30 +117,26 @@ async function currentCacheSchemaVersion(directory: string): Promise<boolean> {
   }
 }
 
-async function publishCacheSchemaVersion(
-  directory: string,
-  schemaVersion: number,
-): Promise<void> {
+async function publishCacheFormat(directory: string): Promise<void> {
   const stagedDirectory = await mkdtemp(
     join(directory, ".okou-chat-event-schema-version-"),
   );
   try {
-    const staged = join(stagedDirectory, CACHE_SCHEMA_VERSION_FILE);
-    await writeFile(staged, cacheSchemaVersionBody(schemaVersion), "utf8");
-    await rename(staged, join(directory, CACHE_SCHEMA_VERSION_FILE));
+    const staged = join(stagedDirectory, CACHE_FORMAT_FILE);
+    await writeFile(staged, cacheFormatBody(), "utf8");
+    await rename(staged, join(directory, CACHE_FORMAT_FILE));
   } finally {
     await rm(stagedDirectory, { recursive: true, force: true });
   }
 }
 
-async function invalidateCacheSchemaVersion(directory: string): Promise<void> {
-  await rm(join(directory, CACHE_SCHEMA_VERSION_FILE), { force: true });
+async function invalidateCacheFormat(directory: string): Promise<void> {
+  await rm(join(directory, CACHE_FORMAT_FILE), { force: true });
 }
 
 function parseSnapshot(args: {
   readonly text: string;
   readonly threadId: string;
-  readonly projection: ChatEventSnapshotProjection;
 }): ParsedSnapshot {
   if (args.text.length === 0) {
     return { lastEventId: null, lastRowSeqId: null };
@@ -181,7 +174,6 @@ async function localSnapshotCursor(args: {
     const parsed = parseSnapshot({
       text: await readFile(join(args.directory, args.snapshot.name), "utf8"),
       threadId: args.threadId,
-      projection: args.snapshot.projection,
     });
     if (args.snapshot.seqId === THREAD_START_SEQ_ID) {
       return parsed.lastEventId === null && parsed.lastRowSeqId === null
@@ -202,7 +194,7 @@ async function localSnapshotCursor(args: {
       cursor: {
         lastEventId: parsed.lastEventId,
         lastSeqId: args.snapshot.seqId,
-        projection: args.snapshot.projection,
+        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
       },
     };
   } catch {
@@ -261,9 +253,7 @@ async function localHistoryState(args: {
       cursor = {
         lastEventId: row.id,
         lastSeqId: row.seqId,
-        // Legacy event-only CLI caches have no Snapshot projection marker.
-        // Keep interpreting those as full until #29362's context-drain gate.
-        projection: "projection" in cursor ? cursor.projection : "full",
+        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
       };
     } catch {
       return { kind: "invalid" };
@@ -280,8 +270,6 @@ async function downloadSnapshot(args: {
   readonly threadId: string;
   readonly expectedLastEventId: string | null;
   readonly expectedLastSeqId: number;
-  readonly projection: ChatEventSnapshotProjection;
-  readonly schemaVersion: number;
 }): Promise<string> {
   const response = await fetch(args.url);
   if (!response.ok) {
@@ -293,14 +281,11 @@ async function downloadSnapshot(args: {
   const parsed = parseSnapshot({
     text,
     threadId: args.threadId,
-    projection: args.projection,
   });
   const parsedLastSeqId = parsed.lastRowSeqId ?? THREAD_START_SEQ_ID;
   if (
-    (args.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
-      args.projection === "full") &&
-    (parsed.lastEventId !== args.expectedLastEventId ||
-      parsedLastSeqId !== args.expectedLastSeqId)
+    parsed.lastEventId !== args.expectedLastEventId ||
+    parsedLastSeqId !== args.expectedLastSeqId
   ) {
     throw new Error("Chat event snapshot terminal event ID does not match");
   }
@@ -325,10 +310,8 @@ async function syncRows(args: {
   readonly cursor: ChatEventCursor;
 }): Promise<{
   readonly kind: "complete" | "expired";
-  readonly schemaVersion: number;
 }> {
   let cursor = args.cursor;
-  let schemaVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
   for (;;) {
     const page = await listChatEventRows(
       cursor.lastEventId === null
@@ -346,14 +329,8 @@ async function syncRows(args: {
             limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
           },
     );
-    schemaVersion = Math.min(schemaVersion, page.schemaVersion);
-    if (page.schemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
-      // The marker must disappear before any fallback row becomes durable;
-      // a crash can then only force another rebuild, never reinterpret V6.
-      await invalidateCacheSchemaVersion(args.directory);
-    }
     if (page.kind === "expired") {
-      return { kind: "expired", schemaVersion };
+      return { kind: "expired" };
     }
     let previousSeqId = cursor.lastSeqId;
     for (const row of page.rows) {
@@ -386,7 +363,7 @@ async function syncRows(args: {
     }
     cursor = page.cursor;
     if (!page.hasMore) {
-      return { kind: "complete", schemaVersion };
+      return { kind: "complete" };
     }
   }
 }
@@ -416,7 +393,7 @@ async function rebuildRawChatHistory(args: {
   readonly threadId: string;
   readonly outputDirectory: string;
   readonly threadDirectory: string;
-}): Promise<number> {
+}): Promise<void> {
   const temporaryDirectory = await mkdtemp(
     join(args.outputDirectory, ".okou-chat-history-"),
   );
@@ -424,7 +401,6 @@ async function rebuildRawChatHistory(args: {
     const snapshot = await getChatEventSnapshot({
       threadId: args.threadId,
     });
-    let schemaVersion = snapshot.schemaVersion;
     let cursor: ChatEventCursor = {
       lastEventId: null,
       lastSeqId: THREAD_START_SEQ_ID,
@@ -435,13 +411,8 @@ async function rebuildRawChatHistory(args: {
         threadId: args.threadId,
         expectedLastEventId: snapshot.lastEventId,
         expectedLastSeqId: snapshot.lastSeqId,
-        projection: snapshot.projection,
-        schemaVersion: snapshot.schemaVersion,
       });
-      const snapshotFileName =
-        snapshot.projection === "full"
-          ? `snapshot-to-${snapshot.lastSeqId}.ndjson`
-          : `snapshot-tool-redacted-to-${snapshot.lastSeqId}.ndjson`;
+      const snapshotFileName = `snapshot-tool-redacted-to-${snapshot.lastSeqId}.ndjson`;
       await writeFile(
         join(temporaryDirectory, snapshotFileName),
         downloaded,
@@ -462,18 +433,16 @@ async function rebuildRawChatHistory(args: {
       directory: temporaryDirectory,
       cursor,
     });
-    schemaVersion = Math.min(schemaVersion, result.schemaVersion);
     if (result.kind === "expired") {
       throw new Error(
         "Chat event rows cursor expired immediately after snapshot download",
       );
     }
-    await invalidateCacheSchemaVersion(args.threadDirectory);
+    await invalidateCacheFormat(args.threadDirectory);
     await replaceManagedHistoryFiles({
       targetDirectory: args.threadDirectory,
       stagedDirectory: temporaryDirectory,
     });
-    return schemaVersion;
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
@@ -487,7 +456,7 @@ export async function syncRawChatHistory(args: {
   const threadDirectory = join(args.outputDirectory, args.threadId);
   await mkdir(threadDirectory, { recursive: true });
   const existing = await listManagedHistoryFiles(threadDirectory);
-  const state = (await currentCacheSchemaVersion(threadDirectory))
+  const state = (await hasCurrentCacheFormat(threadDirectory))
     ? await localHistoryState({
         directory: threadDirectory,
         threadId: args.threadId,
@@ -495,9 +464,8 @@ export async function syncRawChatHistory(args: {
       })
     : ({ kind: "invalid" } as const);
 
-  let cacheSchemaVersion: number;
   if (state.kind !== "valid") {
-    cacheSchemaVersion = await rebuildRawChatHistory({
+    await rebuildRawChatHistory({
       threadId: args.threadId,
       outputDirectory: args.outputDirectory,
       threadDirectory,
@@ -509,17 +477,15 @@ export async function syncRawChatHistory(args: {
       cursor: state.cursor,
     });
     if (result.kind === "expired") {
-      cacheSchemaVersion = await rebuildRawChatHistory({
+      await rebuildRawChatHistory({
         threadId: args.threadId,
         outputDirectory: args.outputDirectory,
         threadDirectory,
       });
-    } else {
-      cacheSchemaVersion = result.schemaVersion;
     }
   }
 
-  await publishCacheSchemaVersion(threadDirectory, cacheSchemaVersion);
+  await publishCacheFormat(threadDirectory);
 
   const files = (await listManagedHistoryFiles(threadDirectory)).map((file) => {
     return join(threadDirectory, file.name);

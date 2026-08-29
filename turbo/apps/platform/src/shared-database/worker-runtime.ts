@@ -7,10 +7,7 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventCursor,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import type { InboundMessage, TokenRequest } from "ably";
 import type { IDBPDatabase } from "idb";
@@ -127,7 +124,6 @@ interface ChatEventRemoteState {
   readonly cursorFromServer: boolean;
   readonly needsColdStartTailConfirmation: boolean;
   readonly replacedCache: boolean;
-  readonly schemaVersion: number;
 }
 
 interface ChatEventRemoteContext {
@@ -316,17 +312,11 @@ async function persistChatEventRows(
     readonly remoteRows: readonly ChatEventRow[];
     readonly cursor: ChatEventCursor;
     readonly replacedCache: boolean;
-    readonly schemaVersion: number;
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const { stores, actor, remoteRows, cursor, replacedCache, schemaVersion } =
-    input;
-  if (
-    !replacedCache &&
-    remoteRows.length === 0 &&
-    schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
-  ) {
+  const { stores, actor, remoteRows, cursor, replacedCache } = input;
+  if (!replacedCache && remoteRows.length === 0) {
     return;
   }
   const write = replacedCache
@@ -334,14 +324,12 @@ async function persistChatEventRows(
         actor.dataKey.threadId,
         remoteRows,
         cursor,
-        schemaVersion,
         signal,
       )
     : stores.writeStore.upsertRowsAndCursor(
         actor.dataKey.threadId,
         remoteRows,
         cursor,
-        schemaVersion,
         signal,
       );
   const written = await settle(write, signal);
@@ -880,7 +868,6 @@ export class SharedDatabaseWorkerRuntime {
       cursorFromServer: false,
       needsColdStartTailConfirmation: false,
       replacedCache: false,
-      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     };
 
     if (cachedCursor === null || actor.degraded) {
@@ -894,7 +881,6 @@ export class SharedDatabaseWorkerRuntime {
       state = {
         remoteRows: snapshot.rows,
         cursor: snapshot.cursor,
-        schemaVersion: snapshot.schemaVersion,
         cursorFromServer: true,
         needsColdStartTailConfirmation: true,
         replacedCache: true,
@@ -912,7 +898,6 @@ export class SharedDatabaseWorkerRuntime {
         remoteRows: state.remoteRows,
         cursor: state.cursor,
         replacedCache: state.replacedCache,
-        schemaVersion: state.schemaVersion,
       },
       signal,
     );
@@ -935,7 +920,6 @@ export class SharedDatabaseWorkerRuntime {
     let needsColdStartTailConfirmation =
       initialState.needsColdStartTailConfirmation;
     let replacedCache = initialState.replacedCache;
-    let schemaVersion = initialState.schemaVersion;
     let loadNextPage = true;
     while (loadNextPage) {
       const page = await client.rows({
@@ -965,7 +949,6 @@ export class SharedDatabaseWorkerRuntime {
         );
         remoteRows = [...snapshot.rows];
         cursor = snapshot.cursor;
-        schemaVersion = snapshot.schemaVersion;
         cursorFromServer = true;
         needsColdStartTailConfirmation = true;
         replacedCache = true;
@@ -974,7 +957,6 @@ export class SharedDatabaseWorkerRuntime {
       if (page.status !== 200) {
         throw new SharedDatabaseHttpError(page.status);
       }
-      schemaVersion = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
       const pageRows = page.body.rows;
       remoteRows = mergeChatEventRows([remoteRows, pageRows]);
       cursor = page.body.cursor;
@@ -988,7 +970,6 @@ export class SharedDatabaseWorkerRuntime {
       cursorFromServer,
       needsColdStartTailConfirmation,
       replacedCache,
-      schemaVersion,
     };
   }
 
@@ -1001,7 +982,6 @@ export class SharedDatabaseWorkerRuntime {
   ): Promise<{
     readonly rows: readonly ChatEventRow[];
     readonly cursor: ChatEventCursor;
-    readonly schemaVersion: number;
   }> {
     const snapshot = await client.snapshot({
       headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
@@ -1018,7 +998,6 @@ export class SharedDatabaseWorkerRuntime {
       return {
         rows: [],
         cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
-        schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       };
     }
     if (snapshot.status !== 200) {
@@ -1045,7 +1024,6 @@ export class SharedDatabaseWorkerRuntime {
             });
     return {
       rows,
-      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       cursor:
         snapshot.body.lastEventId === null
           ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }

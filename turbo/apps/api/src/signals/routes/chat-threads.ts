@@ -167,7 +167,6 @@ const getChatEventSnapshotInner$ = command(
         threadId: params.threadId,
         userId: auth.userId,
         projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-        schemaVersion: version.version,
       }),
       signal,
     );
@@ -220,7 +219,6 @@ const listChatEventRowsInner$ = command(
         threadId: params.threadId,
         userId: auth.userId,
         projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-        schemaVersion: version.version,
         ...query,
       }),
     );

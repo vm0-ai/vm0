@@ -5,11 +5,10 @@ import { gunzip } from "node:zlib";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-  CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { computed, type Computed } from "ccstate";
-import { and, asc, desc, eq, gt, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 
@@ -17,10 +16,6 @@ import type { Db } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
 import { decodeChatEventSnapshotBody } from "./chat-event-snapshot-body.service";
 import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
-import {
-  lastStoredChatEventSnapshotRowId,
-  upgradeChatEventSnapshotBody,
-} from "./chat-event-snapshot-upgrade.service";
 
 const gunzipAsync = promisify(gunzip);
 const CHAT_EVENT_HISTORY_PAGE_SIZE = 1000;
@@ -126,34 +121,19 @@ function readCurrentChatEventHistoryAtSnapshot(
   return computed(async (get) => {
     const [head] = await runtime.db
       .select({
-        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
         lastSeqId: chatEventSnapshots.lastSeqId,
-        lastEventId: chatEventSnapshots.lastEventId,
         terminalSeqId: chatEventSnapshots.terminalSeqId,
         terminalEventId: chatEventSnapshots.terminalEventId,
-        sourceProjection: chatEventSnapshots.projection,
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, chatThreadId),
-          gte(
-            chatEventSnapshots.archiveSchemaVersion,
-            CHAT_EVENT_SCHEMA_DOWNGRADE_FLOOR,
-          ),
-          lte(
+          eq(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           ),
-        ),
-      )
-      .orderBy(
-        // During rolling publication, the physically furthest compatible
-        // prefix is authoritative; V7 wins once it reaches equal coverage.
-        desc(chatEventSnapshots.lastSeqId),
-        desc(chatEventSnapshots.archiveSchemaVersion),
-        desc(
           eq(
             chatEventSnapshots.projection,
             CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
@@ -181,21 +161,8 @@ function readCurrentChatEventHistoryAtSnapshot(
       throw new Error("Chat event snapshot checksum is invalid");
     }
     const decompressed = await gunzipAsync(compressed);
-    if (
-      head.sourceProjection === "full" &&
-      lastStoredChatEventSnapshotRowId(
-        decompressed,
-        head.archiveSchemaVersion,
-      ) !== head.lastEventId
-    ) {
-      throw new Error("Chat event snapshot physical metadata is invalid");
-    }
     const snapshot = decodeSnapshotRows(
-      upgradeChatEventSnapshotBody(
-        decompressed,
-        head.archiveSchemaVersion,
-        CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-      ),
+      decompressed,
       chatThreadId,
       head.lastSeqId,
       {
@@ -214,11 +181,7 @@ function readCurrentChatEventHistoryAtSnapshot(
   });
 }
 
-/**
- * Current logical thread history: prefer the canonical V7 R2 pointer and fall
- * back to a still-referenced, upgradable V5/V6 prefix under #29362's storage
- * gates. PostgreSQL continuation begins after the pointer's physical coverage.
- */
+/** Current logical history with PostgreSQL continuation after physical coverage. */
 export function readCurrentChatEventHistory(
   runtime: ChatEventHistoryRuntime,
   chatThreadId: string,

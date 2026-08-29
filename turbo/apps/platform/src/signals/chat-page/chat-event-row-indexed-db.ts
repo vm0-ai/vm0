@@ -71,12 +71,10 @@ export const writeIndexedDbChatEventRows$ = command(
       threadId,
       rows,
       cursor,
-      schemaVersion,
     }: {
       readonly threadId: string;
       readonly rows: readonly ChatEventRow[];
       readonly cursor: ChatEventCursor;
-      readonly schemaVersion: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -89,7 +87,6 @@ export const writeIndexedDbChatEventRows$ = command(
           threadId,
           rows,
           cursor,
-          schemaVersion,
           signal,
         );
       },
@@ -105,12 +102,10 @@ export const replaceIndexedDbChatEventRows$ = command(
       threadId,
       rows,
       cursor,
-      schemaVersion,
     }: {
       readonly threadId: string;
       readonly rows: readonly ChatEventRow[];
       readonly cursor: ChatEventCursor;
-      readonly schemaVersion: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -123,7 +118,6 @@ export const replaceIndexedDbChatEventRows$ = command(
           threadId,
           rows,
           cursor,
-          schemaVersion,
           signal,
         );
       },
