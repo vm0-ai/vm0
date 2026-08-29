@@ -12,9 +12,10 @@ use std::thread;
 use std::time::Duration;
 
 use super::{
-    AxiomGuard, AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP, ERROR_SOURCE_MAX_DEPTH,
-    FLUSH_DEADLINE, INTERNAL_TARGET, Msg, TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER,
-    init_from_env_values, init_with_base_url, init_with_base_url_and_hostname, with_ingest_filter,
+    AXIOM_FIELDS_MAX_ENTRIES, AxiomGuard, AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP,
+    ERROR_SOURCE_MAX_DEPTH, FLUSH_DEADLINE, INTERNAL_TARGET, Msg, TEXT_FIELD_MAX_BYTES,
+    TRUNCATION_MARKER, init_from_env_values, init_with_base_url, init_with_base_url_and_hostname,
+    with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -822,6 +823,59 @@ async fn generic_axiom_fields_expand_without_overwriting_owned_fields() {
     assert_eq!(event["service"].as_str(), Some("runner"));
     assert!(event.get("runner_hostname").is_none());
     assert!(event.get("axiom_fields").is_none());
+}
+
+#[tokio::test]
+async fn generic_axiom_fields_validate_the_complete_map_before_expanding() {
+    let server = MockServer::start_async().await;
+
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    let too_many_fields = Value::Object(
+        (0..=AXIOM_FIELDS_MAX_ENTRIES)
+            .map(|index| (format!("field_{index}"), Value::String("value".to_string())))
+            .collect(),
+    )
+    .to_string();
+    let invalid_name = r#"{"bad-name":"value"}"#;
+    let nested_value = r#"{"nested":{"value":"unsafe"}}"#;
+    let scalar_values = r#"{"enabled":true,"attempts":2,"empty":null}"#;
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::warn!(
+            axiom_fields = too_many_fields.as_str(),
+            "too many generic fields"
+        );
+        tracing::warn!(axiom_fields = invalid_name, "invalid generic field name");
+        tracing::warn!(axiom_fields = nested_value, "nested generic field value");
+        tracing::warn!(axiom_fields = scalar_values, "scalar generic field values");
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    for (message, encoded, rejected_field) in [
+        (
+            "too many generic fields",
+            too_many_fields.as_str(),
+            "field_0",
+        ),
+        ("invalid generic field name", invalid_name, "bad-name"),
+        ("nested generic field value", nested_value, "nested"),
+    ] {
+        let event = event_with_message(&events, message);
+        assert_eq!(event["axiom_fields"].as_str(), Some(encoded));
+        assert!(event.get(rejected_field).is_none());
+    }
+
+    let scalar_event = event_with_message(&events, "scalar generic field values");
+    assert_eq!(scalar_event["enabled"].as_bool(), Some(true));
+    assert_eq!(scalar_event["attempts"].as_u64(), Some(2));
+    assert_eq!(scalar_event.get("empty"), Some(&Value::Null));
+    assert!(scalar_event.get("axiom_fields").is_none());
 }
 
 #[test]
