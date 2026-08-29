@@ -126,6 +126,45 @@ classification during that window. A parse or alias-conflict failure emits no
 successful-load event, so missing expected host coverage is a failed gate, not
 evidence that the legacy spelling is absent.
 
+## Promotion-Integrated Canonical Cutover
+
+The pre-cutover production evidence gate used only the value-free alias-source
+event above. A fixed query over
+`2026-08-28T10:40:00Z..2026-08-29T00:55:56Z` found nine successful loads: all
+three production hosts on Runner `0.178.0`, `0.178.1`, and `0.178.2`. Every
+concurrency override used the legacy spelling, while all four I/O settings were
+absent. The query did not retrieve configured values, raw lines, or file
+contents.
+
+Every rollback target covered by that gate, Runner `0.177.5` through `0.178.2`,
+is a descendant of the dual-reader merge
+`88cf42132c3150a1f116d888049f083010fd598f`. Those targets can therefore start
+from either spelling. A target outside that ancestry is not a supported
+rollback until its host-file compatibility is established separately.
+
+The normal Runner promotion migrates the five logical alias pairs immediately
+before installing the target service. It fails before mutation when one
+logical setting has duplicate active definitions or both spellings. Otherwise
+it rewrites every legacy key, including all present I/O keys, through one
+same-directory flushed temporary file and atomic rename. Values, comments,
+blank lines, file ownership, and mode are preserved. Missing files and files
+that are already canonical are no-ops, and a replay after the atomic rename
+reuses the same transaction state instead of creating another backup.
+
+The already-running Runner does not reload `host.env`, so it remains available
+with its previously loaded value while the file changes. Promotion starts and
+health-checks the target against the canonical file before draining any old
+service. If target installation, readiness, or health fails, promotion stops
+the failed target and atomically restores the exact pre-migration file before
+reporting failure. Task output reports only fixed states and never includes a
+configured value, raw line, temporary-file content, or whole-file diff.
+
+The cutover does not remove the legacy readers or alias-source telemetry. After
+a Runner release containing this promotion change, every intended host must
+report each field as `canonical` or `absent`, with no `legacy` result, for the
+full Runner drain and rollback observation window before #28914 can remove
+compatibility.
+
 Bandwidth values may be fractional. After conversion from MiB/s, the byte/s
 value must be at least `1`, must fit in a `u64`, and is rounded down to an
 integer. Disk IOPS must parse directly as a nonzero `u64`.
