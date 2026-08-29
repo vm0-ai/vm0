@@ -27,6 +27,13 @@ const repositoryDirectory = path.resolve(scriptDirectory, "../../../..");
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration = "1022_workflow_physical_switch";
 const testDatabaseName = "migration_org_plan_restriction_expand_30162";
+const applicationRuntimePathspecs = [
+  "turbo/apps",
+  "turbo/packages/api-contracts",
+  "turbo/packages/core",
+  "crates",
+  "e2e",
+] as const;
 const orgPlanEntitlementsPreviousReleaseWrites = pgTable(
   "org_plan_entitlements",
   orgPlanEntitlementLegacyColumns(),
@@ -108,14 +115,7 @@ function trackedFilesWithPattern(
     .sort();
 }
 
-async function validateApplicationStatementInventory(): Promise<void> {
-  const runtimePathspecs = [
-    "turbo/apps",
-    "turbo/packages/api-contracts",
-    "turbo/packages/core",
-    "crates",
-    "e2e",
-  ] as const;
+function validateExactApplicationCallers(): readonly string[] {
   const applicationFiles = trackedFilesWithPattern("orgPlanEntitlements", [
     "turbo/apps",
   ]);
@@ -136,7 +136,7 @@ async function validateApplicationStatementInventory(): Promise<void> {
   assert.deepEqual(
     trackedFilesWithPattern(
       "insert\\(orgPlanEntitlementsCanonicalWrites\\)",
-      runtimePathspecs,
+      applicationRuntimePathspecs,
     ),
     [
       "turbo/apps/api/src/signals/routes/test-usage-settlement.ts",
@@ -147,11 +147,46 @@ async function validateApplicationStatementInventory(): Promise<void> {
   assert.deepEqual(
     trackedFilesWithPattern(
       "orgPlanEntitlementsLegacyWrites|org-plan-entitlement-legacy-write",
-      runtimePathspecs,
+      applicationRuntimePathspecs,
     ),
     [],
   );
 
+  assert.deepEqual(
+    trackedFilesWithPattern(
+      "restrictedBuiltInModels|restricted_built_in_models",
+      applicationRuntimePathspecs,
+    ),
+    [
+      "turbo/apps/api/src/signals/routes/test-usage-settlement.ts",
+      "turbo/apps/api/src/signals/services/org-plan-entitlement-read.service.ts",
+      "turbo/apps/api/src/signals/services/org-plan-entitlement-tier-values.ts",
+      "turbo/apps/api/src/signals/services/org-plan-entitlements.service.ts",
+      "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
+    ],
+  );
+  assert.deepEqual(
+    trackedFilesWithPattern(
+      "orgPlanEntitlements\\.restrictedBuiltInModels",
+      applicationRuntimePathspecs,
+    ),
+    [
+      "turbo/apps/api/src/signals/services/org-plan-entitlement-read.service.ts",
+      "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
+    ],
+  );
+  assert.deepEqual(
+    trackedFilesWithPattern(
+      "orgPlanEntitlements\\.restrictedVm0Models|restricted_vm0_models",
+      applicationRuntimePathspecs,
+    ),
+    [],
+  );
+
+  return applicationFiles;
+}
+
+function validateApplicationWriteProjections(): void {
   const currentColumnNames = getTableConfig(orgPlanEntitlements).columns.map(
     (column) => {
       return column.name;
@@ -181,38 +216,11 @@ async function validateApplicationStatementInventory(): Promise<void> {
     previousReleaseWriteColumnNames.includes("restricted_built_in_models"),
     false,
   );
+}
 
-  assert.deepEqual(
-    trackedFilesWithPattern(
-      "restrictedBuiltInModels|restricted_built_in_models",
-      runtimePathspecs,
-    ),
-    [
-      "turbo/apps/api/src/signals/routes/test-usage-settlement.ts",
-      "turbo/apps/api/src/signals/services/org-plan-entitlement-read.service.ts",
-      "turbo/apps/api/src/signals/services/org-plan-entitlement-tier-values.ts",
-      "turbo/apps/api/src/signals/services/org-plan-entitlements.service.ts",
-      "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
-    ],
-  );
-  assert.deepEqual(
-    trackedFilesWithPattern(
-      "orgPlanEntitlements\\.restrictedBuiltInModels",
-      runtimePathspecs,
-    ),
-    [
-      "turbo/apps/api/src/signals/services/org-plan-entitlement-read.service.ts",
-      "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
-    ],
-  );
-  assert.deepEqual(
-    trackedFilesWithPattern(
-      "orgPlanEntitlements\\.restrictedVm0Models|restricted_vm0_models",
-      runtimePathspecs,
-    ),
-    [],
-  );
-
+async function validateApplicationStatementHazards(
+  applicationFiles: readonly string[],
+): Promise<void> {
   const hazards = [
     /\.select\(\s*\)\s*\.from\(orgPlanEntitlements\)/u,
     /\.select\(\s*orgPlanEntitlements\s*\)/u,
@@ -233,7 +241,9 @@ async function validateApplicationStatementInventory(): Promise<void> {
       assert.doesNotMatch(source, hazard, filePath);
     }
   }
+}
 
+async function validateCanonicalReaderSource(): Promise<void> {
   const readerSource = await fs.readFile(
     path.join(
       repositoryDirectory,
@@ -254,6 +264,13 @@ async function validateApplicationStatementInventory(): Promise<void> {
     readerSource,
     /orgPlanEntitlements\.restrictedVm0Models/u,
   );
+}
+
+async function validateApplicationStatementInventory(): Promise<void> {
+  const applicationFiles = validateExactApplicationCallers();
+  validateApplicationWriteProjections();
+  await validateApplicationStatementHazards(applicationFiles);
+  await validateCanonicalReaderSource();
 }
 
 async function validateMigrationStatementScope(): Promise<void> {
