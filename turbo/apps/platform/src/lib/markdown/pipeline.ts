@@ -1,5 +1,5 @@
 import type { Data, Root, RootContent } from "hast";
-import { marked, type Token, type Tokens } from "marked";
+import { marked, Renderer, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -10,7 +10,10 @@ import rehypeSlug from "rehype-slug";
 import { unified, type PluggableList } from "unified";
 import { visit } from "unist-util-visit";
 
-import { rehypeMermaid } from "../rehype-mermaid.ts";
+import {
+  MARKDOWN_MERMAID_FENCE_ATTRIBUTE,
+  rehypeMermaid,
+} from "../rehype-mermaid.ts";
 import { rehypeRewriteHandle } from "./uiw-nodes.ts";
 
 /**
@@ -137,6 +140,23 @@ function isClosedFence(raw: string): boolean {
       return character === opening[0];
     })
   );
+}
+
+function createMarkedRenderer(): Renderer {
+  const renderer = new Renderer();
+  const renderCode = renderer.code.bind(renderer);
+  renderer.code = (token) => {
+    const html = renderCode(token);
+    if (!isMermaidCodeToken(token)) {
+      return html;
+    }
+    if (!html.startsWith("<pre>")) {
+      throw new Error("Marked changed its fenced-code HTML contract");
+    }
+    const state = isClosedFence(token.raw) ? "closed" : "open";
+    return `<pre ${MARKDOWN_MERMAID_FENCE_ATTRIBUTE}="${state}">${html.slice("<pre>".length)}`;
+  };
+  return renderer;
 }
 
 /**
@@ -304,16 +324,11 @@ const rewriteUnknownTags = rehypeRewriteHandle((node, _index, parent) => {
   }
 });
 
-function rehypePlugins(
-  options: MarkdownParseOptions,
-  closedMermaidFences: readonly boolean[],
-): PluggableList {
+function rehypePlugins(options: MarkdownParseOptions): PluggableList {
   const cardPlugins: PluggableList = options.cards
     ? [[rehypeCards, { cards: options.cards }]]
     : [];
-  const mermaidPlugins: PluggableList = options.mermaid
-    ? [[rehypeMermaid, { closedFences: closedMermaidFences }]]
-    : [];
+  const mermaidPlugins: PluggableList = options.mermaid ? [rehypeMermaid] : [];
   return [
     rehypeSlug,
     rehypeAutolinkHeadings,
@@ -358,23 +373,14 @@ export function parseMarkdownTree(
   source: string,
   options: MarkdownParseOptions,
 ): Root {
-  const closedMermaidFences: boolean[] = [];
   const html = marked.parse(source, {
     async: false,
-    walkTokens: options.mermaid
-      ? (token) => {
-          if (isMermaidCodeToken(token)) {
-            closedMermaidFences.push(isClosedFence(token.raw));
-          }
-        }
-      : null,
+    renderer: options.mermaid ? createMarkedRenderer() : null,
   });
   const tree: Root = {
     type: "root",
     children: [{ type: "raw", value: html }],
   };
-  const processor = unified()
-    .use(rehypeRaw)
-    .use(rehypePlugins(options, closedMermaidFences));
+  const processor = unified().use(rehypeRaw).use(rehypePlugins(options));
   return postProcess(processor.runSync(tree, source));
 }

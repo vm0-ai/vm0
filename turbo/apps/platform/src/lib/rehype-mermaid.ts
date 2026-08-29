@@ -19,9 +19,10 @@ interface HastNode {
   children?: HastNode[];
 }
 
-interface RehypeMermaidOptions {
-  readonly closedFences: readonly boolean[];
-}
+export const MARKDOWN_MERMAID_FENCE_ATTRIBUTE =
+  "data-vm0-markdown-mermaid-fence";
+
+const MARKDOWN_MERMAID_FENCE_PROPERTY = "dataVm0MarkdownMermaidFence";
 
 function collectText(node: HastNode): string {
   if (node.type === "text") {
@@ -72,11 +73,25 @@ function mermaidBlockNode(code: string): HastNode {
   };
 }
 
-function replaceMermaidBlocks(
-  node: HastNode,
-  closedFences: readonly boolean[],
-  nextFence: { index: number },
-): void {
+/**
+ * Marked tags Markdown-origin fences before their HTML is parsed into hast.
+ * A missing tag means this is already-complete raw HTML, which retains the
+ * historical behavior of rendering a Mermaid `<pre><code>` as a diagram.
+ */
+function takeMarkdownFenceState(node: HastNode): "closed" | "open" | undefined {
+  const properties = node.properties;
+  if (!properties) {
+    return undefined;
+  }
+  const state = properties[MARKDOWN_MERMAID_FENCE_PROPERTY];
+  delete properties[MARKDOWN_MERMAID_FENCE_PROPERTY];
+  if (state === "closed" || state === "open") {
+    return state;
+  }
+  return undefined;
+}
+
+function replaceMermaidBlocks(node: HastNode): void {
   const children = node.children;
   if (!children) {
     return;
@@ -84,21 +99,20 @@ function replaceMermaidBlocks(
   for (const [index, child] of children.entries()) {
     const code = mermaidCodeElement(child);
     if (code) {
-      const isClosed = closedFences[nextFence.index] ?? true;
-      nextFence.index += 1;
-      if (isClosed) {
+      const markdownFenceState = takeMarkdownFenceState(child);
+      if (markdownFenceState !== "open") {
         children[index] = mermaidBlockNode(
           collectText(code).replace(/\n$/, ""),
         );
       }
       continue;
     }
-    replaceMermaidBlocks(child, closedFences, nextFence);
+    replaceMermaidBlocks(child);
   }
 }
 
-export function rehypeMermaid(options: RehypeMermaidOptions) {
+export function rehypeMermaid() {
   return (tree: HastNode): void => {
-    replaceMermaidBlocks(tree, options.closedFences, { index: 0 });
+    replaceMermaidBlocks(tree);
   };
 }

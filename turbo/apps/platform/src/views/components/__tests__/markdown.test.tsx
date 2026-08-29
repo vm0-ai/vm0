@@ -714,6 +714,33 @@ describe("assistant markdown", () => {
     expect(document.querySelector(".mermaid-block")).toBeNull();
   });
 
+  it("keeps raw html mermaid separate from a streaming fence", async () => {
+    context.mocks.browser.blobDownload();
+    const rawHtml = [
+      '<pre><code class="language-mermaid">',
+      "flowchart TD",
+      "  X --> Y",
+      "</code></pre>",
+    ].join("\n");
+    mockThread(`${rawHtml}\n\n\`\`\`mermaid\nflowchart TD\n  A --> B`);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await screen.findByAltText("Diagram");
+    const streamingCode = await waitFor(() => {
+      const blocks = document.querySelectorAll("code.language-mermaid");
+      expect(blocks).toHaveLength(1);
+      return blocks[0];
+    });
+    expect(streamingCode.textContent?.trim()).toBe("flowchart TD\n  A --> B");
+    expect(
+      document.querySelector("[data-vm0-markdown-mermaid-fence]"),
+    ).toBeNull();
+  });
+
   it("renders a closed mermaid fence that ends the message", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     mockThread("Here is the flow:\n\n```mermaid\nflowchart TD\n  A --> B\n```");
