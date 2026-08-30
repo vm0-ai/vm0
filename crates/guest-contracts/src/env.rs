@@ -2,7 +2,7 @@
 //!
 //! The runner uses these names to bootstrap the guest-agent process. User,
 //! model-provider, and connector environment is a separate payload loaded
-//! through [`USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
+//! through [`CANONICAL_USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
 //! bootstrap controls directly.
 //!
 //! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
@@ -128,26 +128,18 @@ pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
 /// this exact name.
 pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 
-/// Legacy private user-environment file pointer retained by guest readers as a
-/// rollback fallback.
+/// Canonical private user-environment file pointer written by the runner.
 ///
 /// The guest-agent validates that the path points at its per-run private
 /// runtime directory, parses it as a `HashMap<String, String>`, and removes the
 /// file after loading. Unset or empty means there is no user environment
 /// payload.
-pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
-
-/// Canonical user-environment file pointer written by the runner.
-///
-/// Guest readers retain [`USER_ENV_FILE_ENV`] until the canonical writer
-/// deployment, supported rollback window, and legacy-read-zero gates in #28914
-/// are complete.
 pub const CANONICAL_USER_ENV_FILE_ENV: &str = "OKOU_USER_ENV_FILE";
 
-/// Private runtime subdirectory used by [`USER_ENV_FILE_ENV`].
+/// Private runtime subdirectory used by [`CANONICAL_USER_ENV_FILE_ENV`].
 pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 
-/// Private runtime filename used by [`USER_ENV_FILE_ENV`].
+/// Private runtime filename used by [`CANONICAL_USER_ENV_FILE_ENV`].
 pub const USER_ENV_FILENAME: &str = "env.json";
 
 /// Path to the non-secret connector account context for the current run.
@@ -163,25 +155,17 @@ pub const CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME: &str = "connector-account-
 /// Private runtime filename used by [`CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV`].
 pub const CONNECTOR_ACCOUNT_CONTEXT_FILENAME: &str = "context.json";
 
-/// Legacy private runner-owned run-payload file pointer retained by guest
-/// readers as a rollback fallback.
+/// Canonical private runner-owned run-payload file pointer written by the runner.
 ///
 /// Large prompt-like and configuration payloads use this file instead of
 /// bootstrap environment values so guest-agent startup does not hit Linux
-/// argv/env limits. Production guest-agent startup requires one pointer alias.
-pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
-
-/// Canonical run-payload file pointer written by the runner.
-///
-/// Guest readers retain [`RUN_PAYLOAD_FILE_ENV`] until the canonical writer
-/// deployment, supported rollback window, and legacy-read-zero gates in #28914
-/// are complete.
+/// argv/env limits. Production guest-agent startup requires this pointer.
 pub const CANONICAL_RUN_PAYLOAD_FILE_ENV: &str = "OKOU_RUN_PAYLOAD_FILE";
 
-/// Private runtime subdirectory used by [`RUN_PAYLOAD_FILE_ENV`].
+/// Private runtime subdirectory used by [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
 
-/// Private runtime filename used by [`RUN_PAYLOAD_FILE_ENV`].
+/// Private runtime filename used by [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 
 /// Logical run-payload field name for the JSON array describing artifact mounts
@@ -233,7 +217,7 @@ pub const PI_MODEL_CONFIG_ENV: &str = "OKOU_PI_MODEL_CONFIG";
 pub const PI_SESSION_ID_ENV: &str = "OKOU_PI_SESSION_ID";
 
 /// Runner-owned variable-length run payload sent through
-/// [`RUN_PAYLOAD_FILE_ENV`].
+/// [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 ///
 /// Empty strings mean "no value" for optional fields.
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -607,7 +591,6 @@ mod tests {
             CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             "OKOU_AGENT_EXECUTION_TIMEOUT_SECS"
         );
-        assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
         assert_eq!(CANONICAL_USER_ENV_FILE_ENV, "OKOU_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
@@ -620,7 +603,6 @@ mod tests {
             "connector-account-context"
         );
         assert_eq!(CONNECTOR_ACCOUNT_CONTEXT_FILENAME, "context.json");
-        assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
         assert_eq!(CANONICAL_RUN_PAYLOAD_FILE_ENV, "OKOU_RUN_PAYLOAD_FILE");
         assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
         assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
@@ -838,9 +820,9 @@ mod tests {
             PI_MODEL_CONFIG_ENV,
             CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
             WORKING_DIR_ENV,
-            USER_ENV_FILE_ENV,
+            "VM0_USER_ENV_FILE",
             CANONICAL_USER_ENV_FILE_ENV,
-            RUN_PAYLOAD_FILE_ENV,
+            "VM0_RUN_PAYLOAD_FILE",
             CANONICAL_RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,

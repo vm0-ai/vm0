@@ -162,7 +162,7 @@ fn assert_guest_config_uses_canonical_values(tmp: &Path) -> TestResult {
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         &payload_path,
     );
-    remove_test_env(guest_contracts::env::USER_ENV_FILE_ENV);
+    remove_test_env("VM0_USER_ENV_FILE");
     remove_test_env(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV);
     for (index, (spec, value)) in RUN_METADATA_ENV_SPECS.into_iter().zip(values).enumerate() {
         set_test_env(spec.canonical, value);
