@@ -249,7 +249,12 @@ function safeProviderFailureMessage(
 ): string | null {
   const hasControlCharacter = [...message].some((character) => {
     const codeUnit = character.charCodeAt(0);
-    return codeUnit <= 31 || (codeUnit >= 127 && codeUnit <= 159);
+    return (
+      codeUnit <= 31 ||
+      (codeUnit >= 127 && codeUnit <= 159) ||
+      codeUnit === 0x20_28 ||
+      codeUnit === 0x20_29
+    );
   });
   if (
     hasControlCharacter ||

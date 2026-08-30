@@ -2619,6 +2619,16 @@ describe("managed SocialKit route", () => {
       },
       expectedCode: "SOCIALKIT_PROVIDER_private_failure",
     },
+    {
+      caseName: "unicode multiline provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\u2028with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
+    },
   ])(
     "uses a safe fallback for $caseName",
     async ({ providerFailure, expectedCode }) => {
