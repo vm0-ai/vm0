@@ -6006,6 +6006,53 @@ describe("CHAT-02: model-first provider policies", () => {
     ).resolves.toStrictEqual(canonicalConversation);
     expect(modelCalls).toBe(5);
 
+    const reportedFailureHandoff = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "retry one atomically reported Pi failure",
+    });
+    const reportedFailureManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${reportedFailureHandoff.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(reportedFailureManifestKey);
+      })
+      .toBe(true);
+    const reportedFailureClaim = await claimChatRun(
+      runnerGroup,
+      reportedFailureHandoff.runId,
+    );
+    const reportedFailureBody = {
+      runId: reportedFailureHandoff.runId,
+      exitCode: 1,
+      error: "guest reported Pi failure",
+      checkpoint: {
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+    } as const;
+    const reportedFailure = await webhooks.requestAgentComplete(
+      reportedFailureBody,
+      reportedFailureClaim.sandboxHeaders,
+      [200],
+    );
+    expect(reportedFailure.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    await waitForRunStatus(actor, reportedFailureHandoff.runId, "failed");
+    await flushWaitUntilForTest();
+    const repeatedReportedFailure = await webhooks.requestAgentComplete(
+      reportedFailureBody,
+      reportedFailureClaim.sandboxHeaders,
+      [200],
+    );
+    expect(repeatedReportedFailure.body).toStrictEqual(reportedFailure.body);
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(6);
+
     const conversationClear = await holdThreadSessionConversationClearFixture({
       threadId: run.threadId,
       signal: context.signal,

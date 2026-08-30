@@ -1014,7 +1014,8 @@ export async function persistAgentCheckpointInTransaction(
   if (
     options.combinedCompletion &&
     (run.status === "completed" ||
-      (!piRun && (run.status === "failed" || run.status === "cancelled")))
+      run.status === "failed" ||
+      run.status === "cancelled")
   ) {
     const exactRetry = await exactCheckpointRetryResponse(
       tx,
