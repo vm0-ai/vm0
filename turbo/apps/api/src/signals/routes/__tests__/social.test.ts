@@ -19,6 +19,7 @@ import {
   socialKitRequestSchema,
   type SocialKitRequest,
 } from "@okouai/api-contracts/contracts/social";
+import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
@@ -40,6 +41,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { RouteEntry } from "../../route-entry";
 import { createDeferredPromise } from "../../utils";
+import { artifactCatalogRoutes } from "../artifact-catalog";
 import { billingStatusRoutes } from "../billing-status";
 import { socialRoutes } from "../social";
 import { usageRecordRoutes } from "../usage-record";
@@ -104,6 +106,7 @@ const EXPECTED_SOCIALKIT_TOOLS = [
 ] as const;
 
 const socialTestRoutes: readonly RouteEntry[] = [
+  ...artifactCatalogRoutes,
   ...billingStatusRoutes,
   ...socialRoutes,
 ];
@@ -1545,155 +1548,259 @@ describe("managed SocialKit route", () => {
     );
   });
 
-  it("materializes a ready v2 download and bills provider credits once", async () => {
-    const actor = createBddApi(context).user();
-    configureProvider();
-    const pricing = await setupConfiguredPricing();
-    await fundActor(actor);
-    const beforeCredits = await credits(actor);
-    mockNow(Date.UTC(2000, 0, 1));
-    const payload = new TextEncoder().encode("downloaded social video");
-    const providerJobId = `provider-download-${randomUUID()}`;
-    let startBody: unknown;
-    let providerPolls = 0;
-    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
-      { address: "8.8.8.8", family: 4 },
-    ]);
-    server.use(
-      http.post(
-        `${SOCIALKIT_BASE}/v2/youtube/download`,
-        async ({ request }) => {
-          startBody = await request.json();
-          return HttpResponse.json({
-            success: true,
-            data: {
-              jobId: providerJobId,
-              status: "queued",
-              statusUrl: `${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`,
-            },
-          });
-        },
-      ),
-      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
-        providerPolls += 1;
-        if (providerPolls === 1) {
-          return HttpResponse.json({
-            success: true,
-            data: {
-              jobId: providerJobId,
-              status: "processing",
-            },
-          });
-        }
-        return HttpResponse.json({
-          success: true,
-          data: {
-            jobId: providerJobId,
-            status: "ready",
-            platform: "youtube",
-            downloadUrl: "https://media.socialkit.test/download-1",
-            durationSeconds: 61,
-            fileSizeMB: "1.5 MB",
-            creditsCost: 2,
-            quality: "480p",
-            format: "mp4",
-            title: "Public / 视频.mp4",
-            thumbnail: "https://media.socialkit.test/thumbnail.jpg",
-          },
-        });
-      }),
-      http.get("https://media.socialkit.test/download-1", () => {
-        return new HttpResponse(payload, {
-          headers: { "content-length": String(payload.byteLength) },
-        });
-      }),
-    );
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (command instanceof ListObjectsV2Command) {
-        return Promise.resolve({ Contents: [] });
-      }
-      if (command instanceof CreateMultipartUploadCommand) {
-        return Promise.resolve({ UploadId: "socialkit-upload-1" });
-      }
-      if (command instanceof UploadPartCommand) {
-        return Promise.resolve({ ETag: '"socialkit-etag-1"' });
-      }
-      if (command instanceof CompleteMultipartUploadCommand) {
-        return Promise.resolve({});
-      }
-      return Promise.resolve({});
-    });
-    const socialClient = client(pricing.resolution)(socialContract);
-
-    const created = await accept(
-      socialClient.createDownload({
-        headers: authenticate(actor),
-        body: {
-          platform: "youtube",
-          url: "https://youtu.be/public-video",
-          maxDuration: 120,
-          quality: "720p",
-          format: "mp4",
-        },
-      }),
-      [202],
-    );
-    await flushWaitUntilForTest();
-    const processing = await accept(
-      socialClient.getDownload({
-        headers: authenticate(actor),
-        params: { downloadId: created.body.downloadId },
-      }),
-      [200],
-    );
-    await flushWaitUntilForTest();
-    const completed = await accept(
-      socialClient.getDownload({
-        headers: authenticate(actor),
-        params: { downloadId: created.body.downloadId },
-      }),
-      [200],
-    );
-    const creditsAfterCompletion = await credits(actor);
-    await accept(
-      socialClient.getDownload({
-        headers: authenticate(actor),
-        params: { downloadId: created.body.downloadId },
-      }),
-      [200],
-    );
-
-    expect(startBody).toStrictEqual({
-      url: "https://youtu.be/public-video",
-      max_duration: 120,
-      quality: "720p",
+  it.each([
+    {
+      caseName: "MP4",
+      contentType: "video/mp4",
+      expectedCatalogKind: "video",
+      filename: "Public _ 视频.mp4",
       format: "mp4",
-    });
-    expect(created.body.status).toBe("processing");
-    expect(processing.body.status).toBe("processing");
-    expect(completed.body).toMatchObject({
-      status: "completed",
-      provider: {
-        durationSeconds: 61,
-        creditsCost: 2,
-        thumbnail: "https://media.socialkit.test/thumbnail.jpg",
-      },
-      billing: { quantity: 2, creditsCharged: 6 },
-      artifact: {
-        id: created.body.downloadId,
-        filename: "Public _ 视频.mp4",
-        contentType: "video/mp4",
-        sizeBytes: payload.byteLength,
-      },
-    });
-    expect(beforeCredits - creditsAfterCompletion).toBe(6);
-    await expect(credits(actor)).resolves.toBe(creditsAfterCompletion);
-    expect(
-      context.mocks.s3.send.mock.calls.filter(([command]) => {
-        return command instanceof UploadPartCommand;
-      }),
-    ).toHaveLength(1);
-  });
+      providerTitle: "Public / 视频.mp4",
+    },
+    {
+      caseName: "M4A",
+      contentType: "audio/mp4",
+      expectedCatalogKind: "file",
+      filename: "Public _ 音频.m4a",
+      format: "m4a",
+      providerTitle: "Public / 音频.m4a",
+    },
+  ] as const)(
+    "materializes a ready $caseName download into the expected catalog kind",
+    async ({
+      contentType,
+      expectedCatalogKind,
+      filename,
+      format,
+      providerTitle,
+    }) => {
+      const actor = createBddApi(context).user();
+      if (!actor.orgId) {
+        throw new Error("Social test actor must belong to an organization");
+      }
+      const bdd = createBddApi(context);
+      const api = createRunsApi(context);
+      bdd.acceptAgentStorageWrites();
+      api.acceptStorageDownloads();
+      api.acceptTelemetryIngest();
+      configureProvider();
+      const pricing = await setupConfiguredPricing();
+      await api.grantProEntitlement(actor);
+      await fundActor(actor);
+      const agentName = `social-download-${randomUUID().slice(0, 8)}`;
+      const compose = await api.createDirectAgent(actor, {
+        version: "1.0",
+        agents: {
+          [agentName]: {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          },
+        },
+      });
+      const run = await api.createDirectRun(actor, {
+        agentId: compose.agentId,
+        prompt: `Download public social media as ${format}`,
+      });
+      const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [
+        "social:read",
+        "chat-event:read",
+      ]);
+      const runHeaders = { authorization: `Bearer ${token}` };
+      const beforeCredits = await credits(actor);
+      mockNow(Date.UTC(2000, 0, 1));
+      const payload = new TextEncoder().encode("downloaded social media");
+      const providerJobId = `provider-download-${randomUUID()}`;
+      const downloadUrl = `https://media.socialkit.test/${providerJobId}`;
+      let startBody: unknown;
+      let providerPolls = 0;
+      context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+        { address: "8.8.8.8", family: 4 },
+      ]);
+      server.use(
+        http.post(
+          `${SOCIALKIT_BASE}/v2/youtube/download`,
+          async ({ request }) => {
+            startBody = await request.json();
+            return HttpResponse.json({
+              success: true,
+              data: {
+                jobId: providerJobId,
+                status: "queued",
+                statusUrl: `${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`,
+              },
+            });
+          },
+        ),
+        http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+          providerPolls += 1;
+          if (providerPolls === 1) {
+            return HttpResponse.json({
+              success: true,
+              data: {
+                jobId: providerJobId,
+                status: "processing",
+              },
+            });
+          }
+          return HttpResponse.json({
+            success: true,
+            data: {
+              jobId: providerJobId,
+              status: "ready",
+              platform: "youtube",
+              downloadUrl,
+              durationSeconds: 61,
+              fileSizeMB: "1.5 MB",
+              creditsCost: 2,
+              quality: "480p",
+              format,
+              title: providerTitle,
+              thumbnail: "https://media.socialkit.test/thumbnail.jpg",
+            },
+          });
+        }),
+        http.get(downloadUrl, () => {
+          return new HttpResponse(payload, {
+            headers: { "content-length": String(payload.byteLength) },
+          });
+        }),
+      );
+      context.mocks.s3.send.mockImplementation((command: unknown) => {
+        if (command instanceof ListObjectsV2Command) {
+          return Promise.resolve({ Contents: [] });
+        }
+        if (command instanceof CreateMultipartUploadCommand) {
+          return Promise.resolve({ UploadId: "socialkit-upload-1" });
+        }
+        if (command instanceof UploadPartCommand) {
+          return Promise.resolve({ ETag: '"socialkit-etag-1"' });
+        }
+        if (command instanceof CompleteMultipartUploadCommand) {
+          return Promise.resolve({});
+        }
+        return Promise.resolve({});
+      });
+      const testClient = client(pricing.resolution);
+      const socialClient = testClient(socialContract);
+
+      const created = await accept(
+        socialClient.createDownload({
+          headers: runHeaders,
+          body: {
+            platform: "youtube",
+            url: "https://youtu.be/public-video",
+            maxDuration: 120,
+            quality: "720p",
+            format,
+          },
+        }),
+        [202],
+      );
+      await flushWaitUntilForTest();
+      const processing = await accept(
+        socialClient.getDownload({
+          headers: runHeaders,
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      );
+      await flushWaitUntilForTest();
+      const completed = await accept(
+        socialClient.getDownload({
+          headers: runHeaders,
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      );
+      const creditsAfterCompletion = await credits(actor);
+      await accept(
+        socialClient.getDownload({
+          headers: runHeaders,
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      );
+
+      expect(startBody).toStrictEqual({
+        url: "https://youtu.be/public-video",
+        max_duration: 120,
+        quality: "720p",
+        format,
+      });
+      expect(created.body.status).toBe("processing");
+      expect(processing.body.status).toBe("processing");
+      expect(completed.body).toMatchObject({
+        status: "completed",
+        provider: {
+          durationSeconds: 61,
+          creditsCost: 2,
+          thumbnail: "https://media.socialkit.test/thumbnail.jpg",
+        },
+        billing: { quantity: 2, creditsCharged: 6 },
+        artifact: {
+          id: created.body.downloadId,
+          filename,
+          contentType,
+          sizeBytes: payload.byteLength,
+        },
+      });
+      expect(beforeCredits - creditsAfterCompletion).toBe(6);
+      await expect(credits(actor)).resolves.toBe(creditsAfterCompletion);
+      expect(
+        context.mocks.s3.send.mock.calls.filter(([command]) => {
+          return command instanceof UploadPartCommand;
+        }),
+      ).toHaveLength(1);
+
+      const catalogClient = testClient(artifactCatalogContract);
+      const videoCatalog = await accept(
+        catalogClient.list({
+          headers: runHeaders,
+          query: { kind: "video" },
+        }),
+        [200],
+      );
+      const fileCatalog = await accept(
+        catalogClient.list({
+          headers: runHeaders,
+          query: { kind: "file" },
+        }),
+        [200],
+      );
+      const expectedCatalog =
+        expectedCatalogKind === "video" ? videoCatalog : fileCatalog;
+      const otherCatalog =
+        expectedCatalogKind === "video" ? fileCatalog : videoCatalog;
+      expect(expectedCatalog.body.artifacts).toStrictEqual([
+        expect.objectContaining({
+          kind: expectedCatalogKind,
+          title: filename,
+        }),
+      ]);
+      expect(otherCatalog.body.artifacts).toStrictEqual([]);
+      const catalogArtifactId = expectedCatalog.body.artifacts[0]?.id;
+      if (!catalogArtifactId) {
+        throw new Error("Expected the SocialKit artifact in the catalog");
+      }
+      const detail = await accept(
+        catalogClient.get({
+          headers: runHeaders,
+          params: { artifactId: catalogArtifactId },
+        }),
+        [200],
+      );
+      expect(detail.body).toMatchObject({
+        kind: expectedCatalogKind,
+        title: filename,
+        file: {
+          contentType,
+          size: payload.byteLength,
+          previewImageUrl: null,
+        },
+        ...(expectedCatalogKind === "video" ? { durationSeconds: 61 } : {}),
+      });
+    },
+  );
 
   it.each([
     {

@@ -1576,6 +1576,13 @@
       "when": 1788086558358,
       "tag": "1032_remove_chat_event_projection_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 1033,
+      "version": "7",
+      "when": 1788095423754,
+      "tag": "1033_socialkit_video_artifact_marker",
+      "breakpoints": true
     }
   ]
 }

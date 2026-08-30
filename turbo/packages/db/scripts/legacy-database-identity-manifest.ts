@@ -144,6 +144,19 @@ const runnerProfileDisposition = {
     "#26701 approves a separate contract only after the 7-day zero-queue window and exact supported-Runner inventory both pass.",
 } as const satisfies ManifestDisposition;
 
+const socialKitVideoArtifactDisposition = {
+  classification: "migrate",
+  reason:
+    "The temporary SocialKit MP4 rollout bridge writes the existing zero-official-video artifact marker for old API releases during deployment overlap.",
+  ownerIssue: "#30351",
+  writerStopCondition:
+    "The marker-writing API release is production-accepted and every old or rollback API writer that can create SocialKit downloads has drained.",
+  drainEvidence:
+    "An exact production query shows zero authoritative unmarked SocialKit MP4 uploaded files after all old and rollback writers have drained.",
+  removalGate:
+    "#30351 may remove the rollout bridge only after the writer stop condition and zero-candidate production query are recorded.",
+} as const satisfies ManifestDisposition;
+
 const nonWorkflowPhysicalEntries = [
   ...physicalEntries(
     [
@@ -253,6 +266,16 @@ const nonWorkflowPhysicalEntries = [
       },
     ],
     runnerProfileDisposition,
+  ),
+  ...physicalEntries(
+    [
+      {
+        key: "function:public.mark_socialkit_mp4_artifact_1033()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+    ],
+    socialKitVideoArtifactDisposition,
   ),
 ] as const satisfies readonly LegacyDatabaseIdentityManifestEntry[];
 

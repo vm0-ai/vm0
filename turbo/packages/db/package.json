@@ -38,8 +38,9 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
-    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:retired-agent-plane-contraction && pnpm test:morning-brief-phase-a-cutover && tsx scripts/test-migration-consistency-schema.ts",
+    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:retired-agent-plane-contraction && pnpm test:morning-brief-phase-a-cutover && pnpm test:socialkit-video-artifact-migration && tsx scripts/test-migration-consistency-schema.ts",
     "test:morning-brief-phase-a-cutover": "tsx scripts/test-morning-brief-phase-a-cutover.ts",
+    "test:socialkit-video-artifact-migration": "tsx scripts/test-socialkit-video-artifact-migration.ts",
     "test:retired-agent-plane-contraction": "tsx scripts/test-retired-agent-plane-contraction.ts",
     "test:migration-runner": "tsx scripts/test-migration-runner-timeouts.ts",
     "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"

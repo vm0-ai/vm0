@@ -961,6 +961,9 @@ const materializeSocialKitArtifact$ = command(
         s3Key: stored.key,
         publicBrand: args.job.publicBrand,
         metadata: {
+          ...(args.job.request.format === "mp4"
+            ? { generatedBy: "zero-official-video" }
+            : {}),
           provider: "socialkit",
           providerJobId: args.job.providerJobId,
           platform: args.job.request.platform,

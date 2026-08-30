@@ -2518,6 +2518,15 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "run_uploaded_files",
     triggerName: "run_uploaded_files_delete_artifact_registry",
   },
+  // Temporary #30349 old-writer/new-DB bridge. Remove with #30351 only after
+  // the marker-writing API and its rollback window have drained.
+  {
+    definition:
+      "CREATE TRIGGER run_uploaded_files_mark_socialkit_mp4_1033 BEFORE INSERT OR UPDATE OF external_id, run_id, user_id, org_id, content_type, metadata ON public.run_uploaded_files FOR EACH ROW EXECUTE FUNCTION mark_socialkit_mp4_artifact_1033()",
+    schemaName: "public",
+    tableName: "run_uploaded_files",
+    triggerName: "run_uploaded_files_mark_socialkit_mp4_1033",
+  },
   {
     definition:
       "CREATE TRIGGER run_uploaded_files_queue_artifact_catalog AFTER INSERT OR UPDATE OF run_id, chat_thread_id, user_id, org_id, external_id, filename, content_type, url, preview_image_url, metadata ON public.run_uploaded_files FOR EACH ROW EXECUTE FUNCTION queue_artifact_catalog_file()",
@@ -2670,6 +2679,14 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Same temporary #30349 bridge and #30351 removal gate as its trigger.
+  {
+    bodyHash: "6fd2a364114c03565956ebdcd23cc149",
+    functionName: "mark_socialkit_mp4_artifact_1033",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
