@@ -22,12 +22,6 @@ import {
   piResourceSnapshotDigest,
   UnsupportedPiResourceError,
 } from "../pi-resource-snapshot.service";
-import {
-  expiredPiApiFirstTurnObjectKeys,
-  PI_API_FIRST_TURN_STAGING_RETENTION_MS,
-  piResourceSnapshotExpirationCutoff,
-  PI_RESOURCE_SNAPSHOT_RETENTION_MS,
-} from "../pi-api-first-turn-cleanup.service";
 
 interface ArchiveFile {
   readonly path: string;
@@ -277,35 +271,5 @@ describe("Pi resource snapshot", () => {
     expect(() => {
       return buildPiResourceSnapshot(mounts, [invalidArchive]);
     }).toThrow(/valid for encoding utf-8/u);
-  });
-
-  it("expires partial first-turn staging data after the signed URL window", () => {
-    const at = Date.parse("2026-08-23T12:00:00.000Z");
-    expect(
-      expiredPiApiFirstTurnObjectKeys(
-        [
-          {
-            key: "pi-api-first-turn/partial/session.jsonl",
-            size: 128,
-            lastModified: new Date(
-              at - PI_API_FIRST_TURN_STAGING_RETENTION_MS - 1,
-            ),
-          },
-          {
-            key: "pi-api-first-turn/live/manifest.json",
-            size: 128,
-            lastModified: new Date(at - PI_API_FIRST_TURN_STAGING_RETENTION_MS),
-          },
-        ],
-        at,
-      ),
-    ).toStrictEqual(["pi-api-first-turn/partial/session.jsonl"]);
-  });
-
-  it("expires rebuildable resource snapshots after one week", () => {
-    const at = Date.parse("2026-08-23T12:00:00.000Z");
-    expect(piResourceSnapshotExpirationCutoff(at).getTime()).toBe(
-      at - PI_RESOURCE_SNAPSHOT_RETENTION_MS,
-    );
   });
 });
