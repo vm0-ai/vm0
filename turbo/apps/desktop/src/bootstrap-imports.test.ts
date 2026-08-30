@@ -77,7 +77,7 @@ describe("bootstrap import graph", () => {
     // Keep the reachable set intentional: growing it means growing the code
     // that must never fail to load.
     expect([...visited].sort()).toEqual([
-      "../scripts/desktop-environment-alias.js",
+      "../scripts/desktop-environment.js",
       "bootstrap-degraded.ts",
       "bootstrap.ts",
       "computer-use-types.ts",
