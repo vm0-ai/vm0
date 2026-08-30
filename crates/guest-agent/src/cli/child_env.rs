@@ -7,10 +7,10 @@ use super::CliRuntimeConfig;
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const DEFAULT_SHELL: &str = "/bin/bash";
 // The sandbox CLI needs the same API origin as the guest-agent in local
-// development. During #28914 reader Stage 1, keep this legacy spelling until
-// the separate managed-CLI reader/support floor permits a child-writer cutover.
-// Tokens and all other bootstrap controls must stay private to the guest-agent.
-const RUNNER_VISIBLE_API_URL_ENV_KEY: &str = guest_contracts::env::API_URL_ENV;
+// development. The managed-CLI reader floor is complete, so expose only the
+// canonical spelling. Tokens and all other bootstrap controls must stay private
+// to the guest-agent.
+const RUNNER_VISIBLE_API_URL_ENV_KEY: &str = guest_contracts::env::CANONICAL_API_URL_ENV;
 const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
     "USER",
     "LOGNAME",
@@ -47,6 +47,11 @@ pub(super) fn values_with_inputs(
         values.push((key.to_string(), value));
     }
     for (key, value) in user_env {
+        if key == guest_contracts::env::API_URL_ENV
+            || key == guest_contracts::env::CANONICAL_API_URL_ENV
+        {
+            continue;
+        }
         values.push((key.clone(), value.clone()));
     }
     apply_runner_visible_env(api_url, |key, value| {
@@ -127,9 +132,12 @@ mod tests {
     #[test]
     fn normalize_values_keeps_last_value_for_duplicate_keys() {
         let values = normalize_values(vec![
-            ("VM0_API_BACKEND_URL".to_string(), "user-value".to_string()),
             (
-                "VM0_API_BACKEND_URL".to_string(),
+                guest_contracts::env::CANONICAL_API_URL_ENV.to_string(),
+                "user-value".to_string(),
+            ),
+            (
+                guest_contracts::env::CANONICAL_API_URL_ENV.to_string(),
                 "runner-value".to_string(),
             ),
         ]);
@@ -137,44 +145,55 @@ mod tests {
         assert_eq!(
             values
                 .iter()
-                .find(|(key, _)| key == "VM0_API_BACKEND_URL")
+                .find(|(key, _)| key == guest_contracts::env::CANONICAL_API_URL_ENV)
                 .map(|(_, value)| value.as_str()),
             Some("runner-value")
         );
         assert_eq!(
             values
                 .iter()
-                .filter(|(key, _)| key == "VM0_API_BACKEND_URL")
+                .filter(|(key, _)| key == guest_contracts::env::CANONICAL_API_URL_ENV)
                 .count(),
             1
         );
     }
 
     #[test]
-    fn values_with_inputs_counts_final_runner_visible_api_url() {
+    fn values_with_inputs_emits_only_captured_canonical_api_url() {
         let mut user_env = HashMap::new();
         let oversized_user_api_url =
             "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
         user_env.insert(
-            guest_contracts::env::API_URL_ENV.to_string(),
+            guest_contracts::env::CANONICAL_API_URL_ENV.to_string(),
             oversized_user_api_url,
         );
+        user_env.insert(
+            guest_contracts::env::API_URL_ENV.to_string(),
+            "https://legacy-user.example.invalid".to_string(),
+        );
+        let captured_api_url = "https://runner.example/%2F?raw=%20#fragment/";
 
-        let values = values_with_inputs("/tmp/home", &user_env, "https://runner.example");
+        let values = values_with_inputs("/tmp/home", &user_env, captured_api_url);
 
         assert_eq!(
             values
                 .iter()
-                .find(|(key, _)| key == guest_contracts::env::API_URL_ENV)
+                .find(|(key, _)| key == guest_contracts::env::CANONICAL_API_URL_ENV)
                 .map(|(_, value)| value.as_str()),
-            Some("https://runner.example")
+            Some(captured_api_url)
         );
         assert_eq!(
             values
                 .iter()
-                .filter(|(key, _)| key == guest_contracts::env::API_URL_ENV)
+                .filter(|(key, _)| key == guest_contracts::env::CANONICAL_API_URL_ENV)
                 .count(),
             1
+        );
+        assert!(
+            !values
+                .iter()
+                .any(|(key, _)| key == guest_contracts::env::API_URL_ENV),
+            "managed child environment retained the legacy API URL alias"
         );
     }
 
