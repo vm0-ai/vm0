@@ -6,7 +6,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF NEW."metadata" ->> 'generatedBy' = 'zero-official-video'
+  IF NEW."metadata" ? 'generatedBy'
     OR NEW."run_id" IS NULL
     OR NEW."org_id" IS NULL
     OR NEW."content_type" IS DISTINCT FROM 'video/mp4'
@@ -68,4 +68,4 @@ WHERE "job"."status" IN ('materializing', 'artifact_failed', 'completed')
   AND "file"."org_id" IS NOT NULL
   AND "file"."content_type" = 'video/mp4'
   AND "file"."metadata" ->> 'provider' = 'socialkit'
-  AND "file"."metadata" ->> 'generatedBy' IS DISTINCT FROM 'zero-official-video';
+  AND NOT ("file"."metadata" ? 'generatedBy');

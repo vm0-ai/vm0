@@ -12,6 +12,7 @@ export const SOCIALKIT_VIDEO_ARTIFACT_MIGRATION =
   "1033_socialkit_video_artifact_marker";
 const testDatabase = "migration_socialkit_video_artifact_30349";
 const VIDEO_MARKER = "zero-official-video";
+const CONFLICTING_MARKER = "zero-official-image";
 
 const fixture = {
   orgId: "org_socialkit_video_artifact_migration",
@@ -51,6 +52,8 @@ const fixture = {
   malformedFileId: "00000000-0000-4000-8000-000000303509",
   artifactFailedJobId: "00000000-0000-4000-8000-000000303512",
   artifactFailedFileId: "00000000-0000-4000-8000-000000303513",
+  conflictingJobId: "00000000-0000-4000-8000-000000303514",
+  conflictingFileId: "00000000-0000-4000-8000-000000303515",
 } as const;
 
 interface OwnerFixture {
@@ -253,6 +256,13 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       providerJobId: "provider-artifact-failed",
       status: "artifact_failed",
     });
+    await seedDownloadJob(client, {
+      format: "mp4",
+      id: fixture.conflictingJobId,
+      owner: fixture.historical,
+      providerJobId: "provider-conflicting-marker",
+      status: "completed",
+    });
 
     await seedFile(client, {
       contentType: "video/mp4",
@@ -310,6 +320,18 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
     });
     await seedFile(client, {
       contentType: "video/mp4",
+      externalId: fixture.conflictingJobId,
+      fileId: fixture.conflictingFileId,
+      metadata: {
+        generatedBy: CONFLICTING_MARKER,
+        provider: "socialkit",
+        providerJobId: "provider-conflicting-marker",
+        preserved: "conflicting-marker",
+      },
+      owner: fixture.historical,
+    });
+    await seedFile(client, {
+      contentType: "video/mp4",
       externalId: "ordinary-video-non-uuid",
       fileId: fixture.ordinaryVideoFileId,
       metadata: { preserved: "ordinary-upload" },
@@ -330,6 +352,7 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       fixture.ordinaryVideoFileId,
       fixture.inFlightFileId,
       fixture.artifactFailedFileId,
+      fixture.conflictingFileId,
     ]);
     assert.deepEqual(requiredFile(historical, fixture.historicalMp4JobId), {
       externalId: fixture.historicalMp4JobId,
@@ -386,6 +409,42 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       },
       pending: true,
     });
+    assert.deepEqual(requiredFile(historical, fixture.conflictingJobId), {
+      externalId: fixture.conflictingJobId,
+      metadata: {
+        generatedBy: CONFLICTING_MARKER,
+        provider: "socialkit",
+        providerJobId: "provider-conflicting-marker",
+        preserved: "conflicting-marker",
+      },
+      pending: false,
+    });
+
+    await client.query(
+      `
+        UPDATE "run_uploaded_files"
+        SET "metadata" = "metadata" || '{"touchedAfterMigration": true}'::jsonb
+        WHERE "id" = $1::uuid
+      `,
+      [fixture.conflictingFileId],
+    );
+    const conflictingAfterTrigger = await readFileStates(client, [
+      fixture.conflictingFileId,
+    ]);
+    assert.deepEqual(
+      requiredFile(conflictingAfterTrigger, fixture.conflictingJobId),
+      {
+        externalId: fixture.conflictingJobId,
+        metadata: {
+          generatedBy: CONFLICTING_MARKER,
+          provider: "socialkit",
+          providerJobId: "provider-conflicting-marker",
+          preserved: "conflicting-marker",
+          touchedAfterMigration: true,
+        },
+        pending: true,
+      },
+    );
 
     await seedDownloadJob(client, {
       format: "mp4",
@@ -475,7 +534,7 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       "   ✅ completed, in-flight, and retryable MP4 rows are marked and re-queued",
     );
     console.log(
-      "   ✅ M4A, ordinary video, and identity lookalikes stay unmarked",
+      "   ✅ M4A, ordinary video, conflicting markers, and identity lookalikes stay unchanged",
     );
     console.log("   ✅ old and canonical writers converge during rollout\n");
   } finally {
