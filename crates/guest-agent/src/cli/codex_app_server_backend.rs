@@ -257,6 +257,7 @@ async fn run_codex_app_server(
         CliEventIngestor::new_with_session_metadata(runtime, codex_startup, session_metadata, 0);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
+    let can_replay_historical_usage = resume_thread_id.is_some();
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(
         runtime,
         workload_containment.cloned(),
@@ -283,7 +284,7 @@ async fn run_codex_app_server(
         let thread_identity = thread_identity_from_response(&thread_response)?;
         validate_resumed_thread_id(&thread_identity.canonical_id, resume_thread_id.as_deref())?;
         let mut notification_state = CodexNotificationState {
-            allow_historical_usage: true,
+            allow_historical_usage: can_replay_historical_usage,
             ..CodexNotificationState::default()
         };
 
@@ -339,7 +340,7 @@ async fn run_codex_app_server(
         let turn_id = turn_id_from_response(&turn_response)?;
         let mut active_input_open = active_input.is_enabled();
         let mut turn_started_observed = false;
-        notification_state.allow_historical_usage = true;
+        notification_state.allow_historical_usage = can_replay_historical_usage;
 
         let exit_code = loop {
             let event = next_codex_run_event(
@@ -990,8 +991,8 @@ fn prepare_notification_ingest(
     if let Some(update) = codex_token_usage_update(&notification)
         .map_err(|error| AgentError::Execution(error.to_string()))?
     {
-        if active_turn_id.is_empty()
-            || (notification_state.allow_historical_usage && update.turn_id != active_turn_id)
+        if notification_state.allow_historical_usage
+            && (active_turn_id.is_empty() || update.turn_id != active_turn_id)
         {
             validate_scope(
                 Some(&update.thread_id),
