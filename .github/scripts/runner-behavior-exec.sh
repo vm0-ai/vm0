@@ -1111,8 +1111,8 @@ sudo "$BIN_DIR/runner" exec --timeout 75 \
   || fail "Claude compact-generation compatibility"
 echo "PASS: Claude compact-generation compatibility"
 
-# Test 9: verify the bundled Codex resumes and appends a native compact
-# generation under the same thread ID. Model requests terminate on loopback.
+# Test 9: verify successful usage notifications and that the bundled Codex
+# resumes and appends a native compact generation under the same thread ID.
 echo "--- Test: Codex compact-generation compatibility ---"
 CODEX_COMPACT_SMOKE=$(cat <<'PY'
 import json
@@ -1130,6 +1130,7 @@ compacting_turn_token = "CODEX-COMPACTING-TURN-TOKEN"
 candidate_turn_token = "CODEX-COMPACT-CANDIDATE-TURN-TOKEN"
 append_token = "CODEX-COMPACT-APPEND-TOKEN"
 legacy_seed_token = "CODEX-LEGACY-SEED-TOKEN"
+usage_token = "CODEX-TOKEN-USAGE-TOKEN"
 # [sync:codex-app-server-compatibility-params] Keep in sync with initialize in
 # codex_app_server.rs, thread/turn params in codex_app_server_backend.rs, and
 # IGNORED_NOTIFICATION_METHODS in codex_app_server_events.rs.
@@ -1160,6 +1161,59 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length", "0"))
         payload = json.loads(self.rfile.read(length))
         requests.append((self.path, payload))
+        if usage_token in json.dumps(payload.get("input", [])):
+            events = [
+                {
+                    "type": "response.created",
+                    "response": {"id": "resp-token-usage"},
+                },
+                {
+                    "type": "response.output_item.done",
+                    "item": {
+                        "type": "message",
+                        "role": "assistant",
+                        "id": "msg-token-usage",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "token usage probe complete",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp-token-usage",
+                        "usage": {
+                            "input_tokens": 30,
+                            "input_tokens_details": {
+                                "cached_tokens": 11,
+                                "cache_write_tokens": 2,
+                            },
+                            "output_tokens": 7,
+                            "output_tokens_details": {
+                                "reasoning_tokens": 3,
+                            },
+                            "total_tokens": 37,
+                        },
+                    },
+                },
+            ]
+            body = "".join(
+                "event: "
+                + event["type"]
+                + "\ndata: "
+                + json.dumps(event, separators=(",", ":"))
+                + "\n\n"
+                for event in events
+            ).encode()
+            self.send_response(200)
+            self.send_header("content-type", "text/event-stream")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         body = json.dumps(
             {
                 "error": {
@@ -1375,6 +1429,61 @@ def response_request_for_prompt(prompt):
         f"found {len(matching_requests)} among {len(requests)} requests"
     )
     return matching_requests[0]
+
+
+def probe_token_usage(codex_home, port):
+    write_config(codex_home, port)
+    requests.clear()
+    result = run_codex_app_server(codex_home, usage_token)
+    response_request_for_prompt(usage_token)
+    messages = result["messages"]
+    turn_response = next(
+        message
+        for message in messages
+        if message.get("id") == 3
+    )
+    turn_id = turn_response["result"]["turn"]["id"]
+    usage_notifications = [
+        (index, message)
+        for index, message in enumerate(messages)
+        if (
+            message.get("method") == "thread/tokenUsage/updated"
+            and message.get("params", {}).get("threadId")
+            == result["thread_id"]
+            and message.get("params", {}).get("turnId") == turn_id
+        )
+    ]
+    assert usage_notifications, (
+        "Codex did not emit thread/tokenUsage/updated on success\n"
+        + app_server_output(result)
+    )
+    usage_index, usage_message = usage_notifications[-1]
+    expected_usage = {
+        "inputTokens": 30,
+        "cachedInputTokens": 11,
+        "cacheWriteInputTokens": 2,
+        "outputTokens": 7,
+        "reasoningOutputTokens": 3,
+        "totalTokens": 37,
+    }
+    token_usage = usage_message["params"]["tokenUsage"]
+    assert token_usage["total"] == expected_usage, token_usage
+    assert token_usage["last"] == expected_usage, token_usage
+    completion_index, completion = next(
+        (index, message)
+        for index, message in enumerate(messages)
+        if (
+            message.get("method") == "turn/completed"
+            and message.get("params", {}).get("threadId")
+            == result["thread_id"]
+            and message.get("params", {}).get("turn", {}).get("id")
+            == turn_id
+        )
+    )
+    assert usage_index < completion_index, (
+        "token usage notification must precede turn completion"
+    )
+    assert "usage" not in completion.get("params", {}), completion
 
 
 def zstd_compress(history_bytes):
@@ -1697,6 +1806,8 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
         server_thread.start()
         root = Path(temp_root)
         port = server.server_port
+
+        probe_token_usage(root / "usage" / ".codex", port)
 
         seed_home = root / "seed" / ".codex"
         write_config(seed_home, port)

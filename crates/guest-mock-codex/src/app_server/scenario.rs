@@ -34,6 +34,8 @@ pub(super) enum Scenario {
     RuntimeTurnStartedBeforeSteer,
     WaitOnTurnSteerResponse,
     RuntimeTurnCompleteWithoutThreadStarted,
+    RuntimeTurnUsageResumeNoReplay,
+    RuntimeTurnUsageResumeReplay,
     RuntimeEventFlood,
     RuntimeLargeEventFlood,
     RuntimeOversizedDelivery,
@@ -91,6 +93,8 @@ impl Scenario {
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
+                "runtime-turn-usage-resume-no-replay" => Ok(Self::RuntimeTurnUsageResumeNoReplay),
+                "runtime-turn-usage-resume-replay" => Ok(Self::RuntimeTurnUsageResumeReplay),
                 "runtime-event-flood" => Ok(Self::RuntimeEventFlood),
                 "runtime-large-event-flood" => Ok(Self::RuntimeLargeEventFlood),
                 "runtime-oversized-delivery" => Ok(Self::RuntimeOversizedDelivery),
