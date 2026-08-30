@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.511.3](https://github.com/vm0-ai/vm0/compare/api-v1.511.2...api-v1.511.3) (2026-08-30)
+
+
+### Refactoring
+
+* retire legacy morning brief runtime ([#30267](https://github.com/vm0-ai/vm0/issues/30267)) ([f71e821](https://github.com/vm0-ai/vm0/commit/f71e821906627a3e7198eb8a395d2e2825b0e748))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.8
+    * @okouai/connector-catalog-validation bumped to 2.0.10
+    * @okouai/core bumped to 8.602.0
+    * @okouai/db bumped to 1.228.14
+
 ## [1.511.2](https://github.com/vm0-ai/vm0/compare/api-v1.511.1...api-v1.511.2) (2026-08-30)
 
 
