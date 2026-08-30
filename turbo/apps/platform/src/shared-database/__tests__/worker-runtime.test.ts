@@ -56,6 +56,7 @@ type WorkerEvent = Extract<
   {
     readonly type:
       | "append"
+      | "invalidate"
       | "authentication-required"
       | "reload-required"
       | "status";
@@ -724,7 +725,7 @@ describe("shared database worker runtime", () => {
     expect(requestedSeqIds).toStrictEqual([0, 1]);
   });
 
-  it("coalesces repeated Ably notifications and writes before append", async () => {
+  it("invalidates before catch-up, coalesces repeats, and writes before append", async () => {
     const workerEvents: WorkerEvent[] = [];
     const clientId = await connectRuntime(workerEvents);
     const dataKey = chatEventKey(crypto.randomUUID());
@@ -770,6 +771,12 @@ describe("shared database worker runtime", () => {
       afterSeqId: null,
       consistency: "catch-up",
     });
+    const appendCountBeforeRealtime = workerEvents.filter((event) => {
+      return event.type === "append";
+    }).length;
+    const invalidationCountBeforeRealtime = workerEvents.filter((event) => {
+      return event.type === "invalidate";
+    }).length;
 
     availableRows = [firstRow, secondRow];
     holdRealtimePage = true;
@@ -778,6 +785,16 @@ describe("shared database worker runtime", () => {
       `chatThreadMessageCreated:${dataKey.threadId}`,
     );
     await realtimePageStarted.promise;
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "invalidate";
+      }),
+    ).toHaveLength(invalidationCountBeforeRealtime + 1);
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "append";
+      }),
+    ).toHaveLength(appendCountBeforeRealtime);
     availableRows = [firstRow, secondRow, thirdRow];
     context.mocks.ably.triggerOnChannel(
       realtimeChannel(),

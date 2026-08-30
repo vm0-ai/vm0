@@ -34,6 +34,7 @@ type DirectWorkerEvent = Extract<
   {
     readonly type:
       | "append"
+      | "invalidate"
       | "authentication-required"
       | "reload-required"
       | "status";
@@ -72,7 +73,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   }
 
   private readonly emit = (event: DirectWorkerEvent): void => {
-    if (event.type === "append") {
+    if (event.type === "append" || event.type === "invalidate") {
       this.subscriptions.get(event.subscriptionId)?.callback();
       return;
     }

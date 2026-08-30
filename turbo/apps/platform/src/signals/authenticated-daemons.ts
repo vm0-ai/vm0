@@ -29,26 +29,30 @@ export const setupAuthenticatedDaemons$ = command(
       return;
     }
 
-    const authRecovery = await get(authRecovery$);
-    signal.throwIfAborted();
-    set(setupSharedDatabaseBridge$, authRecovery, signal);
-    await set(heartbeatSharedDatabaseNow$, signal);
-    signal.throwIfAborted();
-
     await Promise.all([
       set(setupRealtime$, signal),
       set(subscribeThreadListChanged$, signal),
       set(subscribeChatThreadReadCursorUpdated$, signal),
       set(setupChatIndicatorForegroundCatchUp$, signal),
-      set(subscribeEventDrivenChatThreads$, signal),
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
       set(subscribePresentationTemplatesChanged$, signal),
       set(setupUserPreferenceRealtime$, signal),
-      set(prewarmSharedUnreadChatEvents$, signal),
       set(subscribeCustomConnectorListChanged$, signal),
-      set(runSharedDatabaseHeartbeatLoop$, signal),
-      set(runSharedDatabaseInvalidationDaemon$, signal),
+      (async (): Promise<void> => {
+        const authRecovery = await get(authRecovery$);
+        signal.throwIfAborted();
+        set(setupSharedDatabaseBridge$, authRecovery, signal);
+        await set(heartbeatSharedDatabaseNow$, signal);
+        signal.throwIfAborted();
+
+        await Promise.all([
+          set(subscribeEventDrivenChatThreads$, signal),
+          set(prewarmSharedUnreadChatEvents$, signal),
+          set(runSharedDatabaseHeartbeatLoop$, signal),
+          set(runSharedDatabaseInvalidationDaemon$, signal),
+        ]);
+      })(),
     ]);
   },
 );

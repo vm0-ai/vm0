@@ -329,12 +329,12 @@ describe("shared database direct Platform bridge", () => {
       orgId: orgId(),
       threadId,
     };
-    let appends = 0;
+    let notifications = 0;
     await context.store.set(
       onSharedDatabase$,
       dataKey,
       () => {
-        appends += 1;
+        notifications += 1;
       },
       owner.signal,
     );
@@ -358,7 +358,7 @@ describe("shared database direct Platform bridge", () => {
         }),
       ).toStrictEqual([1]);
     });
-    expect(appends).toBe(1);
+    expect(notifications).toBe(2);
     expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1]);
 
     await context.store.set(
@@ -370,7 +370,7 @@ describe("shared database direct Platform bridge", () => {
       },
       owner.signal,
     );
-    expect(appends).toBe(1);
+    expect(notifications).toBe(2);
     expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1, 0, 1]);
     owner.abort(new DOMException("chat closed", "AbortError"));
   });

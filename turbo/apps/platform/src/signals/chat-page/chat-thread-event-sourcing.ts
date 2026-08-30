@@ -308,6 +308,7 @@ const subscribeSharedEventDrivenChatThreads$ = command(
       onSharedDatabase$,
       dataKey,
       () => {
+        set(markChatThreadEventSyncPending$);
         set(enqueueSharedDatabaseInvalidation$, dataKey);
       },
       signal,

@@ -547,21 +547,29 @@ describe("shared database MessagePort protocol", () => {
     );
     expect(callbacks).toBe(1);
     expect(subscriptionId).not.toBeNull();
+    if (subscriptionId === null) {
+      throw new Error("Expected a protocol subscription ID");
+    }
+    serverPort.postMessage({
+      type: "invalidate",
+      subscriptionId,
+      dataKey: key,
+    });
+    await vi.waitFor(() => {
+      expect(callbacks).toBe(2);
+    });
 
     subscription.abort(new DOMException("listener removed", "AbortError"));
     await vi.waitFor(() => {
       expect(unsubscribeObserved).toBeTruthy();
     });
-    if (subscriptionId === null) {
-      throw new Error("Expected a protocol subscription ID");
-    }
     serverPort.postMessage({
       type: "append",
       subscriptionId,
       dataKey: key,
     });
     await Promise.resolve();
-    expect(callbacks).toBe(1);
+    expect(callbacks).toBe(2);
 
     await expect(
       bridge.query(

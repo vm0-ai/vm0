@@ -43,7 +43,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   ) {
     this.handleMessage = (event) => {
       const message = sharedDatabaseWorkerMessageSchema.parse(event.data);
-      if (message.type === "append") {
+      if (message.type === "append" || message.type === "invalidate") {
         const subscription = this.subscriptions.get(message.subscriptionId);
         if (subscription) {
           subscription.callback();

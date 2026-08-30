@@ -16,6 +16,7 @@ interface SharedDatabaseRealtimeOptions {
   readonly orgId: string;
   readonly getTokenRequest: () => Promise<TokenRequest>;
   readonly onMessage: (message: InboundMessage) => void;
+  readonly onReconnect: () => void;
   readonly onStatus: (status: SharedDatabaseConnectionStatus) => void;
 }
 
@@ -112,6 +113,7 @@ export function createSharedDatabaseRealtimeSession(
     `user-org:${options.userId}:${options.orgId}`,
   );
   let channelState: "attached" | "attaching" | "failed" = "attaching";
+  let connectionEstablished = false;
   const handleConnectionStateChange = (
     stateChange: ConnectionStateChange,
   ): void => {
@@ -133,6 +135,14 @@ export function createSharedDatabaseRealtimeSession(
             ? "disconnected"
             : "connecting",
     );
+    if (stateChange.current === "connected") {
+      // The initial attachment has its own catch-up; later connection events
+      // close any gap created while Ably was reconnecting.
+      if (connectionEstablished && channelState === "attached") {
+        options.onReconnect();
+      }
+      connectionEstablished = true;
+    }
   };
   ably.connection.on(handleConnectionStateChange);
 
