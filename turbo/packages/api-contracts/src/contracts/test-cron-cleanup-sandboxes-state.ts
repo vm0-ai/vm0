@@ -25,6 +25,7 @@ export const testCronCleanupSandboxesStateActionBodySchema = z
       "get-queue-entry",
       "get-queue-marker-revoker",
       "get-export-job",
+      "transition-run-terminal",
     ]),
   })
   .passthrough();
