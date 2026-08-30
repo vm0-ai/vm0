@@ -284,7 +284,7 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
 
 fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
     match codex_error_info_variant(error)? {
-        "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
+        "rateLimitExceeded" | "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
         "usageLimitExceeded" => Some(FailureReason::UsageLimit),
         "cyberPolicy" | "misalignmentPolicyViolation" => Some(FailureReason::SafetyPolicyRefusal),
         _ => None,
