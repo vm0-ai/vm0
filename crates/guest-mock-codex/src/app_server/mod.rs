@@ -15,6 +15,8 @@ use std::thread;
 
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
+const ACTIVE_TURN_READY_FILE: &str = ".vm0-mock-codex-active-turn-ready";
+const ACTIVE_TURN_READY_EVENT: &str = "vm0_mock_codex_active_turn_ready";
 
 /// Run the mock Codex app server over process stdio.
 ///
@@ -165,6 +167,7 @@ impl AppServerState {
             "thread/resume" => self.handle_thread_resume(id, params, output),
             "turn/start" => self.handle_turn_start(id, params, output),
             "turn/steer" => self.handle_turn_steer(id, params, output),
+            "turn/interrupt" => self.handle_turn_interrupt(id, params, output),
             "mock/inputs" => self.handle_mock_inputs(id, output),
             "mock/state" => self.handle_mock_state(id, output),
             "mock/complete-split-notification" => {
@@ -208,6 +211,17 @@ impl AppServerState {
                 io::ErrorKind::InvalidData,
                 "unexpected client response",
             ));
+        }
+
+        if self.scenario.waits_for_turn_interrupt() && self.pending_response.is_none() {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+            std::fs::write(
+                std::path::PathBuf::from(home).join(ACTIVE_TURN_READY_FILE),
+                ACTIVE_TURN_READY_EVENT,
+            )?;
+            self.server_request_responses.push(message);
+            return Ok(ServerAction::Continue);
         }
 
         let Some(pending) = self.pending_response.take() else {

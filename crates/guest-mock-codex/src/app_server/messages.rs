@@ -370,6 +370,25 @@ pub(super) fn turn_completed_notification(thread_id: &str, turn_id: &str) -> Val
     })
 }
 
+pub(super) fn turn_interrupted_notification(thread_id: &str, turn_id: &str) -> Value {
+    json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": thread_id,
+            "turn": {
+                "id": turn_id,
+                "items": [],
+                "itemsView": "notLoaded",
+                "status": "interrupted",
+                "error": null,
+                "startedAt": 1,
+                "completedAt": 3,
+                "durationMs": 2
+            }
+        }
+    })
+}
+
 pub(super) fn turn_failed_notification(thread_id: &str, turn_id: &str) -> Value {
     json!({
         "method": "turn/completed",
