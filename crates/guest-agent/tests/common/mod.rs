@@ -1047,7 +1047,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::API_URL_ENV,
         guest_contracts::env::CANONICAL_API_URL_ENV,
         guest_contracts::env::RUN_ID_ENV,
-        guest_contracts::env::API_TOKEN_ENV,
+        "VM0_API_TOKEN",
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,
         "VM0_SANDBOX_ID",
         guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,

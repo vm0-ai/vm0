@@ -26,7 +26,7 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 9;
+const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 8;
 
 #[derive(Clone, Copy)]
 struct BootstrapAliasSourceEventSpec {
@@ -65,10 +65,6 @@ const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
         canonical_key: guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
     },
     BootstrapAliasSourceEventSpec {
-        family: "api_token_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_API_TOKEN_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
         family: "agent_execution_timeout_env_source",
         canonical_key: guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
     },
@@ -83,7 +79,6 @@ enum BootstrapAlias {
     PostResultSigkillGrace,
     UserEnvFile,
     RunPayloadFile,
-    ApiToken,
     AgentExecutionTimeout,
 }
 
@@ -106,7 +101,7 @@ impl BootstrapAliasSource {
 
 /// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
 ///
-/// The internal slots correspond exactly to the nine canonical keys in
+/// The internal slots correspond exactly to the eight canonical keys in
 /// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
 /// resolvers can populate them.
 #[derive(Clone, Default)]
@@ -118,7 +113,6 @@ pub struct BootstrapAliasSourceEvents {
     post_result_sigkill_grace: Option<BootstrapAliasSource>,
     user_env_file: Option<BootstrapAliasSource>,
     run_payload_file: Option<BootstrapAliasSource>,
-    api_token: Option<BootstrapAliasSource>,
     agent_execution_timeout: Option<BootstrapAliasSource>,
 }
 
@@ -132,7 +126,6 @@ impl BootstrapAliasSourceEvents {
             BootstrapAlias::PostResultSigkillGrace => &mut self.post_result_sigkill_grace,
             BootstrapAlias::UserEnvFile => &mut self.user_env_file,
             BootstrapAlias::RunPayloadFile => &mut self.run_payload_file,
-            BootstrapAlias::ApiToken => &mut self.api_token,
             BootstrapAlias::AgentExecutionTimeout => &mut self.agent_execution_timeout,
         };
         *slot = Some(source);
@@ -147,7 +140,6 @@ impl BootstrapAliasSourceEvents {
             self.post_result_sigkill_grace,
             self.user_env_file,
             self.run_payload_file,
-            self.api_token,
             self.agent_execution_timeout,
         ]
     }
@@ -244,34 +236,6 @@ fn record_private_payload_file_env_source(
     if let Some(source) = source {
         events.record(alias, source);
     }
-}
-
-/// Resolve the sensitive runner-to-guest API token at the single process-env
-/// capture boundary. Both aliases are reader-only during #28914 migration
-/// Stage 1; the runner writer remains [`guest_contracts::env::API_TOKEN_ENV`].
-fn api_token_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<String, String> {
-    let canonical_key = guest_contracts::env::CANONICAL_API_TOKEN_ENV;
-    let legacy_key = guest_contracts::env::API_TOKEN_ENV;
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting API token environment aliases: canonical_key={canonical_key} \
-                 legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(BootstrapAlias::ApiToken, source);
-    Ok(value)
 }
 
 /// Resolve the runner-owned agent execution timeout at the single process-env
@@ -587,7 +551,7 @@ impl GuestConfigRaw {
         Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
             api_url,
-            api_token: api_token_env_or_empty(&mut bootstrap_alias_sources)?,
+            api_token: env_or_empty(guest_contracts::env::CANONICAL_API_TOKEN_ENV),
             sandbox_id: env_or_empty(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV),
             sandbox_reuse_result: env_or_empty(
                 guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,

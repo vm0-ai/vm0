@@ -1151,7 +1151,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .unwrap(),
         "tok"
     );
-    assert!(!start_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert!(!start_env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         start_env
             .get(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV)

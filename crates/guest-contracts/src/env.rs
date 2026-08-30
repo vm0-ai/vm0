@@ -40,16 +40,10 @@ pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 /// file path resolution.
 pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
 
-/// Legacy backend API bearer token alias retained by guest readers for rollback.
+/// Sensitive backend API bearer token for guest-agent calls.
 ///
 /// This value is runner-owned and must not be exposed through user-provided
 /// environment or CLI child env.
-pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
-
-/// Canonical backend API bearer token alias written by the runner.
-///
-/// Guest readers retain [`API_TOKEN_ENV`] as the rollback fallback. This value
-/// has the same runner-owned isolation contract as the legacy alias.
 pub const CANONICAL_API_TOKEN_ENV: &str = "OKOU_API_TOKEN";
 
 /// Sandbox identifier assigned and written by the runner.
@@ -597,7 +591,6 @@ mod tests {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
-        assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
         assert_eq!(CANONICAL_SANDBOX_ID_ENV, "OKOU_SANDBOX_ID");
         assert_eq!(
@@ -838,7 +831,7 @@ mod tests {
             API_URL_ENV,
             CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
-            API_TOKEN_ENV,
+            "VM0_API_TOKEN",
             CANONICAL_API_TOKEN_ENV,
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
