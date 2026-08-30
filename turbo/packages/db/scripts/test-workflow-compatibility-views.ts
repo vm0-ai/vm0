@@ -4562,15 +4562,15 @@ async function validateContractFailureAtomicity(
   }
   await assertUnchanged();
 
-  const originalOwner = onlyRow(
+  const originalOwnerIdentifier = onlyRow(
     (
-      await client.query<{ relationOwner: string }>(`
-        SELECT pg_get_userbyid("relowner") AS "relationOwner"
+      await client.query<{ ownerIdentifier: string }>(`
+        SELECT quote_ident(pg_get_userbyid("relowner")) AS "ownerIdentifier"
         FROM "pg_class"
         WHERE "oid" = 'public.zero_workflows'::regclass
       `)
     ).rows,
-  ).relationOwner;
+  ).ownerIdentifier;
   await client.query(`CREATE ROLE "workflow_contract_owner_probe" NOLOGIN`);
   try {
     await client.query(
@@ -4579,7 +4579,7 @@ async function validateContractFailureAtomicity(
     await expectContractMigrationFailure(client, /relation owner mismatch/u);
   } finally {
     await client.query(
-      `ALTER VIEW "zero_workflows" OWNER TO "${originalOwner}"`,
+      `ALTER VIEW "zero_workflows" OWNER TO ${originalOwnerIdentifier}`,
     );
     await client.query(`DROP ROLE "workflow_contract_owner_probe"`);
   }
