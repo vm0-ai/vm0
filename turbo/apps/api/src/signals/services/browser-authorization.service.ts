@@ -255,9 +255,9 @@ export const applyBrowserAuthorizationRequest$ = command(
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentId,
+          agentId: chatThreads.agentId,
         });
-      if (!thread?.agentComposeId) {
+      if (!thread?.agentId) {
         return false;
       }
       await appendChatThreadEvent(tx, {
@@ -265,7 +265,7 @@ export const applyBrowserAuthorizationRequest$ = command(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         computerUseHostId: null,
         cloudBrowserEnabled: true,
         createdAt: now,
@@ -281,7 +281,10 @@ export const applyBrowserAuthorizationRequest$ = command(
       return { status: "scope_not_found" };
     }
 
-    await publishThreadListChanged(args.userId);
+    await publishThreadListChanged({
+      userId: args.userId,
+      orgId: args.orgId,
+    });
     signal.throwIfAborted();
     return { status: "applied" };
   },

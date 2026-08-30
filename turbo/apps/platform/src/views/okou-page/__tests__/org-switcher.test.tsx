@@ -1,0 +1,406 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
+
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
+
+function buttonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
+function menuItemByText(text: string): HTMLElement {
+  const item = queryAllByRoleFast("menuitem").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!item) {
+    throw new Error(`${text} menu item not found`);
+  }
+  return item;
+}
+
+describe("zero org switcher", () => {
+  it("shows pending workspace invitations and other workspaces from the sidebar menu", async () => {
+    const acceptDeferred = context.mocks.deferred<void>();
+    const pendingInvitations = [
+      {
+        id: "invitation_1",
+        publicOrganizationData: {
+          id: "org_invited",
+          name: "Invited Org",
+          imageUrl: "https://cdn.vm0.test/orgs/invited.png",
+        },
+        accept: async () => {
+          await acceptDeferred.promise;
+          pendingInvitations.length = 0;
+        },
+      },
+    ];
+
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Acme",
+      role: "admin",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Acme",
+          slug: "acme",
+          imageUrl: "https://cdn.vm0.test/orgs/acme.png",
+          hasImage: true,
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Acme",
+              imageUrl: "https://cdn.vm0.test/orgs/acme.png",
+            },
+          },
+          {
+            id: "membership_design",
+            organization: {
+              id: "org_design",
+              name: "Design Org",
+              imageUrl: "https://cdn.vm0.test/orgs/design.png",
+            },
+          },
+        ],
+        pendingInvitations,
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const switcher = buttonByText("Acme");
+      expect(
+        within(switcher).getByTestId("pending-invitations-badge"),
+      ).toBeInTheDocument();
+      return switcher;
+    });
+
+    click(orgSwitcher);
+
+    await waitFor(() => {
+      expect(screen.getByText("Design Org")).toBeInTheDocument();
+      expect(screen.getByText("Invited Org")).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "Design Org" })).toHaveAttribute(
+        "src",
+        "https://cdn.vm0.test/orgs/design.png",
+      );
+      expect(screen.getByRole("img", { name: "Invited Org" })).toHaveAttribute(
+        "src",
+        "https://cdn.vm0.test/orgs/invited.png",
+      );
+    });
+
+    click(buttonByText("Join"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Joining…")).toBeInTheDocument();
+    });
+
+    acceptDeferred.resolve();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Invited Org")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("pending-invitations-badge"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Design Org")).toBeInTheDocument();
+    });
+
+    click(menuItemByText("Design Org"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+  });
+
+  it("creates a new workspace from the org switcher menu", async () => {
+    context.mocks.api(orgContract.createdCount, ({ respond }) => {
+      return respond(200, { createdOrganizationsCount: 0 });
+    });
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Solo",
+      role: "admin",
+      createdBy: "other-user-456",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        createOrganizationEnabled: true,
+        createOrganizationsLimit: 1,
+      },
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Solo",
+          slug: "solo",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Solo",
+            },
+          },
+        ],
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const label = screen.getByText("Solo");
+      const trigger = label.closest("button");
+      if (!trigger) {
+        throw new Error("Org switcher trigger not found");
+      }
+      return trigger;
+    });
+
+    click(orgSwitcher);
+
+    await waitFor(() => {
+      expect(screen.getByText("Create workspace")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Create workspace"));
+
+    await waitFor(() => {
+      expect(mockedClerk.createOrganization).toHaveBeenCalledWith({
+        name: expect.stringMatching(/^workspace-/u),
+        slug: expect.stringMatching(/^workspace-/u),
+      });
+      expect(mockedClerk.setActive).toHaveBeenCalledWith({
+        organization: "new-org-id",
+      });
+    });
+  });
+
+  it("hides workspace creation after reaching the limit while another workspace is active", async () => {
+    context.mocks.api(orgContract.createdCount, ({ respond }) => {
+      return respond(200, { createdOrganizationsCount: 1 });
+    });
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Shared",
+      role: "admin",
+      createdBy: "other-user-456",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        createOrganizationEnabled: true,
+        createOrganizationsLimit: 1,
+      },
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Shared",
+          slug: "shared",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Shared",
+            },
+          },
+          {
+            id: "membership_owned",
+            organization: {
+              id: "org_owned",
+              name: "Owned",
+            },
+          },
+        ],
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const label = screen.getByText("Shared");
+      const trigger = label.closest("button");
+      if (!trigger) {
+        throw new Error("Org switcher trigger not found");
+      }
+      return trigger;
+    });
+
+    click(orgSwitcher);
+
+    await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
+    });
+  });
+
+  it("bounds long workspace lists inside a scrollable menu region", async () => {
+    const longWorkspaceName =
+      "Workspace-with-a-very-long-name-that-should-not-create-horizontal-scroll";
+
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Current",
+      role: "admin",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Current",
+          slug: "current",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Current",
+            },
+          },
+          ...Array.from({ length: 12 }, (_, index) => {
+            return {
+              id: `membership_${index}`,
+              organization: {
+                id: `org_${index}`,
+                name: `Workspace ${index + 1}`,
+              },
+            };
+          }),
+          {
+            id: "membership_long",
+            organization: {
+              id: "org_long",
+              name: longWorkspaceName,
+            },
+          },
+        ],
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const label = screen.getByText("Current");
+      const trigger = label.closest("button");
+      if (!trigger) {
+        throw new Error("Org switcher trigger not found");
+      }
+      return trigger;
+    });
+
+    click(orgSwitcher);
+
+    const scrollRegion = await screen.findByTestId(
+      "org-switcher-options-scroll",
+    );
+
+    expect(scrollRegion).toHaveClass("max-h-72");
+    expect(scrollRegion).toHaveClass("overflow-x-hidden");
+    expect(scrollRegion).toHaveClass("overflow-y-auto");
+    expect(screen.getByText("Workspace 12")).toBeInTheDocument();
+    expect(screen.getByText(longWorkspaceName)).toBeInTheDocument();
+  });
+
+  it("localizes workspace switcher actions without translating workspace names", async () => {
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Acme",
+      role: "admin",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        createOrganizationEnabled: true,
+      },
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Acme",
+          slug: "acme",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Acme",
+            },
+          },
+        ],
+        pendingInvitations: [
+          {
+            id: "invitation_pt",
+            publicOrganizationData: {
+              id: "org_invited",
+              name: "Design Org",
+              imageUrl: "https://cdn.vm0.test/orgs/design.png",
+            },
+            accept: async () => {},
+          },
+        ],
+      },
+    });
+
+    await screen.findByText("Acme");
+    const switcher = buttonByLabel("Trocar de espaço de trabalho");
+    click(switcher);
+
+    await waitFor(() => {
+      expect(screen.getByText("Design Org")).toBeInTheDocument();
+      expect(screen.getByText("Entrar")).toBeInTheDocument();
+      expect(screen.getByText("Criar espaço de trabalho")).toBeInTheDocument();
+    });
+  });
+});

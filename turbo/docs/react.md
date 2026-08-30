@@ -14,11 +14,11 @@ Dense `renderWithHooksAgain` samples in a CPU profile indicate that a component 
 
 ### Problem
 
-A parent component (e.g. `ZeroSidebar`) subscribes to multiple async signals at the top level simultaneously:
+A parent component (e.g. `Sidebar`) subscribes to multiple async signals at the top level simultaneously:
 
 ```tsx
 // ❌ Every time an async signal resolves, the entire large component re-renders
-export function ZeroSidebar() {
+export function Sidebar() {
   const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
   const subagentsLoadable = useLastLoadable(subagents$);
   const defaultDisplayName = useLastResolved(defaultAgentName$);
@@ -62,7 +62,7 @@ function SidebarNavContent() {
   // ...renders nav content
 }
 
-export function ZeroSidebar() {
+export function Sidebar() {
   // Zero async subscriptions — renders exactly once on page load
   return (
     <VM0ClerkProvider>
@@ -115,7 +115,7 @@ A parent component subscribes to async signals and then passes the resolved valu
 
 ```tsx
 // ❌ Parent takes on subscriptions it doesn't own; re-renders on every async update
-export function ZeroSidebar() {
+export function Sidebar() {
   const displayName  = useLastResolved(currentChatAgentDisplayName$);
   const subagents    = useLastResolved(subagents$);
   const savingPinned = ...; // from useLoadableSet
@@ -163,7 +163,7 @@ export function getTestRenderCount() {
   return _renderCount;
 }
 
-export function ZeroSidebar() {
+export function Sidebar() {
   _renderCount++;
   // ...
 }

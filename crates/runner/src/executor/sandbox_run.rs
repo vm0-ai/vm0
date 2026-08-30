@@ -61,6 +61,7 @@ const WORKSPACE_DRIVE_MOUNT_GUEST_EXEC: &str = "workspace_drive_mount_guest_exec
 const WORKSPACE_DRIVE_MOUNT_GUEST_EXEC_UNAVAILABLE: &str =
     "workspace_drive_mount_guest_exec_unavailable";
 const RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE: &str = "runner_fresh_workspace_image_prepare";
+const RUNNER_FRESH_PRE_SPAWN_ADMISSION_WAIT: &str = "runner_fresh_pre_spawn_admission_wait";
 const RUNNER_FRESH_SANDBOX_FACTORY_CREATE: &str = "runner_fresh_sandbox_factory_create";
 const RUNNER_FRESH_SANDBOX_FACTORY_COW_POOL_ACQUIRE: &str =
     "runner_fresh_sandbox_factory_cow_pool_acquire";
@@ -457,6 +458,42 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         prepared_run_payload,
         sandbox_prepared,
     } = hooks;
+    // The gate intentionally starts before every fresh preparation stage and remains held through
+    // the authenticated Agent-ready boundary. Current production tails span both factory work and
+    // the later mount/restore/storage/bootstrap stages, so a narrower Firecracker-only gate would
+    // allow the same cohort to reconverge before Agent readiness completes.
+    let admission_started = Instant::now();
+    let admission_lease = match config
+        .pre_spawn_admission
+        .acquire(params.vcpu, &controls.cancel)
+        .await
+    {
+        Ok(lease) => {
+            let elapsed = admission_started.elapsed();
+            telemetry.record(RUNNER_FRESH_PRE_SPAWN_ADMISSION_WAIT, elapsed, true, None);
+            let metadata = lease.metadata();
+            info!(
+                run_id = %context.run_id,
+                requested_tokens = metadata.requested_tokens,
+                effective_tokens = metadata.effective_tokens,
+                total_tokens = metadata.total_tokens,
+                contended = metadata.contended,
+                duration_ms = duration_ms(elapsed),
+                "fresh pre-spawn admission acquired"
+            );
+            lease
+        }
+        Err(error) => {
+            telemetry.record(
+                RUNNER_FRESH_PRE_SPAWN_ADMISSION_WAIT,
+                admission_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return Err(error);
+        }
+    };
+    controls.pre_spawn_admission_lease = Some(admission_lease);
     let prepare_started = Instant::now();
     let mut workspace_image = prepare_workspace_image(
         context,
@@ -768,6 +805,15 @@ impl SandboxPrepareError {
             invalidate_consumed_workspace_cache: false,
         }
     }
+
+    fn fatal_after_cleanup(error: RunnerError, cleanup_completed: bool) -> Self {
+        Self {
+            error,
+            retry: SandboxPrepareRetry::None,
+            cleanup_completed,
+            invalidate_consumed_workspace_cache: false,
+        }
+    }
 }
 
 pub(super) async fn prepare_workspace_image(
@@ -1049,7 +1095,7 @@ async fn create_started_sandbox(
                 false,
                 Some(SANDBOX_FACTORY_CREATE_FAILED),
             );
-            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            telemetry.record("sandbox_create", t.elapsed(), false, Some(&e.to_string()));
             return Err(SandboxPrepareError::retry_without_workspace_image(
                 e.into(),
                 true,
@@ -1058,7 +1104,12 @@ async fn create_started_sandbox(
     };
 
     if let Err(error) = sandbox.bind_run_control(&context.run_id.to_string()) {
-        telemetry.record("vm_create", t.elapsed(), false, Some(&error.to_string()));
+        telemetry.record(
+            "sandbox_create",
+            t.elapsed(),
+            false,
+            Some(&error.to_string()),
+        );
         let _ = destroy_sandbox_panic_safe(factory, sandbox).await;
         return Err(SandboxPrepareError::fatal(error.into()));
     }
@@ -1097,7 +1148,7 @@ async fn create_started_sandbox(
                 proxy_register_elapsed,
                 &e.to_string(),
             );
-            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            telemetry.record("sandbox_create", t.elapsed(), false, Some(&e.to_string()));
             let _ = destroy_sandbox_panic_safe(factory, sandbox).await;
             return Err(SandboxPrepareError::fatal(e));
         }
@@ -1133,7 +1184,7 @@ async fn create_started_sandbox(
             false,
             Some(SANDBOX_START_FAILED),
         );
-        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+        telemetry.record("sandbox_create", t.elapsed(), false, Some(&e.to_string()));
         let unregister_completed =
             match unregister_proxy_registry(config, &source_ip, context.run_id).await {
                 Ok(()) => true,
@@ -1141,7 +1192,7 @@ async fn create_started_sandbox(
                     warn!(
                         run_id = %context.run_id,
                         error = %unregister_error,
-                        "failed to unregister VM from proxy after sandbox start failure"
+                        "failed to unregister sandbox from proxy after sandbox start failure"
                     );
                     false
                 }
@@ -1187,7 +1238,7 @@ async fn create_started_sandbox(
         true,
         None,
     );
-    telemetry.record("vm_create", t.elapsed(), true, None);
+    telemetry.record("sandbox_create", t.elapsed(), true, None);
 
     let mut prepared_guest_runtime =
         PreparedGuestRuntime::prepare_for_codex_model_catalog_prefetch(
@@ -1225,7 +1276,7 @@ async fn create_started_sandbox(
                         warn!(
                             run_id = %context.run_id,
                             error = %unregister_error,
-                            "failed to unregister VM from proxy after workspace mount failure"
+                            "failed to unregister sandbox from proxy after workspace mount failure"
                         );
                         false
                     }
@@ -1244,8 +1295,41 @@ async fn create_started_sandbox(
     };
     telemetry.record(WORKSPACE_DRIVE_MOUNT, mount_duration, true, None);
     record_workspace_drive_mount_guest_exec(telemetry, guest_duration, true);
-    if let Some(notifier) = sandbox_prepared {
-        notifier.notify(context.run_id, sandbox_id).await;
+    if let Some(notifier) = sandbox_prepared
+        && let Err(error) = notifier.notify(context.run_id, sandbox_id).await
+    {
+        if let Some(prepared_guest_runtime) = prepared_guest_runtime.take() {
+            prepared_guest_runtime
+                .finish(sandbox.as_ref(), telemetry)
+                .await;
+        }
+        let unregister_completed = match unregister_proxy_registry(
+            config,
+            &source_ip,
+            context.run_id,
+        )
+        .await
+        {
+            Ok(()) => true,
+            Err(unregister_error) => {
+                warn!(
+                    run_id = %context.run_id,
+                    error = %unregister_error,
+                    "failed to unregister sandbox from proxy after ownership publication failure"
+                );
+                false
+            }
+        };
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
+        let destroy_completed = destroy_sandbox_panic_safe(factory, sandbox)
+            .await
+            .is_completed();
+        return Err(SandboxPrepareError::fatal_after_cleanup(
+            error,
+            unregister_completed && destroy_completed,
+        ));
     }
 
     Ok(PreparedSandboxRun {
@@ -1574,7 +1658,7 @@ fn normalize_guest_cli_agent_session_id(
     }
 }
 
-/// Register a VM in the proxy registry and network log manager.
+/// Register a sandbox in the proxy registry and network log manager.
 pub(super) async fn register_proxy(
     config: &ExecutorConfig,
     context: &ExecutionContext,
@@ -1584,7 +1668,7 @@ pub(super) async fn register_proxy(
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
     let cli_agent_type = normalized_cli_agent_type(&context.cli_agent_type);
-    let registration = proxy::VmRegistration {
+    let registration = proxy::SandboxRegistration {
         run_id: &run_id_str,
         cli_agent_type,
         sandbox_token: &context.sandbox_token,
@@ -1603,9 +1687,9 @@ pub(super) async fn register_proxy(
     };
     config
         .registry
-        .register_vm(source_ip, &registration)
+        .register_sandbox(source_ip, &registration)
         .await
-        .map_err(|e| RunnerError::Internal(format!("register VM in proxy registry: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("register sandbox in proxy registry: {e}")))?;
     let network_log_session = config
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
@@ -1674,7 +1758,7 @@ pub(super) fn log_proxy_register_failure(
     );
 }
 
-/// Unregister a VM from the proxy registry.
+/// Unregister a sandbox from the proxy registry.
 pub(super) async fn unregister_proxy_registry(
     config: &ExecutorConfig,
     source_ip: &str,
@@ -1682,9 +1766,9 @@ pub(super) async fn unregister_proxy_registry(
 ) -> RunnerResult<()> {
     let result = config
         .registry
-        .unregister_vm(source_ip)
+        .unregister_sandbox(source_ip)
         .await
-        .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")));
+        .map_err(|e| RunnerError::Internal(format!("unregister sandbox from proxy registry: {e}")));
     if let Some(runtime_sync) = config.connector_runtime_sync.as_ref() {
         runtime_sync.unregister_run(run_id).await;
     }

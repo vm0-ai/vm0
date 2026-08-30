@@ -42,7 +42,7 @@ _STREAM_ENDPOINTS = frozenset(
 )
 
 
-def _is_stream_path(path: str) -> bool:
+def is_stream_path(path: str) -> bool:
     """Return True when *path* is one of the X v2 NDJSON streaming endpoints.
 
     Exact match only — ``/2/tweets/search/stream/rules`` (rules management)
@@ -70,8 +70,9 @@ _X_JSON_RESULT_COUNT_FIELDS = {
 }
 
 
-def _as_non_bool_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
+def as_non_negative_response_count(value: object) -> int | None:
+    """Return an X response count only when it is a non-negative integer."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
 def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
@@ -109,11 +110,13 @@ def _parse_x_json_response_fields(extracted: JsonExtractionResult) -> dict:
     if includes:
         result["response_includes"] = dict(includes)
 
-    result_count = _as_non_bool_int(extracted.values.get(("meta", "result_count")))
+    result_count = as_non_negative_response_count(extracted.values.get(("meta", "result_count")))
     if result_count is not None:
         result["response_result_count"] = result_count
 
-    total_tweet_count = _as_non_bool_int(extracted.values.get(("meta", "total_tweet_count")))
+    total_tweet_count = as_non_negative_response_count(
+        extracted.values.get(("meta", "total_tweet_count"))
+    )
     if total_tweet_count is not None:
         result["response_total_tweet_count"] = total_tweet_count
 
@@ -323,7 +326,7 @@ def create_response_parser(
         # Use the dispatcher-required original URL so parser registration and
         # final request metadata cannot diverge.
         stream_path = urllib.parse.urlparse(original_url).path
-        if _is_stream_path(stream_path):
+        if is_stream_path(stream_path):
             extractor = _NdjsonExtractor()
             # Deliberately NOT "model_provider_usage" — that key routes through
             # report_model_provider_usage and triggers the model-provider webhook.

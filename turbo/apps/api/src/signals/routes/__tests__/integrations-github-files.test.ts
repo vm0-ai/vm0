@@ -150,7 +150,7 @@ describe("GitHub file integration routes", () => {
       filename: "screenshot.png",
     });
     const response = await app.request(
-      `/api/okou/integrations/github/download-file?${query.toString()}`,
+      `/api/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {
@@ -191,7 +191,7 @@ describe("GitHub file integration routes", () => {
     const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({ url: fileUrl });
     const response = await app.request(
-      `/api/okou/integrations/github/download-file?${query.toString()}`,
+      `/api/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {
@@ -218,7 +218,7 @@ describe("GitHub file integration routes", () => {
       url: "https://example.com/file.png",
     });
     const response = await app.request(
-      `/api/okou/integrations/github/download-file?${query.toString()}`,
+      `/api/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {
@@ -245,7 +245,7 @@ describe("GitHub file integration routes", () => {
     });
 
     const response = await app.request(
-      `/api/okou/integrations/github/download-file?${query.toString()}`,
+      `/api/integrations/github/download-file?${query.toString()}`,
       {
         method: "GET",
         headers: {

@@ -15,7 +15,6 @@ interface ChatEventSnapshotCompletionCounters {
   readonly skippedUnreadableHeads: number;
   readonly skippedUndecodableHeads: number;
   readonly skippedIncompleteHeads: number;
-  readonly skippedUnsupportedHeads: number;
   readonly duplicateEventIdConflictThreads: number;
   readonly duplicateEventIdConflicts: number;
   readonly duplicateEventIdsRemapped: number;
@@ -38,7 +37,6 @@ export function recordChatEventSnapshotCompleted(
       skippedUnreadableHeads: counters.skippedUnreadableHeads,
       skippedUndecodableHeads: counters.skippedUndecodableHeads,
       skippedIncompleteHeads: counters.skippedIncompleteHeads,
-      skippedUnsupportedHeads: counters.skippedUnsupportedHeads,
       duplicateEventIdConflictThreads: counters.duplicateEventIdConflictThreads,
       duplicateEventIdConflicts: counters.duplicateEventIdConflicts,
       duplicateEventIdsRemapped: counters.duplicateEventIdsRemapped,

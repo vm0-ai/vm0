@@ -8,16 +8,16 @@ def _write_registry(
     tmp_path: Path,
     *,
     client_ip: str = "10.200.0.5",
-    vm_info: dict[str, object],
+    sandbox_info: dict[str, object],
 ) -> Path:
     path = tmp_path / "registry.json"
     replacement_path = tmp_path / "registry.next.json"
-    replacement_path.write_text(json.dumps({"vms": {client_ip: vm_info}}))
+    replacement_path.write_text(json.dumps({"sandboxes": {client_ip: sandbox_info}}))
     replacement_path.replace(path)
     return path
 
 
-def _single_firewall_vm(
+def _single_firewall_sandbox(
     tmp_path: Path,
     *,
     run_id: str = "run-conn-1",
@@ -29,7 +29,7 @@ def _single_firewall_vm(
     include_encrypted_secrets: bool = True,
     custom_connector_id: str | None = None,
     source_id: str | None = None,
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ) -> dict[str, object]:
     firewall_entry: dict[str, object] = {
         "kind": "inline",
@@ -39,7 +39,7 @@ def _single_firewall_vm(
         firewall_entry["customConnectorId"] = custom_connector_id
     if source_id is not None:
         firewall_entry["sourceId"] = source_id
-    vm_info: dict[str, object] = {
+    sandbox_info: dict[str, object] = {
         "runId": run_id,
         "cliAgentType": "claude-code",
         "billableFirewalls": billable_firewalls or [],
@@ -49,17 +49,17 @@ def _single_firewall_vm(
         "firewalls": [firewall_entry],
     }
     if network_policy is not None:
-        vm_info["networkPolicies"] = {firewall_name: network_policy}
+        sandbox_info["networkPolicies"] = {firewall_name: network_policy}
     if custom_connector_id is not None:
-        vm_info["connectorRoutingVariables"] = {f"custom:{custom_connector_id}": {}}
+        sandbox_info["connectorRoutingVariables"] = {f"custom:{custom_connector_id}": {}}
     if include_encrypted_secrets:
-        vm_info["encryptedSecrets"] = "iv:tag:data"
-    if vm_fields is not None:
-        vm_info.update(vm_fields)
-    return vm_info
+        sandbox_info["encryptedSecrets"] = "iv:tag:data"
+    if sandbox_fields is not None:
+        sandbox_info.update(sandbox_fields)
+    return sandbox_info
 
 
-def _shared_route_vm(
+def _shared_route_sandbox(
     tmp_path: Path,
     *,
     reverse: bool = False,
@@ -122,14 +122,14 @@ def _shared_route_vm(
     }
 
 
-def _vm_without_firewalls(
+def _sandbox_without_firewalls(
     tmp_path: Path,
     *,
     run_id: str = "run-conn-1",
     sandbox_marker: str = "tok-conn",
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    vm_info: dict[str, object] = {
+    sandbox_info: dict[str, object] = {
         "runId": run_id,
         "billableFirewalls": [],
         "cliAgentType": "claude-code",
@@ -137,9 +137,9 @@ def _vm_without_firewalls(
         "networkLogPath": str(tmp_path / "net.jsonl"),
         "proxyLogPath": str(tmp_path / "proxy.jsonl"),
     }
-    if vm_fields is not None:
-        vm_info.update(vm_fields)
-    return vm_info
+    if sandbox_fields is not None:
+        sandbox_info.update(sandbox_fields)
+    return sandbox_info
 
 
 def _write_github_firewall_registry(
@@ -148,12 +148,12 @@ def _write_github_firewall_registry(
     client_ip: str = "10.200.0.5",
     base: str = "https://api.github.com",
     source_id: str | None = None,
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ) -> Path:
     return _write_registry(
         tmp_path,
         client_ip=client_ip,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": base,
@@ -167,6 +167,6 @@ def _write_github_firewall_registry(
                 "unknownPolicy": "allow",
             },
             source_id=source_id,
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )

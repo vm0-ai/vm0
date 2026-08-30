@@ -24,6 +24,19 @@ _DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
 
 
 class PercentDecodedHost(NamedTuple):
+    """Result of percent-decoding a host for caller-specific authority policy.
+
+    ``value`` is the fully percent-decoded host when ``invalid_encoding`` is
+    false. When ``invalid_encoding`` is true, it is the original input,
+    unchanged; it must not be treated as decoded or validated.
+
+    ``invalid_encoding`` is true when a percent escape is malformed or the
+    percent-encoded bytes cannot be decoded as UTF-8. ``decoded_syntax`` is
+    true only when a character from the caller-provided ``syntax_chars`` was
+    introduced by percent decoding. Neither flag performs complete authority
+    validation, and a false flag does not make ``value`` a validated host.
+    """
+
     value: str
     invalid_encoding: bool
     decoded_syntax: bool
@@ -46,6 +59,23 @@ def percent_decode_host(
     *,
     syntax_chars: frozenset[str],
 ) -> PercentDecodedHost:
+    """Decode percent escapes in a host and report caller-relevant conditions.
+
+    ``host`` is raw host text. Percent-encoded bytes are decoded as UTF-8.
+    ``syntax_chars`` selects characters whose introduction by a
+    percent-decoded run should be reported through ``decoded_syntax``; syntax
+    already present in ``host`` does not set that flag.
+
+    The returned ``PercentDecodedHost.value`` is fully decoded when
+    ``invalid_encoding`` is false. If a percent escape is malformed or
+    percent-encoded bytes are not valid UTF-8, ``invalid_encoding`` is true,
+    ``value`` is the original ``host`` unchanged, and ``decoded_syntax`` is
+    false. A successful result is not complete authority or hostname
+    validation. Every caller must inspect both flags and apply the
+    boundary-specific host validation and rejection policy required for its
+    trust boundary.
+    """
+
     if "%" not in host:
         return PercentDecodedHost(host, invalid_encoding=False, decoded_syntax=False)
 

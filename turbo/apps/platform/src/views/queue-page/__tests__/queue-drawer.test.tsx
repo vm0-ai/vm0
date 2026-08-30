@@ -24,8 +24,11 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
+import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
 
@@ -83,6 +86,7 @@ function mockConcurrencyCapability(
   canBuyConcurrency: boolean,
   concurrencySubscriptions: BillingStatusResponse["concurrencySubscriptions"] = [],
   purchaseReviewAvailable = false,
+  concurrencyUnitAmountCents = 10_000,
 ): void {
   const status: BillingStatusResponse = {
     tier: "pro",
@@ -100,6 +104,7 @@ function mockConcurrencyCapability(
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions,
+    concurrencyUnitAmountCents,
     ...(purchaseReviewAvailable
       ? { concurrencyPurchaseReviewAvailable: true }
       : {}),
@@ -135,54 +140,58 @@ function mockQueuedThread(): void {
     return respond(200, { events: [], hasMore: false });
   });
   context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
-    return respond(200, {
-      rows: mockChatEventRows([
-        {
-          id: "msg-previous-user",
-          threadId: THREAD_ID,
-          eventType: "input.prompt",
-          content: null,
-          userMessage: {
-            version: 1,
-            parts: [{ type: "text", text: "Previous prompt" }],
+    return respond(
+      200,
+      chatEventRowsResponse(
+        mockChatEventRows([
+          {
+            id: "msg-previous-user",
+            threadId: THREAD_ID,
+            eventType: "input.prompt",
+            content: null,
+            userMessage: {
+              version: 1,
+              parts: [{ type: "text", text: "Previous prompt" }],
+            },
+            runId: "run-completed",
+            seqId: 1,
+            createdAt: "2026-01-01T00:00:00Z",
           },
-          runId: "run-completed",
-          seqId: 1,
-          createdAt: "2026-01-01T00:00:00Z",
-        },
-        {
-          id: "msg-previous-assistant",
-          threadId: THREAD_ID,
-          eventType: "output.message",
-          content: "Previous answer",
-          runId: "run-completed",
-          seqId: 2,
-          createdAt: "2026-01-01T00:00:01Z",
-        },
-        {
-          id: "msg-previous-completed",
-          threadId: THREAD_ID,
-          eventType: "run.completed",
-          content: null,
-          runId: "run-completed",
-          runLifecycleEvent: "completed",
-          seqId: 3,
-          createdAt: "2026-01-01T00:00:01Z",
-        },
-        {
-          id: "msg-queued-marker",
-          threadId: THREAD_ID,
-          eventType: "run.queued",
-          content: "Waiting in queue...",
-          runId: "run-queued",
-          runEventId: "queue:queued",
-          seqId: 4,
-          createdAt: "2026-01-01T00:00:02Z",
-        },
-      ]).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      }),
-    });
+          {
+            id: "msg-previous-assistant",
+            threadId: THREAD_ID,
+            eventType: "output.message",
+            content: "Previous answer",
+            runId: "run-completed",
+            seqId: 2,
+            createdAt: "2026-01-01T00:00:01Z",
+          },
+          {
+            id: "msg-previous-completed",
+            threadId: THREAD_ID,
+            eventType: "run.completed",
+            content: null,
+            runId: "run-completed",
+            runLifecycleEvent: "completed",
+            seqId: 3,
+            createdAt: "2026-01-01T00:00:01Z",
+          },
+          {
+            id: "msg-queued-marker",
+            threadId: THREAD_ID,
+            eventType: "run.queued",
+            content: "Waiting in queue...",
+            runId: "run-queued",
+            runEventId: "queue:queued",
+            seqId: 4,
+            createdAt: "2026-01-01T00:00:02Z",
+          },
+        ]).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+        query,
+      ),
+    );
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
@@ -327,7 +336,7 @@ describe("queue drawer", () => {
   });
 
   it("shows additional concurrency checkout for Team admins", async () => {
-    mockConcurrencyCapability(true);
+    mockConcurrencyCapability(true, [], false, 4200);
     context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
@@ -351,8 +360,8 @@ describe("queue drawer", () => {
     });
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
     expect(screen.getByText("Additional concurrency")).toBeInTheDocument();
-    expect(screen.getByText("$100/month")).toBeInTheDocument();
-    expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+    expect(screen.getByText("$42/month")).toBeInTheDocument();
+    expect(screen.getByText("Buy $42/month")).toBeInTheDocument();
   });
 
   it("refreshes the concurrency limit when billing changes in realtime", async () => {

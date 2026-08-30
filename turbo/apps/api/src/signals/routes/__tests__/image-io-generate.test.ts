@@ -8,7 +8,6 @@ import {
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -31,7 +30,6 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
@@ -120,6 +118,7 @@ const FAL_FLUX_2_PRO_ADDITIONAL_MEGAPIXEL_CREDITS = 18;
 const FAL_IDEOGRAM_4_TURBO_MEGAPIXEL_CREDITS = 9;
 const FAL_IDEOGRAM_4_BALANCED_MEGAPIXEL_CREDITS = 18;
 const FAL_IDEOGRAM_4_QUALITY_MEGAPIXEL_CREDITS = 30;
+const API_ORIGIN = "https://api.vm0.test";
 const WEB_ORIGIN = "https://www.vm0.test";
 const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
 const IMAGE_PRICING_CATEGORIES = [
@@ -540,7 +539,6 @@ async function seedImageFixture(options: {
 async function seedImageRun(
   fixture: ImageFixture,
   options: {
-    readonly imageModelSelectionEnabled: boolean;
     readonly selectedImageModel: string | null;
   },
 ): Promise<{ readonly runId: string }> {
@@ -560,9 +558,6 @@ async function seedImageRun(
     context.signal,
   );
   await setRunImageModelFixture(runId, options.selectedImageModel);
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.ImageModelSelection]: options.imageModelSelectionEnabled,
-  });
   return { runId };
 }
 
@@ -570,8 +565,8 @@ describe("POST /api/image-io/generate", () => {
   let releasePendingFalResponse: (() => void) | null = null;
 
   beforeEach(() => {
-    mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_API_BACKEND_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -603,7 +598,7 @@ describe("POST /api/image-io/generate", () => {
     });
   });
 
-  it("returns 403 when a zero token lacks file write capability", async () => {
+  it("returns 403 when an agent token lacks file write capability", async () => {
     const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
@@ -695,7 +690,6 @@ describe("POST /api/image-io/generate", () => {
       configured: QWEN_IMAGE_PRICING,
     });
     const { runId } = await seedImageRun(fixture, {
-      imageModelSelectionEnabled: true,
       selectedImageModel: "fal-ai/qwen-image",
     });
 
@@ -735,7 +729,6 @@ describe("POST /api/image-io/generate", () => {
       configured: [...GPT_IMAGE_1_PRICING, ...QWEN_IMAGE_PRICING],
     });
     const { runId } = await seedImageRun(fixture, {
-      imageModelSelectionEnabled: true,
       selectedImageModel: "fal-ai/qwen-image",
     });
     let gptCalls = 0;
@@ -828,7 +821,7 @@ describe("POST /api/image-io/generate", () => {
     expect(qwenCalls).toBe(0);
   });
 
-  it("keeps the global default for disabled, null, old, and session paths", async () => {
+  it("keeps the global default for null, old, and session paths", async () => {
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
     });
@@ -848,17 +841,10 @@ describe("POST /api/image-io/generate", () => {
 
     const runCases = [
       {
-        imageModelSelectionEnabled: false,
-        selectedImageModel: "fal-ai/qwen-image",
-        prompt: "disabled switch",
-      },
-      {
-        imageModelSelectionEnabled: true,
         selectedImageModel: null,
         prompt: "null snapshot",
       },
       {
-        imageModelSelectionEnabled: true,
         selectedImageModel: "fal-ai/retired-image-model",
         prompt: "old snapshot",
       },
@@ -880,9 +866,6 @@ describe("POST /api/image-io/generate", () => {
     }
 
     const sessionFixture = await seedImageFixture({});
-    await updateFeatureSwitchesForUser(context, sessionFixture, {
-      [FeatureSwitchKey.ImageModelSelection]: true,
-    });
     mocks.clerk.session(sessionFixture.userId, sessionFixture.orgId);
     const sessionResponse = await app.request("/api/image-io/generate", {
       method: "POST",
@@ -891,7 +874,7 @@ describe("POST /api/image-io/generate", () => {
     });
     expect(sessionResponse.status).toBe(202);
 
-    expect(gptCalls).toBe(4);
+    expect(gptCalls).toBe(3);
     expect(qwenCalls).toBe(0);
   });
 
@@ -1057,7 +1040,7 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 
-  it("limits run-scoped zero token image generations after three active built-ins", async () => {
+  it("limits run-scoped agent token image generations after three active built-ins", async () => {
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
@@ -1143,7 +1126,8 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(10_000);
   });
 
-  it("generates image files on the Okou CDN for Okou run-scoped zero tokens", async () => {
+  it("generates image files on the Okou CDN for Okou run-scoped agent tokens", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
@@ -1222,7 +1206,7 @@ describe("POST /api/image-io/generate", () => {
     });
     await flushWaitUntilForTest();
     const webhookUrl = new URL(readWebhookUrl(observedRequestUrl));
-    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+    expect(webhookUrl.origin).toBe(API_ORIGIN);
     expect(webhookUrl.pathname).toBe(
       `/api/webhooks/built-in-generations/fal/${generationId}`,
     );

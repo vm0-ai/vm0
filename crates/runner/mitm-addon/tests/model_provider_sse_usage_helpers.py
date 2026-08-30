@@ -70,7 +70,7 @@ def run_error(
 
 
 def model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
         return []
     return [

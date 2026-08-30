@@ -8,6 +8,7 @@ import { extractFirewallTemplateReferences } from "../firewall-types";
 const templateReferenceSchema = z.object({
   namespace: z.enum(["secrets", "vars"]),
   name: z.string(),
+  source: z.string().min(1),
 });
 const templateReferencesSchema = z.object({
   secrets: z.array(z.string()),

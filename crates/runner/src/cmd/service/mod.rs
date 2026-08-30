@@ -31,12 +31,13 @@ pub(crate) use unit_config::read_unit_config_path;
 
 use drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use drain_override_cleanup::{DrainOverrideReloadPolicy, reconcile_drain_restart_override_removal};
-use gate::check_active_jobs_gate;
+use gate::{ActiveJobsGateOps, check_active_jobs_gate};
 use reload::{SystemdReloadRequirement, coordinate_systemd_reload};
 use systemctl::{
-    SystemdUnitEnablement, journalctl_logs_status, read_unit_enablement, restore_unit_enablement,
-    run_systemctl,
+    BoundedSystemctlQuery, SystemdUnitEnablement, is_unit_active_bounded_query,
+    journalctl_logs_status, read_unit_enablement, restore_unit_enablement, run_systemctl,
 };
+use unit_config::read_unit_config_path_bounded;
 use unit_file::{
     RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE, cleanup_unit_staging_files, generate_unit_file,
     remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
@@ -65,7 +66,9 @@ enum ServiceCommand {
     Drain(drain_resume::DrainArgs),
     /// Resume a draining runner (SIGUSR2, reverses `drain` before teardown begins)
     Resume(drain_resume::ResumeArgs),
-    /// Wait until a runner service is active and job-admitting
+    /// Wait until a runner service is active and job-admitting. On success, emit the resolved
+    /// max_concurrent as one machine-readable integer line on stdout for scripts; diagnostics go
+    /// to stderr.
     WaitRunning(ServiceWaitRunningArgs),
     /// Show machine-readable systemd unit state for runner services
     UnitState(state::UnitStateArgs),
@@ -163,7 +166,7 @@ async fn acquire_service_lock(
     unit: &RunnerServiceUnit,
     home: &HomePaths,
 ) -> RunnerResult<nix::fcntl::Flock<std::fs::File>> {
-    crate::lock::acquire(home.service_lock(unit.unit_name())).await
+    crate::lock::acquire(unit.lock_path(home)).await
 }
 
 struct ServiceActivationConfig {
@@ -510,39 +513,127 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
 /// `service uninstall` — stop + disable + remove unit file.
 ///
 /// Refuses when the runner has active jobs unless `--force` is passed.
+trait ServiceUninstallOps: ActiveJobsGateOps {
+    type LockGuard;
+
+    fn acquire_lock<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        home: &'a HomePaths,
+    ) -> ServiceFuture<'a, Self::LockGuard>
+    where
+        Self::LockGuard: 'a;
+
+    fn uninstall_unit<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+}
+
+struct RealServiceUninstallOps;
+
+impl ActiveJobsGateOps for RealServiceUninstallOps {
+    fn is_unit_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_active(unit).await })
+    }
+
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<PathBuf>> {
+        Box::pin(async move { read_unit_config_path(unit).await })
+    }
+}
+
+impl ServiceUninstallOps for RealServiceUninstallOps {
+    type LockGuard = nix::fcntl::Flock<std::fs::File>;
+
+    fn acquire_lock<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        home: &'a HomePaths,
+    ) -> ServiceFuture<'a, Self::LockGuard>
+    where
+        Self::LockGuard: 'a,
+    {
+        Box::pin(async move { acquire_service_lock(unit, home).await })
+    }
+
+    fn uninstall_unit<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { uninstall_service_unit(unit).await })
+    }
+}
+
 async fn uninstall(args: ServiceUninstallArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
-    let _service_lock = acquire_service_lock(&unit, &home).await?;
-    check_active_jobs_gate(&unit, args.force, "uninstall").await?;
-    uninstall_service_unit(&unit).await
+    uninstall_with_ops(&unit, &home, args.force, &mut RealServiceUninstallOps).await
 }
 
-fn readiness_base_dir_from_live_instances(
+async fn uninstall_with_ops(
     unit: &RunnerServiceUnit,
+    home: &HomePaths,
+    force: bool,
+    ops: &mut impl ServiceUninstallOps,
+) -> RunnerResult<()> {
+    let _service_lock = ops.acquire_lock(unit, home).await?;
+    check_active_jobs_gate(unit, home, force, "uninstall", ops).await?;
+    ops.uninstall_unit(unit).await
+}
+
+fn selected_config_base_dir_from_live_instances(
+    unit: &RunnerServiceUnit,
+    config_path: &Path,
     instances: &[LiveRunnerInstance],
 ) -> RunnerResult<Option<PathBuf>> {
     let matches = instances
         .iter()
-        .filter(|instance| instance.runner_name == unit.suffix() && instance.subcommand == "start")
+        .filter(|instance| instance.config_path == config_path && instance.subcommand == "start")
         .collect::<Vec<_>>();
 
     match matches.as_slice() {
         [instance] => Ok(Some(instance.base_dir.clone())),
         [] => Ok(None),
         _ => Err(RunnerError::Internal(format!(
-            "{} has multiple live runner instance records for readiness",
-            unit.unit_name()
+            "{} has multiple live runner instance records for selected config {}",
+            unit.unit_name(),
+            config_path.display()
         ))),
     }
 }
 
-async fn readiness_base_dir(
+async fn selected_config_base_dir(
     unit: &RunnerServiceUnit,
+    config_path: &Path,
     home: &HomePaths,
 ) -> RunnerResult<Option<PathBuf>> {
     let instances = live_runner_instances::try_list(home).await?;
-    readiness_base_dir_from_live_instances(unit, &instances)
+    selected_config_base_dir_from_live_instances(unit, config_path, &instances)
+}
+
+fn wait_running_timeout_error(
+    timeout_secs: u64,
+    unit: &RunnerServiceUnit,
+    last_observation: &str,
+) -> RunnerError {
+    RunnerError::Internal(format!(
+        "timed out waiting {timeout_secs}s for {} to reach running (last observation: {last_observation})",
+        unit.unit_name()
+    ))
+}
+
+fn wait_running_remaining(
+    deadline: TokioInstant,
+    timeout_secs: u64,
+    unit: &RunnerServiceUnit,
+    last_observation: &str,
+) -> RunnerResult<TokioDuration> {
+    let remaining = deadline.saturating_duration_since(TokioInstant::now());
+    if remaining.is_zero() {
+        return Err(wait_running_timeout_error(
+            timeout_secs,
+            unit,
+            last_observation,
+        ));
+    }
+    Ok(remaining)
 }
 
 async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
@@ -553,12 +644,48 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
     }
 
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
-    let home = HomePaths::new()?;
     let deadline = TokioInstant::now() + TokioDuration::from_secs(args.timeout_secs);
     let mut last_observation = "not checked".to_string();
+    let home = HomePaths::new()?;
+    let config_path = match read_unit_config_path_bounded(
+        &unit,
+        wait_running_remaining(deadline, args.timeout_secs, &unit, &last_observation)?,
+    )
+    .await?
+    {
+        BoundedSystemctlQuery::Completed(Some(config_path)) => config_path,
+        BoundedSystemctlQuery::Completed(None) => {
+            return Err(RunnerError::Internal(format!(
+                "{} does not select a runner --config path",
+                unit.unit_name()
+            )));
+        }
+        BoundedSystemctlQuery::TimedOut => {
+            return Err(wait_running_timeout_error(
+                args.timeout_secs,
+                &unit,
+                &last_observation,
+            ));
+        }
+    };
 
     loop {
-        if !is_unit_active(&unit).await? {
+        let active = match is_unit_active_bounded_query(
+            &unit,
+            wait_running_remaining(deadline, args.timeout_secs, &unit, &last_observation)?,
+        )
+        .await?
+        {
+            BoundedSystemctlQuery::Completed(active) => active,
+            BoundedSystemctlQuery::TimedOut => {
+                return Err(wait_running_timeout_error(
+                    args.timeout_secs,
+                    &unit,
+                    &last_observation,
+                ));
+            }
+        };
+        if !active {
             return Err(RunnerError::Internal(format!(
                 "{} is not active while waiting for running (last observation: {})",
                 unit.unit_name(),
@@ -566,65 +693,90 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
             )));
         }
 
-        match readiness_base_dir(&unit, &home).await? {
-            Some(base_dir) => match status_file::read_as::<StatusForReadiness>(&base_dir).await {
-                Ok(Some(status)) => match status.mode.as_str() {
-                    "running" => {
-                        println!("{}", status.max_concurrent);
-                        return Ok(());
+        let base_dir = match tokio::time::timeout_at(
+            deadline,
+            selected_config_base_dir(&unit, &config_path, &home),
+        )
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(wait_running_timeout_error(
+                    args.timeout_secs,
+                    &unit,
+                    &last_observation,
+                ));
+            }
+        };
+        match base_dir {
+            Some(base_dir) => {
+                let status = match tokio::time::timeout_at(
+                    deadline,
+                    status_file::read_as::<StatusForReadiness>(&base_dir),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        return Err(wait_running_timeout_error(
+                            args.timeout_secs,
+                            &unit,
+                            &last_observation,
+                        ));
                     }
-                    "starting" => {
-                        last_observation = "mode=starting".to_string();
+                };
+                match status {
+                    Ok(Some(status)) => match status.mode.as_str() {
+                        "running" => {
+                            println!("{}", status.max_concurrent);
+                            return Ok(());
+                        }
+                        "starting" => {
+                            last_observation = "mode=starting".to_string();
+                        }
+                        "draining" | "stopping" | "stopped" => {
+                            return Err(RunnerError::Internal(format!(
+                                "{} reported mode={} while waiting for running",
+                                unit.unit_name(),
+                                status.mode
+                            )));
+                        }
+                        mode => {
+                            return Err(RunnerError::Internal(format!(
+                                "{} reported unknown mode {:?} while waiting for running",
+                                unit.unit_name(),
+                                mode
+                            )));
+                        }
+                    },
+                    Ok(None) => {
+                        last_observation =
+                            format!("{} missing", status_file::path(&base_dir).display());
                     }
-                    "draining" | "stopping" | "stopped" => {
+                    Err(StatusFileReadError::Read { path, error }) => {
                         return Err(RunnerError::Internal(format!(
-                            "{} reported mode={} while waiting for running",
-                            unit.unit_name(),
-                            status.mode
+                            "read {} while waiting for {} to run: {error}",
+                            path.display(),
+                            unit.unit_name()
                         )));
                     }
-                    mode => {
+                    Err(StatusFileReadError::ParseJson { path, error }) => {
                         return Err(RunnerError::Internal(format!(
-                            "{} reported unknown mode {:?} while waiting for running",
-                            unit.unit_name(),
-                            mode
+                            "parse {} while waiting for {} to run: {error}",
+                            path.display(),
+                            unit.unit_name()
                         )));
                     }
-                },
-                Ok(None) => {
-                    last_observation =
-                        format!("{} missing", status_file::path(&base_dir).display());
                 }
-                Err(StatusFileReadError::Read { path, error }) => {
-                    return Err(RunnerError::Internal(format!(
-                        "read {} while waiting for {} to run: {error}",
-                        path.display(),
-                        unit.unit_name()
-                    )));
-                }
-                Err(StatusFileReadError::ParseJson { path, error }) => {
-                    return Err(RunnerError::Internal(format!(
-                        "parse {} while waiting for {} to run: {error}",
-                        path.display(),
-                        unit.unit_name()
-                    )));
-                }
-            },
+            }
             None => {
                 last_observation = "live runner instance record missing".to_string();
             }
         }
 
-        let now = TokioInstant::now();
-        if now >= deadline {
-            return Err(RunnerError::Internal(format!(
-                "timed out waiting {}s for {} to reach running (last observation: {})",
-                args.timeout_secs,
-                unit.unit_name(),
-                last_observation
-            )));
-        }
-        tokio::time::sleep(std::cmp::min(TokioDuration::from_secs(1), deadline - now)).await;
+        let remaining =
+            wait_running_remaining(deadline, args.timeout_secs, &unit, &last_observation)?;
+        tokio::time::sleep(std::cmp::min(TokioDuration::from_secs(1), remaining)).await;
     }
 }
 
@@ -664,19 +816,66 @@ async fn logs(args: ServiceLogsArgs) -> RunnerResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, Instant as StdInstant, SystemTime};
 
     use clap::Parser;
 
     use super::*;
     use crate::paths::RootfsPaths;
+    use crate::process::read_process_stat;
+    use crate::test_fixtures::ignored_child::{
+        ignored_child_test_env_guard_enabled, run_ignored_child_test,
+    };
 
     const TEST_ROOTFS_HASH: &str =
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const TEST_SNAPSHOT_HASH: &str =
         "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+    const WAIT_RUNNING_SCENARIO_ENV: &str = "OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO";
+    const WAIT_RUNNING_PID_PATH_ENV: &str = "OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH";
+    const WAIT_RUNNING_COUNT_PATH_ENV: &str = "OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH";
+    const WAIT_RUNNING_CHILD_TEST: &str =
+        "cmd::service::tests::wait_running_systemctl_timeout_child";
+    const FAKE_WAIT_RUNNING_SYSTEMCTL: &str = r#"#!/bin/sh
+record_identity_and_stall() {
+  starttime=$(awk '{print $22}' "/proc/$$/stat")
+  printf '%s %s\n' "$$" "$starttime" > "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH.tmp"
+  mv "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH.tmp" "$OKOU_RUN_SERVICE_WAIT_RUNNING_PID_PATH"
+  exec sleep 60
+}
+
+if [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "config-query" ]; then
+  record_identity_and_stall
+fi
+
+if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ]; then
+  printf '%s\n' '[Service]' 'ExecStart=/usr/local/bin/runner start --config /does/not/exist/runner.yaml'
+  exit 0
+fi
+
+if [ "$1" = "show" ] && [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "active-query" ]; then
+  count=0
+  if [ -r "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH" ]; then
+    IFS= read -r count < "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH"
+  fi
+  count=$((count + 1))
+  printf '%s\n' "$count" > "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH.tmp"
+  mv "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH.tmp" "$OKOU_RUN_SERVICE_WAIT_RUNNING_COUNT_PATH"
+  if [ "$count" -eq 1 ]; then
+    printf '%s\n' 'LoadState=loaded' 'ActiveState=active'
+    exit 0
+  fi
+  record_identity_and_stall
+fi
+
+printf '%s\n' "unexpected fake systemctl invocation: $*" >&2
+exit 2
+"#;
 
     fn parse_service_args(subcommand: &str, env: &str) -> ServiceArgs {
         let cli = crate::Cli::try_parse_from([
@@ -695,6 +894,134 @@ mod tests {
             panic!("expected service command");
         };
         args
+    }
+
+    fn parse_wait_running_args(timeout_secs: u64) -> ServiceArgs {
+        let timeout_secs = timeout_secs.to_string();
+        let cli = crate::Cli::try_parse_from([
+            "runner",
+            "service",
+            "wait-running",
+            "--name",
+            "test",
+            "--timeout-secs",
+            &timeout_secs,
+        ])
+        .unwrap();
+        let crate::Command::Service(args) = cli.command else {
+            panic!("expected service command");
+        };
+        args
+    }
+
+    #[tokio::test]
+    async fn wait_running_bounds_initial_systemctl_query() {
+        run_wait_running_timeout_scenario("config-query").await;
+    }
+
+    #[tokio::test]
+    async fn wait_running_bounds_active_systemctl_query_and_preserves_observation() {
+        run_wait_running_timeout_scenario("active-query").await;
+    }
+
+    async fn run_wait_running_timeout_scenario(scenario: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_systemctl = dir.path().join("systemctl");
+        std::fs::write(&fake_systemctl, FAKE_WAIT_RUNNING_SYSTEMCTL).unwrap();
+        let mut permissions = std::fs::metadata(&fake_systemctl).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&fake_systemctl, permissions).unwrap();
+
+        let pid_path = dir.path().join("stalled-process");
+        let count_path = dir.path().join("show-count");
+        let path = format!(
+            "{}:{}",
+            dir.path().display(),
+            std::env::var("PATH").expect("test process PATH must be set")
+        );
+        run_ignored_child_test(
+            WAIT_RUNNING_CHILD_TEST,
+            (WAIT_RUNNING_SCENARIO_ENV, scenario),
+            &[
+                ("PATH", Some(&path)),
+                (
+                    WAIT_RUNNING_PID_PATH_ENV,
+                    Some(utf8_path(pid_path.as_path())),
+                ),
+                (
+                    WAIT_RUNNING_COUNT_PATH_ENV,
+                    Some(utf8_path(count_path.as_path())),
+                ),
+            ],
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    fn utf8_path(path: &Path) -> &str {
+        path.to_str().expect("temporary path must be UTF-8")
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by wait-running systemctl timeout tests"]
+    async fn wait_running_systemctl_timeout_child() {
+        let Ok(scenario) = std::env::var(WAIT_RUNNING_SCENARIO_ENV) else {
+            return;
+        };
+        if !ignored_child_test_env_guard_enabled((WAIT_RUNNING_SCENARIO_ENV, &scenario)) {
+            return;
+        }
+
+        let timeout_secs = match scenario.as_str() {
+            "config-query" => 1,
+            "active-query" => 2,
+            unexpected => panic!("unexpected wait-running timeout scenario: {unexpected}"),
+        };
+        let started = StdInstant::now();
+        let error = run_service(parse_wait_running_args(timeout_secs))
+            .await
+            .unwrap_err()
+            .to_string();
+        let elapsed = started.elapsed();
+
+        assert!(
+            error.contains(&format!(
+                "timed out waiting {timeout_secs}s for vm0-runner-test to reach running"
+            )),
+            "unexpected error: {error}"
+        );
+        let expected_observation = match scenario.as_str() {
+            "config-query" => "last observation: not checked",
+            "active-query" => "last observation: live runner instance record missing",
+            unexpected => panic!("unexpected wait-running timeout scenario: {unexpected}"),
+        };
+        assert!(
+            error.contains(expected_observation),
+            "unexpected error: {error}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(timeout_secs * 1_000 - 100),
+            "wait-running returned before its budget: {elapsed:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(timeout_secs + 2),
+            "wait-running exceeded its cleanup margin: {elapsed:?}"
+        );
+
+        let identity = std::fs::read_to_string(
+            std::env::var(WAIT_RUNNING_PID_PATH_ENV).expect("stalled process path must be set"),
+        )
+        .unwrap();
+        let (pid, starttime) = identity
+            .trim()
+            .split_once(' ')
+            .expect("stalled process identity must contain pid and starttime");
+        let pid = pid.parse::<u32>().unwrap();
+        let starttime = starttime.parse::<u64>().unwrap();
+        assert!(
+            !matches!(read_process_stat(pid).await, Some(stat) if stat.starttime == starttime),
+            "stalled systemctl process {pid}/{starttime} was not reaped"
+        );
     }
 
     #[tokio::test]
@@ -821,7 +1148,6 @@ mod tests {
             config_path,
             format!(
                 r#"
-name: test
 group: test/group
 base_dir: {base_dir}
 ca_dir: {ca_dir}
@@ -908,35 +1234,189 @@ profiles:
         RunnerServiceUnit::from_suffix("test").unwrap()
     }
 
-    fn live_runner_instance(runner_name: &str, base_dir: PathBuf) -> LiveRunnerInstance {
+    struct FakeUninstallOps {
+        events: Vec<&'static str>,
+        gate_active_results: VecDeque<RunnerResult<bool>>,
+        gate_config_path: Option<PathBuf>,
+    }
+
+    impl ActiveJobsGateOps for FakeUninstallOps {
+        fn is_unit_active<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, bool> {
+            self.events.push("gate_is_active");
+            Box::pin(std::future::ready(
+                self.gate_active_results
+                    .pop_front()
+                    .expect("unexpected gate unit-active query"),
+            ))
+        }
+
+        fn read_unit_config_path<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, Option<PathBuf>> {
+            self.events.push("gate_config_path");
+            Box::pin(std::future::ready(Ok(self.gate_config_path.clone())))
+        }
+    }
+
+    impl ServiceUninstallOps for FakeUninstallOps {
+        type LockGuard = ();
+
+        fn acquire_lock<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            _home: &'a HomePaths,
+        ) -> ServiceFuture<'a, Self::LockGuard>
+        where
+            Self::LockGuard: 'a,
+        {
+            self.events.push("acquire_lock");
+            Box::pin(std::future::ready(Ok(())))
+        }
+
+        fn uninstall_unit<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+            self.events.push("uninstall_unit");
+            Box::pin(std::future::ready(Ok(())))
+        }
+    }
+
+    fn live_runner_instance(config_path: PathBuf, base_dir: PathBuf) -> LiveRunnerInstance {
         LiveRunnerInstance {
             pid: 123,
             starttime: 456,
-            config_path: base_dir.join("runner.yaml"),
+            config_path,
             base_dir,
-            runner_name: runner_name.to_string(),
             runner_group: "test/group".to_string(),
             subcommand: "start".to_string(),
             started_at: "2026-01-01T00:00:00.000Z".to_string(),
         }
     }
 
+    #[tokio::test]
+    async fn uninstall_uses_selected_config_base_dir_before_service_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let unit = service_unit();
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: config_path.clone(),
+                base_dir: base_dir.clone(),
+                runner_group: "test".to_string(),
+                subcommand: "start".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        let started_at = (chrono::Utc::now() - chrono::Duration::minutes(18))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let parsed_started_at = chrono::DateTime::parse_from_rfc3339(&started_at)
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            format!(
+                r#"{{
+                    "mode":"draining",
+                    "active_runs":[
+                        {{"run_id":"0191c4e0-0000-7000-8000-000000000003"}}
+                    ],
+                    "started_at":"{started_at}"
+                }}"#
+            ),
+        )
+        .await
+        .unwrap();
+        let mut ops = FakeUninstallOps {
+            events: Vec::new(),
+            gate_active_results: VecDeque::from([Ok(true)]),
+            gate_config_path: Some(config_path),
+        };
+
+        let before_gate = chrono::Utc::now();
+        let error = uninstall_with_ops(&unit, &home, false, &mut ops)
+            .await
+            .unwrap_err();
+        let after_gate = chrono::Utc::now();
+
+        assert_eq!(
+            ops.events,
+            ["acquire_lock", "gate_is_active", "gate_config_path"]
+        );
+        let RunnerError::ActiveJobs(error) = error else {
+            panic!("expected active-jobs refusal");
+        };
+        assert_eq!(error.unit, "vm0-runner-test");
+        assert_eq!(error.suffix, "test");
+        assert_eq!(
+            error
+                .run_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["0191c4e0-0000-7000-8000-000000000003"]
+        );
+        assert!(error.runner_uptime >= (before_gate - parsed_started_at).to_std().unwrap());
+        assert!(error.runner_uptime <= (after_gate - parsed_started_at).to_std().unwrap());
+        assert_eq!(error.command_name, "uninstall");
+        assert!(error.draining);
+    }
+
+    #[tokio::test]
+    async fn uninstall_fails_closed_when_gate_unit_state_is_unavailable() {
+        let unit = service_unit();
+        let home = HomePaths::with_root(PathBuf::from("/tmp/vm0-runner-test"));
+        let mut ops = FakeUninstallOps {
+            events: Vec::new(),
+            gate_active_results: VecDeque::from([Err(RunnerError::Internal(
+                "systemd unavailable".to_string(),
+            ))]),
+            gate_config_path: None,
+        };
+
+        let error = uninstall_with_ops(&unit, &home, false, &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("vm0-runner-test"));
+        assert!(message.contains("before service uninstall"));
+        assert!(message.contains("systemd unavailable"));
+        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
+    }
+
     #[test]
     fn readiness_base_dir_waits_without_live_record() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
 
-        let base_dir = readiness_base_dir_from_live_instances(&unit, &[]).unwrap();
+        let config_path = PathBuf::from("/vm0-runner/runners/pr-123/runner.yaml");
+        let base_dir =
+            selected_config_base_dir_from_live_instances(&unit, &config_path, &[]).unwrap();
 
         assert_eq!(base_dir, None);
     }
 
     #[test]
-    fn readiness_base_dir_uses_live_record_for_nonstandard_runner_dirname() {
+    fn readiness_base_dir_uses_exact_config_path_during_release_overlap() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
         let actual_base_dir = PathBuf::from("/vm0-runner/runners/pr-123");
-        let instances = vec![live_runner_instance("pr-123-1", actual_base_dir.clone())];
+        let config_path = actual_base_dir.join("runner.yaml");
+        let instances = vec![
+            live_runner_instance(config_path.clone(), actual_base_dir.clone()),
+            live_runner_instance(
+                PathBuf::from("/vm0-runner/runners/other/runner.yaml"),
+                PathBuf::from("/vm0-runner/runners/other"),
+            ),
+        ];
 
-        let base_dir = readiness_base_dir_from_live_instances(&unit, &instances).unwrap();
+        let base_dir =
+            selected_config_base_dir_from_live_instances(&unit, &config_path, &instances).unwrap();
 
         assert_eq!(base_dir, Some(actual_base_dir));
     }
@@ -944,12 +1424,20 @@ profiles:
     #[test]
     fn readiness_base_dir_rejects_duplicate_live_records() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
+        let config_path = PathBuf::from("/vm0-runner/runners/pr-123/runner.yaml");
         let instances = vec![
-            live_runner_instance("pr-123-1", PathBuf::from("/vm0-runner/runners/pr-123")),
-            live_runner_instance("pr-123-1", PathBuf::from("/vm0-runner/runners/other")),
+            live_runner_instance(
+                config_path.clone(),
+                PathBuf::from("/vm0-runner/runners/pr-123"),
+            ),
+            live_runner_instance(
+                config_path.clone(),
+                PathBuf::from("/vm0-runner/runners/other"),
+            ),
         ];
 
-        let error = readiness_base_dir_from_live_instances(&unit, &instances).unwrap_err();
+        let error = selected_config_base_dir_from_live_instances(&unit, &config_path, &instances)
+            .unwrap_err();
 
         assert!(
             error.to_string().contains("multiple live runner instance"),
@@ -970,10 +1458,10 @@ profiles:
         let unit = service_unit();
         let base_dir = Path::new("/var/lib/vm0-runner/runners/test");
 
-        let first = service_activation_config_snapshot_path(&unit, base_dir, b"name: test\n");
-        let second = service_activation_config_snapshot_path(&unit, base_dir, b"name: test\n");
+        let first = service_activation_config_snapshot_path(&unit, base_dir, b"group: test\n");
+        let second = service_activation_config_snapshot_path(&unit, base_dir, b"group: test\n");
         let different =
-            service_activation_config_snapshot_path(&unit, base_dir, b"name: different\n");
+            service_activation_config_snapshot_path(&unit, base_dir, b"group: different\n");
 
         assert_eq!(first, second);
         assert_ne!(first, different);
@@ -1045,7 +1533,7 @@ profiles:
                 assert_ne!(snapshot_path, config_path);
                 assert!(snapshot_path.starts_with(base_dir.join(SERVICE_CONFIG_SNAPSHOT_DIR)));
 
-                tokio::fs::write(&config_path, "name: mutated\n")
+                tokio::fs::write(&config_path, "group: mutated\n")
                     .await
                     .unwrap();
 

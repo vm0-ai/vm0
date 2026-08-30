@@ -1,5 +1,4 @@
 import {
-  check,
   pgTable,
   uuid,
   varchar,
@@ -7,8 +6,6 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { agentComposes } from "./agent-compose";
 import { agents } from "./agent";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
@@ -30,15 +27,6 @@ export const telegramInstallations = pgTable(
     // Secret token for webhook verification (X-Telegram-Bot-Api-Secret-Token)
     webhookSecret: varchar("webhook_secret", { length: 255 }).notNull(),
     // Bot default agent — always set at registration time.
-    // Must reference a compose whose orgId matches this row's orgId.
-    defaultComposeId: uuid("default_compose_id")
-      .notNull()
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      ),
     defaultAgentId: uuid("default_agent_id").references(
       () => {
         return agents.id;
@@ -60,10 +48,6 @@ export const telegramInstallations = pgTable(
     return [
       index("idx_telegram_installations_owner").on(table.ownerUserId),
       index("idx_telegram_installations_org").on(table.orgId),
-      check(
-        "telegram_installations_agent_reference_match",
-        sql`${table.defaultAgentId} IS NULL OR ${table.defaultAgentId} IS NOT DISTINCT FROM ${table.defaultComposeId}`,
-      ),
     ];
   },
 );

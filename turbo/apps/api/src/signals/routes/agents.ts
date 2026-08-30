@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
 import { and, count, eq } from "drizzle-orm";
-import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   agentsByIdContract,
   agentsMainContract,
@@ -14,7 +14,6 @@ import { randomPresetAvatar } from "@okouai/core/agent-avatar";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -24,13 +23,7 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { conflict, notFound } from "../../lib/error";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
-import {
-  createServerSideZeroAgentCompose$,
-  readAgentComposeHeadForWriterGuard,
-  recomposeAgentIfStale$,
-  serverSideZeroAgentCompose$,
-} from "../services/agent-compose.service";
-import { deleteComposeById$ } from "../services/compose-data.service";
+import { deleteAgentById$ } from "../services/agent-deletion.service";
 import {
   agentResponse,
   agentDetail,
@@ -43,9 +36,18 @@ import {
 import { connectorActionResolver } from "../services/connector-action-resolver.service";
 import { DEFAULT_AGENT_DISPLAY_NAME } from "../services/default-agent-profile";
 import {
+  lockCanonicalAgentMutation,
+  lockCanonicalAgentPublicLimit,
+} from "../services/agent-mutation-lock.service";
+import {
+  deleteAgentInstructionsStorage$,
+  writeAgentInstructionsStorage$,
+} from "../services/agent-instructions-storage.service";
+import {
   updateUserConnectors,
   updateUserCustomConnectors,
 } from "../services/user-connectors.service";
+import { onRejection } from "../utils";
 import type { RouteEntry } from "../route-entry";
 
 const PUBLIC_AGENT_LIMIT = 7;
@@ -65,7 +67,6 @@ interface ExistingAgentVisibility {
 
 interface ExistingAgentForUpdate extends ExistingAgentVisibility {
   readonly id: string;
-  readonly name: string;
   readonly displayName: string | null;
   readonly defaultAgentId: string | null;
 }
@@ -152,14 +153,13 @@ function normalizeProjectedDefaultAgentName(
 }
 
 async function findAgentForUpdate(
-  writeDb: Db,
+  writeDb: Pick<Db, "select">,
   orgId: string,
   agentId: string,
 ): Promise<ExistingAgentForUpdate | null> {
   const rows = await writeDb
     .select({
       id: agents.id,
-      name: agents.name,
       owner: agents.owner,
       visibility: agents.visibility,
       displayName: agents.displayName,
@@ -173,14 +173,13 @@ async function findAgentForUpdate(
 }
 
 async function findAgentMetadataForUpdate(
-  writeDb: Db,
+  writeDb: Pick<Db, "select">,
   orgId: string,
   agentId: string,
 ) {
   const rows = await writeDb
     .select({
       id: agents.id,
-      name: agents.name,
       owner: agents.owner,
       visibility: agents.visibility,
       displayName: agents.displayName,
@@ -219,7 +218,7 @@ function visibilityOwnerError(
 
 async function publicVisibilitySlotError(
   args: {
-    readonly writeDb: Db;
+    readonly writeDb: Pick<Db, "select">;
     readonly orgId: string;
     readonly currentVisibility: AgentVisibility;
     readonly nextVisibility: AgentVisibility;
@@ -243,7 +242,7 @@ async function publicVisibilitySlotError(
 
 function validateAgentVisibilityUpdate(
   args: {
-    readonly writeDb: Db;
+    readonly writeDb: Pick<Db, "select">;
     readonly orgId: string;
     readonly member: AgentMember;
     readonly existing: ExistingAgentVisibility;
@@ -272,41 +271,8 @@ function validateAgentVisibilityUpdate(
   );
 }
 
-function upsertZeroAgentAfterCompose(
-  writeDb: Db,
-  args: {
-    readonly composeId: string;
-    readonly orgId: string;
-    readonly name: string;
-    readonly owner: string;
-    readonly body: AgentUpdateBody;
-    readonly visibility: AgentVisibility;
-  },
-) {
-  return writeDb
-    .insert(zeroAgents)
-    .values({
-      id: args.composeId,
-      orgId: args.orgId,
-      name: args.name,
-      owner: args.owner,
-      displayName: args.body.displayName ?? null,
-      description: args.body.description ?? null,
-      sound: args.body.sound ?? null,
-      avatarUrl: args.body.avatarUrl ?? null,
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
-      visibility: args.visibility,
-    })
-    .onConflictDoUpdate({
-      target: [zeroAgents.orgId, zeroAgents.name],
-      set: buildAgentUpsertConflictSet(args.body, nowDate()),
-    });
-}
-
 async function readAgentForResponse(
-  writeDb: Db,
+  writeDb: Pick<Db, "select">,
   orgId: string,
   agentId: string,
 ) {
@@ -353,18 +319,14 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return limitError;
   }
 
-  const agentName = randomUUID();
-  const compose = await set(
-    createServerSideZeroAgentCompose$,
-    {
-      userId: auth.userId,
-      orgId: auth.orgId,
-      agentName,
-      instructions: "",
-    },
-    signal,
-  );
-  signal.throwIfAborted();
+  const agentId = randomUUID();
+  const cleanupInstructions = async (): Promise<void> => {
+    await set(
+      deleteAgentInstructionsStorage$,
+      { orgId: auth.orgId, agentName: agentId },
+      new AbortController().signal,
+    );
+  };
 
   const metadata = {
     displayName: body.data.displayName ?? null,
@@ -377,76 +339,76 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     visibility,
   };
 
-  const result = await writeDb.transaction(async (tx) => {
-    await tx
-      .select({ id: agents.id })
-      .from(agents)
-      .where(eq(agents.orgId, auth.orgId))
-      .for("update");
-    signal.throwIfAborted();
-
-    if (visibility === "public") {
-      const [publicAgentCount] = await tx
-        .select({ value: count() })
-        .from(agents)
-        .where(
-          and(eq(agents.orgId, auth.orgId), eq(agents.visibility, "public")),
-        );
-      signal.throwIfAborted();
-
-      if ((publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT) {
-        return { blocked: true as const };
-      }
-    }
-
-    await tx
-      .insert(zeroAgents)
-      .values({
-        id: compose.composeId,
-        orgId: auth.orgId,
-        name: compose.composeName,
-        owner: auth.userId,
-        ...metadata,
-      })
-      .onConflictDoUpdate({
-        target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
-          ...metadata,
-          updatedAt: nowDate(),
-        },
-      });
-    signal.throwIfAborted();
-
-    return { blocked: false as const };
-  });
-  signal.throwIfAborted();
-
-  if (result.blocked) {
-    const cleanupError = await set(
-      deleteComposeById$,
+  const createAgent = (async () => {
+    await set(
+      writeAgentInstructionsStorage$,
       {
-        composeId: compose.composeId,
-        composeName: compose.composeName,
         orgId: auth.orgId,
+        agentName: agentId,
+        instructions: "",
       },
       signal,
     );
-    if (cleanupError) {
-      return cleanupError;
-    }
     signal.throwIfAborted();
+
+    const transactionResult = await writeDb.transaction(async (tx) => {
+      await lockCanonicalAgentMutation(tx, agentId);
+      await lockCanonicalAgentPublicLimit(tx, auth.orgId);
+
+      await tx
+        .select({ id: agents.id })
+        .from(agents)
+        .where(eq(agents.orgId, auth.orgId))
+        .orderBy(agents.id)
+        .for("update");
+      signal.throwIfAborted();
+
+      if (visibility === "public") {
+        const [publicAgentCount] = await tx
+          .select({ value: count() })
+          .from(agents)
+          .where(
+            and(eq(agents.orgId, auth.orgId), eq(agents.visibility, "public")),
+          );
+        signal.throwIfAborted();
+
+        if ((publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT) {
+          return { blocked: true as const };
+        }
+      }
+
+      const createdAt = nowDate();
+      await tx.insert(agents).values({
+        id: agentId,
+        orgId: auth.orgId,
+        owner: auth.userId,
+        name: agentId,
+        ...metadata,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      signal.throwIfAborted();
+
+      return { blocked: false as const };
+    });
+    if (transactionResult.blocked) {
+      await cleanupInstructions();
+    }
+    return transactionResult;
+  })();
+
+  const result = await onRejection(createAgent, cleanupInstructions);
+  signal.throwIfAborted();
+
+  if (result.blocked) {
     return publicAgentCreateLimitError();
   }
 
-  const agent = await readAgentForResponse(
-    writeDb,
-    auth.orgId,
-    compose.composeId,
-  );
+  const agent = await readAgentForResponse(writeDb, auth.orgId, agentId);
   signal.throwIfAborted();
 
   if (!agent) {
-    throw new Error(`Created zero agent not found: ${compose.composeId}`);
+    throw new Error(`Created Agent not found: ${agentId}`);
   }
 
   return { status: 201 as const, body: agentResponse(agent, publicBrand) };
@@ -520,7 +482,7 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
 
 const getAgentCustomConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroAgentCustomConnectorsContract.get));
+  const params = get(pathParamsOf(agentCustomConnectorsContract.get));
   const exists = await get(
     agentExists({
       orgId: auth.orgId,
@@ -548,7 +510,7 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
 });
 
 const updateAgentCustomConnectorsBody$ = bodyResultOf(
-  zeroAgentCustomConnectorsContract.update,
+  agentCustomConnectorsContract.update,
 );
 
 const updateAgentBody$ = bodyResultOf(agentsByIdContract.update);
@@ -565,68 +527,72 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const writeDb = set(writeDb$);
-  const existing = await findAgentForUpdate(writeDb, auth.orgId, params.id);
-  signal.throwIfAborted();
-  if (!existing) {
-    return agentNotFound(params.id);
-  }
-  const updateBody = normalizeProjectedDefaultAgentName(
-    body.data,
-    existing,
-    publicBrand,
-  );
+  const result = await writeDb.transaction(async (tx) => {
+    await lockCanonicalAgentMutation(tx, params.id);
+    await lockCanonicalAgentPublicLimit(tx, auth.orgId);
 
-  const permissionError = requireAgentConfigurationPermission(existing, member);
-  if (permissionError) {
-    return permissionError;
-  }
+    await tx
+      .select({ id: agents.id })
+      .from(agents)
+      .where(eq(agents.orgId, auth.orgId))
+      .orderBy(agents.id)
+      .for("update");
 
-  const nextVisibility = updateBody.visibility ?? existing.visibility;
-  const visibilityError = await validateAgentVisibilityUpdate(
-    {
-      writeDb,
-      orgId: auth.orgId,
-      member,
+    const existing = await findAgentForUpdate(tx, auth.orgId, params.id);
+    if (!existing) {
+      return { response: agentNotFound(params.id) };
+    }
+    const updateBody = normalizeProjectedDefaultAgentName(
+      body.data,
       existing,
-      requestedVisibility: updateBody.visibility,
-      nextVisibility,
-    },
-    signal,
-  );
-  if (visibilityError) {
-    return visibilityError;
-  }
+      publicBrand,
+    );
 
-  const result = await set(
-    serverSideZeroAgentCompose$,
-    {
-      userId: auth.userId,
-      orgId: auth.orgId,
-      agentComposeId: existing.id,
-      agentName: existing.name,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
+    const permissionError = requireAgentConfigurationPermission(
+      existing,
+      member,
+    );
+    if (permissionError) {
+      return { response: permissionError };
+    }
 
-  await upsertZeroAgentAfterCompose(writeDb, {
-    composeId: result.composeId,
-    orgId: auth.orgId,
-    name: result.composeName,
-    owner: auth.userId,
-    body: updateBody,
-    visibility: nextVisibility,
+    const nextVisibility = updateBody.visibility ?? existing.visibility;
+    const visibilityError = await validateAgentVisibilityUpdate(
+      {
+        writeDb: tx,
+        orgId: auth.orgId,
+        member,
+        existing,
+        requestedVisibility: updateBody.visibility,
+        nextVisibility,
+      },
+      signal,
+    );
+    if (visibilityError) {
+      return { response: visibilityError };
+    }
+
+    await tx
+      .update(agents)
+      .set(buildAgentUpsertConflictSet(updateBody, nowDate()))
+      .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, params.id)));
+
+    const agent = await readAgentForResponse(tx, auth.orgId, params.id);
+    if (!agent) {
+      throw new Error(`Canonical Agent missing after update: ${params.id}`);
+    }
+    return { agent };
   });
   signal.throwIfAborted();
 
-  const agent = await readAgentForResponse(writeDb, auth.orgId, params.id);
-  signal.throwIfAborted();
-
-  if (!agent) {
-    throw new Error(`Canonical Agent missing after update: ${params.id}`);
+  if ("response" in result) {
+    return result.response;
   }
 
-  return { status: 200 as const, body: agentResponse(agent, publicBrand) };
+  return {
+    status: 200 as const,
+    body: agentResponse(result.agent, publicBrand),
+  };
 });
 
 const updateAgentMetadataBody$ = bodyResultOf(
@@ -646,62 +612,79 @@ const updateAgentMetadataInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const existing = await findAgentMetadataForUpdate(
-      writeDb,
-      auth.orgId,
-      params.id,
-    );
-    signal.throwIfAborted();
-    if (!existing) {
-      return agentNotFound(params.id);
-    }
-    const updateBody = normalizeProjectedDefaultAgentName(
-      body.data,
-      existing,
-      publicBrand,
-    );
+    const result = await writeDb.transaction(async (tx) => {
+      await lockCanonicalAgentMutation(tx, params.id);
+      await lockCanonicalAgentPublicLimit(tx, auth.orgId);
 
-    const permissionError = requireAgentPermission(
-      existing.owner,
-      member,
-      "update agent profile",
-      { visibility: existing.visibility },
-    );
-    if (permissionError) {
-      return permissionError;
-    }
+      await tx
+        .select({ id: agents.id })
+        .from(agents)
+        .where(eq(agents.orgId, auth.orgId))
+        .orderBy(agents.id)
+        .for("update");
 
-    if (updateBody.visibility !== undefined) {
-      const visibilityError = await validateAgentVisibilityUpdate(
-        {
-          writeDb,
-          orgId: auth.orgId,
-          member,
-          existing,
-          requestedVisibility: updateBody.visibility,
-          nextVisibility: updateBody.visibility,
-        },
-        signal,
+      const existing = await findAgentMetadataForUpdate(
+        tx,
+        auth.orgId,
+        params.id,
       );
-      if (visibilityError) {
-        return visibilityError;
+      if (!existing) {
+        return { response: agentNotFound(params.id) };
       }
-    }
+      const updateBody = normalizeProjectedDefaultAgentName(
+        body.data,
+        existing,
+        publicBrand,
+      );
 
-    await writeDb
-      .update(zeroAgents)
-      .set(buildAgentUpsertConflictSet(updateBody, nowDate()))
-      .where(eq(zeroAgents.id, params.id));
+      const permissionError = requireAgentPermission(
+        existing.owner,
+        member,
+        "update agent profile",
+        { visibility: existing.visibility },
+      );
+      if (permissionError) {
+        return { response: permissionError };
+      }
+
+      if (updateBody.visibility !== undefined) {
+        const visibilityError = await validateAgentVisibilityUpdate(
+          {
+            writeDb: tx,
+            orgId: auth.orgId,
+            member,
+            existing,
+            requestedVisibility: updateBody.visibility,
+            nextVisibility: updateBody.visibility,
+          },
+          signal,
+        );
+        if (visibilityError) {
+          return { response: visibilityError };
+        }
+      }
+
+      await tx
+        .update(agents)
+        .set(buildAgentUpsertConflictSet(updateBody, nowDate()))
+        .where(and(eq(agents.orgId, auth.orgId), eq(agents.id, params.id)));
+
+      const agent = await readAgentForResponse(tx, auth.orgId, params.id);
+      if (!agent) {
+        throw new Error(`Canonical Agent missing after update: ${params.id}`);
+      }
+      return { agent };
+    });
     signal.throwIfAborted();
 
-    const agent = await readAgentForResponse(writeDb, auth.orgId, params.id);
-    signal.throwIfAborted();
-
-    if (!agent) {
-      throw new Error(`Canonical Agent missing after update: ${params.id}`);
+    if ("response" in result) {
+      return result.response;
     }
 
-    return { status: 200 as const, body: agentResponse(agent, publicBrand) };
+    return {
+      status: 200 as const,
+      body: agentResponse(result.agent, publicBrand),
+    };
   },
 );
 
@@ -714,7 +697,6 @@ const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const [agent] = await writeDb
     .select({
       id: agents.id,
-      name: agents.name,
       owner: agents.owner,
       visibility: agents.visibility,
     })
@@ -738,13 +720,13 @@ const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await set(
-    deleteComposeById$,
-    { composeId: agent.id, composeName: agent.name, orgId: auth.orgId },
+    deleteAgentById$,
+    { agentId: agent.id, orgId: auth.orgId, member },
     signal,
   );
   signal.throwIfAborted();
 
-  if (result?.status === 409) {
+  if (result) {
     return result;
   }
 
@@ -754,7 +736,7 @@ const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const updateAgentCustomConnectorsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroAgentCustomConnectorsContract.update));
+    const params = get(pathParamsOf(agentCustomConnectorsContract.update));
     const body = await get(updateAgentCustomConnectorsBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -838,7 +820,6 @@ const updateAgentUserConnectorsInner$ = command(
     const [agent] = await writeDb
       .select({
         id: agents.id,
-        name: agents.name,
       })
       .from(agents)
       .where(
@@ -852,15 +833,6 @@ const updateAgentUserConnectorsInner$ = command(
     signal.throwIfAborted();
 
     if (!agent) {
-      return agentNotFound(params.id);
-    }
-
-    const currentHeadVersionId = await readAgentComposeHeadForWriterGuard(
-      writeDb,
-      agent.id,
-    );
-    signal.throwIfAborted();
-    if (currentHeadVersionId === undefined) {
       return agentNotFound(params.id);
     }
 
@@ -896,20 +868,6 @@ const updateAgentUserConnectorsInner$ = command(
     });
     signal.throwIfAborted();
     if (updated.status === "agentNotFound") {
-      return agentNotFound(params.id);
-    }
-
-    const recomposed = await set(
-      recomposeAgentIfStale$,
-      {
-        userId: auth.userId,
-        agentComposeId: agent.id,
-        agentName: agent.name,
-        currentHeadVersionId,
-      },
-      signal,
-    );
-    if (recomposed.status === "missing") {
       return agentNotFound(params.id);
     }
 
@@ -971,11 +929,11 @@ export const agentsRoutes: readonly RouteEntry[] = [
     handler: authRoute(agentReadAuth, getAgentUserConnectorsInner$),
   },
   {
-    route: zeroAgentCustomConnectorsContract.get,
+    route: agentCustomConnectorsContract.get,
     handler: authRoute(agentReadAuth, getAgentCustomConnectorsInner$),
   },
   {
-    route: zeroAgentCustomConnectorsContract.update,
+    route: agentCustomConnectorsContract.update,
     handler: authRoute(agentReadAuth, updateAgentCustomConnectorsInner$),
   },
   {

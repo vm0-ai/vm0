@@ -63,7 +63,7 @@ describe("okou generate image command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
@@ -841,6 +841,12 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("Notion-editorial-style hand-drawn");
     expect(helpOutput).toContain("image-style:vm0-illustration");
     expect(helpOutput).toContain("Generate vm0-style vm0 in-app");
+    expect(helpOutput).toContain("image-style:flat-poster");
+    expect(helpOutput).toContain(
+      "an optional short wordmark supplied by the user",
+    );
+    expect(helpOutput).toContain("omitted when none is supplied");
+    expect(helpOutput).not.toContain("wordmark (default VM0)");
   });
 
   it("should surface API errors", async () => {

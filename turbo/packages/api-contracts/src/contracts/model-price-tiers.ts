@@ -1,5 +1,5 @@
 /**
- * Canonical VM0-managed run models and Built-in credit price tiers.
+ * Canonical VM0 built-in run models and Built-in credit price tiers.
  *
  * Keep this module lightweight so public UI surfaces can read price tier data
  * without importing the full model provider contract schema.
@@ -23,15 +23,15 @@ export const SUPPORTED_RUN_MODELS = [
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
 
-export type Vm0ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
+export type ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
 
 /**
  * User-facing credit cost tier for Built-in model offerings. Only applies to
- * the `vm0` provider type; BYOK providers pay the vendor directly and do not
+ * the `built-in` provider type; BYOK providers pay the vendor directly and do not
  * carry a platform tier.
  */
 export const VM0_MODEL_PRICE_TIER = Object.freeze<
-  Record<SupportedRunModel, Vm0ModelPriceTier>
+  Record<SupportedRunModel, ModelPriceTier>
 >({
   "claude-fable-5": "$$$$",
   "claude-opus-5": "$$$",

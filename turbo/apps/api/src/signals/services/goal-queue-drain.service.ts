@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -13,6 +14,7 @@ import {
 import {
   ApiDispatchTimingCollector,
   type ApiDispatchTimingDimensions,
+  type GoalSchedulerTimingCollector,
 } from "./api-dispatch-timing.service";
 import {
   loadGoalQueueTarget,
@@ -26,7 +28,10 @@ import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import type { ModelFirstPin } from "./model-selection.service";
+import {
+  modelProviderWriteTypeForLaunch,
+  type ModelFirstPin,
+} from "./model-selection.service";
 import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import {
   resolveBuiltInModelRuntimeRoute,
@@ -116,7 +121,6 @@ function buildGoalAppendSystemPrompt(goal: {
     "- When the objective is verifiably done, audit it requirement-by-requirement against the current external state; only then run `okou goal complete`.",
     "- If the same blocker stops you for 3 consecutive turns, run `okou goal block` and explain why.",
     "- Inspect goal state anytime with `okou goal get`.",
-    "- Do not create, edit, pause, resume, or clear goals from an autonomous goal continuation run.",
     "- Do not stop to ask the user and wait; act on the best available information.",
   );
   return lines.join("\n");
@@ -172,7 +176,11 @@ function buildQueueFirstGoalRunInput(args: {
       prompt,
       agentId: normalizedGoal.agentId,
       ...(effectiveModelProvider
-        ? { modelProvider: effectiveModelProvider }
+        ? {
+            modelProvider: modelProviderWriteTypeForLaunch(
+              effectiveModelProvider,
+            ),
+          }
         : {}),
     },
     apiStartTime: args.apiStartTime,
@@ -261,19 +269,18 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const fallbackEnabled =
-    effectiveModelProvider === "vm0"
-      ? isFeatureEnabled(
-          FeatureSwitchKey.ManagedModelProviderFallback,
-          await loadUserFeatureSwitchContext(
-            args.db,
-            args.goal.orgId,
-            args.goal.userId,
-          ),
-        )
-      : false;
+  const fallbackEnabled = isBuiltInModelProviderType(effectiveModelProvider)
+    ? isFeatureEnabled(
+        FeatureSwitchKey.BuiltInModelProviderFallback,
+        await loadUserFeatureSwitchContext(
+          args.db,
+          args.goal.orgId,
+          args.goal.userId,
+        ),
+      )
+    : false;
   const builtInModelRuntimeRoute =
-    effectiveModelProvider === "vm0" && selectedModel
+    isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
       ? await resolveBuiltInModelRuntimeRoute(
           args.db,
           selectedModel,
@@ -281,7 +288,10 @@ async function resolveModelContext(
         )
       : undefined;
   signal.throwIfAborted();
-  if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
+  if (
+    isBuiltInModelProviderType(effectiveModelProvider) &&
+    !builtInModelRuntimeRoute
+  ) {
     return {
       ok: false,
       failure: {
@@ -294,7 +304,7 @@ async function resolveModelContext(
                 ? "MODEL_PROVIDER_UNAVAILABLE"
                 : "PROVIDER_UNAVAILABLE",
               message: fallbackEnabled
-                ? "Every managed route for this model is temporarily unavailable"
+                ? "Every built-in model route for this model is temporarily unavailable"
                 : "No model provider configured: no built-in model key is configured",
             },
           },
@@ -317,7 +327,11 @@ async function publishGoalQueueChanged(
   event: PendingGoalQueueEvent,
   signal: AbortSignal,
 ): Promise<void> {
-  await publishChatThreadMessageCreatedSafely(event.userId, event.chatThreadId);
+  await publishChatThreadMessageCreatedSafely({
+    userId: event.userId,
+    orgId: event.orgId,
+    threadId: event.chatThreadId,
+  });
   signal.throwIfAborted();
 }
 
@@ -480,6 +494,7 @@ export const drainGoalQueueForThread$ = command(
       readonly chatThreadId: string;
       readonly apiStartTime: number;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+      readonly goalSchedulerTiming: GoalSchedulerTimingCollector;
       readonly queueItemCreatedBefore?: Date;
     },
     signal: AbortSignal,
@@ -487,12 +502,23 @@ export const drainGoalQueueForThread$ = command(
     const drainStartedAt = now();
     const apiStartTime = args.apiStartTime;
     const timing = new ApiDispatchTimingCollector();
+    args.goalSchedulerTiming.checkpoint(
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
+      drainStartedAt,
+    );
+    args.goalSchedulerTiming.appendTo(
+      timing,
+      goalDrainTimingDimensions({ role: "phase" }),
+    );
     timing.recordElapsed(
       "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
       "nested",
       apiStartTime,
       drainStartedAt,
-      goalDrainTimingDimensions({ role: "waiting" }),
+      {
+        ...goalDrainTimingDimensions({ role: "waiting" }),
+        goal_scheduler_origin: args.goalSchedulerTiming.origin,
+      },
     );
     const db = set(writeDb$);
 

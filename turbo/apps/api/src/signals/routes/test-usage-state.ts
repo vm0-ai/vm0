@@ -5,10 +5,7 @@ import {
   testUsageStateContract,
   type TestUsageStateActionBody,
 } from "@okouai/api-contracts/contracts/test-usage-state";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -26,7 +23,6 @@ import { usageEventHourlyRollup } from "@okouai/db/schema/usage-event-hourly-rol
 import { userConnectors } from "@okouai/db/schema/user-connector";
 import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import { variables } from "@okouai/db/schema/variable";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   and,
   count,
@@ -63,7 +59,7 @@ interface UsageStateFixture {
 interface SeedRunArgs {
   readonly orgId: string;
   readonly userId: string;
-  readonly composeId: string;
+  readonly agentId: string;
   readonly triggerSource?: string;
   readonly chatThreadId?: string;
   readonly status?: string;
@@ -256,30 +252,12 @@ async function deleteUsageStateFixture(
     );
   signal.throwIfAborted();
 
-  const composeRows = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(eq(agentComposes.orgId, orgId), eq(agentComposes.userId, userId)),
-    );
-  signal.throwIfAborted();
-  const composeIds = composeRows.map((row) => {
-    return row.id;
-  });
-
   await db.delete(chatThreads).where(eq(chatThreads.userId, userId));
   signal.throwIfAborted();
 
-  if (composeIds.length > 0) {
-    await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-    signal.throwIfAborted();
-  }
-
   await db
-    .delete(agentComposes)
-    .where(
-      and(eq(agentComposes.orgId, orgId), eq(agentComposes.userId, userId)),
-    );
+    .delete(agents)
+    .where(and(eq(agents.orgId, orgId), eq(agents.owner, userId)));
   signal.throwIfAborted();
 
   const storageRows = await db
@@ -317,23 +295,19 @@ async function seedCompose(
 ): Promise<{ composeId: string; agentId: string }> {
   const name = args.name ?? `compose-${randomUUID().slice(0, 8)}`;
   const [row] = await db
-    .insert(agentComposes)
-    .values({ userId: args.userId, orgId: args.orgId, name })
-    .returning({ id: agentComposes.id });
-  if (!row) {
-    throw new Error("seedCompose: insert returned no row");
-  }
-  await db
-    .insert(zeroAgents)
+    .insert(agents)
     .values({
-      id: row.id,
-      orgId: args.orgId,
+      id: randomUUID(),
       owner: args.userId,
+      orgId: args.orgId,
       name,
       displayName: args.displayName ?? null,
       visibility: args.visibility ?? "public",
     })
-    .onConflictDoNothing();
+    .returning({ id: agents.id });
+  if (!row) {
+    throw new Error("seedCompose: insert returned no row");
+  }
   return { composeId: row.id, agentId: row.id };
 }
 
@@ -342,28 +316,12 @@ async function seedRun(
   args: SeedRunArgs,
   signal: AbortSignal,
 ): Promise<{ runId: string }> {
-  const versionId = randomUUID();
-  await db.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId: args.composeId,
-    content: {
-      version: "1.0",
-      agents: { "test-agent": { framework: "claude-code" } },
-    },
-    createdBy: args.userId,
-  });
-  signal.throwIfAborted();
-  await db
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, args.composeId));
-  signal.throwIfAborted();
   const [session] = await db
     .insert(agentSessions)
     .values({
       userId: args.userId,
       orgId: args.orgId,
-      agentComposeId: args.composeId,
+      agentId: args.agentId,
     })
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
@@ -382,7 +340,6 @@ async function seedRun(
     .values({
       userId: args.userId,
       orgId: args.orgId,
-      agentComposeVersionId: versionId,
       prompt: args.prompt ?? "test prompt",
       status: args.status ?? "pending",
       sessionId: session.id,
@@ -410,7 +367,7 @@ async function seedChatThread(
   db: Db,
   args: {
     readonly userId: string;
-    readonly composeId: string;
+    readonly agentId: string;
     readonly title?: string;
   },
   signal: AbortSignal,
@@ -419,7 +376,7 @@ async function seedChatThread(
     .insert(chatThreads)
     .values({
       userId: args.userId,
-      agentComposeId: args.composeId,
+      agentId: args.agentId,
       title: args.title ?? null,
     })
     .returning({ id: chatThreads.id });
@@ -1001,7 +958,7 @@ async function mutateUsageStateRunState(
         {
           orgId: body.org_id,
           userId: body.user_id,
-          composeId: body.compose_id,
+          agentId: body.compose_id,
           triggerSource: body.trigger_source,
           chatThreadId: body.chat_thread_id,
           status: body.status,
@@ -1036,7 +993,7 @@ async function mutateUsageStateRunState(
         db,
         {
           userId: body.user_id,
-          composeId: body.compose_id,
+          agentId: body.compose_id,
           title: body.title,
         },
         signal,

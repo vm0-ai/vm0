@@ -291,14 +291,14 @@ invoke_wrapper() {
   RUNNER_TEMP="$case_dir/runner-temp" \
   SYSTEM_SLEEP="$system_sleep" \
   SYSTEM_TIMEOUT="$system_timeout" \
-  VM0_CLOUDFLARE_SSH_REAL_SSH="$fake_ssh" \
-  VM0_CLOUDFLARE_SSH_REAL_SCP="$fake_scp" \
-  VM0_CLOUDFLARE_SSH_REAL_SFTP="$fake_sftp" \
-  VM0_CLOUDFLARE_SSH_SCRIPTS_DIR="${REPO_ROOT}/.github/scripts" \
-  VM0_CLOUDFLARE_SSH_STATE_DIR="$case_dir/state" \
-  VM0_CLOUDFLARE_SSH_USER=metal \
-  VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=/tmp/default-control \
-  VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS="${VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS:-600}" \
+  OKOU_CLOUDFLARE_SSH_REAL_SSH="$fake_ssh" \
+  OKOU_CLOUDFLARE_SSH_REAL_SCP="$fake_scp" \
+  OKOU_CLOUDFLARE_SSH_REAL_SFTP="$fake_sftp" \
+  OKOU_CLOUDFLARE_SSH_SCRIPTS_DIR="${REPO_ROOT}/.github/scripts" \
+  OKOU_CLOUDFLARE_SSH_STATE_DIR="$case_dir/state" \
+  OKOU_CLOUDFLARE_SSH_USER=metal \
+  OKOU_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=/tmp/default-control \
+  OKOU_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS="${OKOU_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS:-600}" \
     "${wrapper_bin}/${tool}" "$@"
 }
 
@@ -352,7 +352,7 @@ assert_line_count "$actual_failure/stdout" 1 "actual stdout"
 assert_line_count "$actual_failure/stderr" 1 "actual stderr"
 
 invalid_timeout="${tmp}/invalid-timeout"
-VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=0 \
+OKOU_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=0 \
   run_wrapper "$invalid_timeout" healthy ssh \
     metal@dev-1.aws.vm3.ai must-not-run
 assert_contains "$invalid_timeout/status" "2"
@@ -364,7 +364,7 @@ fi
 
 actual_timeout="${tmp}/actual-timeout"
 FAKE_TIMEOUT_MODE=real \
-  VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=1 \
+  OKOU_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=1 \
   run_wrapper "$actual_timeout" actual-hang ssh \
     metal@dev-1.aws.vm3.ai run-once-and-hang
 case "$(< "$actual_timeout/status")" in
@@ -386,7 +386,7 @@ assert_process_gone \
 actual_cancel="${tmp}/actual-cancel"
 setup_case "$actual_cancel"
 FAKE_TIMEOUT_MODE=real \
-  VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=30 \
+  OKOU_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=30 \
   invoke_wrapper "$actual_cancel" actual-hang ssh \
     metal@dev-1.aws.vm3.ai run-once-until-cancelled \
     > "$actual_cancel/stdout" 2> "$actual_cancel/stderr" &
@@ -666,20 +666,20 @@ fi
 assert_contains "$SSH_ACTION" "Guard subsequent SSH operations"
 assert_contains "$SSH_ACTION" "cloudflare-ssh-command.sh"
 assert_contains "$SSH_ACTION" \
-  "real_ssh=\"\${VM0_CLOUDFLARE_SSH_REAL_SSH:-\$(command -v ssh)}\""
+  "real_ssh=\"\${OKOU_CLOUDFLARE_SSH_REAL_SSH:-\$(command -v ssh)}\""
 assert_contains "$SSH_ACTION" \
-  "real_scp=\"\${VM0_CLOUDFLARE_SSH_REAL_SCP:-\$(command -v scp)}\""
+  "real_scp=\"\${OKOU_CLOUDFLARE_SSH_REAL_SCP:-\$(command -v scp)}\""
 assert_contains "$SSH_ACTION" \
-  "real_sftp=\"\${VM0_CLOUDFLARE_SSH_REAL_SFTP:-\$(command -v sftp)}\""
+  "real_sftp=\"\${OKOU_CLOUDFLARE_SSH_REAL_SFTP:-\$(command -v sftp)}\""
 assert_contains "$SSH_ACTION" \
   "echo \"\$wrapper_bin\" >> \"\$GITHUB_PATH\""
-assert_contains "$SSH_ACTION" "VM0_CLOUDFLARE_SSH_STATE_DIR="
+assert_contains "$SSH_ACTION" "OKOU_CLOUDFLARE_SSH_STATE_DIR="
 assert_contains "$SSH_ACTION" "operation-timeout-seconds:"
 assert_contains "$SSH_ACTION" 'default: "600"'
 assert_contains "$SSH_ACTION" \
-  "VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=\${OPERATION_TIMEOUT_SECONDS}"
+  "OKOU_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=\${OPERATION_TIMEOUT_SECONDS}"
 assert_contains "$SSH_ACTION" \
-  "VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=\$HOME/.ssh/vm0-ssh-%C"
+  "OKOU_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=\$HOME/.ssh/vm0-ssh-%C"
 assert_contains "$SECURITY_WORKFLOW" \
   ".github/scripts/cloudflare-ssh-command.sh"
 assert_contains "$SECURITY_WORKFLOW" \

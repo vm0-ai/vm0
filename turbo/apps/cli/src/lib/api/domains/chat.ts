@@ -19,6 +19,9 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
+  withoutLegacyChatEventProjection,
+  type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -28,22 +31,40 @@ export interface ChatThreadSnapshot {
   readonly latestSeqId: number | null;
 }
 
-export type ChatThreadEvent = ApiChatThreadEvent;
-
-interface ZeroChatEventSnapshotDownload {
-  readonly url: string;
-  readonly lastEventId: string;
-  readonly lastSeqId: number;
+interface ChatThreadUnread {
+  readonly threadId: string;
+  readonly unreadAt: string;
 }
 
+export type ChatThreadEvent = ApiChatThreadEvent;
+
+type ZeroChatEventSnapshotResult =
+  | {
+      readonly kind: "snapshot";
+      readonly url: string;
+      readonly lastEventId: string | null;
+      readonly lastSeqId: number;
+    }
+  | { readonly kind: "missing" };
+
 type ZeroChatEventRowsPage =
-  | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
+  | {
+      readonly kind: "rows";
+      readonly rows: readonly ChatEventRow[];
+      readonly cursor: ChatEventCursor;
+      readonly hasMore: boolean;
+    }
   | { readonly kind: "expired" };
 
-const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
-  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-    CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-});
+type ChatEventSchemaVersionHeaders = Readonly<{
+  [CHAT_EVENT_SCHEMA_VERSION_HEADER]: string;
+}>;
+
+const CHAT_EVENT_SCHEMA_VERSION_HEADERS: ChatEventSchemaVersionHeaders =
+  Object.freeze({
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+  });
 
 function assertChatEventSchemaVersion(headers: Headers): void {
   const version = headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
@@ -143,6 +164,20 @@ export async function listChatThreadEvents(options: {
   handleError(result, "Failed to list chat thread events");
 }
 
+export async function listChatThreadUnreads(options: {
+  agentId: string;
+}): Promise<readonly ChatThreadUnread[]> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadsContract, config);
+  const result = await client.unreads({
+    query: { agentId: options.agentId },
+  });
+  if (result.status === 200) {
+    return result.body.unreads;
+  }
+  handleError(result, "Failed to list unread chat threads");
+}
+
 export async function createChatThread(options: {
   agentId: string;
   title: string;
@@ -225,7 +260,7 @@ export async function sendChatEvent(
 
 export async function getChatEventSnapshot(options: {
   readonly threadId: string;
-}): Promise<ZeroChatEventSnapshotDownload | null> {
+}): Promise<ZeroChatEventSnapshotResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.snapshot({
@@ -235,13 +270,14 @@ export async function getChatEventSnapshot(options: {
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
     return {
+      kind: "snapshot",
       url: result.body.url,
       lastEventId: result.body.lastEventId,
       lastSeqId: result.body.lastSeqId,
     };
   }
   if (result.status === 404) {
-    return null;
+    return { kind: "missing" };
   }
   handleError(result, "Failed to get chat event snapshot");
 }
@@ -252,7 +288,10 @@ export async function listChatEventRows(
     readonly limit: number;
   } & (
     | { readonly sinceEventId: null; readonly sinceSeqId: 0 }
-    | { readonly sinceEventId: string; readonly sinceSeqId: number }
+    | {
+        readonly sinceEventId: string;
+        readonly sinceSeqId: number;
+      }
   ),
 ): Promise<ZeroChatEventRowsPage> {
   const config = await getClientConfig();
@@ -266,12 +305,20 @@ export async function listChatEventRows(
         : {
             sinceSeqId: options.sinceSeqId,
             sinceEventId: options.sinceEventId,
+            // Stage 1 CLI-to-API adapter for retained pre-Stage-1 targets.
+            // Remove under vm0-ai/vm0#30329 when that API gate closes.
+            sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
             limit: options.limit,
           },
   });
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
-    return { kind: "rows", rows: result.body.rows };
+    return {
+      kind: "rows",
+      rows: result.body.rows,
+      cursor: withoutLegacyChatEventProjection(result.body.cursor),
+      hasMore: result.body.hasMore,
+    };
   }
   if (result.status === 410) {
     return { kind: "expired" };

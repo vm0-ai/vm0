@@ -17,7 +17,7 @@ import { DecryptCommand, KMSClient } from "@aws-sdk/client-kms";
 import {
   customConnectorFieldSchema,
   type CustomConnectorField,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectors } from "@okouai/db/schema/connector";
 import { orgCustomConnectorSecrets } from "@okouai/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@okouai/db/schema/org-custom-connector-value";

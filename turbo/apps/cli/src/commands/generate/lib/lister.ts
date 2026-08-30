@@ -10,6 +10,20 @@ import {
 } from "../../shared/billing-capabilities";
 import { planUpgradeUrl } from "../../shared/billing-links";
 import { getOkouAgentId } from "../../../lib/okou-env";
+import {
+  DEFAULT_VIDEO_MODEL,
+  VIDEO_MODEL_CONFIGS,
+  VIDEO_MODELS,
+} from "@okouai/core/video-model-catalog";
+
+/**
+ * Derived from the catalog so the summary cannot keep marking a model the
+ * default after the catalog stops using it.
+ */
+const BUILT_IN_VIDEO_MODEL_SUMMARY = VIDEO_MODELS.map((model) => {
+  const { alias } = VIDEO_MODEL_CONFIGS[model];
+  return model === DEFAULT_VIDEO_MODEL ? `${alias} (default)` : alias;
+}).join(", ");
 
 type ConnectorGenerationType =
   | "audio"
@@ -224,8 +238,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
   video: {
     label: "Built-in video generation",
     command: "okou generate video --provider built-in -h",
-    models:
-      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
+    models: BUILT_IN_VIDEO_MODEL_SUMMARY,
   },
   presentation: {
     label: "Built-in presentation generation",

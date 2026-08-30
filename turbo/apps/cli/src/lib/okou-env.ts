@@ -21,3 +21,7 @@ export function getOkouChatThreadId(): string | undefined {
 export function getOkouAppUrl(): string | undefined {
   return okouEnvironmentValue("APP_URL");
 }
+
+export function getOkouConnectorAccountContextFile(): string | undefined {
+  return okouEnvironmentValue("CONNECTOR_ACCOUNT_CONTEXT_FILE");
+}

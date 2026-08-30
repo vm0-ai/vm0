@@ -1,4 +1,4 @@
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
@@ -15,7 +15,7 @@ interface FeatureSwitchActor {
 
 function featureSwitchesClient(context: TestContext) {
   return setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
 }
 

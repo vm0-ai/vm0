@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "./error";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "./scope";
 
 type GoogleOAuthConnectorSlug =
   | "gmail"
@@ -46,6 +47,7 @@ interface GoogleRefreshResult {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
 }
 
 /**
@@ -127,7 +129,7 @@ export async function exchangeGoogleOAuthCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }
@@ -168,6 +170,7 @@ export async function refreshGoogleToken(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
+      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -185,6 +188,7 @@ export async function refreshGoogleToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }
 

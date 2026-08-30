@@ -96,7 +96,7 @@ export async function disableThreadBoundWorkflowAutomations(
     });
 }
 
-export async function createAutomationChatThread(
+async function createAutomationChatThread(
   db: ChatThreadEventTransaction,
   args: {
     readonly userId: string;
@@ -114,18 +114,23 @@ export async function createAutomationChatThread(
     orgId: args.orgId,
     userId: args.userId,
   });
+  const pinColumns = chatThreadModelPinColumns(pin);
   const [thread] = await db
     .insert(chatThreads)
     .values({
       userId: args.userId,
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       title: args.title,
-      ...chatThreadModelPinColumns(pin),
+      modelProviderId: pinColumns.modelProviderId,
+      modelProviderType: pinColumns.modelProviderType,
+      modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+      selectedModel: pinColumns.selectedModel,
       codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-      ...mediaModels,
+      selectedVideoModel: mediaModels.selectedVideoModel,
+      selectedImageModel: mediaModels.selectedImageModel,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
@@ -136,7 +141,7 @@ export async function createAutomationChatThread(
     userId: args.userId,
     orgId: args.orgId,
     chatThreadId: thread.id,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
     title: args.title,
     selectedModel: pin.selectedModel,
     serviceTier: pin.serviceTier,

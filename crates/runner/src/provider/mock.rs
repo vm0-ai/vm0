@@ -92,9 +92,10 @@ pub struct MockJobProvider {
     /// `wait_heartbeat_past` uses the same subscribe-then-check pattern as
     /// `wait_completion` so a heartbeat that lands mid-check is still observed.
     heartbeat_notify: Arc<Notify>,
-    heartbeat_control: Arc<MockHeartbeatControl>,
-    claim_control: Arc<MockClaimControl>,
-    completion_control: Arc<MockCompletionControl>,
+    heartbeat_control: Arc<MockOperationControl>,
+    heartbeat_max_in_flight: Arc<AtomicUsize>,
+    claim_control: Arc<MockOperationControl>,
+    completion_control: Arc<MockOperationControl>,
     completion_after_finalization: Arc<AtomicBool>,
 }
 
@@ -116,9 +117,10 @@ pub struct MockProviderHandle {
     discover_started_count: Arc<AtomicUsize>,
     /// See [`MockJobProvider::heartbeat_notify`].
     heartbeat_notify: Arc<Notify>,
-    heartbeat_control: Arc<MockHeartbeatControl>,
-    claim_control: Arc<MockClaimControl>,
-    completion_control: Arc<MockCompletionControl>,
+    heartbeat_control: Arc<MockOperationControl>,
+    heartbeat_max_in_flight: Arc<AtomicUsize>,
+    claim_control: Arc<MockOperationControl>,
+    completion_control: Arc<MockOperationControl>,
     completion_after_finalization: Arc<AtomicBool>,
 }
 
@@ -138,35 +140,21 @@ struct MockStartupReadiness {
 }
 
 #[derive(Default)]
-struct MockHeartbeatControl {
-    blocked: AtomicBool,
-    in_flight: AtomicUsize,
-    max_in_flight: AtomicUsize,
-    release: Notify,
-    state_changed: Notify,
-}
-
-#[derive(Default)]
-struct MockClaimControl {
+struct MockOperationControl {
     blocked: AtomicBool,
     in_flight: AtomicUsize,
     release: Notify,
     state_changed: Notify,
 }
 
-#[derive(Default)]
-struct MockCompletionControl {
-    blocked: AtomicBool,
-    in_flight: AtomicUsize,
-    release: Notify,
-}
-
-impl MockHeartbeatControl {
-    fn enter(&self) -> MockHeartbeatInFlight<'_> {
+impl MockOperationControl {
+    fn enter(&self) -> MockOperationInFlight<'_> {
         let in_flight = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
-        self.max_in_flight.fetch_max(in_flight, Ordering::SeqCst);
         self.state_changed.notify_waiters();
-        MockHeartbeatInFlight { control: self }
+        MockOperationInFlight {
+            control: self,
+            entered_count: in_flight,
+        }
     }
 
     fn block(&self) {
@@ -177,70 +165,56 @@ impl MockHeartbeatControl {
         self.blocked.store(false, Ordering::SeqCst);
         self.release.notify_waiters();
     }
-}
 
-impl MockClaimControl {
-    fn enter(&self) -> MockClaimInFlight<'_> {
-        self.in_flight.fetch_add(1, Ordering::SeqCst);
-        self.state_changed.notify_waiters();
-        MockClaimInFlight { control: self }
+    fn in_flight(&self) -> usize {
+        self.in_flight.load(Ordering::SeqCst)
     }
 
-    fn block(&self) {
-        self.blocked.store(true, Ordering::SeqCst);
+    async fn wait_in_flight(&self, expected: usize, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let changed = self.state_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+
+            if self.in_flight() == expected {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, changed).await.is_err() {
+                return false;
+            }
+        }
     }
 
-    fn unblock(&self) {
-        self.blocked.store(false, Ordering::SeqCst);
-        self.release.notify_waiters();
+    async fn run_while_blocked(&self, on_enter: impl FnOnce(usize)) {
+        // Subscribe before entering so an unblock during `on_enter` releases
+        // this call even if a later block starts the next gate cycle.
+        let release = self.release.notified();
+        tokio::pin!(release);
+        release.as_mut().enable();
+
+        let in_flight = self.enter();
+        on_enter(in_flight.entered_count);
+        if self.blocked.load(Ordering::SeqCst) {
+            release.await;
+        }
     }
 }
 
-impl MockCompletionControl {
-    fn enter(&self) -> MockCompletionInFlight<'_> {
-        self.in_flight.fetch_add(1, Ordering::SeqCst);
-        MockCompletionInFlight { control: self }
-    }
-
-    fn block(&self) {
-        self.blocked.store(true, Ordering::SeqCst);
-    }
-
-    fn unblock(&self) {
-        self.blocked.store(false, Ordering::SeqCst);
-        self.release.notify_waiters();
-    }
+struct MockOperationInFlight<'a> {
+    control: &'a MockOperationControl,
+    entered_count: usize,
 }
 
-struct MockHeartbeatInFlight<'a> {
-    control: &'a MockHeartbeatControl,
-}
-
-struct MockClaimInFlight<'a> {
-    control: &'a MockClaimControl,
-}
-
-struct MockCompletionInFlight<'a> {
-    control: &'a MockCompletionControl,
-}
-
-impl Drop for MockHeartbeatInFlight<'_> {
+impl Drop for MockOperationInFlight<'_> {
     fn drop(&mut self) {
         self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
         self.control.state_changed.notify_waiters();
-    }
-}
-
-impl Drop for MockClaimInFlight<'_> {
-    fn drop(&mut self) {
-        self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
-        self.control.state_changed.notify_waiters();
-    }
-}
-
-impl Drop for MockCompletionInFlight<'_> {
-    fn drop(&mut self) {
-        self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -335,9 +309,10 @@ impl MockJobProvider {
         let discover_poll_started = Arc::new(Notify::new());
         let discover_started_count = Arc::new(AtomicUsize::new(0));
         let heartbeat_notify = Arc::new(Notify::new());
-        let heartbeat_control = Arc::new(MockHeartbeatControl::default());
-        let claim_control = Arc::new(MockClaimControl::default());
-        let completion_control = Arc::new(MockCompletionControl::default());
+        let heartbeat_control = Arc::new(MockOperationControl::default());
+        let heartbeat_max_in_flight = Arc::new(AtomicUsize::new(0));
+        let claim_control = Arc::new(MockOperationControl::default());
+        let completion_control = Arc::new(MockOperationControl::default());
         let completion_after_finalization = Arc::new(AtomicBool::new(false));
         let provider = Arc::new(Self {
             startup_readiness: Arc::clone(&startup_readiness),
@@ -356,6 +331,7 @@ impl MockJobProvider {
             discover_started_count: Arc::clone(&discover_started_count),
             heartbeat_notify: Arc::clone(&heartbeat_notify),
             heartbeat_control: Arc::clone(&heartbeat_control),
+            heartbeat_max_in_flight: Arc::clone(&heartbeat_max_in_flight),
             claim_control: Arc::clone(&claim_control),
             completion_control: Arc::clone(&completion_control),
             completion_after_finalization: Arc::clone(&completion_after_finalization),
@@ -374,6 +350,7 @@ impl MockJobProvider {
             discover_started_count,
             heartbeat_notify,
             heartbeat_control,
+            heartbeat_max_in_flight,
             claim_control,
             completion_control,
             completion_after_finalization,
@@ -440,7 +417,7 @@ impl MockProviderHandle {
     }
 
     pub fn completion_in_flight(&self) -> usize {
-        self.completion_control.in_flight.load(Ordering::SeqCst)
+        self.completion_control.in_flight()
     }
 
     pub fn require_finalization_before_completion(&self) {
@@ -517,32 +494,17 @@ impl MockProviderHandle {
     }
 
     pub fn heartbeat_in_flight(&self) -> usize {
-        self.heartbeat_control.in_flight.load(Ordering::SeqCst)
+        self.heartbeat_control.in_flight()
     }
 
     pub fn max_heartbeat_in_flight(&self) -> usize {
-        self.heartbeat_control.max_in_flight.load(Ordering::SeqCst)
+        self.heartbeat_max_in_flight.load(Ordering::SeqCst)
     }
 
     pub async fn wait_heartbeat_in_flight(&self, expected: usize, timeout: Duration) -> bool {
-        let deadline = tokio::time::Instant::now() + timeout;
-        loop {
-            let changed = self.heartbeat_control.state_changed.notified();
-            tokio::pin!(changed);
-            changed.as_mut().enable();
-
-            if self.heartbeat_in_flight() == expected {
-                return true;
-            }
-
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                return false;
-            }
-            if tokio::time::timeout(remaining, changed).await.is_err() {
-                return false;
-            }
-        }
+        self.heartbeat_control
+            .wait_in_flight(expected, timeout)
+            .await
     }
 
     pub fn claim_candidates(&self) -> Vec<JobCandidate> {
@@ -561,24 +523,7 @@ impl MockProviderHandle {
     }
 
     pub async fn wait_claim_in_flight(&self, expected: usize, timeout: Duration) -> bool {
-        let deadline = tokio::time::Instant::now() + timeout;
-        loop {
-            let changed = self.claim_control.state_changed.notified();
-            tokio::pin!(changed);
-            changed.as_mut().enable();
-
-            if self.claim_control.in_flight.load(Ordering::SeqCst) == expected {
-                return true;
-            }
-
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                return false;
-            }
-            if tokio::time::timeout(remaining, changed).await.is_err() {
-                return false;
-            }
-        }
+        self.claim_control.wait_in_flight(expected, timeout).await
     }
 
     pub fn deferred_poll_deadlines(&self) -> Vec<Instant> {
@@ -663,13 +608,7 @@ impl JobProvider for MockJobProvider {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(candidate.clone());
-        let release = self.claim_control.release.notified();
-        tokio::pin!(release);
-        release.as_mut().enable();
-        let _in_flight = self.claim_control.enter();
-        if self.claim_control.blocked.load(Ordering::SeqCst) {
-            release.await;
-        }
+        self.claim_control.run_while_blocked(|_| {}).await;
         let context = self
             .claim_results
             .lock()
@@ -705,42 +644,38 @@ impl JobProvider for MockJobProvider {
     }
 
     async fn complete(&self, request: CompleteRequest, _completion_auth: CompletionAuth) {
-        let release = self.completion_control.release.notified();
-        tokio::pin!(release);
-        release.as_mut().enable();
-        let _in_flight = self.completion_control.enter();
-        self.completions
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(Completion {
-                run_id: request.run_id,
-                exit_code: request.exit_code,
-                error: request.error,
-                sandbox_id: request.sandbox_id,
-                reuse_result: request.sandbox_reuse_result,
-                workspace_reuse_result: request.workspace_reuse_result,
-            });
-        // Wake all pending `wait_completion` waiters — they re-scan the vec
-        // and return if their run_id is now present.
-        self.completion_notify.notify_waiters();
-        if self.completion_control.blocked.load(Ordering::SeqCst) {
-            release.await;
-        }
+        self.completion_control
+            .run_while_blocked(|_| {
+                self.completions
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(Completion {
+                        run_id: request.run_id,
+                        exit_code: request.exit_code,
+                        error: request.error,
+                        sandbox_id: request.sandbox_id,
+                        reuse_result: request.sandbox_reuse_result,
+                        workspace_reuse_result: request.workspace_reuse_result,
+                    });
+                // Wake all pending `wait_completion` waiters — they re-scan the vec
+                // and return if their run_id is now present.
+                self.completion_notify.notify_waiters();
+            })
+            .await;
     }
 
     async fn heartbeat(&self, state: &HeartbeatState) {
-        let release = self.heartbeat_control.release.notified();
-        tokio::pin!(release);
-        release.as_mut().enable();
-        let _in_flight = self.heartbeat_control.enter();
-        self.heartbeats
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(state.clone());
-        self.heartbeat_notify.notify_waiters();
-        if self.heartbeat_control.blocked.load(Ordering::SeqCst) {
-            release.await;
-        }
+        self.heartbeat_control
+            .run_while_blocked(|in_flight| {
+                self.heartbeat_max_in_flight
+                    .fetch_max(in_flight, Ordering::SeqCst);
+                self.heartbeats
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(state.clone());
+                self.heartbeat_notify.notify_waiters();
+            })
+            .await;
     }
 
     async fn defer_poll_until(&self, deadline: Instant) {
@@ -766,6 +701,18 @@ mod tests {
 
     fn minimal_context(run_id: RunId) -> ExecutionContext {
         execution_context_for_test(run_id)
+    }
+
+    fn complete_request(run_id: RunId) -> CompleteRequest {
+        CompleteRequest {
+            run_id,
+            exit_code: 0,
+            error: None,
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
+        }
     }
 
     #[tokio::test]
@@ -800,5 +747,46 @@ mod tests {
             .expect("matching context should be claimed");
 
         assert_eq!(claimed.context().run_id, run_id);
+    }
+
+    #[tokio::test]
+    async fn completion_gate_tracks_release_and_cancellation() {
+        let (provider, handle) = MockJobProvider::new(CancellationToken::new());
+        handle.block_completions();
+
+        let released_run_id = RunId::new_v4();
+        let released_provider = Arc::clone(&provider);
+        let released = tokio::spawn(async move {
+            released_provider
+                .complete(complete_request(released_run_id), CompletionAuth::local())
+                .await;
+        });
+        handle
+            .wait_completion(released_run_id, Duration::from_secs(2))
+            .await
+            .expect("blocked completion should record its request");
+        assert_eq!(handle.completion_in_flight(), 1);
+
+        handle.unblock_completions();
+        released.await.unwrap();
+        assert_eq!(handle.completion_in_flight(), 0);
+
+        handle.block_completions();
+        let cancelled_run_id = RunId::new_v4();
+        let cancelled_provider = Arc::clone(&provider);
+        let cancelled = tokio::spawn(async move {
+            cancelled_provider
+                .complete(complete_request(cancelled_run_id), CompletionAuth::local())
+                .await;
+        });
+        handle
+            .wait_completion(cancelled_run_id, Duration::from_secs(2))
+            .await
+            .expect("cancelled completion should record its request");
+        assert_eq!(handle.completion_in_flight(), 1);
+
+        cancelled.abort();
+        assert!(cancelled.await.unwrap_err().is_cancelled());
+        assert_eq!(handle.completion_in_flight(), 0);
     }
 }

@@ -394,7 +394,7 @@ function configureGoogleCalendarWatchMock(args?: {
     channelIds: [],
   };
   const calendarId = args?.calendarId ?? "primary";
-  mockOptionalEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
@@ -1250,7 +1250,7 @@ describe("okou workflow automations", () => {
   });
 
   it("projects webhook URLs by request and run brand without rotating credentials", async () => {
-    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
     const { actor, agentId, workflowId } = await setupFixture("team");
     const created = await accept(
       automationsClient().create({
@@ -3491,10 +3491,7 @@ describe("okou workflow automations", () => {
       }),
       [201],
     );
-    await bdd.deleteVersionFreeAgent(
-      agentScenario.actor,
-      agentScenario.agentId,
-    );
+    await bdd.deleteAgent(agentScenario.actor, agentScenario.agentId);
     expect(watch.calls).toBe(2);
     expect(stop.calls).toBe(2);
   });
@@ -4420,7 +4417,7 @@ describe("okou workflow automations", () => {
     await runs.requestCancelRun(actor, exhaustedRun.body.runId, [200]);
   });
 
-  it("derives manual run budgets from the source and rejects exhausted Zero callers", async () => {
+  it("derives manual run budgets from the source and rejects exhausted agent callers", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { actor, workflowId } = await setupFixture();
     const automation = await accept(

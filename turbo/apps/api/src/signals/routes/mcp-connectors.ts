@@ -8,8 +8,8 @@ import { runMcpConnectorList } from "../services/run-mcp-connectors.service";
 
 const listRunMcpConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (auth.tokenType !== "zero") {
-    throw new Error("Run MCP connector route requires Zero authentication");
+  if (auth.tokenType !== "agent") {
+    throw new Error("Run MCP connector route requires agent authentication");
   }
   const connectors = await get(
     runMcpConnectorList({
@@ -26,7 +26,7 @@ export const mcpConnectorsRoutes: readonly RouteEntry[] = [
     route: mcpConnectorsContract.list,
     handler: authRoute(
       {
-        accept: ["zero"],
+        accept: ["agent"],
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "connector:read",

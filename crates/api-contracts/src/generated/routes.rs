@@ -213,7 +213,7 @@ pub mod runners {
 
             /// Generated route bindings under `runners::runs::by_run_id::model_provider_failures`.
             pub mod model_provider_failures {
-                /// Report a managed model provider failure for a run.
+                /// Report a built-in model provider failure for a run.
                 /// Route contract: `POST /api/runners/runs/:runId/model-provider-failures`.
                 pub const REPORT: crate::RouteTemplate = crate::RouteTemplate {
                     method: crate::Method::Post,

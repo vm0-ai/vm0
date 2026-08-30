@@ -984,7 +984,6 @@ async function uploadDriveFile(args: {
     headers: {
       Authorization: `Bearer ${args.accessToken}`,
       "Content-Type": `multipart/related; boundary=${boundary}`,
-      "Content-Length": String(body.length),
     },
     body,
   });

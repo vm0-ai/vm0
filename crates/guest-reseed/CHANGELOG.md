@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.7](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.6...guest-reseed-v0.3.7) (2026-08-26)
+
+
+### Bug Fixes
+
+* **runner:** report unavailable best-effort timezones ([#29568](https://github.com/vm0-ai/vm0/issues/29568)) ([db27c70](https://github.com/vm0-ai/vm0/commit/db27c7048a1146dcaf02d363f86d5da7833df543))
+
+## [0.3.6](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.5...guest-reseed-v0.3.6) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
+## [0.3.5](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.4...guest-reseed-v0.3.5) (2026-08-24)
+
+
+### Documentation
+
+* **rust:** document guest-reseed library CLI contract ([#28940](https://github.com/vm0-ai/vm0/issues/28940)) ([667210d](https://github.com/vm0-ai/vm0/commit/667210dd67608598c351ba7393d6f90d4d6be5b5))
+
 ## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.3...guest-reseed-v0.3.4) (2026-07-16)
 
 

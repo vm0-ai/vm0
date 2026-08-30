@@ -11,7 +11,7 @@ import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { settle } from "../utils";
 
-const L = logger("ZeroFeishuWelcome");
+const L = logger("FeishuWelcome");
 const WELCOME_RETRY_LIMIT = 20;
 
 export async function notifyFeishuConnect(
@@ -27,11 +27,23 @@ export async function notifyFeishuConnect(
     .select({
       agentName: agents.name,
       agentDisplayName: agents.displayName,
-      publicBrand: feishuOrgInstallations.publicBrand,
+      botName: feishuOrgInstallations.botName,
+      connectionPublicBrand: feishuOrgConnections.publicBrand,
+      installationPublicBrand: feishuOrgInstallations.publicBrand,
     })
-    .from(feishuOrgInstallations)
+    .from(feishuOrgConnections)
+    .innerJoin(
+      feishuOrgInstallations,
+      eq(feishuOrgInstallations.id, feishuOrgConnections.installationId),
+    )
     .leftJoin(agents, eq(agents.id, feishuOrgInstallations.defaultAgentId))
-    .where(eq(feishuOrgInstallations.id, args.installationId))
+    .where(
+      and(
+        eq(feishuOrgConnections.id, args.connectionId),
+        eq(feishuOrgConnections.installationId, args.installationId),
+        eq(feishuOrgConnections.feishuOpenId, args.openId),
+      ),
+    )
     .limit(1);
   signal.throwIfAborted();
   if (!installation) {
@@ -45,7 +57,14 @@ export async function notifyFeishuConnect(
       receiveId: args.openId,
       message: buildFeishuWelcomeMessage({
         agentName: installation.agentDisplayName ?? installation.agentName,
-        publicBrand: installation.publicBrand,
+        botName: installation.botName,
+        // #27750 rollout fallback: bindings created by the previous API or
+        // retained from before #28935 have no connect-flow brand. Remove after
+        // legacy null bindings are gone and the previous API is outside the
+        // DB/API rollback window; current OAuth writers always set the field.
+        publicBrand:
+          installation.connectionPublicBrand ??
+          installation.installationPublicBrand,
       }),
       idempotencyKey: args.connectionId,
     },

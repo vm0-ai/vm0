@@ -4,7 +4,10 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
-import type { SharedDatabaseConnectionStatus } from "./protocol.ts";
+import type {
+  SharedDatabaseConnectionStatus,
+  SharedDatabaseHeartbeatResult,
+} from "./protocol.ts";
 
 export interface SharedDatabaseHeartbeat {
   readonly identity: SharedDatabaseIdentity;
@@ -15,7 +18,7 @@ export interface SharedDatabaseBridge {
   heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
-  ): Promise<void>;
+  ): Promise<SharedDatabaseHeartbeatResult>;
   query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
@@ -28,6 +31,7 @@ export interface SharedDatabaseBridge {
 }
 
 export interface SharedDatabaseBridgeEvents {
+  readonly authenticationRequired: () => void;
   readonly reloadRequired: () => void;
   readonly statusChanged: (status: SharedDatabaseConnectionStatus) => void;
 }

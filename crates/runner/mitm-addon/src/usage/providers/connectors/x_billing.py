@@ -26,14 +26,47 @@ Design:
   Overrides may raise OR lower the price — the goal is accuracy, not
   one-sided safety.
 
-  **Important**: X's public pricing page lists bucket names and prices
-  but does NOT publish an endpoint → bucket mapping.  The overrides
-  here are semantic inferences from the bucket names (e.g. DELETE of
-  your own content → ``content.manage``).  A handful of overrides
-  lower price by 10–40× based on name semantics alone.  Validate
-  against Developer Console billing data or empirical live calls
-  before relying on the numbers; drift from X's actual classification
-  will cause under- or over-charging until an override is corrected.
+- **Provider-documented pricing**: X's public pricing page lists named
+  pricing buckets and prices, but it does not publish a comprehensive
+  endpoint → bucket mapping.  It does document a separate **Owned Reads**
+  exception: requests for the authenticated user's own data are priced at
+  ``$0.001`` per resource when ``{id}`` matches the authenticated user and
+  that user owns the developer app.  The documented Owned Reads endpoints
+  are:
+
+  - ``GET /2/users/{id}/tweets``
+  - ``GET /2/users/{id}/mentions``
+  - ``GET /2/users/{id}/liked_tweets``
+  - ``GET /2/users/{id}/bookmarks``
+  - ``GET /2/users/{id}/followers``
+  - ``GET /2/users/{id}/following``
+  - ``GET /2/users/{id}/blocking``
+  - ``GET /2/users/{id}/muting``
+  - ``GET /2/users/{id}/owned_lists``
+  - ``GET /2/users/{id}/followed_lists``
+  - ``GET /2/users/{id}/list_memberships``
+  - ``GET /2/users/{id}/pinned_lists``
+
+  This endpoint-specific provider documentation does not define how a
+  qualifying request maps to one of vm0's ordinary pricing buckets.
+
+- **Current vm0 treatment**: ``classify_bucket`` receives only the firewall
+  permission, HTTP method, and query-free request path.  It has no
+  authenticated-user or developer-app ownership input and no separate
+  ``Owned Reads`` category.  The listed paths therefore continue through
+  the existing permission defaults and path overrides; this documentation
+  must not be read as saying that vm0 applies the provider's conditional
+  ``$0.001`` rate.
+
+- **Semantic inferences**: For the current path-to-bucket mapping beyond
+  provider-documented exceptions, X's pricing page does not publish a
+  comprehensive endpoint → bucket mapping.  The overrides here are
+  semantic inferences from the bucket names (e.g. DELETE of your own
+  content → ``content.manage``).  A handful of overrides lower the price
+  by 10–40× based on name semantics alone.  Validate against Developer
+  Console billing data or empirical live calls before relying on the
+  numbers; drift from X's actual classification will cause under- or
+  over-charging until an override is corrected.
 
 - ``_INCLUDES_TO_BUCKET`` maps X v2 ``includes.<key>`` resource types
   to buckets.  Unknown keys return ``None`` and the caller routes them
@@ -71,6 +104,11 @@ class _BodyRefinementRule(NamedTuple):
     path: str
     target_bucket: str
     matches_body: Callable[[bytes | None], bool]
+
+
+class _BillingDomainLabelNormalization(NamedTuple):
+    normalized_label: str | None
+    unsafe_compatibility_mapping: bool
 
 
 # Permission → default bucket.  The default matches the majority of
@@ -339,6 +377,9 @@ _BARE_DOMAIN_CANDIDATE_RE = re.compile(
     re.IGNORECASE,
 )
 _MAX_DOMAIN_LABEL_CHARS = 63
+# This stays above the 127 one-character labels that fit in a DNS name while
+# leaving a fixed ceiling for non-host text inspected by billing.
+_MAX_BILLING_DOMAIN_LABEL_CLASSIFICATIONS = 256
 _DOMAIN_LABEL_RE = re.compile(rf"^[a-z0-9-]{{1,{_MAX_DOMAIN_LABEL_CHARS}}}$")
 _INVALID_TLD_FOLLOWING_CHARS = "@+-"
 
@@ -390,7 +431,21 @@ def _label_has_tld_prefix_before_unicode(label: str) -> bool:
     return False
 
 
-def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: str) -> bool:
+def _normalize_billing_domain_label(label: str) -> _BillingDomainLabelNormalization:
+    try:
+        return _BillingDomainLabelNormalization(normalize_idna_label(label), False)
+    except UnsafeIdnaCompatibilityMappingError:
+        return _BillingDomainLabelNormalization(None, True)
+    except UnicodeError:
+        return _BillingDomainLabelNormalization(None, False)
+
+
+def _bare_domain_candidate_likely_contains_url(
+    candidate: str,
+    following_char: str,
+    label_normalizations: dict[str, _BillingDomainLabelNormalization],
+    label_tld_prefixes: dict[str, bool],
+) -> bool:
     if candidate.isascii():
         simple_ascii_candidate = candidate.lower()
         # Canonical A-label validation remains owned by the shared IDNA path.
@@ -404,18 +459,34 @@ def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: s
         if use_simple_ascii_labels:
             normalized_label = label
         else:
-            if index > 0 and _label_has_tld_prefix_before_unicode(label):
+            normalization = label_normalizations.get(label)
+            if (
+                normalization is None
+                and len(label_normalizations) >= _MAX_BILLING_DOMAIN_LABEL_CLASSIFICATIONS
+            ):
+                # Exhausted inspection is ambiguous, so keep the conservative
+                # with-URL billing bucket.
                 return True
 
-            try:
-                normalized_label = normalize_idna_label(label)
-            except UnsafeIdnaCompatibilityMappingError:
+            if index > 0:
+                has_tld_prefix = label_tld_prefixes.get(label)
+                if has_tld_prefix is None:
+                    has_tld_prefix = _label_has_tld_prefix_before_unicode(label)
+                    label_tld_prefixes[label] = has_tld_prefix
+                if has_tld_prefix:
+                    return True
+
+            if normalization is None:
+                normalization = _normalize_billing_domain_label(label)
+                label_normalizations[label] = normalization
+            if normalization.unsafe_compatibility_mapping:
                 # Keep billing conservative for URL-like compatibility aliases,
                 # but do not fold them into unrelated ASCII domains.
                 if index == last_label_index:
                     return _is_twitter_text_tld_boundary(following_char)
                 continue
-            except UnicodeError:
+            normalized_label = normalization.normalized_label
+            if normalized_label is None:
                 return False
 
         if not _label_is_billing_domain_label(normalized_label):
@@ -434,9 +505,15 @@ def _tweet_text_likely_contains_url(text: str) -> bool:
         return True
     if "." not in text:
         return False
+    # Share bounded classification state across every candidate in this body.
+    label_normalizations: dict[str, _BillingDomainLabelNormalization] = {}
+    label_tld_prefixes: dict[str, bool] = {}
     return any(
         _bare_domain_candidate_likely_contains_url(
-            match.group(1), text[match.end(1) : match.end(1) + 1]
+            match.group(1),
+            text[match.end(1) : match.end(1) + 1],
+            label_normalizations,
+            label_tld_prefixes,
         )
         for match in _BARE_DOMAIN_CANDIDATE_RE.finditer(text)
     )

@@ -9,8 +9,28 @@ import { cn } from "../../lib/utils";
 
 type SegmentControlSize = "xs" | "sm" | "default" | "lg";
 
-const SegmentControlSizeContext =
-  React.createContext<SegmentControlSize>("default");
+/**
+ * `default` is the tracked control: a recessed track with the selected segment
+ * raised out of it. `plain` is the same control without the track -- segments
+ * sit straight on whatever surface holds them, and the selection is marked
+ * with the shared selected layer instead of a raised fill. The raised fill
+ * needs a track to lift off; on a bare surface it reads as a stray card.
+ *
+ * The two treatments are variants rather than class overrides because the
+ * selected fill and its shadow are separate utilities that a consumer's
+ * `className` cannot reliably take back.
+ */
+type SegmentControlVariant = "default" | "plain";
+
+interface SegmentControlContextValue {
+  size: SegmentControlSize;
+  variant: SegmentControlVariant;
+}
+
+const SegmentControlContext = React.createContext<SegmentControlContextValue>({
+  size: "default",
+  variant: "default",
+});
 
 /**
  * The track carries the same heights and radius as the rest of the control
@@ -23,7 +43,7 @@ const SegmentControlSizeContext =
  * step under the selected segment in both themes.
  */
 const segmentControlVariants = cva(
-  "inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5",
+  "inline-flex items-center gap-0.5 rounded-lg",
   {
     variants: {
       size: {
@@ -32,9 +52,16 @@ const segmentControlVariants = cva(
         default: "h-9",
         lg: "h-10",
       },
+      variant: {
+        default: "bg-muted p-0.5",
+        // No track means nothing to inset the segments from, so the track
+        // padding goes with it and a segment is the full control height.
+        plain: "p-0",
+      },
     },
     defaultVariants: {
       size: "default",
+      variant: "default",
     },
   },
 );
@@ -43,12 +70,14 @@ const segmentControlVariants = cva(
  * `rounded-md` keeps the segment concentric with the track: the 8px outer
  * radius minus the 2px of track padding it sits inside.
  *
- * The selected segment carries an opaque fill, so it must not take the
+ * A selected `default` segment carries an opaque fill, so it must not take the
  * translucent `state-hover` layer -- the layer replaces a fill instead of
- * sitting on it, which would drop the segment back to the track colour.
+ * sitting on it, which would drop the segment back to the track colour. The
+ * hover rule stays scoped to the unselected segments for `plain` too, where
+ * the selection is itself a state layer.
  */
 const segmentControlItemVariants = cva(
-  "inline-flex h-full shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap text-muted-foreground outline-none transition-colors select-none not-data-checked:hover:bg-state-hover not-data-checked:hover:text-foreground data-checked:bg-segment-selected data-checked:text-foreground data-checked:shadow-segment-selected data-disabled:pointer-events-none data-disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex h-full shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap text-muted-foreground outline-none transition-colors select-none not-data-checked:hover:bg-state-hover not-data-checked:hover:text-foreground data-checked:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     // Segment padding runs one step tighter than the matching button size,
     // because the segment already sits inside the track's 2px inset -- that
@@ -63,9 +92,17 @@ const segmentControlItemVariants = cva(
         default: "px-3 text-sm",
         lg: "px-5 text-sm",
       },
+      variant: {
+        default:
+          "data-checked:bg-segment-selected data-checked:shadow-segment-selected",
+        // The selected layer reads on any surface and reverses in dark, so a
+        // trackless segment needs no raised fill -- and no shadow with it.
+        plain: "data-checked:bg-state-selected",
+      },
     },
     defaultVariants: {
       size: "default",
+      variant: "default",
     },
   },
 );
@@ -76,21 +113,23 @@ interface SegmentControlProps<Value> extends Omit<
 > {
   className?: string;
   size?: SegmentControlSize;
+  variant?: SegmentControlVariant;
 }
 
 function SegmentControl<Value>({
   className,
   size = "default",
+  variant = "default",
   ...props
 }: SegmentControlProps<Value>) {
   return (
-    <SegmentControlSizeContext value={size}>
+    <SegmentControlContext value={{ size, variant }}>
       <RadioGroupPrimitive
         data-slot="segment-control"
-        className={cn(segmentControlVariants({ size }), className)}
+        className={cn(segmentControlVariants({ size, variant }), className)}
         {...props}
       />
-    </SegmentControlSizeContext>
+    </SegmentControlContext>
   );
 }
 SegmentControl.displayName = "SegmentControl";
@@ -106,12 +145,12 @@ function SegmentControlItem<Value>({
   className,
   ...props
 }: SegmentControlItemProps<Value>) {
-  const size = React.useContext(SegmentControlSizeContext);
+  const { size, variant } = React.useContext(SegmentControlContext);
 
   return (
     <RadioPrimitive.Root
       data-slot="segment-control-item"
-      className={cn(segmentControlItemVariants({ size }), className)}
+      className={cn(segmentControlItemVariants({ size, variant }), className)}
       {...props}
     />
   );

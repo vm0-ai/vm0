@@ -1,20 +1,26 @@
+use std::time::Duration;
+
 use super::*;
+use tokio_util::sync::CancellationToken;
 
 // -----------------------------------------------------------------------
-// Keep-alive VM reuse integration tests
+// Keep-alive sandbox reuse integration tests
 // -----------------------------------------------------------------------
 
 #[tokio::test]
 async fn execute_job_reuse_succeeds() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let factory = MockSandboxFactory::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut first_context = minimal_context();
+    first_context.run_id = RunId::new_v4();
 
     // First: create a sandbox via normal execute_job
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, _telemetry) = execute_job(
         &factory,
-        minimal_context(),
+        first_context,
         NewSandboxDispatch {
             id: SandboxId::new_v4(),
             reuse_result: SandboxReuseResult::NoReuseKey,
@@ -31,9 +37,13 @@ async fn execute_job_reuse_succeeds() {
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
     let cancel = tokio_util::sync::CancellationToken::new();
+    let mut reused_context = minimal_context();
+    reused_context.run_id = RunId::new_v4();
+    let reused_context_path =
+        guest_connector_account_context_file_path(reused_context.run_id).unwrap();
     let (reuse_outcome, _telemetry) = execute_job_reuse(
         idle_sandbox,
-        minimal_context(),
+        reused_context,
         &config,
         &default_params(),
         cancel,
@@ -42,6 +52,53 @@ async fn execute_job_reuse_succeeds() {
     assert_eq!(reuse_outcome.exit_code(), 0);
     assert!(reuse_outcome.error().is_none());
     assert!(reuse_outcome.sandbox.is_some());
+    let connector_account_context_writes = overrides
+        .private_write_file_calls()
+        .into_iter()
+        .filter(|write| {
+            write
+                .path
+                .ends_with("/connector-account-context/context.json")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(connector_account_context_writes.len(), 2);
+    assert_eq!(
+        connector_account_context_writes[1].path,
+        reused_context_path
+    );
+}
+
+#[tokio::test]
+async fn execute_job_reuse_bypasses_fresh_pre_spawn_admission() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let holder = config
+        .pre_spawn_admission
+        .acquire(2, &CancellationToken::new())
+        .await
+        .unwrap();
+    let sandbox =
+        create_overridden_sandbox(Arc::new(sandbox_mock::MockSandboxOverrides::new())).await;
+    let source_ip = sandbox.source_ip().to_string();
+    let (idle_sandbox, _budget_lease) =
+        make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+
+    let (outcome, telemetry) = tokio::time::timeout(
+        Duration::from_secs(2),
+        execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            CancellationToken::new(),
+        ),
+    )
+    .await
+    .expect("exact reuse must not wait for fresh pre-spawn admission");
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_no_telemetry_action(&telemetry, "runner_fresh_pre_spawn_admission_wait");
+    drop(holder);
 }
 
 #[tokio::test]
@@ -68,7 +125,7 @@ async fn execute_job_reuse_model_provider_env_validation_failure_returns_sandbox
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.network_log_session.is_none());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after env validation failure"
     );
 }
@@ -96,7 +153,7 @@ async fn execute_job_reuse_claude_tool_validation_failure_returns_sandbox() {
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.network_log_session.is_none());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after tool validation failure"
     );
 }
@@ -132,7 +189,7 @@ async fn execute_job_reuse_invalid_resume_session_does_not_lease_workspace_image
     assert!(reuse_outcome.network_log_session.is_none());
     assert!(reuse_outcome.workspace_image.is_none());
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start a process after resume session validation failure"
     );
 }

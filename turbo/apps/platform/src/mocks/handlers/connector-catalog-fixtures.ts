@@ -14,7 +14,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 interface TestConnectorAuthMethod {
   readonly detail: PublicConnectorCatalogAuthMethodDetail;
   readonly featureSwitch?: FeatureSwitchKey;
-  readonly requiredScopes: readonly string[];
+  readonly requestedScopes: readonly string[];
   readonly supportsRefresh: boolean;
 }
 
@@ -48,7 +48,7 @@ function icon(connectorSlug: ConnectorSlug): PublicConnectorCatalogIcon {
 function authCodeMethod(
   args: {
     readonly featureSwitch?: FeatureSwitchKey;
-    readonly requiredScopes?: readonly string[];
+    readonly requestedScopes?: readonly string[];
     readonly supportsRefresh?: boolean;
   } = {},
 ): TestConnectorAuthMethod {
@@ -62,7 +62,7 @@ function authCodeMethod(
       startOptions: [],
     },
     ...(args.featureSwitch ? { featureSwitch: args.featureSwitch } : {}),
-    requiredScopes: args.requiredScopes ?? [],
+    requestedScopes: args.requestedScopes ?? [],
     supportsRefresh: args.supportsRefresh ?? true,
   };
 }
@@ -81,7 +81,7 @@ function manualMethod(
       manualFields: fields,
       startOptions: [],
     },
-    requiredScopes: [],
+    requestedScopes: [],
     supportsRefresh: false,
   };
 }
@@ -102,7 +102,7 @@ function externalCodeMethod(args: {
       startOptions: [],
     },
     ...(args.featureSwitch ? { featureSwitch: args.featureSwitch } : {}),
-    requiredScopes: [],
+    requestedScopes: [],
     supportsRefresh: true,
   };
 }
@@ -114,7 +114,7 @@ function oauthConnector(args: {
   readonly category: string;
   readonly tags?: readonly string[];
   readonly featureSwitch?: FeatureSwitchKey;
-  readonly requiredScopes?: readonly string[];
+  readonly requestedScopes?: readonly string[];
   readonly permissionDetail?: PublicConnectorCatalogPermissionDetail;
 }): TestConnectorCatalogDefinition {
   return {
@@ -128,7 +128,9 @@ function oauthConnector(args: {
     authMethods: [
       authCodeMethod({
         ...(args.featureSwitch ? { featureSwitch: args.featureSwitch } : {}),
-        ...(args.requiredScopes ? { requiredScopes: args.requiredScopes } : {}),
+        ...(args.requestedScopes
+          ? { requestedScopes: args.requestedScopes }
+          : {}),
       }),
     ],
     permissionSummary:
@@ -352,7 +354,7 @@ export const testConnectorCatalogDefinitions = (
             manualFields: [],
             startOptions: [],
           },
-          requiredScopes: [],
+          requestedScopes: [],
           supportsRefresh: true,
         },
       ],
@@ -480,7 +482,7 @@ export const testConnectorCatalogDefinitions = (
       description: "Manage Google Ads campaigns and reports.",
       category: "marketing-content-growth",
       tags: ["ads", "advertising", "campaigns"],
-      requiredScopes: [
+      requestedScopes: [
         "https://www.googleapis.com/auth/adwords",
         "https://www.googleapis.com/auth/datamanager",
         "https://www.googleapis.com/auth/userinfo.email",
@@ -665,7 +667,7 @@ export const testConnectorCatalogDefinitions = (
             manualFields: [],
             startOptions: [],
           },
-          requiredScopes: [],
+          requestedScopes: [],
           supportsRefresh: false,
         },
       ],
@@ -703,7 +705,7 @@ export const testConnectorCatalogDefinitions = (
               },
             ],
           },
-          requiredScopes: [],
+          requestedScopes: [],
           supportsRefresh: false,
         },
         manualMethod("api-token", "API Key", tokenField),

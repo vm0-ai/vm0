@@ -22,7 +22,6 @@ import {
 import { getStripeClient } from "../external/stripe-client";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
-  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
   type BillingPurchasePaymentMethod,
@@ -54,15 +53,7 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        requested: bodyResult.data.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = bodyResult.data.supportsInAppPreview === true;
     if (
       previewEnabled &&
       (!bodyResult.data.returnUrl ||

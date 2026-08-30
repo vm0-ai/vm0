@@ -93,6 +93,14 @@ export interface ModelStatsAggregationScope {
 interface ModelStatsAggregationOptions {
   readonly processedAt: Date;
   readonly scope: ModelStatsAggregationScope;
+  readonly cleanupBatchSize?: number;
+  readonly cleanupMaxBatches?: number;
+}
+
+interface ModelUsageObservationCleanupOptions {
+  readonly observationIdempotencyKeys: readonly string[] | undefined;
+  readonly batchSize: number;
+  readonly maxBatches: number;
 }
 
 interface ModelStatsRankingOptions {
@@ -441,15 +449,11 @@ async function cleanupAppliedModelUsageObservations(
   db: Db,
   cutoff: Date,
   signal: AbortSignal,
-  observationIdempotencyKeys: readonly string[] | undefined,
+  options: ModelUsageObservationCleanupOptions,
 ): Promise<number> {
   let deletedObservations = 0;
 
-  for (
-    let batch = 0;
-    batch < MODEL_USAGE_OBSERVATION_CLEANUP_MAX_BATCHES;
-    batch += 1
-  ) {
+  for (let batch = 0; batch < options.maxBatches; batch += 1) {
     signal.throwIfAborted();
     const candidates = db
       .select({
@@ -460,9 +464,9 @@ async function cleanupAppliedModelUsageObservations(
         and(
           isNotNull(modelUsageObservation.aggregatedAt),
           lt(modelUsageObservation.observedAt, cutoff),
-          observationIdempotencyKeys
+          options.observationIdempotencyKeys
             ? inArray(modelUsageObservation.idempotencyKey, [
-                ...observationIdempotencyKeys,
+                ...options.observationIdempotencyKeys,
               ])
             : undefined,
         ),
@@ -471,7 +475,7 @@ async function cleanupAppliedModelUsageObservations(
         asc(modelUsageObservation.observedAt),
         asc(modelUsageObservation.idempotencyKey),
       )
-      .limit(MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE)
+      .limit(options.batchSize)
       .for("update", { skipLocked: true });
     const { rowCount } = await db
       .delete(modelUsageObservation)
@@ -480,7 +484,7 @@ async function cleanupAppliedModelUsageObservations(
 
     const batchDeleted = rowCount ?? 0;
     deletedObservations += batchDeleted;
-    if (batchDeleted < MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE) {
+    if (batchDeleted < options.batchSize) {
       break;
     }
   }
@@ -630,7 +634,14 @@ export async function aggregateModelStats(
     db,
     cleanupCutoff,
     signal,
-    scope?.observationIdempotencyKeys,
+    {
+      observationIdempotencyKeys: scope?.observationIdempotencyKeys,
+      batchSize:
+        options?.cleanupBatchSize ?? MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE,
+      maxBatches:
+        options?.cleanupMaxBatches ??
+        MODEL_USAGE_OBSERVATION_CLEANUP_MAX_BATCHES,
+    },
   );
   signal.throwIfAborted();
 

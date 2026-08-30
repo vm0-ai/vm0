@@ -13,7 +13,7 @@ import mitm_addon
 import registry
 from tests.firewall_helpers import cancel_pending_task
 from tests.registry_builtin_helpers import write_catalog_cache
-from tests.registry_helpers import write_multi_vm_registry
+from tests.registry_helpers import write_multi_sandbox_registry
 
 _CLIENT_IP = "10.200.0.5"
 _REMOVED = "removed"
@@ -43,7 +43,7 @@ def _firewall(name: str, base: str) -> dict[str, object]:
     }
 
 
-def _active_vm(tmp_path: Path) -> dict[str, object]:
+def _active_sandbox(tmp_path: Path) -> dict[str, object]:
     return {
         "runId": "run-catalog-removal",
         "cliAgentType": "codex",
@@ -76,7 +76,7 @@ def _write_active_state(
 ) -> tuple[Path, Path]:
     registry_path = tmp_path / "registry.json"
     cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-    write_multi_vm_registry(registry_path, {_CLIENT_IP: _active_vm(tmp_path)})
+    write_multi_sandbox_registry(registry_path, {_CLIENT_IP: _active_sandbox(tmp_path)})
     write_catalog_cache(
         cache_path,
         digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -163,9 +163,11 @@ async def test_removed_connector_becomes_ordinary_request_without_auth(
         await mitm_addon.request(retained_flow)
 
     assert not isinstance(state, registry.RegistryUnavailable)
-    assert state.invalid_vms == {}
+    assert state.invalid_sandboxes == {}
     assert state.omitted_builtin_firewalls == {_CLIENT_IP: frozenset({_REMOVED})}
-    assert [firewall["name"] for firewall in state.vms[_CLIENT_IP]["firewalls"]] == [_RETAINED]
+    assert [firewall["name"] for firewall in state.sandboxes[_CLIENT_IP]["firewalls"]] == [
+        _RETAINED
+    ]
     auth_fetch.assert_awaited_once()
     assert removed_flow.response is None
     assert removed_flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
@@ -189,7 +191,7 @@ async def test_custom_connector_id_selects_active_owner_and_does_not_fall_throug
     sibling_name = "retained-custom-sibling"
     shared_host = "shared.example.com"
     registry_path = tmp_path / "registry.json"
-    write_multi_vm_registry(
+    write_multi_sandbox_registry(
         registry_path,
         {
             _CLIENT_IP: {
@@ -256,7 +258,7 @@ async def test_custom_connector_id_selects_active_owner_and_does_not_fall_throug
         fake_firewall_headers(headers={"Authorization": "Bearer selected"}) as auth_fetch,
     ):
         await mitm_addon.request(active_flow)
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
             {
                 _CLIENT_IP: {
@@ -342,6 +344,7 @@ async def test_catalog_removal_during_auth_revalidation_discards_old_credentials
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
         }
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)

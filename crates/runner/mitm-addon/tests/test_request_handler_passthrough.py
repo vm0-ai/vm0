@@ -7,7 +7,7 @@ import mitm_addon
 import usage
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -85,7 +85,7 @@ async def test_tracks_start_time(registry_file, real_flow, mitm_ctx):
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC in flow.metadata
 
 
-async def test_unregistered_vm_passes_through(registry_file, real_flow, mitm_ctx):
+async def test_unregistered_sandbox_passes_through(registry_file, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, client_ip="192.168.99.99", host="anything.com")
 
     with (
@@ -117,7 +117,7 @@ async def test_firewall_no_base_match_passes_through(tmp_path, real_flow, mitm_c
     """URL not matching any firewall base → pass-through (not block)."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -158,7 +158,7 @@ async def test_browser_passthrough_skips_firewall_auth_injection(
     usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="stripe",
             billable_firewalls=["stripe"],
@@ -246,7 +246,7 @@ async def test_oversized_browser_user_agent_uses_firewall_without_decoding(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="stripe",
             api_entry={
@@ -295,7 +295,7 @@ async def test_non_browser_firewall_match_still_injects_auth(
     """Non-browser firewall allows keep the existing connector auth behavior."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="stripe",
             api_entry={
@@ -344,7 +344,7 @@ async def test_browser_passthrough_skips_denied_unknown_policy_match(
     """Browser passthrough intentionally skips unknown-policy firewall matching."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="stripe",
             api_entry={
@@ -395,7 +395,7 @@ async def test_browser_passthrough_skips_denied_permission_match(
     """Browser passthrough intentionally skips denied-permission matching."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="stripe",
             billable_firewalls=["stripe"],
@@ -459,7 +459,7 @@ async def test_browser_passthrough_skips_unsafe_path_firewall_match(
     """Browser passthrough intentionally skips unsafe-path firewall matching."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",

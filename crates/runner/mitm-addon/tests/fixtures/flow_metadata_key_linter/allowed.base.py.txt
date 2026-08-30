@@ -1,14 +1,14 @@
 
 entry["firewall_name"] = "github"
-payload = {"vm_run_id": "run-1"}
+payload = {"sandbox_run_id": "run-1"}
 assert "connector_response_finish" in flow.metadata
 flow.metadata["_local_marker"] = "private"
-flow.metadata[f"vm_{dynamic_suffix}"] = "run-1"
-flow.metadata[metadata_keys.VM_RUN_ID + ""] = "run-1"
-flow.metadata[f"{metadata_keys.VM_RUN_ID}"] = "run-1"
-flow.metadata[f"{metadata_keys.VM_RUN_ID!s}"] = "run-1"
-flow.metadata[f"{metadata_keys.VM_RUN_ID:s}"] = "run-1"
-flow.metadata[metadata_keys.VM_RUN_ID if condition else metadata_keys.FIREWALL_NAME] = "run-1"
+flow.metadata[f"sandbox_{dynamic_suffix}"] = "run-1"
+flow.metadata[metadata_keys.SANDBOX_RUN_ID + ""] = "run-1"
+flow.metadata[f"{metadata_keys.SANDBOX_RUN_ID}"] = "run-1"
+flow.metadata[f"{metadata_keys.SANDBOX_RUN_ID!s}"] = "run-1"
+flow.metadata[f"{metadata_keys.SANDBOX_RUN_ID:s}"] = "run-1"
+flow.metadata[metadata_keys.SANDBOX_RUN_ID if condition else metadata_keys.FIREWALL_NAME] = "run-1"
 flow.metadata.get(
     metadata_keys.FIREWALL_ACTION if condition else metadata_keys.FIREWALL_ERROR
 )
@@ -17,41 +17,41 @@ flow.metadata.update(
     {(metadata_keys.AUTH_CACHE_HIT if condition else metadata_keys.AUTH_URL_REWRITE): True}
 )
 external_meta_value = flow.metadata
-payload = {"vm_run_id": "external", "metadata": external_meta_value}
+payload = {"sandbox_run_id": "external", "metadata": external_meta_value}
 meta = flow.metadata
-meta = {"vm_run_id": "external payload"}
+meta = {"sandbox_run_id": "external payload"}
 both_branch_meta = flow.metadata
 if condition:
     both_branch_meta = {}
 else:
     both_branch_meta = {}
-value = both_branch_meta["vm_run_id"]
+value = both_branch_meta["sandbox_run_id"]
 external_aug_meta = {}
-external_aug_meta |= {"vm_run_id": "external"}
-value = external_aug_meta["vm_run_id"]
-external_keyword_meta = dict(metadata=flow.metadata, vm_run_id="external")
-value = external_keyword_meta["vm_run_id"]
-external_union_meta = {"metadata": flow.metadata} | {"vm_run_id": "external"}
-value = external_union_meta["vm_run_id"]
-external_unpack_meta = {**{"metadata": flow.metadata}, "vm_run_id": "external"}
-value = external_unpack_meta["vm_run_id"]
-external_positional_dict_meta = dict({"metadata": flow.metadata, "vm_run_id": "external"})
-value = external_positional_dict_meta["vm_run_id"]
-external_unpack_dict_meta = dict(**{"metadata": flow.metadata, "vm_run_id": "external"})
-value = external_unpack_dict_meta["vm_run_id"]
-external_items_meta = dict({"metadata": flow.metadata, "vm_run_id": "external"}.items())
-value = external_items_meta["vm_run_id"]
-flow.metadata.update({metadata_keys.VM_RUN_ID: "run-1"}.items())
-flow.metadata.update(dict.fromkeys([metadata_keys.VM_RUN_ID], "run-1"))
-flow.metadata.update(dict.fromkeys({metadata_keys.VM_RUN_ID: "run-1"}, "run-1"))
-flow.metadata.update(dict.fromkeys(dict({metadata_keys.VM_RUN_ID: "run-1"}), "run-1"))
+external_aug_meta |= {"sandbox_run_id": "external"}
+value = external_aug_meta["sandbox_run_id"]
+external_keyword_meta = dict(metadata=flow.metadata, sandbox_run_id="external")
+value = external_keyword_meta["sandbox_run_id"]
+external_union_meta = {"metadata": flow.metadata} | {"sandbox_run_id": "external"}
+value = external_union_meta["sandbox_run_id"]
+external_unpack_meta = {**{"metadata": flow.metadata}, "sandbox_run_id": "external"}
+value = external_unpack_meta["sandbox_run_id"]
+external_positional_dict_meta = dict({"metadata": flow.metadata, "sandbox_run_id": "external"})
+value = external_positional_dict_meta["sandbox_run_id"]
+external_unpack_dict_meta = dict(**{"metadata": flow.metadata, "sandbox_run_id": "external"})
+value = external_unpack_dict_meta["sandbox_run_id"]
+external_items_meta = dict({"metadata": flow.metadata, "sandbox_run_id": "external"}.items())
+value = external_items_meta["sandbox_run_id"]
+flow.metadata.update({metadata_keys.SANDBOX_RUN_ID: "run-1"}.items())
+flow.metadata.update(dict.fromkeys([metadata_keys.SANDBOX_RUN_ID], "run-1"))
+flow.metadata.update(dict.fromkeys({metadata_keys.SANDBOX_RUN_ID: "run-1"}, "run-1"))
+flow.metadata.update(dict.fromkeys(dict({metadata_keys.SANDBOX_RUN_ID: "run-1"}), "run-1"))
 flow.metadata.update(dict.fromkeys(dict({metadata_keys.FIREWALL_ACTION: "ALLOW"}).keys(), "ALLOW"))
 flow.metadata.update(dict.fromkeys(tuple(dict({metadata_keys.FIREWALL_BILLABLE: True})), False))
 flow.metadata.update(set([(metadata_keys.FIREWALL_PERMISSION, "read")]))
 flow.metadata.update(frozenset([(metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG, "github")]))
 flow.metadata.update(sorted([(metadata_keys.CONNECTOR_DIAGNOSTIC_REASON, "missing")]))
 flow.metadata.update(reversed([(metadata_keys.CONNECTOR_DIAGNOSTIC_BASE, "https://api.example.com")]))
-flow.metadata.update({metadata_keys.VM_RUN_ID: "run-1"}.copy())
+flow.metadata.update({metadata_keys.SANDBOX_RUN_ID: "run-1"}.copy())
 flow.metadata.update([(metadata_keys.FIREWALL_NAME, "github")].copy())
 flow.metadata.update(dict.fromkeys(set([metadata_keys.AUTH_CACHE_HIT]), False))
 flow.metadata.update(dict.fromkeys(frozenset([metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES]), []))
@@ -64,27 +64,41 @@ flow.metadata.update(dict.fromkeys(({metadata_keys.FIREWALL_ACTION: "ALLOW"} | {
 flow.metadata.update(
     dict.fromkeys({metadata_keys.FIREWALL_ERROR: "auth_failed"}.copy(), "auth_failed")
 )
-flow.metadata.update(zip([metadata_keys.VM_RUN_ID], ["run-1"]))
+flow.metadata.update([*dict.fromkeys([(metadata_keys.SANDBOX_RUN_ID, "run-1")])])
+flow.metadata.update(
+    [*dict.fromkeys([(metadata_keys.SANDBOX_RUN_ID, "run-1")]).keys()]
+)
+flow.metadata.update(dict.fromkeys([(metadata_keys.FIREWALL_NAME, "github")]).keys())
+flow.metadata.update([*{(metadata_keys.FIREWALL_ACTION, "ALLOW"): None}])
+flow.metadata.update(
+    [*{(metadata_keys.FIREWALL_PERMISSION, value): None for value in rows}]
+)
+flow.metadata.update([*dict.fromkeys([("external", "sandbox_run_id")])])
+flow.metadata.update(zip([metadata_keys.SANDBOX_RUN_ID], ["run-1"]))
+flow.metadata.update(zip(dict.fromkeys([metadata_keys.SANDBOX_RUN_ID]), ["run-1"]))
+flow.metadata.update(
+    zip(dict.fromkeys([metadata_keys.SANDBOX_RUN_ID]).keys(), ["run-1"])
+)
 flow.metadata = dict(zip([metadata_keys.FIREWALL_NAME], ["github"]))
 flow.metadata.update(dict(zip((metadata_keys.FIREWALL_ACTION,), ("ALLOW",))))
 flow.metadata.update([*[(metadata_keys.FIREWALL_PERMISSION, "read")]])
 flow.metadata.update((*[(metadata_keys.FIREWALL_BASE, "base")],))
 flow.metadata.update([*{metadata_keys.AUTH_URL_REWRITE: True}.items()])
 flow.metadata.update([*zip([metadata_keys.NETWORK_LOG_TARGET], [{}])])
-flow.metadata.update([*sorted([(metadata_keys.VM_NETWORK_LOG_PATH, "network.jsonl")])])
-flow.metadata.update([*[(metadata_keys.VM_PROXY_LOG_PATH, "proxy.jsonl")].copy()])
+flow.metadata.update([*sorted([(metadata_keys.SANDBOX_NETWORK_LOG_PATH, "network.jsonl")])])
+flow.metadata.update([*[(metadata_keys.SANDBOX_PROXY_LOG_PATH, "proxy.jsonl")].copy()])
 flow.metadata.update(dict.fromkeys([*[metadata_keys.FIREWALL_ERROR]], "auth_failed"))
 flow.metadata.update(dict.fromkeys((*[metadata_keys.AUTH_CACHE_HIT],), False))
-flow.metadata.update({metadata_keys.VM_RUN_ID: value for value in rows})
+flow.metadata.update({metadata_keys.SANDBOX_RUN_ID: value for value in rows})
 flow.metadata = {metadata_keys.FIREWALL_NAME: value for value in rows}
-flow.metadata.update(*[{metadata_keys.VM_RUN_ID: "run-1"}])
+flow.metadata.update(*[{metadata_keys.SANDBOX_RUN_ID: "run-1"}])
 flow.metadata.update(*[dict({metadata_keys.FIREWALL_NAME: "github"})])
 flow.metadata.update(*[[(metadata_keys.FIREWALL_ACTION, "ALLOW")]])
 flow.metadata = dict(*[{metadata_keys.FIREWALL_PERMISSION: "read"}])
 flow.metadata.get(*[metadata_keys.FIREWALL_BASE])
 flow.metadata.update(dict.fromkeys(*[[metadata_keys.FIREWALL_ERROR], "auth_failed"]))
 flow.metadata.update(dict.fromkeys(*[[metadata_keys.AUTH_CACHE_HIT]], False))
-flow.metadata.update(*[], {metadata_keys.VM_RUN_ID: "run-1"})
+flow.metadata.update(*[], {metadata_keys.SANDBOX_RUN_ID: "run-1"})
 flow.metadata.update(*[], [(metadata_keys.FIREWALL_NAME, "github")])
 flow.metadata = dict(*[], {metadata_keys.FIREWALL_ACTION: "ALLOW"})
 flow.metadata.get(*[], metadata_keys.FIREWALL_PERMISSION)
@@ -97,37 +111,37 @@ flow.metadata.update(dict.fromkeys((metadata_keys.FIREWALL_ERROR for value in ro
 flow.metadata.update(dict.fromkeys([metadata_keys.AUTH_CACHE_HIT for value in rows], False))
 flow.metadata.update(dict.fromkeys({metadata_keys.NETWORK_LOG_TARGET for value in rows}, {}))
 flow.metadata.update(
-    dict.fromkeys({metadata_keys.VM_NETWORK_LOG_PATH: value for value in rows}, "path")
+    dict.fromkeys({metadata_keys.SANDBOX_NETWORK_LOG_PATH: value for value in rows}, "path")
 )
-external_conditional_meta = {"vm_run_id": "external"} if condition else {}
-value = external_conditional_meta["vm_run_id"]
-external_bool_meta = fallback_meta or {"vm_run_id": "external"}
-value = external_bool_meta["vm_run_id"]
-external_copy_meta = {"vm_run_id": "external"}.copy()
-value = external_copy_meta["vm_run_id"]
-value = ({"vm_run_id": "external"} if condition else {}).get("vm_run_id")
-value = "vm_run_id" in ({"vm_run_id": "external"} if condition else {})
+external_conditional_meta = {"sandbox_run_id": "external"} if condition else {}
+value = external_conditional_meta["sandbox_run_id"]
+external_bool_meta = fallback_meta or {"sandbox_run_id": "external"}
+value = external_bool_meta["sandbox_run_id"]
+external_copy_meta = {"sandbox_run_id": "external"}.copy()
+value = external_copy_meta["sandbox_run_id"]
+value = ({"sandbox_run_id": "external"} if condition else {}).get("sandbox_run_id")
+value = "sandbox_run_id" in ({"sandbox_run_id": "external"} if condition else {})
 def terminal_if_rebinds_to_external(condition):
     terminal_if_meta = flow.metadata
     if condition:
         return None
     else:
         terminal_if_meta = {}
-    return terminal_if_meta["vm_run_id"]
+    return terminal_if_meta["sandbox_run_id"]
 def terminal_raise_rebinds_to_external(condition):
     terminal_raise_meta = flow.metadata
     if condition:
         raise RuntimeError
     else:
         terminal_raise_meta = {}
-    return terminal_raise_meta["vm_run_id"]
+    return terminal_raise_meta["sandbox_run_id"]
 def terminal_try_handler_rebinds_to_external():
     terminal_try_meta = flow.metadata
     try:
         return None
     except Exception:
         terminal_try_meta = {}
-    return terminal_try_meta["vm_run_id"]
+    return terminal_try_meta["sandbox_run_id"]
 def partial_return_finalbody_rebinds_to_external(condition):
     partial_finalbody_meta = flow.metadata
     try:
@@ -135,7 +149,7 @@ def partial_return_finalbody_rebinds_to_external(condition):
             return None
     finally:
         partial_finalbody_meta = {}
-    return partial_finalbody_meta["vm_run_id"]
+    return partial_finalbody_meta["sandbox_run_id"]
 def terminal_match_rebinds_to_external(match_payload):
     terminal_match_meta = flow.metadata
     match match_payload:
@@ -143,157 +157,157 @@ def terminal_match_rebinds_to_external(match_payload):
             return None
         case _:
             terminal_match_meta = {}
-    return terminal_match_meta["vm_run_id"]
+    return terminal_match_meta["sandbox_run_id"]
 def guarded_capture_rebinds_to_external(match_payload):
     guarded_capture_meta = flow.metadata
     match match_payload:
         case guarded_capture_meta if False:
             pass
-    return guarded_capture_meta["vm_run_id"]
+    return guarded_capture_meta["sandbox_run_id"]
 def guarded_as_capture_rebinds_to_external(match_payload):
     guarded_as_meta = flow.metadata
     match match_payload:
         case _ as guarded_as_meta if False:
             pass
-    return guarded_as_meta["vm_run_id"]
+    return guarded_as_meta["sandbox_run_id"]
 def with_target_rebinds_to_external():
     with_target_meta = flow.metadata
     with context() as with_target_meta:
         pass
-    return with_target_meta["vm_run_id"]
+    return with_target_meta["sandbox_run_id"]
 async def async_with_target_rebinds_to_external():
     async_with_target_meta = flow.metadata
     async with context() as async_with_target_meta:
         pass
-    return async_with_target_meta["vm_run_id"]
+    return async_with_target_meta["sandbox_run_id"]
 def break_skips_unreachable_metadata_access():
     for item in rows:
         unreachable_break_meta = flow.metadata
         break
-        unreachable_break_meta["vm_run_id"]
+        unreachable_break_meta["sandbox_run_id"]
 def continue_skips_unreachable_metadata_access():
     for item in rows:
         unreachable_continue_meta = flow.metadata
         continue
-        unreachable_continue_meta["vm_run_id"]
+        unreachable_continue_meta["sandbox_run_id"]
 late_assignment_meta = flow.metadata
 def late_assignment_local_shadow():
-    value = late_assignment_meta["vm_run_id"]
+    value = late_assignment_meta["sandbox_run_id"]
     late_assignment_meta = {}
 late_import_meta = flow.metadata
 def late_import_local_shadow():
-    value = late_import_meta["vm_run_id"]
+    value = late_import_meta["sandbox_run_id"]
     import json as late_import_meta
 late_loop_meta = flow.metadata
 def late_loop_local_shadow():
-    value = late_loop_meta["vm_run_id"]
+    value = late_loop_meta["sandbox_run_id"]
     for late_loop_meta in rows:
         pass
 late_delete_meta = flow.metadata
 def late_delete_local_shadow():
-    value = late_delete_meta["vm_run_id"]
+    value = late_delete_meta["sandbox_run_id"]
     del late_delete_meta
 late_match_meta = flow.metadata
 def late_match_local_shadow(match_payload):
-    value = late_match_meta["vm_run_id"]
+    value = late_match_meta["sandbox_run_id"]
     match match_payload:
         case late_match_meta:
             pass
 lambda_shadow_meta = flow.metadata
-fn = lambda: lambda_shadow_meta["vm_run_id"] if (lambda_shadow_meta := {}) else None
+fn = lambda: lambda_shadow_meta["sandbox_run_id"] if (lambda_shadow_meta := {}) else None
 annotation_shadow_meta = flow.metadata
 def annotation_walrus_local_shadow():
-    value = annotation_shadow_meta["vm_run_id"]
+    value = annotation_shadow_meta["sandbox_run_id"]
     def inner(arg: (annotation_shadow_meta := {})):
         pass
 def nested_function_global_reads_external():
     function_global_external_meta = {}
     def inner():
         global function_global_external_meta
-        function_global_external_meta["vm_run_id"]
-send({"vm_run_id": "external"})
+        function_global_external_meta["sandbox_run_id"]
+send({"sandbox_run_id": "external"})
 def return_external_dict():
-    return {"vm_run_id": "external"}
-assert {"vm_run_id": "external"}
-lambda_external_dict = lambda: {"vm_run_id": "external"}
-values = [{"vm_run_id": "external"} for item in rows]
-external_annotation: {"vm_run_id": "external"}
+    return {"sandbox_run_id": "external"}
+assert {"sandbox_run_id": "external"}
+lambda_external_dict = lambda: {"sandbox_run_id": "external"}
+values = [{"sandbox_run_id": "external"} for item in rows]
+external_annotation: {"sandbox_run_id": "external"}
 def class_body_late_binding_shadow():
     class_shadow_meta = flow.metadata
     class ShadowsClosure:
-        value = class_shadow_meta["vm_run_id"]
+        value = class_shadow_meta["sandbox_run_id"]
         class_shadow_meta = {}
 module_shadowed_in_class_meta = flow.metadata
 def class_body_outer_external_shadows_module_alias():
     module_shadowed_in_class_meta = {}
     class ReadsOuterExternal:
-        value = module_shadowed_in_class_meta["vm_run_id"]
+        value = module_shadowed_in_class_meta["sandbox_run_id"]
 def class_body_nonlocal_reads_outer_external():
     class_nonlocal_meta = {}
     class ReadsNonlocal:
         nonlocal class_nonlocal_meta
-        value = class_nonlocal_meta["vm_run_id"]
+        value = class_nonlocal_meta["sandbox_run_id"]
 class NestedClassDoesNotSeeOuterClassAlias:
     nested_class_shadow_meta = flow.metadata
     class Inner:
-        nested_class_shadow_meta["vm_run_id"]
+        nested_class_shadow_meta["sandbox_run_id"]
 class MethodDoesNotSeeClassAlias:
     method_class_meta = flow.metadata
     def method(self):
-        method_class_meta["vm_run_id"]
+        method_class_meta["sandbox_run_id"]
 class ComprehensionDoesNotSeeClassAlias:
     comp_class_meta = flow.metadata
-    values = [comp_class_meta["vm_run_id"] for item in rows]
+    values = [comp_class_meta["sandbox_run_id"] for item in rows]
 def accepts_external_metadata(meta):
-    return meta["vm_proxy_log_path"]
+    return meta["sandbox_proxy_log_path"]
 for meta in [{"firewall_name": "external"}]:
     value = meta["firewall_name"]
 with context() as meta:
     value = meta["firewall_action"]
 def meta():
     return None
-value = meta["vm_run_id"]
+value = meta["sandbox_run_id"]
 class meta:
     pass
-value = meta["vm_run_id"]
+value = meta["sandbox_run_id"]
 import json as meta
-value = meta["vm_run_id"]
+value = meta["sandbox_run_id"]
 from json import dumps as meta
-value = meta["vm_run_id"]
+value = meta["sandbox_run_id"]
 meta, other = flow.metadata
-value = meta["vm_run_id"]
+value = meta["sandbox_run_id"]
 *starred_meta, = flow.metadata
-value = starred_meta["vm_run_id"]
-fn = lambda meta: meta["vm_run_id"]
-values = [meta["vm_run_id"] for meta in [{"vm_run_id": "external"}]]
-values = {meta["vm_run_id"] for meta in [{"vm_run_id": "external"}]}
-values = {meta["vm_run_id"]: 1 for meta in [{"vm_run_id": "external"}]}
-values = tuple(meta["vm_run_id"] for meta in [{"vm_run_id": "external"}])
+value = starred_meta["sandbox_run_id"]
+fn = lambda meta: meta["sandbox_run_id"]
+values = [meta["sandbox_run_id"] for meta in [{"sandbox_run_id": "external"}]]
+values = {meta["sandbox_run_id"] for meta in [{"sandbox_run_id": "external"}]}
+values = {meta["sandbox_run_id"]: 1 for meta in [{"sandbox_run_id": "external"}]}
+values = tuple(meta["sandbox_run_id"] for meta in [{"sandbox_run_id": "external"}])
 [(lambda: (lambda_local_meta := flow.metadata))() for item in rows]
-value = lambda_local_meta["vm_run_id"]
-values = [(meta := {"vm_run_id": "external"}) for item in rows]
-value = meta["vm_run_id"]
+value = lambda_local_meta["sandbox_run_id"]
+values = [(meta := {"sandbox_run_id": "external"}) for item in rows]
+value = meta["sandbox_run_id"]
 match payload:
-    case {"meta": match_meta, **match_rest} if match_rest["vm_run_id"]:
-        value = match_meta["vm_run_id"]
+    case {"meta": match_meta, **match_rest} if match_rest["sandbox_run_id"]:
+        value = match_meta["sandbox_run_id"]
     case Item(meta=class_meta):
-        value = class_meta["vm_run_id"]
+        value = class_meta["sandbox_run_id"]
     case [sequence_meta, *sequence_tail]:
-        value = sequence_meta["vm_run_id"]
-        value = sequence_tail["vm_run_id"]
+        value = sequence_meta["sandbox_run_id"]
+        value = sequence_tail["sandbox_run_id"]
     case meta:
-        value = meta["vm_run_id"]
-value = match_meta["vm_run_id"]
+        value = meta["sandbox_run_id"]
+value = match_meta["sandbox_run_id"]
 match payload:
-    case {"vm_run_id": external_run_id}:
+    case {"sandbox_run_id": external_run_id}:
         pass
 match flow.metadata:
-    case {"payload": {"vm_run_id": external_run_id}}:
+    case {"payload": {"sandbox_run_id": external_run_id}}:
         pass
 match flow.metadata:
-    case {metadata_keys.VM_RUN_ID: run_id}:
+    case {metadata_keys.SANDBOX_RUN_ID: run_id}:
         pass
 try:
     pass
 except Exception as meta:
-    value = meta["vm_run_id"]
+    value = meta["sandbox_run_id"]

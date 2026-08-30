@@ -73,12 +73,12 @@ function decodeSnapshotRows(
   body: Buffer,
   chatThreadId: string,
   lastSeqId: number,
-  lastEventId: string,
+  terminalCursor: {
+    readonly eventId: string | null;
+    readonly seqId: number | null;
+  },
 ): readonly ChatEventRow[] {
   const rows = decodeChatEventSnapshotBody(body);
-  if (rows.length === 0) {
-    throw new Error("Chat event snapshot is empty");
-  }
   let previousSeqId: number | null = null;
   for (const row of rows) {
     if (
@@ -90,7 +90,11 @@ function decodeSnapshotRows(
     }
     previousSeqId = row.seqId;
   }
-  if (rows.at(-1)?.id !== lastEventId) {
+  if (
+    terminalCursor.seqId !== null &&
+    ((rows.at(-1)?.id ?? null) !== terminalCursor.eventId ||
+      (rows.at(-1)?.seqId ?? 0) !== terminalCursor.seqId)
+  ) {
     throw new Error("Chat event snapshot terminal metadata is invalid");
   }
   return rows;
@@ -114,9 +118,9 @@ function readCurrentChatEventHistoryAtSnapshot(
   return computed(async (get) => {
     const [head] = await runtime.db
       .select({
-        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
         lastSeqId: chatEventSnapshots.lastSeqId,
-        lastEventId: chatEventSnapshots.lastEventId,
+        terminalSeqId: chatEventSnapshots.terminalSeqId,
+        terminalEventId: chatEventSnapshots.terminalEventId,
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
@@ -135,11 +139,7 @@ function readCurrentChatEventHistoryAtSnapshot(
     if (head === undefined) {
       return await readPostgresTail(runtime.db, chatThreadId, 0, signal);
     }
-    if (
-      head.archiveSchemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
-      head.lastSeqId <= 0 ||
-      head.objectKey.trim().length === 0
-    ) {
+    if (head.lastSeqId <= 0 || head.objectKey.trim().length === 0) {
       throw new Error("Chat event snapshot head is not reusable");
     }
 
@@ -153,11 +153,15 @@ function readCurrentChatEventHistoryAtSnapshot(
     ) {
       throw new Error("Chat event snapshot checksum is invalid");
     }
+    const decompressed = await gunzipAsync(compressed);
     const snapshot = decodeSnapshotRows(
-      await gunzipAsync(compressed),
+      decompressed,
       chatThreadId,
       head.lastSeqId,
-      head.lastEventId,
+      {
+        eventId: head.terminalEventId,
+        seqId: head.terminalSeqId,
+      },
     );
     signal.throwIfAborted();
     const tail = await readPostgresTail(
@@ -170,11 +174,7 @@ function readCurrentChatEventHistoryAtSnapshot(
   });
 }
 
-/**
- * Current logical thread history: the reusable v5 R2 pointer followed by every
- * PostgreSQL row after its watermark. A thread without a pointer is still a
- * cold thread, so its current PostgreSQL rows are the complete history.
- */
+/** Current logical history with PostgreSQL continuation after physical coverage. */
 export function readCurrentChatEventHistory(
   runtime: ChatEventHistoryRuntime,
   chatThreadId: string,

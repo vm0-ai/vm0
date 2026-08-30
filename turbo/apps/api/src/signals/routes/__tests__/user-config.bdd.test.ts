@@ -6,10 +6,6 @@ import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/co
 import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import {
-  createHistoricalAgentComposeFixture,
-  readHistoricalAgentComposeHeadFixture,
-} from "../../../test-fixtures/historical-agent-composes";
-import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
@@ -19,7 +15,7 @@ import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
 auth probe matrix. State is constructed only through public APIs (onboarding,
-CLI auth, agents, composes); the only mocks are the Clerk
+CLI auth, and agents); the only mocks are the Clerk
 SDK boundary and the S3 accept for agent creation. Sandbox/zero/forged-PAT
 bearers are minted with the exported test token signers (api-bdd-github and
 api-bdd-computer-use precedent).
@@ -266,48 +262,6 @@ describe("AUTH-03 agent user connectors", () => {
       agent.agentId,
     );
     expect(readAfterRemoveAdd.enabledConnectorSlugs).toStrictEqual(["slack"]);
-  });
-
-  it("rejects a stale compose-only connector target without recomposing", async () => {
-    const admin = api.user();
-    await onboardAdmin(admin, { slug: slug("bdd-uc-b1c") });
-    if (!admin.orgId) {
-      throw new Error("Historical Compose fixtures require an organization");
-    }
-    const composeName = slug("bdd-uc-compose");
-    // The current Agent API always creates a zero-agent row, so direct
-    // historical construction is required to exercise this stale Compose-only
-    // recompose arm.
-    const created = await createHistoricalAgentComposeFixture({
-      actor: { userId: admin.userId, orgId: admin.orgId },
-      content: {
-        version: "1",
-        agents: { [composeName]: { framework: "claude-code" } },
-      },
-      signal: context.signal,
-    });
-
-    const update = await cfg.requestUpdateUserConnectors(
-      admin,
-      created.composeId,
-      [],
-      [404],
-    );
-    expectApiError(update.body);
-    expect(update.body.error.code).toBe("NOT_FOUND");
-
-    const compose = await readHistoricalAgentComposeHeadFixture(
-      created.composeId,
-    );
-    expect(compose.headVersionId).toBe(created.versionId);
-
-    const getOnCompose = await cfg.requestReadUserConnectors(
-      admin,
-      created.composeId,
-      [404],
-    );
-    expectApiError(getOnCompose.body);
-    expect(getOnCompose.body.error.code).toBe("NOT_FOUND");
   });
 });
 
@@ -597,8 +551,8 @@ describe("AUTH-02 auth probe CLI PAT bearers", () => {
   });
 });
 
-describe("AUTH-01 sandbox and zero bearers", () => {
-  it("resolves sandbox and zero bearers on the auth probe by capability opt-in", async () => {
+describe("AUTH-01 sandbox and agent bearers", () => {
+  it("resolves sandbox and agent bearers on the auth probe by capability opt-in", async () => {
     const sandboxActor = api.user();
     const zeroMember = api.user();
     const zeroAdmin = api.user();
@@ -639,7 +593,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       [200],
     );
     expect(memberProbe.body).toStrictEqual({
-      tokenType: "zero",
+      tokenType: "agent",
       userId: zeroMember.userId,
       orgId: zeroMember.orgId,
       orgRole: "member",
@@ -656,7 +610,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       [200],
     );
     expect(adminProbe.body).toStrictEqual({
-      tokenType: "zero",
+      tokenType: "agent",
       userId: zeroAdmin.userId,
       orgId: zeroAdmin.orgId,
       orgRole: "admin",
@@ -673,7 +627,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       [200],
     );
     expect(orphanProbe.body).toStrictEqual({
-      tokenType: "zero",
+      tokenType: "agent",
       userId: zeroOrphan.userId,
       runId: orphanZero.runId,
       publicBrand: "vm0",
@@ -688,7 +642,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
     expect(badSignature.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("enforces zero capabilities on real user-config routes", async () => {
+  it("enforces agent capabilities on real user-config routes", async () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
     const agent = await api.createAgent(admin, {
@@ -738,7 +692,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
     });
   });
 
-  it("accepts sandbox and zero bearers on auth me", async () => {
+  it("accepts sandbox and agent bearers on auth me", async () => {
     const sandboxActor = api.user();
     const writeActor = api.user();
     const bareActor = api.user();

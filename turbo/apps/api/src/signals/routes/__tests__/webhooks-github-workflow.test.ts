@@ -1,20 +1,30 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   workflowAutomationsContract,
   type WorkflowAutomationCreateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
+import {
+  enqueueGitHubChatEventFixture,
+  setGitHubInstallationAppIdentityFixture,
+} from "../../../test-fixtures/chat-events";
 import { verifyOkouToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   chatEventAutomationPart,
   chatEventDisplayText,
@@ -33,6 +43,7 @@ const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const gh = createGithubBddApi(context);
 const runsApi = createRunsApi(context);
+const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "github-webhook-workflow";
 const GITHUB_WEBHOOK_SECRET = "github-webhook-secret";
@@ -82,6 +93,31 @@ async function pendingAutomationEventCount(threadId: string): Promise<number> {
   }).length;
 }
 
+async function completeClaimedRunOk(
+  runId: string,
+  sandboxToken: string,
+): Promise<void> {
+  const sandboxHeaders = { authorization: `Bearer ${sandboxToken}` };
+  const history = `GitHub workflow BDD history ${runId}`;
+  await webhooksApi.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `github-workflow-bdd-${runId}`,
+      cliAgentSessionHistoryHash: createHash("sha256")
+        .update(history)
+        .digest("hex"),
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooksApi.requestAgentComplete(
+    { runId, exitCode: 0 },
+    sandboxHeaders,
+    [200],
+  );
+}
+
 interface WorkflowsFixture {
   readonly orgId: string;
   readonly userId: string;
@@ -107,7 +143,8 @@ async function setupFixture(): Promise<{
   });
   const fixture = { orgId: actor.orgId, userId: actor.userId };
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  context.mocks.s3.send.mockResolvedValue({});
+  context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
+  runsApi.acceptStorageDownloads();
   return { fixture, actor, agentId: agent.agentId, workflowId };
 }
 
@@ -215,6 +252,7 @@ async function postGithubWebhook(args: {
     | "workflow_run";
   readonly deliveryId: string;
   readonly rawBody: string;
+  readonly publicBrand?: PublicBrand;
 }): Promise<{ readonly status: number; readonly text: string }> {
   const signature = `sha256=${createHmac("sha256", GITHUB_WEBHOOK_SECRET)
     .update(args.rawBody)
@@ -222,16 +260,19 @@ async function postGithubWebhook(args: {
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request("/api/webhooks/github", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-github-event": args.event,
-      "x-github-delivery": args.deliveryId,
-      "x-hub-signature-256": signature,
+  }).request(
+    `https://api.${args.publicBrand === "okou" ? "okou.ai" : "vm0.ai"}/api/webhooks/github`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-github-event": args.event,
+        "x-github-delivery": args.deliveryId,
+        "x-hub-signature-256": signature,
+      },
+      body: args.rawBody,
     },
-    body: args.rawBody,
-  });
+  );
   return {
     status: response.status,
     text: await response.text(),
@@ -269,6 +310,21 @@ function githubPullRequestReviewAutomationBody(): WorkflowAutomationCreateReques
         headBranches: ["feature/github-webhooks"],
         trustedAuthors: ["TRUSTED-USER"],
       },
+    },
+  };
+}
+
+function githubPullRequestMergedAutomationBody(): WorkflowAutomationCreateRequest {
+  return {
+    kind: "event",
+    eventType: "github-pull-request",
+    eventConfig: {
+      provider: "github",
+      event: "pull_request",
+      repository: "vm0-ai/vm0",
+      action: "closed",
+      merged: true,
+      filters: {},
     },
   };
 }
@@ -552,16 +608,20 @@ describe("POST /api/webhooks/github for workflow automations", () => {
           event: testCase.event,
           deliveryId: `delivery-${randomUUID()}`,
           rawBody: JSON.stringify(untrustedPayload),
+          publicBrand: "vm0",
         });
         expect(ignored).toStrictEqual({ status: 200, text: "OK" });
         await flushWaitUntilForTest();
       }
 
       const deliveryId = `delivery-${randomUUID()}`;
+      const webhookPublicBrand: PublicBrand =
+        testCase.event === "pull_request" ? "okou" : "vm0";
       const response = await postGithubWebhook({
         event: testCase.event,
         deliveryId,
         rawBody: testCase.payload(installed.remoteInstallationId),
+        publicBrand: webhookPublicBrand,
       });
       expect(response).toStrictEqual({ status: 200, text: "OK" });
       await flushWaitUntilForTest();
@@ -587,6 +647,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         throw new Error(`Expected a ${testCase.name} automation run`);
       }
       const claim = await runsApi.claimRunnerJob(runId);
+      const okouToken = claim.environment?.OKOU_TOKEN;
+      if (!okouToken) {
+        throw new Error("Expected the webhook run to expose OKOU_TOKEN");
+      }
+      expect(verifyOkouToken(okouToken)?.publicBrand).toBe(webhookPublicBrand);
       expect(claim.prompt).toContain(
         `Summary: ${testCase.expectedTrigger} (GitHub webhook delivery ${deliveryId}).`,
       );
@@ -600,6 +665,289 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       expect(claim.appendSystemPrompt).not.toContain("# Current context");
     },
   );
+
+  it("preserves Okou branding through delayed queue drain and failure callback", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const { fixture, actor, agentId, workflowId } = await setupFixture();
+    const installed = await gh.installGithubApp(actor, agentId);
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: githubPullRequestMergedAutomationBody(),
+      }),
+      [201],
+    );
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
+
+    const first = await postGithubWebhook({
+      event: "pull_request",
+      deliveryId: `delivery-${randomUUID()}`,
+      rawBody: githubPullRequestPayload({
+        action: "closed",
+        merged: true,
+        installationId: installed.remoteInstallationId,
+      }),
+      publicBrand: "vm0",
+    });
+    expect(first).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
+    await runsApi.heartbeatRunner();
+    const admittedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const admittedRunId = admittedRuns.runs[0]?.id;
+    if (!admittedRunId || admittedRuns.runs.length !== 1) {
+      throw new Error("Expected one admitted GitHub automation run");
+    }
+    const admittedClaim = await runsApi.claimRunnerJob(admittedRunId);
+
+    const queued = await postGithubWebhook({
+      event: "pull_request",
+      deliveryId: `delivery-${randomUUID()}`,
+      rawBody: githubPullRequestPayload({
+        action: "closed",
+        merged: true,
+        number: 43,
+        installationId: installed.remoteInstallationId,
+      }),
+      publicBrand: "okou",
+    });
+    expect(queued).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
+    await expect(
+      pendingAutomationEventCount(created.body.chatThreadId),
+    ).resolves.toBe(1);
+
+    await completeClaimedRunOk(admittedRunId, admittedClaim.sandboxToken);
+    await flushWaitUntilForTest();
+    await runsApi.heartbeatRunner();
+    const drainedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const promotedRunId = drainedRuns.runs.find((run) => {
+      return run.id !== admittedRunId;
+    })?.id;
+    if (!promotedRunId) {
+      throw new Error("Expected the queued Okou automation run to drain");
+    }
+    const promotedClaim = await runsApi.claimRunnerJob(promotedRunId);
+    const okouToken = promotedClaim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the drained run to expose OKOU_TOKEN");
+    }
+    expect(verifyOkouToken(okouToken)?.publicBrand).toBe("okou");
+
+    await webhooksApi.requestAgentComplete(
+      {
+        runId: promotedRunId,
+        exitCode: 1,
+        error:
+          "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+      },
+      { authorization: `Bearer ${promotedClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const events = await wf.readThreadEvents(created.body.chatThreadId);
+    const failed = events.find((event) => {
+      return event.eventType === "run.failed" && event.runId === promotedRunId;
+    });
+    if (failed?.eventType !== "run.failed") {
+      throw new Error("Expected the drained Okou run failure callback");
+    }
+    expect(failed.error).toContain("https://app.okou.ai/?settings=model");
+    expect(failed.error).not.toContain("https://app.vm0.ai/?settings=model");
+  });
+
+  it.each([
+    {
+      name: "renamed official App",
+      storedAppId: "123456",
+      storedAppSlug: "vm0-test",
+      expectedAppId: "123456",
+      expectedBotUsername: "@okou[bot]",
+      excludedBotUsername: "@vm0-test[bot]",
+      subjectNumber: 81_001,
+    },
+    {
+      name: "legacy official installation",
+      storedAppId: null,
+      storedAppSlug: null,
+      expectedAppId: "123456",
+      expectedBotUsername: "@okou[bot]",
+      excludedBotUsername: "@vm0-test[bot]",
+      subjectNumber: 81_002,
+    },
+    {
+      name: "user-managed App",
+      storedAppId: "8675309",
+      storedAppSlug: "owner-managed-app",
+      expectedAppId: "8675309",
+      expectedBotUsername: "@owner-managed-app[bot]",
+      excludedBotUsername: "@okou[bot]",
+      subjectNumber: 81_003,
+    },
+  ])(
+    "resolves provider identity for a queued $name independently from publicBrand",
+    async (testCase) => {
+      const { actor, agentId, workflowId } = await setupFixture();
+      const installed = await gh.installGithubApp(actor, agentId);
+      mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+      const created = await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId },
+          body: githubPullRequestMergedAutomationBody(),
+        }),
+        [201],
+      );
+      if (!created.body.chatThreadId) {
+        throw new Error("Expected the automation to have a chat thread");
+      }
+      const response = await postGithubWebhook({
+        event: "pull_request",
+        deliveryId: `delivery-${randomUUID()}`,
+        rawBody: githubPullRequestPayload({
+          action: "closed",
+          merged: true,
+          installationId: installed.remoteInstallationId,
+        }),
+      });
+      expect(response).toStrictEqual({ status: 200, text: "OK" });
+      await flushWaitUntilForTest();
+      await runsApi.heartbeatRunner();
+      const admittedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+      const admittedRunId = admittedRuns.runs[0]?.id;
+      if (!admittedRunId || admittedRuns.runs.length !== 1) {
+        throw new Error("Expected one admitted workflow run");
+      }
+      const admittedClaim = await runsApi.claimRunnerJob(admittedRunId);
+
+      mockOptionalEnv("GITHUB_APP_ID", "123456");
+      mockOptionalEnv("GITHUB_APP_SLUG", "okou");
+      await setGitHubInstallationAppIdentityFixture({
+        remoteInstallationId: installed.remoteInstallationId,
+        appId: testCase.storedAppId,
+        appSlug: testCase.storedAppSlug,
+      });
+      await enqueueGitHubChatEventFixture({
+        threadId: created.body.chatThreadId,
+        userId: actor.userId,
+        remoteInstallationId: installed.remoteInstallationId,
+        repo: "vm0-ai/vm0",
+        subjectNumber: testCase.subjectNumber,
+        subjectKind: "issue",
+        messageText: `queued ${testCase.name} request`,
+        publicBrand: "okou",
+      });
+
+      await completeClaimedRunOk(admittedRunId, admittedClaim.sandboxToken);
+      await flushWaitUntilForTest();
+      await runsApi.heartbeatRunner();
+      const drainedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+      const promotedRunId = drainedRuns.runs.find((run) => {
+        return run.id !== admittedRunId;
+      })?.id;
+      if (!promotedRunId) {
+        throw new Error("Expected the queued GitHub chat run to drain");
+      }
+      const promotedClaim = await runsApi.claimRunnerJob(promotedRunId);
+      expect(promotedClaim.appendSystemPrompt).toContain(
+        `GitHub App ID: ${testCase.expectedAppId}`,
+      );
+      expect(promotedClaim.appendSystemPrompt).toContain(
+        `Bot username: ${testCase.expectedBotUsername}`,
+      );
+      expect(promotedClaim.appendSystemPrompt).not.toContain(
+        `Bot username: ${testCase.excludedBotUsername}`,
+      );
+      const okouToken = promotedClaim.environment?.OKOU_TOKEN;
+      if (!okouToken) {
+        throw new Error("Expected the GitHub chat run to expose OKOU_TOKEN");
+      }
+      expect(verifyOkouToken(okouToken)?.publicBrand).toBe("okou");
+    },
+  );
+
+  it("preserves Okou branding when queued GitHub chat dispatch fails", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const { actor, agentId, workflowId } = await setupFixture();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped GitHub dispatch-failure actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.OkouDebug]: true },
+    );
+    const installed = await gh.installGithubApp(actor, agentId);
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: githubPullRequestMergedAutomationBody(),
+      }),
+      [201],
+    );
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
+
+    const blocking = await postGithubWebhook({
+      event: "pull_request",
+      deliveryId: `delivery-${randomUUID()}`,
+      rawBody: githubPullRequestPayload({
+        action: "closed",
+        merged: true,
+        installationId: installed.remoteInstallationId,
+      }),
+    });
+    expect(blocking).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
+    await runsApi.heartbeatRunner();
+    const admittedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const admittedRunId = admittedRuns.runs[0]?.id;
+    if (!admittedRunId || admittedRuns.runs.length !== 1) {
+      throw new Error("Expected one admitted workflow run");
+    }
+    const admittedClaim = await runsApi.claimRunnerJob(admittedRunId);
+
+    await enqueueGitHubChatEventFixture({
+      threadId: created.body.chatThreadId,
+      userId: actor.userId,
+      remoteInstallationId: installed.remoteInstallationId,
+      repo: "vm0-ai/vm0",
+      subjectNumber: 83_001,
+      subjectKind: "issue",
+      messageText: "queued Okou request before dispatch failure",
+      publicBrand: "okou",
+    });
+
+    const postedComments: string[] = [];
+    server.use(
+      http.post(
+        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          if (typeof body.body === "string") {
+            postedComments.push(body.body);
+          }
+          return HttpResponse.json({ id: 1 });
+        },
+      ),
+    );
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+    await completeClaimedRunOk(admittedRunId, admittedClaim.sandboxToken);
+    await flushWaitUntilForTest();
+
+    expect(postedComments).toHaveLength(1);
+    expect(postedComments[0]).toMatch(
+      /https:\/\/app\.okou\.ai\/activities\/[0-9a-f-]+/u,
+    );
+    expect(postedComments[0]).not.toContain("https://app.vm0.ai/activities/");
+  });
 
   it("validates pull request review actions before dispatching", async () => {
     const { actor, agentId, workflowId } = await setupFixture();
@@ -731,6 +1079,31 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     expect(secondMerged).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
 
+    const concurrentDeliveryId = `delivery-${randomUUID()}`;
+    const concurrentPayload = githubPullRequestPayload({
+      action: "closed",
+      merged: true,
+      number: 45,
+      installationId: installed.remoteInstallationId,
+    });
+    const concurrent = await Promise.all([
+      postGithubWebhook({
+        event: "pull_request",
+        deliveryId: concurrentDeliveryId,
+        rawBody: concurrentPayload,
+      }),
+      postGithubWebhook({
+        event: "pull_request",
+        deliveryId: concurrentDeliveryId,
+        rawBody: concurrentPayload,
+      }),
+    ]);
+    expect(concurrent).toStrictEqual([
+      { status: 200, text: "OK" },
+      { status: 200, text: "OK" },
+    ]);
+    await flushWaitUntilForTest();
+
     const closedWithoutMerge = await postGithubWebhook({
       event: "pull_request",
       deliveryId: `delivery-${randomUUID()}`,
@@ -745,11 +1118,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     await flushWaitUntilForTest();
     await flushWaitUntilForTest();
 
-    // Two merged deliveries matched two automations each; the duplicate
-    // redelivery was recorded as processed and added nothing, and the
+    // Three accepted merged deliveries matched two automations each. The
+    // sequential and concurrent duplicate attempts added nothing, and the
     // closed-without-merge delivery never matched. Under the per-thread
     // workflow queue, the first matched event creates the only admitted run
-    // and the remaining three wait as pending workflow queue events.
+    // and the remaining five wait as pending workflow queue events.
     await runsApi.heartbeatRunner();
     const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
     const admittedRunId = listedRuns.runs[0]?.id;
@@ -766,7 +1139,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     }
     await expect(
       pendingAutomationEventCount(created.body.chatThreadId),
-    ).resolves.toBe(3);
+    ).resolves.toBe(5);
 
     for (const runId of [admittedRunId]) {
       const timingEvents = sandboxOperationEventsForRun(runId);
@@ -857,18 +1230,34 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     await flushWaitUntilForTest();
 
     const deliveryId = `delivery-${randomUUID()}`;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const matching = await postGithubWebhook({
+    const matchingPayload = githubWorkflowRunPayload({
+      conclusion: "failure",
+      installationId: installed.remoteInstallationId,
+    });
+    const concurrent = await Promise.all([
+      postGithubWebhook({
         event: "workflow_run",
         deliveryId,
-        rawBody: githubWorkflowRunPayload({
-          conclusion: "failure",
-          installationId: installed.remoteInstallationId,
-        }),
-      });
+        rawBody: matchingPayload,
+      }),
+      postGithubWebhook({
+        event: "workflow_run",
+        deliveryId,
+        rawBody: matchingPayload,
+      }),
+    ]);
+    for (const matching of concurrent) {
       expect(matching).toStrictEqual({ status: 200, text: "OK" });
-      await flushWaitUntilForTest();
     }
+    await flushWaitUntilForTest();
+
+    const sequentialDuplicate = await postGithubWebhook({
+      event: "workflow_run",
+      deliveryId,
+      rawBody: matchingPayload,
+    });
+    expect(sequentialDuplicate).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
 
     await runsApi.heartbeatRunner();
     const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });

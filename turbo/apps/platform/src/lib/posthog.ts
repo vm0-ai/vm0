@@ -1,9 +1,192 @@
 import { command, state } from "ccstate";
-import { posthog } from "posthog-js";
+import { posthog, type CaptureResult } from "posthog-js/dist/module.slim";
+import { isStandalonePwa } from "./keyboard-dismiss-gesture.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
 const RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
 const POSTHOG_KEY = RUNTIME_CONFIG.postHogKey;
+
+export const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
+const AUTH_V2_DIAGNOSTIC_DISTINCT_ID = "auth-v2";
+
+export type AuthV2DiagnosticFlow = "sign-in" | "sign-up" | "unknown";
+
+export type AuthV2DiagnosticMethod =
+  | "apple-oauth"
+  | "email-code"
+  | "google-oauth"
+  | "google-one-tap"
+  | "identifier"
+  | "organization"
+  | "passkey"
+  | "password"
+  | "password-reset"
+  | "session"
+  | "unknown";
+
+export type AuthV2DiagnosticStep =
+  | "choose-factor"
+  | "choose-organization"
+  | "choose-session"
+  | "details"
+  | "email-code"
+  | "identifier"
+  | "initialize"
+  | "new-password"
+  | "oauth-callback"
+  | "password"
+  | "password-reset-code"
+  | "recovery"
+  | "restart"
+  | "unknown";
+
+export type AuthV2DiagnosticOutcome = "failure" | "success" | "unknown";
+
+export type AuthV2DiagnosticErrorCategory =
+  | "cancelled"
+  | "captcha"
+  | "configuration"
+  | "invalid-code"
+  | "invalid-credentials"
+  | "invalid-input"
+  | "method-unavailable"
+  | "none"
+  | "organization-unavailable"
+  | "provider-error"
+  | "session-unavailable"
+  | "unknown"
+  | "unsupported-state";
+
+export interface AuthV2DiagnosticProperties {
+  readonly error_category: AuthV2DiagnosticErrorCategory;
+  readonly flow: AuthV2DiagnosticFlow;
+  readonly method: AuthV2DiagnosticMethod;
+  readonly outcome: AuthV2DiagnosticOutcome;
+  readonly step: AuthV2DiagnosticStep;
+}
+
+function authV2DiagnosticFlow(value: unknown): AuthV2DiagnosticFlow {
+  switch (value) {
+    case "sign-in":
+    case "sign-up":
+    case "unknown": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function authV2DiagnosticMethod(value: unknown): AuthV2DiagnosticMethod {
+  switch (value) {
+    case "apple-oauth":
+    case "email-code":
+    case "google-oauth":
+    case "google-one-tap":
+    case "identifier":
+    case "organization":
+    case "passkey":
+    case "password":
+    case "password-reset":
+    case "session":
+    case "unknown": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function authV2DiagnosticStep(value: unknown): AuthV2DiagnosticStep {
+  switch (value) {
+    case "choose-factor":
+    case "choose-organization":
+    case "choose-session":
+    case "details":
+    case "email-code":
+    case "identifier":
+    case "initialize":
+    case "new-password":
+    case "oauth-callback":
+    case "password":
+    case "password-reset-code":
+    case "recovery":
+    case "restart":
+    case "unknown": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function authV2DiagnosticOutcome(value: unknown): AuthV2DiagnosticOutcome {
+  switch (value) {
+    case "failure":
+    case "success":
+    case "unknown": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function authV2DiagnosticErrorCategory(
+  value: unknown,
+): AuthV2DiagnosticErrorCategory {
+  switch (value) {
+    case "cancelled":
+    case "captcha":
+    case "configuration":
+    case "invalid-code":
+    case "invalid-credentials":
+    case "invalid-input":
+    case "method-unavailable":
+    case "none":
+    case "organization-unavailable":
+    case "provider-error":
+    case "session-unavailable":
+    case "unknown":
+    case "unsupported-state": {
+      return value;
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function sanitizePostHogCaptureResult(
+  captureResult: CaptureResult | null,
+): CaptureResult | null {
+  if (
+    captureResult === null ||
+    captureResult.event !== AUTH_V2_DIAGNOSTIC_EVENT
+  ) {
+    return captureResult;
+  }
+  const properties = captureResult.properties;
+  return {
+    event: AUTH_V2_DIAGNOSTIC_EVENT,
+    properties: {
+      $process_person_profile: false,
+      distinct_id: AUTH_V2_DIAGNOSTIC_DISTINCT_ID,
+      error_category: authV2DiagnosticErrorCategory(properties.error_category),
+      flow: authV2DiagnosticFlow(properties.flow),
+      method: authV2DiagnosticMethod(properties.method),
+      outcome: authV2DiagnosticOutcome(properties.outcome),
+      step: authV2DiagnosticStep(properties.step),
+      token: POSTHOG_KEY,
+    },
+    ...(captureResult.timestamp ? { timestamp: captureResult.timestamp } : {}),
+    uuid: captureResult.uuid,
+  };
+}
 
 function runPostHog(action: (key: string) => void): void {
   if (!POSTHOG_KEY) {
@@ -22,6 +205,7 @@ export function initPostHog(): void {
       ui_host: "https://us.posthog.com",
       autocapture: false,
       capture_pageview: false,
+      before_send: sanitizePostHogCaptureResult,
       disable_session_recording: true,
       session_recording: {
         maskAllInputs: true,
@@ -86,6 +270,34 @@ export function clearPostHogUser(): void {
 export function captureTaskCompletedSuccessfully(): void {
   runPostHog(() => {
     posthog.capture("task_completed_successfully", { surface: "chat_thread" });
+  });
+}
+
+export type ChatThreadMetadataShortcutOutcome =
+  | "hit"
+  | "older-payload"
+  | "not-found"
+  | "transport-failure";
+
+export const captureChatThreadMetadataShortcut$ = command(
+  (_, outcome: ChatThreadMetadataShortcutOutcome): void => {
+    runPostHog(() => {
+      posthog.capture("chat_thread_metadata_shortcut", { outcome });
+    });
+  },
+);
+
+export function captureAuthV2DiagnosticEvent(
+  properties: AuthV2DiagnosticProperties,
+): void {
+  runPostHog(() => {
+    posthog.capture(AUTH_V2_DIAGNOSTIC_EVENT, {
+      error_category: properties.error_category,
+      flow: properties.flow,
+      method: properties.method,
+      outcome: properties.outcome,
+      step: properties.step,
+    });
   });
 }
 
@@ -167,6 +379,241 @@ export function capturePageView(): void {
     posthog.capture("$pageview");
   });
 }
+
+export const BOOTSTRAP_PHASE_TIMING_EVENT = "app_bootstrap_phase_timing";
+
+export type BootstrapThreadMetadataSource =
+  | "local"
+  | "memory"
+  | "not_found"
+  | "remote";
+
+interface BootstrapPhaseTimingState {
+  readonly finalRoute?: string;
+  readonly initialRoute?: string;
+  readonly initialVisibilityState: DocumentVisibilityState;
+  readonly localeInitDurationMs?: number;
+  readonly localeInitStartedAt?: number;
+  readonly localThreadMetadataDurationMs?: number;
+  readonly remoteThreadMetadataDurationMs?: number;
+  readonly routeSetupStartedAt?: number;
+  readonly threadMetadataSource?: BootstrapThreadMetadataSource;
+  readonly wasHidden: boolean;
+}
+
+const bootstrapPhaseTimingState$ = state<BootstrapPhaseTimingState | null>(
+  null,
+);
+const bootstrapPhaseTimingReported$ = state(false);
+
+const BOOTSTRAP_CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
+const BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK =
+  "vm0:bootstrap:clerk-load-completed";
+
+export const initBootstrapPhaseTiming$ = command(
+  ({ set }, signal: AbortSignal) => {
+    performance.clearMarks(BOOTSTRAP_CLERK_LOAD_STARTED_MARK);
+    performance.clearMarks(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK);
+    set(bootstrapPhaseTimingState$, {
+      initialVisibilityState: document.visibilityState,
+      wasHidden: document.visibilityState !== "visible",
+    });
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        if (document.visibilityState !== "visible") {
+          set(bootstrapPhaseTimingState$, (current) => {
+            return current ? { ...current, wasHidden: true } : current;
+          });
+        }
+      },
+      { signal },
+    );
+  },
+);
+
+export const markBootstrapLocaleInitStarted$ = command(({ get, set }) => {
+  const current = get(bootstrapPhaseTimingState$);
+  if (!current || current.localeInitStartedAt !== undefined) {
+    return;
+  }
+  set(bootstrapPhaseTimingState$, {
+    ...current,
+    localeInitStartedAt: performance.now(),
+  });
+});
+
+export const markBootstrapLocaleInitCompleted$ = command(({ get, set }) => {
+  const current = get(bootstrapPhaseTimingState$);
+  if (
+    !current ||
+    current.localeInitStartedAt === undefined ||
+    current.localeInitDurationMs !== undefined
+  ) {
+    return;
+  }
+  set(bootstrapPhaseTimingState$, {
+    ...current,
+    localeInitDurationMs: Math.round(
+      performance.now() - current.localeInitStartedAt,
+    ),
+  });
+});
+
+export function markBootstrapClerkLoadStarted(): void {
+  if (
+    performance.getEntriesByName(BOOTSTRAP_CLERK_LOAD_STARTED_MARK, "mark")
+      .length === 0
+  ) {
+    performance.mark(BOOTSTRAP_CLERK_LOAD_STARTED_MARK);
+  }
+}
+
+export function markBootstrapClerkLoadCompleted(): void {
+  if (
+    performance.getEntriesByName(BOOTSTRAP_CLERK_LOAD_STARTED_MARK, "mark")
+      .length === 0 ||
+    performance.getEntriesByName(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK, "mark")
+      .length > 0
+  ) {
+    return;
+  }
+  performance.mark(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK);
+}
+
+export const markBootstrapRouteSetup$ = command(
+  ({ get, set }, route: string) => {
+    const current = get(bootstrapPhaseTimingState$);
+    if (!current) {
+      return;
+    }
+    set(bootstrapPhaseTimingState$, {
+      ...current,
+      finalRoute: route,
+      initialRoute: current.initialRoute ?? route,
+      localThreadMetadataDurationMs: undefined,
+      remoteThreadMetadataDurationMs: undefined,
+      routeSetupStartedAt: current.routeSetupStartedAt ?? performance.now(),
+      threadMetadataSource: undefined,
+    });
+  },
+);
+
+export const recordBootstrapThreadMetadataTiming$ = command(
+  (
+    { get, set },
+    timing: {
+      readonly localDurationMs?: number;
+      readonly remoteDurationMs?: number;
+      readonly source: BootstrapThreadMetadataSource;
+    },
+  ) => {
+    const current = get(bootstrapPhaseTimingState$);
+    if (!current) {
+      return;
+    }
+    set(bootstrapPhaseTimingState$, {
+      ...current,
+      localThreadMetadataDurationMs: timing.localDurationMs,
+      remoteThreadMetadataDurationMs: timing.remoteDurationMs,
+      threadMetadataSource: timing.source,
+    });
+  },
+);
+
+function elapsedDuration(
+  startedAt: number | undefined,
+  completedAt: number | undefined,
+): number | undefined {
+  if (
+    startedAt === undefined ||
+    completedAt === undefined ||
+    !Number.isFinite(startedAt) ||
+    !Number.isFinite(completedAt) ||
+    completedAt < startedAt
+  ) {
+    return undefined;
+  }
+  return Math.round(completedAt - startedAt);
+}
+
+function markStartTime(markName: string): number | undefined {
+  return performance.getEntriesByName(markName, "mark").at(-1)?.startTime;
+}
+
+function setDurationProperty(
+  properties: Record<string, string | number | boolean>,
+  name: string,
+  durationMs: number | undefined,
+): void {
+  if (durationMs !== undefined) {
+    properties[name] = durationMs;
+  }
+}
+
+export const captureBootstrapPhaseTiming$ = command(({ get, set }) => {
+  if (get(bootstrapPhaseTimingReported$)) {
+    return;
+  }
+  set(bootstrapPhaseTimingReported$, true);
+
+  runPostHog(() => {
+    const capturedAt = performance.now();
+    const current = get(bootstrapPhaseTimingState$);
+    const entryModuleReadyDurationMs = elapsedDuration(
+      window.__appBootstrapStart,
+      window.__appBootstrapModuleReady,
+    );
+    const clerkLoadDurationMs = elapsedDuration(
+      markStartTime(BOOTSTRAP_CLERK_LOAD_STARTED_MARK),
+      markStartTime(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK),
+    );
+    const routeSetupDurationMs = elapsedDuration(
+      current?.routeSetupStartedAt,
+      capturedAt,
+    );
+    const properties: Record<string, string | number | boolean> = {
+      final_route: current?.finalRoute ?? "unknown",
+      initial_route: current?.initialRoute ?? "unknown",
+      initial_visibility_state:
+        current?.initialVisibilityState ?? document.visibilityState,
+      standalone_pwa: isStandalonePwa(),
+      visibility_state: document.visibilityState,
+      was_hidden: current?.wasHidden ?? document.visibilityState !== "visible",
+    };
+    setDurationProperty(
+      properties,
+      "entry_module_ready_ms",
+      entryModuleReadyDurationMs,
+    );
+    setDurationProperty(
+      properties,
+      "skeleton_duration_ms",
+      elapsedDuration(window.__appBootstrapStart, capturedAt),
+    );
+    setDurationProperty(
+      properties,
+      "locale_init_ms",
+      current?.localeInitDurationMs,
+    );
+    setDurationProperty(properties, "clerk_load_ms", clerkLoadDurationMs);
+    setDurationProperty(properties, "route_setup_ms", routeSetupDurationMs);
+    setDurationProperty(
+      properties,
+      "local_thread_metadata_ms",
+      current?.localThreadMetadataDurationMs,
+    );
+    setDurationProperty(
+      properties,
+      "remote_thread_metadata_ms",
+      current?.remoteThreadMetadataDurationMs,
+    );
+    if (current?.threadMetadataSource !== undefined) {
+      properties.thread_metadata_source = current.threadMetadataSource;
+    }
+    posthog.capture(BOOTSTRAP_PHASE_TIMING_EVENT, properties);
+  });
+});
 
 const firstSkeletonHideReported$ = state(false);
 

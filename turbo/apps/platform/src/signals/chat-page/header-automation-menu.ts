@@ -9,8 +9,8 @@ import {
 } from "@okouai/api-contracts/contracts/workflows";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
-import { listThreadWorkflowAutomations } from "../zero-page/workflow-automations-api.ts";
+import { userPreferences$ } from "../okou-page/settings/user-preferences.ts";
+import { listThreadWorkflowAutomations } from "../okou-page/workflow-automations-api.ts";
 import { i18n } from "../../i18n/index.ts";
 import { locale$ } from "../locale.ts";
 

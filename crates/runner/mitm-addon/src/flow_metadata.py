@@ -27,19 +27,19 @@ def _metadata_bool(meta: Mapping[str, object], key: str, default: bool = False) 
 
 
 def run_id(meta: Mapping[str, object]) -> str:
-    return _metadata_str(meta, metadata_keys.VM_RUN_ID)
+    return _metadata_str(meta, metadata_keys.SANDBOX_RUN_ID)
 
 
 def network_log_path(meta: Mapping[str, object]) -> str:
-    return _metadata_str(meta, metadata_keys.VM_NETWORK_LOG_PATH)
+    return _metadata_str(meta, metadata_keys.SANDBOX_NETWORK_LOG_PATH)
 
 
 def proxy_log_path(meta: Mapping[str, object]) -> str:
-    return _metadata_str(meta, metadata_keys.VM_PROXY_LOG_PATH)
+    return _metadata_str(meta, metadata_keys.SANDBOX_PROXY_LOG_PATH)
 
 
 def sandbox_auth_key(meta: Mapping[str, object]) -> str:
-    return _metadata_str(meta, metadata_keys.VM_SANDBOX_AUTH_KEY)
+    return _metadata_str(meta, metadata_keys.SANDBOX_AUTH_KEY)
 
 
 def cli_agent_type(meta: Mapping[str, object]) -> str:

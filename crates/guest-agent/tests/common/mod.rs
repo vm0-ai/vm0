@@ -67,6 +67,8 @@ pub const CLEAN_EXIT: i32 = 0;
 pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
 pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+pub const MOCK_CODEX_SESSION_HISTORY_READY_FILE: &str = ".vm0-mock-codex-session-history-ready";
+pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready";
 pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
@@ -105,6 +107,27 @@ pub async fn command_output_with_timeout(
     timeout: Duration,
     timeout_context: &str,
 ) -> io::Result<Output> {
+    command_output_with_optional_stdin_timeout(command, None, timeout, timeout_context).await
+}
+
+pub async fn command_output_with_stdin_timeout(
+    command: &mut Command,
+    stdin: &[u8],
+    timeout: Duration,
+    timeout_context: &str,
+) -> io::Result<Output> {
+    command_output_with_optional_stdin_timeout(command, Some(stdin), timeout, timeout_context).await
+}
+
+async fn command_output_with_optional_stdin_timeout(
+    command: &mut Command,
+    stdin: Option<&[u8]>,
+    timeout: Duration,
+    timeout_context: &str,
+) -> io::Result<Output> {
+    if stdin.is_some() {
+        command.stdin(Stdio::piped());
+    }
     CommandSession::configure(command);
     let mut child = command
         .stdout(Stdio::piped())
@@ -122,16 +145,39 @@ pub async fn command_output_with_timeout(
             ))),
         };
     };
+    let stdin = if let Some(stdin_bytes) = stdin {
+        let Some(child_stdin) = child.stdin.take() else {
+            return match terminate_command(&mut child, &session).await {
+                Ok(_) => Err(io::Error::other(
+                    "captured child omitted its configured stdin pipe",
+                )),
+                Err(error) => Err(io::Error::other(format!(
+                    "captured child omitted its configured stdin pipe; cleanup failed: {error}"
+                ))),
+            };
+        };
+        Some((child_stdin, stdin_bytes))
+    } else {
+        None
+    };
     let mut stdout_bytes = Vec::new();
     let mut stderr_bytes = Vec::new();
 
     let output = {
         let wait_with_output = async {
-            let (stdout_result, stderr_result) = tokio::join!(
+            let write_stdin = async move {
+                if let Some((mut child_stdin, stdin_bytes)) = stdin {
+                    child_stdin.write_all(stdin_bytes).await?;
+                }
+                Ok::<(), io::Error>(())
+            };
+            let (stdin_result, stdout_result, stderr_result) = tokio::join!(
+                write_stdin,
                 stdout.read_to_end(&mut stdout_bytes),
                 stderr.read_to_end(&mut stderr_bytes),
             );
             let status = child.wait().await?;
+            stdin_result?;
             stdout_result?;
             stderr_result?;
             Ok(Output {
@@ -999,39 +1045,57 @@ pub struct CodexAppServerEnvConfig<'a> {
 pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
     for key in [
         guest_contracts::env::API_URL_ENV,
+        guest_contracts::env::CANONICAL_API_URL_ENV,
         guest_contracts::env::RUN_ID_ENV,
-        guest_contracts::env::API_TOKEN_ENV,
-        guest_contracts::env::SANDBOX_ID_ENV,
-        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        "VM0_API_TOKEN",
+        guest_contracts::env::CANONICAL_API_TOKEN_ENV,
+        "VM0_SANDBOX_ID",
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+        "VM0_SANDBOX_REUSE_RESULT",
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+        "VM0_WORKSPACE_REUSE_RESULT",
+        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
-        guest_contracts::env::RESUME_SESSION_ID_ENV,
-        guest_contracts::env::API_START_TIME_ENV,
-        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+        "VM0_RESUME_SESSION_ID",
+        guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+        "VM0_API_START_TIME",
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+        "VM0_AGENT_EXECUTION_TIMEOUT_SECS",
+        guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::SECRET_VALUES_ENV,
         guest_contracts::env::DISALLOWED_TOOLS_ENV,
         guest_contracts::env::TOOLS_ENV,
         guest_contracts::env::SETTINGS_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
-        guest_contracts::env::USER_ENV_FILE_ENV,
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        "VM0_USER_ENV_FILE",
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+        "VM0_RUN_PAYLOAD_FILE",
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         guest_contracts::env::ARTIFACTS_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
         guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
         guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
         guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
         guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
-        guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-        guest_contracts::env::MOCK_CODEX_PATH_ENV,
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-        process_control_ipc::BOOTSTRAP_ENV,
+        guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+        guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+        guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-        "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
-        "VM0_TEST_CLAUDE_CONFIG_DIR",
-        "VM0_TEST_CODEX_HOME_DIR",
+        guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+        "OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
+        "OKOU_TEST_CLAUDE_CONFIG_DIR",
+        "OKOU_TEST_CODEX_HOME_DIR",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
         unsafe {
@@ -1063,7 +1127,7 @@ pub unsafe fn set_run_payload_file_env_for_test(
 ) -> Result<(), String> {
     let path = write_run_payload_file_for_test(runtime_dir, payload)?;
     unsafe {
-        std::env::set_var(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, path);
+        std::env::set_var(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV, path);
     }
     Ok(())
 }
@@ -1083,7 +1147,7 @@ pub unsafe fn set_user_env_file_env_for_test(
         serde_json::to_vec(user_env).map_err(|error| format!("serialize user env: {error}"))?;
     std::fs::write(&path, bytes).map_err(|error| format!("write user env: {error}"))?;
     unsafe {
-        std::env::set_var(guest_contracts::env::USER_ENV_FILE_ENV, path);
+        std::env::set_var(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV, path);
     }
     Ok(())
 }
@@ -1104,7 +1168,10 @@ pub unsafe fn setup_codex_app_server_env(
     unsafe {
         clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
-        std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+            mock_path,
+        );
         std::env::set_var("USE_MOCK_CODEX", "true");
         if let Some(scenario) = config.scenario {
             std::env::set_var("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
@@ -1112,12 +1179,21 @@ pub unsafe fn setup_codex_app_server_env(
             std::env::remove_var("MOCK_CODEX_APP_SERVER_SCENARIO");
         }
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, config.run_id);
-        std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
-        std::env::set_var("VM0_API_TOKEN", "");
-        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
-        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
         std::env::set_var("HOME", home);
-        std::env::set_var("VM0_TEST_CODEX_HOME_DIR", home.join("codex-home"));
+        std::env::set_var("OKOU_TEST_CODEX_HOME_DIR", home.join("codex-home"));
         let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(home, config.run_id)
             .map_err(|error| format!("resolve runtime dir: {error}"))?;
         set_run_payload_file_env_for_test(
@@ -1128,9 +1204,12 @@ pub unsafe fn setup_codex_app_server_env(
             },
         )?;
         if let Some(resume_session_id) = config.resume_session_id {
-            std::env::set_var("VM0_RESUME_SESSION_ID", resume_session_id);
+            std::env::set_var(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                resume_session_id,
+            );
         } else {
-            std::env::remove_var("VM0_RESUME_SESSION_ID");
+            std::env::remove_var(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV);
         }
     }
     std::fs::create_dir_all(home).map_err(|error| format!("create home: {error}"))?;
@@ -1235,17 +1314,23 @@ pub unsafe fn setup_env(
         clear_guest_agent_bootstrap_env_for_test();
         // Route the CLI binary resolution to the cargo-built mock.
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
-        std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            mock_path,
+        );
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var(
-            "VM0_POST_RESULT_SIGTERM_GRACE_SECS",
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             sigterm_grace_secs.to_string(),
         );
         std::env::set_var(
-            "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             sigkill_grace_secs.to_string(),
         );
-        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "60");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            "60",
+        );
         // Derive run_id from the test binary's filename (which cargo
         // hashes per target) so concurrently running integration-test
         // binaries don't collide on the run-scoped files that paths.rs
@@ -1267,16 +1352,25 @@ pub unsafe fn setup_env(
             },
         )?;
         // Empty API token → has_api() false → no network calls.
-        std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
-        std::env::set_var("VM0_API_TOKEN", "");
-        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
-        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
         // Redirect HOME so the mock's session-history write
         // (`$CLAUDE_CONFIG_DIR/projects/.../<session>.jsonl`) stays inside
         // the tempdir and gets cleaned up with it, instead of
         // accumulating in the dev's real ~/.claude on every run.
         std::env::set_var("HOME", workdir);
-        std::env::set_var("VM0_TEST_CLAUDE_CONFIG_DIR", workdir.join(".claude"));
+        std::env::set_var("OKOU_TEST_CLAUDE_CONFIG_DIR", workdir.join(".claude"));
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
     ensure_canonical_workspace_for_test()?;

@@ -82,7 +82,6 @@ describe("dev bench seed profile rows", () => {
       const rows = buildProfileRows({
         userId: "00000000-0000-0000-0000-000000000001",
         orgId: "00000000-0000-0000-0000-000000000002",
-        versionId: "dev-bench-version",
         threadId: "00000000-0000-0000-0000-000000000003",
         sessionId: "00000000-0000-0000-0000-000000000004",
         profile,

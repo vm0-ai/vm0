@@ -61,6 +61,8 @@ fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody<'a> {
     runner_identity: &'a RunnerProcessIdentity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_hostname: Option<&'a str>,
     telemetry: ClaimRequestTelemetry,
 }
 
@@ -241,6 +243,7 @@ enum DiscoveryWakeup {
 pub struct ApiProvider {
     api: ApiClient,
     runner_identity: RunnerProcessIdentity,
+    runner_hostname: Option<String>,
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
@@ -268,6 +271,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 
 pub struct ApiProviderConfig {
     pub(crate) runner_identity: RunnerProcessIdentity,
+    pub(crate) runner_hostname: Option<String>,
     pub group: String,
     pub supported_profiles: Vec<String>,
 }
@@ -284,6 +288,7 @@ impl ApiProvider {
     ) -> Arc<Self> {
         let ApiProviderConfig {
             runner_identity,
+            runner_hostname,
             group,
             supported_profiles,
         } = config;
@@ -304,6 +309,7 @@ impl ApiProvider {
         Arc::new(Self {
             api,
             runner_identity,
+            runner_hostname,
             group,
             supported_profiles,
             poll_wakeups,
@@ -640,7 +646,14 @@ impl JobProvider for ApiProvider {
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
         let claim_request_started_at = Instant::now();
-        let claim_result = self.api.claim(&candidate, &self.runner_identity).await;
+        let claim_result = self
+            .api
+            .claim(
+                &candidate,
+                &self.runner_identity,
+                self.runner_hostname.as_deref(),
+            )
+            .await;
         let claim_request_elapsed = claim_request_started_at.elapsed();
         match claim_result {
             Ok(Some(SuccessfulClaimResponse {
@@ -904,7 +917,6 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
             failure_kind = api_error.failure_kind.as_str(),
             error_summary = %api_error.summary,
             runner_id = %state.runner_id,
-            runner_name = %state.runner_name,
             runner_group = %state.group,
             mode = %state.mode,
             running = state.running_count,
@@ -918,7 +930,6 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
     warn!(
         error = %error,
         runner_id = %state.runner_id,
-        runner_name = %state.runner_name,
         runner_group = %state.group,
         mode = %state.mode,
         running = state.running_count,
@@ -1054,9 +1065,10 @@ impl ApiClient {
         &self,
         candidate: &JobCandidate,
         runner_identity: &RunnerProcessIdentity,
+        runner_hostname: Option<&str>,
     ) -> Result<Option<SuccessfulClaimResponse>, ClaimApiError> {
         let run_id = candidate.run_id();
-        let body = claim_request_body(candidate, runner_identity);
+        let body = claim_request_body(candidate, runner_identity, runner_hostname);
         let run_id = run_id.to_string();
         let resp = send_api(
             self.http
@@ -1103,7 +1115,7 @@ impl ApiClient {
         let runner_identity =
             RunnerProcessIdentity::new("550e8400-e29b-41d4-a716-446655440000".parse().unwrap(), 7)
                 .unwrap();
-        self.claim(candidate, &runner_identity).await
+        self.claim(candidate, &runner_identity, None).await
     }
     /// Report job completion. Uses the per-job **sandbox token** for auth.
     async fn complete(&self, sandbox_token: &str, request: &CompleteRequest) -> RunnerResult<()> {
@@ -1259,6 +1271,7 @@ impl ApiClient {
 fn claim_request_body<'a>(
     candidate: &JobCandidate,
     runner_identity: &'a RunnerProcessIdentity,
+    runner_hostname: Option<&'a str>,
 ) -> ClaimRequestBody<'a> {
     let runner_preference_telemetry = candidate.runner_preference_claim_telemetry();
     let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
@@ -1288,6 +1301,7 @@ fn claim_request_body<'a>(
 
     ClaimRequestBody {
         runner_identity,
+        runner_hostname,
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -1606,7 +1620,7 @@ mod tests {
 
     fn claim_request_body_for_test(candidate: &JobCandidate) -> serde_json::Value {
         let runner_identity = test_runner_identity();
-        serde_json::to_value(claim_request_body(candidate, &runner_identity)).unwrap()
+        serde_json::to_value(claim_request_body(candidate, &runner_identity, None)).unwrap()
     }
 
     #[test]
@@ -1928,6 +1942,7 @@ mod tests {
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
             runner_identity: test_runner_identity(),
+            runner_hostname: None,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
@@ -1976,7 +1991,6 @@ mod tests {
     fn heartbeat_state_for_test() -> HeartbeatState {
         HeartbeatState {
             runner_id: "runner-heartbeat-test".to_string(),
-            runner_name: "runner test".to_string(),
             group: "vm0/test".to_string(),
             snapshot_generation: 7,
             snapshot_sequence: 42,
@@ -2070,7 +2084,7 @@ mod tests {
 
         assert_eq!(event.level, Level::WARN);
         assert_eq!(event_field(event, "runner_id"), "runner-heartbeat-test");
-        assert_eq!(event_field(event, "runner_name"), "runner test");
+        assert!(!event.fields.contains_key("runner_name"));
         assert_eq!(event_field(event, "runner_group"), "vm0/test");
         assert_eq!(event_field(event, "mode"), "running");
         assert_eq!(event_field(event, "running"), "1");
@@ -2191,6 +2205,7 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
+        assert!(body.get("runnerHostname").is_none());
         assert!(body["telemetry"].get("runnerPreference").is_none());
         assert!(
             body["telemetry"]
@@ -2203,6 +2218,15 @@ mod tests {
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
         assert!(body.get("capabilities").is_none());
+
+        let runner_identity = test_runner_identity();
+        let attributed = serde_json::to_value(claim_request_body(
+            &candidate,
+            &runner_identity,
+            Some("prod-1.aws.vm3.ai"),
+        ))
+        .unwrap();
+        assert_eq!(attributed["runnerHostname"], "prod-1.aws.vm3.ai");
     }
 
     #[test]
@@ -3221,15 +3245,26 @@ mod tests {
         let first = provider.discover().await.unwrap();
         assert!(provider.claim(first).await.is_none());
         let overflow = provider.try_discover_ready().await.unwrap();
+        let claim_started_at = tokio::time::Instant::now();
         let (claim, events) = capture_api_provider_events(provider.claim(overflow)).await;
+        let claim_finished_at = tokio::time::Instant::now();
         assert!(claim.is_none());
         let event = captured_event(&events, "claim failed, candidate cooldown capacity reached");
         assert_eq!(event_field(event, "retry_scope"), "provider");
         assert_eq!(event_field(event, "retry_after_ms"), "5000");
         assert_eq!(event_field(event, "active_cooldowns"), "1");
+        let deferred_poll_at = wakeups
+            .snapshot()
+            .await
+            .deferred_poll_at
+            .expect("saturation should defer HTTP polling");
         assert!(
-            wakeups.snapshot().await.deferred_poll_at.is_some(),
-            "saturation should defer HTTP polling"
+            deferred_poll_at >= claim_started_at + POLL_FAST,
+            "deferred polling should use at least the fast fallback from claim start"
+        );
+        assert!(
+            deferred_poll_at <= claim_finished_at + POLL_FAST,
+            "deferred polling should use at most the fast fallback from claim completion"
         );
 
         push_direct_candidate_for_test(
@@ -3715,7 +3750,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_claim_decode_path_uses_current_codex_and_pi_schema_fields() {
+    async fn api_client_claim_decode_path_uses_current_codex_schema_fields() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
         let codex_error = claim_decode_error(
@@ -3743,34 +3778,6 @@ mod tests {
             "unexpected Codex decode error: {codex_error}"
         );
         assert!(!codex_error.contains("claim-sandbox-token"));
-
-        let pi_error = claim_decode_error(
-            &server,
-            run_id,
-            serde_json::json!({
-                "runId": run_id,
-                "prompt": "hello",
-                "sandboxToken": "claim-sandbox-token",
-                "cliAgentType": "pi",
-                "connectorRuntimeTargets": [],
-                "piLaunchConfig": {
-                    "schemaVersion": 2
-                },
-                "piSessionId": "00000000-0000-0000-0000-000000000001",
-                "piModelConfig": {
-                    "provider": "openai",
-                    "baseUrl": "https://api.example.com",
-                    "model": "gpt-5",
-                    "apiKeyEnv": 123
-                }
-            }),
-        )
-        .await;
-        assert!(
-            pi_error.contains("failed at piModelConfig.apiKeyEnv"),
-            "unexpected Pi decode error: {pi_error}"
-        );
-        assert!(!pi_error.contains("claim-sandbox-token"));
     }
 
     #[tokio::test]
@@ -4084,10 +4091,18 @@ mod tests {
             "test-region"
         );
         assert_eq!(context.storage_manifest.as_ref().unwrap().storages.len(), 1);
+        assert!(
+            !context.storage_manifest.as_ref().unwrap().storages[0].baseline_candidate,
+            "the previous claim fixture must default an absent marker to false"
+        );
         assert_eq!(context.cli_agent_session_id(), Some("fixture-session-id"));
         assert_eq!(
             context.environment.as_ref().unwrap()["FIXTURE_MODEL"],
             "fixture-model"
+        );
+        assert_eq!(
+            context.platform_environment.as_ref().unwrap()["OKOU_AGENT_ID"],
+            "fixture-agent-id"
         );
         assert_eq!(
             context.secret_values.as_deref(),
@@ -4131,7 +4146,8 @@ mod tests {
                     "storageId": "fixture-workspace-id",
                     "versionId": "fixture-storage-version",
                     "mountPath": "/home/user/workspace",
-                    "archiveUrl": "https://storage.fixture.invalid/workspace.tar.gz"
+                    "archiveUrl": "https://storage.fixture.invalid/workspace.tar.gz",
+                    "baselineCandidate": true
                 },
                 {
                     "name": "fixture-artifacts",
@@ -4168,6 +4184,7 @@ mod tests {
 
         assert_eq!(manifest.storages.len(), 1);
         assert_eq!(manifest.storages[0].name, "fixture-workspace");
+        assert!(manifest.storages[0].baseline_candidate);
         assert_eq!(
             manifest.storages[0].vas_version_id,
             "fixture-storage-version"
@@ -4195,7 +4212,8 @@ mod tests {
                             "runnerIdentity": {
                                 "runnerId": TEST_RUNNER_ID,
                                 "heartbeatGeneration": TEST_HEARTBEAT_GENERATION,
-                            }
+                            },
+                            "runnerHostname": "prod-1.aws.vm3.ai",
                         })
                         .to_string(),
                     );
@@ -4208,11 +4226,14 @@ mod tests {
                 }));
             })
             .await;
-        let provider = api_provider_for_test(
+        let mut provider = api_provider_for_test(
             server.base_url(),
             CancellationToken::new(),
             Arc::new(PollWakeups::new(false)),
         );
+        Arc::get_mut(&mut provider)
+            .expect("fresh test provider should not be shared")
+            .runner_hostname = Some("prod-1.aws.vm3.ai".to_string());
 
         let claimed = provider
             .claim(JobCandidate::new(

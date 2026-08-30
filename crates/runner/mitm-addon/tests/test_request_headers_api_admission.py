@@ -1,8 +1,9 @@
 """Platform API requestheaders upstream-admission tests."""
 
+import urllib.parse
 from pathlib import Path
 
-from mitmproxy import connection
+from mitmproxy import connection, http
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
@@ -11,7 +12,7 @@ import request_classification
 import upstream_admission
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
-from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
+from tests.request_handler_helpers import _sandbox_without_firewalls, _write_registry
 from tests.requestheaders_helpers import (
     _assert_no_request_stream,
     track_trusted_authority_validations,
@@ -23,13 +24,110 @@ from tests.upstream_connection_helpers import (
 
 
 def _write_api_registry(tmp_path: Path, *, capture_network_bodies: bool) -> Path:
-    vm_fields: dict[str, object] | None = (
+    sandbox_fields: dict[str, object] | None = (
         {"captureNetworkBodies": True} if capture_network_bodies else None
     )
     return _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(tmp_path, vm_fields=vm_fields),
+        sandbox_info=_sandbox_without_firewalls(tmp_path, sandbox_fields=sandbox_fields),
     )
+
+
+async def test_api_destination_derivation_reuses_and_refreshes_effective_option(
+    tmp_path, real_flow, mitm_ctx, monkeypatch
+):
+    reg_path = _write_api_registry(tmp_path, capture_network_bodies=False)
+    parsed_api_urls: list[str] = []
+    normalized_api_hosts: list[str] = []
+    parse_api_url = urllib.parse.urlparse
+    normalize_api_hostname = upstream_admission.normalize_hostname
+
+    def track_api_url_parse(
+        api_url: str,
+        scheme: str = "",
+        allow_fragments: bool = True,
+    ) -> urllib.parse.ParseResult:
+        parsed_api_urls.append(api_url)
+        return parse_api_url(
+            api_url,
+            scheme=scheme,
+            allow_fragments=allow_fragments,
+        )
+
+    def track_api_hostname_normalization(hostname: str) -> str:
+        normalized_api_hosts.append(hostname)
+        return normalize_api_hostname(hostname)
+
+    monkeypatch.setattr(upstream_admission.urllib.parse, "urlparse", track_api_url_parse)
+    monkeypatch.setattr(
+        upstream_admission,
+        "normalize_hostname",
+        track_api_hostname_normalization,
+    )
+
+    def api_flow(*, host: str, scheme: str = "https", port: int = 443) -> http.HTTPFlow:
+        return real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host=host,
+            scheme=scheme,
+            port=port,
+            method="POST",
+            path="/api/runs/heartbeat",
+        )
+
+    async def drive_request(flow: http.HTTPFlow) -> None:
+        assert mitm_addon.requestheaders(flow) is None
+        await mitm_addon.request(flow)
+
+    initial_api_url = "HTTPS://API.VM0.AI"
+    with mitm_ctx(registry_path=str(reg_path), api_url=initial_api_url):
+        initial_flows = [
+            api_flow(host="api.vm0.ai"),
+            api_flow(host="jobs.api.vm0.ai"),
+        ]
+        for flow in initial_flows:
+            await drive_request(flow)
+            assert flow.response is None
+
+        assert parsed_api_urls == [initial_api_url]
+        assert normalized_api_hosts == ["api.vm0.ai"]
+
+        updated_api_url = "http://API.PREVIEW.VM0.AI:8080"
+        mitm_addon.ctx.options.vm0_api_url = updated_api_url
+        mitm_addon.configure({"vm0_api_url"})
+        updated_flow = api_flow(
+            host="jobs.api.preview.vm0.ai",
+            scheme="http",
+            port=8080,
+        )
+        await drive_request(updated_flow)
+
+        assert updated_flow.response is None
+        updated_binding = upstream_destination_binding.binding_snapshot_for_tests()[
+            updated_flow.server_conn.id
+        ]
+        assert updated_binding.host == "jobs.api.preview.vm0.ai"
+        assert updated_binding.port == 8080
+        assert updated_binding.kinds == frozenset(("api_allow",))
+        assert parsed_api_urls == [initial_api_url, updated_api_url]
+        assert normalized_api_hosts == ["api.vm0.ai", "api.preview.vm0.ai"]
+
+        invalid_api_url = "ftp://api.invalid.vm0.ai"
+        mitm_addon.ctx.options.vm0_api_url = invalid_api_url
+        mitm_addon.configure({"vm0_api_url"})
+        invalid_flows = [
+            api_flow(host="api.invalid.vm0.ai"),
+            api_flow(host="jobs.api.invalid.vm0.ai"),
+        ]
+        for flow in invalid_flows:
+            await drive_request(flow)
+            assert flow.response is None
+
+    bindings = upstream_destination_binding.binding_snapshot_for_tests()
+    assert all(flow.server_conn.id not in bindings for flow in invalid_flows)
+    assert parsed_api_urls == [initial_api_url, updated_api_url, invalid_api_url]
+    assert normalized_api_hosts == ["api.vm0.ai", "api.preview.vm0.ai"]
 
 
 async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
@@ -508,7 +606,7 @@ async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
 
         assert validated_flows == [flow]
         _assert_no_request_stream(flow)
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
         assert flow.server_conn.address == ("api.vm0.ai", 443)
 
@@ -541,7 +639,7 @@ async def test_api_allow_unknown_body_length_retargets_unconnected_upstream(
         assert mitm_addon.requestheaders(flow) is None
 
         _assert_no_request_stream(flow)
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
         assert flow.server_conn.address == ("api.vm0.ai", 443)
 
@@ -575,7 +673,7 @@ def test_api_allow_bounded_prebind_ignores_unregistered_client(
         assert mitm_addon.requestheaders(flow) is None
 
     _assert_no_request_stream(flow)
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
     assert flow.server_conn.address == ("203.0.113.10", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}

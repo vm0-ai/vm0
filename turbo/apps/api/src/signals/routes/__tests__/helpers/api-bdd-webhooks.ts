@@ -10,7 +10,6 @@ import {
   webhookCompleteContract,
   webhookEventsContract,
   webhookHeartbeatContract,
-  webhookModelUsageObservationContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookStripeContract,
@@ -74,9 +73,6 @@ type AgentTelemetryBody = z.infer<
 >;
 type AgentUsageEventBody = z.infer<
   (typeof webhookUsageEventContract.send)["body"]
->;
-type AgentModelUsageObservationV2Body = z.infer<
-  (typeof webhookModelUsageObservationContract.send)["body"]
 >;
 type AgentStoragePrepareBody = z.infer<
   (typeof webhookStoragesPrepareContract.prepare)["body"]
@@ -257,12 +253,12 @@ export function createWebhookCallbackApi(context: TestContext) {
      */
     configureStripeBillingEnv(): void {
       mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-      mockEnv("ZERO_PRICE_PRO", "price_bdd_pro");
-      mockEnv("ZERO_PRICE_TEAM", "price_bdd_team");
+      mockEnv("OKOU_PRICE_PRO", "price_bdd_pro");
+      mockEnv("OKOU_PRICE_TEAM", "price_bdd_team");
       mockEnv("ATOM_GRANT_PRICE", "price_bdd_atom_grant");
-      mockEnv("ZERO_PRICE_CONCURRENCY", "price_bdd_concurrency");
+      mockEnv("OKOU_PRICE_CONCURRENCY", "price_bdd_concurrency");
       mockEnv(
-        "ZERO_ONE_TIME_CAMPAIGN",
+        "OKOU_ONE_TIME_CAMPAIGN",
         JSON.stringify({
           ZERO100: {
             priceId: "price_bdd_campaign",
@@ -787,38 +783,6 @@ export function createWebhookCallbackApi(context: TestContext) {
         ).send({
           headers,
           body: body as AgentUsageEventBody,
-        }),
-        statuses,
-      );
-    },
-
-    async requestAgentModelUsageObservationV2(
-      body: AgentModelUsageObservationV2Body,
-      headers: SandboxWebhookHeaders,
-      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
-    ) {
-      return await accept(
-        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
-          webhookModelUsageObservationContract,
-        ).send({
-          headers,
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestAgentModelUsageObservationV2Unchecked(
-      body: unknown,
-      headers: SandboxWebhookHeaders,
-      statuses: readonly (400 | 401 | 404 | 500)[],
-    ) {
-      return await accept(
-        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
-          webhookModelUsageObservationContract,
-        ).send({
-          headers,
-          body: body as AgentModelUsageObservationV2Body,
         }),
         statuses,
       );

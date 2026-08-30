@@ -26,7 +26,7 @@ function invalidVersion(): ChatEventSchemaVersionResolution {
   };
 }
 
-/** Resolve the explicit wire version. */
+/** Require the one current Chat Event wire version. */
 export function resolveChatEventSchemaVersion(
   headerValue: string | undefined,
 ): ChatEventSchemaVersionResolution {

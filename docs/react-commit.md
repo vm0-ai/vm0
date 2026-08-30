@@ -5,6 +5,11 @@ subscription that caused it, and reduce unnecessary work in the VM0 platform.
 The examples use `ccstate-react`, but the measurement method applies to any
 React external store.
 
+The dated trace sections below are records of what was measured on a specific
+day. Component, hook, and signal names inside them are the names that existed
+at the time, and some have since been renamed or removed by the very fixes the
+section describes. Read them as evidence, not as a current symbol index.
+
 ## What to Measure
 
 React performance investigations need three separate measurements:
@@ -172,7 +177,7 @@ commit. The following approaches all overcount in current React builds:
 
 In one chat sample, the `WeakMap` technique reported 76 sidebar executions.
 The React Performance track for the same trace showed no execution spans for
-`SidebarLayout`, `ZeroSidebar`, or `ChatThreadsContent`; the only visible
+`SidebarLayout`, `Sidebar`, or `ChatThreadsContent`; the only visible
 sidebar update initiator was one `ChatThreadItem`. Use the root hook for exact
 commit boundaries and React Performance tracks or a deliberately placed React
 `Profiler` for component attribution.
@@ -508,7 +513,7 @@ The component track gives a more accurate region picture than Fiber traversal:
 
 | Region            | Observed component work                                                                                               |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Visible sidebar   | One direct `ChatThreadItem` update; no spans for `SidebarLayout`, `ZeroSidebar`, or `ChatThreadsContent`              |
+| Visible sidebar   | One direct `ChatThreadItem` update; no spans for `SidebarLayout`, `Sidebar`, or `ChatThreadsContent`                  |
 | Hidden sidebar UI | Five direct `AgentListDialog` updates while the dialog was closed                                                     |
 | Message list      | Four direct `ChatThreadContent` updates; `ChatThreadMessagesMain` and `ChatThreadMessageGroups` each executed 8 times |
 | Composer          | Four direct `ChatThreadComposer` updates; its main leaf slots executed 11 times                                       |
@@ -550,10 +555,15 @@ The composer spans showed a different hot path:
   more work than Tiptap in the same sample.
 
 `thread.selectedModel$` already resolves to a primitive model identifier, but
-`useChatComposerModel` immediately wraps it in new `modelSelection` and
-`modelPicker` objects. `useZeroChatComposer` also recreates its event handlers
-and passes them through every composer leaf. This makes otherwise unrelated
-run and message transitions re-execute the closed picker and editor leaves.
+the composer model hook of the time immediately wrapped it in new
+`modelSelection` and `modelPicker` objects. That responsibility now sits on the
+composer signals themselves: `ComposerModelPickerSlotBase` reads
+`signals.model.modelSelection$` directly. The composer entry point — a single
+hook at the time, now the `ChatComposer` component in
+`turbo/apps/platform/src/views/okou-page/chat-composer.tsx` — also recreates its
+event handlers and passes them through every composer leaf. This makes otherwise
+unrelated run and message transitions re-execute the closed picker and editor
+leaves.
 
 Finally, most of the pre-change commit count came from an intentional animation
 policy, not server event volume. `setThinkingIndicatorTextRef$` wrote a new
@@ -850,9 +860,14 @@ executions remain material.
 
 The same trace showed that the editor itself is not the composer bottleneck.
 `TiptapWorkflowComposer` executed five times and consumed 2.8 ms of inclusive
-component span time. The larger issue is that `ChatThreadComposer` calls
-`useZeroChatComposer` in the same Fiber, so send, queue, model, connector,
-attachment, dialog, and editor subscriptions all share one render boundary.
+component span time. The larger issue is that `ChatThreadComposer` pulled the
+whole composer into the same Fiber, so send, queue, model, connector,
+attachment, dialog, and editor subscriptions all shared one render boundary.
+That fan-in has since been split: `ChatThreadComposer` renders
+`ChatComposer`, which renders `ComposerSurface`, and each concern now
+subscribes inside its own slot component — `ComposerInputSlot`,
+`ComposerModelPickerSlot`, `ComposerConnectorsSlot`, `ComposerAttachments`,
+and `ComposerSendControl`.
 
 Five full composer batches executed 662 components inside the `Card` subtree:
 

@@ -42,7 +42,7 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
                     i += 1;
                 }
             }
-            "--resume" | "--append-system-prompt" | "--effort" => {
+            "--resume" | "--append-system-prompt" | "--append-system-prompt-file" | "--effort" => {
                 // Parsed for CLI compat but not used by mock-claude
                 skip_flag_value(args, &mut i);
             }

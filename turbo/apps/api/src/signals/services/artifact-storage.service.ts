@@ -17,6 +17,7 @@ import {
   listS3Objects,
   putS3Object,
   s3ObjectHead,
+  type S3ObjectHead,
   tryListMultipartS3Parts,
 } from "../external/s3";
 import { safeUriComponentDecode } from "../utils";
@@ -237,6 +238,57 @@ export const storeGeneratedArtifactObject$ = command(
   },
 );
 
+function resolvedV2ArtifactObjectFromHead(args: {
+  readonly userId: string;
+  readonly id: string;
+  readonly key: string;
+  readonly head: S3ObjectHead;
+  readonly listed?: {
+    readonly size: number;
+    readonly lastModified: Date;
+  };
+}): ResolvedArtifactObject | null {
+  if (
+    args.head.kind === "missing" ||
+    args.head.metadata[ARTIFACT_ID_METADATA_KEY] !== args.id ||
+    args.head.metadata[ARTIFACT_USER_ID_METADATA_KEY] !==
+      encodeURIComponent(args.userId)
+  ) {
+    return null;
+  }
+  const size = args.head.contentLength ?? args.listed?.size;
+  const lastModified = args.head.lastModified ?? args.listed?.lastModified;
+  if (size === undefined || lastModified === undefined) {
+    return null;
+  }
+  const filename =
+    filenameFromMetadata(args.head.metadata) ?? filenameFromLegacyKey(args.key);
+  const publicBrand = publicBrandFromMetadata(args.head.metadata);
+  return {
+    key: args.key,
+    url: buildFileUrlFromKey(args.key, publicBrand),
+    publicBrand,
+    filename,
+    contentType: args.head.contentType ?? inferMimetype(filename),
+    size,
+    lastModified,
+  };
+}
+
+function resolveExactV2ArtifactObject(
+  bucket: string,
+  userId: string,
+  id: string,
+  filenameHint: string,
+  variant?: string,
+): Computed<Promise<ResolvedArtifactObject | null>> {
+  return computed(async (get): Promise<ResolvedArtifactObject | null> => {
+    const key = buildArtifactKeyV2(id, filenameHint, variant);
+    const head = await get(s3ObjectHead(bucket, key));
+    return resolvedV2ArtifactObjectFromHead({ userId, id, key, head });
+  });
+}
+
 function resolveV2ArtifactObject(
   bucket: string,
   userId: string,
@@ -246,27 +298,16 @@ function resolveV2ArtifactObject(
     const objects = await get(listS3Objects(bucket, buildArtifactPrefixV2(id)));
     for (const object of objects) {
       const head = await get(s3ObjectHead(bucket, object.key));
-      if (
-        head.kind === "missing" ||
-        head.metadata[ARTIFACT_ID_METADATA_KEY] !== id ||
-        head.metadata[ARTIFACT_USER_ID_METADATA_KEY] !==
-          encodeURIComponent(userId)
-      ) {
-        continue;
-      }
-      const filename =
-        filenameFromMetadata(head.metadata) ??
-        filenameFromLegacyKey(object.key);
-      const publicBrand = publicBrandFromMetadata(head.metadata);
-      return {
+      const resolved = resolvedV2ArtifactObjectFromHead({
+        userId,
+        id,
         key: object.key,
-        url: buildFileUrlFromKey(object.key, publicBrand),
-        publicBrand,
-        filename,
-        contentType: head.contentType ?? inferMimetype(filename),
-        size: head.contentLength ?? object.size,
-        lastModified: head.lastModified ?? object.lastModified,
-      };
+        head,
+        listed: object,
+      });
+      if (resolved) {
+        return resolved;
+      }
     }
     return null;
   });
@@ -304,9 +345,22 @@ function resolveV1ArtifactObject(
 export function resolvedArtifactObject(
   userId: string,
   id: string,
+  filenameHint?: string,
+  variant?: string,
 ): Computed<Promise<ResolvedArtifactObject | null>> {
   return computed(async (get): Promise<ResolvedArtifactObject | null> => {
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    if (filenameHint !== undefined) {
+      const exact = await get(
+        resolveExactV2ArtifactObject(bucket, userId, id, filenameHint, variant),
+      );
+      if (exact) {
+        return exact;
+      }
+    }
+    if (variant !== undefined) {
+      return null;
+    }
     return (
       (await get(resolveV2ArtifactObject(bucket, userId, id))) ??
       (await get(resolveV1ArtifactObject(bucket, userId, id)))
@@ -320,10 +374,19 @@ export const resolveArtifactObject$ = command(
     args: {
       readonly userId: string;
       readonly id: string;
+      readonly filenameHint?: string;
+      readonly variant?: string;
     },
     signal: AbortSignal,
   ): Promise<ResolvedArtifactObject | null> => {
-    const resolved = await get(resolvedArtifactObject(args.userId, args.id));
+    const resolved = await get(
+      resolvedArtifactObject(
+        args.userId,
+        args.id,
+        args.filenameHint,
+        args.variant,
+      ),
+    );
     signal.throwIfAborted();
     return resolved;
   },

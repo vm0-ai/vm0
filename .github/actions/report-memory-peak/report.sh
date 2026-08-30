@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cgroup_root=${VM0_CGROUP_ROOT:-/sys/fs/cgroup}
-proc_cgroup=${VM0_PROC_CGROUP:-/proc/self/cgroup}
-job_label=${VM0_MEMORY_REPORT_LABEL:-${GITHUB_JOB:-CI}}
+cgroup_root=${OKOU_CGROUP_ROOT:-/sys/fs/cgroup}
+proc_cgroup=${OKOU_PROC_CGROUP:-/proc/self/cgroup}
+job_label=${OKOU_MEMORY_REPORT_LABEL:-${GITHUB_JOB:-CI}}
 
 peak_bytes=""
 peak_source=""

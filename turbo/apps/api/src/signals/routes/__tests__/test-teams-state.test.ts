@@ -144,8 +144,8 @@ function configureTeamsDispatchMocks(): void {
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", "teams-app-id");
   mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", "teams-app-password");
   mockEnv("APP_URL", "http://localhost:3002");
-  mockEnv("VM0_WEB_URL", "http://localhost:3000");
-  mockEnv("VM0_API_BACKEND_URL", "http://localhost:3001");
+  mockEnv("OKOU_WEB_URL", "http://localhost:3000");
+  mockEnv("OKOU_API_BACKEND_URL", "http://localhost:3001");
   mockOptionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL", TEAMS_TOKEN_URL);
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   context.mocks.s3.send.mockResolvedValue({});
@@ -291,6 +291,7 @@ describe("GET /api/test/teams-state", () => {
               conversationId: "19:e2e-dm@thread.v2",
               activityId: "activity-e2e",
               connectionId: fixture.connectionId,
+              publicBrand: "vm0",
             }),
           }),
         }),
@@ -306,13 +307,6 @@ describe("GET /api/test/teams-state", () => {
       id: fixture.defaultAgentId,
       name: "e2e-teams-agent",
       orgId: fixture.orgId,
-    });
-    expect(body.default_compose).toMatchObject({
-      id: fixture.defaultAgentId,
-      name: "e2e-teams-agent",
-    });
-    expect(body.default_compose_version).toMatchObject({
-      content_keys: expect.arrayContaining(["version", "agents"]),
     });
   });
 });

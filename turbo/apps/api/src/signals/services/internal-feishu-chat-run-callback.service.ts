@@ -148,7 +148,6 @@ async function loadFeishuChatDeliveryContext(
     .select({
       feishuOpenId: feishuOrgConnections.feishuOpenId,
       defaultAgentId: feishuOrgInstallations.defaultAgentId,
-      publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuChatThreadRoutes)
     .innerJoin(
@@ -207,6 +206,7 @@ async function loadFeishuAdmissionFailureContext(
     readonly orgId: string;
     readonly target: FeishuDeliveryTarget;
     readonly chatEventId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -227,7 +227,7 @@ async function loadFeishuAdmissionFailureContext(
       )
       .limit(1),
     args.db
-      .select({ publicBrand: feishuOrgInstallations.publicBrand })
+      .select({ id: feishuOrgInstallations.id })
       .from(feishuChatThreadRoutes)
       .innerJoin(
         feishuOrgConnections,
@@ -259,7 +259,7 @@ async function loadFeishuAdmissionFailureContext(
   }
   return {
     messageContent: event.content,
-    publicBrand: bindingRows[0].publicBrand,
+    publicBrand: args.publicBrand,
   };
 }
 
@@ -271,6 +271,7 @@ export async function deliverFeishuChatAdmissionFailure(
     readonly orgId: string;
     readonly target: FeishuDeliveryTarget;
     readonly chatEventId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -317,6 +318,7 @@ async function deliverClaimedFeishuChatCallback(
   if (!binding) {
     return "skipped_revoked";
   }
+  const publicBrand = payload.publicBrand;
 
   const [mentionerCount, featureContext] = await Promise.all([
     countFeishuMentioners({
@@ -335,7 +337,7 @@ async function deliverClaimedFeishuChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
-      publicBrand: binding.publicBrand,
+      publicBrand,
       defaultAgentId: binding.defaultAgentId ?? undefined,
       replyToMention:
         payload.replyInThread && mentionerCount > 1
@@ -350,7 +352,7 @@ async function deliverClaimedFeishuChatCallback(
   signal.throwIfAborted();
   const message = buildFeishuAgentResponseMessage({
     text: messageContent,
-    publicBrand: binding.publicBrand,
+    publicBrand,
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });

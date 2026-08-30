@@ -43,7 +43,10 @@ export interface ChatEventRetentionStats {
 
 type ChatEventRetentionScope =
   | { readonly kind: "global" }
-  | { readonly kind: "fixtures"; readonly chatThreadIds: readonly string[] };
+  | {
+      readonly kind: "fixtures";
+      readonly chatThreadIds: readonly string[];
+    };
 
 type ChatEventRetentionDb = Pick<Db, "execute" | "transaction">;
 
@@ -104,9 +107,15 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
       SELECT
         event.*,
         CASE
-          WHEN snapshot.id IS NULL
-            OR snapshot.last_seq_id < event.seq_id
-            OR snapshot.object_key !~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
+          WHEN NOT EXISTS (
+              SELECT 1
+              FROM ${chatEventSnapshots} snapshot
+              WHERE snapshot.chat_thread_id = event.chat_thread_id
+                AND snapshot.archive_schema_version
+                  = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
+                AND snapshot.last_seq_id >= event.seq_id
+                AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
+            )
             THEN 'snapshot'
           WHEN watermark.chat_thread_id IS NULL
             OR watermark.indexed_seq_id < event.seq_id
@@ -142,10 +151,6 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
           ELSE NULL
         END AS skip_reason
       FROM locked_events event
-      LEFT JOIN ${chatEventSnapshots} snapshot
-        ON snapshot.chat_thread_id = event.chat_thread_id
-       AND snapshot.archive_schema_version
-         = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
       LEFT JOIN ${chatEventSearchMessageWatermarks} watermark
         ON watermark.chat_thread_id = event.chat_thread_id
       LEFT JOIN ${agentRuns} run ON run.id = event.run_id
@@ -233,18 +238,21 @@ async function hasMoreRetainableRows(
       SELECT EXISTS (
         SELECT 1
         FROM ${chatEvents} event
-        INNER JOIN ${chatEventSnapshots} snapshot
-          ON snapshot.chat_thread_id = event.chat_thread_id
-         AND snapshot.archive_schema_version
-           = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-         AND snapshot.last_seq_id >= event.seq_id
-         AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
         INNER JOIN ${chatEventSearchMessageWatermarks} watermark
           ON watermark.chat_thread_id = event.chat_thread_id
          AND watermark.indexed_seq_id >= event.seq_id
         LEFT JOIN ${agentRuns} run ON run.id = event.run_id
         WHERE event.created_at < ${cutoff}::timestamp
           AND ${retentionScopePredicate(scope)}
+          AND EXISTS (
+            SELECT 1
+            FROM ${chatEventSnapshots} snapshot
+            WHERE snapshot.chat_thread_id = event.chat_thread_id
+              AND snapshot.archive_schema_version
+                = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
+              AND snapshot.last_seq_id >= event.seq_id
+              AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
+          )
           AND NOT (
             event.run_id IS NULL
             AND event.event_type IN (

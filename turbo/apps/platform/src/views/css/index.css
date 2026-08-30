@@ -3,7 +3,6 @@
 
 @import "tailwindcss";
 @import "@okouai/ui/styles/globals.css";
-@import "katex/dist/katex.min.css";
 
 @plugin "@tailwindcss/typography";
 @custom-variant pointer-coarse (@media (pointer: coarse));
@@ -83,6 +82,18 @@ body,
 
 body {
   margin: 0;
+}
+
+@keyframes auth-v2-otp-caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 #root {
@@ -448,6 +459,164 @@ body {
   }
 }
 
+/* Palette colors are kept as the exact source values. Each named theme pairs
+   one anchor with one companion; the same pair drives the picker swatch and
+   the low-concentration workspace ambience below. */
+[data-color-theme="golden-hour"] {
+  --zero-color-theme-anchor: #f7a102;
+  --zero-color-theme-companion: #f4e33c;
+  --zero-color-theme-hue: 38.9;
+  --zero-color-theme-ring: 39.1 73.6% 52.5%;
+}
+
+[data-color-theme="citrus-spark"] {
+  --zero-color-theme-anchor: #f4e33c;
+  --zero-color-theme-companion: #b5d329;
+  --zero-color-theme-hue: 54.5;
+  --zero-color-theme-ring: 65.4 58.7% 40.8%;
+}
+
+[data-color-theme="berry-blush"] {
+  --zero-color-theme-anchor: #e24e4a;
+  --zero-color-theme-companion: #e4abc8;
+  --zero-color-theme-hue: 1.6;
+  --zero-color-theme-ring: 351 39.7% 57.1%;
+}
+
+[data-color-theme="cotton-sky"] {
+  --zero-color-theme-anchor: #e4abc8;
+  --zero-color-theme-companion: #b5d4e5;
+  --zero-color-theme-hue: 329.5;
+  --zero-color-theme-ring: 319.6 20.7% 56.5%;
+}
+
+[data-color-theme="blue-horizon"] {
+  --zero-color-theme-anchor: #3758a1;
+  --zero-color-theme-companion: #b5d4e5;
+  --zero-color-theme-hue: 221.3;
+  --zero-color-theme-ring: 221.3 35.4% 55.7%;
+}
+
+[data-color-theme="daydream"] {
+  --zero-color-theme-anchor: #b5d4e5;
+  --zero-color-theme-companion: #e4abc8;
+  --zero-color-theme-hue: 201.3;
+  --zero-color-theme-ring: 205.1 19.8% 57.5%;
+}
+
+[data-color-theme="deep-lagoon"] {
+  --zero-color-theme-anchor: #017562;
+  --zero-color-theme-companion: #3758a1;
+  --zero-color-theme-hue: 170.2;
+  --zero-color-theme-ring: 171.8 47.1% 33.3%;
+}
+
+[data-color-theme="limelight"] {
+  --zero-color-theme-anchor: #b5d329;
+  --zero-color-theme-companion: #f4e33c;
+  --zero-color-theme-hue: 70.6;
+  --zero-color-theme-ring: 74.2 53.8% 41.6%;
+}
+
+/* Full-system themes keep the existing lightness hierarchy and rotate only a
+   low-concentration hue through surfaces, borders, inputs, and interaction
+   states. Content foreground, destructive, success, and brand-primary colors
+   stay unchanged for contrast and hierarchy. Because these variables live on
+   the document root, portaled dialogs and popovers inherit the same system. */
+:root[data-gradient-color-themes][data-color-theme] {
+  --gray-0: var(--zero-color-theme-hue) 24% 98%;
+  --gray-50: var(--zero-color-theme-hue) 22% 96.5%;
+  --gray-100: var(--zero-color-theme-hue) 20% 93.5%;
+  --gray-200: var(--zero-color-theme-hue) 18% 91.5%;
+  --gray-300: var(--zero-color-theme-hue) 17% 88.5%;
+  --gray-400: var(--zero-color-theme-hue) 16% 84.5%;
+  --gray-500: var(--zero-color-theme-hue) 16% 76%;
+
+  --divider: var(--gray-200);
+  --background: var(--zero-color-theme-hue) 24% 98.8%;
+  --card: var(--zero-color-theme-hue) 30% 99.4%;
+  --popover: var(--card);
+  --secondary: var(--zero-color-theme-hue) 22% 96%;
+  --muted: var(--gray-100);
+  --accent: var(--zero-color-theme-hue) 24% 94.5%;
+  --border: var(--gray-400);
+  --input: var(--card);
+  --ring: var(--zero-color-theme-ring);
+  --sidebar: var(--zero-color-theme-hue) 30% 96%;
+  --zero-nav-rail: var(--zero-color-theme-hue) 36% 93.5%;
+  --zero-nav-foreground: var(--zero-color-theme-hue) 24% 18%;
+  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 18% 38%;
+  --background-50: var(--gray-50);
+  --state-layer: var(--zero-color-theme-ring);
+  --segment-selected: var(--card);
+  --zero-color-theme-selected: color-mix(
+    in srgb,
+    #ffffff 84%,
+    color-mix(
+        in srgb,
+        var(--zero-color-theme-anchor) 82%,
+        var(--zero-color-theme-companion)
+      )
+      16%
+  );
+}
+
+:root:is(
+    .dark,
+    [data-theme="dark"]
+  )[data-gradient-color-themes][data-color-theme] {
+  --gray-0: var(--zero-color-theme-hue) 5% 7%;
+  --gray-50: var(--zero-color-theme-hue) 6% 10%;
+  --gray-100: var(--zero-color-theme-hue) 8% 15%;
+  --gray-200: var(--zero-color-theme-hue) 9% 19%;
+  --gray-300: var(--zero-color-theme-hue) 10% 23%;
+  --gray-400: var(--zero-color-theme-hue) 11% 27%;
+  --gray-500: var(--zero-color-theme-hue) 12% 33%;
+
+  --divider: var(--gray-200);
+  --background: var(--gray-50);
+  --card: var(--zero-color-theme-hue) 8% 14%;
+  --popover: var(--gray-100);
+  --secondary: var(--zero-color-theme-hue) 9% 17%;
+  --muted: var(--gray-200);
+  --accent: var(--zero-color-theme-hue) 12% 23%;
+  --border: var(--gray-300);
+  --input: var(--gray-200);
+  --ring: var(--zero-color-theme-hue) 45% 62%;
+  --sidebar: var(--zero-color-theme-hue) 14% 12%;
+  --zero-nav-rail: var(--zero-color-theme-hue) 18% 8%;
+  --zero-nav-foreground: var(--zero-color-theme-hue) 22% 90%;
+  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 16% 64%;
+  --background-50: var(--gray-50);
+  --state-layer: var(--zero-color-theme-hue) 35% 82%;
+  --segment-selected: var(--gray-400);
+  --zero-color-theme-selected: color-mix(
+    in srgb,
+    hsl(var(--card)) 86%,
+    color-mix(
+        in srgb,
+        var(--zero-color-theme-anchor) 82%,
+        var(--zero-color-theme-companion)
+      )
+      14%
+  );
+}
+
+.zero-color-theme-swatch {
+  background-color: var(--zero-color-theme-anchor);
+  background-image: linear-gradient(
+    135deg,
+    var(--zero-color-theme-anchor) 0%,
+    color-mix(
+        in srgb,
+        var(--zero-color-theme-anchor),
+        var(--zero-color-theme-companion)
+      )
+      52%,
+    var(--zero-color-theme-companion) 100%
+  );
+}
+
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
   --zero-card-radius: 1.25rem;
@@ -464,6 +633,17 @@ body {
 /* A grey veil is invisible on a dark page, so the dark theme casts the same
    shape in black instead. The border step carries the state either way. */
 :where([data-theme="dark"]) .zero-app {
+  --zero-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+}
+
+.zero-app[data-gradient-color-themes] {
+  --zero-card-shadow:
+    0 2px 12px hsl(var(--state-layer) / 0.035),
+    0 0 0 0.5px hsl(var(--state-layer) / 0.018);
+  --zero-composer-focus-veil: 0 10px 48px -8px hsl(var(--state-layer) / 0.07);
+}
+
+:where([data-theme="dark"]) .zero-app[data-gradient-color-themes] {
   --zero-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
 }
 
@@ -616,6 +796,23 @@ body {
   --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-border: hsl(var(--gray-200));
+}
+.zero-app[data-gradient-color-themes] .zero-nav {
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-active: hsl(var(--ring));
+  --color-sidebar-border: hsl(var(--border) / 0.5);
+}
+.zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy {
+  color: hsl(var(--zero-nav-foreground));
+}
+.zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy-muted {
+  color: hsl(var(--zero-nav-muted-foreground));
+}
+.zero-app[data-gradient-color-themes] .group:hover .zero-nav-copy-muted-hover {
+  color: hsl(var(--zero-nav-foreground));
+}
+.zero-app[data-gradient-color-themes] .zero-nav.zero-nav-rail {
+  background-color: hsl(var(--zero-nav-rail));
 }
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
@@ -1164,18 +1361,6 @@ body {
   border: 0;
 }
 
-/* --- Math --------------------------------------------------------------- */
-.wmde-markdown .katex {
-  color: hsl(var(--foreground));
-}
-
-.wmde-markdown .katex-display {
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 2px 0;
-}
-
 /* Code block scrollbar */
 .wmde-markdown pre > code::-webkit-scrollbar-thumb {
   background: hsl(var(--gray-400));
@@ -1190,6 +1375,12 @@ body {
    in a thread is the same height and none of them changes the height of the
    message it sits in once it appears. Below the max width the box keeps its
    ratio, so diagrams stay equally tall as the column narrows. */
+.wmde-markdown .mermaid-block > .icon-tooltip-trigger {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+}
+
 .wmde-markdown .mermaid-diagram-expand {
   position: relative;
   display: block;
@@ -1303,15 +1494,6 @@ details > summary {
   transition: color 0.15s ease;
 }
 
-details > summary > span:first-child {
-  display: inline-block;
-  transition: transform 0.15s ease;
-}
-
-details[open] > summary > span:first-child {
-  transform: rotate(90deg);
-}
-
 /* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
    Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
 /* Document card body: serif for reading */
@@ -1378,6 +1560,50 @@ details[open] > summary > span:first-child {
     transparent 48%
   );
   background-size: 100% 100%;
+}
+
+.zero-app[data-gradient-color-themes] .zero-workspace-bg::before {
+  background-color: hsl(var(--card));
+  background-image:
+    radial-gradient(
+      ellipse 58% 64% at 0% 0%,
+      color-mix(in srgb, hsl(var(--card)) 88%, var(--zero-color-theme-anchor))
+        0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 54% 60% at 100% 100%,
+      color-mix(
+          in srgb,
+          hsl(var(--card)) 92%,
+          var(--zero-color-theme-companion)
+        )
+        0%,
+      transparent 70%
+    );
+}
+
+:where([data-theme="dark"])
+  .zero-app[data-gradient-color-themes]
+  .zero-workspace-bg::before {
+  background-color: hsl(var(--card));
+  background-image:
+    radial-gradient(
+      ellipse 58% 64% at 0% 0%,
+      color-mix(in srgb, hsl(var(--card)) 92%, var(--zero-color-theme-anchor))
+        0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 54% 60% at 100% 100%,
+      color-mix(
+          in srgb,
+          hsl(var(--card)) 94%,
+          var(--zero-color-theme-companion)
+        )
+        0%,
+      transparent 70%
+    );
 }
 
 /* --- Tiptap Instructions Editor ---------------------------------------- */

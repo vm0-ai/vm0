@@ -15,7 +15,8 @@ model-provider usage billing:
   ``inspect_openai_responses_event_json``, and
   ``inspect_openai_responses_server_event``, consumed by ``mitm_addon.py`` and
   ``model_websocket_usage.py`` for client request intent, event-type timing,
-  shared server lifecycle correlation, and usage received over upgrades.
+  shared server failure evidence, lifecycle correlation, and usage received
+  over upgrades.
   ``extract_openai_responses_usage_from_event`` retains the usage-only facade.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` for terminal SSE events and
@@ -40,12 +41,21 @@ from .json_selective import (
     JsonSelectiveExtractor,
     ScalarField,
 )
+from .json_selective import Path as JsonPath
+from .model_http import (
+    ModelHttpFailureEvidence,
+    ModelHttpFailureObserver,
+    combined_scalar_fields,
+    combined_value_presence_paths,
+    failure_evidence_from_result,
+)
 from .model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
     MODEL_USAGE_CATEGORY_CACHE_READ,
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
+    update_model_usage_quantity,
 )
 from .openai_tokens import is_usage_quantity as _is_usage_quantity
 from .openai_tokens import partition_input_tokens as _partition_input_tokens
@@ -112,12 +122,23 @@ class OpenAIResponsesServerLifecycle:
 
 
 @dataclass(frozen=True)
+class OpenAIResponsesServerFailureEvidence:
+    """Bounded machine evidence consumed by trusted failure reporting."""
+
+    event_type: str | None
+    response_id: str | None
+    failure_codes: tuple[str, ...]
+    is_valid: bool = False
+
+
+@dataclass(frozen=True)
 class OpenAIResponsesServerEventInspection:
-    """Shared lifecycle and usage observations from one server frame."""
+    """Shared failure, lifecycle, and usage observations from one server frame."""
 
     lifecycle: OpenAIResponsesServerLifecycle | None
     usage: dict | None
     usage_error: str | None
+    failure: OpenAIResponsesServerFailureEvidence
 
 
 @dataclass(frozen=True)
@@ -158,6 +179,29 @@ _RESPONSES_SSE_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     **_RESPONSES_SSE_RESPONSE_SCALAR_FIELDS,
 }
+_RESPONSES_WEBSOCKET_RESPONSE_SCALAR_FIELDS = {
+    **_RESPONSES_RESPONSE_SCALAR_FIELDS,
+    ("usage", "input_tokens"): ScalarField("int", max_bytes=128),
+    ("usage", "output_tokens"): ScalarField("int", max_bytes=128),
+    ("usage", "input_tokens_details", "cached_tokens"): ScalarField("int", max_bytes=128),
+    ("usage", "input_tokens_details", "cache_write_tokens"): ScalarField("int", max_bytes=128),
+}
+_RESPONSES_WEBSOCKET_SSE_RESPONSE_SCALAR_FIELDS = {
+    **_RESPONSES_WEBSOCKET_RESPONSE_SCALAR_FIELDS,
+    **{
+        ("response", *path): field
+        for path, field in _RESPONSES_WEBSOCKET_RESPONSE_SCALAR_FIELDS.items()
+    },
+}
+_RESPONSES_WEBSOCKET_SSE_SCALAR_FIELDS = {
+    ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
+    **_RESPONSES_WEBSOCKET_SSE_RESPONSE_SCALAR_FIELDS,
+}
+_RESPONSES_WEBSOCKET_USAGE_QUANTITY_PATHS = tuple(
+    path
+    for path, field in _RESPONSES_WEBSOCKET_SSE_RESPONSE_SCALAR_FIELDS.items()
+    if field.kind == "int"
+)
 _RESPONSES_CLIENT_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     ("generate",): ScalarField("bool"),
@@ -166,6 +210,26 @@ _RESPONSES_LIFECYCLE_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     ("response", "id"): ScalarField("string", max_bytes=1024),
 }
+_RESPONSES_FAILURE_CODE_PATHS = (
+    ("error", "metadata", "error_type"),
+    ("error", "error_type"),
+    ("response", "error_type"),
+    ("response", "error", "error_type"),
+    ("error_type",),
+    ("response", "error", "code"),
+    ("error", "code"),
+    ("response", "error", "type"),
+    ("error", "type"),
+)
+_RESPONSES_FAILURE_SCALAR_FIELDS = {
+    **_RESPONSES_LIFECYCLE_SCALAR_FIELDS,
+    ("code",): ScalarField("string", max_bytes=128, overflow_policy="discard"),
+    **{
+        path: ScalarField("string", max_bytes=128, overflow_policy="discard")
+        for path in _RESPONSES_FAILURE_CODE_PATHS
+    },
+}
+_UNAVAILABLE_FAILURE_EVIDENCE = OpenAIResponsesServerFailureEvidence(None, None, ())
 
 
 def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesClientEvent:
@@ -208,9 +272,9 @@ def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
 
     The returned ``event_type`` is only the bounded-prefix observation; this
     function does not fully parse or validate the frame. Pass the returned event
-    to ``inspect_openai_responses_server_event`` for shared lifecycle and usage
-    inspection, or to ``extract_openai_responses_usage_from_event`` when only
-    usage is needed.
+    to ``inspect_openai_responses_server_event`` for shared failure, lifecycle,
+    and usage inspection, or to ``extract_openai_responses_usage_from_event``
+    when only usage is needed.
     """
     result = _probe_responses_event_type(body)
     return OpenAIResponsesEvent(
@@ -270,6 +334,14 @@ def _usage_from_extraction(
             error = result.error
         return None, error
 
+    if any(
+        isinstance(value := result.values.get(path), int)
+        and not isinstance(value, bool)
+        and value > MAX_USAGE_QUANTITY
+        for path in _RESPONSES_WEBSOCKET_USAGE_QUANTITY_PATHS
+    ):
+        return None, JSON_INTEGER_VALUE_LIMIT_EXCEEDED
+
     extracted_usage: dict = {}
     _store_sse_result_values(
         result.values,
@@ -282,10 +354,42 @@ def _usage_from_extraction(
     return extracted_usage, None
 
 
+def _failure_from_extraction(
+    result: JsonExtractionResult,
+) -> OpenAIResponsesServerFailureEvidence:
+    if not result.complete:
+        return OpenAIResponsesServerFailureEvidence(None, None, (), False)
+
+    event_type_value = result.values.get(("type",))
+    event_type = event_type_value if isinstance(event_type_value, str) else None
+    response_id_value = result.values.get(("response", "id"))
+    response_id = response_id_value if isinstance(response_id_value, str) else None
+    failure_codes = tuple(
+        value
+        for path in _RESPONSES_FAILURE_CODE_PATHS
+        if isinstance((value := result.values.get(path)), str)
+    )
+    top_level_code = result.values.get(("code",))
+    if event_type == openai_responses_events.SERVER_ERROR_EVENT and isinstance(top_level_code, str):
+        failure_codes = (*failure_codes, top_level_code)
+    return OpenAIResponsesServerFailureEvidence(
+        event_type,
+        response_id,
+        failure_codes,
+        True,
+    )
+
+
+def _failure_from_prefix(event: OpenAIResponsesEvent) -> OpenAIResponsesServerFailureEvidence:
+    return OpenAIResponsesServerFailureEvidence(event.event_type, None, (), True)
+
+
 def inspect_openai_responses_server_event(
     event: OpenAIResponsesEvent,
     *,
     include_lifecycle: bool,
+    include_usage: bool = True,
+    include_failure: bool = False,
 ) -> OpenAIResponsesServerEventInspection:
     """Inspect one server frame with at most one bounded full-body parse."""
     lifecycle: OpenAIResponsesServerLifecycle | None = None
@@ -298,19 +402,27 @@ def inspect_openai_responses_server_event(
         lifecycle = OpenAIResponsesServerLifecycle(event.event_type, None, True)
         needs_lifecycle_parse = False
 
-    needs_usage_parse = event._classification != _RESPONSES_EVENT_KNOWN_NON_USAGE
-    if not needs_lifecycle_parse and not needs_usage_parse:
-        return OpenAIResponsesServerEventInspection(lifecycle, None, None)
+    needs_usage_parse = include_usage and event._classification != _RESPONSES_EVENT_KNOWN_NON_USAGE
+    needs_failure_parse = include_failure and (
+        event._classification != _RESPONSES_EVENT_KNOWN_NON_USAGE
+        or event.event_type in openai_responses_events.SERVER_LIFECYCLE_EVENTS
+    )
+    if not needs_lifecycle_parse and not needs_usage_parse and not needs_failure_parse:
+        failure = _failure_from_prefix(event) if include_failure else _UNAVAILABLE_FAILURE_EVIDENCE
+        return OpenAIResponsesServerEventInspection(lifecycle, None, None, failure)
 
     data_event_type = _resolved_data_event_type(event._classification)
+    scalar_fields: dict[JsonPath, ScalarField] = {}
     if needs_usage_parse:
-        scalar_fields = (
-            _RESPONSES_SSE_SCALAR_FIELDS
+        scalar_fields.update(
+            _RESPONSES_WEBSOCKET_SSE_SCALAR_FIELDS
             if data_event_type is None or needs_lifecycle_parse
-            else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
+            else _RESPONSES_WEBSOCKET_SSE_RESPONSE_SCALAR_FIELDS
         )
-    else:
-        scalar_fields = _RESPONSES_LIFECYCLE_SCALAR_FIELDS
+    if needs_lifecycle_parse:
+        scalar_fields.update(_RESPONSES_LIFECYCLE_SCALAR_FIELDS)
+    if needs_failure_parse:
+        scalar_fields.update(_RESPONSES_FAILURE_SCALAR_FIELDS)
 
     consistency_paths = {("type",), ("response", "id")} if needs_lifecycle_parse else None
     extractor = JsonSelectiveExtractor(
@@ -326,7 +438,10 @@ def inspect_openai_responses_server_event(
     usage_result, usage_error = (
         _usage_from_extraction(result, data_event_type) if needs_usage_parse else (None, None)
     )
-    return OpenAIResponsesServerEventInspection(lifecycle, usage_result, usage_error)
+    failure = (
+        _failure_from_extraction(result) if needs_failure_parse else _UNAVAILABLE_FAILURE_EVIDENCE
+    )
+    return OpenAIResponsesServerEventInspection(lifecycle, usage_result, usage_error, failure)
 
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
@@ -383,17 +498,6 @@ def _is_known_non_usage_event(value: object) -> bool:
     return isinstance(value, str) and value in openai_responses_events.KNOWN_NON_USAGE_EVENTS
 
 
-def _store_quantity(target: dict, category: str, value: object) -> None:
-    """Store usage quantities using positive-wins, zero-does-not-clobber semantics.
-
-    Later provider update payloads may report ``0`` for a category that an
-    earlier payload reported as non-zero. Preserve the recorded quantity in
-    that case, while still recording initial zero values for missing categories.
-    """
-    if _is_usage_quantity(value) and (value > 0 or category not in target):
-        target[category] = value
-
-
 def _has_positive_usage_quantity(values: dict) -> bool:
     for category in MODEL_USAGE_CATEGORIES:
         value = values.get(category)
@@ -437,9 +541,9 @@ def _merge_input_partition(target: dict, source: dict) -> None:
         if snapshot is None:
             continue
         input_tokens, cached_tokens, cache_write_tokens = snapshot
-        _store_quantity(merged_raw, MODEL_USAGE_CATEGORY_INPUT, input_tokens)
-        _store_quantity(merged_raw, MODEL_USAGE_CATEGORY_CACHE_READ, cached_tokens)
-        _store_quantity(
+        update_model_usage_quantity(merged_raw, MODEL_USAGE_CATEGORY_INPUT, input_tokens)
+        update_model_usage_quantity(merged_raw, MODEL_USAGE_CATEGORY_CACHE_READ, cached_tokens)
+        update_model_usage_quantity(
             merged_raw,
             MODEL_USAGE_CATEGORY_CACHE_CREATION,
             cache_write_tokens,
@@ -482,23 +586,23 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
         values.get((*prefix, "usage", "input_tokens_details", "cached_tokens")),
         values.get((*prefix, "usage", "input_tokens_details", "cache_write_tokens")),
     )
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_INPUT,
         uncached_input_tokens,
     )
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_OUTPUT,
         values.get((*prefix, "usage", "output_tokens")),
     )
 
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_CACHE_READ,
         cached_tokens,
     )
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_CACHE_CREATION,
         cache_creation_tokens,
@@ -527,7 +631,7 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     target_has_positive_quantity = _has_positive_usage_quantity(target)
     source_has_positive_quantity = _has_positive_usage_quantity(source)
     _merge_input_partition(target, source)
-    _store_quantity(
+    update_model_usage_quantity(
         target,
         MODEL_USAGE_CATEGORY_OUTPUT,
         source.get(MODEL_USAGE_CATEGORY_OUTPUT),
@@ -604,6 +708,9 @@ def _store_sse_result_values(
 def create_openai_responses_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
     on_terminal_usage: _SseTerminalUsageCallback | None = None,
+    *,
+    include_usage: bool = True,
+    failure_observer: ModelHttpFailureObserver | None = None,
 ) -> tuple[SseUsageScanner, dict]:
     """Create an incremental usage parser for content-decoded Responses SSE bytes.
 
@@ -634,6 +741,8 @@ def create_openai_responses_sse_usage_extractor(
             usage,
             on_parse_error=on_parse_error,
             on_terminal_usage=on_terminal_usage,
+            include_usage=include_usage,
+            failure_observer=failure_observer,
         ),
         # Some compatible streams omit SSE event names and carry the terminal
         # response type in the JSON payload.
@@ -649,6 +758,8 @@ class _OpenAIResponsesSseUsageHandler:
         *,
         on_parse_error: _SseUsageParseErrorCallback | None = None,
         on_terminal_usage: _SseTerminalUsageCallback | None = None,
+        include_usage: bool = True,
+        failure_observer: ModelHttpFailureObserver | None = None,
     ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
@@ -659,9 +770,18 @@ class _OpenAIResponsesSseUsageHandler:
         self._discard_named_event = False
         self._on_parse_error = on_parse_error
         self._on_terminal_usage = on_terminal_usage
+        self._include_usage = include_usage
+        self._failure_observer = failure_observer
 
     def should_capture_event(self, event_name: str | None) -> bool:
-        return event_name is None or not _is_known_non_usage_event(event_name)
+        return (
+            event_name is None
+            or (self._include_usage and not _is_known_non_usage_event(event_name))
+            or (
+                self._failure_observer is not None
+                and self._failure_observer.needs_sse_event(event_name)
+            )
+        )
 
     def on_event_start(self, event_name: str | None) -> None:
         self._reset_event_state()
@@ -689,14 +809,27 @@ class _OpenAIResponsesSseUsageHandler:
         if self._eventless_prefix is not None:
             prefix = bytes(self._eventless_prefix)
             self._eventless_prefix = None
-            event_type = _classify_responses_event_type(prefix)
-            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE:
+            probe = _probe_responses_event_type(prefix)
+            event_type = _classify_responses_event_type_result(probe)
+            observed_event_name = (
+                _observed_responses_event_type(probe)
+                if self._failure_observer is not None
+                and event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE
+                else None
+            )
+            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE or (
+                self._failure_observer is not None
+                and self._failure_observer.needs_sse_event(observed_event_name)
+            ):
                 self._start_full_extractor_from_prefix(prefix, event_type)
         if self._named_event_prefix is not None and self._data_event_type is None:
             prefix = bytes(self._named_event_prefix)
             self._named_event_prefix = None
             event_type = _classify_responses_event_type(prefix)
-            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE:
+            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE or (
+                self._failure_observer is not None
+                and self._failure_observer.needs_sse_event(event_name)
+            ):
                 self._start_full_extractor_from_prefix(prefix, event_type)
         extractor = self._extractor
         data_event_type = self._data_event_type
@@ -704,6 +837,12 @@ class _OpenAIResponsesSseUsageHandler:
         if extractor is None:
             return
         result = extractor.finish()
+        if self._failure_observer is not None:
+            self._failure_observer.observe(
+                failure_evidence_from_result(result, event_name=event_name)
+            )
+        if not self._include_usage:
+            return
         if result.complete:
             terminal_usage = _store_sse_result_values(
                 result.values,
@@ -733,6 +872,10 @@ class _OpenAIResponsesSseUsageHandler:
 
     def on_event_discard(self, event_name: str | None) -> None:
         self._reset_event_state()
+        if self._failure_observer is not None and self._failure_observer.needs_sse_event(
+            event_name
+        ):
+            self._failure_observer.observe(ModelHttpFailureEvidence(event_name=event_name))
 
     def _reset_event_state(self) -> None:
         self._extractor = None
@@ -743,12 +886,23 @@ class _OpenAIResponsesSseUsageHandler:
         self._discard_named_event = False
 
     def _start_full_extractor(self, *, include_type: bool = True) -> JsonSelectiveExtractor:
-        scalar_fields = (
+        usage_fields = (
             _RESPONSES_SSE_SCALAR_FIELDS if include_type else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
         )
         self._extractor = JsonSelectiveExtractor(
-            scalar_fields=scalar_fields,
-            scalar_consistency_paths={("type",)} if self._on_terminal_usage is not None else None,
+            scalar_fields=combined_scalar_fields(
+                usage_fields,
+                include_usage=self._include_usage,
+                include_failure=self._failure_observer is not None,
+            ),
+            value_presence_paths=combined_value_presence_paths(
+                (),
+                include_usage=self._include_usage,
+                include_failure=self._failure_observer is not None,
+            ),
+            scalar_consistency_paths=(
+                {("type",)} if self._include_usage and self._on_terminal_usage is not None else None
+            ),
             max_work_units=_RESPONSES_MAX_WORK_UNITS,
         )
         return self._extractor
@@ -756,8 +910,9 @@ class _OpenAIResponsesSseUsageHandler:
     def _should_include_type_scalar(self) -> bool:
         return (
             self._data_event_type is None
-            or self._on_parse_error is not None
-            or self._on_terminal_usage is not None
+            or (self._include_usage and self._on_parse_error is not None)
+            or (self._include_usage and self._on_terminal_usage is not None)
+            or self._failure_observer is not None
         )
 
     def _start_full_extractor_from_prefix(
@@ -784,8 +939,13 @@ class _OpenAIResponsesSseUsageHandler:
 
         prefix_bytes = bytes(prefix)
         self._eventless_prefix = None
-        event_type = _classify_responses_event_type(prefix_bytes)
-        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
+        probe = _probe_responses_event_type(prefix_bytes)
+        event_type = _classify_responses_event_type_result(probe)
+        observed_event_name = _observed_responses_event_type(probe)
+        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE and not (
+            self._failure_observer is not None
+            and self._failure_observer.needs_sse_event(observed_event_name)
+        ):
             self._discard_eventless_event = True
             return
 
@@ -808,9 +968,12 @@ class _OpenAIResponsesSseUsageHandler:
 
         prefix_bytes = bytes(prefix)
         self._named_event_prefix = None
-        event_type = _classify_responses_event_type(prefix_bytes)
-        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
-            self._extractor = None
+        probe = _probe_responses_event_type(prefix_bytes)
+        event_type = _classify_responses_event_type_result(probe)
+        if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE and not (
+            self._failure_observer is not None
+            and self._failure_observer.needs_sse_event(_observed_responses_event_type(probe))
+        ):
             self._discard_named_event = True
             return
 
@@ -850,15 +1013,7 @@ class OpenAIResponsesJsonUsageExtractor:
 
     def finish(self) -> tuple[dict | None, str | None]:
         result = self._extractor.finish()
-        if not result.complete:
-            return None, result.error
-
-        usage: dict = {}
-        _store_response_values(result.values, usage)
-
-        if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
-            return None, None
-        return usage, None
+        return model_json_usage_from_result(result)
 
 
 def create_openai_responses_json_usage_extractor() -> OpenAIResponsesJsonUsageExtractor:
@@ -869,6 +1024,26 @@ def create_openai_responses_json_usage_extractor() -> OpenAIResponsesJsonUsageEx
     """
 
     return OpenAIResponsesJsonUsageExtractor()
+
+
+def model_json_scalar_fields() -> dict:
+    """Return Responses JSON fields selected for usage inspection."""
+
+    return dict(_RESPONSES_RESPONSE_SCALAR_FIELDS)
+
+
+def model_json_usage_from_result(
+    result: JsonExtractionResult,
+) -> tuple[dict | None, str | None]:
+    """Map one complete shared JSON extraction into Responses usage."""
+
+    if not result.complete:
+        return None, result.error
+    usage: dict = {}
+    _store_response_values(result.values, usage)
+    if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
+        return None, None
+    return usage, None
 
 
 def _extract_openai_responses_usage_from_decoded_json_body(

@@ -186,7 +186,9 @@ async function loadGitHubChatDeliveryContext(
     payload,
     run: runContext,
     messageContent: event.content,
-    ghInstallationId: installation?.installationId,
+    installation: installation?.installationId
+      ? { ghInstallationId: installation.installationId }
+      : undefined,
   };
 }
 
@@ -269,7 +271,7 @@ async function buildGitHubDeliveryComment(
     args.run.userId,
   );
   signal.throwIfAborted();
-  const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
     ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`
     : undefined;
   const footerText = await resolveGithubAgentReplyFooterText({
@@ -297,12 +299,12 @@ async function deliverClaimedGitHubChatCallback(
   signal: AbortSignal,
 ): Promise<"delivered" | "skipped_revoked"> {
   const context = await loadGitHubChatDeliveryContext(args, signal);
-  if (!context.ghInstallationId) {
+  if (!context.installation) {
     return "skipped_revoked";
   }
   const token = await githubAccessToken(
     {
-      ghInstallationId: context.ghInstallationId,
+      ghInstallationId: context.installation.ghInstallationId,
     },
     signal,
   );

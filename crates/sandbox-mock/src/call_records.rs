@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use ::sandbox::{ExecOutputLimits, ProcessControlMode, ProcessOutputMode, SandboxControlTarget};
+use ::sandbox::{ExecOutputLimits, ProcessOutputMode, SandboxControlTarget};
 
 /// Behavior override applied to exec calls whose command contains the pattern.
 ///
@@ -57,6 +57,47 @@ pub struct ExecCall {
     pub output_limits: ExecOutputLimits,
 }
 
+/// Captured fixed storage-manifest request fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorageManifestCall {
+    /// Canonical manifest JSON supplied to the provider operation.
+    pub manifest_json: Vec<u8>,
+    /// Run identity supplied to the fixed guest helper.
+    pub run_id: String,
+    /// Absolute guest runtime directory supplied to the fixed helper.
+    pub runtime_dir: String,
+    /// Helper timeout supplied by the caller.
+    pub timeout: Duration,
+}
+
+/// Owned timezone behavior recorded for a fixed guest-state restore call.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GuestStateRestoreTimezoneCall {
+    /// The request left the timezone unchanged.
+    None,
+    /// The request used best-effort timezone synchronization.
+    BestEffort(String),
+    /// The request required timezone synchronization.
+    Required(String),
+}
+
+/// Captured fixed guest-state restore request fields.
+///
+/// Entropy contents are intentionally omitted from observations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuestStateRestoreCall {
+    /// Whole Unix timestamp seconds supplied to the fixed helper.
+    pub unix_seconds: u64,
+    /// Nanoseconds within the timestamp second.
+    pub unix_nanoseconds: u32,
+    /// Entropy payload length without the entropy bytes themselves.
+    pub entropy_len: usize,
+    /// Requested timezone behavior.
+    pub timezone: GuestStateRestoreTimezoneCall,
+    /// Helper timeout supplied by the caller.
+    pub timeout: Duration,
+}
+
 /// Captured `start_process` request fields recorded for test assertions.
 ///
 /// Unlike [`ExecCall`], this record captures environment values as well as
@@ -74,8 +115,17 @@ pub struct StartProcessCall {
     pub sudo: bool,
     /// Output mode requested for the guest process.
     pub output: ProcessOutputMode,
-    /// Control mode requested for the guest process.
-    pub control: ProcessControlMode,
+}
+
+/// Captured controlled-Agent request fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartAgentProcessCall {
+    /// Timeout passed to `StartAgentProcessRequest.timeout`.
+    pub timeout: Duration,
+    /// Environment variable names and values from `StartAgentProcessRequest.env`.
+    pub env: Vec<(String, String)>,
+    /// Output mode requested for the Guest Agent.
+    pub output: ProcessOutputMode,
 }
 
 /// Captured `wait_process` request fields recorded for test assertions.

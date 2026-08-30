@@ -2,7 +2,6 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
-import { translateCommand } from "./commands/translate";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
   decodeSandboxTokenPayload,
@@ -69,13 +68,12 @@ const COMMAND_CAPABILITY_MAP: Record<
   "web-search": "web-search:read",
   social: "social:read",
   recognize: "image-recognition:write",
-  translate: "translation:write",
   finance: "finance:read",
   seo: "seo:read",
   banking: "banking:read",
 };
 
-const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize", "translate"]);
+const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize"]);
 
 const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   {
@@ -344,13 +342,6 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
-    name: "translate",
-    description: "Translate text through a managed translation model",
-    load: async () => {
-      return translateCommand;
-    },
-  },
-  {
     name: "finance",
     description: "Query financial instruments through managed Okou finance",
     load: async () => {
@@ -544,17 +535,12 @@ export function buildHelpText(
     ),
     ...commandExampleIfVisible(
       "social",
-      "  Analyze social data?   okou social request /youtube/transcript --query url=https://youtu.be/dQw4w9WgXcQ --json",
+      '  Analyze social data?   okou social call youtube_transcript --input \'{"url":"https://youtu.be/dQw4w9WgXcQ"}\' --json',
       payload,
     ),
     ...commandExampleIfVisible(
       "recognize",
       '  Recognize an image?    okou recognize --file ./image.png --prompt "Describe it"',
-      payload,
-    ),
-    ...commandExampleIfVisible(
-      "translate",
-      '  Translate text?        okou translate "Hello" --to Chinese',
       payload,
     ),
     ...commandExampleIfVisible(

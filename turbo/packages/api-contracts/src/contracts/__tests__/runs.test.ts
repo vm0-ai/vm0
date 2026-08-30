@@ -6,9 +6,10 @@ import {
   networkLogEntrySchema,
   unifiedRunRequestSchema,
 } from "../runs";
+import { runCreateBodySchema } from "../run-routes";
 
 describe("get run response contract", () => {
-  it("omits the retired Compose version field", () => {
+  it("parses the current Run response", () => {
     const response = getRunResponseSchema.parse({
       runId: "run-1",
       status: "pending",
@@ -17,9 +18,6 @@ describe("get run response contract", () => {
       createdAt: "2026-08-21T00:00:00.000Z",
     });
 
-    expect(getRunResponseSchema.shape).not.toHaveProperty(
-      "agentComposeVersionId",
-    );
     expect(response).toStrictEqual({
       runId: "run-1",
       status: "pending",
@@ -68,20 +66,6 @@ describe("unified run request contract", () => {
     ).toBe(true);
   });
 
-  it("strictly rejects caller-selected legacy compose identity", () => {
-    for (const legacyIdentity of [
-      { agentComposeId: "compose-1" },
-      { agentComposeVersionId: "version-1" },
-    ]) {
-      expect(
-        unifiedRunRequestSchema.safeParse({
-          ...legacyIdentity,
-          prompt: "start a legacy run",
-        }).success,
-      ).toBe(false);
-    }
-  });
-
   it("rejects checkpoint resume requests", () => {
     expect(
       unifiedRunRequestSchema.safeParse({
@@ -89,6 +73,33 @@ describe("unified run request contract", () => {
         prompt: "resume from checkpoint",
       }).success,
     ).toBe(false);
+  });
+
+  it.each(["vm0", "built-in"])(
+    "rejects the %s built-in alias for direct runs",
+    (modelProviderType) => {
+      expect(
+        unifiedRunRequestSchema.safeParse({
+          prompt: "run directly",
+          modelProviderType,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("normalizes both internal Zero run request aliases to built-in", () => {
+    expect(
+      runCreateBodySchema.parse({
+        prompt: "run through Zero",
+        modelProvider: "vm0",
+      }).modelProvider,
+    ).toBe("built-in");
+    expect(
+      runCreateBodySchema.parse({
+        prompt: "run through Zero",
+        modelProvider: "built-in",
+      }).modelProvider,
+    ).toBe("built-in");
   });
 });
 

@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use guest_contracts::reuse_preparation::ReusePreparationRequest;
+use guest_contracts::reuse_preparation::{
+    ReusePreparationReport, ReusePreparationRequest, RootFilesystemCapacity,
+};
 use guest_contracts::session_history_identity::{
     SessionHistoryFramework, SessionHistoryIdentity, SessionHistoryRefKind, SessionHistorySourceRef,
 };
@@ -111,6 +113,7 @@ async fn idle_park_request_semantic_rejection_returns_parked_ownership() {
         rejected,
         reason,
         error,
+        expected_capacity_rejection,
     } = failure.into_parts()
     else {
         panic!("semantic rejection after park must retain parked ownership");
@@ -118,11 +121,69 @@ async fn idle_park_request_semantic_rejection_returns_parked_ownership() {
 
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(reason, "reuse_preparation_failed");
+    assert!(!expected_capacity_rejection);
     assert!(error.contains("invalid report"));
     let (payload, budget_lease) = rejected.into_active_destroy_parts();
     assert_eq!(budget_lease.vcpu(), 2);
     assert_eq!(budget_lease.memory_mb(), 2048);
     assert_eq!(payload.stop_and_destroy().await, DestroyOutcome::Completed);
+    assert_eq!(overrides.destroy_call_count(), 1);
+}
+
+#[tokio::test]
+async fn speculative_repark_preserves_expected_capacity_rejection() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let mut request = make_idle_park_request(
+        Arc::clone(&overrides),
+        "session-speculative-capacity-rejection",
+        make_budget_lease(2, 2048),
+    )
+    .await;
+    request.parts.history_generation_run_id = Some(request.parts.run_id);
+    let candidate = match request.park_for_idle().await {
+        Ok(outcome) => outcome.expect_reusable(),
+        Err(_) => panic!("initial park should succeed"),
+    };
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "prepare-for-reuse".into(),
+        exit_code: 0,
+        stdout: serde_json::to_vec(&ReusePreparationReport {
+            before: RootFilesystemCapacity {
+                available_bytes: 64 * 1024 * 1024,
+                available_inodes: 4096,
+            },
+            after: RootFilesystemCapacity {
+                available_bytes: 64 * 1024 * 1024,
+                available_inodes: 4096,
+            },
+            removed_entries: 0,
+        })
+        .unwrap(),
+        stderr: Vec::new(),
+    });
+    let reservation = ReservedIdleSandbox {
+        entry: candidate.into_idle_entry(Instant::now()),
+    };
+    let SpeculativeIdleUnparkResult::Ready(speculative) = reservation
+        .try_unpark_for_speculation(RunId::new_v4())
+        .await
+    else {
+        panic!("speculative unpark should succeed");
+    };
+
+    let SpeculativeReparkResult::Destroy {
+        destroy_job,
+        expected_capacity_rejection,
+        ..
+    } = speculative
+        .repark_for_claim_rollback(RunId::new_v4(), 0)
+        .await
+    else {
+        panic!("low-capacity speculative repark should return destroy ownership");
+    };
+
+    assert!(expected_capacity_rejection);
+    destroy_job.run().await;
     assert_eq!(overrides.destroy_call_count(), 1);
 }
 
@@ -418,6 +479,7 @@ async fn speculative_repark_without_history_generation_returns_owned_destroy_job
         destroy_job,
         reason,
         error,
+        expected_capacity_rejection,
     } = speculative
         .repark_for_claim_rollback(RunId::new_v4(), 0)
         .await
@@ -426,6 +488,7 @@ async fn speculative_repark_without_history_generation_returns_owned_destroy_job
     };
 
     assert_eq!(reason, "speculative_repark_missing_history_generation");
+    assert!(!expected_capacity_rejection);
     assert_eq!(
         error,
         "speculative exact-reuse entry is missing a history generation"

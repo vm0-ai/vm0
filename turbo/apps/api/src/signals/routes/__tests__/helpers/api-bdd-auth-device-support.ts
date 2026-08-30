@@ -1,12 +1,12 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { zeroConnectorsBySlugContract } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { connectorsBySlugContract } from "@okouai/api-contracts/contracts/connectors";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import {
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProvidersMainContract,
-  zeroPersonalModelProviderAccountsByIdContract,
-} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+  personalModelProvidersByTypeContract,
+  personalModelProvidersMainContract,
+  personalModelProviderAccountsByIdContract,
+} from "@okouai/api-contracts/contracts/personal-model-providers";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
@@ -92,9 +92,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
       statuses: readonly (200 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        authDeviceSupportApp(context)(
-          zeroPersonalModelProvidersMainContract,
-        ).list({
+        authDeviceSupportApp(context)(personalModelProvidersMainContract).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -108,7 +106,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
     ) {
       return await accept(
         authDeviceSupportApp(context)(
-          zeroPersonalModelProvidersByTypeContract,
+          personalModelProvidersByTypeContract,
         ).delete({
           headers: authenticate(context, actor),
           params: { type },
@@ -120,7 +118,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
     async activatePersonalModelProviderAccount(actor: ApiTestUser, id: string) {
       return await accept(
         authDeviceSupportApp(context)(
-          zeroPersonalModelProviderAccountsByIdContract,
+          personalModelProviderAccountsByIdContract,
         ).activate({
           headers: authenticate(context, actor),
           params: { id },
@@ -130,13 +128,31 @@ export function createAuthDeviceSupportApi(context: TestContext) {
       );
     },
 
+    async resetPersonalModelProviderAccount(
+      actor: ApiTestUser,
+      id: string,
+      idempotencyKey: string,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        authDeviceSupportApp(context)(
+          personalModelProviderAccountsByIdContract,
+        ).resetSubscriptionUsage({
+          headers: authenticate(context, actor),
+          params: { id },
+          body: { idempotencyKey },
+        }),
+        statuses,
+      );
+    },
+
     async deletePersonalModelProviderAccount(
       actor: ApiTestUser,
       id: string,
     ): Promise<void> {
       await accept(
         authDeviceSupportApp(context)(
-          zeroPersonalModelProviderAccountsByIdContract,
+          personalModelProviderAccountsByIdContract,
         ).delete({
           headers: authenticate(context, actor),
           params: { id },
@@ -150,7 +166,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
       switches: Readonly<Record<string, boolean>>,
     ): Promise<Readonly<Record<string, boolean>>> {
       const response = await accept(
-        authDeviceSupportApp(context)(zeroFeatureSwitchesContract).update({
+        authDeviceSupportApp(context)(featureSwitchesContract).update({
           headers: authenticate(context, actor),
           body: { switches },
         }),
@@ -164,7 +180,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
     ): Promise<ConnectorResponse> {
       const response = await accept(
-        authDeviceSupportApp(context)(zeroConnectorsBySlugContract).get({
+        authDeviceSupportApp(context)(connectorsBySlugContract).get({
           params: { connectorSlug },
           headers: authenticate(context, actor),
         }),

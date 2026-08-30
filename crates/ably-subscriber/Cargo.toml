@@ -1,6 +1,6 @@
 [package]
 name = "ably-subscriber"
-version = "1.0.16"
+version = "1.0.20"
 edition.workspace = true
 
 [dependencies]
@@ -23,9 +23,13 @@ hmac = { workspace = true }
 httpmock = { workspace = true }
 proptest.workspace = true
 sha2 = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net", "io-util"] }
 tracing-subscriber = { workspace = true }
 tracing-test-support = { workspace = true }
+
+[[test]]
+name = "integration"
+path = "tests/integration/mod.rs"
 
 [lints]
 workspace = true

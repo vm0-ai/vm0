@@ -12,14 +12,13 @@ import {
   isIntegrationManagedCustomConnector,
   isIntegrationManagedCustomConnectorProviderAdapter,
   type CustomConnectorOAuthProviderAdapter,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
   isOAuthProviderHttpError,
   OAuthProviderHttpError,
 } from "@okouai/connectors/auth-providers/oauth/error";
 import { connectors } from "@okouai/db/schema/connector";
-import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { secrets } from "@okouai/db/schema/secret";
@@ -57,7 +56,10 @@ import {
   type CustomConnectorRow,
 } from "./custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
-import type { StoredCustomConnectorOAuthState } from "./connector-oauth-state.service";
+import {
+  insertConnectorOAuthState,
+  type StoredCustomConnectorOAuthState,
+} from "./connector-oauth-state.service";
 import {
   customConnectorMcpDisabledResponse,
   isCustomConnectorMcpEnabled,
@@ -66,10 +68,7 @@ import {
   replaceConnectorConnection,
   resolveConnectorConnectionMutation,
 } from "./connector-connection-write.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
-} from "./connector-account-mutation.service";
+import { connectorAccountSiblingWritesEnabled } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
@@ -98,6 +97,7 @@ const oauthTokenResponseSchema = z.object({
   id_token: z.string().min(1).nullable().optional(),
   token_type: z.string().min(1).optional(),
   expires_in: z.union([z.number(), z.string()]).optional(),
+  scope: z.string().trim().min(1).optional(),
 });
 
 const oauthTokenErrorResponseSchema = z.object({
@@ -110,6 +110,7 @@ export interface OAuthTokenResult {
   readonly refreshToken: string | null;
   readonly idToken: string | null;
   readonly expiresAt: Date | null;
+  readonly scopes: readonly string[] | null;
 }
 
 interface OAuthClientCredentials {
@@ -263,6 +264,32 @@ function hasHttpHeaderControlCharacter(value: string): boolean {
   return false;
 }
 
+function oauthScopeTokens(scope: string): readonly string[] {
+  return scope.split(/\s+/u);
+}
+
+function customConnectorOAuth2AuthorizationScopes(
+  authorizationUrl: string | null,
+): readonly string[] {
+  if (!authorizationUrl) {
+    throw new Error("Custom connector OAuth state has no authorization URL");
+  }
+  const scope = new URL(authorizationUrl).searchParams.get("scope");
+  return scope ? oauthScopeTokens(scope) : [];
+}
+
+export function customConnectorOAuth2EffectiveInitialToken(
+  token: OAuthTokenResult,
+  authorizationUrl: string | null,
+): OAuthTokenResult {
+  return token.scopes === null
+    ? {
+        ...token,
+        scopes: customConnectorOAuth2AuthorizationScopes(authorizationUrl),
+      }
+    : token;
+}
+
 function tokenResult(response: PublicHttpsResponse): OAuthTokenResult {
   if (response.status < 200 || response.status >= 300) {
     const parsed = oauthTokenErrorResponseSchema.safeParse(
@@ -293,6 +320,10 @@ function tokenResult(response: PublicHttpsResponse): OAuthTokenResult {
       expiresIn === null
         ? null
         : new Date(nowDate().getTime() + expiresIn * 1000),
+    scopes:
+      parsed.data.scope === undefined
+        ? null
+        : oauthScopeTokens(parsed.data.scope),
   };
 }
 
@@ -347,6 +378,7 @@ function feishuOAuthTokenResult(token: {
     refreshToken: token.refreshToken,
     idToken: null,
     expiresAt: new Date(nowDate().getTime() + token.expiresInSeconds * 1000),
+    scopes: null,
   };
 }
 
@@ -525,14 +557,6 @@ export const startCustomConnectorOAuth2$ = command(
         "Custom connector does not support OAuth 2.0 authentication",
       );
     }
-    if (
-      args.account?.intent === "add" &&
-      args.account.displayName === undefined
-    ) {
-      return badRequestMessage(
-        "Account display name is required when adding a custom connector account",
-      );
-    }
     if (isIntegrationManagedCustomConnector(connector) && !args.feishuContext) {
       return integrationManagedCustomConnectorMutationForbidden();
     }
@@ -572,7 +596,7 @@ export const startCustomConnectorOAuth2$ = command(
           }
         : {}),
     };
-    const mutationResolution = await set(writeDb$).transaction(async (tx) => {
+    const mutationStart = await set(writeDb$).transaction(async (tx) => {
       await lockCustomConnectorOAuth2CredentialContract({
         db: tx,
         orgId: args.orgId,
@@ -589,9 +613,9 @@ export const startCustomConnectorOAuth2$ = command(
           connectorAccountSiblingWritesEnabled(featureContext),
       });
       if (resolution.kind !== "ready") {
-        return resolution;
+        return { resolution, connectionId: null };
       }
-      await tx.insert(connectorOauthStates).values({
+      const oauthStateId = await insertConnectorOAuthState(tx, {
         state,
         customConnectorId: connector.id,
         storageVersion: connector.storageVersion,
@@ -607,19 +631,25 @@ export const startCustomConnectorOAuth2$ = command(
         accountMutation: args.account,
         expiresAt: connectorOAuthStateExpiresAt(),
       });
-      return resolution;
+      return {
+        resolution,
+        connectionId: args.account.intent === "add" ? oauthStateId : null,
+      };
     });
     signal.throwIfAborted();
-    if (mutationResolution.kind !== "ready") {
-      return mutationResolution.kind === "missing"
+    if (mutationStart.resolution.kind !== "ready") {
+      return mutationStart.resolution.kind === "missing"
         ? notFound("Connector account not found")
         : conflict(
-            mutationResolution.kind === "ambiguous"
+            mutationStart.resolution.kind === "ambiguous"
               ? "Multiple connector accounts require an exact choice"
               : "Additional connector accounts are not enabled yet",
           );
     }
-    return { authorizationUrl };
+    return {
+      authorizationUrl,
+      connectionId: mutationStart.connectionId ?? undefined,
+    };
   },
 );
 
@@ -764,6 +794,9 @@ async function replaceConnectionTokens(args: {
       tokenExpiresAt: args.token.expiresAt,
       needsReconnect: false,
       reconnectReason: null,
+      ...(args.token.scopes === null
+        ? {}
+        : { oauthScopes: JSON.stringify(args.token.scopes) }),
       updatedAt: nowDate(),
     })
     .where(
@@ -836,7 +869,8 @@ export async function storeCustomConnectorOAuth2Connection(
     readonly storageVersion: number;
     readonly token: OAuthTokenResult;
     readonly featureContext: FeatureSwitchContext;
-    readonly account?: ConnectorAccountMutationIntent;
+    readonly account: ConnectorAccountMutationIntent;
+    readonly insertConnectionId?: string;
   },
   signal: AbortSignal,
 ): Promise<
@@ -857,7 +891,7 @@ export async function storeCustomConnectorOAuth2Connection(
       orgId: args.orgId,
       userId: args.userId,
       target: { kind: "custom", customConnectorId: args.connectorId },
-      mutation: normalizeConnectorAccountMutation(args.account),
+      mutation: args.account,
       allowSiblings:
         !isIntegrationManagedCustomConnectorProviderAdapter(
           contract.providerAdapter,
@@ -878,8 +912,10 @@ export async function storeCustomConnectorOAuth2Connection(
         target: {
           kind: "custom",
           customConnectorId: args.connectorId,
+          oauthScopes: args.token.scopes,
         },
         resolution: resolution.mutation,
+        insertConnectionId: args.insertConnectionId,
         writeCredentials: async ({ db, connectorId }) => {
           await db.insert(secrets).values(
             connectionTokenRows({

@@ -11,15 +11,16 @@ use guest_contracts::diagnostics::{
     FailureDiagnostic, PromptMetadata,
 };
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessControlMode, ProcessExit,
-    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxError, SandboxFactory,
-    SandboxGuestDnsReadinessReason, SandboxId, SandboxOperationReason,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessExit, ProcessOutputChunk,
+    ProcessOutputMode, Sandbox, SandboxError, SandboxFactory, SandboxGuestDnsReadinessReason,
+    SandboxId, SandboxOperationReason,
 };
 use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
 
 use super::super::agent_run::{PreparedRunInputs, ProcessCancelTimeouts, RunControls, RunStart};
 use super::super::env::{
-    guest_run_payload_file_path, guest_user_env_file_path, prepare_run_payload_for_run,
+    guest_connector_account_context_file_path, guest_run_payload_file_path,
+    guest_user_env_file_path, prepare_run_payload_for_run,
 };
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
@@ -31,8 +32,7 @@ use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JOB_TIMEOUT,
     JobParams, NewSandboxDispatch, ResourceFailureKind, STDOUT_STREAM_INCOMPLETE_MARKER,
     STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER, SandboxPreparedNotifier,
-    USER_ENV_FILE_ENV_KEY, execute_job, execute_job_reuse, job_supervisor_timeout,
-    job_terminal_wait_timeout,
+    execute_job, execute_job_reuse, job_supervisor_timeout, job_terminal_wait_timeout,
 };
 use super::support::{
     CapturedEvent, CapturedEvents, DestroyPanicFactory, api_artifact, api_storage,

@@ -2,17 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
 import { billingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { testUsageSettlementRoutes } from "../test-usage-settlement";
 import {
@@ -146,37 +141,14 @@ function registerCleanup(
       settlementClient().cleanup({ body: { org_id: actor.orgId } }),
       [200],
     );
-    await deleteFeatureSwitchesForUser(context, actor);
   });
 }
 
 describe("GET /api/billing/usage-pack-credits", () => {
-  it("keeps member usage pack credits behind UsagePackPlans", async () => {
-    const actor = fixture();
-    authenticate(actor);
-
-    const response = await accept(
-      creditsClient().get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Usage pack credits are not enabled",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("reports when the organization has no active usage pack", async () => {
     mockEnv("ENV", "development");
     const actor = fixture();
     registerCleanup(actor);
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     authenticate(actor);
 
     const response = await accept(
@@ -203,9 +175,6 @@ describe("GET /api/billing/usage-pack-credits", () => {
       `user_${randomUUID()}`,
     );
     registerCleanup(actor, usagePackSubscriptionId);
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
-    });
     authenticate(actor);
 
     const response = await accept(
@@ -235,9 +204,6 @@ describe("GET /api/billing/usage-pack-credits", () => {
       grantType: "bonus",
       amount: 10_000,
       expiresAt: "2026-09-10T00:00:00.000Z",
-    });
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
     });
     authenticate(actor);
 
@@ -296,9 +262,6 @@ describe("GET /api/billing/usage-pack-credits", () => {
       grantType: "bonus",
       amount: 1000,
       expiresAt: "2026-08-09T00:00:00.000Z",
-    });
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
     });
     authenticate(actor);
 
@@ -361,9 +324,6 @@ describe("GET /api/billing/usage-pack-credits", () => {
       grantType: "bonus",
       amount: 4350,
       expiresAt: "2026-09-10T00:00:00.000Z",
-    });
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.UsagePackPlans]: true,
     });
     authenticate(actor, "org:admin");
 

@@ -14,6 +14,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now, withMockNowForTest } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";
+import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -21,7 +22,7 @@ import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
 } from "./helpers/feature-switches";
-import { setVm0ManagedCandidateCooldownFixture } from "./helpers/runtime-state";
+import { setVm0BuiltInCandidateCooldownFixture } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { webhooksAgentFirewallAuthRoutes } from "../webhooks-agent-firewall-auth";
 import { modelProvidersRoutes } from "../model-providers";
@@ -511,7 +512,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 403 when ZeroDebug is disabled", async () => {
+  it("returns 403 when OkouDebug is disabled", async () => {
     const fixture = uniqueOrgUser("cooldown-disabled");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = setupApp({ context, routes: modelProvidersRoutes })(
@@ -526,7 +527,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     );
 
     expect(response.body.error).toStrictEqual({
-      message: "Managed model cooldown diagnostics are not enabled",
+      message: "Built-in model cooldown diagnostics are not enabled",
       code: "FORBIDDEN",
     });
   });
@@ -553,27 +554,33 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
       upstream_model: `${selectedModelPrefix}-expired`,
       model_key_id: randomUUID(),
     };
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
+      context,
+      `${selectedModelPrefix}-b`,
+      firstRoute,
+      earlierDeadline,
+    );
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-b`,
       firstRoute,
       laterDeadline,
     );
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-a`,
       secondRoute,
       earlierDeadline,
     );
-    await setVm0ManagedCandidateCooldownFixture(
+    await setVm0BuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-expired`,
       expiredRoute,
       expiredDeadline,
     );
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ZeroDebug]: true,
-      [FeatureSwitchKey.ManagedModelProviderFallback]: false,
+      [FeatureSwitchKey.OkouDebug]: true,
+      [FeatureSwitchKey.BuiltInModelProviderFallback]: false,
     });
     onTestFinished(async () => {
       await deleteFeatureSwitchesForUser(context, fixture);
@@ -598,6 +605,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     );
 
     expect(disabledResponse.body.fallbackEnabled).toBeFalsy();
+    expect(disabledResponse.body.canCancelCooldowns).toBeFalsy();
     expect(ownedCooldowns).toStrictEqual([
       {
         selectedModel: `${selectedModelPrefix}-a`,
@@ -614,8 +622,8 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     ]);
 
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ZeroDebug]: true,
-      [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
+      [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -629,6 +637,176 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     });
 
     expect(enabledResponse.body.fallbackEnabled).toBeTruthy();
+  });
+});
+
+describe("DELETE /api/model-providers/cooldown-diagnostics", () => {
+  it("returns 401 when the request is unauthenticated", async () => {
+    const client = setupApp({ context, routes: modelProvidersRoutes })(
+      modelProviderCooldownDiagnosticsContract,
+    );
+
+    const response = await accept(
+      client.cancel({
+        headers: {},
+        body: {
+          selectedModel: "gpt-5.6-luna",
+          providerType: "openai-api-key",
+          upstreamModel: "gpt-5.6-luna-2026-08-01",
+        },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("rejects non-staff callers without changing the cooldown", async () => {
+    const fixture = uniqueOrgUser("cooldown-cancel-non-staff");
+    const selectedModel = `diagnostic-${randomUUID()}`;
+    const unavailableUntil = new Date(now() + 60_000);
+    const route = {
+      provider_type: "openai-api-key",
+      upstream_model: `${selectedModel}-upstream`,
+      model_key_id: randomUUID(),
+    };
+    await setVm0BuiltInCandidateCooldownFixture(
+      context,
+      selectedModel,
+      route,
+      unavailableUntil,
+    );
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.OkouDebug]: true,
+    });
+    onTestFinished(async () => {
+      await deleteFeatureSwitchesForUser(context, fixture);
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context, routes: modelProvidersRoutes })(
+      modelProviderCooldownDiagnosticsContract,
+    );
+
+    const response = await accept(
+      client.cancel({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          selectedModel,
+          providerType: route.provider_type,
+          upstreamModel: route.upstream_model,
+        },
+      }),
+      [403],
+    );
+    expect(response.body.error).toStrictEqual({
+      message: "Only staff can cancel built-in model cooldowns",
+      code: "FORBIDDEN",
+    });
+
+    const diagnostics = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(diagnostics.body.canCancelCooldowns).toBeFalsy();
+    expect(
+      diagnostics.body.activeCooldowns.filter((cooldown) => {
+        return cooldown.selectedModel === selectedModel;
+      }),
+    ).toStrictEqual([
+      {
+        selectedModel,
+        providerType: route.provider_type,
+        upstreamModel: route.upstream_model,
+        unavailableUntil: unavailableUntil.toISOString(),
+      },
+    ]);
+  });
+
+  it("lets staff cancel only the selected cooldown", async () => {
+    const fixture = {
+      orgId: createUniqueStaffOrgIdFixture(),
+      userId: `user_cooldown-cancel-staff_${randomUUID().slice(0, 8)}`,
+    };
+    const selectedModel = `diagnostic-${randomUUID()}`;
+    const unavailableUntil = new Date(now() + 60_000);
+    const selectedRoute = {
+      provider_type: "openai-api-key",
+      upstream_model: `${selectedModel}-selected`,
+      model_key_id: randomUUID(),
+    };
+    const siblingRoute = {
+      provider_type: "openrouter-codex",
+      upstream_model: `${selectedModel}-sibling`,
+      model_key_id: randomUUID(),
+    };
+    await setVm0BuiltInCandidateCooldownFixture(
+      context,
+      selectedModel,
+      selectedRoute,
+      unavailableUntil,
+    );
+    await setVm0BuiltInCandidateCooldownFixture(
+      context,
+      selectedModel,
+      siblingRoute,
+      unavailableUntil,
+    );
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.OkouDebug]: true,
+    });
+    onTestFinished(async () => {
+      await deleteFeatureSwitchesForUser(context, fixture);
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context, routes: modelProvidersRoutes })(
+      modelProviderCooldownDiagnosticsContract,
+    );
+
+    const before = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(before.body.canCancelCooldowns).toBeTruthy();
+    expect(
+      before.body.activeCooldowns.filter((cooldown) => {
+        return cooldown.selectedModel === selectedModel;
+      }),
+    ).toHaveLength(2);
+
+    await accept(
+      client.cancel({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          selectedModel,
+          providerType: selectedRoute.provider_type,
+          upstreamModel: selectedRoute.upstream_model,
+        },
+      }),
+      [204],
+    );
+
+    const after = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      after.body.activeCooldowns.filter((cooldown) => {
+        return cooldown.selectedModel === selectedModel;
+      }),
+    ).toStrictEqual([
+      {
+        selectedModel,
+        providerType: siblingRoute.provider_type,
+        upstreamModel: siblingRoute.upstream_model,
+        unavailableUntil: unavailableUntil.toISOString(),
+      },
+    ]);
   });
 });
 
@@ -915,7 +1093,7 @@ describe("POST /api/model-providers", () => {
     ).toBeFalsy();
   });
 
-  it("creates a vm0 no-secret org provider", async () => {
+  it("accepts the vm0 alias and creates a canonical no-secret org provider", async () => {
     const fixture = uniqueOrgUser("zmp-vm0");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: modelProvidersRoutes })(
@@ -930,7 +1108,7 @@ describe("POST /api/model-providers", () => {
       [201],
     );
 
-    expect(response.body.provider.type).toBe("vm0");
+    expect(response.body.provider.type).toBe("built-in");
     expect(response.body.provider.secretName).toBeNull();
     expect(response.body.provider.authMethod).toBeNull();
     expect(response.body.provider.selectedModel).toBeNull();

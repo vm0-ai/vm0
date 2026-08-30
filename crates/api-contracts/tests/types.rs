@@ -1,13 +1,42 @@
 use std::collections::BTreeMap;
 
 use api_contracts::generated::types::{
-    runners::{runs::CodexRuntimeConfig, storage as runner_storage},
+    runners::{
+        runs::{
+            CodexRuntimeConfig, PiLaunchConfig, PiLaunchConfigApiFirstTurn,
+            PiLaunchConfigApiFirstTurnBaseSession, PiModelConfig, PiModelConfigApiKeyEnv,
+            PiModelConfigProvider, model_provider_failures,
+        },
+        storage as runner_storage,
+    },
     webhooks::agent::{
-        checkpoints,
+        checkpoints::{self, prepare_history},
         storages::{FileEntryWithHash, commit, prepare},
     },
 };
 use serde_json::json;
+
+#[test]
+fn generated_model_provider_failure_request_requires_connection_source() {
+    let request = model_provider_failures::Request::Connection {
+        connection_source: model_provider_failures::RequestConnectionSource::UpstreamTransport,
+        retry_after_seconds: None,
+    };
+
+    assert_eq!(
+        serde_json::to_value(request).unwrap(),
+        json!({
+            "failureKind": "connection",
+            "connectionSource": "upstream_transport",
+        })
+    );
+    assert!(
+        serde_json::from_value::<model_provider_failures::Request>(json!({
+            "failureKind": "connection",
+        }))
+        .is_err()
+    );
+}
 
 #[test]
 fn generated_codex_runtime_config_round_trips_full_wire_shape() {
@@ -97,6 +126,119 @@ fn generated_codex_runtime_config_omits_absent_options_and_accepts_legacy_null()
 }
 
 #[test]
+fn generated_pi_runtime_configs_round_trip_full_wire_shapes() {
+    let session_id = "22222222-2222-4222-8222-222222222222";
+    let launch = PiLaunchConfig {
+        schema_version: 2,
+        api_first_turn: PiLaunchConfigApiFirstTurn {
+            schema_version: 1,
+            resource_snapshot_digest: "a".repeat(64),
+            manifest_url: "https://storage.example/manifest.json".to_string(),
+            session_url: "https://storage.example/session.jsonl".to_string(),
+            deadline_at: 2_000_000_000_000,
+            base_session: PiLaunchConfigApiFirstTurnBaseSession {
+                session_id: session_id.to_string(),
+                sha256: Some("b".repeat(64)),
+            },
+            sandbox_event_sequence_start: 1,
+        },
+    };
+    let model = PiModelConfig {
+        provider: PiModelConfigProvider::Deepseek,
+        base_url: "https://api.deepseek.com/".to_string(),
+        model: "deepseek-v4-flash".to_string(),
+        api_key_env: PiModelConfigApiKeyEnv::OPENAIAPIKEY,
+        credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
+    };
+
+    let launch_value = serde_json::to_value(&launch).unwrap();
+    assert_eq!(
+        launch_value,
+        json!({
+            "schemaVersion": 2,
+            "apiFirstTurn": {
+                "schemaVersion": 1,
+                "resourceSnapshotDigest": "a".repeat(64),
+                "manifestUrl": "https://storage.example/manifest.json",
+                "sessionUrl": "https://storage.example/session.jsonl",
+                "deadlineAt": 2_000_000_000_000_i64,
+                "baseSession": {
+                    "sessionId": session_id,
+                    "sha256": "b".repeat(64),
+                },
+                "sandboxEventSequenceStart": 1,
+            },
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<PiLaunchConfig>(launch_value).unwrap(),
+        launch
+    );
+
+    let model_value = serde_json::to_value(&model).unwrap();
+    assert_eq!(
+        model_value,
+        json!({
+            "provider": "deepseek",
+            "baseUrl": "https://api.deepseek.com/",
+            "model": "deepseek-v4-flash",
+            "apiKeyEnv": "OPENAI_API_KEY",
+            "credentialSecretName": "DEEPSEEK_API_KEY",
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<PiModelConfig>(model_value).unwrap(),
+        model
+    );
+}
+
+#[test]
+fn generated_pi_launch_config_round_trips_null_base_hash() {
+    let value = json!({
+        "schemaVersion": 2,
+        "apiFirstTurn": {
+            "schemaVersion": 1,
+            "resourceSnapshotDigest": "a".repeat(64),
+            "manifestUrl": "https://storage.example/manifest.json",
+            "sessionUrl": "https://storage.example/session.jsonl",
+            "deadlineAt": 2_000_000_000_000_i64,
+            "baseSession": {
+                "sessionId": "22222222-2222-4222-8222-222222222222",
+                "sha256": null,
+            },
+            "sandboxEventSequenceStart": 1,
+        },
+    });
+
+    let launch: PiLaunchConfig = serde_json::from_value(value.clone()).unwrap();
+
+    assert_eq!(launch.api_first_turn.base_session.sha256, None);
+    assert_eq!(serde_json::to_value(launch).unwrap(), value);
+}
+
+#[test]
+fn generated_pi_model_config_rejects_unknown_enums() {
+    for (field, value) in [
+        ("provider", "future-provider"),
+        ("apiKeyEnv", "FUTURE_API_KEY"),
+    ] {
+        let mut config = json!({
+            "provider": "deepseek",
+            "baseUrl": "https://api.deepseek.com/",
+            "model": "deepseek-v4-flash",
+            "apiKeyEnv": "OPENAI_API_KEY",
+            "credentialSecretName": "DEEPSEEK_API_KEY",
+        });
+        config[field] = json!(value);
+
+        assert!(
+            serde_json::from_value::<PiModelConfig>(config).is_err(),
+            "{field} should reject {value}"
+        );
+    }
+}
+
+#[test]
 fn generated_checkpoint_request_omits_absent_snapshots() {
     let history_hash = "a".repeat(64);
     let request = checkpoints::Request {
@@ -131,7 +273,7 @@ fn generated_checkpoint_request_round_trips_preserve_parent_snapshot() {
         cli_agent_session_id: "session-1".to_string(),
         cli_agent_session_history_hash: Some("b".repeat(64)),
         cli_agent_session_history_disposition: None,
-        artifact_snapshots: Some(vec![checkpoints::RequestArtifactSnapshot {
+        artifact_snapshots: Some(vec![checkpoints::ArtifactSnapshot {
             name: "memory".to_string(),
             version: "version-1".to_string(),
             mount_path: "/memory".to_string(),
@@ -211,6 +353,160 @@ fn generated_checkpoint_request_serializes_unavailable_history() {
             "cliAgentSessionHistoryDisposition": "unavailable",
         })
     );
+}
+
+#[test]
+fn generated_checkpoint_response_deserializes_canonical_shapes() {
+    let minimal: checkpoints::Response = serde_json::from_value(json!({
+        "checkpointId": "checkpoint-1",
+        "agentSessionId": "agent-session-1",
+        "conversationId": "conversation-1",
+    }))
+    .unwrap();
+    assert_eq!(minimal.checkpoint_id, "checkpoint-1");
+    assert_eq!(minimal.agent_session_id, "agent-session-1");
+    assert_eq!(minimal.conversation_id, "conversation-1");
+    assert!(minimal.artifacts.is_none());
+    assert!(minimal.volumes.is_none());
+
+    let full: checkpoints::Response = serde_json::from_value(json!({
+        "checkpointId": "checkpoint-2",
+        "agentSessionId": "agent-session-2",
+        "conversationId": "conversation-2",
+        "artifacts": [{
+            "name": "memory",
+            "version": "version-2",
+            "mountPath": "/memory",
+            "missingRootPolicy": "preserveParentVersion",
+        }],
+        "volumes": {
+            "workspace": "volume-version-2",
+        },
+    }))
+    .unwrap();
+    assert_eq!(
+        full.artifacts.unwrap(),
+        vec![checkpoints::ArtifactSnapshot {
+            name: "memory".to_string(),
+            version: "version-2".to_string(),
+            mount_path: "/memory".to_string(),
+            missing_root_policy: Some(
+                runner_storage::ArtifactEntryMissingRootPolicy::PreserveParentVersion,
+            ),
+        }]
+    );
+    assert_eq!(
+        full.volumes.unwrap(),
+        BTreeMap::from([("workspace".to_string(), "volume-version-2".to_string())])
+    );
+}
+
+#[test]
+fn generated_checkpoint_response_rejects_invalid_required_fields() {
+    for response in [
+        json!({
+            "checkpointId": "checkpoint-1",
+            "conversationId": "conversation-1",
+        }),
+        json!({
+            "checkpointId": "checkpoint-1",
+            "agentSessionId": false,
+            "conversationId": "conversation-1",
+        }),
+    ] {
+        assert!(serde_json::from_value::<checkpoints::Response>(response).is_err());
+    }
+}
+
+#[test]
+fn generated_checkpoint_prepare_request_serializes_wire_shape() {
+    let request = prepare_history::Request {
+        run_id: "run-1".to_string(),
+        hash: "a".repeat(64),
+        raw_size: 4096,
+        encoded_size: 1024,
+        encoding: Some(prepare_history::SessionHistoryEncoding::Zstd),
+    };
+    assert_eq!(
+        serde_json::to_value(request).unwrap(),
+        json!({
+            "runId": "run-1",
+            "hash": "a".repeat(64),
+            "rawSize": 4096,
+            "encodedSize": 1024,
+            "encoding": "zstd",
+        })
+    );
+
+    let request_without_encoding = prepare_history::Request {
+        run_id: "run-2".to_string(),
+        hash: "b".repeat(64),
+        raw_size: 64,
+        encoded_size: 64,
+        encoding: None,
+    };
+    let value = serde_json::to_value(request_without_encoding).unwrap();
+    assert!(value.get("encoding").is_none());
+}
+
+#[test]
+fn generated_checkpoint_prepare_encoding_serializes_wire_values() {
+    for (encoding, wire_value) in [
+        (
+            prepare_history::SessionHistoryEncoding::Identity,
+            "identity",
+        ),
+        (prepare_history::SessionHistoryEncoding::Gzip, "gzip"),
+        (prepare_history::SessionHistoryEncoding::Zstd, "zstd"),
+    ] {
+        assert_eq!(serde_json::to_value(encoding).unwrap(), json!(wire_value));
+        assert_eq!(
+            serde_json::from_value::<prepare_history::SessionHistoryEncoding>(json!(wire_value))
+                .unwrap(),
+            encoding
+        );
+    }
+}
+
+#[test]
+fn generated_checkpoint_prepare_response_deserializes_canonical_shapes() {
+    let existing: prepare_history::Response = serde_json::from_value(json!({
+        "existing": true,
+        "encoding": "gzip",
+    }))
+    .unwrap();
+    assert!(existing.existing);
+    assert!(existing.presigned_url.is_none());
+    assert_eq!(
+        existing.encoding,
+        Some(prepare_history::SessionHistoryEncoding::Gzip)
+    );
+
+    let upload: prepare_history::Response = serde_json::from_value(json!({
+        "presignedUrl": "https://storage.example.test/session-history",
+        "existing": false,
+        "encoding": "zstd",
+    }))
+    .unwrap();
+    assert!(!upload.existing);
+    assert_eq!(
+        upload.presigned_url.as_deref(),
+        Some("https://storage.example.test/session-history")
+    );
+    assert_eq!(
+        upload.encoding,
+        Some(prepare_history::SessionHistoryEncoding::Zstd)
+    );
+}
+
+#[test]
+fn generated_checkpoint_prepare_response_rejects_invalid_existing() {
+    for response in [
+        json!({"presignedUrl": "https://storage.example.test/session-history"}),
+        json!({"existing": "false"}),
+    ] {
+        assert!(serde_json::from_value::<prepare_history::Response>(response).is_err());
+    }
 }
 
 #[test]

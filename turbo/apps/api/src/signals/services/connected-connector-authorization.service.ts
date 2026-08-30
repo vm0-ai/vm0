@@ -5,17 +5,11 @@ import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
 import { writeDb$, type Db } from "../external/db";
-import {
-  readAgentComposeHeadForWriterGuard,
-  recomposeAgentIfStale$,
-} from "./agent-compose.service";
 import { publishBuiltinConnectorInvalidationAfterCommit } from "./connector-client-invalidation.service";
 import { updateUserConnectors } from "./user-connectors.service";
 
 interface AuthorizableAgent {
   readonly id: string;
-  readonly name: string;
-  readonly currentHeadVersionId: string | null;
 }
 
 type AuthorizeConnectedConnectorResult =
@@ -59,16 +53,7 @@ async function authorizableAgent(
       ),
     )
     .limit(1);
-  if (!agent) {
-    return null;
-  }
-  const currentHeadVersionId = await readAgentComposeHeadForWriterGuard(
-    db,
-    agent.id,
-  );
-  return currentHeadVersionId === undefined
-    ? null
-    : { ...agent, currentHeadVersionId };
+  return agent ?? null;
 }
 
 async function connectorAuthorizationTargetExists(
@@ -171,22 +156,6 @@ export const authorizeConnectedConnector$ = command(
       };
     }
 
-    const recomposed = await set(
-      recomposeAgentIfStale$,
-      {
-        userId: args.userId,
-        agentComposeId: agent.id,
-        agentName: agent.name,
-        currentHeadVersionId: agent.currentHeadVersionId,
-      },
-      signal,
-    );
-    if (recomposed.status === "missing") {
-      return {
-        status: "agentNotFound",
-        message: agentNotFoundMessage(agent.id),
-      };
-    }
     await publishBuiltinConnectorInvalidationAfterCommit(
       {
         userId: args.userId,

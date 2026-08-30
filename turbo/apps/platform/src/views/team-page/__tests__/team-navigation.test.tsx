@@ -14,13 +14,14 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
   type AgentCustomConnectorUpdate,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   agentsByIdContract,
   agentInstructionsContract,
+  type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
   workflowsCollectionContract,
@@ -31,18 +32,17 @@ import {
 import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
-  zeroUserPermissionGrantsContract,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+  userPermissionGrantsContract,
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorsContract,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
   type CustomConnectorResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -53,14 +53,17 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { testConnectorPermissionDetails } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
-import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
+import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
-const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
+const agentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000401";
 const PAGE_LOAD_TIMEOUT_MS = 5000;
 
@@ -117,17 +120,18 @@ function applyCustomConnectorUpdate(
   return [...requested];
 }
 
-function createAgent(id: string, displayName: string): TeamComposeItem {
+function createAgent(id: string, displayName: string): AgentResponse {
   return {
-    id,
+    agentId: id,
     ownerId: "test-owner-id",
     displayName,
     description: "Finds and summarizes information",
     sound: null,
     avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: "public",
-    headVersionId: "version_2",
-    updatedAt: "2024-01-02T00:00:00Z",
   };
 }
 
@@ -427,8 +431,8 @@ function mockTeamAPIs({
   readonly customConnector?: CustomConnectorResponse;
   readonly onCustomConnectorUpdate?: () => void;
 } = {}): void {
-  context.mocks.data.team([
-    createAgent(zeroAgentId, "Zero"),
+  context.mocks.data.agents([
+    createAgent(agentId, "Support Agent"),
     createAgent(researchAgentId, "Research Agent"),
   ]);
   context.mocks.data.connectors([
@@ -457,18 +461,18 @@ function mockTeamAPIs({
       return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
     },
   );
-  context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: [customConnector] });
   });
   context.mocks.api(
-    zeroAgentCustomConnectorsContract.get,
+    agentCustomConnectorsContract.get,
     ({ params, respond }) => {
       const grants = customConnectorGrantsByAgent.get(params.id) ?? [];
       return respond(200, { grants });
     },
   );
   context.mocks.api(
-    zeroAgentCustomConnectorsContract.update,
+    agentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
       onCustomConnectorUpdate?.();
       const grants = applyCustomConnectorUpdate(
@@ -493,7 +497,7 @@ function mockTeamAPIs({
     return respond(200, { agents: {}, threads: {} });
   });
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
-    const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+    const agent = params.id === agentId ? "Support Agent" : "Research Agent";
     return respond(200, {
       agentId: params.id,
       ownerId: "test-owner-id",
@@ -532,9 +536,9 @@ function mockAgentWorkflowApis(): void {
     }),
     createWorkflowSummary({
       id: "d0000000-0000-4000-a000-000000000703",
-      agentId: zeroAgentId,
-      agentName: "zero",
-      agentDisplayName: "Zero",
+      agentId,
+      agentName: "support-agent",
+      agentDisplayName: "Support Agent",
       displayName: "Support Intake",
       visibility: "public",
     }),
@@ -654,14 +658,14 @@ describe("team page navigation", () => {
     let updateCount = 0;
     mockTeamAPIs({ customConnector: connector });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(researchAgentId);
         return respond(200, { grants });
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(researchAgentId);
         expect(body).toStrictEqual({
@@ -703,11 +707,11 @@ describe("team page navigation", () => {
     let connectorListReads = 0;
     let agentAccessReads = 0;
     mockTeamAPIs({ customConnector });
-    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
       connectorListReads += 1;
       return respond(200, { connectors: [customConnector] });
     });
-    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
       agentAccessReads += 1;
       return respond(200, { grants: [] });
     });
@@ -733,7 +737,7 @@ describe("team page navigation", () => {
     const updatedAgentIds: string[] = [];
     mockTeamAPIs({ customConnector });
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.get,
+      agentCustomConnectorsContract.get,
       ({ params, respond }) => {
         return respond(
           200,
@@ -751,7 +755,7 @@ describe("team page navigation", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorByIdContract.permissions,
+      customConnectorByIdContract.permissions,
       ({ respond }) => {
         return respond(200, {
           ref: "builtin:feishu@1",
@@ -768,7 +772,7 @@ describe("team page navigation", () => {
       },
     );
     context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
+      agentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         updatedAgentIds.push(params.id);
         return respond(200, {
@@ -792,11 +796,11 @@ describe("team page navigation", () => {
     click(buttonByText("Allow", permissionRow));
 
     context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
-      pathParams: { agentId: zeroAgentId },
+      pathParams: { agentId },
       searchParams: new URLSearchParams(),
     });
 
-    await screen.findByRole("heading", { name: "Zero" });
+    await screen.findByRole("heading", { name: "Support Agent" });
     await waitFor(() => {
       expect(
         screen.queryByText("messages:send-as-user"),
@@ -847,12 +851,14 @@ describe("team page navigation", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
-      pathParams: { agentId: zeroAgentId },
+      pathParams: { agentId },
       searchParams: new URLSearchParams(),
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Zero" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Support Agent" }),
+      ).toBeInTheDocument();
       expect(screen.getByText("@octocat")).toBeInTheDocument();
       expect(screen.getByLabelText("Grant GitHub access")).toBeInTheDocument();
       expect(
@@ -863,7 +869,7 @@ describe("team page navigation", () => {
 
   it("shows a retryable error when agent details fail to load", async () => {
     const unavailableAgentId = "bbbbbbbb-0000-4000-a000-000000000500";
-    context.mocks.data.team([
+    context.mocks.data.agents([
       createAgent(unavailableAgentId, "Archived Agent"),
       createAgent(researchAgentId, "Research Agent"),
     ]);
@@ -912,7 +918,7 @@ describe("team page navigation", () => {
 
   it("shows a permission grants error from an agent page", async () => {
     mockTeamAPIs();
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(400, {
         error: {
           message: "Permission grants unavailable",
@@ -1014,33 +1020,37 @@ describe("team page navigation", () => {
     context.mocks.api(
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        return respond(200, {
-          rows: mockChatEventRows(
-            params.threadId === firstThreadId
-              ? [
-                  {
-                    id: firstMessageId,
-                    threadId: firstThreadId,
-                    eventType: "input.prompt" as const,
-                    content: null,
-                    userMessage: {
-                      version: 1,
-                      parts: [
-                        {
-                          type: "text",
-                          text: "First shortcut thread message",
-                        },
-                      ],
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(
+              params.threadId === firstThreadId
+                ? [
+                    {
+                      id: firstMessageId,
+                      threadId: firstThreadId,
+                      eventType: "input.prompt" as const,
+                      content: null,
+                      userMessage: {
+                        version: 1,
+                        parts: [
+                          {
+                            type: "text",
+                            text: "First shortcut thread message",
+                          },
+                        ],
+                      },
+                      seqId: 1,
+                      createdAt: "2026-06-01T00:02:00Z",
                     },
-                    seqId: 1,
-                    createdAt: "2026-06-01T00:02:00Z",
-                  },
-                ]
-              : [],
-          ).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+                  ]
+                : [],
+            ).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     detachedSetupPage({ context, path: `/agents/${researchAgentId}/chat` });
@@ -1114,7 +1124,7 @@ describe("team page navigation", () => {
           },
         });
       }
-      const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+      const agent = params.id === agentId ? "Support Agent" : "Research Agent";
       return respond(200, {
         agentId: params.id,
         ownerId: "test-owner-id",
@@ -1172,9 +1182,9 @@ describe("team page navigation", () => {
           201,
           createWorkflowSummary({
             id: "d0000000-0000-4000-a000-0000000007ff",
-            agentId: zeroAgentId,
-            agentName: "zero",
-            agentDisplayName: "Zero",
+            agentId,
+            agentName: "support-agent",
+            agentDisplayName: "Support Agent",
             displayName: "Sales Research",
             visibility: "private",
           }),
@@ -1197,7 +1207,7 @@ describe("team page navigation", () => {
           },
         });
       }
-      const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+      const agent = params.id === agentId ? "Support Agent" : "Research Agent";
       return respond(200, {
         agentId: params.id,
         ownerId: "test-owner-id",
@@ -1234,10 +1244,10 @@ describe("team page navigation", () => {
       ).toBeInTheDocument();
     });
 
-    // Copy "Sales Research" onto Zero; leave "Ops Playbook" to be deleted.
+    // Copy "Sales Research" onto Support Agent; leave "Ops Playbook" deleted.
     selectOptionByLabel(
       "Handle workflow Sales Research",
-      /Copy to Zero/,
+      /Copy to Support Agent/,
       deleteDialog,
     );
 
@@ -1248,7 +1258,7 @@ describe("team page navigation", () => {
       expect(copyRequests).toStrictEqual([
         {
           workflowId: "d0000000-0000-4000-a000-000000000701",
-          toAgentId: zeroAgentId,
+          toAgentId: agentId,
         },
       ]);
     });
@@ -1443,11 +1453,11 @@ describe("team page navigation", () => {
       return respond(200, { permissions });
     });
     const capturedApplies: ApplyUserPermissionGrantsRequest[] = [];
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         capturedApplies.push(body);
         return respond(
@@ -1523,7 +1533,7 @@ describe("team page navigation", () => {
   it("ignores expired allow grants when opening connector permissions", async () => {
     mockNow(context.signal);
     mockTeamAPIs();
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId: researchAgentId,
@@ -1611,7 +1621,7 @@ describe("team page navigation", () => {
         return createPersistedGrant(permission, index === 0 ? null : expiresAt);
       }),
     ];
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);
     });
 
@@ -1698,11 +1708,11 @@ describe("team page navigation", () => {
         updatedAt: "2026-03-01T00:00:00.000Z",
       },
     ];
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         capturedApplies.push(body);
         const appliedGrants: UserPermissionGrantResponse[] = body.grants.map(

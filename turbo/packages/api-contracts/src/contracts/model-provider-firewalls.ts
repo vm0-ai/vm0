@@ -14,6 +14,7 @@ type FirewallSupportedProvider = Exclude<
   | "custom-anthropic-messages"
   | "custom-openai-responses"
   | "vm0"
+  | "built-in"
 >;
 type LegacySingleSecretProvider = Exclude<
   FirewallSupportedProvider,
@@ -173,7 +174,7 @@ function mpFirewall(
  * Used to auto-generate firewall entries that protect API tokens from sandbox exposure.
  * Excluded: aws-bedrock (dynamic region URLs + SigV4), azure-foundry (dynamic resource URLs).
  *
- * Claude Code gateway providers scope to /v1/messages so vm0-managed API keys
+ * Claude Code gateway providers scope to /v1/messages so vm0-built-in API keys
  * are only injected on LLM inference paths, not vendor admin endpoints.
  */
 export const MODEL_PROVIDER_FIREWALL_CONFIGS = {

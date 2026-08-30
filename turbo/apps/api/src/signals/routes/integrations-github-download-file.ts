@@ -1,8 +1,5 @@
 import { command } from "ccstate";
-import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
-import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
-import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
-import { z } from "zod";
+import { integrationsGithubDownloadFileContract } from "@okouai/api-contracts/contracts/integrations";
 
 import { inferMimetype } from "../../lib/mimetype";
 import { authRoute } from "../auth/auth-route";
@@ -10,33 +7,7 @@ import { queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { tapError } from "../utils";
 
-const c = initContract();
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
-
-const githubDownloadFileContract = c.router({
-  download: {
-    method: "GET",
-    path: "/api/okou/integrations/github/download-file",
-    headers: authHeadersSchema,
-    query: z.object({
-      url: z.string().url("url must be a GitHub file URL"),
-      filename: z.string().min(1).max(255).optional(),
-    }),
-    responses: {
-      200: c.otherResponse({
-        contentType: "application/octet-stream",
-        body: z.unknown(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      413: apiErrorSchema,
-      502: apiErrorSchema,
-    },
-    summary: "Download a GitHub context file URL",
-  },
-});
 
 function jsonResponse(status: number, message: string, code: string): Response {
   return Response.json({ error: { message, code } }, { status });
@@ -140,7 +111,7 @@ function sanitizeDownloadFilename(filename: string): string {
 }
 
 const download$ = command(async ({ get }, signal: AbortSignal) => {
-  const query = get(queryOf(githubDownloadFileContract.download));
+  const query = get(queryOf(integrationsGithubDownloadFileContract.download));
   const fileUrl = normalizeGithubDownloadUrl(query.url);
   if (!isAllowedGithubDownloadUrl(fileUrl)) {
     return jsonResponse(
@@ -230,7 +201,7 @@ const githubReadAuth = {
 
 export const integrationsGithubDownloadFileRoutes: readonly RouteEntry[] = [
   {
-    route: githubDownloadFileContract.download,
+    route: integrationsGithubDownloadFileContract.download,
     handler: authRoute(githubReadAuth, download$),
   },
 ];

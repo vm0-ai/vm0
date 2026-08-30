@@ -2,7 +2,7 @@ import {
   connectorsSlugCallbackContract,
   type ConnectorOauthCallbackResult,
 } from "@okouai/api-contracts/contracts/connectors-slug-callback";
-import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   publicConnectorCatalogIconSchema,
   type PublicConnectorCatalogIcon,
@@ -15,7 +15,7 @@ import {
 import { command } from "ccstate";
 import { createElement } from "react";
 import { accept } from "../../lib/accept.ts";
-import { ZeroConnectorCallbackPage } from "../../views/zero-page/zero-connector-callback-page.tsx";
+import { ConnectorCallbackPage } from "../../views/okou-page/connector-callback-page.tsx";
 import { apiClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -23,8 +23,9 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$, replacePathSilently$, searchParams$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { jsonParseOr } from "../utils.ts";
+import { jsonParseOr, settle } from "../utils.ts";
 import { i18n } from "../../i18n/index.ts";
+import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
 
 type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
@@ -163,7 +164,7 @@ function callbackPageElement(
   label: string,
   result: ConnectorCallbackPageResult,
 ): React.JSX.Element {
-  return createElement(ZeroConnectorCallbackPage, {
+  return createElement(ConnectorCallbackPage, {
     connectorIcon,
     connectorLabel: label,
     status: result.status,
@@ -201,7 +202,7 @@ const completeCustomConnectorCallback$ = command(
     query: Record<string, string>,
     signal: AbortSignal,
   ): Promise<ConnectorOauthCallbackResult> => {
-    const client = get(apiClient$)(zeroCustomConnectorOAuth2Contract, {
+    const client = get(apiClient$)(customConnectorOAuth2Contract, {
       apiBase: "api",
     });
     const response = await accept(
@@ -278,6 +279,9 @@ export const setupConnectorCallbackPage$ = command(
             query,
             signal,
           );
+    if (result.status === "success") {
+      await settle(set(syncGoogleAdsConversionMilestones$, signal), signal);
+    }
     set(updatePage$, callbackPageElement(connectorIcon, label, result));
 
     const resultSearchParams = new URLSearchParams();

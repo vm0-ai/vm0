@@ -1,4 +1,36 @@
 //! Bounded CPU execution for resume-session history materialization.
+//!
+//! A production Runner creates one shared `SessionHistoryCpuPool` per Runner
+//! process from the logical CPU count reported by `host::cpu_count()`. Its
+//! production capacity is half that count (integer division), clamped to a
+//! minimum of one and a maximum of four permits. The pool is stored in the
+//! shared `ExecutorConfig`, so downloaded history, workspace-sidecar history,
+//! and inline Codex timestamp extraction contend for the same CPU budget.
+//!
+//! `SessionHistoryCpuPool::materialize` acquires an owned semaphore permit
+//! before spawning the blocking task and moves that permit into
+//! `spawn_blocking`. The permit therefore covers the complete materialization,
+//! including validation, decompression, hashing, UTF-8 processing, and Codex
+//! timestamp scanning; it is not only an admission or decompression limit.
+//!
+//! Cancellation is cooperative once the blocking task has started. Caller
+//! cancellation signals a child token and the task's abort handle, and the
+//! cancellation path joins the blocking task before returning. Dropping an
+//! in-flight materialization future signals the same child token and abort
+//! handle through its task guard. `spawn_blocking` work must therefore retain
+//! bounded cancellation checkpoints: CPU loops call `check_cancelled`, and
+//! blocking read loops use `CancellationReader`, which checks cancellation
+//! around each read. New long-running CPU or read phases must preserve this
+//! contract rather than relying on task abortion to stop active work.
+//!
+//! Jobs enter this boundary as raw bytes, gzip or zstd encoded bytes, or
+//! inline Codex text. The raw and compressed paths validate declared sizes,
+//! decompress when needed, verify SHA-256, and extract a Codex timestamp when
+//! applicable. The inline Codex path performs the UTF-8 and timestamp work
+//! through the same pool. The downloaded-history materializer in
+//! `session_history_download.rs` and the workspace-sidecar materializer in
+//! `workspace_session_history_materializer.rs` use the pool for their raw,
+//! gzip, and zstd jobs; `agent_run.rs` uses it for inline Codex history.
 
 use std::fmt;
 use std::io::{self, BufReader, Read};

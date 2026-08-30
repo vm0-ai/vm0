@@ -10,7 +10,11 @@ import {
 import { join } from "node:path";
 
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
-import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 import {
   getChatEventSnapshot,
@@ -19,14 +23,35 @@ import {
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
-const SNAPSHOT_FILE_PATTERN = /^snapshot-to-(\d+)\.ndjson$/;
+// Stage 1 CLI-cache filename fallback for pre-Stage-1 artifacts. Remove under
+// vm0-ai/vm0#30329 after the queue plus execution/finalization gate closes.
+const SNAPSHOT_FILE_PATTERN = /^snapshot-tool-redacted-to-(\d+)\.ndjson$/;
 const EVENT_FILE_PATTERN = /^event-SEQ_ID_(\d+)\.json$/;
+const CACHE_FORMAT_FILE = ".okou-chat-event-schema-version";
 
-interface ManagedHistoryFile {
-  readonly name: string;
-  readonly kind: "snapshot" | "event";
-  readonly seqId: number;
+function cacheFormatBody(): string {
+  // Stage 1 CLI-cache writer fallback for pre-Stage-1 readers. Remove under
+  // vm0-ai/vm0#30329 after the queue plus execution/finalization gate closes.
+  return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${LEGACY_CHAT_EVENT_PROJECTION}\n`;
 }
+
+function versionOnlyCacheFormatBody(): string {
+  // Accept the projection-free peer shape during the same Stage 1 CLI gate;
+  // vm0-ai/vm0#30329 removes the dual-shape compatibility branch afterward.
+  return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
+}
+
+type ManagedHistoryFile =
+  | {
+      readonly name: string;
+      readonly kind: "snapshot";
+      readonly seqId: number;
+    }
+  | {
+      readonly name: string;
+      readonly kind: "event";
+      readonly seqId: number;
+    };
 
 interface RawChatHistorySyncResult {
   readonly directory: string;
@@ -39,9 +64,13 @@ type LocalHistoryState =
   | { readonly kind: "valid"; readonly cursor: ChatEventCursor };
 
 interface ParsedSnapshot {
-  readonly lastEventId: string;
-  readonly lastRowSeqId: number;
+  readonly lastEventId: string | null;
+  readonly lastRowSeqId: number | null;
 }
+
+type SnapshotCursorState =
+  | { readonly kind: "invalid" }
+  | { readonly kind: "valid"; readonly cursor: ChatEventCursor };
 
 function managedHistoryFile(name: string): ManagedHistoryFile | null {
   const snapshot = SNAPSHOT_FILE_PATTERN.exec(name);
@@ -80,11 +109,47 @@ async function listManagedHistoryFiles(
     });
 }
 
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
+async function hasCurrentCacheFormat(directory: string): Promise<boolean> {
+  try {
+    const body = await readFile(join(directory, CACHE_FORMAT_FILE), "utf8");
+    return body === cacheFormatBody() || body === versionOnlyCacheFormatBody();
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function publishCacheFormat(directory: string): Promise<void> {
+  const stagedDirectory = await mkdtemp(
+    join(directory, ".okou-chat-event-schema-version-"),
+  );
+  try {
+    const staged = join(stagedDirectory, CACHE_FORMAT_FILE);
+    await writeFile(staged, cacheFormatBody(), "utf8");
+    await rename(staged, join(directory, CACHE_FORMAT_FILE));
+  } finally {
+    await rm(stagedDirectory, { recursive: true, force: true });
+  }
+}
+
+async function invalidateCacheFormat(directory: string): Promise<void> {
+  await rm(join(directory, CACHE_FORMAT_FILE), { force: true });
+}
+
 function parseSnapshot(args: {
   readonly text: string;
   readonly threadId: string;
 }): ParsedSnapshot {
-  if (args.text.length === 0 || !args.text.endsWith("\n")) {
+  if (args.text.length === 0) {
+    return { lastEventId: null, lastRowSeqId: null };
+  }
+  if (!args.text.endsWith("\n")) {
     throw new Error("Chat event snapshot must be newline-delimited JSON");
   }
   let lastEventId: string | undefined;
@@ -102,10 +167,46 @@ function parseSnapshot(args: {
     lastEventId = row.id;
     lastRowSeqId = row.seqId;
   }
-  if (lastEventId === undefined || lastRowSeqId === undefined) {
-    throw new Error("Chat event snapshot must contain at least one row");
+  return {
+    lastEventId: lastEventId ?? null,
+    lastRowSeqId: lastRowSeqId ?? null,
+  };
+}
+
+async function localSnapshotCursor(args: {
+  readonly directory: string;
+  readonly threadId: string;
+  readonly snapshot: Extract<ManagedHistoryFile, { readonly kind: "snapshot" }>;
+}): Promise<SnapshotCursorState> {
+  try {
+    const parsed = parseSnapshot({
+      text: await readFile(join(args.directory, args.snapshot.name), "utf8"),
+      threadId: args.threadId,
+    });
+    if (args.snapshot.seqId === THREAD_START_SEQ_ID) {
+      return parsed.lastEventId === null && parsed.lastRowSeqId === null
+        ? {
+            kind: "valid",
+            cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
+          }
+        : { kind: "invalid" };
+    }
+    if (
+      parsed.lastEventId === null ||
+      parsed.lastRowSeqId !== args.snapshot.seqId
+    ) {
+      return { kind: "invalid" };
+    }
+    return {
+      kind: "valid",
+      cursor: {
+        lastEventId: parsed.lastEventId,
+        lastSeqId: args.snapshot.seqId,
+      },
+    };
+  } catch {
+    return { kind: "invalid" };
   }
-  return { lastEventId, lastRowSeqId };
 }
 
 async function localHistoryState(args: {
@@ -132,19 +233,15 @@ async function localHistoryState(args: {
   };
   const snapshot = snapshots[0];
   if (snapshot !== undefined) {
-    try {
-      const text = await readFile(join(args.directory, snapshot.name), "utf8");
-      const parsed = parseSnapshot({ text, threadId: args.threadId });
-      if (parsed.lastRowSeqId > snapshot.seqId) {
-        return { kind: "invalid" };
-      }
-      cursor = {
-        lastEventId: parsed.lastEventId,
-        lastSeqId: snapshot.seqId,
-      };
-    } catch {
-      return { kind: "invalid" };
+    const state = await localSnapshotCursor({
+      directory: args.directory,
+      threadId: args.threadId,
+      snapshot,
+    });
+    if (state.kind === "invalid") {
+      return state;
     }
+    cursor = state.cursor;
   }
   let previousSeqId = cursor.lastSeqId;
   for (const event of events) {
@@ -160,7 +257,10 @@ async function localHistoryState(args: {
       if (row.chatThreadId !== args.threadId || row.seqId !== event.seqId) {
         return { kind: "invalid" };
       }
-      cursor = { lastEventId: row.id, lastSeqId: row.seqId };
+      cursor = {
+        lastEventId: row.id,
+        lastSeqId: row.seqId,
+      };
     } catch {
       return { kind: "invalid" };
     }
@@ -174,7 +274,8 @@ async function localHistoryState(args: {
 async function downloadSnapshot(args: {
   readonly url: string;
   readonly threadId: string;
-  readonly expectedLastEventId: string;
+  readonly expectedLastEventId: string | null;
+  readonly expectedLastSeqId: number;
 }): Promise<string> {
   const response = await fetch(args.url);
   if (!response.ok) {
@@ -183,8 +284,27 @@ async function downloadSnapshot(args: {
     );
   }
   const text = await response.text();
-  const parsed = parseSnapshot({ text, threadId: args.threadId });
-  if (args.expectedLastEventId !== parsed.lastEventId) {
+  const parsed = parseSnapshot({
+    text,
+    threadId: args.threadId,
+  });
+  const parsedLastSeqId = parsed.lastRowSeqId ?? THREAD_START_SEQ_ID;
+  if (
+    parsed.lastEventId !== args.expectedLastEventId ||
+    parsedLastSeqId !== args.expectedLastSeqId
+  ) {
+    throw new Error("Chat event snapshot terminal event ID does not match");
+  }
+  if (
+    parsed.lastRowSeqId !== null &&
+    parsed.lastRowSeqId > args.expectedLastSeqId
+  ) {
+    throw new Error("Chat event snapshot exceeds its physical cursor");
+  }
+  if (
+    parsed.lastRowSeqId === args.expectedLastSeqId &&
+    parsed.lastEventId !== args.expectedLastEventId
+  ) {
     throw new Error("Chat event snapshot terminal event ID does not match");
   }
   return text;
@@ -194,7 +314,9 @@ async function syncRows(args: {
   readonly threadId: string;
   readonly directory: string;
   readonly cursor: ChatEventCursor;
-}): Promise<"complete" | "expired"> {
+}): Promise<{
+  readonly kind: "complete" | "expired";
+}> {
   let cursor = args.cursor;
   for (;;) {
     const page = await listChatEventRows(
@@ -213,7 +335,7 @@ async function syncRows(args: {
           },
     );
     if (page.kind === "expired") {
-      return "expired";
+      return { kind: "expired" };
     }
     let previousSeqId = cursor.lastSeqId;
     for (const row of page.rows) {
@@ -244,12 +366,9 @@ async function syncRows(args: {
     } finally {
       await rm(stagedDirectory, { recursive: true, force: true });
     }
-    const lastRow = page.rows.at(-1);
-    if (lastRow !== undefined) {
-      cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
-    }
-    if (page.rows.length < CHAT_EVENT_ROWS_PAGE_LIMIT) {
-      return "complete";
+    cursor = page.cursor;
+    if (!page.hasMore) {
+      return { kind: "complete" };
     }
   }
 }
@@ -291,21 +410,28 @@ async function rebuildRawChatHistory(args: {
       lastEventId: null,
       lastSeqId: THREAD_START_SEQ_ID,
     };
-    if (snapshot) {
+    if (snapshot.kind === "snapshot") {
       const downloaded = await downloadSnapshot({
         url: snapshot.url,
         threadId: args.threadId,
         expectedLastEventId: snapshot.lastEventId,
+        expectedLastSeqId: snapshot.lastSeqId,
       });
+      // Stage 1 legacy writer paired with SNAPSHOT_FILE_PATTERN. Remove under
+      // vm0-ai/vm0#30329 after the CLI artifact drain gate closes.
+      const snapshotFileName = `snapshot-tool-redacted-to-${snapshot.lastSeqId}.ndjson`;
       await writeFile(
-        join(temporaryDirectory, `snapshot-to-${snapshot.lastSeqId}.ndjson`),
+        join(temporaryDirectory, snapshotFileName),
         downloaded,
         "utf8",
       );
-      cursor = {
-        lastEventId: snapshot.lastEventId,
-        lastSeqId: snapshot.lastSeqId,
-      };
+      cursor =
+        snapshot.lastEventId === null
+          ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
+          : {
+              lastEventId: snapshot.lastEventId,
+              lastSeqId: snapshot.lastSeqId,
+            };
     }
 
     const result = await syncRows({
@@ -313,11 +439,12 @@ async function rebuildRawChatHistory(args: {
       directory: temporaryDirectory,
       cursor,
     });
-    if (result === "expired") {
+    if (result.kind === "expired") {
       throw new Error(
         "Chat event rows cursor expired immediately after snapshot download",
       );
     }
+    await invalidateCacheFormat(args.threadDirectory);
     await replaceManagedHistoryFiles({
       targetDirectory: args.threadDirectory,
       stagedDirectory: temporaryDirectory,
@@ -335,11 +462,13 @@ export async function syncRawChatHistory(args: {
   const threadDirectory = join(args.outputDirectory, args.threadId);
   await mkdir(threadDirectory, { recursive: true });
   const existing = await listManagedHistoryFiles(threadDirectory);
-  const state = await localHistoryState({
-    directory: threadDirectory,
-    threadId: args.threadId,
-    files: existing,
-  });
+  const state = (await hasCurrentCacheFormat(threadDirectory))
+    ? await localHistoryState({
+        directory: threadDirectory,
+        threadId: args.threadId,
+        files: existing,
+      })
+    : ({ kind: "invalid" } as const);
 
   if (state.kind !== "valid") {
     await rebuildRawChatHistory({
@@ -353,7 +482,7 @@ export async function syncRawChatHistory(args: {
       directory: threadDirectory,
       cursor: state.cursor,
     });
-    if (result === "expired") {
+    if (result.kind === "expired") {
       await rebuildRawChatHistory({
         threadId: args.threadId,
         outputDirectory: args.outputDirectory,
@@ -361,6 +490,8 @@ export async function syncRawChatHistory(args: {
       });
     }
   }
+
+  await publishCacheFormat(threadDirectory);
 
   const files = (await listManagedHistoryFiles(threadDirectory)).map((file) => {
     return join(threadDirectory, file.name);

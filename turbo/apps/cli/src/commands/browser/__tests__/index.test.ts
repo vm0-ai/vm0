@@ -70,7 +70,7 @@ describe("okou browser command", () => {
       recursive: true,
       force: true,
     });
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
     spawnSyncMock.mockReturnValue({ status: 0 });
@@ -132,7 +132,7 @@ describe("okou browser command", () => {
     expect(authorization).toBe("Bearer test-token");
     expect(spawnSyncMock).toHaveBeenCalledWith(
       "agent-browser",
-      ["--session", "zero-browser", "connect", CDP_URL],
+      ["--session", "okou-browser", "connect", CDP_URL],
       { stdio: "ignore" },
     );
     const output = consoleLog.mock.calls.flat().join("\n");
@@ -163,7 +163,7 @@ describe("okou browser command", () => {
     expect(useRequests).toBe(1);
     expect(spawnSyncMock).toHaveBeenCalledWith(
       "agent-browser",
-      ["--session", "zero-browser", "connect", CDP_URL],
+      ["--session", "okou-browser", "connect", CDP_URL],
       { stdio: "ignore" },
     );
     const output = consoleLog.mock.calls.flat().join("\n");
@@ -219,7 +219,7 @@ describe("okou browser command", () => {
 
     expect(spawnSyncMock).toHaveBeenCalledWith(
       "agent-browser",
-      ["--session", "zero-browser", "connect", CDP_URL],
+      ["--session", "okou-browser", "connect", CDP_URL],
       { stdio: "ignore" },
     );
     const output = consoleLog.mock.calls.flat().join("\n");
@@ -234,7 +234,81 @@ describe("okou browser command", () => {
         threadId: THREAD_ID,
         viewerUrl: `https://app.vm0.ai/browsers/${THREAD_ID}`,
       },
-      agentBrowserSession: "zero-browser",
+      agentBrowserSession: "okou-browser",
     });
+  });
+
+  it("documents the agent-browser session it actually attaches", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/browsers/use", () => {
+        return HttpResponse.json(
+          {
+            browser: browser("active"),
+            cdpUrl: CDP_URL,
+            lifecycleEventId: null,
+          },
+          { status: 200 },
+        );
+      }),
+    );
+
+    await browserCommand.parseAsync(["node", "cli", "use", "--json"]);
+
+    const { agentBrowserSession } = JSON.parse(
+      consoleLog.mock.calls.flat().join("\n"),
+    ) as { readonly agentBrowserSession: string };
+    expect(spawnSyncMock).toHaveBeenCalledWith(
+      "agent-browser",
+      ["--session", agentBrowserSession, "connect", CDP_URL],
+      { stdio: "ignore" },
+    );
+
+    // The help text is an instruction agents copy verbatim: a session name that
+    // drifts from the attached one hands them a browser that was never connected.
+    let help = "";
+    browserCommand.configureOutput({
+      writeOut: (text: string) => {
+        help += text;
+      },
+    });
+    browserCommand.outputHelp();
+    browserCommand.configureOutput({
+      writeOut: (text: string) => {
+        process.stdout.write(text);
+      },
+    });
+
+    expect(help).toContain(
+      `agent-browser --session ${agentBrowserSession} open`,
+    );
+  });
+
+  it("attaches to an explicitly named agent-browser session", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/browsers/use", () => {
+        return HttpResponse.json(
+          {
+            browser: browser("active"),
+            cdpUrl: CDP_URL,
+            lifecycleEventId: null,
+          },
+          { status: 200 },
+        );
+      }),
+    );
+
+    await browserCommand.parseAsync([
+      "node",
+      "cli",
+      "use",
+      "--agent-session",
+      "booking-browser",
+    ]);
+
+    expect(spawnSyncMock).toHaveBeenCalledWith(
+      "agent-browser",
+      ["--session", "booking-browser", "connect", CDP_URL],
+      { stdio: "ignore" },
+    );
   });
 });

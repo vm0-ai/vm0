@@ -248,8 +248,8 @@ jobs:
       - name: Build unsigned Okou production macOS artifact
         id: build-okou-prod
         env:
-          VM0_DESKTOP_PRODUCT: okou
-          VM0_DESKTOP_PLATFORM_URL: https://app.okou.ai
+          OKOU_DESKTOP_PRODUCT: okou
+          OKOU_DESKTOP_PLATFORM_URL: https://app.okou.ai
           SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
@@ -268,8 +268,8 @@ jobs:
             "apps/desktop/desktop-runtime-config.json",
             `${JSON.stringify(
               {
-                platformUrl: process.env.VM0_DESKTOP_PLATFORM_URL,
-                product: process.env.VM0_DESKTOP_PRODUCT,
+                platformUrl: process.env.OKOU_DESKTOP_PLATFORM_URL,
+                product: process.env.OKOU_DESKTOP_PRODUCT,
               },
               null,
               2,
@@ -372,8 +372,8 @@ jobs:
 
       - name: Smoke test Okou production artifact launch
         env:
-          VM0_DESKTOP_PRODUCT: okou
-          VM0_DESKTOP_PLATFORM_URL: https://app.okou.ai
+          OKOU_DESKTOP_PRODUCT: okou
+          OKOU_DESKTOP_PLATFORM_URL: https://app.okou.ai
         run: node apps/desktop/scripts/smoke-test-packaged-app.js
 
       - name: Upload unsigned Okou macOS artifact
@@ -388,7 +388,7 @@ jobs:
         id: build-preview
         if: github.event_name == 'pull_request'
         env:
-          VM0_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
+          OKOU_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
           SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
@@ -407,7 +407,7 @@ jobs:
           fs.writeFileSync(
             "apps/desktop/desktop-runtime-config.json",
             `${JSON.stringify(
-              { platformUrl: process.env.VM0_DESKTOP_PLATFORM_URL },
+              { platformUrl: process.env.OKOU_DESKTOP_PLATFORM_URL },
               null,
               2,
             )}\n`,
@@ -526,7 +526,7 @@ jobs:
       - name: Smoke test PR preview artifact launch
         if: github.event_name == 'pull_request'
         env:
-          VM0_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
+          OKOU_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
         run: node apps/desktop/scripts/smoke-test-packaged-app.js
 
       - name: Upload unsigned PR preview macOS artifact
@@ -649,7 +649,7 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
           SENTRY_ENVIRONMENT: production
-          VM0_DESKTOP_SKIP_SIGNING: "true"
+          OKOU_DESKTOP_SKIP_SIGNING: "true"
         working-directory: turbo
         run: |
           cleanup_runtime_config() {
@@ -679,8 +679,8 @@ jobs:
 
           node apps/desktop/scripts/smoke-test-packaged-app.js
 
-          VM0_DESKTOP_PRODUCT=okou \
-          VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          OKOU_DESKTOP_PRODUCT=okou \
+          OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
           node <<'NODE'
           const fs = require("node:fs");
 
@@ -688,8 +688,8 @@ jobs:
             "apps/desktop/desktop-runtime-config.json",
             `${JSON.stringify(
               {
-                platformUrl: process.env.VM0_DESKTOP_PLATFORM_URL,
-                product: process.env.VM0_DESKTOP_PRODUCT,
+                platformUrl: process.env.OKOU_DESKTOP_PLATFORM_URL,
+                product: process.env.OKOU_DESKTOP_PRODUCT,
               },
               null,
               2,
@@ -697,11 +697,11 @@ jobs:
           );
           NODE
 
-          VM0_DESKTOP_PRODUCT=okou \
-          VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          OKOU_DESKTOP_PRODUCT=okou \
+          OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
           pnpm -F @okouai/desktop build
-          VM0_DESKTOP_PRODUCT=okou \
-          VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          OKOU_DESKTOP_PRODUCT=okou \
+          OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
           pnpm --dir apps/desktop exec electron-forge package \
             --platform darwin \
             --arch arm64
@@ -718,8 +718,8 @@ jobs:
             exit 1
           fi
 
-          VM0_DESKTOP_PRODUCT=okou \
-          VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          OKOU_DESKTOP_PRODUCT=okou \
+          OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
           node apps/desktop/scripts/smoke-test-packaged-app.js
 
       - name: Create canonical Desktop artifact

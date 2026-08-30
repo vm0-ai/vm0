@@ -9,6 +9,42 @@
     <title>AI Agents for Real Work — Your Trustworthy AI Teammate | VM0</title>
     <meta charset="UTF-8" />
     <meta name="vm0-api-origin" content="" />
+    <script data-vm0-clerk-bootstrap="">
+      (function () {
+        var hostname = location.hostname.toLowerCase();
+        var production =
+          hostname === "vm0.ai" ||
+          hostname.endsWith(".vm0.ai") ||
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
+        var satellite =
+          hostname === "app.okou.ai" || hostname.endsWith(".app.okou.ai");
+        var publishableKey = production
+          ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
+          : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
+        var scriptUrl = satellite
+          ? "__VM0_CLERK_SATELLITE_SCRIPT_URL__"
+          : production
+            ? "__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
+            : "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
+
+        var script = document.createElement("script");
+        script.async = false;
+        script.defer = true;
+        script.crossOrigin = "anonymous";
+        script.dataset.clerkJsScript = "";
+        script.dataset.clerkPublishableKey = publishableKey;
+        if (satellite) {
+          script.dataset.clerkDomain = "app.okou.ai";
+        }
+        script.onerror = function () {
+          script.remove();
+        };
+        script.src = scriptUrl;
+        script.type = "text/javascript";
+        document.head.appendChild(script);
+      })();
+    </script>
     <style>
       body {
         margin: 0;
@@ -848,16 +884,17 @@
           hostname.endsWith(".okou.ai");
         if (!isProductionHost) return;
 
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () {
+          window.dataLayer.push(arguments);
+        };
+        window.gtag("js", new Date());
+        window.gtag("config", "AW-18144854014");
+        window.gtag("config", "AW-18407336975");
+
         var initialized = false;
 
         function loadMarketingScripts() {
-          window.dataLayer = window.dataLayer || [];
-          window.gtag = function () {
-            window.dataLayer.push(arguments);
-          };
-          window.gtag("js", new Date());
-          window.gtag("config", "AW-18144854014");
-
           var gtagScript = document.createElement("script");
           gtagScript.async = true;
           gtagScript.src =
@@ -899,46 +936,21 @@
           window.setTimeout(loadMarketingScripts, 0);
         }
 
-        // Optimize loading performance: attribution scripts can wait until
-        // the app skeleton is visible, with a fallback for failed bootstraps.
+        // Keep vendor work outside the first-content critical path. The
+        // 30-second guard exceeds the observed mobile P90 startup window and
+        // still bounds bootstraps that never reach real app content.
         window.addEventListener(
-          "vm0:app-skeleton-visible",
+          "vm0:app-first-content-visible",
           scheduleMarketingScripts,
           { once: true },
         );
-        window.setTimeout(scheduleMarketingScripts, 5000);
+        window.setTimeout(scheduleMarketingScripts, 30000);
       })();
     </script>
     <script>
       // Mark <head> parse start as early as possible so we can measure the
       // total white-screen duration up to the first `hideAppSkeleton$` call.
       window.__appBootstrapStart = performance.now();
-    </script>
-    <script>
-      // Preconnect to the Clerk Frontend API host so the DNS+TCP+TLS
-      // handshake overlaps with bundle download. The publishable key is
-      // shaped pk_<env>_<base64(host$)>; decoding it here avoids hard-coding
-      // the FAPI domain per environment.
-      (function () {
-        var h = location.hostname.toLowerCase();
-        var production =
-          h === "vm0.ai" ||
-          h.endsWith(".vm0.ai") ||
-          h === "okou.ai" ||
-          h.endsWith(".okou.ai");
-        var k = production
-          ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
-          : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        var m = /^pk_(?:test|live)_(.+)$/.exec(k);
-        if (!m) return;
-        var host = atob(m[1]).replace(/\$+$/, "");
-        if (!/^[a-z0-9.-]+$/i.test(host)) return;
-        var l = document.createElement("link");
-        l.rel = "preconnect";
-        l.href = "https://" + host;
-        l.crossOrigin = "anonymous";
-        document.head.appendChild(l);
-      })();
     </script>
     <link
       rel="icon"
@@ -952,7 +964,7 @@
       href="https://static.vm0.io/platform/favicon.ico"
       integrity="sha384-Pe0cByX3KRkasDxciKVerqZSvuElddhe0ri32ym8ia9G/4BZcn2EhPYZI1n4jV3B"
     />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link vite-ignore rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://cdn.vm0.io" crossorigin />
     <link rel="preconnect" href="https://static.vm0.io" crossorigin />
     <link
@@ -1051,11 +1063,7 @@
         if (t === "dark") document.documentElement.classList.add("dark");
       })();
     </script>
-    <script type="module">
-      if (window.__vm0BrowserSupported === true) {
-        import("/src/main.ts");
-      }
-    </script>
+    <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
     <div class="browser-upgrade" role="status" aria-live="polite">
@@ -1140,13 +1148,13 @@
         #app-bootstrap-skeleton {
           position: fixed;
           inset: 0;
+          /* Fixed insets follow WebKit's reachable layout viewport. Avoid the
+             standalone viewport unit, which can resolve after first paint. */
           z-index: 60;
           box-sizing: border-box;
           display: none;
           align-items: center;
           justify-content: center;
-          height: var(--zero-viewport-height);
-          min-height: var(--zero-viewport-height);
           background: #fdfdfe;
           color: rgba(20, 23, 29, 0.7);
           font-family:
@@ -1170,10 +1178,14 @@
           opacity: 0;
         }
         .app-bootstrap-skeleton__content {
+          position: fixed;
+          top: var(--app-bootstrap-skeleton-center-y, 50dvh);
+          left: 50%;
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 20px;
+          transform: translate(-50%, -50%);
         }
         .app-bootstrap-skeleton__avatar {
           position: relative;
@@ -1284,6 +1296,19 @@
         if (window.__vm0BrowserSupported !== true) return;
 
         var skeleton = document.getElementById("app-bootstrap-skeleton");
+        // iOS standalone can expand the fixed containing viewport one frame
+        // after launch. Pin the content to the initially reachable viewport
+        // so that later geometry resolution cannot visibly recenter it.
+        var viewportHeight =
+          window.visualViewport && window.visualViewport.height > 0
+            ? window.visualViewport.height
+            : window.innerHeight;
+        if (viewportHeight > 0) {
+          skeleton.style.setProperty(
+            "--app-bootstrap-skeleton-center-y",
+            viewportHeight / 2 + "px",
+          );
+        }
         var loadingCopy = window.__vm0PreBundleCopy.loading;
         var messages = loadingCopy.messages;
         skeleton.setAttribute("aria-label", loadingCopy.ariaLabel);

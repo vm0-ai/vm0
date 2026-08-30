@@ -408,7 +408,7 @@ const initUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       filename: bodyResult.data.filename,
       publicBrand:
-        auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+        auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
     },
     signal,
   );

@@ -1,31 +1,27 @@
 """Shared WebSocket helpers for model-provider usage tests."""
 
 import json
-from collections.abc import Callable
 
 import pytest
 from mitmproxy import http, websocket
 from wsproto.frame_protocol import Opcode
 
-import deferred_callbacks
 import mitm_addon
 import model_websocket_usage
+from tests.deferred_callback_helpers import (
+    ScheduledCallback,
+    capture_deferred_callbacks,
+    run_deferred_callbacks,
+)
 from usage.json_selective import JsonSelectiveExtractor
 
-_WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
-ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
+type ScheduledWebSocketTrim = ScheduledCallback
 
 
 def capture_deferred_websocket_trims(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[ScheduledWebSocketTrim]:
-    scheduled: list[ScheduledWebSocketTrim] = []
-
-    def call_soon(callback: _WebSocketTrimCallback, flow: http.HTTPFlow) -> None:
-        scheduled.append((callback, flow))
-
-    monkeypatch.setattr(deferred_callbacks, "call_soon", call_soon)
-    return scheduled
+    return capture_deferred_callbacks(monkeypatch)
 
 
 def capture_openai_responses_extractor_feeds(
@@ -44,10 +40,7 @@ def capture_openai_responses_extractor_feeds(
 
 
 def run_deferred_websocket_trims(scheduled: list[ScheduledWebSocketTrim]) -> None:
-    pending = list(scheduled)
-    scheduled.clear()
-    for callback, flow in pending:
-        callback(flow)
+    run_deferred_callbacks(scheduled)
 
 
 def _make_websocket_message(

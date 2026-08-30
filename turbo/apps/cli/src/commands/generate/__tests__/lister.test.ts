@@ -182,7 +182,7 @@ describe("okou generate lister", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     server.use(stubBillingStatus(true));
@@ -377,8 +377,10 @@ describe("okou generate lister", () => {
     expect(text).not.toContain("No ready video generation connectors found.");
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in video generation");
+    // Spelled out rather than derived from the catalog, so moving the default
+    // has to be a deliberate edit here instead of silently rewriting the help.
     expect(text).toContain(
-      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
+      "Models: dreamina-seedance-2.5, dreamina-seedance-2.0 (default), dreamina-seedance-2.0-fast, dreamina-seedance-2.0-mini, seedance-1.5-pro, veo3.1-fast, kling-v3-4k, minimax-h3",
     );
     expect(text).toContain("Use: okou generate video --provider built-in -h");
     expect(text).toContain(

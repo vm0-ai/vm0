@@ -10,13 +10,14 @@ import {
 } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
-import { asc, gt } from "drizzle-orm";
+import { isStaffOrg } from "@okouai/core/staff-org";
+import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
+import { and, asc, eq, gt } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
@@ -45,7 +46,17 @@ const cooldownDiagnosticsDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Managed model cooldown diagnostics are not enabled",
+      message: "Built-in model cooldown diagnostics are not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+const staffRequired = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Only staff can cancel built-in model cooldowns",
       code: "FORBIDDEN",
     }),
   }),
@@ -57,7 +68,7 @@ const listModelProvidersInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
-const getManagedModelCooldownDiagnosticsInner$ = command(
+const getBuiltInModelCooldownDiagnosticsInner$ = command(
   async ({ get }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const overrides = await get(
@@ -69,23 +80,25 @@ const getManagedModelCooldownDiagnosticsInner$ = command(
       userId: auth.userId,
       overrides,
     });
-    if (!featureStates[FeatureSwitchKey.ZeroDebug]) {
+    if (!featureStates[FeatureSwitchKey.OkouDebug]) {
       return cooldownDiagnosticsDisabled;
     }
 
-    const activeCooldowns = await get(db$)
+    const db = get(db$);
+    const timestamp = nowDate();
+    const activeCooldowns = await db
       .select({
-        selectedModel: managedModelCandidateCooldown.selectedModel,
-        providerType: managedModelCandidateCooldown.providerType,
-        upstreamModel: managedModelCandidateCooldown.upstreamModel,
-        unavailableUntil: managedModelCandidateCooldown.unavailableUntil,
+        selectedModel: builtInModelCandidateCooldown.selectedModel,
+        providerType: builtInModelCandidateCooldown.providerType,
+        upstreamModel: builtInModelCandidateCooldown.upstreamModel,
+        unavailableUntil: builtInModelCandidateCooldown.unavailableUntil,
       })
-      .from(managedModelCandidateCooldown)
-      .where(gt(managedModelCandidateCooldown.unavailableUntil, nowDate()))
+      .from(builtInModelCandidateCooldown)
+      .where(gt(builtInModelCandidateCooldown.unavailableUntil, timestamp))
       .orderBy(
-        asc(managedModelCandidateCooldown.selectedModel),
-        asc(managedModelCandidateCooldown.providerType),
-        asc(managedModelCandidateCooldown.upstreamModel),
+        asc(builtInModelCandidateCooldown.selectedModel),
+        asc(builtInModelCandidateCooldown.providerType),
+        asc(builtInModelCandidateCooldown.upstreamModel),
       );
     signal.throwIfAborted();
 
@@ -93,7 +106,8 @@ const getManagedModelCooldownDiagnosticsInner$ = command(
       status: 200 as const,
       body: {
         fallbackEnabled:
-          featureStates[FeatureSwitchKey.ManagedModelProviderFallback],
+          featureStates[FeatureSwitchKey.BuiltInModelProviderFallback],
+        canCancelCooldowns: isStaffOrg(auth.orgId),
         activeCooldowns: activeCooldowns.map((cooldown) => {
           return {
             ...cooldown,
@@ -102,6 +116,46 @@ const getManagedModelCooldownDiagnosticsInner$ = command(
         }),
       },
     };
+  },
+);
+
+const cancelBuiltInModelCooldownInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (!isStaffOrg(auth.orgId)) {
+      return staffRequired;
+    }
+
+    const bodyResult = await get(
+      bodyResultOf(modelProviderCooldownDiagnosticsContract.cancel),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const db = set(writeDb$);
+    await db
+      .delete(builtInModelCandidateCooldown)
+      .where(
+        and(
+          eq(
+            builtInModelCandidateCooldown.selectedModel,
+            bodyResult.data.selectedModel,
+          ),
+          eq(
+            builtInModelCandidateCooldown.providerType,
+            bodyResult.data.providerType,
+          ),
+          eq(
+            builtInModelCandidateCooldown.upstreamModel,
+            bodyResult.data.upstreamModel,
+          ),
+        ),
+      );
+    signal.throwIfAborted();
+
+    return { status: 204 as const, body: undefined };
   },
 );
 
@@ -188,7 +242,7 @@ const upsertModelProviderInner$ = command(
       );
     }
 
-    if (type === "vm0") {
+    if (type === "built-in") {
       const result = await set(
         upsertOrgNoSecretModelProvider$,
         { orgId: auth.orgId, type },
@@ -273,7 +327,18 @@ export const modelProvidersRoutes: readonly RouteEntry[] = [
         missingOrganizationStatus: 401,
         accept: ["session"],
       },
-      getManagedModelCooldownDiagnosticsInner$,
+      getBuiltInModelCooldownDiagnosticsInner$,
+    ),
+  },
+  {
+    route: modelProviderCooldownDiagnosticsContract.cancel,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        accept: ["session"],
+      },
+      cancelBuiltInModelCooldownInner$,
     ),
   },
   {

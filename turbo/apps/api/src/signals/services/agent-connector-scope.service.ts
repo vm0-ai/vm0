@@ -2,7 +2,7 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { userConnectors } from "@okouai/db/schema/user-connector";

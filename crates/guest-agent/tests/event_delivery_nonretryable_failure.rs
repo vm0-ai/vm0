@@ -11,7 +11,8 @@ use serde_json::json;
 use std::io;
 use std::time::Duration;
 
-const TOTAL_EVENTS: usize = 34;
+const EVENT_BATCH_SIZE: usize = 32;
+const TOTAL_EVENTS: usize = EVENT_BATCH_SIZE * 3;
 
 #[tokio::test]
 async fn nonretryable_client_rejection_records_one_attempt()
@@ -30,8 +31,11 @@ async fn nonretryable_client_rejection_records_one_attempt()
 
     unsafe {
         common::setup_env(&mock_cli, tmp.path(), &prompt, 3, 1)?;
-        std::env::set_var("VM0_API_BACKEND_URL", &server.base_url);
-        std::env::set_var("VM0_API_TOKEN", "test-token");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            &server.base_url,
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
     }
     let mut runtime = common::guest_runtime_from_process_env()?;
     let run_id = runtime.config.run_id.clone();
@@ -70,6 +74,7 @@ async fn nonretryable_client_rejection_records_one_attempt()
 
     let rejected_request = server.next_request(Duration::from_secs(5)).await?;
     let rejected_sequences = common::event_request_sequences(&rejected_request.request)?;
+    assert_eq!(rejected_sequences.len(), EVENT_BATCH_SIZE);
     let rejected_request_id = rejected_request
         .request
         .client_request_id
@@ -77,8 +82,18 @@ async fn nonretryable_client_rejection_records_one_attempt()
         .ok_or_else(|| io::Error::other("rejected request omitted x-client-request-id"))?;
     rejected_request.respond(400)?;
 
+    let later_request = server.next_request(Duration::from_secs(5)).await?;
+    let later_sequences = common::event_request_sequences(&later_request.request)?;
+    assert_eq!(later_sequences.len(), EVENT_BATCH_SIZE);
+    assert_ne!(
+        later_sequences, rejected_sequences,
+        "a non-retryable 4xx response must not retry the rejected batch"
+    );
+    later_request.respond(200)?;
+
     let mut logical_sequences = first_sequences;
     logical_sequences.extend(rejected_sequences.iter().copied());
+    logical_sequences.extend(later_sequences);
     while logical_sequences.len() < TOTAL_EVENTS {
         let request = server.next_request(Duration::from_secs(5)).await?;
         let sequences = common::event_request_sequences(&request.request)?;

@@ -1,18 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
-use sandbox::{ProcessOutputChunk, ProcessOutputMode};
+use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
 use sandbox_mock::MockLifecycleGate;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-use tokio::sync::oneshot;
 
 use super::support::{
     assert_failed_action_error_once, assert_no_action, assert_successful_action_once,
 };
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
-use crate::executor::storage::guest_download_stdin_command;
 use crate::executor::telemetry::RunnerSpawnTiming;
 use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, api_artifact, api_storage, create_overridden_sandbox,
@@ -20,44 +15,24 @@ use crate::executor::tests::support::{
 };
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::storage_manifest::StorageManifest;
+use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer, http_response};
 use crate::types::SandboxReuseResult;
 
-async fn serve_storage_archive_for_cache(
-    body: &'static [u8],
-) -> (String, tokio::task::JoinHandle<()>, oneshot::Receiver<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let (request_tx, request_rx) = oneshot::channel();
-    let handle = tokio::spawn(async move {
-        let probe_response = format!(
-            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{}\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx",
-            body.len()
-        )
-        .into_bytes();
-        let mut full_response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
-        )
-        .into_bytes();
-        full_response.extend_from_slice(body);
-
-        let mut request_tx = Some(request_tx);
-        for response in [probe_response, full_response] {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).await;
-            if let Some(request_tx) = request_tx.take() {
-                let _ = request_tx.send(());
-            }
-            stream.write_all(&response).await.unwrap();
-        }
-    });
-    (
-        format!("http://{address}/archive.tar.gz"),
-        handle,
-        request_rx,
+async fn spawn_storage_archive_server(body: &[u8]) -> RawHttpTestServer {
+    let probe_response = format!(
+        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{}\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx",
+        body.len()
     )
+    .into_bytes();
+    let full_response = http_response("200 OK", body);
+
+    RawHttpTestServer::spawn(vec![
+        RawHttpAction::Respond(probe_response),
+        RawHttpAction::Respond(full_response),
+    ])
+    .await
 }
+
 #[tokio::test]
 async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization() {
     let dir = tempfile::tempdir().unwrap();
@@ -100,13 +75,7 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
     .await
     .unwrap();
 
-    let exec_calls = sandbox.exec_calls();
-    assert!(
-        exec_calls
-            .iter()
-            .any(|call| call.cmd == guest_download_stdin_command()),
-        "cached instruction storage should still invoke guest-download; calls: {exec_calls:?}"
-    );
+    assert_eq!(sandbox.storage_manifest_calls().len(), 1);
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
@@ -129,9 +98,10 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
     overrides.set_start_process_lifecycle_gate(start_process_gate.clone());
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let mut ctx = minimal_context();
-    let (archive_url, archive_server, mut archive_request) =
-        serve_storage_archive_for_cache(b"cache-archive").await;
-    let storage = api_storage("instructions", "/home/user/.codex", "v1", &archive_url);
+    let mut archive_server = spawn_storage_archive_server(b"cache-archive").await;
+    let archive_url = format!("{}/archive.tar.gz", archive_server.url());
+    let mut storage = api_storage("instructions", "/home/user/.codex", "v1", &archive_url);
+    storage.baseline_candidate = true;
     ctx.storage_manifest = Some(StorageManifest {
         storages: vec![storage],
         artifacts: vec![],
@@ -170,16 +140,10 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
         .expect("run should reach the start-process barrier");
 
         assert!(matches!(
-            archive_request.try_recv(),
-            Err(oneshot::error::TryRecvError::Empty)
+            archive_server.try_next_request(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
         ));
-        let exec_calls = overrides.exec_calls();
-        assert!(
-            exec_calls
-                .iter()
-                .any(|call| call.cmd == guest_download_stdin_command()),
-            "cache miss passthrough should reach guest-download before process spawn; calls: {exec_calls:?}"
-        );
+        assert_eq!(overrides.storage_manifest_calls().len(), 1);
 
         start_process_gate.release_one();
         tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut run)
@@ -188,14 +152,10 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
             .unwrap();
     }
 
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut archive_request)
-        .await
-        .expect("deferred cache fill should contact the archive after spawn")
-        .expect("archive server should report its first request");
-    tokio::time::timeout(Duration::from_secs(5), archive_server)
-        .await
-        .expect("background cache fill should fetch archive")
-        .expect("background cache fill server task should not panic");
+    archive_server
+        .next_request("deferred cache fill archive request after spawn")
+        .await;
+    archive_server.assert_finished().await;
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
     assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
@@ -231,18 +191,15 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_agent_spawn_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_process_stdout_chunks(
-        (0..=ProcessOutputMode::DEFAULT_QUEUE_CAPACITY)
-            .map(|_| ProcessOutputChunk {
-                bytes: Vec::new(),
-                truncated: false,
-            })
-            .collect(),
-    );
+    overrides.push_start_process_error(SandboxError::Operation {
+        operation: SandboxOperation::StartProcess,
+        reason: SandboxOperationReason::Guest,
+        message: "agent spawn failed".into(),
+    });
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let mut ctx = minimal_context();
-    let (archive_url, archive_server, mut archive_request) =
-        serve_storage_archive_for_cache(b"cache-archive").await;
+    let mut archive_server = spawn_storage_archive_server(b"cache-archive").await;
+    let archive_url = format!("{}/archive.tar.gz", archive_server.url());
     ctx.storage_manifest = Some(StorageManifest {
         storages: vec![api_storage(
             "instructions",
@@ -273,8 +230,8 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_agent_spawn_fails() {
     tokio::task::yield_now().await;
 
     assert!(matches!(
-        archive_request.try_recv(),
-        Err(oneshot::error::TryRecvError::Empty)
+        archive_server.try_next_request(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
     ));
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "storage_cache_background_fill_deferred_count_1");
@@ -287,8 +244,7 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_agent_spawn_fails() {
     assert_no_action(&ops, "storage_cache_background_fill_scheduled_count_1");
     assert_no_action(&ops, "runner_executor_start_to_spawn");
 
-    archive_server.abort();
-    let _ = archive_server.await;
+    archive_server.cancel_and_reap().await;
 }
 
 #[tokio::test]
@@ -298,8 +254,8 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_guest_download_fails() {
     let sandbox = sandbox_mock::MockSandbox::new("test");
     sandbox.push_exec_result(Err(sandbox_exec_error("vsock exec failed")));
     let mut ctx = minimal_context();
-    let (archive_url, archive_server, mut archive_request) =
-        serve_storage_archive_for_cache(b"cache-archive").await;
+    let mut archive_server = spawn_storage_archive_server(b"cache-archive").await;
+    let archive_url = format!("{}/archive.tar.gz", archive_server.url());
     ctx.storage_manifest = Some(StorageManifest {
         storages: vec![api_storage(
             "instructions",
@@ -329,8 +285,8 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_guest_download_fails() {
     tokio::task::yield_now().await;
 
     assert!(matches!(
-        archive_request.try_recv(),
-        Err(oneshot::error::TryRecvError::Empty)
+        archive_server.try_next_request(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
     ));
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "storage_cache_background_fill_deferred_count_1");
@@ -343,8 +299,7 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_guest_download_fails() {
         "storage-download-failed",
     );
 
-    archive_server.abort();
-    let _ = archive_server.await;
+    archive_server.cancel_and_reap().await;
 }
 
 #[tokio::test]
@@ -387,13 +342,7 @@ async fn run_in_sandbox_records_storage_manifest_no_work_timing_without_guest_do
     .await
     .unwrap();
 
-    let exec_calls = sandbox.exec_calls();
-    assert!(
-        exec_calls
-            .iter()
-            .all(|call| call.cmd != guest_download_stdin_command()),
-        "fully cached storage without cleanup or instruction normalization should skip guest-download; calls: {exec_calls:?}"
-    );
+    assert!(sandbox.storage_manifest_calls().is_empty());
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
@@ -512,13 +461,7 @@ async fn run_in_sandbox_rejects_non_empty_artifact_without_archive_url() {
             .contains("storage manifest artifact memory version version-2 is missing archiveUrl"),
         "got: {error}"
     );
-    let exec_calls = sandbox.exec_calls();
-    assert!(
-        exec_calls
-            .iter()
-            .all(|call| call.cmd != guest_download_stdin_command()),
-        "invalid storage manifest should fail before guest-download; calls: {exec_calls:?}"
-    );
+    assert!(sandbox.storage_manifest_calls().is_empty());
     let ops = telemetry.pending_ops_snapshot();
     assert_failed_action_error_once(
         &ops,

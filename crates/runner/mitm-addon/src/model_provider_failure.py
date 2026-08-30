@@ -1,17 +1,57 @@
-"""Trusted, bounded model-provider failure reduction and reporting."""
+"""Trusted, bounded model-provider failure reduction and reporting.
+
+This module owns the per-flow model-provider failure contract from ``admit`` through
+``observe``, ``settle``, and ``release``. ``mitm_addon`` admits an eligible,
+authenticated billable model-provider flow and retains this module's bounded state in
+``flow.metadata``. ``response_streaming`` supplies incremental JSON/SSE evidence and
+registers a response finalizer; ``mitm_addon`` then invokes the response, connection-error,
+WebSocket, and cleanup hooks.
+
+HTTP lifecycle:
+
+* ``configure_response_observer()`` classifies immediate HTTP status failures or creates an
+  observer for buffered JSON and incremental JSON/SSE evidence.
+* The streaming callback feeds the observer while the response is in flight. A terminal event
+  or end-of-stream may call ``settle()`` before mitmproxy's response hook. The registered
+  response finalizer belongs to the streaming parser layer: it finishes decoding and returns
+  the observer's reduced outcome, while ``_settle_http_flow()`` owns the terminal transition.
+* ``finish_http_response()`` consumes status evidence or the registered finalizer (falling back
+  to bounded buffered JSON parsing) and settles the flow. ``finish_connection_error()`` uses
+  status, partial-body, and upstream-connection evidence when a response is interrupted.
+* ``terminal_observed`` is the one-shot settlement gate. Once set, later response, error, or
+  settlement calls cannot change the terminal outcome or emit another failure report. A parser
+  finalizer may still finish its own decoder state because parser finalization and reducer
+  settlement are separate layers.
+
+WebSocket lifecycle:
+
+* A client ``response.create`` records one pending ``normal`` or ``prewarm`` intent. A valid
+  server ``response.created`` moves that intent to active state and records its response ID.
+* A terminal event must match the active response ID. Matching terminal and server-error events
+  clear the correlation before applying their outcome; prewarm outcomes are not reported.
+  Unfinished normal requests settle as unknown at WebSocket end and are also not reported.
+* Unknown client events, overlapping creates, invalid server events, and missing or mismatched
+  response IDs while an intent is outstanding make the lifecycle ambiguous. Ambiguity clears
+  correlation, emits one sanitized suppression entry, and remains sticky so later events cannot
+  revive or report the flow. Terminal/error events with no pending or active intent are ignored,
+  allowing a later request on the same WebSocket to be correlated normally.
+
+``websocket_end()`` settles any unfinished WebSocket state before terminal cleanup. The cleanup
+path calls ``release_flow()`` to remove the reducer state and the registered response finalizer.
+"""
 
 import json
 import threading
+import time
 import urllib.error
 import urllib.parse
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from mitmproxy import http
 
-import body_decoding
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_response_classification
@@ -19,14 +59,16 @@ import openai_responses_events
 import platform_api
 import runtime_url_parsing
 from logging_utils import log_proxy_entry
-from usage.json_selective import (
-    FIRST_ARRAY_ELEMENT,
-    JsonExtractionResult,
-    JsonSelectiveExtractor,
-    ScalarField,
+from usage.json_selective import JsonSelectiveExtractor
+from usage.model_http import (
+    FAILURE_SCALAR_FIELDS,
+    FAILURE_VALUE_PRESENCE_PATHS,
+    ModelHttpFailureEvidence,
+    failure_evidence_from_result,
 )
-from usage.json_selective import Path as JsonPath
-from usage.sse import SseUsageScanner
+
+if TYPE_CHECKING:
+    from usage.openai_responses import OpenAIResponsesServerFailureEvidence
 
 FailureKind = Literal[
     "authentication",
@@ -36,6 +78,7 @@ FailureKind = Literal[
     "timeout",
     "connection",
 ]
+ConnectionSource = Literal["provider_response", "upstream_transport"]
 _Protocol = Literal[
     "anthropic_messages",
     "openai_chat_completions",
@@ -48,15 +91,14 @@ _OutcomeKind = Literal["failure", "success", "unknown"]
 _FLOW_STATE = "_model_provider_failure_flow_state"
 _RESPONSE_FINISH = "_model_provider_failure_response_finish"
 _MAX_JSON_WORK_UNITS = 65_536
-_MAX_SELECTED_STRING_BYTES = 128
 _MAX_RETRY_AFTER_SECONDS = 300
 _REPORT_TIMEOUT_SECONDS = 3
 _REPORT_WORKERS = 4
 _MAX_PENDING_REPORTS = _REPORT_WORKERS * 4
-_DONE_SENTINEL = b"[DONE]"
-RUNNER_AUTH_ENV = "VM0_MITM_RUNNER_TOKEN"
+RUNNER_AUTH_ENV = "OKOU_MITM_RUNNER_TOKEN"
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
+_HTTP_STATUS_BAD_REQUEST = 400
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_PAYMENT_REQUIRED = 402
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
@@ -86,47 +128,18 @@ _UNAVAILABLE_CODES = frozenset(
 )
 _TIMEOUT_CODES = frozenset(("timeout", "timeout_error"))
 _CONNECTION_CODES = frozenset(("connection", "connection_error"))
-
-_SCALAR_FIELDS: Mapping[JsonPath, ScalarField] = {
-    ("type",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("code",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("status",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error_type",): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error", "type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error", "code"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error", "error_type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("error", "metadata", "error_type"): ScalarField(
-        "string", max_bytes=_MAX_SELECTED_STRING_BYTES
-    ),
-    ("response", "id"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "status"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "error_type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "error", "type"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "error", "code"): ScalarField("string", max_bytes=_MAX_SELECTED_STRING_BYTES),
-    ("response", "error", "error_type"): ScalarField(
-        "string", max_bytes=_MAX_SELECTED_STRING_BYTES
-    ),
-    ("choices", FIRST_ARRAY_ELEMENT, "error", "metadata", "error_type"): ScalarField(
-        "string", max_bytes=_MAX_SELECTED_STRING_BYTES
-    ),
+_OPENAI_RESPONSES_IGNORED_HTTP_EVENTS = openai_responses_events.KNOWN_NON_USAGE_EVENTS - {
+    openai_responses_events.SERVER_ERROR_EVENT
 }
-_VALUE_PRESENCE_PATHS = (
-    ("error",),
-    ("response", "error"),
-    ("choices", FIRST_ARRAY_ELEMENT, "error"),
-    ("choices",),
-)
-_FAILURE_CODE_PATHS = (
-    ("error", "metadata", "error_type"),
-    ("choices", FIRST_ARRAY_ELEMENT, "error", "metadata", "error_type"),
-    ("error", "error_type"),
-    ("response", "error_type"),
-    ("response", "error", "error_type"),
-    ("error_type",),
-    ("response", "error", "code"),
-    ("error", "code"),
-    ("response", "error", "type"),
-    ("error", "type"),
+_ANTHROPIC_IGNORED_HTTP_EVENTS = frozenset(
+    (
+        "message_start",
+        "message_delta",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_stop",
+        "ping",
+    )
 )
 
 
@@ -134,6 +147,7 @@ _FAILURE_CODE_PATHS = (
 class Failure:
     failure_kind: FailureKind
     retry_after_seconds: int | None = None
+    connection_source: ConnectionSource | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +158,14 @@ class _Outcome:
 
 @dataclass
 class _FlowState:
+    """Bounded state retained for one admitted flow until terminal cleanup.
+
+    ``terminal_observed`` gates one-shot HTTP and terminal settlement. For OpenAI Responses
+    WebSockets, ``pending_intent`` and ``active_intent`` represent at most one request, and
+    ``active_response_id`` is the correlation key for terminal events. ``websocket_ambiguous``
+    is sticky after contradictory lifecycle evidence and suppresses subsequent reporting.
+    """
+
     run_id: str
     protocol: _Protocol
     terminal_observed: bool = False
@@ -223,8 +245,118 @@ def admit_flow(flow: http.HTTPFlow) -> None:
     flow.metadata[_FLOW_STATE] = flow_state
 
 
-def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | None:
-    """Install bounded body classification for an admitted HTTP flow."""
+class HttpResponseFailureObserver:
+    """Reduce shared HTTP parse evidence without owning transport or parsing."""
+
+    def __init__(self, flow: http.HTTPFlow, flow_state: _FlowState) -> None:
+        self._flow = flow
+        self._flow_state = flow_state
+        self._terminal: _Outcome | None = None
+        self._parse_ambiguous = False
+
+    def needs_sse_event(self, event_name: str | None) -> bool:
+        """Return whether an SSE event needs model-provider failure inspection.
+
+        ``None`` and all events for protocols without an ignore list require inspection. Known
+        non-terminal events for OpenAI Responses and Anthropic Messages can be skipped by the
+        caller without changing the reducer state.
+        """
+
+        if event_name is None:
+            return True
+        if self._flow_state.protocol == "openai_responses":
+            return event_name not in _OPENAI_RESPONSES_IGNORED_HTTP_EVENTS
+        if self._flow_state.protocol == "anthropic_messages":
+            return event_name not in _ANTHROPIC_IGNORED_HTTP_EVENTS
+        return True
+
+    def observe(self, evidence: ModelHttpFailureEvidence) -> None:
+        """Consume one incremental evidence item and settle on terminal evidence.
+
+        Invalid or contradictory evidence produces an unknown outcome and settles the flow.
+        Valid non-terminal evidence remains buffered in the observer until a terminal event or
+        the registered response finalizer calls ``settle()``.
+        """
+
+        if not evidence.is_valid:
+            self._mark_parse_ambiguous()
+            return
+        if (
+            evidence.event_name is not None
+            and evidence.payload_type is not None
+            and evidence.event_name != evidence.payload_type
+        ):
+            self._mark_parse_ambiguous()
+            return
+
+        event_type = evidence.event_name or evidence.payload_type
+        if self._flow_state.protocol == "anthropic_messages":
+            if event_type == "message_stop":
+                self._record_terminal(_success_outcome())
+            elif event_type == "error":
+                self._record_terminal(_failure_or_unknown_from_codes(evidence.failure_codes))
+            return
+        if self._flow_state.protocol == "openai_responses":
+            if event_type in ("response.completed", "response.done"):
+                self._record_terminal(_success_outcome())
+            elif event_type in (
+                "response.failed",
+                "response.error",
+                openai_responses_events.SERVER_ERROR_EVENT,
+            ):
+                self._record_terminal(_failure_or_unknown_from_codes(evidence.failure_codes))
+            elif event_type == "response.incomplete":
+                self._record_terminal(_unknown_outcome())
+            return
+        if evidence.is_done:
+            self._record_terminal(_success_outcome())
+        elif evidence.has_error:
+            self._record_terminal(_failure_or_unknown_from_codes(evidence.failure_codes))
+
+    def observe_json(self, evidence: ModelHttpFailureEvidence) -> None:
+        """Record whole-response evidence for the response finalizer to reduce.
+
+        This stores the current outcome without marking the flow terminal; the response or error
+        hook owns the subsequent finalization and terminal settlement.
+        """
+
+        self._store_terminal(_outcome_from_evidence(self._flow_state.protocol, evidence))
+
+    def finish(self) -> _Outcome:
+        """Return the reduced outcome without changing flow terminal state."""
+
+        if self._terminal is not None and self._terminal.kind == "failure":
+            outcome = self._terminal
+        elif self._parse_ambiguous:
+            outcome = _unknown_outcome()
+        else:
+            outcome = self._terminal or _unknown_outcome()
+        return outcome
+
+    def settle(self) -> _Outcome:
+        """Finish evidence reduction and settle a completed response stream."""
+
+        outcome = self.finish()
+        _settle_http_flow(self._flow, self._flow_state, outcome)
+        return outcome
+
+    def _record_terminal(self, outcome: _Outcome) -> None:
+        self._store_terminal(outcome)
+        self.settle()
+
+    def _store_terminal(self, outcome: _Outcome) -> None:
+        if self._terminal is None:
+            self._terminal = outcome
+        elif self._terminal != outcome:
+            self._terminal = _unknown_outcome()
+
+    def _mark_parse_ambiguous(self) -> None:
+        self._parse_ambiguous = True
+        self.settle()
+
+
+def configure_response_observer(flow: http.HTTPFlow) -> HttpResponseFailureObserver | None:
+    """Configure parser-free body classification for an admitted HTTP flow."""
     flow_state = _flow_state(flow)
     response = flow.response
     if (
@@ -252,43 +384,29 @@ def configure_response_parser(flow: http.HTTPFlow) -> Callable[[bytes], None] | 
             ),
         )
         return None
+    return HttpResponseFailureObserver(flow, flow_state)
 
-    parser: _JsonResponseParser | _SseResponseParser
-    if http_response_classification.has_event_stream_media_type(response):
-        parser = _SseResponseParser(
-            flow_state.protocol,
-            lambda outcome: _settle_http_flow(flow, flow_state, outcome),
-        )
-    else:
-        parser = _JsonResponseParser(flow_state.protocol)
-    decode_session = body_decoding.create_stream_decode_session(response.headers, parser.feed)
-    if decode_session is None:
-        flow.metadata[_RESPONSE_FINISH] = _unknown_outcome
-        return None
 
-    final_outcome: _Outcome | None = None
+def register_response_finish(flow: http.HTTPFlow, finish: Callable[[], object]) -> None:
+    """Register the parser finalizer shared by streaming and response hooks.
 
-    def finish() -> _Outcome:
-        nonlocal final_outcome
-        if final_outcome is None:
-            final_outcome = (
-                _unknown_outcome() if decode_session.finish_error() is not None else parser.finish()
-            )
-        return final_outcome
-
-    def observe(chunk: bytes) -> None:
-        if chunk:
-            decode_session.feed(chunk)
-            return
-        # mitmproxy calls streaming transformations with an empty chunk at EOM,
-        # before it forwards the downstream end-of-message marker.
-        _settle_http_flow(flow, flow_state, finish())
+    ``response_streaming`` owns decoder completion and may settle from the stream callback. The
+    response hook later consumes this callback before the reducer's one-shot settlement gate
+    handles the final outcome.
+    """
 
     flow.metadata[_RESPONSE_FINISH] = finish
-    return observe
 
 
 def finish_http_response(flow: http.HTTPFlow) -> None:
+    """Settle an admitted HTTP response after status or body evidence is available.
+
+    The response hook consumes the registered streaming finalizer or a bounded buffered-body
+    fallback. If terminal evidence was already settled while streaming, this call cannot change
+    the outcome or emit another report, although the parser finalizer may still complete its own
+    idempotent decoder state.
+    """
+
     flow_state = _flow_state(flow)
     response = flow.response
     if (
@@ -321,6 +439,13 @@ def finish_http_response(flow: http.HTTPFlow) -> None:
 
 
 def finish_connection_error(flow: http.HTTPFlow) -> None:
+    """Settle evidence available when an admitted HTTP or WebSocket flow is interrupted.
+
+    HTTP flows use status, partial-body, and upstream-connection evidence. WebSocket flows use
+    pending or active normal intent and only report an upstream connection failure. A previously
+    terminal HTTP flow is a no-op; client-side disconnects and unknown outcomes are not reported.
+    """
+
     flow_state = _flow_state(flow)
     if flow_state is None:
         return
@@ -330,7 +455,11 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
         if (
             flow_state.pending_intent == "normal" or flow_state.active_intent == "normal"
         ) and _upstream_connection_failed(flow):
-            _apply_outcome(flow, flow_state, _failure_outcome("connection"))
+            _apply_outcome(
+                flow,
+                flow_state,
+                _failure_outcome("connection", connection_source="upstream_transport"),
+            )
     else:
         response = flow.response
         failure_kind = (
@@ -347,9 +476,11 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
                 _retry_after_seconds(response.status_code, response.headers),
             )
         elif response is None and _upstream_connection_failed(flow):
-            outcome = _failure_outcome("connection")
+            outcome = _failure_outcome("connection", connection_source="upstream_transport")
         else:
             parsed_outcome = _finish_response_body(flow, flow_state.protocol)
+            if flow_state.terminal_observed:
+                return
             if parsed_outcome.kind != "unknown":
                 outcome = parsed_outcome
             elif (
@@ -357,7 +488,10 @@ def finish_connection_error(flow: http.HTTPFlow) -> None:
                 and _HTTP_STATUS_SUCCESS_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
                 and _upstream_connection_failed(flow)
             ):
-                outcome = _failure_outcome("connection")
+                outcome = _failure_outcome(
+                    "connection",
+                    connection_source="upstream_transport",
+                )
             else:
                 outcome = _unknown_outcome()
         _apply_outcome(flow, flow_state, outcome)
@@ -370,6 +504,12 @@ def observe_websocket_client_event(
     request_kind: str,
     is_prewarm: bool,
 ) -> None:
+    """Record a WebSocket client request or make contradictory state ambiguous.
+
+    A ``create`` event records one pending normal or prewarm intent. Unknown events and a second
+    create while an intent is pending or active enter sticky ambiguity; later evidence is ignored.
+    """
+
     flow_state = _websocket_flow_state(flow)
     if flow_state is None or flow_state.websocket_ambiguous:
         return
@@ -382,16 +522,37 @@ def observe_websocket_client_event(
     flow_state.pending_intent = "prewarm" if is_prewarm else "normal"
 
 
-def observe_websocket_server_event(flow: http.HTTPFlow, body: bytes) -> None:
+def should_observe_websocket_client_event(flow: http.HTTPFlow) -> bool:
+    """Return whether an admitted failure state still needs client evidence."""
+    flow_state = _websocket_flow_state(flow)
+    return flow_state is not None and not flow_state.websocket_ambiguous
+
+
+def should_observe_websocket_server_event(flow: http.HTTPFlow) -> bool:
+    """Return whether an admitted failure state still needs server evidence."""
+    flow_state = _websocket_flow_state(flow)
+    return flow_state is not None and not flow_state.websocket_ambiguous
+
+
+def observe_websocket_server_event(
+    flow: http.HTTPFlow,
+    evidence: "OpenAIResponsesServerFailureEvidence",
+) -> None:
+    """Correlate one parsed WebSocket server event and apply its terminal outcome.
+
+    ``response.created`` binds a pending intent to a response ID. Matching terminal or error
+    events clear that correlation before applying an outcome. Invalid events and contradictory
+    IDs make an outstanding lifecycle ambiguous; events with no outstanding intent are ignored.
+    """
+
     flow_state = _websocket_flow_state(flow)
     if flow_state is None or flow_state.websocket_ambiguous:
         return
-    result = _extract_json(body)
-    if not result.complete:
+    if not evidence.is_valid:
         _mark_websocket_ambiguous(flow, flow_state, "invalid_server_event")
         return
-    event_type = _string_value(result.values, ("type",))
-    response_id = _string_value(result.values, ("response", "id"))
+    event_type = evidence.event_type
+    response_id = evidence.response_id
     if event_type == openai_responses_events.SERVER_CREATED_EVENT:
         if (
             response_id is None
@@ -405,13 +566,26 @@ def observe_websocket_server_event(flow: http.HTTPFlow, body: bytes) -> None:
         flow_state.pending_intent = None
         return
     if event_type in openai_responses_events.TERMINAL_EVENTS:
-        _settle_websocket_terminal(flow, flow_state, event_type, response_id, result)
+        _settle_websocket_terminal(
+            flow,
+            flow_state,
+            event_type,
+            response_id,
+            evidence.failure_codes,
+        )
         return
     if event_type == openai_responses_events.SERVER_ERROR_EVENT:
-        _settle_websocket_error(flow, flow_state, result)
+        _settle_websocket_error(flow, flow_state, evidence.failure_codes)
 
 
 def finish_websocket(flow: http.HTTPFlow) -> None:
+    """Settle unfinished normal WebSocket intent before terminal cleanup.
+
+    An unfinished normal request receives an unknown outcome and is not reported. Prewarm and
+    already-cleared intent are also non-reporting; the terminal flag prevents later HTTP-style
+    finalization from changing the closed WebSocket lifecycle.
+    """
+
     flow_state = _websocket_flow_state(flow)
     if flow_state is None:
         return
@@ -421,12 +595,19 @@ def finish_websocket(flow: http.HTTPFlow) -> None:
 
 
 def release_flow(flow: http.HTTPFlow) -> None:
+    """Remove reducer state and the registered response finalizer during flow cleanup."""
+
     flow.metadata.pop(_FLOW_STATE, None)
     flow.metadata.pop(_RESPONSE_FINISH, None)
 
 
 def shutdown() -> None:
-    """Stop admitting reports and drain already-submitted best-effort work."""
+    """Stop admitting reports, cancel queued work, and give running deliveries a bounded wait.
+
+    Reports still queued in the executor are cancelled. Reports already running get at most
+    ``_REPORT_TIMEOUT_SECONDS`` to finish; cancellation or timeout may leave a failure report
+    undelivered, so proxy shutdown does not wait indefinitely for it.
+    """
     global _reporter_shut_down
     configure_reporting(api_url="", bearer_credential="")
     with _report_lock:
@@ -447,136 +628,8 @@ class _JsonResponseParser:
         self._extractor.feed(chunk)
 
     def finish(self) -> _Outcome:
-        return _outcome_from_json(self._protocol, self._extractor.finish())
-
-
-class _SseResponseParser:
-    def __init__(
-        self,
-        protocol: _Protocol,
-        settle: Callable[[_Outcome], None],
-    ) -> None:
-        self._handler: _SseEventHandler = _SseEventHandler(protocol, settle)
-        self._scanner = SseUsageScanner(
-            self._handler,
-            capture_data_without_event=True,
-        )
-
-    def feed(self, chunk: bytes) -> None:
-        self._scanner.feed(chunk)
-
-    def finish(self) -> _Outcome:
-        self._scanner.finish()
-        return self._handler.outcome()
-
-
-class _SseEventHandler:
-    def __init__(
-        self,
-        protocol: _Protocol,
-        settle: Callable[[_Outcome], None],
-    ) -> None:
-        self._protocol: _Protocol = protocol
-        self._settle = settle
-        self._extractor: JsonSelectiveExtractor | None = None
-        self._done_candidate = bytearray()
-        self._done_overflow = False
-        self._terminal: _Outcome | None = None
-        self._parse_ambiguous = False
-
-    def should_capture_event(self, event_name: str | None) -> bool:
-        del event_name
-        return True
-
-    def on_event_start(self, event_name: str | None) -> None:
-        del event_name
-        self._extractor = _new_json_extractor()
-        self._done_candidate.clear()
-        self._done_overflow = False
-
-    def on_data(self, chunk: bytes) -> None:
-        if self._extractor is not None:
-            self._extractor.feed(chunk)
-        if not self._done_overflow:
-            remaining = len(_DONE_SENTINEL) - len(self._done_candidate)
-            self._done_candidate.extend(chunk[:remaining])
-            if len(chunk) > remaining:
-                self._done_overflow = True
-
-    def on_data_separator(self) -> None:
-        if self._extractor is not None:
-            self._extractor.feed(b"\n")
-        self._done_overflow = True
-
-    def on_event_end(self, event_name: str | None) -> None:
-        extractor = self._extractor
-        self._extractor = None
-        if (
-            not self._done_overflow
-            and bytes(self._done_candidate) == _DONE_SENTINEL
-            and self._protocol == "openai_chat_completions"
-        ):
-            self._record_terminal(_success_outcome())
-            return
-        if extractor is None:
-            self._mark_parse_ambiguous()
-            return
-        result = extractor.finish()
-        payload_event_type = _string_value(result.values, ("type",))
-        if (
-            event_name is not None
-            and payload_event_type is not None
-            and event_name != payload_event_type
-        ):
-            self._mark_parse_ambiguous()
-            return
-        event_type = event_name or payload_event_type
-        if not result.complete:
-            self._mark_parse_ambiguous()
-            return
-        if self._protocol == "anthropic_messages":
-            if event_type == "message_stop":
-                self._record_terminal(_success_outcome())
-            elif event_type == "error":
-                self._record_terminal(_failure_or_unknown(result))
-            return
-        if self._protocol == "openai_responses":
-            if event_type in ("response.completed", "response.done"):
-                self._record_terminal(_success_outcome())
-            elif event_type in (
-                "response.failed",
-                "response.error",
-                openai_responses_events.SERVER_ERROR_EVENT,
-            ):
-                self._record_terminal(_failure_or_unknown(result))
-            elif event_type == "response.incomplete":
-                self._record_terminal(_unknown_outcome())
-            return
-        if _has_error_value(result):
-            self._record_terminal(_failure_or_unknown(result))
-
-    def on_event_discard(self, event_name: str | None) -> None:
-        del event_name
-        self._extractor = None
-        self._mark_parse_ambiguous()
-
-    def outcome(self) -> _Outcome:
-        if self._terminal is not None and self._terminal.kind == "failure":
-            return self._terminal
-        if self._parse_ambiguous:
-            return _unknown_outcome()
-        return self._terminal or _unknown_outcome()
-
-    def _record_terminal(self, outcome: _Outcome) -> None:
-        if self._terminal is None:
-            self._terminal = outcome
-        elif self._terminal != outcome:
-            self._terminal = _unknown_outcome()
-        self._settle(self.outcome())
-
-    def _mark_parse_ambiguous(self) -> None:
-        self._parse_ambiguous = True
-        self._settle(self.outcome())
+        evidence = failure_evidence_from_result(self._extractor.finish())
+        return _outcome_from_evidence(self._protocol, evidence)
 
 
 def _protocol_for_flow(flow: http.HTTPFlow) -> _Protocol | None:
@@ -620,16 +673,10 @@ def _upstream_connection_failed(flow: http.HTTPFlow) -> bool:
 
 def _new_json_extractor() -> JsonSelectiveExtractor:
     return JsonSelectiveExtractor(
-        scalar_fields=_SCALAR_FIELDS,
-        value_presence_paths=_VALUE_PRESENCE_PATHS,
+        scalar_fields=FAILURE_SCALAR_FIELDS,
+        value_presence_paths=FAILURE_VALUE_PRESENCE_PATHS,
         max_work_units=_MAX_JSON_WORK_UNITS,
     )
-
-
-def _extract_json(body: bytes) -> JsonExtractionResult:
-    extractor = _new_json_extractor()
-    extractor.feed(body)
-    return extractor.finish()
 
 
 def _finish_response_body(flow: http.HTTPFlow, protocol: _Protocol) -> _Outcome:
@@ -647,49 +694,40 @@ def _finish_response_body(flow: http.HTTPFlow, protocol: _Protocol) -> _Outcome:
     return _unknown_outcome()
 
 
-def _outcome_from_json(protocol: _Protocol, result: JsonExtractionResult) -> _Outcome:
-    if not result.complete:
+def _outcome_from_evidence(
+    protocol: _Protocol,
+    evidence: ModelHttpFailureEvidence,
+) -> _Outcome:
+    if not evidence.is_valid:
         return _unknown_outcome()
-    failure = _failure_from_result(result)
+    failure = _failure_from_codes(evidence.failure_codes)
     if failure is not None:
         return _Outcome("failure", failure)
-    if _has_error_value(result):
+    if evidence.has_error:
         return _unknown_outcome()
     if protocol == "openai_responses":
-        status = _string_value(result.values, ("status",)) or _string_value(
-            result.values, ("response", "status")
-        )
+        status = evidence.status or evidence.response_status
         return _success_outcome() if status == "completed" else _unknown_outcome()
     if protocol == "anthropic_messages":
-        return (
-            _success_outcome()
-            if _string_value(result.values, ("type",)) == "message"
-            else _unknown_outcome()
-        )
-    if protocol == "openai_chat_completions" and ("choices",) in result.value_present:
+        return _success_outcome() if evidence.payload_type == "message" else _unknown_outcome()
+    if protocol == "openai_chat_completions" and evidence.has_choices:
         return _success_outcome()
     return _unknown_outcome()
 
 
-def _failure_from_result(result: JsonExtractionResult) -> Failure | None:
-    for path in _FAILURE_CODE_PATHS:
-        code = _string_value(result.values, path)
-        if code is None:
-            continue
+def _failure_from_codes(codes: tuple[str, ...]) -> Failure | None:
+    for code in codes:
         failure_kind = _failure_kind_from_code(code)
         if failure_kind is not None:
-            return Failure(failure_kind)
-    if _string_value(result.values, ("type",)) == "error":
-        code = _string_value(result.values, ("code",))
-        if code is not None:
-            failure_kind = _failure_kind_from_code(code)
-            if failure_kind is not None:
-                return Failure(failure_kind)
+            return Failure(
+                failure_kind,
+                connection_source=("provider_response" if failure_kind == "connection" else None),
+            )
     return None
 
 
-def _failure_or_unknown(result: JsonExtractionResult) -> _Outcome:
-    failure = _failure_from_result(result)
+def _failure_or_unknown_from_codes(codes: tuple[str, ...]) -> _Outcome:
+    failure = _failure_from_codes(codes)
     return _Outcome("failure", failure) if failure is not None else _unknown_outcome()
 
 
@@ -751,27 +789,16 @@ def _retry_after_seconds(status: int, headers: http.Headers) -> int | None:
     return int(digits)
 
 
-def _has_error_value(result: JsonExtractionResult) -> bool:
-    return any(
-        path in result.value_present
-        for path in (
-            ("error",),
-            ("response", "error"),
-            ("choices", FIRST_ARRAY_ELEMENT, "error"),
-        )
-    )
-
-
-def _string_value(values: Mapping[JsonPath, object], path: JsonPath) -> str | None:
-    value = values.get(path)
-    return value if isinstance(value, str) else None
-
-
 def _failure_outcome(
     failure_kind: FailureKind,
     retry_after_seconds: int | None = None,
+    *,
+    connection_source: ConnectionSource | None = None,
 ) -> _Outcome:
-    return _Outcome("failure", Failure(failure_kind, retry_after_seconds))
+    return _Outcome(
+        "failure",
+        Failure(failure_kind, retry_after_seconds, connection_source),
+    )
 
 
 def _success_outcome() -> _Outcome:
@@ -803,7 +830,7 @@ def _settle_websocket_terminal(
     flow_state: _FlowState,
     event_type: str,
     response_id: str | None,
-    result: JsonExtractionResult,
+    failure_codes: tuple[str, ...],
 ) -> None:
     if (
         response_id is None
@@ -821,7 +848,7 @@ def _settle_websocket_terminal(
     if event_type in ("response.completed", "response.done"):
         _apply_outcome(flow, flow_state, _success_outcome())
     elif event_type == "response.failed":
-        _apply_outcome(flow, flow_state, _failure_or_unknown(result))
+        _apply_outcome(flow, flow_state, _failure_or_unknown_from_codes(failure_codes))
     else:
         _apply_outcome(flow, flow_state, _unknown_outcome())
 
@@ -829,7 +856,7 @@ def _settle_websocket_terminal(
 def _settle_websocket_error(
     flow: http.HTTPFlow,
     flow_state: _FlowState,
-    result: JsonExtractionResult,
+    failure_codes: tuple[str, ...],
 ) -> None:
     intent = flow_state.active_intent or flow_state.pending_intent
     if intent is None:
@@ -838,7 +865,7 @@ def _settle_websocket_error(
     flow_state.active_intent = None
     flow_state.active_response_id = None
     if intent == "normal":
-        _apply_outcome(flow, flow_state, _failure_or_unknown(result))
+        _apply_outcome(flow, flow_state, _failure_or_unknown_from_codes(failure_codes))
 
 
 def _mark_websocket_ambiguous(
@@ -874,6 +901,10 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
     payload: dict[str, str | int] = {"failureKind": failure.failure_kind}
     if failure.retry_after_seconds is not None:
         payload["retryAfterSeconds"] = failure.retry_after_seconds
+    legacy_content: bytes | None = None
+    if failure.connection_source is not None:
+        legacy_content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        payload["connectionSource"] = failure.connection_source
     content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     report_url = (
         f"{api_url}/api/runners/runs/{urllib.parse.quote(run_id, safe='')}/model-provider-failures"
@@ -887,6 +918,7 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
                     report_url,
                     bearer_credential,
                     content,
+                    legacy_content,
                 )
             except RuntimeError:
                 pass
@@ -899,12 +931,49 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
     future.add_done_callback(lambda completed: _finish_report(completed, report_context))
 
 
-def _post_report(url: str, bearer_credential: str, content: bytes) -> int:
+def _post_report(
+    url: str,
+    bearer_credential: str,
+    content: bytes,
+    legacy_content: bytes | None,
+) -> int:
+    deadline = time.monotonic() + _REPORT_TIMEOUT_SECONDS
+    status = _post_report_once(
+        url,
+        bearer_credential,
+        content,
+        timeout=deadline - time.monotonic(),
+    )
+    if status != _HTTP_STATUS_BAD_REQUEST or legacy_content is None:
+        return status
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return status
+
+    # New runners can reach a pre-#29671 API during rollout or rollback. Remove this
+    # new-runner -> old-API fallback under #29882 after old runners and sandboxes drain
+    # and those APIs are neither serving nor retained rollback targets.
+    return _post_report_once(
+        url,
+        bearer_credential,
+        legacy_content,
+        timeout=remaining,
+    )
+
+
+def _post_report_once(
+    url: str,
+    bearer_credential: str,
+    content: bytes,
+    *,
+    timeout: float,
+) -> int:
     request = platform_api.make_api_request(url, content, bearer_credential)
     try:
         with platform_api.build_api_opener().open(
             request,
-            timeout=_REPORT_TIMEOUT_SECONDS,
+            timeout=timeout,
         ) as response:
             return response.status
     except urllib.error.HTTPError as error:

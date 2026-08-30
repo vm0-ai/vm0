@@ -13,6 +13,7 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import {
+  connectorGrantScopes,
   resolveConnectorAuthClient,
   type ConnectorAuthClient,
 } from "@okouai/connectors/connector-auth-method";
@@ -50,6 +51,7 @@ import {
   connectorConnectionWriteRejection,
   upsertConnectorTokenConnection$,
 } from "./connector-data.service";
+import { resolveOAuthRequestedScopeSnapshot } from "./connector-oauth-scope-snapshot.service";
 import {
   authorizeConnectedConnector$,
   connectorAgentAuthorizationRequested,
@@ -57,7 +59,6 @@ import {
 } from "./connected-connector-authorization.service";
 import {
   connectorAccountSiblingWritesEnabled,
-  parseStoredConnectorAccountMutationIntent,
   storedConnectorAccountMutationSelection,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
@@ -82,9 +83,10 @@ const externalCodeSessionSelection = Object.freeze({
   sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
   encryptedProviderState: connectorExternalCodeSessions.encryptedProviderState,
   accountMutation: storedConnectorAccountMutationSelection(
-    connectorExternalCodeSessions,
+    connectorExternalCodeSessions.accountMutation,
   ),
   authorizationUrl: connectorExternalCodeSessions.authorizationUrl,
+  oauthRequestedScopes: connectorExternalCodeSessions.oauthRequestedScopes,
   errorCode: connectorExternalCodeSessions.errorCode,
   errorMessage: connectorExternalCodeSessions.errorMessage,
   createdAt: connectorExternalCodeSessions.createdAt,
@@ -94,6 +96,16 @@ const externalCodeSessionSelection = Object.freeze({
 });
 
 type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
+
+function externalCodeRequestedOauthScopes(
+  storedScopes: string | null,
+  resolvedMethod: ResolvedConnectorActionMethod,
+): readonly string[] {
+  return resolveOAuthRequestedScopeSnapshot(
+    storedScopes,
+    connectorGrantScopes(resolvedMethod.method.grant),
+  );
+}
 
 type ExternalCodeSessionOwner = {
   readonly connectorSlug: ConnectorSlug;
@@ -709,6 +721,10 @@ async function completeClaimedExternalCodeSession(
           connectorSlug: args.resolvedMethod.connectorSlug,
           authMethodId: args.resolvedMethod.authMethodId,
           method: args.resolvedMethod.method,
+          authorizationScopes: externalCodeRequestedOauthScopes(
+            args.session.oauthRequestedScopes,
+            args.resolvedMethod,
+          ),
           authClient: args.authClient,
           code: args.code,
           providerState,
@@ -827,6 +843,7 @@ async function createExternalCodeSession(
     readonly sessionToken: string;
     readonly encryptedProviderState: string;
     readonly authorizationUrl: string;
+    readonly oauthRequestedScopes: readonly string[];
     readonly now: Date;
     readonly expiresAt: Date;
   },
@@ -873,6 +890,7 @@ async function createExternalCodeSession(
         encryptedProviderState: args.encryptedProviderState,
         accountMutation: args.account,
         authorizationUrl: args.authorizationUrl,
+        oauthRequestedScopes: JSON.stringify(args.oauthRequestedScopes),
         createdAt: args.now,
         updatedAt: args.now,
         expiresAt: args.expiresAt,
@@ -972,6 +990,7 @@ export const startConnectorExternalCodeSession$ = command(
         sessionToken,
         encryptedProviderState,
         authorizationUrl: startResult.authorizationUrl,
+        oauthRequestedScopes: connectorGrantScopes(resolved.method.grant),
         now,
         expiresAt,
       },
@@ -998,6 +1017,46 @@ export const startConnectorExternalCodeSession$ = command(
       expiresIn: startResult.expiresIn,
     };
     return { status: 200 as const, body };
+  },
+);
+
+const persistExternalCodeConnector$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly resolvedMethod: ResolvedConnectorActionMethod;
+      readonly oauthRequestedScopes: string | null;
+      readonly account: ConnectorAccountMutationIntent;
+      readonly token: ConnectorAuthProviderGrantResult;
+    },
+    signal: AbortSignal,
+  ) => {
+    const connectorResult = await set(
+      upsertConnectorTokenConnection$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        runtimeMethod: args.resolvedMethod.runtimeMethod,
+        snapshot: args.resolvedMethod.snapshot,
+        outputs: args.token.outputs,
+        userInfo: args.token.userInfo,
+        oauthRequestedScopes: externalCodeRequestedOauthScopes(
+          args.oauthRequestedScopes,
+          args.resolvedMethod,
+        ),
+        oauthGrantedScopes: args.token.scopes,
+        expiresIn: args.token.expiresIn,
+        extraConnectorSecrets: args.token.extraConnectorSecrets,
+        account: args.account,
+      },
+      signal,
+    );
+    if (connectorResult.status !== "connected") {
+      return connectorConnectionWriteRejection(connectorResult.status);
+    }
+    return { ok: true as const, connector: connectorResult.connector };
   },
 );
 
@@ -1029,7 +1088,6 @@ export const completeConnectorExternalCodeSession$ = command(
     if (!session) {
       return notFound("External-code authorization session not found");
     }
-
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolvedMethod = await resolveStoredExternalCodeMethod({
@@ -1041,7 +1099,6 @@ export const completeConnectorExternalCodeSession$ = command(
     if ("status" in resolvedMethod) {
       return resolvedMethod;
     }
-
     const resolvedClient = resolveRequiredAuthClient(resolvedMethod);
     if ("status" in resolvedClient) {
       return resolvedClient;
@@ -1101,28 +1158,18 @@ export const completeConnectorExternalCodeSession$ = command(
         session: claimedSession,
         claimStartedAt,
         persistConnector: async ({ token }, persistSignal: AbortSignal) => {
-          const connectorResult = await set(
-            upsertConnectorTokenConnection$,
+          return await set(
+            persistExternalCodeConnector$,
             {
               orgId: args.orgId,
               userId: args.userId,
-              runtimeMethod: resolvedMethod.runtimeMethod,
-              snapshot: resolvedMethod.snapshot,
-              outputs: token.outputs,
-              userInfo: token.userInfo,
-              oauthScopes: token.scopes,
-              expiresIn: token.expiresIn,
-              extraConnectorSecrets: token.extraConnectorSecrets,
-              account: parseStoredConnectorAccountMutationIntent(
-                claimedSession.accountMutation,
-              ),
+              resolvedMethod,
+              oauthRequestedScopes: claimedSession.oauthRequestedScopes,
+              account: claimedSession.accountMutation,
+              token,
             },
             persistSignal,
           );
-          if (connectorResult.status !== "connected") {
-            return connectorConnectionWriteRejection(connectorResult.status);
-          }
-          return { ok: true, connector: connectorResult.connector };
         },
       },
       signal,

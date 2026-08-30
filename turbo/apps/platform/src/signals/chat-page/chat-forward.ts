@@ -1,6 +1,6 @@
 import type { Command, Computed } from "ccstate";
-import type { ComposerSignals } from "../zero-page/composer-signals.ts";
-import type { FeedbackInput } from "../zero-page/chat-feedback.ts";
+import type { ComposerSignals } from "../okou-page/composer-signals.ts";
+import type { FeedbackInput } from "../okou-page/chat-feedback.ts";
 import type { ChatAgentRunSource } from "./chat-event-signals.ts";
 
 export type ChatForwardTarget =

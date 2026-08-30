@@ -10,7 +10,7 @@ import {
 import { command } from "ccstate";
 
 import { insufficientCredits, notConfigured, notFound } from "../../lib/error";
-import type { ZeroAuthContext } from "../../types/auth";
+import type { AgentAuthContext } from "../../types/auth";
 import { requestSignal$ } from "../context/hono";
 import {
   generateTextWithUsage,
@@ -34,7 +34,7 @@ const IMAGE_RECOGNITION_MODEL = "xiaomi/mimo-v2.5";
 const IMAGE_RECOGNITION_OPERATION = "image-recognition";
 const IMAGE_RECOGNITION_MAX_TOKENS = 8192;
 
-type RecognitionAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
+type RecognitionAuth = Extract<AgentAuthContext, { readonly orgId: string }>;
 
 interface RecognitionArgs {
   readonly auth: RecognitionAuth;

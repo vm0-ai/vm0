@@ -16,10 +16,17 @@ import {
   type WorkflowSummary,
   type WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
-import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
+import {
+  agentsByIdContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
+import {
+  officialWorkflowInstallationsContract,
+  officialWorkflowsContract,
+  type OfficialWorkflowCatalogDetail,
+} from "@okouai/api-contracts/contracts/official-workflows";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -35,8 +42,8 @@ import {
   patchWorkflowMetadataForm$,
   setWorkflowFileDraft$,
 } from "../../../signals/workflows-page/workflows-signals.ts";
-import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-automations-page.tsx";
+import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../okou-page/workflow-automations-page.tsx";
 import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,
@@ -61,6 +68,8 @@ const GOOGLE_CALENDAR_AUTOMATION_ID =
 const GOOGLE_MEET_AUTOMATION_ID = "workflow-automation-google-meet-transcript";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const AUTOMATION_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
+const OFFICIAL_REVISION = "a".repeat(64);
+const OFFICIAL_BLUEPRINT_FINGERPRINT = "b".repeat(64);
 
 type WorkflowDetailTestTab = "automations" | "instructions" | "info";
 
@@ -591,6 +600,112 @@ function salesResearch(): WorkflowDetailResponse {
   };
 }
 
+function officialCatalogDetail(
+  lifecycle: "active" | "retired" = "active",
+): OfficialWorkflowCatalogDetail {
+  return {
+    name: "sales-research",
+    revision: OFFICIAL_REVISION,
+    lifecycle,
+    displayName: "Sales Research",
+    description: "Collects account context before outreach.",
+    presentation: {
+      category: "Sales",
+      marketingCopy: "Start every sales conversation with useful context.",
+    },
+    workflow: {
+      displayName: "Sales Research",
+      description: "Collects account context before outreach.",
+      instruction: "Use the accepted Official instructions.",
+      files: [{ path: "references/playbook.md", content: "Official playbook" }],
+    },
+    blueprints: [
+      {
+        key: "daily",
+        fingerprint: OFFICIAL_BLUEPRINT_FINGERPRINT,
+        parameters: [
+          {
+            key: "time-zone",
+            type: "string",
+            format: "timezone",
+            required: true,
+            derivation: { kind: "user-timezone" },
+          },
+          {
+            key: "interval-seconds",
+            type: "integer",
+            required: true,
+            default: 3600,
+          },
+          {
+            key: "include-weekends",
+            type: "boolean",
+            required: true,
+            default: false,
+          },
+        ],
+        desiredState: {
+          kind: "schedule",
+          schedule: {
+            type: "loop",
+            intervalSeconds: { parameter: "interval-seconds" },
+          },
+        },
+        runtime: { resultEmail: false },
+      },
+    ],
+  };
+}
+
+function officialSalesResearch(
+  lifecycle: "active" | "retired" | "unavailable" = "active",
+  reconciliationStatus:
+    | "current"
+    | "reconciling"
+    | "needs_reconfiguration"
+    | "failed" = "current",
+): WorkflowDetailResponse {
+  const ordinary = salesResearch();
+  const [automation] = ordinary.automations;
+  if (!automation) {
+    throw new Error("Expected the Official Workflow automation fixture");
+  }
+  return {
+    ...ordinary,
+    visibility: "private",
+    canManage: false,
+    canPublish: false,
+    instruction: "Use the accepted Official instructions.",
+    files: [{ path: "references/playbook.md", size: 17 }],
+    fileContents: [
+      { path: "references/playbook.md", content: "Official playbook" },
+    ],
+    official: {
+      definitionName: "sales-research",
+      installationState: "installed",
+      definitionLifecycle: lifecycle,
+      readOnly: true,
+    },
+    automations: [
+      {
+        ...automation,
+        enabled: false,
+        official: {
+          blueprintKey: "daily",
+          appliedFingerprint: OFFICIAL_BLUEPRINT_FINGERPRINT,
+          reconciliationStatus,
+          intendedEnabled: true,
+          parameterBindings: [
+            { key: "time-zone", value: "UTC" },
+            { key: "interval-seconds", value: 3600 },
+            { key: "include-weekends", value: false },
+          ],
+        },
+      },
+    ],
+  };
+}
+
 function opsPlaybook(): WorkflowDetailResponse {
   return {
     id: OPS_WORKFLOW_ID,
@@ -663,17 +778,18 @@ function otherAgentWorkflow(): WorkflowDetailResponse {
   };
 }
 
-function agent(id: string, displayName: string): TeamComposeItem {
+function agent(id: string, displayName: string): AgentResponse {
   return {
-    id,
+    agentId: id,
     ownerId: CURRENT_USER_ID,
     displayName,
     description: "Finds and summarizes information",
     sound: null,
     avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: "public",
-    headVersionId: "version_2",
-    updatedAt: "2026-06-01T00:00:00Z",
   };
 }
 
@@ -693,11 +809,12 @@ function summary(workflow: WorkflowDetailResponse): WorkflowSummary {
     createdAt: workflow.createdAt,
     canManage: workflow.canManage,
     canPublish: workflow.canPublish,
+    ...(workflow.official === undefined ? {} : { official: workflow.official }),
   };
 }
 
 function mockAgentPageApis(): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     agent(AGENT_ID, "Research Bot"),
     agent(OTHER_AGENT_ID, "Support Bot"),
   ]);
@@ -1238,14 +1355,21 @@ function buttonByText(
   text: RoleTextMatch,
   container: ParentNode = document.body,
 ): HTMLElement {
-  const buttons = queryAllByRoleFast("button", container);
-  const button = buttons.find((candidate) => {
-    return matchesText(candidate, text);
-  });
+  const button = queryButtonByText(text, container);
   if (!button) {
     throw new Error(`${matchLabel(text)} button not found`);
   }
   return button;
+}
+
+function queryButtonByText(
+  text: RoleTextMatch,
+  container: ParentNode = document.body,
+): HTMLElement | null {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return matchesText(candidate, text);
+  });
+  return button ?? null;
 }
 
 function linkByText(
@@ -1383,6 +1507,166 @@ describe("workflows routes", () => {
 
     await user.hover(linkByAriaLabel("Open Sales Research"));
     await expect(screen.findByText("TU")).resolves.toBeInTheDocument();
+  });
+
+  it("hides Official discovery when the feature switch is disabled", async () => {
+    mockWorkflowApis([officialSalesResearch()]);
+    detachedSetupPage({ context, path: "/workflows" });
+    await screen.findByRole("heading", { name: "Workflows" });
+    expect(screen.queryByText("Browse Official")).not.toBeInTheDocument();
+  });
+
+  it("keeps active catalog browse and retired direct detail truthful", async () => {
+    const active = officialCatalogDetail("active");
+    const { workflow: _workflow, lifecycle: _lifecycle, ...summary } = active;
+    mockWorkflowApis([officialSalesResearch()]);
+    context.mocks.api(officialWorkflowsContract.list, ({ respond }) => {
+      return respond(200, [summary]);
+    });
+    context.mocks.api(officialWorkflowsContract.get, ({ params, respond }) => {
+      return respond(
+        200,
+        officialCatalogDetail(
+          params.definitionName === active.name ? "retired" : "active",
+        ),
+      );
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+      featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
+    });
+    click(await screen.findByText("Browse Official"));
+    await waitFor(() => {
+      expect(pathname()).toBe("/workflows/official");
+    });
+    await expect(
+      screen.findByText("View and install"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Sales")).toBeInTheDocument();
+
+    click(screen.getByText("View and install"));
+    await waitFor(() => {
+      expect(pathname()).toBe("/workflows/official/sales-research");
+    });
+    await expect(
+      screen.findByText("Retired Definition"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This retained Definition can be viewed, but it can no longer be installed.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryButtonByText("Install")).toBeNull();
+  });
+
+  it("treats a pre-P4 catalog detail without lifecycle as active", async () => {
+    const { lifecycle: _lifecycle, ...legacyDefinition } =
+      officialCatalogDetail();
+    mockAgentPageApis();
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([officialSalesResearch()]);
+    context.mocks.api(officialWorkflowsContract.get, ({ respond }) => {
+      return respond(200, legacyDefinition);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/workflows/official/sales-research",
+      featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
+    });
+
+    click(
+      await waitFor(() => {
+        return buttonByText("Install");
+      }),
+    );
+    await expect(screen.findByRole("dialog")).resolves.toBeInTheDocument();
+  });
+
+  it("preselects the default Agent and installs every Blueprint with typed parameters", async () => {
+    const definition = officialCatalogDetail();
+    const installBodies: unknown[] = [];
+    mockAgentPageApis();
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([officialSalesResearch()]);
+    context.mocks.api(officialWorkflowsContract.get, ({ respond }) => {
+      return respond(200, definition);
+    });
+    context.mocks.api(
+      officialWorkflowsContract.install,
+      ({ body, respond }) => {
+        installBodies.push(body);
+        return respond(201, {
+          workflow: officialSalesResearch(),
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "active",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/workflows/official/sales-research",
+      featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
+    });
+    click(
+      await waitFor(() => {
+        return buttonByText("Install");
+      }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Research Bot")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("time-zone (required)")).toHaveValue(
+      "UTC",
+    );
+    expect(
+      within(dialog).getByLabelText("interval-seconds (required)"),
+    ).toHaveValue(3600);
+    expect(
+      within(dialog).getByRole("combobox", {
+        name: "include-weekends (required)",
+      }),
+    ).toHaveTextContent("No");
+    fireEvent.change(
+      within(dialog).getByLabelText("interval-seconds (required)"),
+      { target: { value: "7200" } },
+    );
+    click(
+      within(dialog).getByRole("combobox", {
+        name: "include-weekends (required)",
+      }),
+    );
+    click(await screen.findByRole("option", { name: "Yes" }));
+    click(buttonByText("Install", dialog));
+
+    await waitFor(() => {
+      expect(installBodies).toStrictEqual([
+        {
+          agentId: AGENT_ID,
+          blueprints: [
+            {
+              blueprintKey: "daily",
+              bindings: [
+                { key: "time-zone", value: "UTC" },
+                { key: "interval-seconds", value: 7200 },
+                { key: "include-weekends", value: true },
+              ],
+            },
+          ],
+        },
+      ]);
+    });
+    await waitFor(() => {
+      expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
+    });
   });
 
   it("shows workflow visibility on hover", async () => {
@@ -2211,6 +2495,422 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(demotedIds).toStrictEqual([SALES_WORKFLOW_ID]);
     });
+  });
+
+  it("keeps Official operations available with discovery disabled while structure stays read-only", async () => {
+    const workflow = officialSalesResearch("retired", "needs_reconfiguration");
+    const definition = officialCatalogDetail("retired");
+    mockAgentPageApis();
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([workflow]);
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "retired",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
+    });
+    await expect(
+      screen.findByText("Official Workflow retired"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("Needs reconfiguration · intended on"),
+    ).toBeInTheDocument();
+    expect(buttonByText("Run now")).toBeEnabled();
+    expect(screen.getByRole("switch")).toBeEnabled();
+    expect(screen.queryByText("Add automation")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit automation")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete automation")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Refine with/)).not.toBeInTheDocument();
+
+    click(buttonByText("Settings"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Name")).toBeDisabled();
+    });
+    expect(screen.getByLabelText("Slug")).toBeDisabled();
+    expect(screen.getByLabelText("Description")).toBeDisabled();
+    expect(
+      screen.queryByRole("region", { name: "Connector readiness" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Make workflow public" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByText("Delete workflow")).not.toBeInTheDocument();
+    expect(buttonByText("Reconfigure")).toBeInTheDocument();
+    expect(buttonByText("Uninstall")).toBeInTheDocument();
+
+    click(buttonByText("Instructions"));
+    const instructions = await screen.findByLabelText("Workflow instruction");
+    expect(instructions).toHaveAttribute("contenteditable", "false");
+    click(screen.getByLabelText("Workflow files"));
+    expect(screen.queryByText("Upload text files")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete selected file")).not.toBeInTheDocument();
+  });
+
+  it("keeps retained Installation operations available when pre-P4 metadata is absent", async () => {
+    const workflow = officialSalesResearch("retired");
+    mockWorkflowApis([workflow]);
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ respond }) => {
+        return respond(200, { workflow });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
+
+    await expect(
+      screen.findByText(
+        "Authoritative parameter metadata is temporarily unavailable.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(buttonByText("Reconfigure")).toBeDisabled();
+    expect(buttonByText("Copy workflow")).toBeEnabled();
+    expect(buttonByText("Uninstall")).toBeEnabled();
+  });
+
+  it.each([
+    ["current", "Current · intended on"],
+    ["reconciling", "Reconciling · intended on"],
+    ["needs_reconfiguration", "Needs reconfiguration · intended on"],
+    ["failed", "Failed · intended on"],
+  ] as const)(
+    "renders the %s Official reconciliation state truthfully",
+    async (status, label) => {
+      mockWorkflowApis([officialSalesResearch("active", status)]);
+
+      detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+      await expect(screen.findByText(label)).resolves.toBeInTheDocument();
+      expect(screen.getByText("Official Workflow")).toBeInTheDocument();
+    },
+  );
+
+  it("reconfigures typed Official parameters and uninstalls through the managed endpoint", async () => {
+    const workflow = officialSalesResearch("retired");
+    const definition = officialCatalogDetail("retired");
+    const reconfigureBodies: unknown[] = [];
+    const uninstalledWorkflowIds: string[] = [];
+    mockAgentPageApis();
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([workflow]);
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "retired",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      officialWorkflowInstallationsContract.reconfigure,
+      ({ body, respond }) => {
+        reconfigureBodies.push(body);
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "retired",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      officialWorkflowInstallationsContract.uninstall,
+      ({ params, respond }) => {
+        uninstalledWorkflowIds.push(params.workflowId);
+        return respond(204);
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
+    click(
+      await waitFor(() => {
+        return buttonByText("Reconfigure");
+      }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByLabelText("interval-seconds (required)"),
+    ).toHaveValue(3600);
+    fireEvent.change(within(dialog).getByLabelText("time-zone (required)"), {
+      target: { value: "Asia/Shanghai" },
+    });
+    fireEvent.change(
+      within(dialog).getByLabelText("interval-seconds (required)"),
+      { target: { value: "1800" } },
+    );
+    click(
+      within(dialog).getByRole("combobox", {
+        name: "include-weekends (required)",
+      }),
+    );
+    click(await screen.findByRole("option", { name: "Yes" }));
+    click(buttonByText("Reconfigure", dialog));
+    await waitFor(() => {
+      expect(reconfigureBodies).toStrictEqual([
+        {
+          blueprints: [
+            {
+              blueprintKey: "daily",
+              bindings: [
+                { key: "time-zone", value: "Asia/Shanghai" },
+                { key: "interval-seconds", value: 1800 },
+                { key: "include-weekends", value: true },
+              ],
+            },
+          ],
+        },
+      ]);
+    });
+
+    click(
+      await waitFor(() => {
+        return buttonByText("Uninstall");
+      }),
+    );
+    const uninstallDialog = await screen.findByRole("dialog");
+    click(buttonByText("Uninstall", uninstallDialog));
+    await waitFor(() => {
+      expect(uninstalledWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
+    });
+    await waitFor(() => {
+      expect(pathname()).toBe("/workflows");
+    });
+  });
+
+  it("discards an open Official reconfiguration draft when Installation identity changes", async () => {
+    const definition = officialCatalogDetail("retired");
+    const firstWorkflow = officialSalesResearch("retired");
+    const secondFixture = officialSalesResearch("retired");
+    const [secondAutomation] = secondFixture.automations;
+    if (!secondAutomation?.official) {
+      throw new Error("Expected the second Official Workflow automation");
+    }
+    const secondWorkflow: WorkflowDetailResponse = {
+      ...secondFixture,
+      id: OTHER_WORKFLOW_ID,
+      agentId: OTHER_AGENT_ID,
+      agentName: "support-bot",
+      agentDisplayName: "Support Bot",
+      displayName: "Support Sales Research",
+      automations: [
+        {
+          ...secondAutomation,
+          id: "workflow-automation-official-support",
+          official: {
+            ...secondAutomation.official,
+            parameterBindings: [
+              { key: "time-zone", value: "America/New_York" },
+              { key: "interval-seconds", value: 7200 },
+              { key: "include-weekends", value: true },
+            ],
+          },
+        },
+      ],
+    };
+    const workflows = [firstWorkflow, secondWorkflow];
+    const installationReads: string[] = [];
+    const reconfigureRequests: unknown[] = [];
+    mockAgentPageApis();
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis(workflows);
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ params, respond }) => {
+        installationReads.push(params.workflowId);
+        const workflow = workflows.find((candidate) => {
+          return candidate.id === params.workflowId;
+        });
+        if (!workflow) {
+          return respond(404, {
+            error: { code: "NOT_FOUND", message: "missing" },
+          });
+        }
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "retired",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      officialWorkflowInstallationsContract.reconfigure,
+      ({ params, body, respond }) => {
+        reconfigureRequests.push({ workflowId: params.workflowId, body });
+        return respond(200, {
+          workflow: secondWorkflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "retired",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage("/workflows");
+    click(
+      await waitFor(() => {
+        return linkByAriaLabel("Open Sales Research");
+      }),
+    );
+    click(
+      await waitFor(() => {
+        return buttonByText("Settings");
+      }),
+    );
+    click(
+      await waitFor(() => {
+        return buttonByText("Reconfigure");
+      }),
+    );
+    const firstDialog = await screen.findByRole("dialog");
+    fireEvent.change(
+      within(firstDialog).getByLabelText("time-zone (required)"),
+      { target: { value: "Asia/Shanghai" } },
+    );
+    fireEvent.change(
+      within(firstDialog).getByLabelText("interval-seconds (required)"),
+      { target: { value: "1800" } },
+    );
+
+    window.history.back();
+    await waitFor(() => {
+      expect(pathname()).toBe("/workflows");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(linkByAriaLabel("Open Support Sales Research"));
+    click(
+      await waitFor(() => {
+        return buttonByText("Settings");
+      }),
+    );
+    await waitFor(() => {
+      expect(installationReads.at(-1)).toBe(OTHER_WORKFLOW_ID);
+      expect(pathname()).toBe(`/workflows/${OTHER_WORKFLOW_ID}/info`);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByText("Reconfigure"));
+    const secondDialog = await screen.findByRole("dialog");
+    expect(
+      within(secondDialog).getByLabelText("time-zone (required)"),
+    ).toHaveValue("America/New_York");
+    expect(
+      within(secondDialog).getByLabelText("interval-seconds (required)"),
+    ).toHaveValue(7200);
+    expect(
+      within(secondDialog).getByRole("combobox", {
+        name: "include-weekends (required)",
+      }),
+    ).toHaveTextContent("Yes");
+    fireEvent.change(
+      within(secondDialog).getByLabelText("time-zone (required)"),
+      { target: { value: "Europe/London" } },
+    );
+    click(buttonByText("Reconfigure", secondDialog));
+
+    await waitFor(() => {
+      expect(reconfigureRequests).toStrictEqual([
+        {
+          workflowId: OTHER_WORKFLOW_ID,
+          body: {
+            blueprints: [
+              {
+                blueprintKey: "daily",
+                bindings: [
+                  { key: "interval-seconds", value: 7200 },
+                  { key: "include-weekends", value: true },
+                  { key: "time-zone", value: "Europe/London" },
+                ],
+              },
+            ],
+          },
+        },
+      ]);
+    });
+  });
+
+  it("uses Official uninstall after a completed remix and preserves the copy when uninstall fails", async () => {
+    const workflow = officialSalesResearch();
+    const copiedWorkflow: WorkflowDetailResponse = {
+      ...salesResearch(),
+      id: COPIED_WORKFLOW_ID,
+      agentId: OTHER_AGENT_ID,
+      agentName: "support-bot",
+      agentDisplayName: "Support Bot",
+      visibility: "private",
+      automations: [],
+    };
+    const disabledAutomationIds: string[] = [];
+    const deletedWorkflowIds: string[] = [];
+    const uninstallRequests: string[] = [];
+    mockAgentPageApis();
+    mockWorkflowApis([workflow, copiedWorkflow]);
+    mockDisableWorkflowAutomation((automationId) => {
+      disabledAutomationIds.push(automationId);
+    });
+    mockDeleteWorkflow([workflow], (workflowId) => {
+      deletedWorkflowIds.push(workflowId);
+    });
+    context.mocks.api(workflowsDetailContract.copy, ({ respond }) => {
+      return respond(201, summary(copiedWorkflow));
+    });
+    context.mocks.api(
+      officialWorkflowInstallationsContract.uninstall,
+      ({ params, respond }) => {
+        uninstallRequests.push(params.workflowId);
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "Uninstall failed" },
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
+    const dialog = await openCopyDialog();
+    selectOptionByLabel("Copy to", "Support Bot", dialog);
+    await userEvent.setup().click(within(dialog).getByRole("checkbox"));
+    click(buttonByText("Copy and remove", dialog));
+
+    await waitFor(() => {
+      expect(uninstallRequests).toStrictEqual([SALES_WORKFLOW_ID]);
+    });
+    expect(disabledAutomationIds).toStrictEqual([]);
+    expect(deletedWorkflowIds).toStrictEqual([]);
+    await waitFor(() => {
+      expect(pathname()).toBe(`/workflows/${COPIED_WORKFLOW_ID}/automations`);
+    });
+    await expect(
+      screen.findByText(
+        "The copy is ready, but the original Official Workflow could not be uninstalled.",
+      ),
+    ).resolves.toBeInTheDocument();
   });
 
   it("copies a workflow to another agent from the info tab", async () => {

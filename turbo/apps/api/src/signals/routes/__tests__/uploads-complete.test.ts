@@ -439,7 +439,7 @@ describe("POST /api/uploads/complete", () => {
     });
   });
 
-  it("returns 403 for a zero token without file:write capability", async () => {
+  it("returns 403 for an agent token without file:write capability", async () => {
     const response = await chat.completeUploadWithBearer(
       zeroBearer(["file:read"]),
       { id: randomUUID() },

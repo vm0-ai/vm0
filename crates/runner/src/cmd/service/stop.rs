@@ -8,12 +8,12 @@ use crate::paths::HomePaths;
 use super::drain_override_cleanup::{
     DrainOverrideReloadPolicy, reconcile_drain_restart_override_removal,
 };
-use super::gate::check_active_jobs_gate;
+use super::gate::{ActiveJobsGateOps, check_active_jobs_gate};
 use super::systemctl::{
     BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state_bounded,
     is_unit_active, is_unit_enabled_bounded, run_systemctl, run_systemctl_bounded,
 };
-use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock};
+use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock, read_unit_config_path};
 
 const CLEANUP_LOCK_TIMEOUT: TokioDuration = TokioDuration::from_secs(20);
 const CLEANUP_LOCK_POLL_INTERVAL: TokioDuration = TokioDuration::from_millis(250);
@@ -49,7 +49,7 @@ impl CleanupPolicy {
     }
 }
 
-trait ServiceStopOps {
+trait ServiceStopOps: ActiveJobsGateOps {
     type LockGuard;
 
     fn acquire_lock<'a>(
@@ -60,12 +60,6 @@ trait ServiceStopOps {
     ) -> ServiceFuture<'a, Self::LockGuard>
     where
         Self::LockGuard: 'a;
-
-    fn check_active_jobs_gate<'a>(
-        &'a mut self,
-        unit: &'a RunnerServiceUnit,
-        force: bool,
-    ) -> ServiceFuture<'a, ()>;
 
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
     fn stop<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
@@ -109,7 +103,7 @@ async fn acquire_cleanup_service_lock(
     unit: &RunnerServiceUnit,
     home: &HomePaths,
 ) -> RunnerResult<nix::fcntl::Flock<std::fs::File>> {
-    let path = home.service_lock(unit.unit_name());
+    let path = unit.lock_path(home);
     let deadline = TokioInstant::now() + CLEANUP_LOCK_TIMEOUT;
 
     loop {
@@ -162,14 +156,6 @@ impl ServiceStopOps for RealServiceStopOps {
                 acquire_service_lock(unit, home).await
             }
         })
-    }
-
-    fn check_active_jobs_gate<'a>(
-        &'a mut self,
-        unit: &'a RunnerServiceUnit,
-        force: bool,
-    ) -> ServiceFuture<'a, ()> {
-        Box::pin(async move { check_active_jobs_gate(unit, force, "stop").await })
     }
 
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
@@ -289,6 +275,19 @@ impl ServiceStopOps for RealServiceStopOps {
     }
 }
 
+impl ActiveJobsGateOps for RealServiceStopOps {
+    fn is_unit_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_active(unit).await })
+    }
+
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<std::path::PathBuf>> {
+        Box::pin(async move { read_unit_config_path(unit).await })
+    }
+}
+
 async fn stop_with_ops(
     unit: &RunnerServiceUnit,
     home: &HomePaths,
@@ -303,12 +302,12 @@ async fn stop_with_ops(
                     .to_string(),
             ));
         }
-        ops.check_active_jobs_gate(unit, force).await?;
+        check_active_jobs_gate(unit, home, force, "stop", ops).await?;
         let _service_lock = ops.acquire_lock(unit, home, Some(cleanup)).await?;
         stop_cleanup_with_ops(unit, cleanup, ops).await
     } else {
         let _service_lock = ops.acquire_lock(unit, home, cleanup).await?;
-        ops.check_active_jobs_gate(unit, force).await?;
+        check_active_jobs_gate(unit, home, force, "stop", ops).await?;
         stop_default_with_ops(unit, ops).await
     }
 }
@@ -320,7 +319,7 @@ async fn stop_default_with_ops(
     let svc = unit.service_name();
 
     if ops.is_active(unit).await? {
-        // Active unit: stop must succeed; otherwise the runner process and VMs
+        // Active unit: stop must succeed; otherwise the runner process and sandboxes
         // can keep running.
         ops.stop(unit).await?;
         info!(unit = %unit.unit_name(), "stopped");
@@ -349,17 +348,24 @@ async fn stop_cleanup_with_ops(
     cleanup: CleanupPolicy,
     ops: &mut impl ServiceStopOps,
 ) -> RunnerResult<()> {
-    let stop_outcome = ops.stop_bounded(unit, CLEANUP_STOP_TIMEOUT).await?;
-    let stop_needs_escalation = !matches!(&stop_outcome, BoundedSystemctlOutcome::Success);
-    match stop_outcome {
-        BoundedSystemctlOutcome::Success => {}
-        BoundedSystemctlOutcome::Failed(status) => {
+    let (stop_needs_escalation, initial_stop_error) = match ops
+        .stop_bounded(unit, CLEANUP_STOP_TIMEOUT)
+        .await
+    {
+        Ok(BoundedSystemctlOutcome::Success) => (false, None),
+        Ok(BoundedSystemctlOutcome::Failed(status)) => {
             warn!(unit = %unit.unit_name(), %status, "bounded systemctl stop failed during cleanup");
+            (true, None)
         }
-        BoundedSystemctlOutcome::TimedOut => {
+        Ok(BoundedSystemctlOutcome::TimedOut) => {
             warn!(unit = %unit.unit_name(), "bounded systemctl stop timed out during cleanup");
+            (true, None)
         }
-    }
+        Err(error) => {
+            warn!(unit = %unit.unit_name(), error = %error, "bounded systemctl stop errored during cleanup");
+            (true, Some(error))
+        }
+    };
 
     let state = match ops.cleanup_active_state(unit).await {
         Ok(state) => Some(state),
@@ -419,7 +425,9 @@ async fn stop_cleanup_with_ops(
 
     let postcondition_result =
         combine_cleanup_postcondition_results(unit, inactive_result, disabled_result);
-    combine_cleanup_transition_results(unit, drain_cleanup_result, postcondition_result)
+    let cleanup_result =
+        combine_cleanup_transition_results(unit, drain_cleanup_result, postcondition_result);
+    combine_cleanup_initial_stop_result(unit, initial_stop_error, cleanup_result)
 }
 
 async fn verify_cleanup_not_enabled(
@@ -483,6 +491,21 @@ fn combine_cleanup_transition_results(
                 unit.service_name()
             )))
         }
+    }
+}
+
+fn combine_cleanup_initial_stop_result(
+    unit: &RunnerServiceUnit,
+    initial_stop_error: Option<RunnerError>,
+    cleanup_result: RunnerResult<()>,
+) -> RunnerResult<()> {
+    match (initial_stop_error, cleanup_result) {
+        (_, Ok(())) => Ok(()),
+        (None, Err(error)) => Err(error),
+        (Some(initial_stop_error), Err(cleanup_error)) => Err(RunnerError::Internal(format!(
+            "cleanup failed for {} after bounded systemctl stop error: {initial_stop_error}; additionally: {cleanup_error}",
+            unit.service_name()
+        ))),
     }
 }
 
@@ -579,7 +602,8 @@ mod tests {
     struct FakeStopOps {
         events: Vec<&'static str>,
         acquire_lock_error: bool,
-        gate_error: bool,
+        gate_active_results: VecDeque<RunnerResult<bool>>,
+        gate_config_path: Option<PathBuf>,
         active_results: VecDeque<RunnerResult<bool>>,
         stop_results: VecDeque<RunnerResult<()>>,
         bounded_stop_results: VecDeque<RunnerResult<BoundedSystemctlOutcome>>,
@@ -598,7 +622,8 @@ mod tests {
             Self {
                 events: Vec::new(),
                 acquire_lock_error: false,
-                gate_error: false,
+                gate_active_results: VecDeque::from([Ok(false)]),
+                gate_config_path: Some(PathBuf::from("/tmp/runner-config.yaml")),
                 active_results: VecDeque::from([Ok(true)]),
                 stop_results: VecDeque::from([Ok(())]),
                 bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::Success)]),
@@ -613,6 +638,28 @@ mod tests {
                 cleanup_drain_error: false,
                 advance_time_on_sleep: false,
             }
+        }
+    }
+
+    impl ActiveJobsGateOps for FakeStopOps {
+        fn is_unit_active<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, bool> {
+            self.events.push("gate_is_active");
+            Box::pin(std::future::ready(
+                self.gate_active_results
+                    .pop_front()
+                    .expect("unexpected gate unit-active query"),
+            ))
+        }
+
+        fn read_unit_config_path<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, Option<PathBuf>> {
+            self.events.push("gate_config_path");
+            Box::pin(std::future::ready(Ok(self.gate_config_path.clone())))
         }
     }
 
@@ -635,19 +682,6 @@ mod tests {
             });
             Box::pin(std::future::ready(if self.acquire_lock_error {
                 Err(fake_error("lock busy"))
-            } else {
-                Ok(())
-            }))
-        }
-
-        fn check_active_jobs_gate<'a>(
-            &'a mut self,
-            _unit: &'a RunnerServiceUnit,
-            _force: bool,
-        ) -> ServiceFuture<'a, ()> {
-            self.events.push("check_gate");
-            Box::pin(std::future::ready(if self.gate_error {
-                Err(fake_error("active jobs"))
             } else {
                 Ok(())
             }))
@@ -807,13 +841,110 @@ mod tests {
             ops.events,
             [
                 "acquire_lock",
-                "check_gate",
+                "gate_is_active",
                 "is_active",
                 "stop",
                 "reset_failed",
                 "cleanup_drain_restart_override",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn stop_uses_selected_config_base_dir_before_service_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let unit = service_unit();
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: config_path.clone(),
+                base_dir: base_dir.clone(),
+                runner_group: "test".to_string(),
+                subcommand: "start".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        let started_at = (chrono::Utc::now() - chrono::Duration::minutes(10))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let parsed_started_at = chrono::DateTime::parse_from_rfc3339(&started_at)
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            format!(
+                r#"{{
+                    "mode":"running",
+                    "active_runs":[
+                        {{"run_id":"0191c4e0-0000-7000-8000-000000000001"}},
+                        {{"run_id":"0191c4e0-0000-7000-8000-000000000002"}}
+                    ],
+                    "started_at":"{started_at}"
+                }}"#
+            ),
+        )
+        .await
+        .unwrap();
+        let mut ops = FakeStopOps {
+            gate_active_results: VecDeque::from([Ok(true)]),
+            gate_config_path: Some(config_path),
+            ..FakeStopOps::default()
+        };
+
+        let before_gate = chrono::Utc::now();
+        let error = stop_with_ops(&unit, &home, false, None, &mut ops)
+            .await
+            .unwrap_err();
+        let after_gate = chrono::Utc::now();
+
+        assert_eq!(
+            ops.events,
+            ["acquire_lock", "gate_is_active", "gate_config_path"]
+        );
+        let RunnerError::ActiveJobs(error) = error else {
+            panic!("expected active-jobs refusal");
+        };
+        assert_eq!(error.unit, "vm0-runner-test");
+        assert_eq!(error.suffix, "test");
+        assert_eq!(
+            error
+                .run_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            [
+                "0191c4e0-0000-7000-8000-000000000001",
+                "0191c4e0-0000-7000-8000-000000000002",
+            ]
+        );
+        assert!(error.runner_uptime >= (before_gate - parsed_started_at).to_std().unwrap());
+        assert!(error.runner_uptime <= (after_gate - parsed_started_at).to_std().unwrap());
+        assert_eq!(error.command_name, "stop");
+        assert!(!error.draining);
+    }
+
+    #[tokio::test]
+    async fn stop_fails_closed_when_gate_unit_state_is_unavailable() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            gate_active_results: VecDeque::from([Err(fake_error("systemd unavailable"))]),
+            ..FakeStopOps::default()
+        };
+
+        let error = stop_with_ops(&unit, &home, false, None, &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("vm0-runner-test"));
+        assert!(message.contains("before service stop"));
+        assert!(message.contains("systemd unavailable"));
+        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
     }
 
     #[tokio::test]
@@ -890,7 +1021,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -942,7 +1072,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -980,7 +1109,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1015,7 +1143,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1054,7 +1181,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1173,7 +1299,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1212,7 +1337,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1221,6 +1345,83 @@ mod tests {
                 "reset_failed_bounded",
                 "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_recovers_from_bounded_stop_error() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            bounded_stop_results: VecDeque::from([Err(fake_error("initial stop unavailable"))]),
+            cleanup_states: VecDeque::from([
+                Err(fake_error("state unavailable")),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "kill_all_sigkill",
+                "stop_no_block",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_failed_start_cleanup_preserves_bounded_stop_and_enablement_failures() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            bounded_stop_results: VecDeque::from([Err(fake_error("initial stop unavailable"))]),
+            enabled_results: VecDeque::from([Ok(true)]),
+            ..FakeStopOps::default()
+        };
+
+        let error = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("bounded systemctl stop error"));
+        assert!(message.contains("initial stop unavailable"));
+        assert!(message.contains("left vm0-runner-test.service enabled"));
+        assert_eq!(
+            ops.events,
+            [
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "disable",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+                "is_enabled",
             ]
         );
     }
@@ -1250,7 +1451,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1289,7 +1489,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1328,7 +1527,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1373,7 +1571,6 @@ mod tests {
         assert_eq!(
             ops.events,
             [
-                "check_gate",
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
@@ -1431,6 +1628,6 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("lock busy"));
-        assert_eq!(ops.events, ["check_gate", "acquire_cleanup_lock"]);
+        assert_eq!(ops.events, ["acquire_cleanup_lock"]);
     }
 }

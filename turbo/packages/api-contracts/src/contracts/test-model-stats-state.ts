@@ -60,6 +60,8 @@ export const testModelStatsStateActionBodySchema = z.discriminatedUnion(
       processed_at: z.iso.datetime(),
       observation_idempotency_keys: idempotencyKeysSchema,
       stat_keys: modelStatKeysSchema,
+      cleanup_batch_size: z.number().int().positive().optional(),
+      cleanup_max_batches: z.number().int().positive().optional(),
     }),
     z.object({
       action: z.literal("read-fixture-rankings"),

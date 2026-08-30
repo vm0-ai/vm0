@@ -1,13 +1,132 @@
-import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
 import { EVENT } from "@axiomhq/logging";
+import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
+
+import { mockEnv, mockOptionalEnv } from "../env";
 import { flushLogs, logger, __resetForTest } from "../log";
 import { testContext } from "../../__tests__/test-context";
 
 const { axiom, axiomLogging, console: consoleOutput } = testContext().mocks;
 
+const CANONICAL_DEBUG_KEY = "OKOU_DEBUG";
+const LEGACY_DEBUG_KEY = "VM0_DEBUG";
+function configureDebug(value: string | undefined): void {
+  mockEnv(CANONICAL_DEBUG_KEY, value);
+}
+
 beforeEach(() => {
   __resetForTest();
   axiomLogging.flush.mockResolvedValue(undefined);
+});
+
+describe("debug environment", () => {
+  it.each([
+    { description: "missing canonical input", value: undefined },
+    { description: "empty canonical input", value: "" },
+  ])("keeps the info level for $description", ({ value }) => {
+    configureDebug(value);
+
+    expect(logger("debug-target").level).toBe("info");
+  });
+
+  it.each([
+    {
+      description: "the global wildcard",
+      value: "*",
+      enabled: ["anything", "api:worker"],
+      disabled: [],
+    },
+    {
+      description: "a namespace-prefix wildcard",
+      value: "api:*",
+      enabled: ["api:worker", "api:"],
+      disabled: ["api", "apis:worker"],
+    },
+    {
+      description: "an exact logger name",
+      value: "ExactLogger",
+      enabled: ["ExactLogger"],
+      disabled: ["exactlogger", "ExactLogger:child"],
+    },
+    {
+      description: "trimmed comma-separated entries",
+      value: " exact-one, , api:*, exact-two, ",
+      enabled: ["exact-one", "api:child", "exact-two"],
+      disabled: ["exact", "other"],
+    },
+    {
+      description: "discarded empty entries",
+      value: " ,  , ",
+      enabled: [],
+      disabled: ["anything"],
+    },
+    {
+      description: "a non-matching pattern",
+      value: "another-logger",
+      enabled: [],
+      disabled: ["target-logger"],
+    },
+  ])("preserves $description behavior", ({ value, enabled, disabled }) => {
+    configureDebug(value);
+
+    for (const name of enabled) {
+      expect(logger(name).level).toBe("debug");
+    }
+    for (const name of disabled) {
+      expect(logger(name).level).toBe("info");
+    }
+  });
+
+  it("ignores a retired legacy-only input", () => {
+    configureDebug(undefined);
+    mockOptionalEnv(LEGACY_DEBUG_KEY, "legacy-only-target");
+
+    expect(logger("legacy-only-target").level).toBe("info");
+  });
+
+  it("does not let a retired legacy value override or conflict with canonical", () => {
+    configureDebug("canonical:*");
+    mockOptionalEnv(LEGACY_DEBUG_KEY, "legacy:*");
+
+    expect(() => {
+      logger("canonical:child");
+    }).not.toThrow();
+    expect(logger("canonical:child").level).toBe("debug");
+    expect(logger("legacy:child").level).toBe("info");
+  });
+
+  it("does not emit the canonical environment value to logs", () => {
+    const value = `private-debug-pattern-${"x".repeat(113)}`;
+    configureDebug(value);
+
+    expect(logger(value).level).toBe("debug");
+    expect(axiomLogging.debug).not.toHaveBeenCalled();
+    expect(axiomLogging.info).not.toHaveBeenCalled();
+    expect(axiomLogging.warn).not.toHaveBeenCalled();
+    expect(axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps configuration and logger levels cached until the existing reset", () => {
+    configureDebug("CachedLogger");
+
+    const cached = logger("CachedLogger");
+    expect(cached.level).toBe("debug");
+    mockEnv(CANONICAL_DEBUG_KEY, "AfterResetLogger");
+
+    expect(logger("CachedLogger")).toBe(cached);
+    expect(logger("CachedLogger").level).toBe("debug");
+    expect(logger("AfterResetLogger").level).toBe("info");
+
+    __resetForTest();
+
+    expect(logger("AfterResetLogger").level).toBe("debug");
+  });
+
+  it("keeps the generic DEBUG convention unrelated", () => {
+    configureDebug(undefined);
+    mockOptionalEnv("DEBUG", "*");
+
+    expect(logger("generic-debug-convention").level).toBe("info");
+  });
 });
 
 // ── logToAxiom dispatches to correct @axiomhq/logging level ─────────────────

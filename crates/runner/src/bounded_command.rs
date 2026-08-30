@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -11,6 +12,10 @@ use crate::child_cleanup::kill_and_reap_child_on_drop;
 
 const COMMAND_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const BOUNDED_COMMAND_CHILD_LABEL: &str = "bounded command";
+const DEFAULT_SEMANTIC_OUTPUT_LIMIT_BYTES: usize = 4 * 1024 * 1024;
+const DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES: usize = 64 * 1024;
+const OUTPUT_READ_CHUNK_BYTES: usize = 8 * 1024;
+const OUTPUT_TRUNCATION_MARKER: &[u8] = b"[output truncated]";
 
 #[derive(Debug)]
 pub(crate) enum BoundedCommandOutcome<T> {
@@ -23,12 +28,37 @@ pub(crate) enum BoundedCommandError {
     Spawn(io::Error),
     Wait(io::Error),
     Lifecycle(String),
+    OutputTooLarge { stream: &'static str, limit: usize },
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum CommandOutputCapture {
-    Stderr,
-    StdoutAndStderr,
+pub(crate) struct CommandOutputPolicy {
+    stdout: StdoutOutputPolicy,
+    diagnostic_stderr_max_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum StdoutOutputPolicy {
+    Discard,
+    Semantic { max_bytes: usize },
+}
+
+impl CommandOutputPolicy {
+    pub(crate) const fn diagnostic_stderr() -> Self {
+        Self {
+            stdout: StdoutOutputPolicy::Discard,
+            diagnostic_stderr_max_bytes: DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES,
+        }
+    }
+
+    pub(crate) const fn semantic_stdout() -> Self {
+        Self {
+            stdout: StdoutOutputPolicy::Semantic {
+                max_bytes: DEFAULT_SEMANTIC_OUTPUT_LIMIT_BYTES,
+            },
+            diagnostic_stderr_max_bytes: DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES,
+        }
+    }
 }
 
 pub(crate) async fn run_bounded(
@@ -58,20 +88,20 @@ pub(crate) async fn run_bounded(
 pub(crate) async fn run_output_bounded(
     mut command: Command,
     program: &str,
-    capture: CommandOutputCapture,
+    output_policy: CommandOutputPolicy,
     timeout: Duration,
 ) -> Result<BoundedCommandOutcome<Output>, BoundedCommandError> {
-    match capture {
-        CommandOutputCapture::Stderr => {
+    match output_policy.stdout {
+        StdoutOutputPolicy::Discard => {
             command.stdout(Stdio::null()).stderr(Stdio::piped());
         }
-        CommandOutputCapture::StdoutAndStderr => {
+        StdoutOutputPolicy::Semantic { .. } => {
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
     }
 
     let mut child = BoundedChild::spawn(&mut command).map_err(BoundedCommandError::Spawn)?;
-    let mut output_tasks = match child.output_tasks(capture) {
+    let mut output_tasks = match child.output_tasks(output_policy) {
         Ok(output_tasks) => output_tasks,
         Err(stream) => {
             return match kill_and_reap_child(program, &mut child).await {
@@ -85,15 +115,41 @@ pub(crate) async fn run_output_bounded(
         }
     };
 
-    let status = match tokio::time::timeout(timeout, child.wait()).await {
-        Ok(Ok(status)) => status,
-        Ok(Err(error)) => {
+    enum WaitOutcome {
+        Child(io::Result<ExitStatus>),
+        SemanticStdoutOverflow(usize),
+        TimedOut,
+    }
+
+    let deadline = tokio::time::sleep(timeout);
+    tokio::pin!(deadline);
+    let wait_outcome = tokio::select! {
+        biased;
+        Some(limit) = output_tasks.semantic_stdout_overflow() => {
+            WaitOutcome::SemanticStdoutOverflow(limit)
+        }
+        status = child.wait() => WaitOutcome::Child(status),
+        () = &mut deadline => WaitOutcome::TimedOut,
+    };
+
+    let status = match wait_outcome {
+        WaitOutcome::Child(Ok(status)) => status,
+        WaitOutcome::Child(Err(error)) => {
             let cleanup_result = kill_and_reap_child(program, &mut child).await;
             output_tasks.abort();
             cleanup_result.map_err(BoundedCommandError::Lifecycle)?;
             return Err(BoundedCommandError::Wait(error));
         }
-        Err(_) => {
+        WaitOutcome::SemanticStdoutOverflow(limit) => {
+            let cleanup_result = kill_and_reap_child(program, &mut child).await;
+            output_tasks.abort();
+            cleanup_result.map_err(BoundedCommandError::Lifecycle)?;
+            return Err(BoundedCommandError::OutputTooLarge {
+                stream: "stdout",
+                limit,
+            });
+        }
+        WaitOutcome::TimedOut => {
             let cleanup_result = kill_and_reap_child(program, &mut child).await;
             output_tasks.abort();
             cleanup_result.map_err(BoundedCommandError::Lifecycle)?;
@@ -138,10 +194,10 @@ impl BoundedChild {
 
     fn output_tasks(
         &mut self,
-        capture: CommandOutputCapture,
+        output_policy: CommandOutputPolicy,
     ) -> Result<ChildOutputTasks, &'static str> {
         match self.child.as_mut() {
-            Some(child) => ChildOutputTasks::from_child(child, capture),
+            Some(child) => ChildOutputTasks::from_child(child, output_policy),
             None => Err("child"),
         }
     }
@@ -154,31 +210,60 @@ impl Drop for BoundedChild {
 }
 
 enum ChildOutputTasks {
-    Stderr(JoinHandle<io::Result<Vec<u8>>>),
+    Stderr(JoinHandle<io::Result<CapturedChildOutput>>),
     StdoutAndStderr {
-        stdout: JoinHandle<io::Result<Vec<u8>>>,
-        stderr: JoinHandle<io::Result<Vec<u8>>>,
+        stdout: JoinHandle<io::Result<CapturedChildOutput>>,
+        stderr: JoinHandle<io::Result<CapturedChildOutput>>,
+        semantic_stdout_overflow: oneshot::Receiver<usize>,
     },
 }
 
 impl ChildOutputTasks {
     fn from_child(
         child: &mut tokio::process::Child,
-        capture: CommandOutputCapture,
+        output_policy: CommandOutputPolicy,
     ) -> Result<Self, &'static str> {
-        match capture {
-            CommandOutputCapture::Stderr => {
+        match output_policy.stdout {
+            StdoutOutputPolicy::Discard => {
                 let stderr = child.stderr.take().ok_or("stderr")?;
-                Ok(Self::Stderr(tokio::spawn(read_child_output(stderr))))
+                Ok(Self::Stderr(tokio::spawn(read_child_output(
+                    stderr,
+                    StreamOutputPolicy::Diagnostic {
+                        max_bytes: output_policy.diagnostic_stderr_max_bytes,
+                    },
+                    None,
+                ))))
             }
-            CommandOutputCapture::StdoutAndStderr => {
+            StdoutOutputPolicy::Semantic { max_bytes } => {
                 let stdout = child.stdout.take().ok_or("stdout")?;
                 let stderr = child.stderr.take().ok_or("stderr")?;
+                let (semantic_stdout_overflow_tx, semantic_stdout_overflow_rx) = oneshot::channel();
                 Ok(Self::StdoutAndStderr {
-                    stdout: tokio::spawn(read_child_output(stdout)),
-                    stderr: tokio::spawn(read_child_output(stderr)),
+                    stdout: tokio::spawn(read_child_output(
+                        stdout,
+                        StreamOutputPolicy::Semantic { max_bytes },
+                        Some(semantic_stdout_overflow_tx),
+                    )),
+                    stderr: tokio::spawn(read_child_output(
+                        stderr,
+                        StreamOutputPolicy::Diagnostic {
+                            max_bytes: output_policy.diagnostic_stderr_max_bytes,
+                        },
+                        None,
+                    )),
+                    semantic_stdout_overflow: semantic_stdout_overflow_rx,
                 })
             }
+        }
+    }
+
+    async fn semantic_stdout_overflow(&mut self) -> Option<usize> {
+        match self {
+            Self::Stderr(_) => std::future::pending().await,
+            Self::StdoutAndStderr {
+                semantic_stdout_overflow,
+                ..
+            } => semantic_stdout_overflow.await.ok(),
         }
     }
 
@@ -192,7 +277,7 @@ impl ChildOutputTasks {
                 )
                 .await;
                 match result {
-                    Ok(stderr) => Ok((Vec::new(), stderr?)),
+                    Ok(stderr) => Ok((Vec::new(), captured_child_output_bytes("stderr", stderr?)?)),
                     Err(_) => {
                         stderr_task.abort();
                         Err(output_task_timeout(program, "stderr"))
@@ -202,6 +287,7 @@ impl ChildOutputTasks {
             Self::StdoutAndStderr {
                 stdout: stdout_task,
                 stderr: stderr_task,
+                ..
             } => {
                 let result = tokio::time::timeout_at(deadline, async {
                     tokio::try_join!(
@@ -211,7 +297,10 @@ impl ChildOutputTasks {
                 })
                 .await;
                 match result {
-                    Ok(Ok(output)) => Ok(output),
+                    Ok(Ok((stdout, stderr))) => Ok((
+                        captured_child_output_bytes("stdout", stdout)?,
+                        captured_child_output_bytes("stderr", stderr)?,
+                    )),
                     Ok(Err(error)) => {
                         stdout_task.abort();
                         stderr_task.abort();
@@ -235,7 +324,7 @@ impl ChildOutputTasks {
     fn abort(&self) {
         match self {
             Self::Stderr(stderr) => stderr.abort(),
-            Self::StdoutAndStderr { stdout, stderr } => {
+            Self::StdoutAndStderr { stdout, stderr, .. } => {
                 stdout.abort();
                 stderr.abort();
             }
@@ -249,28 +338,99 @@ impl Drop for ChildOutputTasks {
     }
 }
 
-async fn read_child_output<R>(mut reader: R) -> io::Result<Vec<u8>>
+#[derive(Clone, Copy, Debug)]
+enum StreamOutputPolicy {
+    Diagnostic { max_bytes: usize },
+    Semantic { max_bytes: usize },
+}
+
+impl StreamOutputPolicy {
+    fn max_bytes(self) -> usize {
+        match self {
+            Self::Diagnostic { max_bytes } | Self::Semantic { max_bytes } => max_bytes,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CapturedChildOutput {
+    bytes: Vec<u8>,
+    semantic_overflow: Option<usize>,
+}
+
+async fn read_child_output<R>(
+    mut reader: R,
+    output_policy: StreamOutputPolicy,
+    semantic_stdout_overflow: Option<oneshot::Sender<usize>>,
+) -> io::Result<CapturedChildOutput>
 where
     R: tokio::io::AsyncRead + Unpin,
 {
-    let mut output = Vec::new();
-    reader.read_to_end(&mut output).await?;
-    Ok(output)
+    let max_bytes = output_policy.max_bytes();
+    let mut output = Vec::with_capacity(max_bytes.min(OUTPUT_READ_CHUNK_BYTES));
+    let mut buffer = [0_u8; OUTPUT_READ_CHUNK_BYTES];
+    let mut truncated = false;
+
+    loop {
+        let read = reader.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+
+        let keep = max_bytes.saturating_sub(output.len()).min(read);
+        let chunk = buffer.get(..keep).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "kept output bytes exceeded read buffer",
+            )
+        })?;
+        output.extend_from_slice(chunk);
+        if keep < read {
+            match output_policy {
+                StreamOutputPolicy::Semantic { max_bytes } => {
+                    if let Some(sender) = semantic_stdout_overflow {
+                        let _ = sender.send(max_bytes);
+                    }
+                    return Ok(CapturedChildOutput {
+                        bytes: output,
+                        semantic_overflow: Some(max_bytes),
+                    });
+                }
+                StreamOutputPolicy::Diagnostic { .. } => truncated = true,
+            }
+        }
+    }
+
+    let semantic_overflow = match output_policy {
+        StreamOutputPolicy::Diagnostic { .. } if truncated => {
+            if !output.is_empty() {
+                output.push(b'\n');
+            }
+            output.extend_from_slice(OUTPUT_TRUNCATION_MARKER);
+            None
+        }
+        StreamOutputPolicy::Diagnostic { .. } | StreamOutputPolicy::Semantic { .. } => None,
+    };
+
+    Ok(CapturedChildOutput {
+        bytes: output,
+        semantic_overflow,
+    })
 }
 
 async fn wait_child_output_task(
     program: &str,
     stream: &str,
-    task: &mut JoinHandle<io::Result<Vec<u8>>>,
-) -> Result<Vec<u8>, BoundedCommandError> {
+    task: &mut JoinHandle<io::Result<CapturedChildOutput>>,
+) -> Result<CapturedChildOutput, BoundedCommandError> {
     child_output_task_result(program, stream, task.await)
 }
 
 fn child_output_task_result(
     program: &str,
     stream: &str,
-    result: Result<io::Result<Vec<u8>>, tokio::task::JoinError>,
-) -> Result<Vec<u8>, BoundedCommandError> {
+    result: Result<io::Result<CapturedChildOutput>, tokio::task::JoinError>,
+) -> Result<CapturedChildOutput, BoundedCommandError> {
     match result {
         Ok(Ok(output)) => Ok(output),
         Ok(Err(error)) => Err(BoundedCommandError::Lifecycle(format!(
@@ -279,6 +439,16 @@ fn child_output_task_result(
         Err(error) => Err(BoundedCommandError::Lifecycle(format!(
             "{program} {stream} task failed: {error}"
         ))),
+    }
+}
+
+fn captured_child_output_bytes(
+    stream: &'static str,
+    output: CapturedChildOutput,
+) -> Result<Vec<u8>, BoundedCommandError> {
+    match output.semantic_overflow {
+        Some(limit) => Err(BoundedCommandError::OutputTooLarge { stream, limit }),
+        None => Ok(output.bytes),
     }
 }
 
@@ -388,7 +558,7 @@ mod tests {
         let outcome = run_output_bounded(
             command,
             "sleep",
-            CommandOutputCapture::StdoutAndStderr,
+            CommandOutputPolicy::semantic_stdout(),
             Duration::from_millis(1),
         )
         .await
@@ -406,7 +576,7 @@ mod tests {
         let task = tokio::spawn(run_output_bounded(
             command,
             "sh",
-            CommandOutputCapture::StdoutAndStderr,
+            CommandOutputPolicy::semantic_stdout(),
             Duration::from_secs(1),
         ));
         let (pid, starttime) = match wait_for_recorded_process(&pid_path).await {
@@ -433,7 +603,7 @@ mod tests {
         let task = tokio::spawn(run_output_bounded(
             command,
             "sh",
-            CommandOutputCapture::StdoutAndStderr,
+            CommandOutputPolicy::semantic_stdout(),
             Duration::from_secs(60),
         ));
         let (pid, starttime) = match wait_for_recorded_process(&pid_path).await {
@@ -450,6 +620,69 @@ mod tests {
         wait_for_process_exit(pid, starttime).await
     }
 
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn semantic_stdout_overflow_terminates_and_reaps_child() -> io::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let pid_path = temp_dir.path().join("pid");
+        let release_path = temp_dir.path().join("release");
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(
+                "printf '%s' \"$$\" > \"$1.tmp\"; mv \"$1.tmp\" \"$1\"; \
+                 while [ ! -e \"$2\" ]; do :; done; \
+                 while :; do printf x; printf '%131072s' x >&2; done",
+            )
+            .arg("sh")
+            .arg(&pid_path)
+            .arg(&release_path);
+        let mut task = tokio::spawn(run_output_bounded(
+            command,
+            "sh",
+            CommandOutputPolicy {
+                stdout: StdoutOutputPolicy::Semantic { max_bytes: 3 },
+                diagnostic_stderr_max_bytes: 5,
+            },
+            Duration::from_secs(60),
+        ));
+        let (pid, starttime) = match wait_for_recorded_process(&pid_path).await {
+            Ok(process) => process,
+            Err(error) => {
+                task.abort();
+                let _ = task.await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = tokio::fs::write(&release_path, []).await {
+            task.abort();
+            let _ = task.await;
+            wait_for_process_exit(pid, starttime).await?;
+            return Err(error);
+        }
+
+        let error = match tokio::time::timeout(PROCESS_OBSERVATION_TIMEOUT, &mut task).await {
+            Ok(result) => result.unwrap().unwrap_err(),
+            Err(_) => {
+                task.abort();
+                let _ = task.await;
+                wait_for_process_exit(pid, starttime).await?;
+                return Err(io::Error::other(
+                    "semantic stdout overflow did not stop the command promptly",
+                ));
+            }
+        };
+
+        assert!(matches!(
+            error,
+            BoundedCommandError::OutputTooLarge {
+                stream: "stdout",
+                limit: 3
+            }
+        ));
+        wait_for_process_exit(pid, starttime).await
+    }
+
     #[tokio::test]
     async fn output_command_captures_requested_streams() {
         let mut command = Command::new("sh");
@@ -458,7 +691,10 @@ mod tests {
         let outcome = run_output_bounded(
             command,
             "sh",
-            CommandOutputCapture::StdoutAndStderr,
+            CommandOutputPolicy {
+                stdout: StdoutOutputPolicy::Semantic { max_bytes: 6 },
+                diagnostic_stderr_max_bytes: 6,
+            },
             Duration::from_secs(1),
         )
         .await
@@ -476,7 +712,7 @@ mod tests {
         let outcome = run_output_bounded(
             command,
             "sh",
-            CommandOutputCapture::Stderr,
+            CommandOutputPolicy::diagnostic_stderr(),
             Duration::from_secs(1),
         )
         .await
@@ -490,17 +726,79 @@ mod tests {
         assert_eq!(output.stderr, b"stderr");
     }
 
+    #[tokio::test]
+    async fn oversized_semantic_stdout_fails_after_oversized_stderr_drains() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "head -c 65536 /dev/zero; head -c 65536 /dev/zero >&2"]);
+
+        let error = run_output_bounded(
+            command,
+            "sh",
+            CommandOutputPolicy {
+                stdout: StdoutOutputPolicy::Semantic { max_bytes: 3 },
+                diagnostic_stderr_max_bytes: 5,
+            },
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            BoundedCommandError::OutputTooLarge {
+                stream: "stdout",
+                limit: 3
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn oversized_diagnostic_stderr_is_bounded_and_marked() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "head -c 65536 /dev/zero | tr '\\0' x >&2; exit 7"]);
+
+        let outcome = run_output_bounded(
+            command,
+            "sh",
+            CommandOutputPolicy {
+                stdout: StdoutOutputPolicy::Discard,
+                diagnostic_stderr_max_bytes: 3,
+            },
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        let BoundedCommandOutcome::Exited(output) = outcome else {
+            panic!("command unexpectedly timed out");
+        };
+
+        assert_eq!(output.status.code(), Some(7));
+        assert!(output.stdout.is_empty());
+        assert_eq!(output.stderr, b"xxx\n[output truncated]");
+    }
+
     #[tokio::test(start_paused = true)]
     async fn output_tasks_share_one_cleanup_deadline() {
         let stdout = tokio::spawn(async {
             tokio::time::sleep(Duration::from_millis(1_500)).await;
-            Ok(Vec::new())
+            Ok(CapturedChildOutput {
+                bytes: Vec::new(),
+                semantic_overflow: None,
+            })
         });
         let stderr = tokio::spawn(async {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            Ok(Vec::new())
+            Ok(CapturedChildOutput {
+                bytes: Vec::new(),
+                semantic_overflow: None,
+            })
         });
-        let mut tasks = ChildOutputTasks::StdoutAndStderr { stdout, stderr };
+        let (_, semantic_stdout_overflow) = oneshot::channel();
+        let mut tasks = ChildOutputTasks::StdoutAndStderr {
+            stdout,
+            stderr,
+            semantic_stdout_overflow,
+        };
         let started_at = Instant::now();
 
         let error = tasks.collect("test-command").await.unwrap_err();
@@ -516,9 +814,17 @@ mod tests {
         let stdout = tokio::spawn(async { Err(io::Error::other("read failed")) });
         let stderr = tokio::spawn(async {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            Ok(Vec::new())
+            Ok(CapturedChildOutput {
+                bytes: Vec::new(),
+                semantic_overflow: None,
+            })
         });
-        let mut tasks = ChildOutputTasks::StdoutAndStderr { stdout, stderr };
+        let (_, semantic_stdout_overflow) = oneshot::channel();
+        let mut tasks = ChildOutputTasks::StdoutAndStderr {
+            stdout,
+            stderr,
+            semantic_stdout_overflow,
+        };
         let started_at = Instant::now();
 
         let error = tasks.collect("test-command").await.unwrap_err();

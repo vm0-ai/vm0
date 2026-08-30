@@ -12,7 +12,7 @@ import mitm_addon
 import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
+    _single_firewall_sandbox,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -28,7 +28,7 @@ def _write_test_oauth_registry(tmp_path):
     return _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="test-oauth",
             api_entry={
@@ -206,6 +206,62 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_veri
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
+
+
+@pytest.mark.parametrize(
+    "has_certificate_evidence",
+    [
+        pytest.param(True, id="certificate-present"),
+        pytest.param(False, id="certificate-missing"),
+    ],
+)
+async def test_matching_sni_and_host_requires_upstream_certificate_evidence(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    has_certificate_evidence: bool,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="140.82.112.5",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("140.82.112.5", 443),
+        peername=("140.82.112.5", 443),
+    )
+    if not has_certificate_evidence:
+        flow.server_conn.certificate_list = ()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    bindings = upstream_destination_binding.binding_snapshot_for_tests()
+    if has_certificate_evidence:
+        auth_fetch.assert_awaited_once()
+        assert flow.response is None
+        assert flow.request.headers["Authorization"] == "Bearer x"
+        binding = bindings[flow.server_conn.id]
+        assert binding.host == "api.github.com"
+        assert binding.original_address == ("140.82.112.5", 443)
+    else:
+        auth_fetch.assert_not_called()
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+        assert "Authorization" not in flow.request.headers
+        assert flow.server_conn.id not in bindings
 
 
 async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstream_sni_differs(
@@ -893,8 +949,22 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_test_connector_rejects_mismatched_existing_binding(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+@pytest.mark.parametrize(
+    ("binding_host", "binding_port"),
+    [
+        pytest.param("api.github.com", 443, id="host-mismatch"),
+        pytest.param("api.vm0.ai", 8443, id="port-mismatch"),
+    ],
+)
+async def test_test_connector_rejects_mismatched_existing_binding_after_verified_tls(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    monkeypatch,
+    binding_host: str,
+    binding_port: int,
 ):
     reg_path = _write_test_oauth_registry(tmp_path)
     flow = real_flow(
@@ -908,15 +978,23 @@ async def test_test_connector_rejects_mismatched_existing_binding(
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
-    flow.server_conn.state = connection.ConnectionState.OPEN
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("api.vm0.ai", 443),
+        peername=("203.0.113.10", 443),
+    )
     seed_server_binding(
         flow.server_conn,
         client=flow.client_conn,
-        host="api.github.com",
-        port=443,
+        host=binding_host,
+        port=binding_port,
         kinds=frozenset(("api_allow",)),
         original_address=("203.0.113.10", 443),
     )
+    original_binding = upstream_destination_binding.binding_snapshot_for_tests()[
+        flow.server_conn.id
+    ]
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
@@ -931,8 +1009,7 @@ async def test_test_connector_rejects_mismatched_existing_binding(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.github.com"
-    assert binding.kinds == frozenset(("api_allow",))
+    assert binding == original_binding
 
 
 async def test_matching_sni_and_host_blocks_test_connector_api_edge_without_bypass(

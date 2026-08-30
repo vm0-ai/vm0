@@ -4,6 +4,7 @@ import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
+const legacyChatEventProjection = "tool-redacted" as const;
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
@@ -53,6 +54,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function mockChatEventCursorId(seqId: number): string {
+  const suffix = seqId.toString(16).padStart(12, "0").slice(-12);
+  return `00000000-0000-4000-8000-${suffix}`;
+}
+
 async function negotiatedChatEventHeaders(
   request: Request,
 ): Promise<Record<string, string>> {
@@ -87,9 +93,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/agents\/[^/]+\/draft$/.test(
-      new URL(response.url()).pathname,
-    )
+    !/^\/api\/agents\/[^/]+\/draft$/.test(new URL(response.url()).pathname)
   ) {
     return false;
   }
@@ -171,7 +175,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       contentType: "image/svg+xml",
     });
   });
-  await page.route("**/api/connector-catalog/status", async (route) => {
+  await page.route("**/api/connector-catalog/discovery", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isConnectorCatalogStatusResponse(body)) {
@@ -218,7 +222,11 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
 
 async function enableFeatureSwitch(
   page: Page,
-  key: "chatForward" | "imageModelSelection" | "responsiveFollowupCards",
+  key:
+    | "chatForward"
+    | "composerImageAnnotation"
+    | "imageModelSelection"
+    | "responsiveFollowupCards",
 ): Promise<void> {
   await page.route("**/api/feature-switches", async (route) => {
     const response = await route.fetch();
@@ -520,9 +528,36 @@ async function mockChatThread(
         .filter((row) => {
           return typeof row.seqId === "number" && row.seqId > sinceSeqId;
         });
+      const lastRow = rows.at(-1);
+      const lastSeqId =
+        lastRow !== undefined && typeof lastRow.seqId === "number"
+          ? lastRow.seqId
+          : null;
+      const cursor =
+        lastSeqId !== null
+          ? {
+              lastEventId: mockChatEventCursorId(lastSeqId),
+              lastSeqId,
+              projection: legacyChatEventProjection,
+            }
+          : sinceEventId === null
+            ? { lastEventId: null, lastSeqId: 0 }
+            : {
+                lastEventId: sinceEventId,
+                lastSeqId: sinceSeqId,
+                projection: legacyChatEventProjection,
+              };
       await route.fulfill({
         headers: await negotiatedChatEventHeaders(route.request()),
-        json: { rows },
+        // Mirror the Stage 1 API-to-App fallback for the about-two-day stale
+        // client window. Current App logic strips projection before cursor
+        // continuation; vm0-ai/vm0#30329 removes this fixture field afterward.
+        json: {
+          rows,
+          cursor,
+          hasMore: false,
+          projection: legacyChatEventProjection,
+        },
       });
     },
   );
@@ -1068,6 +1103,23 @@ async function expectInside(inner: Locator, outer: Locator): Promise<void> {
   );
 }
 
+async function computedIconStyle(control: Locator): Promise<{
+  readonly height: string;
+  readonly opacity: string;
+  readonly width: string;
+}> {
+  const icon = control.locator("svg").first();
+  await expect(icon).toBeVisible();
+  return icon.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      height: style.height,
+      opacity: style.opacity,
+      width: style.width,
+    };
+  });
+}
+
 interface ImagePreviewGeometry {
   readonly image: {
     readonly height: number;
@@ -1206,12 +1258,170 @@ async function cardEdgeAppearance(locator: Locator) {
   });
 }
 
+async function segmentFill(locator: Locator) {
+  return locator.evaluate(async (element) => {
+    // Segments cross-fade when the selection moves, so read them settled.
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      boxShadow: style.boxShadow,
+    };
+  });
+}
+
 test("chat page displays tagline after onboarding", async ({ page }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
   await expect(page.getByTestId("chat-tagline")).toBeVisible({
     timeout: 20_000,
   });
+});
+
+test("home content keeps its reserved offset while the growth entry loads", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const orgRequested = deferred();
+  const releaseOrg = deferred();
+  const slackStatusRequested = deferred();
+  const releaseSlackStatus = deferred();
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      orgRequested.resolve();
+      await releaseOrg.promise;
+      await route.fulfill({
+        json: { id: "org_admin", name: "Admin Org", role: "admin" },
+      });
+    },
+  );
+  await page.route("**/api/integrations/slack", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    slackStatusRequested.resolve();
+    await releaseSlackStatus.promise;
+    await route.fulfill({
+      json: {
+        connectUrl: null,
+        environment: {
+          missingSecrets: [],
+          missingVars: [],
+          requiredSecrets: [],
+          requiredVars: [],
+        },
+        installUrl: null,
+        isAdmin: true,
+        isConnected: false,
+        isInstalled: true,
+        reinstallUrl: null,
+        scopeMismatch: false,
+        workspaceName: null,
+      },
+    });
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await orgRequested.promise;
+
+  const growthEntry = page.getByTestId("growth-entry");
+  const main = page.locator("main");
+  const tagline = page.getByTestId("chat-tagline");
+  await expect(tagline).toBeVisible({ timeout: 20_000 });
+  await expect(growthEntry).not.toBeAttached();
+  const mainBefore = await main.boundingBox();
+  const taglineBefore = await tagline.boundingBox();
+  if (!mainBefore || !taglineBefore) {
+    throw new Error("Home content has no measurable layout before entry load");
+  }
+  // Reserve the former 56px header slot before either async dependency resolves.
+  expect(mainBefore.y).toBe(56);
+
+  releaseOrg.resolve();
+  await slackStatusRequested.promise;
+  await expect(growthEntry).not.toBeAttached();
+  const mainAfterRole = await main.boundingBox();
+  const taglineAfterRole = await tagline.boundingBox();
+  if (!mainAfterRole || !taglineAfterRole) {
+    throw new Error("Home content has no measurable layout after role load");
+  }
+  expect(mainAfterRole.y).toBe(mainBefore.y);
+  expect(mainAfterRole.height).toBe(mainBefore.height);
+  expect(taglineAfterRole.y).toBe(taglineBefore.y);
+
+  releaseSlackStatus.resolve();
+  await expect(growthEntry).toBeVisible();
+  await expect(growthEntry).toContainText("Invite humans 🤝");
+  const mainAfter = await main.boundingBox();
+  const taglineAfter = await tagline.boundingBox();
+  if (!mainAfter || !taglineAfter) {
+    throw new Error("Home content has no measurable layout after entry load");
+  }
+
+  expect(mainAfter.y).toBe(mainBefore.y);
+  expect(mainAfter.height).toBe(mainBefore.height);
+  expect(taglineAfter.y).toBe(taglineBefore.y);
+});
+
+test("non-admin home content keeps the reserved desktop offset", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        json: { id: "org_member", name: "Member Org", role: "member" },
+      });
+    },
+  );
+  const memberOrgLoaded = page.waitForResponse((response) => {
+    const request = response.request();
+    return (
+      response.ok() &&
+      request.method() === "GET" &&
+      new URL(response.url()).pathname === "/api/org"
+    );
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await memberOrgLoaded;
+  await expect(page.getByTestId("chat-tagline")).toBeVisible({
+    timeout: 20_000,
+  });
+  // Let the member role commit before reading the stable layout.
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+  });
+
+  await expect(page.getByTestId("growth-entry")).not.toBeAttached();
+  const mainBox = await page.locator("main").boundingBox();
+  if (!mainBox) {
+    throw new Error("Non-admin home content has no measurable layout");
+  }
+  expect(mainBox.y).toBe(56);
 });
 
 test("checkmark keeps its column across selection states and previews deactivation", async ({
@@ -1242,34 +1452,204 @@ test("checkmark keeps its column across selection states and previews deactivati
   await expectModelRowColumns(page);
 });
 
-test("model picker fits seven rows and scrolls one row for eight", async ({
-  page,
-}) => {
+test("model picker grows by a row rather than scrolling", async ({ page }) => {
   const boundary = await mockModelPickerBoundary(page);
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
   const sevenModels = await openModelPickerAndReadGeometry(page);
   expect(sevenModels).toStrictEqual({
-    clientHeight: 300,
+    clientHeight: 288,
     optionCount: 7,
     rowStep: 36,
-    scrollHeight: 300,
+    scrollHeight: 288,
   });
 
   boundary.showEightModels();
   await page.reload();
 
+  // The popup is bounded by the space it has, not by a row count, so an eighth
+  // model makes it one row taller instead of parking that row under a
+  // scrollbar. A fixed cap used to stop it here, and the category-switch height
+  // animation kept travelling to a height the popup could not reach.
   const eightModels = await openModelPickerAndReadGeometry(page);
   expect(eightModels).toStrictEqual({
-    clientHeight: 300,
+    clientHeight: 324,
     optionCount: 8,
     rowStep: 36,
-    scrollHeight: 336,
+    scrollHeight: 324,
   });
-  expect(eightModels.scrollHeight - eightModels.clientHeight).toBe(
+  expect(eightModels.clientHeight - sevenModels.clientHeight).toBe(
     eightModels.rowStep,
   );
+});
+
+test("model picker stops at the space it has on a short viewport", async ({
+  page,
+}) => {
+  const boundary = await mockModelPickerBoundary(page);
+  boundary.showEightModels();
+  // Removing the row-count cap leaves the available height as the popup's only
+  // bound, so it needs a case where that bound bites. 320px is under the 324px
+  // the eight-model list asks for, which makes this independent of where the
+  // composer happens to sit: no popup can both stay on screen and show every
+  // row here. An unbounded popup -- or one still capped at `SelectContent`'s
+  // own 24rem default, which outlives this viewport -- would lay out its whole
+  // list and run past the screen instead of scrolling.
+  await page.setViewportSize({ width: 1280, height: 320 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const popup = page.locator('[data-slot="select-content"]');
+  await expect(popup).toBeVisible();
+  await expect(popup).toBeInViewport({ ratio: 1 });
+  const bounded = await popup.evaluate((element) => {
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    };
+  });
+  expect(bounded.scrollHeight).toBeGreaterThan(bounded.clientHeight);
+});
+
+test("model picker image category settles without a scrollbar", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const popup = page.locator('[data-slot="select-content"]');
+  await expect(popup).toBeVisible();
+  await page
+    .getByRole("radiogroup", { name: "Models" })
+    .getByRole("radio", { name: "Image" })
+    .click();
+
+  // The image catalog is the longest of the three categories, so it is the one
+  // that outgrew the old cap. The switch animates the popup's height and hides
+  // the overflow while it runs, so wait for the rows to land and the animation
+  // to finish -- that is the frame where a scrollbar used to appear.
+  const imageRows = popup.locator('[data-slot="select-group"] > button');
+  await expect(imageRows.last()).toBeVisible();
+  const imageCategory = await popup.evaluate(async (element) => {
+    // The resize observer starts the height animation from the frame the
+    // swapped list lays out in, so let that frame pass before collecting it.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    };
+  });
+  expect(imageCategory.scrollHeight).toBe(imageCategory.clientHeight);
+  expect(imageCategory.scrollTop).toBe(0);
+  // Every row the category offers is on screen, so nothing is hidden below the
+  // fold that the height assertion above would miss.
+  await expect(imageRows.last()).toBeInViewport({ ratio: 1 });
+});
+
+test("model picker category switch marks its selection without a raised shadow", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const categorySwitch = page.getByRole("radiogroup", { name: "Models" });
+  const chatCategory = categorySwitch.getByRole("radio", { name: "Chat" });
+  const imageCategory = categorySwitch.getByRole("radio", { name: "Image" });
+  await imageCategory.click();
+  await expect(imageCategory).toBeChecked();
+
+  // The switch sits straight on the popover surface with no track to lift off,
+  // so the selection is a flat state layer: readable against its neighbours,
+  // and carrying none of the raised segment's shadow.
+  const [selected, unselected] = await Promise.all([
+    segmentFill(imageCategory),
+    segmentFill(chatCategory),
+  ]);
+  expect(selected.boxShadow).toBe("none");
+  expect(selected.backgroundColor).not.toBe(unselected.backgroundColor);
+});
+
+test("model picker category switch keeps its measurement row hidden", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const imageCategory = page
+    .getByRole("radiogroup", { name: "Models" })
+    .getByRole("radio", { name: "Image" });
+  await expect(imageCategory).toBeVisible();
+
+  // A media category replaces the model rows, so the selected chat model stays
+  // in the list as a 1px, transparent row the select can still measure. The
+  // swap fades the rows it brings in, and a keyframe outranks the class that
+  // hides that row: fading it printed the model name over the header for the
+  // whole fade. The click and the read share one evaluate because a round trip
+  // between them can outlast the fade and miss the row while it is lit.
+  const swap = await imageCategory.evaluate(async (segment) => {
+    if (!(segment instanceof HTMLElement)) {
+      throw new Error("Model picker category segment is not an HTML element");
+    }
+    segment.click();
+    // The fade starts once the swapped list has laid out, so let one frame
+    // carry the resize and read on the next.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+    const list = document.querySelector('[data-slot="select-list"]');
+    if (list === null) {
+      throw new Error("Model picker has no list");
+    }
+    const measurementRow = list.querySelector(
+      '[data-slot="select-item"][aria-hidden="true"]',
+    );
+    const modelRows = list.querySelector('[data-slot="select-group"]');
+    if (measurementRow === null || modelRows === null) {
+      throw new Error("Model picker list has no measurement row or model rows");
+    }
+    return {
+      measurementRowOpacity: getComputedStyle(measurementRow).opacity,
+      modelRowsOpacity: getComputedStyle(modelRows).opacity,
+    };
+  });
+  expect(swap.measurementRowOpacity).toBe("0");
+  // The rows the swap brings in are mid-fade at that same instant. Asserting
+  // that keeps the swap covered from both sides: the fade the picker still
+  // owes its rows, and proof that the sample landed inside the fade rather
+  // than after it, where a hidden row reads as transparent either way.
+  expect(Number(swap.modelRowsOpacity)).toBeLessThan(1);
 });
 
 test("chat composer keeps the model icon unclipped on narrow screens", async ({
@@ -1307,7 +1687,7 @@ test("send a message through the deployed runner", async ({ page }) => {
   ).toBeVisible({ timeout: 90_000 });
 });
 
-test("chat composer keeps the Send button inside on narrow screens", async ({
+test("chat composer keeps standard tool icons and Send inside on narrow screens", async ({
   page,
 }) => {
   await mockComposerConnectorState(page);
@@ -1317,6 +1697,14 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
 
   const composer = page.locator(".zero-composer");
   const editor = composer.getByRole("textbox", { name: "Message" });
+  const attachButton = composer.getByRole("button", {
+    name: "Attach",
+    exact: true,
+  });
+  const templateButton = composer.getByRole("button", {
+    name: "Template",
+    exact: true,
+  });
   const workflowButton = composer.getByRole("button", {
     name: "Create workflow",
   });
@@ -1329,8 +1717,9 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   });
   const sendButton = composer.getByRole("button", { name: "Send" });
 
-  await expect(connectorsButton.locator("img")).toHaveCount(2);
+  await expect(connectorsButton.locator("img")).toHaveCount(0);
   await connectorsButton.click();
+  await expect(connectorsButton.locator("img")).toHaveCount(2);
   await expect(
     page.getByRole("switch", { name: "Disable Cloud browser" }),
   ).toBeVisible();
@@ -1355,6 +1744,18 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await expect(
     connectorsButton.locator("img:visible, svg:visible"),
   ).toHaveCount(3);
+  for (const control of [
+    attachButton,
+    templateButton,
+    workflowButton,
+    microphoneButton,
+  ]) {
+    expect(await computedIconStyle(control)).toStrictEqual({
+      height: "18px",
+      opacity: "1",
+      width: "18px",
+    });
+  }
   await expectInside(sendButton, composer);
 
   await waitForAgentDraftClear(page, async () => {
@@ -1713,6 +2114,7 @@ test("keeps the flat follow-up list in a narrow desktop window", async ({
 test("image lightbox centers and pans across the full viewer", async ({
   page,
 }) => {
+  await enableFeatureSwitch(page, "composerImageAnnotation");
   const imageMarkup = `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
       <rect width="1200" height="900" fill="#2563eb" />
@@ -1759,10 +2161,17 @@ test("image lightbox centers and pans across the full viewer", async ({
     .click();
 
   const lightbox = page.getByTestId("attachment-lightbox");
+  const lightboxPanel = lightbox.getByTestId("attachment-lightbox-panel");
   const stage = lightbox.getByTestId("artifact-dialog-image-stage");
   const image = lightbox.getByTestId("attachment-lightbox-image");
   await expect(lightbox).toBeVisible();
+  await expect(lightboxPanel).toBeVisible();
   await expect(image).toBeVisible();
+  expect(
+    await lightboxPanel.evaluate((element) => {
+      return getComputedStyle(element).borderRadius;
+    }),
+  ).toBe("14px");
   await expect
     .poll(async () => {
       return image.evaluate((element) => {
@@ -1824,6 +2233,24 @@ test("image lightbox centers and pans across the full viewer", async ({
 
   await lightbox.getByRole("button", { name: "Close" }).click();
   await expect(lightbox).toBeHidden();
+
+  await page
+    .getByRole("button", { name: "Open image preview for lightbox.svg" })
+    .click();
+  await page.getByTestId("artifact-dialog-annotate").click();
+
+  const annotationEditor = page.getByTestId("image-annotation-editor");
+  const annotationPanel = page.getByTestId("image-annotation-panel");
+  await expect(annotationEditor).toBeVisible();
+  await expect(annotationPanel).toBeVisible();
+  expect(
+    await annotationPanel.evaluate((element) => {
+      return getComputedStyle(element).borderRadius;
+    }),
+  ).toBe("14px");
+
+  await annotationEditor.getByRole("button", { name: "Close" }).click();
+  await expect(annotationEditor).toBeHidden();
   await waitForAgentDraftClear(page, async () => {
     await page.getByRole("button", { name: "Remove lightbox.svg" }).click();
   });
@@ -1832,14 +2259,6 @@ test("image lightbox centers and pans across the full viewer", async ({
 test("avatar catalog surfaces stay stable while scrolling and selecting", async ({
   page,
 }) => {
-  await page.route("**/api/feature-switches", async (route) => {
-    await route.fulfill({
-      json: {
-        switches: {},
-        effectiveSwitches: { joggAiBuiltIn: true },
-      },
-    });
-  });
   await page.route("**/api/avatar-video/avatars**", async (route) => {
     await route.fulfill({
       json: {

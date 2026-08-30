@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorsSearchContract } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { connectorsSearchContract } from "@okouai/api-contracts/contracts/connectors";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -21,7 +21,7 @@ const store = createStore();
 
 function featureSwitchesClient() {
   return setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
 }
 
@@ -76,7 +76,7 @@ describe("GET /api/connectors/search", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({ query: {}, headers: {} }),
@@ -90,7 +90,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -119,7 +119,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -141,7 +141,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -158,7 +158,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -175,7 +175,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -192,7 +192,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
 
     const lower = await accept(
@@ -217,7 +217,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -243,7 +243,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -268,7 +268,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -287,7 +287,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -309,7 +309,7 @@ describe("GET /api/connectors/search", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -346,7 +346,7 @@ describe("GET /api/connectors/search", () => {
     });
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({
@@ -380,7 +380,7 @@ describe("GET /api/connectors/search", () => {
     });
 
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorsSearchContract,
+      connectorsSearchContract,
     );
     const response = await accept(
       client.search({

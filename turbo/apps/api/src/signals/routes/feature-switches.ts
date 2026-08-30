@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -48,9 +48,7 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
   };
 });
 
-const updateFeatureSwitchesBody$ = bodyResultOf(
-  zeroFeatureSwitchesContract.update,
-);
+const updateFeatureSwitchesBody$ = bodyResultOf(featureSwitchesContract.update);
 
 const updateFeatureSwitchesInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -96,15 +94,15 @@ const deleteFeatureSwitchesInner$ = command(
 
 export const featureSwitchesRoutes: readonly RouteEntry[] = [
   {
-    route: zeroFeatureSwitchesContract.get,
+    route: featureSwitchesContract.get,
     handler: authRoute(featureSwitchesAuthOptions, getFeatureSwitchesInner$),
   },
   {
-    route: zeroFeatureSwitchesContract.update,
+    route: featureSwitchesContract.update,
     handler: authRoute(featureSwitchesAuthOptions, updateFeatureSwitchesInner$),
   },
   {
-    route: zeroFeatureSwitchesContract.delete,
+    route: featureSwitchesContract.delete,
     handler: authRoute(featureSwitchesAuthOptions, deleteFeatureSwitchesInner$),
   },
 ];

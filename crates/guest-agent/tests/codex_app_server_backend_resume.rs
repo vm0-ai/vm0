@@ -28,6 +28,11 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
                 resume_session_id: Some(resume_thread_id),
             },
         )?;
+        std::env::remove_var("VM0_RESUME_SESSION_ID");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+            resume_thread_id,
+        );
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
@@ -55,6 +60,18 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
 
     let stored_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert_eq!(stored_id, canonical_resume_thread_id);
+
+    let session_events = common::read_codex_session_history_events_for_runtime(&runtime)?;
+    let input_event = session_events
+        .iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("mock.app_server.input"))
+        .ok_or("missing mock app-server input event")?;
+    assert_eq!(
+        input_event
+            .get("thread_request_excludes_turns")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
 
     Ok(())
 }

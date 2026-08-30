@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -23,7 +23,7 @@ const listCustomConnectorsInner$ = computed(async (get) => {
 
 export const customConnectorsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorsContract.list,
+    route: customConnectorsContract.list,
     handler: authRoute(
       {
         requireOrganization: true,

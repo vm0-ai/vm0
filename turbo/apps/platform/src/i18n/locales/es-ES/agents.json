@@ -465,11 +465,6 @@
     },
     "chat": "Chat",
     "description": "Haz clic en cualquier tarjeta para iniciar una conversación. Podría convertirse en una tarea bajo demanda, un flujo de trabajo recurrente o un subagente.",
-    "entry": {
-      "description": "Explora los casos de uso de todos los conectores",
-      "title": "Ideas y casos de uso",
-      "viewAll": "Ver todo"
-    },
     "search": {
       "accessibilityLabel": "Buscar casos de uso",
       "empty": "Ningún caso de uso coincide con tu búsqueda.",
@@ -619,21 +614,25 @@
     "pinAgentDescription": "Elige un agente para fijarlo en la barra lateral.",
     "pinned": "Fijados",
     "pinnedAgents": "Agentes fijados",
+    "pinSuccess": "{{agentName}} fijado",
     "resultCount_one": "{{count}} resultado",
     "resultCount_many": "{{count}} resultados",
     "resultCount_other": "{{count}} resultados",
     "searchAgents": "Buscar agentes...",
     "searchAgentsAndChats": "Buscar agentes y conversaciones...",
-    "searchChatsAndMessages": "Buscar conversaciones y mensajes...",
     "searching": "Buscando...",
+    "searchWorkspace": "Buscar chats, mensajes, flujos de trabajo y artefactos...",
     "sections": {
+      "artifacts": "Artefactos",
       "chats": "Conversaciones",
       "lead": "Principal",
       "messages": "Mensajes",
-      "others": "Otros"
+      "others": "Otros",
+      "workflows": "Flujos de trabajo"
     },
     "talkTo": "Hablar con",
-    "unpin": "Desfijar"
+    "unpin": "Desfijar",
+    "unpinSuccess": "{{agentName}} desfijado"
   },
   "status": {
     "unread": "No leído"

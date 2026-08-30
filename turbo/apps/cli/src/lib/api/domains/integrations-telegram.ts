@@ -103,7 +103,7 @@ export async function downloadTelegramFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/okou/integrations/telegram/download-file", baseUrl);
+  const url = new URL("/api/integrations/telegram/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
   url.searchParams.set("bot_id", botId);
 

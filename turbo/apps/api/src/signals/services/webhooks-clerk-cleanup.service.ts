@@ -1,4 +1,4 @@
-import { agentComposeVersions } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { artifacts } from "@okouai/db/schema/artifact";
@@ -29,9 +29,12 @@ import { userCache } from "@okouai/db/schema/user-cache";
 import { users } from "@okouai/db/schema/user";
 import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import { variables } from "@okouai/db/schema/variable";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import {
+  getInstructionsStorageName,
+  VOLUME_ORG_USER_ID,
+} from "@okouai/core/storage-names";
 import { command, computed, type Computed } from "ccstate";
-import { and, count, eq, inArray, isNotNull, like, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, like, or, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { pgTextDecoder } from "../../lib/db-structured-result";
@@ -69,15 +72,13 @@ import {
   loadStoredConnectorRuntimeSnapshot,
 } from "./connector-data.service";
 import {
-  AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT,
-  assertAgentComposeProvenanceSchemaAvailable,
+  AGENT_LIFECYCLE_LOCK_TIMEOUT,
   deleteClerkAgentLifecycleData,
-} from "./agent-compose-provenance-lifecycle.service";
+} from "./agent-lifecycle.service";
 import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
 const L = logger("WebhookClerkCleanup");
 const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
-const CLERK_USER_CLEANUP_REVISION = "stage0_nullable_provenance";
 
 async function publishCancelBestEffort(
   runnerGroup: string | null,
@@ -698,7 +699,7 @@ function deleteOrgS3Data(db: Db, orgId: string): Computed<Promise<void>> {
 function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    const storageRows = await db
+    const userStorageRows = await db
       .select({ s3Prefix: storages.s3Prefix })
       .from(storages)
       .where(
@@ -711,9 +712,33 @@ function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
         ),
       );
 
+    const ownedAgents = await db
+      .select({ name: agents.name, orgId: agents.orgId })
+      .from(agents)
+      .where(eq(agents.owner, userId));
+    const agentStorageRows =
+      ownedAgents.length === 0
+        ? []
+        : await db
+            .select({ s3Prefix: storages.s3Prefix })
+            .from(storages)
+            .where(
+              and(
+                eq(storages.userId, VOLUME_ORG_USER_ID),
+                or(
+                  ...ownedAgents.map((agent) => {
+                    return and(
+                      eq(storages.orgId, agent.orgId),
+                      eq(storages.name, getInstructionsStorageName(agent.name)),
+                    );
+                  }),
+                ),
+              ),
+            );
+
     const prefixes = [
       ...new Set(
-        storageRows.map((row) => {
+        [...userStorageRows, ...agentStorageRows].map((row) => {
           return row.s3Prefix;
         }),
       ),
@@ -787,7 +812,6 @@ async function deleteOrgData(
     .delete(connectorExternalCodeSessions)
     .where(eq(connectorExternalCodeSessions.orgId, orgId));
   await db.delete(exportJobs).where(eq(exportJobs.orgId, orgId));
-  await db.delete(zeroAgents).where(eq(zeroAgents.orgId, orgId));
   await db
     .delete(orgConcurrencyEntitlements)
     .where(eq(orgConcurrencyEntitlements.orgId, orgId));
@@ -811,13 +835,8 @@ async function deleteUserData(
 
   await db.transaction(async (tx) => {
     await tx.execute(
-      sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
+      sql`SELECT set_config('lock_timeout', ${AGENT_LIFECYCLE_LOCK_TIMEOUT}, true)`,
     );
-    await assertAgentComposeProvenanceSchemaAvailable(tx);
-    await tx
-      .update(agentComposeVersions)
-      .set({ createdBy: null })
-      .where(eq(agentComposeVersions.createdBy, userId));
   });
 
   await db
@@ -869,21 +888,8 @@ async function deleteUserData(
   await db.delete(userCache).where(eq(userCache.userId, userId));
   await db.transaction(async (tx) => {
     await tx.execute(
-      sql`SELECT set_config('lock_timeout', ${AGENT_COMPOSE_LIFECYCLE_LOCK_TIMEOUT}, true)`,
+      sql`SELECT set_config('lock_timeout', ${AGENT_LIFECYCLE_LOCK_TIMEOUT}, true)`,
     );
-    await tx.execute(
-      sql`SELECT set_config('vm0.clerk_user_cleanup_revision', ${CLERK_USER_CLEANUP_REVISION}, true)`,
-    );
-    await tx.execute(
-      sql`SELECT set_config('vm0.clerk_deleted_user_id', ${userId}, true)`,
-    );
-    // The marker, exact scrub, database invariant, and final identity DELETE
-    // must stay on this transaction's connection. The statement guard also
-    // serializes creator writes before it verifies the scrub postcondition.
-    await tx
-      .update(agentComposeVersions)
-      .set({ createdBy: null })
-      .where(eq(agentComposeVersions.createdBy, userId));
     await tx.delete(users).where(eq(users.id, userId));
   });
 }

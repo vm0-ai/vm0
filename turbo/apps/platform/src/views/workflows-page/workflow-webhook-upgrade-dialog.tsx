@@ -20,7 +20,7 @@ import {
 import {
   openSettingsBillingPlans$,
   setSettingsDialogOpen$,
-} from "../../signals/zero-page/settings/settings-dialog.ts";
+} from "../../signals/okou-page/settings/settings-dialog.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 export function WorkflowWebhookUpgradeDialog() {

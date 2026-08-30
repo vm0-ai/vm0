@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publicBrandSchema } from "@okouai/api-contracts/contracts/public-brand";
 
 export const feishuOrgCallbackFileSchema = z.object({
   fileId: z.string().min(1),
@@ -20,6 +21,7 @@ export const feishuOrgCallbackPayloadSchema = z
     replyInThread: z.boolean().optional(),
     files: z.array(feishuOrgCallbackFileSchema).optional(),
     canonicalChatDelivery: z.boolean().optional(),
+    publicBrand: publicBrandSchema,
   })
   .passthrough();
 

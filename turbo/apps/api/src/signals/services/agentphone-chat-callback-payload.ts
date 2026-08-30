@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publicBrandSchema } from "@okouai/api-contracts/contracts/public-brand";
 
 export const agentphoneDeliveryTargetSchema = z.object({
   messageId: z.string().min(1),
@@ -21,4 +22,5 @@ export type AgentPhoneDeliveryTarget = z.infer<
 export const agentphoneChatCallbackPayloadSchema =
   agentphoneDeliveryTargetSchema.extend({
     chatEventId: z.string().uuid(),
+    publicBrand: publicBrandSchema,
   });

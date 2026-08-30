@@ -17,6 +17,7 @@ import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "../services/chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
 import {
   resolveModelSelectionPin,
   validateCodexServiceTier,
@@ -80,10 +81,14 @@ const updateModelSelectionInner$ = command(
 
     const updated = await writeDb.transaction(async (tx) => {
       const updatedAt = nowDate();
+      const pinColumns = chatThreadModelPinColumns(pin);
       const [thread] = await tx
         .update(chatThreads)
         .set({
-          ...chatThreadModelPinColumns(pin),
+          modelProviderId: pinColumns.modelProviderId,
+          modelProviderType: pinColumns.modelProviderType,
+          modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+          selectedModel: pinColumns.selectedModel,
           codexServiceTier: body.data.codexServiceTier ?? null,
           updatedAt,
         })
@@ -91,14 +96,15 @@ const updateModelSelectionInner$ = command(
           and(
             eq(chatThreads.id, params.id),
             eq(chatThreads.userId, auth.userId),
+            chatThreadOrganizationCondition(tx, auth.orgId),
             isNotNull(chatThreads.agentId),
           ),
         )
         .returning({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentId,
+          agentId: chatThreads.agentId,
         });
-      if (!thread?.agentComposeId) {
+      if (!thread?.agentId) {
         return false;
       }
       await appendChatThreadEvent(tx, {
@@ -106,7 +112,7 @@ const updateModelSelectionInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.eventId,
         selectedModel: pin.selectedModel,
         createdAt: updatedAt,
@@ -116,7 +122,7 @@ const updateModelSelectionInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         chatThreadId: thread.id,
-        agentComposeId: thread.agentComposeId,
+        agentId: thread.agentId,
         eventId: body.data.serviceTierEventId,
         serviceTier: chatThreadServiceTierFromCodex(
           body.data.codexServiceTier ?? null,
@@ -131,7 +137,7 @@ const updateModelSelectionInner$ = command(
       return notFound("Chat thread not found");
     }
 
-    await publishThreadListChanged(auth.userId);
+    await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
     signal.throwIfAborted();
 
     return { status: 204 as const, body: undefined };

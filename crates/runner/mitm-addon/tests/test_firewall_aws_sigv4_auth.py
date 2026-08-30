@@ -28,7 +28,7 @@ from tests.firewall_aws_sigv4_helpers import (
     aws_allow,
     aws_api_entry,
     aws_auth_response,
-    aws_vm_info,
+    aws_sandbox_info,
     cache_aws_sigv4_credentials,
     handle_firewall_request_with_auth_endpoint,
     make_sts_header_sigv4_flow,
@@ -531,13 +531,13 @@ async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
     mitm_ctx,
 ):
     allow = aws_allow()
-    vm_info = aws_vm_info(tmp_path)
+    sandbox_info = aws_sandbox_info(tmp_path)
     flow = make_sts_header_sigv4_flow(real_flow, headers)
-    prepare_firewall_request(flow, run_id=vm_info["runId"])
+    prepare_firewall_request(flow, run_id=sandbox_info["runId"])
     cache_aws_sigv4_credentials(
         tmp_path,
         allow=allow,
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         credentials=resolved_aws_sigv4_credentials(
             secret_access_key="",
             session_token=None,
@@ -546,7 +546,7 @@ async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
 
     with mitm_ctx():
         result = await handle_firewall_request_without_upstream_admission(
-            flow, allow, dict(vm_info)
+            flow, allow, dict(sandbox_info)
         )
 
     assert_sigv4_failed_closed(result, flow, "Invalid AWS secret access key")
@@ -560,13 +560,13 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
 ):
     api_entry = aws_api_entry(auth_query={"trace": "${{ secrets.TRACE_ID }}"})
     allow = aws_allow(api_entry)
-    vm_info = aws_vm_info(tmp_path)
+    sandbox_info = aws_sandbox_info(tmp_path)
     flow = make_sts_header_sigv4_flow(real_flow, headers)
-    prepare_firewall_request(flow, run_id=vm_info["runId"])
+    prepare_firewall_request(flow, run_id=sandbox_info["runId"])
     cache_aws_sigv4_credentials(
         tmp_path,
         allow=allow,
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
         query={"trace": "resolved-trace"},
     )
@@ -575,7 +575,7 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
         result = await handle_firewall_request_without_upstream_admission(
             flow,
             allow,
-            dict(vm_info),
+            dict(sandbox_info),
         )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -600,13 +600,13 @@ async def test_header_sigv4_cache_miss_when_auth_query_changes(
             include_session_token=False,
         )
     )
-    vm_info = aws_vm_info(tmp_path)
+    sandbox_info = aws_sandbox_info(tmp_path)
     endpoint = FakeAuthEndpoint()
     flow = make_sts_header_sigv4_flow(real_flow, headers)
     cache_aws_sigv4_credentials(
         tmp_path,
         allow=cached_allow,
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
         query={"trace": "cached-trace"},
     )
@@ -621,7 +621,7 @@ async def test_header_sigv4_cache_miss_when_auth_query_changes(
             query={"trace": "fresh-trace"},
         ),
         allow=active_allow,
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
     )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -638,20 +638,20 @@ async def test_header_sigv4_seeded_cache_matches_allow_context_identity(
 ):
     api_entry = aws_api_entry(api_id="aws-sts-api")
     allow = aws_allow(api_entry, firewall_name="custom-aws")
-    vm_info = aws_vm_info(tmp_path, billable_firewalls=["custom-aws"])
+    sandbox_info = aws_sandbox_info(tmp_path, billable_firewalls=["custom-aws"])
     flow = make_sts_header_sigv4_flow(real_flow, headers)
-    prepare_firewall_request(flow, run_id=vm_info["runId"])
+    prepare_firewall_request(flow, run_id=sandbox_info["runId"])
     cache_aws_sigv4_credentials(
         tmp_path,
         allow=allow,
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
         expires_at=FAR_FUTURE_EXPIRES_AT,
     )
 
     with mitm_ctx():
         result = await handle_firewall_request_without_upstream_admission(
-            flow, allow, dict(vm_info)
+            flow, allow, dict(sandbox_info)
         )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -671,14 +671,14 @@ async def test_header_sigv4_cache_miss_when_billable_context_changes(
     mitm_ctx,
 ):
     allow = aws_allow(aws_api_entry(api_id="aws-sts-api", include_session_token=False))
-    cached_vm_info = aws_vm_info(tmp_path)
-    active_vm_info = aws_vm_info(tmp_path, billable_firewalls=["aws"])
+    cached_sandbox_info = aws_sandbox_info(tmp_path)
+    active_sandbox_info = aws_sandbox_info(tmp_path, billable_firewalls=["aws"])
     endpoint = FakeAuthEndpoint()
     flow = make_sts_header_sigv4_flow(real_flow, headers)
     cache_aws_sigv4_credentials(
         tmp_path,
         allow=allow,
-        vm_info=cached_vm_info,
+        sandbox_info=cached_sandbox_info,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
         expires_at=FAR_FUTURE_EXPIRES_AT,
     )
@@ -690,7 +690,7 @@ async def test_header_sigv4_cache_miss_when_billable_context_changes(
         endpoint=endpoint,
         auth_response=aws_auth_response(include_session_token=False),
         allow=allow,
-        vm_info=active_vm_info,
+        sandbox_info=active_sandbox_info,
     )
 
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -707,19 +707,19 @@ async def test_header_sigv4_without_trusted_original_url_fails_closed(
     mitm_ctx,
 ):
     allow = aws_allow()
-    vm_info = aws_vm_info(tmp_path)
+    sandbox_info = aws_sandbox_info(tmp_path)
     flow = make_sts_header_sigv4_flow(real_flow, headers)
-    flow.metadata[metadata_keys.VM_RUN_ID] = vm_info["runId"]
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = sandbox_info["runId"]
     cache_aws_sigv4_credentials(
         tmp_path,
         allow=allow,
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
     )
 
     with mitm_ctx():
         result = await handle_firewall_request_without_upstream_admission(
-            flow, allow, dict(vm_info)
+            flow, allow, dict(sandbox_info)
         )
 
     assert_sigv4_failed_closed(result, flow, "AWS request URL is unavailable")
@@ -740,20 +740,20 @@ async def test_header_sigv4_with_malformed_current_request_target_fails_closed(
     request_path,
 ):
     allow = aws_allow()
-    vm_info = aws_vm_info(tmp_path)
+    sandbox_info = aws_sandbox_info(tmp_path)
     flow = make_sts_header_sigv4_flow(real_flow, headers)
-    prepare_firewall_request(flow, run_id=vm_info["runId"])
+    prepare_firewall_request(flow, run_id=sandbox_info["runId"])
     flow.request.path = request_path
     cache_aws_sigv4_credentials(
         tmp_path,
         allow=allow,
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
     )
 
     with mitm_ctx():
         result = await handle_firewall_request_without_upstream_admission(
-            flow, allow, dict(vm_info)
+            flow, allow, dict(sandbox_info)
         )
 
     assert_sigv4_failed_closed(result, flow, "AWS request URL is malformed")
@@ -766,19 +766,19 @@ async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
     mitm_ctx,
 ):
     allow = aws_allow()
-    vm_info = aws_vm_info(tmp_path)
+    sandbox_info = aws_sandbox_info(tmp_path)
     flow = make_sts_header_sigv4_flow(real_flow, headers)
-    prepare_firewall_request(flow, run_id=vm_info["runId"])
+    prepare_firewall_request(flow, run_id=sandbox_info["runId"])
     cache_aws_sigv4_credentials(
         tmp_path,
         allow=allow,
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         credentials=resolved_aws_sigv4_credentials(session_token=""),
     )
 
     with mitm_ctx():
         result = await handle_firewall_request_without_upstream_admission(
-            flow, allow, dict(vm_info)
+            flow, allow, dict(sandbox_info)
         )
 
     assert_sigv4_failed_closed(result, flow, "Invalid AWS session token")

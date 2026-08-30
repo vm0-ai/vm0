@@ -73,7 +73,7 @@ verify_api_cors() {
       --header "Access-Control-Request-Method: GET" \
       --output /dev/null \
       --write-out $'%{http_code}\n%header{access-control-allow-origin}\n%header{access-control-allow-credentials}' \
-      "${api_origin}/api/okou/__brand-smoke__"
+      "${api_origin}/api/__brand-smoke__"
   )"
   mapfile -t cors_values <<< "$cors_result"
   if [[ "${cors_values[0]:-}" != "204" ||

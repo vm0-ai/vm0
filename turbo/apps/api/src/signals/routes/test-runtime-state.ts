@@ -1,5 +1,5 @@
 import {
-  getVm0ManagedRouteCandidates,
+  getVm0BuiltInModelRouteCandidates,
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -8,25 +8,30 @@ import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
+import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentSessions } from "@okouai/db/schema/agent-session";
-import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
+import { builtInModelCandidateCooldown } from "@okouai/db/schema/built-in-model-cooldown";
 import {
   browserSessionTabSnapshots,
   browserSessions,
 } from "@okouai/db/schema/browser-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
+import { chatEvents } from "@okouai/db/schema/chat-event";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
 import { hostedSites } from "@okouai/db/schema/hosted-site";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { officialWorkflowDefinitionRevisions } from "@okouai/db/schema/official-workflow-catalog";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
-import { workflowAutomations } from "@okouai/db/schema/workflow";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { and, count, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
@@ -43,9 +48,9 @@ import {
   settleIncludingAbort,
 } from "../utils";
 import {
-  acquireManagedModelKeyFixture,
-  releaseManagedModelKeyFixture,
-} from "../services/managed-model-key-fixture";
+  acquireBuiltInModelKeyFixture,
+  releaseBuiltInModelKeyFixture,
+} from "../services/built-in-model-key-fixture";
 import {
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
@@ -53,11 +58,25 @@ import {
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage-pack-subscription.service";
-import { connectorCatalogRuntimeProjectionSchemaAvailable } from "../services/connector-catalog-runtime-projection.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
+import { reconcileSocialKitDownloads$ } from "../services/socialkit-download.service";
 import { steerRunNearTimeBudgetForTest } from "../services/cron-steer-run-time-budget.service";
+import {
+  acquireOfficialWorkflowRunCatalogAdmissionLock,
+  clearOfficialWorkflowRunFinalAdmissionLockedHookForTest,
+  clearOfficialWorkflowRunObservationResolvedHookForTest,
+  resolveOfficialWorkflowRunObservation,
+  setOfficialWorkflowRunFinalAdmissionLockedHookForTest,
+  setOfficialWorkflowRunObservationResolvedHookForTest,
+  validateOfficialWorkflowRunForInsert,
+} from "../services/official-workflow-run.service";
+import {
+  clearOfficialWorkflowBootstrapRequirementHookForTest,
+  setOfficialWorkflowBootstrapRequirementHookForTest,
+  type OfficialWorkflowBootstrapRequirement,
+} from "../services/agent-runs-create.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -66,7 +85,7 @@ import {
 // Test-only support actions for generic infrastructure fixtures.
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
-const VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
+const VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
 
 interface OrgAdmissionLockGate {
   holderPid: number | null;
@@ -78,10 +97,38 @@ const orgAdmissionLockGate = testOverride<OrgAdmissionLockGate | null>(() => {
   return null;
 });
 
+type OfficialWorkflowRunGateKind =
+  | "observation"
+  | "final-admission"
+  | "bootstrap-requirement";
+
+interface OfficialWorkflowRunGate {
+  readonly kind: OfficialWorkflowRunGateKind;
+  arrivals: number;
+  readonly backendPids: Set<number>;
+  bootstrapRequirement: OfficialWorkflowBootstrapRequirement | null;
+  readonly released: ReturnType<typeof createDeferredPromise<void>>;
+  readonly release: () => void;
+}
+
+const officialWorkflowRunGate = testOverride<OfficialWorkflowRunGate | null>(
+  () => {
+    return null;
+  },
+);
+
 const orgAdmissionLockHolderRowSchema = z.object({ holderPid: z.int() });
 const orgAdmissionLockStateRowSchema = z.object({
   held: z.boolean(),
   waiting: z.boolean(),
+});
+const officialWorkflowRunGateBackendRowSchema = z.object({
+  backendPid: z.int(),
+});
+const officialWorkflowRunGateLockStateRowSchema = z.object({
+  sharedCatalogHolderCount: z.int().nonnegative(),
+  exclusiveCatalogWaiterCount: z.int().nonnegative(),
+  blockedWaiterCount: z.int().nonnegative(),
 });
 type RunSummaryFixtureAction = Extract<
   TestRuntimeStateActionBody,
@@ -214,53 +261,268 @@ async function readOrgAdmissionLockState(
   return state;
 }
 
-async function seedVm0ManagedDefaultModelKey(
+function createOfficialWorkflowRunGate(
+  kind: OfficialWorkflowRunGateKind,
+  signal: AbortSignal,
+): OfficialWorkflowRunGate {
+  const released = createDeferredPromise<void>(signal);
+  return {
+    kind,
+    arrivals: 0,
+    backendPids: new Set<number>(),
+    bootstrapRequirement: null,
+    released,
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+  };
+}
+
+function clearOfficialWorkflowRunGateHooks(
+  gate: OfficialWorkflowRunGate,
+): void {
+  switch (gate.kind) {
+    case "observation": {
+      clearOfficialWorkflowRunObservationResolvedHookForTest();
+      break;
+    }
+    case "final-admission": {
+      clearOfficialWorkflowRunFinalAdmissionLockedHookForTest();
+      break;
+    }
+    case "bootstrap-requirement": {
+      clearOfficialWorkflowBootstrapRequirementHookForTest();
+      break;
+    }
+  }
+  if (officialWorkflowRunGate.get() === gate) {
+    officialWorkflowRunGate.clear();
+  }
+}
+
+async function waitAtOfficialWorkflowRunGate(
+  gate: OfficialWorkflowRunGate,
+): Promise<void> {
+  gate.arrivals++;
+  await gate.released.promise;
+}
+
+async function holdOfficialWorkflowRunGate(
+  kind: OfficialWorkflowRunGateKind,
+  signal: AbortSignal,
+): Promise<void> {
+  if (officialWorkflowRunGate.get()) {
+    throw new Error("An Official Workflow Run gate is already active");
+  }
+  const gate = createOfficialWorkflowRunGate(kind, signal);
+  officialWorkflowRunGate.set(gate);
+  switch (kind) {
+    case "observation": {
+      setOfficialWorkflowRunObservationResolvedHookForTest(async () => {
+        await waitAtOfficialWorkflowRunGate(gate);
+      });
+      break;
+    }
+    case "final-admission": {
+      setOfficialWorkflowRunFinalAdmissionLockedHookForTest(
+        async (_observation, tx) => {
+          const rows = await executeRawRows(
+            tx,
+            sql`SELECT pg_backend_pid() AS "backendPid"`,
+            officialWorkflowRunGateBackendRowSchema,
+          );
+          const backend = rows[0];
+          if (!backend) {
+            throw new Error("Failed to read the Official Workflow Run backend");
+          }
+          gate.backendPids.add(backend.backendPid);
+          await waitAtOfficialWorkflowRunGate(gate);
+        },
+      );
+      break;
+    }
+    case "bootstrap-requirement": {
+      setOfficialWorkflowBootstrapRequirementHookForTest(
+        async (requirement) => {
+          gate.bootstrapRequirement = requirement;
+          await waitAtOfficialWorkflowRunGate(gate);
+        },
+      );
+      break;
+    }
+  }
+
+  await onRejection(gate.released.promise, () => {
+    clearOfficialWorkflowRunGateHooks(gate);
+  });
+  signal.throwIfAborted();
+  clearOfficialWorkflowRunGateHooks(gate);
+}
+
+function officialWorkflowBootstrapQueueFirstKind(
+  requirement: OfficialWorkflowBootstrapRequirement,
+): "user_message" | "automation_event" | null {
+  if (
+    requirement.queueFirstKind === null ||
+    requirement.queueFirstKind === "user_message" ||
+    requirement.queueFirstKind === "automation_event"
+  ) {
+    return requirement.queueFirstKind;
+  }
+  throw new Error("Unexpected Official Workflow queue-first source");
+}
+
+async function readOfficialWorkflowRunGateLockState(
+  db: Db,
+  gate: OfficialWorkflowRunGate,
+  signal: AbortSignal,
+): Promise<{
+  readonly sharedCatalogHolderCount: number;
+  readonly exclusiveCatalogWaiterCount: number;
+  readonly blockedWaiterCount: number;
+}> {
+  const backendPids = [...gate.backendPids];
+  if (backendPids.length === 0) {
+    return {
+      sharedCatalogHolderCount: 0,
+      exclusiveCatalogWaiterCount: 0,
+      blockedWaiterCount: 0,
+    };
+  }
+  const backendPidList = sql.join(
+    backendPids.map((backendPid) => {
+      return sql`${backendPid}`;
+    }),
+    sql`, `,
+  );
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT
+        (
+          SELECT COUNT(DISTINCT held.pid)::integer
+          FROM pg_locks held
+          WHERE
+            held.pid IN (${backendPidList})
+            AND held.locktype = 'advisory'
+            AND held.mode = 'ShareLock'
+            AND held.granted
+        ) AS "sharedCatalogHolderCount",
+        (
+          SELECT COUNT(DISTINCT waiting.pid)::integer
+          FROM pg_locks held
+          INNER JOIN pg_locks waiting
+            ON waiting.locktype = held.locktype
+            AND waiting.database IS NOT DISTINCT FROM held.database
+            AND waiting.classid IS NOT DISTINCT FROM held.classid
+            AND waiting.objid IS NOT DISTINCT FROM held.objid
+            AND waiting.objsubid IS NOT DISTINCT FROM held.objsubid
+          WHERE
+            held.pid IN (${backendPidList})
+            AND held.locktype = 'advisory'
+            AND held.mode = 'ShareLock'
+            AND held.granted
+            AND waiting.mode = 'ExclusiveLock'
+            AND NOT waiting.granted
+        ) AS "exclusiveCatalogWaiterCount",
+        (
+          SELECT COUNT(DISTINCT waiting.pid)::integer
+          FROM pg_stat_activity waiting
+          WHERE EXISTS (
+            SELECT 1
+            FROM unnest(pg_blocking_pids(waiting.pid)) AS blocker(pid)
+            WHERE blocker.pid IN (${backendPidList})
+          )
+        ) AS "blockedWaiterCount"
+    `,
+    officialWorkflowRunGateLockStateRowSchema,
+  );
+  signal.throwIfAborted();
+  const state = rows[0];
+  if (!state) {
+    throw new Error("Failed to read the Official Workflow Run lock state");
+  }
+  return state;
+}
+
+async function readOfficialWorkflowRunGateState(db: Db, signal: AbortSignal) {
+  const gate = officialWorkflowRunGate.get();
+  if (!gate) {
+    return null;
+  }
+  const lockState = await readOfficialWorkflowRunGateLockState(
+    db,
+    gate,
+    signal,
+  );
+  return {
+    gate: gate.kind,
+    arrivals: gate.arrivals,
+    shared_catalog_holder_count: lockState.sharedCatalogHolderCount,
+    exclusive_catalog_waiter_count: lockState.exclusiveCatalogWaiterCount,
+    blocked_waiter_count: lockState.blockedWaiterCount,
+    bootstrap_requirement: gate.bootstrapRequirement
+      ? {
+          workflow_ids: [...gate.bootstrapRequirement.workflowIds],
+          queue_first_kind: officialWorkflowBootstrapQueueFirstKind(
+            gate.bootstrapRequirement,
+          ),
+          workflow_automation_id:
+            gate.bootstrapRequirement.workflowAutomationId,
+        }
+      : null,
+  };
+}
+
+async function seedVm0BuiltInDefaultModelKey(
   db: Db,
   fixtureId: string,
   signal: AbortSignal,
 ): Promise<string> {
-  const selectedModel = MODEL_PROVIDER_TYPES.vm0.defaultModel;
+  const selectedModel = MODEL_PROVIDER_TYPES["built-in"].defaultModel;
   if (!selectedModel) {
     throw new Error("Expected vm0 to define a default model");
   }
-  return await seedVm0ManagedModelKey(db, fixtureId, selectedModel, signal);
+  return await seedVm0BuiltInModelKey(db, fixtureId, selectedModel, signal);
 }
 
-async function seedVm0ManagedModelKey(
+async function seedVm0BuiltInModelKey(
   db: Db,
   fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
   const vendor = getVm0Vendor(selectedModel);
-  await acquireManagedModelKeyFixture(db, fixtureId, [
+  await acquireBuiltInModelKeyFixture(db, fixtureId, [
     {
       vendor,
-      apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
+      apiKey: `${VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
     },
   ]);
   signal.throwIfAborted();
   return selectedModel;
 }
 
-async function seedVm0ManagedModelCandidateKeys(
+async function seedVm0BuiltInModelCandidateKeys(
   db: Db,
   fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
   const vendors = new Set(
-    getVm0ManagedRouteCandidates(selectedModel).map((candidate) => {
+    getVm0BuiltInModelRouteCandidates(selectedModel).map((candidate) => {
       return candidate.vendor;
     }),
   );
-  await acquireManagedModelKeyFixture(
+  await acquireBuiltInModelKeyFixture(
     db,
     fixtureId,
     [...vendors].map((vendor) => {
       return {
         vendor,
-        apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}-${vendor}`,
+        apiKey: `${VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}-${vendor}`,
       };
     }),
   );
@@ -268,16 +530,16 @@ async function seedVm0ManagedModelCandidateKeys(
   return selectedModel;
 }
 
-async function deleteVm0ManagedModelKey(
+async function deleteVm0BuiltInModelKey(
   db: Db,
   fixtureId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await releaseManagedModelKeyFixture(db, fixtureId);
+  await releaseBuiltInModelKeyFixture(db, fixtureId);
   signal.throwIfAborted();
 }
 
-function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
+function serializeBuiltInModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
   return {
     provider_type: route.providerType,
     upstream_model: route.upstreamModel,
@@ -285,46 +547,94 @@ function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
   };
 }
 
-type Vm0ManagedModelAction = Extract<
+type BuiltInModelAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
-      | "seed-vm0-managed-default-model-key"
-      | "seed-vm0-managed-model-key"
-      | "seed-vm0-managed-model-candidate-keys"
-      | "delete-vm0-managed-model-key"
-      | "resolve-vm0-managed-model-route"
-      | "set-vm0-managed-candidate-cooldown"
-      | "delete-vm0-managed-candidate-cooldown";
+      | "seed-vm0-built-in-default-model-key"
+      | "seed-vm0-built-in-model-key"
+      | "seed-vm0-built-in-model-candidate-keys"
+      | "delete-vm0-built-in-model-key"
+      | "resolve-vm0-built-in-model-route"
+      | "set-vm0-built-in-candidate-cooldown"
+      | "delete-vm0-built-in-candidate-cooldown";
   }
 >;
 
-function isVm0ManagedModelAction(
+function isVm0BuiltInModelAction(
   body: TestRuntimeStateActionBody,
-): body is Vm0ManagedModelAction {
+): body is BuiltInModelAction {
   return [
-    "seed-vm0-managed-default-model-key",
-    "seed-vm0-managed-model-key",
-    "seed-vm0-managed-model-candidate-keys",
-    "delete-vm0-managed-model-key",
-    "resolve-vm0-managed-model-route",
-    "set-vm0-managed-candidate-cooldown",
-    "delete-vm0-managed-candidate-cooldown",
+    "seed-vm0-built-in-default-model-key",
+    "seed-vm0-built-in-model-key",
+    "seed-vm0-built-in-model-candidate-keys",
+    "delete-vm0-built-in-model-key",
+    "resolve-vm0-built-in-model-route",
+    "set-vm0-built-in-candidate-cooldown",
+    "delete-vm0-built-in-candidate-cooldown",
   ].includes(body.action);
 }
 
-async function vm0ManagedModelActionResponse(
+type SetVm0BuiltInCandidateCooldownAction = Extract<
+  BuiltInModelAction,
+  { action: "set-vm0-built-in-candidate-cooldown" }
+>;
+
+async function setVm0BuiltInCandidateCooldown(
   db: Db,
-  body: Vm0ManagedModelAction,
+  body: SetVm0BuiltInCandidateCooldownAction,
+): Promise<void> {
+  const unavailableUntil = new Date(body.unavailable_until);
+  await db
+    .insert(builtInModelCandidateCooldown)
+    .values({
+      selectedModel: body.selected_model,
+      providerType: body.provider_type,
+      upstreamModel: body.upstream_model,
+      unavailableUntil,
+    })
+    .onConflictDoUpdate({
+      target: [
+        builtInModelCandidateCooldown.selectedModel,
+        builtInModelCandidateCooldown.providerType,
+        builtInModelCandidateCooldown.upstreamModel,
+      ],
+      set: { unavailableUntil },
+    });
+}
+
+type DeleteVm0BuiltInCandidateCooldownAction = Extract<
+  BuiltInModelAction,
+  { action: "delete-vm0-built-in-candidate-cooldown" }
+>;
+
+async function deleteVm0BuiltInCandidateCooldown(
+  db: Db,
+  body: DeleteVm0BuiltInCandidateCooldownAction,
+): Promise<void> {
+  await db
+    .delete(builtInModelCandidateCooldown)
+    .where(
+      and(
+        eq(builtInModelCandidateCooldown.selectedModel, body.selected_model),
+        eq(builtInModelCandidateCooldown.providerType, body.provider_type),
+        eq(builtInModelCandidateCooldown.upstreamModel, body.upstream_model),
+      ),
+    );
+}
+
+async function vm0BuiltInModelActionResponse(
+  db: Db,
+  body: BuiltInModelAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
-    case "seed-vm0-managed-default-model-key": {
+    case "seed-vm0-built-in-default-model-key": {
       return {
         status: 200 as const,
         body: {
           ok: true as const,
-          selected_model: await seedVm0ManagedDefaultModelKey(
+          selected_model: await seedVm0BuiltInDefaultModelKey(
             db,
             body.fixture_id,
             signal,
@@ -332,26 +642,12 @@ async function vm0ManagedModelActionResponse(
         },
       };
     }
-    case "seed-vm0-managed-model-key": {
+    case "seed-vm0-built-in-model-key": {
       return {
         status: 200 as const,
         body: {
           ok: true as const,
-          selected_model: await seedVm0ManagedModelKey(
-            db,
-            body.fixture_id,
-            body.selected_model,
-            signal,
-          ),
-        },
-      };
-    }
-    case "seed-vm0-managed-model-candidate-keys": {
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          selected_model: await seedVm0ManagedModelCandidateKeys(
+          selected_model: await seedVm0BuiltInModelKey(
             db,
             body.fixture_id,
             body.selected_model,
@@ -360,11 +656,25 @@ async function vm0ManagedModelActionResponse(
         },
       };
     }
-    case "delete-vm0-managed-model-key": {
-      await deleteVm0ManagedModelKey(db, body.fixture_id, signal);
+    case "seed-vm0-built-in-model-candidate-keys": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0BuiltInModelCandidateKeys(
+            db,
+            body.fixture_id,
+            body.selected_model,
+            signal,
+          ),
+        },
+      };
+    }
+    case "delete-vm0-built-in-model-key": {
+      await deleteVm0BuiltInModelKey(db, body.fixture_id, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
-    case "resolve-vm0-managed-model-route": {
+    case "resolve-vm0-built-in-model-route": {
       const route = await resolveBuiltInModelRuntimeRoute(
         db,
         body.selected_model,
@@ -375,48 +685,19 @@ async function vm0ManagedModelActionResponse(
         status: 200 as const,
         body: {
           ok: true as const,
-          managed_model_route: route
-            ? serializeManagedModelRuntimeRoute(route)
+          built_in_model_route: route
+            ? serializeBuiltInModelRuntimeRoute(route)
             : null,
         },
       };
     }
-    case "set-vm0-managed-candidate-cooldown": {
-      await db
-        .insert(managedModelCandidateCooldown)
-        .values({
-          selectedModel: body.selected_model,
-          providerType: body.provider_type,
-          upstreamModel: body.upstream_model,
-          unavailableUntil: new Date(body.unavailable_until),
-        })
-        .onConflictDoUpdate({
-          target: [
-            managedModelCandidateCooldown.selectedModel,
-            managedModelCandidateCooldown.providerType,
-            managedModelCandidateCooldown.upstreamModel,
-          ],
-          set: { unavailableUntil: new Date(body.unavailable_until) },
-        });
+    case "set-vm0-built-in-candidate-cooldown": {
+      await setVm0BuiltInCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
-    case "delete-vm0-managed-candidate-cooldown": {
-      await db
-        .delete(managedModelCandidateCooldown)
-        .where(
-          and(
-            eq(
-              managedModelCandidateCooldown.selectedModel,
-              body.selected_model,
-            ),
-            eq(managedModelCandidateCooldown.providerType, body.provider_type),
-            eq(
-              managedModelCandidateCooldown.upstreamModel,
-              body.upstream_model,
-            ),
-          ),
-        );
+    case "delete-vm0-built-in-candidate-cooldown": {
+      await deleteVm0BuiltInCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
@@ -630,6 +911,9 @@ async function autonomyBudgetFixtureActionResponse(
           autonomyBudget: workflowAutomations.autonomyBudget,
           enabled: workflowAutomations.enabled,
           lastRunId: workflowAutomations.lastRunId,
+          officialBlueprintKey: workflowAutomations.officialBlueprintKey,
+          officialResultEmailEnabled:
+            workflowAutomations.officialResultEmailEnabled,
         })
         .from(workflowAutomations)
         .where(eq(workflowAutomations.id, body.automation_id))
@@ -644,6 +928,9 @@ async function autonomyBudgetFixtureActionResponse(
                 autonomy_budget: automation.autonomyBudget,
                 enabled: automation.enabled,
                 last_run_id: automation.lastRunId,
+                official_blueprint_key: automation.officialBlueprintKey,
+                official_result_email_enabled:
+                  automation.officialResultEmailEnabled,
               }
             : null,
         },
@@ -954,10 +1241,6 @@ type ReadUsagePackPurchaseSerializationSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-usage-pack-purchase-serialization-schema-state" }
 >;
-type ReadConnectorCatalogRuntimeProjectionSchemaStateAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "read-connector-catalog-runtime-projection-schema-state" }
->;
 type ResetDatabasePoolAction = Extract<
   TestRuntimeStateActionBody,
   { action: "reset-database-pool" }
@@ -971,7 +1254,6 @@ type PersistenceStateAction =
   | ReadBrowserScreenshotSchemaStateAction
   | ReadUsagePackInvitationSchemaStateAction
   | ReadUsagePackPurchaseSerializationSchemaStateAction
-  | ReadConnectorCatalogRuntimeProjectionSchemaStateAction
   | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
@@ -994,9 +1276,6 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-usage-pack-purchase-serialization-schema-state": {
-      return true;
-    }
-    case "read-connector-catalog-runtime-projection-schema-state": {
       return true;
     }
     case "reset-database-pool": {
@@ -1104,18 +1383,6 @@ async function persistenceStateActionResponse(
         body: {
           ok: true as const,
           usage_pack_purchase_serialization_schema_available: available,
-        },
-      };
-    }
-    case "read-connector-catalog-runtime-projection-schema-state": {
-      const available =
-        await connectorCatalogRuntimeProjectionSchemaAvailable(db);
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          connector_catalog_runtime_projection_schema_available: available,
         },
       };
     }
@@ -1498,22 +1765,15 @@ async function setRunnerJobContextProfileAsPreviousApi(
   signal: AbortSignal,
 ) {
   // The previous API stored the routing profile in both the dedicated queue
-  // column and execution-context JSON. It could also persist the retired
-  // Compose version response field in that JSON; the current reader must strip
-  // both fields before publishing the claim.
-  const legacyVersionId = "a".repeat(64);
+  // column and execution-context JSON. The current reader must strip the
+  // internal routing field before publishing the claim.
   const [updated] = await db
     .update(runnerJobQueue)
     .set({
       executionContext: sql`jsonb_set(
-        jsonb_set(
-          ${runnerJobQueue.executionContext},
-          '{experimentalProfile}',
-          to_jsonb(${body.profile}::text),
-          true
-        ),
-        '{agentComposeVersionId}',
-        to_jsonb(${legacyVersionId}::text),
+        ${runnerJobQueue.executionContext},
+        '{experimentalProfile}',
+        to_jsonb(${body.profile}::text),
         true
       )`,
     })
@@ -1576,8 +1836,9 @@ type ChatEventFixtureAction = Extract<
   {
     action:
       | "advance-chat-event-sequence-as-previous-api"
+      | "read-chat-event-rows-as-previous-api"
       | "read-chat-event-snapshot-head"
-      | "set-chat-event-snapshot-head-version";
+      | "update-chat-event-snapshot-head";
   }
 >;
 
@@ -1586,9 +1847,110 @@ function isChatEventFixtureAction(
 ): body is ChatEventFixtureAction {
   return (
     body.action === "advance-chat-event-sequence-as-previous-api" ||
+    body.action === "read-chat-event-rows-as-previous-api" ||
     body.action === "read-chat-event-snapshot-head" ||
-    body.action === "set-chat-event-snapshot-head-version"
+    body.action === "update-chat-event-snapshot-head"
   );
+}
+
+async function updateChatEventSnapshotHeadFixture(
+  db: Db,
+  body: Extract<
+    TestRuntimeStateActionBody,
+    { action: "update-chat-event-snapshot-head" }
+  >,
+  signal: AbortSignal,
+) {
+  const [pointer] = await db
+    .select({ id: chatEventSnapshots.id })
+    .from(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, body.thread_id),
+        eq(
+          chatEventSnapshots.archiveSchemaVersion,
+          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        ),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!pointer) {
+    throw new Error("update-chat-event-snapshot-head missing pointer");
+  }
+  const updated = await db
+    .update(chatEventSnapshots)
+    .set({
+      ...(body.last_seq_id === 0
+        ? { terminalEventId: null, terminalSeqId: 0 }
+        : {}),
+      ...(body.object_key === undefined ? {} : { objectKey: body.object_key }),
+      ...(body.last_seq_id === undefined
+        ? {}
+        : { lastSeqId: body.last_seq_id }),
+      ...(body.last_event_id === undefined
+        ? {}
+        : { lastEventId: body.last_event_id }),
+    })
+    .where(eq(chatEventSnapshots.id, pointer.id))
+    .returning({ id: chatEventSnapshots.id });
+  signal.throwIfAborted();
+  if (updated.length === 0) {
+    throw new Error("update-chat-event-snapshot-head missing pointer");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+async function readChatEventRowsAsPreviousApiFixture(
+  db: Db,
+  body: Extract<
+    TestRuntimeStateActionBody,
+    { action: "read-chat-event-rows-as-previous-api" }
+  >,
+  signal: AbortSignal,
+) {
+  const rows = await db
+    .select({
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      runId: chatEvents.runId,
+      revokesEventId: chatEvents.revokesEventId,
+      eventType: chatEvents.eventType,
+      payload: chatEvents.payload,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
+      runEventSequenceNumber: chatEvents.runEventSequenceNumber,
+      runEventId: chatEvents.runEventId,
+      seqId: chatEvents.seqId,
+      createdAt: chatEvents.createdAt,
+    })
+    .from(chatEvents)
+    .where(eq(chatEvents.chatThreadId, body.thread_id))
+    .orderBy(chatEvents.seqId);
+  signal.throwIfAborted();
+  // This is the exact strict raw/snapshot reader shape from the API version
+  // immediately before the private Official queue column was introduced.
+  const previousApiRows = rows.map((row) => {
+    return chatEventRowSchema.parse({
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+    });
+  });
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      previous_api_chat_event_rows: previousApiRows.map((row) => {
+        return {
+          id: row.id,
+          event_type: row.eventType,
+          revokes_event_id: row.revokesEventId,
+          payload_keys:
+            row.payload === null ? [] : Object.keys(row.payload).sort(),
+        };
+      }),
+    },
+  };
 }
 
 async function chatEventFixtureActionResponse(
@@ -1612,39 +1974,11 @@ async function chatEventFixtureActionResponse(
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
-  if (body.action === "set-chat-event-snapshot-head-version") {
-    const [pointer] = await db
-      .select({ id: chatEventSnapshots.id })
-      .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
-      .orderBy(
-        desc(chatEventSnapshots.archiveSchemaVersion),
-        desc(chatEventSnapshots.lastSeqId),
-        desc(chatEventSnapshots.createdAt),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-    if (!pointer) {
-      throw new Error("set-chat-event-snapshot-head-version missing pointer");
-    }
-    const updated = await db
-      .update(chatEventSnapshots)
-      .set({
-        archiveSchemaVersion: body.archive_schema_version,
-        ...(body.object_key === undefined
-          ? {}
-          : { objectKey: body.object_key }),
-        ...(body.last_seq_id === undefined
-          ? {}
-          : { lastSeqId: body.last_seq_id }),
-      })
-      .where(eq(chatEventSnapshots.id, pointer.id))
-      .returning({ id: chatEventSnapshots.id });
-    signal.throwIfAborted();
-    if (updated.length === 0) {
-      throw new Error("set-chat-event-snapshot-head-version missing pointer");
-    }
-    return { status: 200 as const, body: { ok: true as const } };
+  if (body.action === "read-chat-event-rows-as-previous-api") {
+    return await readChatEventRowsAsPreviousApiFixture(db, body, signal);
+  }
+  if (body.action === "update-chat-event-snapshot-head") {
+    return await updateChatEventSnapshotHeadFixture(db, body, signal);
   }
   const [[head], [snapshotCount]] = await Promise.all([
     db
@@ -1652,20 +1986,33 @@ async function chatEventFixtureActionResponse(
         archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
         lastEventId: chatEventSnapshots.lastEventId,
         lastSeqId: chatEventSnapshots.lastSeqId,
+        terminalEventId: chatEventSnapshots.terminalEventId,
+        terminalSeqId: chatEventSnapshots.terminalSeqId,
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id))
-      .orderBy(
-        desc(chatEventSnapshots.archiveSchemaVersion),
-        desc(chatEventSnapshots.lastSeqId),
-        desc(chatEventSnapshots.createdAt),
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+        ),
       )
       .limit(1),
     db
       .select({ value: count() })
       .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id)),
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
+        ),
+      ),
   ]);
   signal.throwIfAborted();
   if (!snapshotCount) {
@@ -1680,6 +2027,8 @@ async function chatEventFixtureActionResponse(
             archive_schema_version: head.archiveSchemaVersion,
             last_event_id: head.lastEventId,
             last_seq_id: head.lastSeqId,
+            terminal_event_id: head.terminalEventId,
+            terminal_seq_id: head.terminalSeqId,
             object_key: head.objectKey,
             snapshot_count: snapshotCount.value,
           }
@@ -1742,6 +2091,383 @@ async function compatibilityFixtureActionResponse(
   }
 }
 
+type ReadOfficialWorkflowRunStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-official-workflow-run-state" }
+>;
+type ReadAgentRunFamilyCountsAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-agent-run-family-counts" }
+>;
+type CorruptOfficialWorkflowRevisionPayloadAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "corrupt-official-workflow-revision-payload" }
+>;
+type SetOfficialWorkflowAutomationAdmissionStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-official-workflow-automation-admission-state" }
+>;
+type RetargetWorkflowAutomationAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "retarget-workflow-automation" }
+>;
+type AssertOfficialWorkflowAutomationFinalAdmissionRejectedAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action: "assert-official-workflow-automation-final-admission-rejected";
+  }
+>;
+type OfficialWorkflowRunFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "read-official-workflow-run-state"
+      | "read-agent-run-family-counts"
+      | "corrupt-official-workflow-revision-payload"
+      | "set-official-workflow-automation-admission-state"
+      | "retarget-workflow-automation"
+      | "assert-official-workflow-automation-final-admission-rejected"
+      | "hold-official-workflow-run-gate"
+      | "read-official-workflow-run-gate-state"
+      | "release-official-workflow-run-gate";
+  }
+>;
+
+function isOfficialWorkflowRunFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is OfficialWorkflowRunFixtureAction {
+  return [
+    "read-official-workflow-run-state",
+    "read-agent-run-family-counts",
+    "corrupt-official-workflow-revision-payload",
+    "set-official-workflow-automation-admission-state",
+    "retarget-workflow-automation",
+    "assert-official-workflow-automation-final-admission-rejected",
+    "hold-official-workflow-run-gate",
+    "read-official-workflow-run-gate-state",
+    "release-official-workflow-run-gate",
+  ].includes(body.action);
+}
+
+async function readOfficialWorkflowRunStateActionResponse(
+  db: Db,
+  body: ReadOfficialWorkflowRunStateAction,
+  signal: AbortSignal,
+) {
+  const [run] = await db
+    .select({
+      status: agentRuns.status,
+      modelProvider: agentRuns.modelProvider,
+      provenance: agentRuns.officialWorkflowProvenance,
+      storageMounts: agentRuns.storageMounts,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, body.run_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    return {
+      status: 200 as const,
+      body: { ok: true as const, official_workflow_run_state: null },
+    };
+  }
+  const [[runnerJobs], [callbacks]] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, body.run_id)),
+    db
+      .select({ value: count() })
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.runId, body.run_id)),
+  ]);
+  signal.throwIfAborted();
+  if (!runnerJobs || !callbacks) {
+    throw new Error("Official Workflow Run state count is incomplete");
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      official_workflow_run_state: {
+        status: run.status,
+        model_provider: run.modelProvider,
+        provenance: run.provenance,
+        storage_mounts:
+          run.storageMounts?.map((mount) => {
+            return {
+              org_id: mount.orgId,
+              user_id: mount.userId,
+              name: mount.name,
+              storage_id: mount.storageId,
+              ...(mount.version ? { version: mount.version } : {}),
+              mount_path: mount.mountPath,
+              ...(mount.writeback === undefined
+                ? {}
+                : { writeback: mount.writeback }),
+            };
+          }) ?? null,
+        runner_job_count: runnerJobs.value,
+        callback_count: callbacks.value,
+      },
+    },
+  };
+}
+
+async function readAgentRunFamilyCountsActionResponse(
+  db: Db,
+  body: ReadAgentRunFamilyCountsAction,
+  signal: AbortSignal,
+) {
+  const agentRunJoin = eq(agentRuns.sessionId, agentSessions.id);
+  const agentCondition = eq(agentSessions.agentId, body.agent_id);
+  const [[runs], [callbacks], [runnerJobs], [launchQueue]] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(agentRuns)
+      .innerJoin(agentSessions, agentRunJoin)
+      .where(agentCondition),
+    db
+      .select({ value: count() })
+      .from(agentRunCallbacks)
+      .innerJoin(agentRuns, eq(agentRunCallbacks.runId, agentRuns.id))
+      .innerJoin(agentSessions, agentRunJoin)
+      .where(agentCondition),
+    db
+      .select({ value: count() })
+      .from(runnerJobQueue)
+      .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
+      .innerJoin(agentSessions, agentRunJoin)
+      .where(agentCondition),
+    db
+      .select({ value: count() })
+      .from(agentRunQueue)
+      .innerJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
+      .innerJoin(agentSessions, agentRunJoin)
+      .where(agentCondition),
+  ]);
+  signal.throwIfAborted();
+  if (!runs || !callbacks || !runnerJobs || !launchQueue) {
+    throw new Error("Agent Run-family count is incomplete");
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      agent_run_family_counts: {
+        run_count: runs.value,
+        callback_count: callbacks.value,
+        runner_job_count: runnerJobs.value,
+        launch_queue_count: launchQueue.value,
+      },
+    },
+  };
+}
+
+async function corruptOfficialWorkflowRevisionPayloadActionResponse(
+  db: Db,
+  body: CorruptOfficialWorkflowRevisionPayloadAction,
+  signal: AbortSignal,
+) {
+  const updated = await db
+    .update(officialWorkflowDefinitionRevisions)
+    .set({ payload: sql`'{}'::jsonb` })
+    .where(
+      eq(
+        officialWorkflowDefinitionRevisions.definitionName,
+        body.definition_name,
+      ),
+    )
+    .returning({ revision: officialWorkflowDefinitionRevisions.revision });
+  signal.throwIfAborted();
+  if (updated.length !== 1) {
+    throw new Error("Official Workflow revision fixture is unavailable");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+async function setOfficialWorkflowAutomationAdmissionStateActionResponse(
+  db: Db,
+  body: SetOfficialWorkflowAutomationAdmissionStateAction,
+  signal: AbortSignal,
+) {
+  const updated = await db
+    .update(workflowAutomations)
+    .set({
+      officialReconciliationStatus: body.reconciliation_status,
+      ...(body.applied_fingerprint
+        ? { officialAppliedFingerprint: body.applied_fingerprint }
+        : {}),
+    })
+    .where(eq(workflowAutomations.id, body.automation_id))
+    .returning({ id: workflowAutomations.id });
+  signal.throwIfAborted();
+  if (updated.length !== 1) {
+    throw new Error("Official Workflow Automation is unavailable");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+async function retargetWorkflowAutomationActionResponse(
+  db: Db,
+  body: RetargetWorkflowAutomationAction,
+  signal: AbortSignal,
+) {
+  const updated = await db
+    .update(workflowAutomations)
+    .set({ workflowId: body.workflow_id })
+    .where(eq(workflowAutomations.id, body.automation_id))
+    .returning({ id: workflowAutomations.id });
+  signal.throwIfAborted();
+  if (updated.length !== 1) {
+    throw new Error("Workflow Automation is unavailable");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+async function assertOfficialWorkflowAutomationFinalAdmissionRejected(
+  db: Db,
+  body: AssertOfficialWorkflowAutomationFinalAdmissionRejectedAction,
+  signal: AbortSignal,
+) {
+  const [workflow] = await db
+    .select({
+      id: workflows.id,
+      name: workflows.name,
+      definitionName: workflows.officialDefinitionName,
+      orgId: workflows.orgId,
+      userId: workflows.ownerUserId,
+      agentId: workflows.agentId,
+    })
+    .from(workflows)
+    .where(eq(workflows.id, body.official_workflow_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!workflow?.definitionName) {
+    throw new Error("Official Workflow fixture is unavailable");
+  }
+  const observation = await resolveOfficialWorkflowRunObservation(
+    db,
+    [
+      {
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        definitionName: workflow.definitionName,
+        mountPath: `/test/official-workflows/${workflow.id}`,
+      },
+    ],
+    signal,
+  );
+  if (!observation) {
+    throw new Error("Official Workflow observation is unavailable");
+  }
+  const rejection = await db.transaction(async (tx) => {
+    await acquireOfficialWorkflowRunCatalogAdmissionLock(tx, observation);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${workflow.orgId}))`,
+    );
+    return await validateOfficialWorkflowRunForInsert(tx, {
+      observation,
+      orgId: workflow.orgId,
+      userId: workflow.userId,
+      agentId: workflow.agentId,
+      automationId: body.automation_id,
+      runStorageMounts: undefined,
+      allowMissingMountsForFailedRun: true,
+    });
+  });
+  signal.throwIfAborted();
+  if (!rejection) {
+    throw new Error("Mismatched Official Automation admission was accepted");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+async function officialWorkflowRunFixtureActionResponse(
+  db: Db,
+  body: OfficialWorkflowRunFixtureAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "read-official-workflow-run-state": {
+      return await readOfficialWorkflowRunStateActionResponse(db, body, signal);
+    }
+    case "read-agent-run-family-counts": {
+      return await readAgentRunFamilyCountsActionResponse(db, body, signal);
+    }
+    case "corrupt-official-workflow-revision-payload": {
+      return await corruptOfficialWorkflowRevisionPayloadActionResponse(
+        db,
+        body,
+        signal,
+      );
+    }
+    case "set-official-workflow-automation-admission-state": {
+      return await setOfficialWorkflowAutomationAdmissionStateActionResponse(
+        db,
+        body,
+        signal,
+      );
+    }
+    case "retarget-workflow-automation": {
+      return await retargetWorkflowAutomationActionResponse(db, body, signal);
+    }
+    case "assert-official-workflow-automation-final-admission-rejected": {
+      return await assertOfficialWorkflowAutomationFinalAdmissionRejected(
+        db,
+        body,
+        signal,
+      );
+    }
+    case "hold-official-workflow-run-gate": {
+      await holdOfficialWorkflowRunGate(body.gate, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-official-workflow-run-gate-state": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          official_workflow_run_gate_state:
+            await readOfficialWorkflowRunGateState(db, signal),
+        },
+      };
+    }
+    case "release-official-workflow-run-gate": {
+      officialWorkflowRunGate.get()?.release();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
+}
+
+const specializedRuntimeFixtureAction$ = command(
+  async ({ set }, body: TestRuntimeStateActionBody, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    if (isCustomConnectorAuthTemplateFixtureAction(body)) {
+      return await customConnectorAuthTemplateFixtureActionResponse(
+        db,
+        body,
+        signal,
+      );
+    }
+    if (isOfficialWorkflowRunFixtureAction(body)) {
+      return await officialWorkflowRunFixtureActionResponse(db, body, signal);
+    }
+    if (body.action === "reconcile-socialkit-downloads") {
+      const processed = await set(
+        reconcileSocialKitDownloads$,
+        { candidateIds: body.download_ids },
+        signal,
+      );
+      return {
+        status: 200 as const,
+        body: { ok: true as const, processed },
+      };
+    }
+    return null;
+  },
+);
+
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -1774,15 +2500,16 @@ const postRuntimeStateAction$ = command(
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
-    if (isVm0ManagedModelAction(body)) {
-      return await vm0ManagedModelActionResponse(db, body, signal);
+    if (isVm0BuiltInModelAction(body)) {
+      return await vm0BuiltInModelActionResponse(db, body, signal);
     }
-    if (isCustomConnectorAuthTemplateFixtureAction(body)) {
-      return await customConnectorAuthTemplateFixtureActionResponse(
-        db,
-        body,
-        signal,
-      );
+    const specializedFixture = await set(
+      specializedRuntimeFixtureAction$,
+      body,
+      signal,
+    );
+    if (specializedFixture) {
+      return specializedFixture;
     }
     switch (body.action) {
       case "mutate-runner-job-secret-value-environment-keys": {
@@ -1833,18 +2560,6 @@ const postRuntimeStateAction$ = command(
             }),
           },
         };
-      }
-      case "set-agent-compose-versionless": {
-        const [updated] = await db
-          .update(agentComposes)
-          .set({ headVersionId: null })
-          .where(eq(agentComposes.id, body.agent_id))
-          .returning({ id: agentComposes.id });
-        signal.throwIfAborted();
-        if (!updated) {
-          throw new Error("Expected an Agent compose fixture");
-        }
-        return { status: 200 as const, body: { ok: true as const } };
       }
     }
   },

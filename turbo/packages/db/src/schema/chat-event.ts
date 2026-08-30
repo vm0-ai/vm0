@@ -53,9 +53,6 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  *
  * Terminal-state assistant rows use the `run.completed | run.failed |
  * run.cancelled` event types.
- *
- * Summaries (tool-use activity) are NOT stored here — the client fetches
- * them in real-time from the telemetry/logs endpoint for active runs.
  */
 export const chatEvents = pgTable(
   "chat_events",
@@ -75,6 +72,14 @@ export const chatEvents = pgTable(
     revokesEventId: uuid("revokes_event_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     payload: jsonb("payload").$type<ChatEventPayload>(),
+    /**
+     * Server-owned authority for an Official Workflow prompt awaiting a Run.
+     * Keep it outside the strict public payload so an older API can continue
+     * reading and archiving the immutable event during a rolling deployment.
+     */
+    requiredOfficialWorkflowIds: uuid("required_official_workflow_ids")
+      .array()
+      .$type<readonly string[]>(),
     /**
      * Input source discriminator and optional polymorphic context pointer.
      *
@@ -192,6 +197,13 @@ export const chatEvents = pgTable(
         sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
           OR ${table.payload} IS NULL
           OR NOT (${table.payload} ? 'content')`,
+      ),
+      check(
+        "chat_events_official_workflow_queue_claim_check",
+        sql`${table.requiredOfficialWorkflowIds} IS NULL OR (
+          ${table.eventType} = 'input.prompt'
+          AND cardinality(${table.requiredOfficialWorkflowIds}) > 0
+        )`,
       ),
       check(
         "chat_events_goal_open_payload_check",

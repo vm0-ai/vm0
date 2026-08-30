@@ -1,4 +1,4 @@
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::cmd::nbd::NbdOrphanDisconnect;
 use crate::error::{RunnerError, RunnerResult};
@@ -33,7 +33,6 @@ where
         return Ok(GcReport::default());
     }
 
-    let found = orphans.len() as u32;
     let mut cleaned: u32 = 0;
     for (device_index, pid) in orphans {
         if dry_run {
@@ -46,40 +45,27 @@ where
             // the allocator uses. Between the scan and now, the device could
             // have been freed and re-acquired by another runner.
             let disconnect = disconnect.clone();
-            let result = match tokio::task::spawn_blocking(move || disconnect(device_index, pid))
-                .await
-            {
-                Ok(result) => result,
-                Err(e) => {
-                    tracing::warn!("nbd disconnect task failed for /dev/nbd{device_index}: {e}");
-                    continue;
-                }
-            };
+            let result =
+                match tokio::task::spawn_blocking(move || disconnect(device_index, pid)).await {
+                    Ok(result) => result,
+                    Err(e) => {
+                        warn!("nbd disconnect task failed for /dev/nbd{device_index}: {e}");
+                        continue;
+                    }
+                };
 
             match result {
                 NbdOrphanDisconnect::Disconnected(_) => {
-                    info!(
-                        "disconnected orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
-                    );
                     cleaned += 1;
                 }
-                NbdOrphanDisconnect::Locked => {
-                    info!("nbd{device_index}: skipping disconnect, NBD device lock is held");
-                }
-                NbdOrphanDisconnect::Changed | NbdOrphanDisconnect::Live => {
-                    info!(
-                        "nbd{device_index}: skipping disconnect, device state changed since scan"
-                    );
-                }
+                NbdOrphanDisconnect::Locked
+                | NbdOrphanDisconnect::Changed
+                | NbdOrphanDisconnect::Live => {}
                 NbdOrphanDisconnect::Failed(e) => {
-                    info!("failed to disconnect orphan NBD device /dev/nbd{device_index}: {e}");
+                    warn!("failed to disconnect orphan NBD device /dev/nbd{device_index}: {e}");
                 }
             }
         }
-    }
-
-    if cleaned < found {
-        info!("nbd orphans: {found} found, {cleaned} cleaned");
     }
 
     Ok(GcReport::cleanup(u64::from(cleaned), 0))

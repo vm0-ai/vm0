@@ -15,7 +15,7 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 import type {
   AgentEvent,
   LogDetail,
-} from "../../../signals/zero-page/log-types.ts";
+} from "../../../signals/okou-page/log-types.ts";
 
 const context = testContext();
 const user = userEvent.setup();
@@ -111,7 +111,7 @@ function inspectFile(
       vasStorageName: "artifact-storage",
       vasVersionId: "artifact-version",
     },
-    featureFlags: { zeroDebug: true },
+    featureFlags: { okouDebug: true },
   };
   const networkLogs: NetworkLogEntry[] = [
     {
@@ -302,7 +302,7 @@ function codexInspectFile(): File {
     networkPolicies: null,
     volumes: [],
     artifact: null,
-    featureFlags: { zeroDebug: true },
+    featureFlags: { okouDebug: true },
   };
 
   return new File(
@@ -433,7 +433,7 @@ describe("activity inspect page", () => {
     detachedSetupPage({
       context,
       path: "/activities/inspect",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await waitFor(() => {
@@ -645,7 +645,7 @@ describe("activity inspect page", () => {
     detachedSetupPage({
       context,
       path: "/activities/inspect",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await waitFor(() => {
@@ -664,9 +664,9 @@ describe("activity inspect page", () => {
     expect(
       screen.getByText("Codex inspect assistant output remains visible."),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("[warning] Inspect adapter warning"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText("[warning] Inspect adapter warning"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByText((_, element) => {
         return (
@@ -710,7 +710,7 @@ describe("activity inspect page", () => {
     detachedSetupPage({
       context,
       path: "/activities/inspect",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
     await waitFor(() => {

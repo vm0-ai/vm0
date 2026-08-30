@@ -233,23 +233,37 @@ describe("agent completion active input receipts", () => {
 });
 
 describe("webhook telemetry contract", () => {
-  it("accepts an optional bounded runner name", () => {
+  it("accepts optional bounded canonical runner dimensions", () => {
     const runId = "00000000-0000-4000-8000-000000000000";
-    expect(
-      webhookTelemetryContract.send.body.parse({ runId }),
-    ).not.toHaveProperty("runnerName");
+    const minimalPayload = webhookTelemetryContract.send.body.parse({ runId });
+    expect(minimalPayload).not.toHaveProperty("runnerHostname");
+    expect(minimalPayload).not.toHaveProperty("runnerVersion");
 
     expect(
       webhookTelemetryContract.send.body.parse({
         runId,
-        runnerName: "v0.168.14",
+        runnerHostname: "prod-1.aws.vm3.ai",
+        runnerVersion: "0.168.14",
       }),
-    ).toMatchObject({ runnerName: "v0.168.14" });
+    ).toMatchObject({
+      runnerHostname: "prod-1.aws.vm3.ai",
+      runnerVersion: "0.168.14",
+    });
 
-    for (const runnerName of ["", "x".repeat(129)]) {
+    for (const runnerHostname of ["", "x".repeat(256)]) {
       expect(
-        webhookTelemetryContract.send.body.safeParse({ runId, runnerName })
-          .success,
+        webhookTelemetryContract.send.body.safeParse({
+          runId,
+          runnerHostname,
+        }).success,
+      ).toBe(false);
+    }
+    for (const runnerVersion of ["", "x".repeat(129)]) {
+      expect(
+        webhookTelemetryContract.send.body.safeParse({
+          runId,
+          runnerVersion,
+        }).success,
       ).toBe(false);
     }
   });
@@ -335,7 +349,7 @@ describe("webhook telemetry contract", () => {
         }),
         {
           ts: "2026-01-15T10:00:00.000Z",
-          action_type: "vm_create",
+          action_type: "sandbox_create",
           duration_ms: 5,
           success: true,
         },
@@ -363,6 +377,53 @@ describe("webhook telemetry contract", () => {
             duration_ms: 10,
             success: true,
             runner_startup_path: "warm",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts bounded runner pre-spawn concurrency and keeps it optional", () => {
+    const buckets = ["1", "2", "3_4", "5_8", "9_plus"] as const;
+    const result = webhookTelemetryContract.send.body.parse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        ...buckets.map((bucket) => {
+          return {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "runner_claim_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_pre_spawn_concurrency_bucket: bucket,
+          };
+        }),
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "agent_execute",
+          duration_ms: 20,
+          success: true,
+        },
+      ],
+    });
+
+    expect(
+      result.sandboxOperations?.slice(0, buckets.length).map((operation) => {
+        return operation.runner_pre_spawn_concurrency_bucket;
+      }),
+    ).toStrictEqual(buckets);
+    expect(result.sandboxOperations?.at(-1)).not.toHaveProperty(
+      "runner_pre_spawn_concurrency_bucket",
+    );
+    expect(
+      webhookTelemetryContract.send.body.safeParse({
+        runId: "00000000-0000-4000-8000-000000000000",
+        sandboxOperations: [
+          {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "runner_claim_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_pre_spawn_concurrency_bucket: "10_plus",
           },
         ],
       }).success,

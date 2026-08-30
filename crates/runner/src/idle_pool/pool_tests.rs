@@ -85,7 +85,10 @@ fn reusable_reservation_is_exclusive_and_restorable() {
     ));
     assert_eq!(pool.len(), 1);
     assert_eq!(pool.status_snapshot().revision, parked_revision + 2);
-    assert_eq!(pool.status_snapshot().idle_vms[0].sandbox_id, sandbox_id);
+    assert_eq!(
+        pool.status_snapshot().idle_sandboxes[0].sandbox_id,
+        sandbox_id
+    );
 }
 
 #[test]
@@ -142,7 +145,7 @@ async fn reserved_restore_preserves_newer_same_session_entry() {
         panic!("collision must reject the older reservation");
     };
     assert_eq!(
-        pool.status_snapshot().idle_vms[0].sandbox_id,
+        pool.status_snapshot().idle_sandboxes[0].sandbox_id,
         replacement_sandbox_id
     );
     assert_ne!(old_sandbox_id, replacement_sandbox_id);
@@ -421,12 +424,12 @@ fn held_snapshot_pairs_and_sorts() {
     let _ = pool.park(entry_b);
     let _ = pool.park(entry_a);
 
-    let vms = pool.held_snapshot();
-    assert_eq!(vms.len(), 2);
-    assert_eq!(vms[0].reuse_key, "sess-a");
-    assert_eq!(vms[0].sandbox_id, sid_a);
-    assert_eq!(vms[1].reuse_key, "sess-b");
-    assert_eq!(vms[1].sandbox_id, sid_b);
+    let sandboxes = pool.held_snapshot();
+    assert_eq!(sandboxes.len(), 2);
+    assert_eq!(sandboxes[0].reuse_key, "sess-a");
+    assert_eq!(sandboxes[0].sandbox_id, sid_a);
+    assert_eq!(sandboxes[1].reuse_key, "sess-b");
+    assert_eq!(sandboxes[1].sandbox_id, sid_b);
 }
 
 #[test]
@@ -450,7 +453,7 @@ fn contains_sandbox_id_tracks_current_idle_ownership() {
 }
 
 #[test]
-fn status_snapshot_revision_tracks_idle_vm_mutations() {
+fn status_snapshot_revision_tracks_idle_sandbox_mutations() {
     let mut pool = IdlePool::new(pool_config(0));
     assert_eq!(pool.status_snapshot().revision, 0);
 
@@ -465,7 +468,7 @@ fn status_snapshot_revision_tracks_idle_vm_mutations() {
     assert_eq!(
         pool.status_snapshot().revision,
         2,
-        "empty drain must not create a fake idle_vms mutation",
+        "empty drain must not create a fake idle_sandboxes mutation",
     );
 
     let _ = pool.park(make_candidate_for("s2", 2, 2048));

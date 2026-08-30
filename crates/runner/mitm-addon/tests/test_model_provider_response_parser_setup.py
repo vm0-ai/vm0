@@ -78,17 +78,12 @@ class TestResponseHeadersModelJsonParser:
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
-        with mitm_ctx() as log:
+        with mitm_ctx():
             mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
         assert "model_json_usage_finish" not in flow.metadata
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
-        assert any(
-            "Streaming decompression skipped: brotli streaming output cannot be bounded"
-            in call.args[0]
-            for call in log.debug.call_args_list
-        )
 
 
 class TestBodylessModelResponseParserAdmission:
@@ -134,7 +129,7 @@ class TestBodylessModelResponseParserAdmission:
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata.update(
             {
-                metadata_keys.VM_PROXY_LOG_PATH: str(proxy_log_path),
+                metadata_keys.SANDBOX_PROXY_LOG_PATH: str(proxy_log_path),
                 metadata_keys.FIREWALL_NAME: "model-provider:anthropic-api-key",
                 metadata_keys.FIREWALL_BILLABLE: True,
                 metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",

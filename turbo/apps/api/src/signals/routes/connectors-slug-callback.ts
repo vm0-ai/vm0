@@ -45,6 +45,7 @@ import {
   connectorConnectionWriteFailureMessage,
   upsertConnectorTokenConnection$,
 } from "../services/connector-data.service";
+import { resolveOAuthRequestedScopeSnapshot } from "../services/connector-oauth-scope-snapshot.service";
 import {
   linkGithubUser,
   loadActiveGithubInstallationForOrg,
@@ -60,7 +61,6 @@ import {
   connectorOAuthRedirectResponse,
 } from "../../lib/connector-oauth-state";
 import { openIdRealmForOrigin } from "./connector-openid-auth-start";
-import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 
 type CallbackIdentity = {
   readonly userId: string;
@@ -69,6 +69,8 @@ type CallbackIdentity = {
 
 type CompleteOAuthCallbackInput = {
   readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly oauthRequestedScopes: readonly string[];
+  readonly authorizationUrl: string | null;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string;
@@ -79,11 +81,13 @@ type CompleteOAuthCallbackInput = {
   readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
+  readonly insertConnectionId?: string;
 };
 
 type CompleteOpenIdCallbackInput = {
   readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly oauthRequestedScopes: readonly string[];
   readonly callbackParams: Readonly<Record<string, string>>;
   readonly expectedReturnTo: string;
   readonly expectedRealm: string;
@@ -92,7 +96,8 @@ type CompleteOpenIdCallbackInput = {
   readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
+  readonly insertConnectionId?: string;
 };
 
 type ResolveCallbackStateInput = {
@@ -117,9 +122,12 @@ type ResolvedCallbackState =
       readonly authorizeAgent: boolean;
       readonly codeVerifier: string | undefined;
       readonly oauthContext: string | undefined;
+      readonly authorizationUrl: string | null;
+      readonly oauthRequestedScopes: readonly string[];
       readonly redirectUri: string;
       readonly resolvedMethod: ResolvedConnectorActionMethod;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
+      readonly insertConnectionId?: string;
     }
   | {
       readonly ok: false;
@@ -134,8 +142,10 @@ type ResolvedOpenIdCallbackState =
       readonly authorizeAgent: boolean;
       readonly expectedReturnTo: string;
       readonly expectedRealm: string;
+      readonly oauthRequestedScopes: readonly string[];
       readonly resolvedMethod: ResolvedConnectorActionMethod;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
+      readonly insertConnectionId?: string;
     }
   | {
       readonly ok: false;
@@ -153,6 +163,16 @@ type ClaimedCallbackState =
     };
 
 type ConnectorCallbackQuery = Readonly<Record<string, string | undefined>>;
+
+function callbackRequestedOauthScopes(
+  storedScopes: string | null,
+  resolvedMethod: ResolvedConnectorActionMethod,
+): readonly string[] {
+  return resolveOAuthRequestedScopeSnapshot(
+    storedScopes,
+    connectorGrantScopes(resolvedMethod.method.grant),
+  );
+}
 
 function redirectWithError(
   origin: string,
@@ -224,6 +244,7 @@ function callbackOriginForStoredState(
 
 async function exchangeTokenForConnector(args: {
   readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly authorizationUrl: string | null;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string | undefined;
@@ -251,6 +272,7 @@ async function exchangeTokenForConnector(args: {
     authMethodId: args.resolvedMethod.authMethodId,
     method: args.resolvedMethod.method,
     authClient,
+    authorizationUrl: args.authorizationUrl,
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
@@ -551,6 +573,7 @@ const completeOAuthCallback$ = command(
   ): Promise<Response> => {
     const token = await exchangeTokenForConnector({
       resolvedMethod: args.resolvedMethod,
+      authorizationUrl: args.authorizationUrl,
       code: args.code,
       redirectUri: args.redirectUri,
       state: args.state,
@@ -568,10 +591,15 @@ const completeOAuthCallback$ = command(
         snapshot: args.resolvedMethod.snapshot,
         outputs: token.outputs,
         userInfo: token.userInfo,
-        oauthScopes: connectorGrantScopes(args.resolvedMethod.method.grant),
+        oauthRequestedScopes: args.oauthRequestedScopes,
+        oauthGrantedScopes: token.scopes,
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
+        matchExistingExternalIdentity:
+          args.resolvedMethod.connectorSlug === "github" &&
+          args.account.intent === "add",
+        insertConnectionId: args.insertConnectionId,
       },
       signal,
     );
@@ -652,10 +680,12 @@ const completeOpenIdCallback$ = command(
         snapshot: args.resolvedMethod.snapshot,
         outputs: token.outputs,
         userInfo: token.userInfo,
-        oauthScopes: token.scopes,
+        oauthRequestedScopes: args.oauthRequestedScopes,
+        oauthGrantedScopes: token.scopes,
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
         account: args.account,
+        insertConnectionId: args.insertConnectionId,
       },
       signal,
     );
@@ -726,10 +756,17 @@ async function resolveCallbackState(
     resolvedMethod: authMethodResult.resolvedMethod,
     codeVerifier: args.storedState.codeVerifier ?? undefined,
     oauthContext: args.storedState.oauthContext ?? undefined,
-    redirectUri: args.storedState.redirectUri,
-    account: parseStoredConnectorAccountMutationIntent(
-      args.storedState.accountMutation,
+    authorizationUrl: args.storedState.authorizationUrl,
+    oauthRequestedScopes: callbackRequestedOauthScopes(
+      args.storedState.oauthRequestedScopes,
+      authMethodResult.resolvedMethod,
     ),
+    redirectUri: args.storedState.redirectUri,
+    account: args.storedState.accountMutation,
+    insertConnectionId:
+      args.storedState.accountMutation.intent === "add"
+        ? args.storedState.id
+        : undefined,
   };
 }
 
@@ -781,9 +818,15 @@ async function resolveOpenIdCallbackState(
       args.storedState.oauthContext,
       args.storedState.redirectUri,
     ),
-    account: parseStoredConnectorAccountMutationIntent(
-      args.storedState.accountMutation,
+    oauthRequestedScopes: callbackRequestedOauthScopes(
+      args.storedState.oauthRequestedScopes,
+      authMethodResult.resolvedMethod,
     ),
+    account: args.storedState.accountMutation,
+    insertConnectionId:
+      args.storedState.accountMutation.intent === "add"
+        ? args.storedState.id
+        : undefined,
   };
 }
 
@@ -870,6 +913,7 @@ const handleOpenIdConnectorCallback$ = command(
         completeOpenIdCallback$,
         {
           resolvedMethod: resolvedState.resolvedMethod,
+          oauthRequestedScopes: resolvedState.oauthRequestedScopes,
           callbackParams: openIdCallbackParamsFromQuery(args.query),
           expectedReturnTo: resolvedState.expectedReturnTo,
           expectedRealm: resolvedState.expectedRealm,
@@ -877,6 +921,7 @@ const handleOpenIdConnectorCallback$ = command(
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
           account: resolvedState.account,
+          insertConnectionId: resolvedState.insertConnectionId,
           origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },
@@ -1080,6 +1125,8 @@ const handleAuthCodeConnectorCallback$ = command(
         completeOAuthCallback$,
         {
           resolvedMethod: resolvedState.resolvedMethod,
+          oauthRequestedScopes: resolvedState.oauthRequestedScopes,
+          authorizationUrl: resolvedState.authorizationUrl,
           code,
           redirectUri: resolvedState.redirectUri,
           state,
@@ -1093,6 +1140,7 @@ const handleAuthCodeConnectorCallback$ = command(
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
           account: resolvedState.account,
+          insertConnectionId: resolvedState.insertConnectionId,
           origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },

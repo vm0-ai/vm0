@@ -4,13 +4,13 @@ set -euo pipefail
 TOOL=$(basename "$0")
 case "$TOOL" in
   ssh)
-    REAL_BINARY="${VM0_CLOUDFLARE_SSH_REAL_SSH:-}"
+    REAL_BINARY="${OKOU_CLOUDFLARE_SSH_REAL_SSH:-}"
     ;;
   scp)
-    REAL_BINARY="${VM0_CLOUDFLARE_SSH_REAL_SCP:-}"
+    REAL_BINARY="${OKOU_CLOUDFLARE_SSH_REAL_SCP:-}"
     ;;
   sftp)
-    REAL_BINARY="${VM0_CLOUDFLARE_SSH_REAL_SFTP:-}"
+    REAL_BINARY="${OKOU_CLOUDFLARE_SSH_REAL_SFTP:-}"
     ;;
   *)
     echo "Unsupported Cloudflare SSH command: ${TOOL}" >&2
@@ -66,7 +66,7 @@ parse_supported_ssh_option() {
     controlpath)
       normalized_value=$(strip_wrapping_quotes "$value")
       if [ "$normalized_value" != \
-        "${VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH:-}" ]; then
+        "${OKOU_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH:-}" ]; then
         BYPASS=true
       fi
       ;;
@@ -366,7 +366,7 @@ case "$TOOL" in
 esac
 
 if [ -z "$TARGET_USER" ]; then
-  TARGET_USER="${VM0_CLOUDFLARE_SSH_USER:-}"
+  TARGET_USER="${OKOU_CLOUDFLARE_SSH_USER:-}"
 fi
 if [[ ! "$TARGET_USER" =~ ^[A-Za-z0-9._-]+$ ]]; then
   BYPASS=true
@@ -376,9 +376,9 @@ if [ "$BYPASS" = "true" ] || [ -z "$TARGET_HOST" ]; then
   exec "$REAL_BINARY" "${ORIGINAL_ARGS[@]}"
 fi
 
-STATE_DIR="${VM0_CLOUDFLARE_SSH_STATE_DIR:-}"
-SCRIPTS_DIR="${VM0_CLOUDFLARE_SSH_SCRIPTS_DIR:-}"
-REAL_SSH="${VM0_CLOUDFLARE_SSH_REAL_SSH:-}"
+STATE_DIR="${OKOU_CLOUDFLARE_SSH_STATE_DIR:-}"
+SCRIPTS_DIR="${OKOU_CLOUDFLARE_SSH_SCRIPTS_DIR:-}"
+REAL_SSH="${OKOU_CLOUDFLARE_SSH_REAL_SSH:-}"
 if [[ "$STATE_DIR" != /* ]] \
   || [ ! -d "$STATE_DIR" ] \
   || [[ "$SCRIPTS_DIR" != /* ]] \
@@ -396,7 +396,7 @@ PROBE_TIMEOUT_SECONDS=20
 PROBE_KILL_AFTER_SECONDS=5
 CONTROL_TIMEOUT_SECONDS=5
 CONTROL_KILL_AFTER_SECONDS=2
-OPERATION_TIMEOUT_SECONDS="${VM0_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS:-600}"
+OPERATION_TIMEOUT_SECONDS="${OKOU_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS:-600}"
 OPERATION_KILL_AFTER_SECONDS=5
 
 if [[ ! "$OPERATION_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then

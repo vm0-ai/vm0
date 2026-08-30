@@ -1,13 +1,10 @@
 import {
-  check,
   pgTable,
   primaryKey,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { agentComposes } from "./agent-compose";
 import { agents } from "./agent";
 
 /**
@@ -20,12 +17,6 @@ export const teamsUserAgentPreferences = pgTable(
   {
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    selectedComposeId: uuid("selected_compose_id").references(
-      () => {
-        return agentComposes.id;
-      },
-      { onDelete: "set null" },
-    ),
     selectedAgentId: uuid("selected_agent_id").references(
       () => {
         return agents.id;
@@ -36,12 +27,6 @@ export const teamsUserAgentPreferences = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
-    return [
-      primaryKey({ columns: [table.userId, table.orgId] }),
-      check(
-        "teams_user_agent_preferences_agent_reference_match",
-        sql`${table.selectedAgentId} IS NULL OR ${table.selectedAgentId} IS NOT DISTINCT FROM ${table.selectedComposeId}`,
-      ),
-    ];
+    return [primaryKey({ columns: [table.userId, table.orgId] })];
   },
 );

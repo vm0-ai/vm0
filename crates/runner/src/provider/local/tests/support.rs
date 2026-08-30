@@ -6,6 +6,7 @@ pub(super) use std::time::Duration;
 
 pub(super) use super::super::LocalProvider;
 use super::super::job_candidate_from_discovered;
+pub(super) use super::super::watch::RECONCILE_INTERVAL;
 pub(super) use crate::ids::RunId;
 pub(super) use crate::local_queue;
 use crate::local_queue::JobRequest;
@@ -99,6 +100,24 @@ pub(super) fn write_job(dir: &std::path::Path, job_id: RunId, prompt: &str) {
         prompt,
         Some(crate::profile::DEFAULT_PROFILE),
     );
+}
+
+pub(super) fn write_job_atomically(dir: &std::path::Path, job_id: RunId, prompt: &str) {
+    let partition_profile = crate::profile::DEFAULT_PROFILE;
+    let json = job_request_json(
+        job_id,
+        prompt,
+        JobOptions {
+            profile: Some(partition_profile),
+            ..JobOptions::default()
+        },
+    );
+    let job_dir = local_queue::profile_jobs_dir(dir, partition_profile).unwrap();
+    std::fs::create_dir_all(&job_dir).unwrap();
+    let job_path = local_queue::job_path(dir, partition_profile, job_id).unwrap();
+    let temporary_path = job_dir.join(format!("{job_id}.job.tmp"));
+    std::fs::write(&temporary_path, json).unwrap();
+    std::fs::rename(temporary_path, job_path).unwrap();
 }
 
 pub(super) fn write_job_with_profile(
@@ -199,6 +218,17 @@ fn write_job_in_partition_with_options(
     prompt: &str,
     options: JobOptions<'_>,
 ) {
+    let json = job_request_json(job_id, prompt, options);
+    let job_dir = local_queue::profile_jobs_dir(dir, partition_profile).unwrap();
+    std::fs::create_dir_all(&job_dir).unwrap();
+    std::fs::write(
+        local_queue::job_path(dir, partition_profile, job_id).unwrap(),
+        &json,
+    )
+    .unwrap();
+}
+
+fn job_request_json(job_id: RunId, prompt: &str, options: JobOptions<'_>) -> Vec<u8> {
     let req = JobRequest {
         job_id,
         prompt: prompt.into(),
@@ -213,14 +243,7 @@ fn write_job_in_partition_with_options(
         feature_flags: None,
         active_input: options.active_input,
     };
-    let json = serde_json::to_vec(&req).unwrap();
-    let job_dir = local_queue::profile_jobs_dir(dir, partition_profile).unwrap();
-    std::fs::create_dir_all(&job_dir).unwrap();
-    std::fs::write(
-        local_queue::job_path(dir, partition_profile, job_id).unwrap(),
-        &json,
-    )
-    .unwrap();
+    serde_json::to_vec(&req).unwrap()
 }
 
 pub(super) fn write_job_with_environments(

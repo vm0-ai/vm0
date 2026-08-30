@@ -88,11 +88,17 @@ pub(crate) struct StatusForDoctor {
     pub(crate) active_runs: Vec<StatusActiveRun>,
     pub(crate) started_at: String,
     #[serde(default)]
-    pub(crate) idle_vms: Vec<StatusIdleVm>,
+    idle_sandboxes: Vec<StatusIdleSandbox>,
     #[serde(default)]
     pub(crate) proxy_port: Option<u16>,
     #[serde(default)]
     pub(crate) dns_port: Option<u16>,
+}
+
+impl StatusForDoctor {
+    pub(crate) fn idle_sandboxes(&self) -> &[StatusIdleSandbox] {
+        &self.idle_sandboxes
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,7 +124,7 @@ pub(crate) struct StatusActiveRun {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct StatusIdleVm {
+pub(crate) struct StatusIdleSandbox {
     pub(crate) reuse_key: String,
     pub(crate) sandbox_id: String,
 }
@@ -162,7 +168,7 @@ mod tests {
                     "phase_started_at":"2026-04-13T00:00:01.000Z"
                 }
             ],
-            "idle_vms": [
+            "idle_sandboxes": [
                 {"reuse_key":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
             ],
             "proxy_port": 8080,
@@ -193,8 +199,63 @@ mod tests {
             status.active_runs[0].phase_started_at,
             "2026-04-13T00:00:01.000Z"
         );
-        assert_eq!(status.idle_vms.len(), 1);
-        assert_eq!(status.idle_vms[0].reuse_key, "sess-1");
+        assert_eq!(status.idle_sandboxes().len(), 1);
+        assert_eq!(status.idle_sandboxes()[0].reuse_key, "sess-1");
+    }
+
+    #[tokio::test]
+    async fn doctor_defaults_omitted_idle_sandboxes_to_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            dir.path().join("status.json"),
+            r#"{"mode":"running","started_at":"2026-04-13T00:00:00.000Z"}"#,
+        )
+        .await
+        .unwrap();
+
+        let status = read_as::<StatusForDoctor>(dir.path())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(status.idle_sandboxes().is_empty());
+    }
+
+    #[tokio::test]
+    async fn doctor_accepts_explicit_empty_idle_sandboxes() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            dir.path().join("status.json"),
+            r#"{"mode":"running","started_at":"2026-04-13T00:00:00.000Z","idle_sandboxes":[]}"#,
+        )
+        .await
+        .unwrap();
+
+        let status = read_as::<StatusForDoctor>(dir.path())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(status.idle_sandboxes().is_empty());
+    }
+
+    #[tokio::test]
+    async fn doctor_rejects_malformed_present_idle_sandboxes() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-04-13T00:00:00.000Z",
+                "idle_sandboxes":null
+            }"#,
+        )
+        .await
+        .unwrap();
+
+        let error = read_as::<StatusForDoctor>(dir.path()).await.unwrap_err();
+
+        assert!(matches!(error, StatusFileReadError::ParseJson { .. }));
     }
 
     #[tokio::test]
@@ -224,7 +285,7 @@ mod tests {
                 "mode":"running",
                 "active_runs":[],
                 "started_at":"2026-04-13T00:00:00.000Z",
-                "idle_vms":null
+                "idle_sandboxes":null
             }"#,
         )
         .await
@@ -270,7 +331,7 @@ mod tests {
                     {"run_id":"run-a","sandbox_id":"sandbox-a"}
                 ],
                 "started_at": [],
-                "idle_vms": null
+                "idle_sandboxes": null
             }"#,
         )
         .await

@@ -11,6 +11,7 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ConnectorAccountSelection } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { OrgModelPoliciesResponse } from "@okouai/api-contracts/contracts/model-providers";
 import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/user-model-preference";
 import { accept } from "../../lib/accept.ts";
@@ -20,8 +21,8 @@ import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
-import { talkDraft$, type DraftSignals } from "../zero-page/chat-draft.ts";
-import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
+import { talkDraft$, type DraftSignals } from "../okou-page/chat-draft.ts";
+import { clearAgentDraftById$ } from "../okou-page/agent-draft.ts";
 import {
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
@@ -35,31 +36,29 @@ import { sendChatEvent } from "./chat-event-api.ts";
 import {
   isCodexFastModeAvailableForSelection,
   resolveModelFirstUserDefaultSelection,
-} from "../zero-page/model-default-selection.ts";
+} from "../okou-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   featureSwitch$,
-  imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
-  videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import {
   runOptionsFromModelProviderSelection,
   withSelectedModelAnnotation,
 } from "./model-selection-request.ts";
-import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
-import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
-import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
+import { chatPageModelSelection$ } from "../okou-page/chat-page.ts";
+import { selectedModelAvailable$ } from "../okou-page/model-first-personal-oauth.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
 import {
   textToMessageDocument,
   type EditorDocumentSnapshot,
-} from "../zero-page/user-message-document-codec.ts";
+} from "../okou-page/user-message-document-codec.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
 import { withOptimisticAgentRunSource } from "./chat-event-signals.ts";
 
@@ -88,6 +87,7 @@ interface SendNewThreadMessageRequest {
   routeSearchParams?: URLSearchParams;
   forward?: ChatForwardContext;
   onOptimisticSend?: () => void;
+  connectorSelections?: readonly ConnectorAccountSelection[];
 }
 
 interface SendNewThreadMessageResult {
@@ -390,6 +390,7 @@ async function createChatThread(
     readonly modelSelection: ModelProviderSelection;
     readonly imageModel?: ImageModel;
     readonly videoModel?: VideoModel;
+    readonly connectorSelections?: readonly ConnectorAccountSelection[];
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -406,6 +407,9 @@ async function createChatThread(
         ...(args.imageModel ? { imageModel: args.imageModel } : {}),
         ...(args.videoModel ? { videoModel: args.videoModel } : {}),
         ...(args.title ? { title: args.title } : {}),
+        ...(args.connectorSelections?.length
+          ? { connectorSelections: [...args.connectorSelections] }
+          : {}),
       },
       fetchOptions: { signal },
     }),
@@ -568,11 +572,8 @@ const sendNewThreadMessage$ = command(
     const features = get(featureSwitch$);
     // Pin only an explicit per-thread pick; an unpinned (null) thread follows
     // the member's live default, so changing the default later updates it.
-    const imageModel = get(imageModelSelectionEnabled$)
-      ? request.imageModel
-      : undefined;
-    const videoModelEnabled = get(videoModelSelectionEnabled$);
-    const videoModel = videoModelEnabled ? request.videoModel : undefined;
+    const imageModel = request.imageModel;
+    const videoModel = request.videoModel;
     const { annotatedUserMessage, optimisticUserMessage } =
       annotatedMessagesForNewThread(
         request,
@@ -627,6 +628,7 @@ const sendNewThreadMessage$ = command(
         modelSelection: resolvedModelSelection,
         imageModel,
         videoModel,
+        connectorSelections: request.connectorSelections,
       },
       signal,
     );
@@ -642,7 +644,7 @@ const sendNewThreadMessage$ = command(
       userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
-      videoRunOptions: videoModelEnabled ? request.videoRunOptions : undefined,
+      videoRunOptions: request.videoRunOptions,
       sourceRunId: request.forward?.runId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {

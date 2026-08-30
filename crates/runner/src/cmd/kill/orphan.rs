@@ -537,7 +537,7 @@ mod tests {
         ignored_child_test_env_guard_enabled, run_ignored_child_test,
     };
 
-    const ORPHAN_KILL_CHILD_ENV: &str = "VM0_RUNNER_ORPHAN_KILL_TEST_CHILD";
+    const ORPHAN_KILL_CHILD_ENV: &str = "OKOU_RUNNER_ORPHAN_KILL_TEST_CHILD";
     const ORPHAN_KILL_READY_LINE: &str = "vm0 orphan kill test ready";
 
     fn process_stat(identity: &FirecrackerProcessIdentity) -> ProcessStat {

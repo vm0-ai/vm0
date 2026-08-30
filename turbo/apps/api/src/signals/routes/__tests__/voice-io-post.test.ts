@@ -1178,7 +1178,7 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(calledOpenAi).toBeFalsy();
   });
 
-  it("generates /speech WAV files for run-scoped zero tokens", async () => {
+  it("generates /speech WAV files for run-scoped agent tokens", async () => {
     const fixture = await seedVoiceFixture({});
     const usagePricingResolution =
       await createSpeechPricingResolution("configured");

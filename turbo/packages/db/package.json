@@ -1,6 +1,6 @@
 {
   "name": "@okouai/db",
-  "version": "1.218.4",
+  "version": "1.228.17",
   "private": true,
   "type": "module",
   "exports": {
@@ -16,6 +16,14 @@
       "import": "./src/jsonb-contracts/*.ts",
       "types": "./src/jsonb-contracts/*.ts"
     },
+    "./operations/model-provider-built-in-identity": {
+      "import": "./src/operations/model-provider-built-in-identity.ts",
+      "types": "./src/operations/model-provider-built-in-identity.ts"
+    },
+    "./operations/org-plan-entitlement-canonical-write": {
+      "import": "./src/operations/org-plan-entitlement-canonical-write.ts",
+      "types": "./src/operations/org-plan-entitlement-canonical-write.ts"
+    },
     "./types": {
       "import": "./src/types.ts",
       "types": "./src/types.ts"
@@ -30,9 +38,10 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
-    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:zero-runs-stage-6 && tsx scripts/test-migration-consistency-schema.ts",
+    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:retired-agent-plane-contraction && pnpm test:morning-brief-phase-a-cutover && tsx scripts/test-migration-consistency-schema.ts",
+    "test:morning-brief-phase-a-cutover": "tsx scripts/test-morning-brief-phase-a-cutover.ts",
+    "test:retired-agent-plane-contraction": "tsx scripts/test-retired-agent-plane-contraction.ts",
     "test:migration-runner": "tsx scripts/test-migration-runner-timeouts.ts",
-    "test:zero-runs-stage-6": "tsx scripts/test-zero-runs-stage-6.ts",
     "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"
   },
   "dependencies": {

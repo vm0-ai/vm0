@@ -35,18 +35,22 @@ expired transition validator must be deleted.
 The repository inventory below is machine-checked. The removal owner must
 delete the workflow, probe, focused validator, and this entry together.
 
-| Issue                             | Validator                                                   | Removal owner  |
-| --------------------------------- | ----------------------------------------------------------- | -------------- |
-| #27613 / #27656 / #27671 / #27792 | Agent/Compose consolidation production preflight            | #26938 Stage 8 |
-| #27896                            | Legacy execution-plan preflight classifier                  | #26938 Stage 8 |
-| #27997                            | Framework-fallback preflight partition                      | #26938 Stage 8 |
-| #28056                            | Historical product-builder preflight fixture and classifier | #26938 Stage 8 |
-| #28056                            | Historical product-builder preflight partition              | #26938 Stage 8 |
-| #28070                            | Historical builder v6 authority-lineage partition           | #26938 Stage 8 |
-| #28080                            | Checkpoint configuration-independence manifest              | #26938 Stage 8 |
-| #28080                            | Checkpoint v7 protected partition                           | #26938 Stage 8 |
-| #28304                            | Usage-pack pending snapshot dirty upgrade                   | #28372         |
-| #28679                            | Agent-run built-in model key expand/mirror bridge           | #28368         |
+| Issue                             | Validator                                                   | Removal owner   |
+| --------------------------------- | ----------------------------------------------------------- | --------------- |
+| #27613 / #27656 / #27671 / #27792 | Agent/Compose consolidation production preflight            | #26938 Stage 8  |
+| #27896                            | Legacy execution-plan preflight classifier                  | #26938 Stage 8  |
+| #27997                            | Framework-fallback preflight partition                      | #26938 Stage 8  |
+| #28056                            | Historical product-builder preflight fixture and classifier | #26938 Stage 8  |
+| #28056                            | Historical product-builder preflight partition              | #26938 Stage 8  |
+| #28070                            | Historical builder v6 authority-lineage partition           | #26938 Stage 8  |
+| #28080                            | Checkpoint configuration-independence manifest              | #26938 Stage 8  |
+| #28080                            | Checkpoint v7 protected partition                           | #26938 Stage 8  |
+| #28304                            | Usage-pack pending snapshot dirty upgrade                   | #28372          |
+| #28795                            | Official Slack installation Okou brand finalization         | #28937          |
+| #29378 / #29429                   | Agent Draft relation compatibility and physical switch      | #28368 Phase D3 |
+| #29910                            | Built-in provider writer/backfill and rollback bridge       | #28368          |
+| #30162                            | Built-in model restriction entitlement expand/mirror bridge | #28368          |
+| #30264                            | Legacy Morning Brief phase-A cutover floor                  | #30264 Phase B  |
 
 <!-- vm0-transition-validator:#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#27896|legacy-execution-plan-preflight-classifier|removal-owner:#26938-stage-8 -->
@@ -57,7 +61,11 @@ delete the workflow, probe, focused validator, and this entry together.
 <!-- vm0-transition-validator:#28080|checkpoint-configuration-independence-runtime-manifest|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#28080|checkpoint-v7-protected-partition|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#28304|usage-pack-pending-snapshot-dirty-upgrade|removal-owner:#28372 -->
-<!-- vm0-transition-validator:#28679|agent-run-built-in-model-key-expand-mirror-bridge|removal-owner:#28368 -->
+<!-- vm0-transition-validator:#28795|official-slack-installation-okou-brand-finalization|removal-owner:#28937 -->
+<!-- vm0-transition-validator:#29378+#29429|agent-draft-relation-compatibility-and-physical-switch|removal-owner:#28368-phase-d3 -->
+<!-- vm0-transition-validator:#29910|built-in-provider-writer-backfill-and-rollback-bridge|removal-owner:#28368 -->
+<!-- vm0-transition-validator:#30162|built-in-model-restriction-entitlement-expand-mirror-bridge|removal-owner:#28368 -->
+<!-- vm0-transition-validator:#30264|legacy-morning-brief-phase-a-cutover-floor|removal-owner:#30264-phase-b -->
 
 ## Migration patterns
 

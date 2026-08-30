@@ -713,6 +713,12 @@ impl WorkspaceImageCache {
         }
 
         let mut locked_commit_keys = BTreeSet::new();
+        #[cfg(test)]
+        self.inner
+            .held_state_root_scan_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        #[cfg(test)]
+        self.inner.held_state_root_scan_notify.notify_waiters();
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
@@ -795,6 +801,52 @@ impl WorkspaceImageCache {
         HeldWorkspaceStateScan {
             states,
             locked_commit_keys,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_held_state_root_scan_count(&self) {
+        self.inner
+            .held_state_root_scan_count
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn held_state_root_scan_count(&self) -> usize {
+        self.inner
+            .held_state_root_scan_count
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn wait_for_held_state_root_scan_after(
+        &self,
+        previous_count: usize,
+        timeout: Duration,
+    ) -> usize {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.inner.held_state_root_scan_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            let count = self.held_state_root_scan_count();
+            if count > previous_count {
+                return count;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            assert!(
+                !remaining.is_zero(),
+                "workspace cache did not start a held-state root scan within {timeout:?}"
+            );
+            tokio::time::timeout(remaining, notified)
+                .await
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "workspace cache did not start a held-state root scan within {timeout:?}"
+                    )
+                });
         }
     }
 

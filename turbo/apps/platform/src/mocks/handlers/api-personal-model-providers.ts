@@ -1,9 +1,9 @@
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroPersonalModelProvidersMainContract,
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProviderAccountsByIdContract,
-} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+  personalModelProvidersMainContract,
+  personalModelProvidersByTypeContract,
+  personalModelProviderAccountsByIdContract,
+} from "@okouai/api-contracts/contracts/personal-model-providers";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
@@ -25,53 +25,50 @@ export function resetMockPersonalModelProviders(): void {
 
 export const apiPersonalModelProvidersHandlers = [
   // GET /api/me/model-providers - List the user's personal model providers
-  mockApi(zeroPersonalModelProvidersMainContract.list, ({ respond }) => {
+  mockApi(personalModelProvidersMainContract.list, ({ respond }) => {
     return respond(200, { modelProviders: mockPersonalModelProviders });
   }),
 
   // POST /api/me/model-providers - Create or update a personal model provider
-  mockApi(
-    zeroPersonalModelProvidersMainContract.upsert,
-    ({ body, respond }) => {
-      const now = nowDate().toISOString();
-      const existing = mockPersonalModelProviders.find((p) => {
-        return p.type === body.type;
+  mockApi(personalModelProvidersMainContract.upsert, ({ body, respond }) => {
+    const now = nowDate().toISOString();
+    const existing = mockPersonalModelProviders.find((p) => {
+      return p.type === body.type;
+    });
+    const created = !existing;
+
+    const provider: ModelProviderResponse = {
+      id: existing?.id ?? crypto.randomUUID(),
+      type: body.type,
+      framework: "claude-code",
+      secretName:
+        body.type === "claude-code-oauth-token"
+          ? "CLAUDE_CODE_OAUTH_TOKEN"
+          : "ANTHROPIC_API_KEY",
+      authMethod: body.authMethod ?? null,
+      secretNames: body.secrets ? Object.keys(body.secrets) : null,
+      isDefault: existing?.isDefault ?? false,
+      selectedModel: body.selectedModel ?? null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    };
+
+    if (existing) {
+      mockPersonalModelProviders = mockPersonalModelProviders.map((p) => {
+        return p.type === body.type ? provider : p;
       });
-      const created = !existing;
+    } else {
+      mockPersonalModelProviders.push(provider);
+    }
 
-      const provider: ModelProviderResponse = {
-        id: existing?.id ?? crypto.randomUUID(),
-        type: body.type,
-        framework: "claude-code",
-        secretName:
-          body.type === "claude-code-oauth-token"
-            ? "CLAUDE_CODE_OAUTH_TOKEN"
-            : "ANTHROPIC_API_KEY",
-        authMethod: body.authMethod ?? null,
-        secretNames: body.secrets ? Object.keys(body.secrets) : null,
-        isDefault: existing?.isDefault ?? false,
-        selectedModel: body.selectedModel ?? null,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-        needsReconnect: false,
-        lastRefreshErrorCode: null,
-      };
-
-      if (existing) {
-        mockPersonalModelProviders = mockPersonalModelProviders.map((p) => {
-          return p.type === body.type ? provider : p;
-        });
-      } else {
-        mockPersonalModelProviders.push(provider);
-      }
-
-      return respond(created ? 201 : 200, { provider, created });
-    },
-  ),
+    return respond(created ? 201 : 200, { provider, created });
+  }),
 
   // DELETE /api/me/model-providers/:type - Delete a personal model provider
   mockApi(
-    zeroPersonalModelProvidersByTypeContract.delete,
+    personalModelProvidersByTypeContract.delete,
     ({ params, respond }) => {
       const existing = mockPersonalModelProviders.find((p) => {
         return p.type === params.type;
@@ -92,7 +89,7 @@ export const apiPersonalModelProvidersHandlers = [
 
   // POST /api/me/model-providers/:type/subscription-reset - Reset Codex usage
   mockApi(
-    zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
+    personalModelProvidersByTypeContract.resetSubscriptionUsage,
     ({ params, respond }) => {
       const existing = mockPersonalModelProviders.find((p) => {
         return p.type === params.type;
@@ -123,7 +120,7 @@ export const apiPersonalModelProvidersHandlers = [
   ),
 
   mockApi(
-    zeroPersonalModelProviderAccountsByIdContract.activate,
+    personalModelProviderAccountsByIdContract.activate,
     ({ params, respond }) => {
       const selected = mockPersonalModelProviders.find((provider) => {
         return provider.id === params.id;
@@ -148,7 +145,7 @@ export const apiPersonalModelProvidersHandlers = [
   ),
 
   mockApi(
-    zeroPersonalModelProviderAccountsByIdContract.delete,
+    personalModelProviderAccountsByIdContract.delete,
     ({ params, respond }) => {
       const selected = mockPersonalModelProviders.find((provider) => {
         return provider.id === params.id;
@@ -171,7 +168,7 @@ export const apiPersonalModelProvidersHandlers = [
   ),
 
   mockApi(
-    zeroPersonalModelProviderAccountsByIdContract.resetSubscriptionUsage,
+    personalModelProviderAccountsByIdContract.resetSubscriptionUsage,
     ({ params, respond }) => {
       const selected = mockPersonalModelProviders.find((provider) => {
         return provider.id === params.id;

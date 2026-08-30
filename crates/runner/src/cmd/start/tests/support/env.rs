@@ -189,7 +189,7 @@ fn build_mock_run_config_with_runtime(
     let registry_path = temp_dir.path().join("registry.json");
     let lock_path = temp_dir.path().join("registry.lock");
     // Write empty registry file so ProxyRegistryHandle can read it.
-    std::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#).unwrap();
+    std::fs::write(&registry_path, r#"{"sandboxes":{},"updatedAt":0}"#).unwrap();
     let registry = proxy::ProxyRegistryHandle::new(registry_path, lock_path);
 
     let log_dir = temp_dir.path().join("logs");
@@ -208,7 +208,6 @@ fn build_mock_run_config_with_runtime(
     let config = RunConfig {
         runner: RunnerInfo {
             identity: test_runner_identity(),
-            name: "test".into(),
             group: "test-group".into(),
             profiles,
         },
@@ -257,7 +256,7 @@ fn build_mock_run_config_with_runtime(
         },
         exec_config: Arc::new(executor::ExecutorConfig {
             api_url: api_url.to_string(),
-            runner_name: "test-runner".to_string(),
+            runner_hostname: None,
             registry,
             http: crate::http::HttpClient::new(crate::http::HttpClientConfig {
                 api_url: api_url.to_string(),
@@ -275,6 +274,8 @@ fn build_mock_run_config_with_runtime(
             fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
             background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()
                 .unwrap(),
+            pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission::new(2).unwrap(),
+            storage_baseline_observer: Default::default(),
             home,
             workspace_cache: None,
         }),
@@ -300,6 +301,7 @@ fn build_mock_run_config_with_runtime(
             test_observer: start_observer.clone(),
             before_initial_workspace_cache_scan: None,
             after_initial_workspace_cache_scan: None,
+            manual_routine_heartbeat_rx: None,
         },
     };
 

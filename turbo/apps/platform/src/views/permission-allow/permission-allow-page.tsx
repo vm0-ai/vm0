@@ -4,7 +4,8 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Button } from "@okouai/ui";
 import { AlertTriangle, Ban, Check, Loader2 } from "lucide-react";
-import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/user-permission-grants";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-contracts";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,
@@ -36,8 +37,8 @@ import { isActiveUserPermissionGrant } from "../../signals/user-permission-grant
 import { detach, Reason } from "../../signals/utils.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
-import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
-import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
+import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
+import { AvatarFromUrl } from "../okou-page/sidebar-shared.tsx";
 import {
   routeChatActionCallback$,
   runChatActionCallback$,
@@ -131,9 +132,11 @@ function ConnectorPermissionCard({
           <span className="min-w-0 flex-1 text-sm text-foreground truncate">
             {permission.description ?? permission.name}
           </span>
-          <code className="shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-sky-700">
-            {permission.name}
-          </code>
+          {permission.name !== UNKNOWN_PERMISSION_GRANT && (
+            <code className="shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-sky-700">
+              {permission.name}
+            </code>
+          )}
         </div>
       </div>
     </div>

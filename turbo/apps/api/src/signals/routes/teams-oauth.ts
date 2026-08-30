@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { teamsBotDisplayName } from "../../lib/teams-official-app";
 import { publicBrand$, request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
@@ -43,7 +44,7 @@ interface OAuthState {
   readonly userId: string | null;
   readonly prompt: string | null;
   readonly publicBrand: PublicBrand;
-  readonly redirectUri: string | null;
+  readonly redirectUri: string;
 }
 
 interface MicrosoftTeamsUserInfo {
@@ -101,6 +102,7 @@ function settingsErrorRedirect(
 function settingsSuccessRedirect(args: {
   readonly tenantName?: string | null;
   readonly teamName?: string | null;
+  readonly botName?: string | null;
   readonly publicBrand: PublicBrand;
 }): Response {
   const params = new URLSearchParams({ status: "connected" });
@@ -110,6 +112,7 @@ function settingsSuccessRedirect(args: {
   if (args.teamName) {
     params.set("teamName", args.teamName);
   }
+  params.set("botName", teamsBotDisplayName(args.botName));
   return redirectResponse(
     appUrl(`/settings/teams?${params.toString()}`, args.publicBrand),
   );
@@ -139,35 +142,26 @@ function optionalString(value: unknown): string | null {
 
 function parseOAuthState(state: string | undefined): OAuthState | null {
   if (!state) {
-    return {
-      orgId: null,
-      userId: null,
-      prompt: null,
-      publicBrand: "vm0",
-      redirectUri: null,
-    };
+    return null;
   }
 
   const parsed = safeJsonParse(state);
   if (typeof parsed !== "object" || parsed === null) {
-    return {
-      orgId: null,
-      userId: null,
-      prompt: null,
-      publicBrand: "vm0",
-      redirectUri: null,
-    };
+    return null;
   }
 
   const record = parsed as Record<string, unknown>;
+  const publicBrand = record.publicBrand;
+  const redirectUri = optionalString(record.redirectUri);
+  if ((publicBrand !== "vm0" && publicBrand !== "okou") || !redirectUri) {
+    return null;
+  }
   return {
     orgId: optionalString(record.orgId),
     userId: optionalString(record.userId),
     prompt: optionalString(record.prompt),
-    // Old web/app OAuth state can omit publicBrand for about two days.
-    // Remove this VM0 default in #27660 after legacy states have drained.
-    publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
-    redirectUri: optionalString(record.redirectUri),
+    publicBrand,
+    redirectUri,
   };
 }
 
@@ -185,29 +179,6 @@ function callbackRedirectUri(origin: string, publicBrand: PublicBrand): string {
   return publicBrand === "okou"
     ? `${apiUrlForPublicBrand(origin, "okou")}/api/integrations/teams/oauth/callback`
     : `${apiUrlForPublicBrand(origin, "vm0")}/api/zero/teams/oauth/callback`;
-}
-
-/**
- * Rollout fallback for #28300. State written by the previous API build carries
- * no redirect URI, and that build sent this exact value for both brands: the
- * unprojected origin plus the legacy path. Microsoft rejects a token request
- * whose redirect_uri differs from the authorization request, so an
- * authorization started before this deploy can only be completed against it.
- *
- * Only Okou-brand authorizations actually depend on this. The VM0 brand keeps
- * emitting the legacy path above, so its old and new values are identical.
- *
- * Surface: a browser-held Microsoft consent page, so it is bounded by the old
- * web/app client window of ~2 days rather than by the API deploy gap. The
- * authorization request is not persisted anywhere and carries no expiry of our
- * own, so nothing shortens that window.
- *
- * Removable once no authorization started before this deploy can still be
- * presented, and the previous build is outside the production rollback window.
- * Follow-up: #28303.
- */
-function legacyCallbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/teams/oauth/callback`;
 }
 
 function microsoftCredentials(): {
@@ -399,7 +370,6 @@ const connectOauth$ = command(({ get }) => {
 });
 
 const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const request = get(request$).raw;
   const credentials = microsoftCredentials();
   if (!credentials) {
     return jsonErrorResponse(
@@ -436,9 +406,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
         clientId: credentials.clientId,
         clientSecret: credentials.clientSecret,
         code: query.code,
-        redirectUri:
-          state.redirectUri ??
-          legacyCallbackRedirectUri(getOAuthApiOrigin(request)),
+        redirectUri: state.redirectUri,
       },
       signal,
     ),
@@ -509,6 +477,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   return settingsSuccessRedirect({
     tenantName: result.installation.teamsTenantName,
     teamName: result.installation.teamsTeamName,
+    botName: result.installation.botName,
     publicBrand: state.publicBrand,
   });
 });

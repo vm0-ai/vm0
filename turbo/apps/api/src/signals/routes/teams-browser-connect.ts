@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { teamsBotDisplayName } from "../../lib/teams-official-app";
 import { requiredAuthContext$ } from "../auth/auth-context";
 import { publicBrand$, request$ } from "../context/hono";
 import { queryOf } from "../context/request";
@@ -45,6 +46,7 @@ function teamsSettingsParams(
     readonly upn?: string;
     readonly teamId?: string;
     readonly teamName?: string;
+    readonly botName?: string;
     readonly serviceUrl?: string;
     readonly conversationId?: string;
     readonly conversationType?: string;
@@ -129,6 +131,7 @@ function connectSuccess(
   installation: {
     readonly teamsTenantName?: string | null;
     readonly teamsTeamName?: string | null;
+    readonly botName?: string | null;
   },
   publicBrand: PublicBrand,
 ): Response {
@@ -136,6 +139,7 @@ function connectSuccess(
     status: "connected",
     tenantName: installation.teamsTenantName,
     teamName: installation.teamsTeamName,
+    botName: teamsBotDisplayName(installation.botName),
   });
   return appRedirect(`/settings/teams?${params.toString()}`, publicBrand);
 }

@@ -14,6 +14,7 @@ const OTHER_AGENT_ID = "00000000-0000-4000-8000-000000000102";
 const THREAD_ID = "00000000-0000-4000-8000-000000000201";
 const SECOND_THREAD_ID = "00000000-0000-4000-8000-000000000202";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000203";
+const THIRD_THREAD_ID = "00000000-0000-4000-8000-000000000204";
 const INITIAL_EVENT_ID = "00000000-0000-4000-8000-000000000301";
 const RENAME_EVENT_ID = "00000000-0000-4000-8000-000000000302";
 const SORT_EVENT_ID = "00000000-0000-4000-8000-000000000303";
@@ -24,6 +25,7 @@ const SORT_SEQ_ID = 3;
 const REFRESH_SEQ_ID = 4;
 const SNAPSHOT_URL = "http://localhost:3000/api/chat-threads/snapshot";
 const EVENTS_URL = "http://localhost:3000/api/chat-threads/events";
+const UNREADS_URL = "http://localhost:3000/api/chat-thread-unreads";
 
 function okouToken(): string {
   const payload = Buffer.from(
@@ -71,6 +73,23 @@ function event(options: {
   };
 }
 
+function mockStableThreadSnapshot(
+  threads: readonly ReturnType<typeof snapshotThread>[],
+): void {
+  server.use(
+    http.get(SNAPSHOT_URL, () => {
+      return HttpResponse.json({
+        chatThreads: threads,
+        latestEventId: INITIAL_EVENT_ID,
+        latestSeqId: INITIAL_SEQ_ID,
+      });
+    }),
+    http.get(EVENTS_URL, () => {
+      return HttpResponse.json({ events: [], hasMore: false });
+    }),
+  );
+}
+
 describe("okou chat list command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
@@ -84,7 +103,7 @@ describe("okou chat list command", () => {
   beforeEach(async () => {
     chalk.level = 0;
     cacheDirectory = await mkdtemp(join(tmpdir(), "chat-list-"));
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", okouToken());
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("XDG_CACHE_HOME", cacheDirectory);
@@ -313,6 +332,237 @@ describe("okou chat list command", () => {
         ],
       },
     );
+  });
+
+  it("filters unread threads before the limit and orders equal timestamps deterministically", async () => {
+    const unreadAt = "2026-07-24T06:00:00.000Z";
+    mockStableThreadSnapshot([
+      snapshotThread({
+        id: THIRD_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Newest but read",
+        sortAt: "2026-07-24T07:00:00.000Z",
+      }),
+      snapshotThread({
+        id: THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Unread one",
+        sortAt: "2026-07-24T03:00:00.000Z",
+      }),
+      snapshotThread({
+        id: SECOND_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Unread two",
+        sortAt: "2026-07-24T02:00:00.000Z",
+      }),
+      snapshotThread({
+        id: OTHER_THREAD_ID,
+        agentId: OTHER_AGENT_ID,
+        title: "Other agent unread",
+        sortAt: "2026-07-24T08:00:00.000Z",
+      }),
+    ]);
+    let unreadRequests = 0;
+    server.use(
+      http.get(UNREADS_URL, ({ request }) => {
+        unreadRequests++;
+        expect(new URL(request.url).searchParams.get("agentId")).toBe(AGENT_ID);
+        return HttpResponse.json({
+          unreads: [
+            { threadId: THREAD_ID, unreadAt },
+            { threadId: SECOND_THREAD_ID, unreadAt },
+            {
+              threadId: OTHER_THREAD_ID,
+              unreadAt: "2026-07-24T09:00:00.000Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    await chatCommand.parseAsync([
+      "node",
+      "cli",
+      "list",
+      "--unread",
+      "--limit",
+      "1",
+      "--json",
+    ]);
+
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      {
+        agentId: AGENT_ID,
+        total: 2,
+        threads: [
+          expect.objectContaining({
+            id: SECOND_THREAD_ID,
+            agentId: AGENT_ID,
+            unreadAt,
+          }),
+        ],
+      },
+    );
+
+    mockConsoleLog.mockClear();
+    await chatCommand.parseAsync([
+      "node",
+      "cli",
+      "list",
+      "--agent",
+      AGENT_ID,
+      "--unread",
+      "--limit",
+      "2",
+    ]);
+    const humanOutput = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(humanOutput).toContain("UNREAD AT");
+    expect(humanOutput).toContain("2026-07-24T06:00:00Z");
+    expect(humanOutput.indexOf(SECOND_THREAD_ID)).toBeLessThan(
+      humanOutput.indexOf(THREAD_ID),
+    );
+    expect(unreadRequests).toBe(2);
+  });
+
+  it("fans unread requests across snapshot agents with bounded concurrency", async () => {
+    const agentIds = Array.from({ length: 6 }, (_, index) => {
+      return `00000000-0000-4000-8000-${String(110 + index).padStart(12, "0")}`;
+    });
+    const threads = agentIds.map((agentId, index) => {
+      return snapshotThread({
+        id: `00000000-0000-4000-8000-${String(210 + index).padStart(12, "0")}`,
+        agentId,
+        title: `Agent ${index}`,
+        sortAt: new Date(
+          Date.parse("2026-07-24T01:00:00.000Z") + index * 1000,
+        ).toISOString(),
+      });
+    });
+    mockStableThreadSnapshot(threads);
+    const threadByAgent = new Map(
+      threads.map((thread) => {
+        return [thread.agentId, thread] as const;
+      }),
+    );
+    const requestedAgentIds = new Set<string>();
+    let requestCount = 0;
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    let releaseRequests: (() => void) | undefined;
+    const requestGate = new Promise<void>((resolve) => {
+      releaseRequests = resolve;
+    });
+    server.use(
+      http.get(UNREADS_URL, async ({ request }) => {
+        const url = new URL(request.url);
+        expect([...url.searchParams.keys()]).toStrictEqual(["agentId"]);
+        const agentId = url.searchParams.get("agentId");
+        if (!agentId) {
+          throw new Error("Expected an unread request agentId");
+        }
+        const thread = threadByAgent.get(agentId);
+        if (!thread) {
+          throw new Error(`Unexpected unread request for ${agentId}`);
+        }
+        requestedAgentIds.add(agentId);
+        requestCount += 1;
+        activeRequests += 1;
+        maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+        if (requestCount <= 4) {
+          await requestGate;
+        }
+        activeRequests -= 1;
+        return HttpResponse.json({
+          unreads: [{ threadId: thread.id, unreadAt: thread.sortAt }],
+        });
+      }),
+    );
+
+    const parsing = chatCommand.parseAsync([
+      "node",
+      "cli",
+      "list",
+      "--unread",
+      "--all-agents",
+      "--json",
+    ]);
+    await expect
+      .poll(() => {
+        return requestCount;
+      })
+      .toBeGreaterThanOrEqual(4);
+    const firstWaveRequests = requestCount;
+    if (!releaseRequests) {
+      throw new Error("Expected the unread request gate to be initialized");
+    }
+    releaseRequests();
+    await parsing;
+
+    expect(firstWaveRequests).toBe(4);
+    expect(maxActiveRequests).toBe(4);
+    expect(requestedAgentIds).toStrictEqual(new Set(agentIds));
+    const output = JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0])) as {
+      readonly allAgents: boolean;
+      readonly total: number;
+      readonly threads: readonly {
+        readonly id: string;
+        readonly agentId: string;
+        readonly unreadAt: string;
+      }[];
+    };
+    expect(output.allAgents).toBe(true);
+    expect(output.total).toBe(6);
+    expect(output.threads).toHaveLength(6);
+    expect(output.threads[0]).toMatchObject({
+      id: threads.at(-1)?.id,
+      agentId: threads.at(-1)?.agentId,
+      unreadAt: threads.at(-1)?.sortAt,
+    });
+  });
+
+  it("rejects --all-agents with --agent", async () => {
+    await expect(async () => {
+      await chatCommand.parseAsync([
+        "node",
+        "cli",
+        "list",
+        "--all-agents",
+        "--agent",
+        AGENT_ID,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("--all-agents and --agent are mutually exclusive");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("keeps human output unchanged without new flags and reports empty unread results", async () => {
+    mockStableThreadSnapshot([
+      snapshotThread({
+        id: THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Existing human row",
+        sortAt: "2026-07-24T03:00:00.000Z",
+      }),
+    ]);
+    server.use(
+      http.get(UNREADS_URL, () => {
+        return HttpResponse.json({ unreads: [] });
+      }),
+    );
+
+    await chatCommand.parseAsync(["node", "cli", "list"]);
+    const existingOutput = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(existingOutput).toContain("THREAD ID");
+    expect(existingOutput).toContain("SORTED");
+    expect(existingOutput).toContain("PINNED");
+    expect(existingOutput).not.toContain("UNREAD AT");
+    expect(existingOutput).not.toContain("AGENT ID");
+
+    mockConsoleLog.mockClear();
+    await chatCommand.parseAsync(["node", "cli", "list", "--unread"]);
+    expect(mockConsoleLog).toHaveBeenCalledWith("No unread chat threads found");
   });
 
   it("requires an agent id from --agent or OKOU_AGENT_ID", async () => {

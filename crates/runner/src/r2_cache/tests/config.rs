@@ -6,7 +6,7 @@ use crate::test_fixtures::ignored_child::{
 
 use super::super::{R2Error, R2ImageCache, config::ENV_VARS, keys::key_for_template_hash};
 
-const R2_ENV_CHILD_SCENARIO: &str = "VM0_RUNNER_R2_ENV_TEST_SCENARIO";
+const R2_ENV_CHILD_SCENARIO: &str = "OKOU_RUNNER_R2_ENV_TEST_SCENARIO";
 const R2_ENV_CHILD_TEST: &str = "r2_cache::tests::config::from_env_child";
 const R2_ENV_CHILD_TIMEOUT: Duration = Duration::from_secs(10);
 const ALL_MISSING_SCENARIO: &str = "all-missing";

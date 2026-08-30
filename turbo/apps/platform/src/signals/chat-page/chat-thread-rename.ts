@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { chatThreadMetaMap$ } from "./chat-thread-event-sourcing.ts";
-import { openRenameChatThreadDialog$ } from "../zero-page/zero-sidebar-state.ts";
+import { openRenameChatThreadDialog$ } from "../okou-page/sidebar-state.ts";
 import { renameChatThread$ } from "./chat-event.ts";
 import {
   applyChatThreadEmoji,

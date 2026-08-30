@@ -1,5 +1,5 @@
 use sandbox::{ExecResult, ExecTermination, Sandbox};
-use sandbox_mock::MockSandbox;
+use sandbox_mock::{GuestStateRestoreTimezoneCall, MockSandbox};
 use tracing::Level;
 use tracing_subscriber::prelude::*;
 
@@ -12,90 +12,56 @@ use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
 #[tokio::test]
-async fn restore_guest_state_combines_clock_sync_and_reseed() {
+async fn restore_guest_state_uses_fixed_restore_operation() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();
 
     restore_guest_state(&sandbox, &ctx).await.unwrap();
 
-    let calls = sandbox.exec_calls();
+    let calls = sandbox.guest_state_restore_calls();
     assert_eq!(calls.len(), 1);
-    let clock_sync_index = calls[0]
-        .cmd
-        .find("date -s \"@")
-        .expect("guest state restore should sync the clock first");
-    let reseed_index = calls[0]
-        .cmd
-        .find("guest-reseed")
-        .expect("guest state restore should reseed entropy");
-    assert!(clock_sync_index < reseed_index);
-    assert!(calls[0].cmd.contains("guest clock sync failed"));
-    assert!(calls[0].cmd.contains("guest-reseed failed"));
-    assert!(calls[0].cmd.contains("/usr/share/zoneinfo/UTC"));
-    assert!(calls[0].cmd.contains("echo 'TZ=UTC' >> /etc/environment"));
-    assert!(calls[0].sudo);
-    let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
-    assert_eq!(stdin_bytes.len(), 256);
+    assert!(calls[0].unix_seconds > 0);
+    assert!(calls[0].unix_nanoseconds < 1_000_000_000);
+    assert_eq!(calls[0].entropy_len, 256);
+    assert_eq!(
+        calls[0].timezone,
+        GuestStateRestoreTimezoneCall::BestEffort("UTC".into())
+    );
+    assert_eq!(calls[0].timeout, super::super::DEFAULT_EXEC_TIMEOUT);
+    assert!(sandbox.exec_calls().is_empty());
 }
 
 #[tokio::test]
-async fn restore_guest_state_folds_timezone_sync_into_restore_exec() {
+async fn restore_guest_state_passes_best_effort_timezone_to_fixed_operation() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.user_timezone = Some("Asia/Shanghai".into());
 
     restore_guest_state(&sandbox, &ctx).await.unwrap();
 
-    let calls = sandbox.exec_calls();
+    let calls = sandbox.guest_state_restore_calls();
     assert_eq!(calls.len(), 1);
-    let command = &calls[0].cmd;
-    let clock_sync_index = command
-        .find("date -s \"@")
-        .expect("guest state restore should sync the clock first");
-    let reseed_index = command
-        .find("guest-reseed")
-        .expect("guest state restore should reseed entropy");
-    let timezone_index = command
-        .find("echo 'Asia/Shanghai' > /etc/timezone")
-        .expect("guest state restore should include timezone sync");
-    assert!(clock_sync_index < reseed_index);
-    assert!(reseed_index < timezone_index);
-    assert!(command.contains("guest clock sync failed"));
-    assert!(command.contains("guest-reseed failed"));
-    assert!(command.contains("guest timezone sync failed"));
-    assert!(
-        command.contains(
-            "if test -f /usr/share/zoneinfo/Asia/Shanghai; then { echo 'Asia/Shanghai' > /etc/timezone"
-        ),
-        "unexpected command: {command}"
+    assert_eq!(
+        calls[0].timezone,
+        GuestStateRestoreTimezoneCall::BestEffort("Asia/Shanghai".into())
     );
-    assert!(calls[0].sudo);
-    let stdin_bytes = calls[0].stdin_bytes.as_ref().unwrap();
-    assert_eq!(stdin_bytes.len(), 256);
+    assert!(sandbox.exec_calls().is_empty());
 }
 
 #[tokio::test]
-async fn restore_guest_state_with_explicit_timezone_requires_zone_in_restore_exec() {
+async fn restore_guest_state_with_explicit_timezone_requires_zone_in_fixed_operation() {
     let sandbox = MockSandbox::new("test");
 
     restore_guest_state_with_timezone(&sandbox, "UTC")
         .await
         .unwrap();
 
-    let calls = sandbox.exec_calls();
+    let calls = sandbox.guest_state_restore_calls();
     assert_eq!(calls.len(), 1);
-    let command = &calls[0].cmd;
-    assert!(command.contains("date -s \"@"));
-    assert!(command.contains("guest-reseed"));
-    assert!(
-        command.contains(
-            "test -f /usr/share/zoneinfo/UTC || { echo \"guest timezone unavailable\" >&2; exit 1; }"
-        ),
-        "unexpected command: {command}"
+    assert_eq!(
+        calls[0].timezone,
+        GuestStateRestoreTimezoneCall::Required("UTC".into())
     );
-    assert!(command.contains("echo 'TZ=UTC' >> /etc/environment"));
-    assert!(command.contains("guest timezone sync failed"));
-    assert!(command.contains("exit \"$status\""));
 }
 
 #[tokio::test]
@@ -151,7 +117,7 @@ async fn restore_guest_state_with_explicit_timezone_rejects_invalid_timezone_bef
             && !message.contains("IANA"),
         "unexpected error: {message}"
     );
-    assert!(sandbox.exec_calls().is_empty());
+    assert!(sandbox.guest_state_restore_calls().is_empty());
 }
 
 #[tokio::test]
@@ -162,12 +128,9 @@ async fn restore_guest_state_rejects_invalid_timezone_without_extra_exec() {
 
     restore_guest_state(&sandbox, &ctx).await.unwrap();
 
-    let calls = sandbox.exec_calls();
+    let calls = sandbox.guest_state_restore_calls();
     assert_eq!(calls.len(), 1);
-    assert!(calls[0].cmd.contains("date -s \"@"));
-    assert!(calls[0].cmd.contains("guest-reseed"));
-    assert!(!calls[0].cmd.contains("UTC;id"));
-    assert!(!calls[0].cmd.contains("guest timezone sync failed"));
+    assert_eq!(calls[0].timezone, GuestStateRestoreTimezoneCall::None);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -214,6 +177,54 @@ async fn restore_guest_state_logs_embedded_timezone_failure_without_failing_rest
             .fields
             .get("stderr_excerpt")
             .is_some_and(|value| value.contains("guest timezone sync failed")),
+        "event={event:#?}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn restore_guest_state_logs_unavailable_best_effort_timezone_without_failing_restore() {
+    let sandbox = MockSandbox::new("test");
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        Vec::new(),
+        b"guest timezone unavailable".to_vec(),
+    )));
+    let mut ctx = minimal_context();
+    ctx.user_timezone = Some("Mars/Olympus".into());
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+
+    restore_guest_state(&sandbox, &ctx).await.unwrap();
+
+    let events = captured.entries();
+    let event = events
+        .iter()
+        .find(|event| {
+            event.level == Level::WARN
+                && event.fields.get("message").map(String::as_str)
+                    == Some("failed to set guest timezone")
+        })
+        .unwrap_or_else(|| panic!("missing timezone warning; events={events:#?}"));
+    let run_id = RunId::nil().to_string();
+    assert_eq!(
+        event.fields.get("run_id").map(String::as_str),
+        Some(run_id.as_str())
+    );
+    assert_eq!(
+        event.fields.get("tz").map(String::as_str),
+        Some("Mars/Olympus")
+    );
+    assert_eq!(
+        event.fields.get("termination").map(String::as_str),
+        Some("exited")
+    );
+    assert!(
+        event
+            .fields
+            .get("stderr_excerpt")
+            .is_some_and(|value| value.contains("guest timezone unavailable")),
         "event={event:#?}"
     );
 }

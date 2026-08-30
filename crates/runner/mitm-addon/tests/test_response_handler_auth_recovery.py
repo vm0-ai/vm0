@@ -29,9 +29,9 @@ from tests.registry_helpers import write_simple_registry
 def test_401_firewall_cache_invalidation(real_flow, mitm_ctx, headers):
     """401 response with firewall_base pops the cache entry and marks force-refresh (#9860)."""
     flow = real_flow(with_response=False, host="api.github.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-1"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-conn-1"
 
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-1:0"
@@ -42,7 +42,10 @@ def test_401_firewall_cache_invalidation(real_flow, mitm_ctx, headers):
     # Pre-populate firewall header cache with the request auth identity key.
     cache_key = auth_cache_key(run_id="run-conn-1", api_id="run-conn-1:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer old-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
 
     with mitm_ctx():
         mitm_addon.response(flow)
@@ -59,9 +62,9 @@ def test_invalid_content_length_without_network_log_does_not_block_401_cache_inv
 ):
     """Malformed log-only response size metadata must not block 401 auth recovery."""
     flow = real_flow(with_response=False, host="api.github.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-invalid-length"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-conn-invalid-length"
 
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-invalid-length:0"
@@ -77,7 +80,10 @@ def test_invalid_content_length_without_network_log_does_not_block_401_cache_inv
         api_id="run-conn-invalid-length:0",
     )
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer old-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
 
     with mitm_ctx():
         mitm_addon.response(flow)
@@ -92,9 +98,9 @@ def test_invalid_content_length_with_network_log_does_not_block_401_cache_invali
     """Malformed network-log response size metadata must not block 401 auth recovery."""
     flow = real_flow(with_response=False, host="api.github.com")
     log_path = str(tmp_path / "network.jsonl")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-invalid-length-log"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-conn-invalid-length-log"
 
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-invalid-length-log:0"
@@ -116,7 +122,10 @@ def test_invalid_content_length_with_network_log_does_not_block_401_cache_invali
         api_id="run-conn-invalid-length-log:0",
     )
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer old-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
 
     with mitm_ctx():
         mitm_addon.response(flow)
@@ -134,8 +143,8 @@ def test_late_401_does_not_recreate_registry_evicted_auth_state(tmp_path, real_f
     registry.load_registry_state(str(registry_file))
 
     flow = real_flow(with_response=False, host="api.github.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-old"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-conn-old"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-old:0"
@@ -144,9 +153,12 @@ def test_late_401_does_not_recreate_registry_evicted_auth_state(tmp_path, real_f
 
     cache_key = auth_cache_key(run_id="run-conn-old", api_id="run-conn-old:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer old-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
 
-    registry_file.write_text('{"updatedAt": 1, "vms": {}}')
+    registry_file.write_text('{"updatedAt": 1, "sandboxes": {}}')
     removed_run_state = registry.load_registry_state(str(registry_file))
     assert not has_auth_state(cache_key)
 
@@ -164,8 +176,8 @@ def test_401_within_cooldown_does_not_re_mark(real_flow, mitm_ctx, headers):
     level reject) would amplify into a loop of OAuth refresh calls and
     hit the provider's rate limits (#9860)."""
     flow = real_flow(with_response=False, host="api.github.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-cd"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-conn-cd"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-cd:0"
@@ -174,7 +186,10 @@ def test_401_within_cooldown_does_not_re_mark(real_flow, mitm_ctx, headers):
 
     cache_key = auth_cache_key(run_id="run-conn-cd", api_id="run-conn-cd:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer cached-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
     # Simulate: a forced refresh JUST completed a moment ago
     set_last_force_refresh_monotonic_at(cache_key, time.monotonic())
 
@@ -193,8 +208,8 @@ def test_401_after_cooldown_re_marks(real_flow, mitm_ctx, headers):
     rate limit only throttles, it doesn't permanently lock out real
     token-invalidation recovery (#9860)."""
     flow = real_flow(with_response=False, host="api.github.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-re"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-conn-re"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-re:0"
@@ -203,6 +218,10 @@ def test_401_after_cooldown_re_marks(real_flow, mitm_ctx, headers):
 
     cache_key = auth_cache_key(run_id="run-conn-re", api_id="run-conn-re:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer cached-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
     # Simulate: last forced refresh happened well before the cooldown window
     set_last_force_refresh_monotonic_at(cache_key, 0.0)
 
@@ -216,8 +235,8 @@ def test_401_after_cooldown_re_marks(real_flow, mitm_ctx, headers):
 def test_401_after_cooldown_re_marks_when_wall_clock_steps_back(real_flow, mitm_ctx, headers):
     """Cooldown uses monotonic elapsed time, not wall-clock time."""
     flow = real_flow(with_response=False, host="api.github.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-skew"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-conn-skew"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-skew:0"
@@ -226,7 +245,10 @@ def test_401_after_cooldown_re_marks_when_wall_clock_steps_back(real_flow, mitm_
 
     cache_key = auth_cache_key(run_id="run-conn-skew", api_id="run-conn-skew:0")
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
-    set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
+    cache_entry_identity = set_cached_headers(
+        cache_key, headers={"Authorization": "Bearer cached-token"}
+    )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = cache_entry_identity
     set_last_force_refresh_monotonic_at(cache_key, 1000.0)
 
     with (
@@ -243,8 +265,8 @@ def test_401_after_cooldown_re_marks_when_wall_clock_steps_back(real_flow, mitm_
 def test_401_without_auth_cache_key_does_not_synthesize_state(real_flow, mitm_ctx, headers):
     """401 invalidation requires the full request auth identity cache key."""
     flow = real_flow(with_response=False, host="api.github.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-no-key"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-conn-no-key"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
     flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-no-key:0"

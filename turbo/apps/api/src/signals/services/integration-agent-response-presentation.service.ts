@@ -140,7 +140,7 @@ export async function resolveIntegrationAgentResponsePresentation(
     Object.keys(overrides).length > 0
       ? (overrides as Partial<Record<FeatureSwitchKey, boolean>>)
       : undefined;
-  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.OkouDebug, {
     userId: args.userId,
     orgId: args.orgId,
     overrides: typedOverrides,

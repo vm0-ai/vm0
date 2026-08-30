@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroPersonalModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { personalModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/personal-model-providers";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -11,9 +11,7 @@ import type { RouteEntry } from "../route-entry";
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
-  const params = get(
-    pathParamsOf(zeroPersonalModelProvidersByTypeContract.delete),
-  );
+  const params = get(pathParamsOf(personalModelProvidersByTypeContract.delete));
   signal.throwIfAborted();
 
   const result = await set(
@@ -31,7 +29,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const meModelProvidersDeleteRoutes: readonly RouteEntry[] = [
   {
-    route: zeroPersonalModelProvidersByTypeContract.delete,
+    route: personalModelProvidersByTypeContract.delete,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       deleteInner$,

@@ -1,0 +1,1 @@
+ALTER TABLE "chat_telegram_context" ADD COLUMN "public_brand" text;

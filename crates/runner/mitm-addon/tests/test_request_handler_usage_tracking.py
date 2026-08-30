@@ -8,15 +8,18 @@ from typing import Never
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mitmproxy import http
 from mitmproxy.flow import Error
 
 import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import terminal_usage
 import usage
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.flow_helpers import response_stream
 from tests.pending_helpers import assert_pending
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
 
 _X_FIREWALL_NAME = "x"
@@ -126,11 +129,11 @@ def _write_billable_x_tracking_registry(
     tmp_path: Path,
     *,
     include_encrypted_secrets: bool = True,
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ) -> Path:
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name=_X_FIREWALL_NAME,
             api_entry={
@@ -146,7 +149,7 @@ def _write_billable_x_tracking_registry(
             },
             billable_firewalls=[_X_FIREWALL_NAME],
             include_encrypted_secrets=include_encrypted_secrets,
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -155,7 +158,7 @@ def _write_model_provider_tracking_registry(
     tmp_path: Path,
     *,
     billable: bool = False,
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
     registry_dir: Path | None = None,
     run_id: str = _DEFAULT_RUN_ID,
     sandbox_marker: str = _DEFAULT_SANDBOX_MARKER,
@@ -164,7 +167,7 @@ def _write_model_provider_tracking_registry(
     registry_root.mkdir(parents=True, exist_ok=True)
     return _write_registry(
         registry_root,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             registry_root,
             run_id=run_id,
             sandbox_marker=sandbox_marker,
@@ -181,7 +184,7 @@ def _write_model_provider_tracking_registry(
                 "unknownPolicy": "deny",
             },
             billable_firewalls=[_MODEL_PROVIDER_FIREWALL_NAME] if billable else None,
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -209,7 +212,7 @@ def _model_provider_tracking_flow(real_flow):
 def _write_billable_auth_url_rewrite_registry(tmp_path: Path) -> Path:
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             run_id="run-rewrite-1",
             sandbox_marker="tok-rewrite",
@@ -249,7 +252,70 @@ def _auth_url_rewrite_token_meta() -> dict[str, object]:
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
+
+
+@pytest.mark.parametrize(
+    ("firewall_billable", "model_usage_observable"),
+    [(True, False), (False, True)],
+)
+def test_repeated_eligibility_checks_keep_one_usage_flow_in_flight(
+    usage_pending_path,
+    real_flow,
+    firewall_billable,
+    model_usage_observable,
+):
+    """One flow owns one drain unit across changed eligibility signals."""
+    flow = _model_provider_tracking_flow(real_flow)
+
+    terminal_usage.track_flow_if_needed(
+        flow,
+        firewall_billable,
+        model_usage_observable,
+    )
+    usage.write_pending_snapshot(flush_request_id="after-first-admission")
+    assert_pending(
+        usage_pending_path,
+        flows=1,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-first-admission",
+    )
+
+    terminal_usage.track_flow_if_needed(
+        flow,
+        not firewall_billable,
+        not model_usage_observable,
+    )
+    usage.write_pending_snapshot(flush_request_id="after-repeated-admission")
+    assert_pending(
+        usage_pending_path,
+        flows=1,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-repeated-admission",
+    )
+
+    terminal_usage.release_tracked_flow(flow)
+    usage.write_pending_snapshot(flush_request_id="after-release")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-release",
+    )
+
+    terminal_usage.release_tracked_flow(flow)
+    usage.write_pending_snapshot(flush_request_id="after-repeated-release")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-repeated-release",
+    )
 
 
 async def test_billable_flow_is_tracked_before_responseheaders(
@@ -328,7 +394,7 @@ async def test_header_phase_streamed_billable_flow_error_releases_tracking(
 ):
     reg_path = _write_billable_x_tracking_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = _x_tracking_flow(real_flow)
 
@@ -538,7 +604,10 @@ async def test_unexpected_request_exception_releases_tracking(
             reports=0,
             flush_request_id="during-auth-failure",
         )
-        return {"headers": _UnexpectedAuthHeaders({"Authorization": "Bearer resolved-token"})}
+        return {
+            "headers": _UnexpectedAuthHeaders({"Authorization": "Bearer resolved-token"}),
+            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
+        }
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -551,6 +620,12 @@ async def test_unexpected_request_exception_releases_tracking(
     ):
         await mitm_addon.request(flow)
 
+    assert flow.response is not None
+    assert flow.response.status_code == 500
+    assert flow.response.json() == {
+        "error": "request_processing_failed",
+        "message": "Request processing failed",
+    }
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
@@ -587,6 +662,7 @@ async def test_request_cancellation_releases_tracking_during_auth_resolution(
     ):
         await mitm_addon.request(flow)
 
+    assert flow.response is None
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
@@ -641,7 +717,7 @@ async def test_non_billable_model_provider_with_invalid_model_usage_provider_is_
         tmp_path,
         run_id=_MODEL_PROVIDER_RUN_ID,
         sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
-        vm_fields={"modelUsageProvider": 123},
+        sandbox_fields={"modelUsageProvider": 123},
     )
     flow = _model_provider_tracking_flow(real_flow)
 
@@ -672,7 +748,7 @@ async def test_non_billable_observable_model_provider_is_tracked_before_response
         tmp_path,
         run_id=_MODEL_PROVIDER_RUN_ID,
         sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
-        vm_fields={"modelUsageProvider": "claude-sonnet-4-6"},
+        sandbox_fields={"modelUsageProvider": "claude-sonnet-4-6"},
     )
     flow = _model_provider_tracking_flow(real_flow)
 
@@ -704,7 +780,7 @@ async def test_billable_model_provider_records_model_usage_provider(
         billable=True,
         run_id=_MODEL_PROVIDER_RUN_ID,
         sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
-        vm_fields={
+        sandbox_fields={
             "cliAgentType": "codex",
             "modelUsageProvider": "claude-opus-4-6",
         },
@@ -728,6 +804,67 @@ async def test_billable_model_provider_records_model_usage_provider(
         buffered=0,
         reports=0,
         flush_request_id="request-1",
+    )
+
+
+async def test_billable_model_provider_rejects_uninspectable_response_and_drains_tracking(
+    tmp_path,
+    usage_pending_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    usage_webhook_server,
+):
+    reg_path = _write_model_provider_tracking_registry(
+        tmp_path,
+        billable=True,
+        sandbox_fields={"modelUsageProvider": "claude-sonnet-4-6"},
+    )
+    flow = _model_provider_tracking_flow(real_flow)
+    flow.request.headers["Accept-Encoding"] = "br, identity;q=0"
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+        assert flow.request.headers["Accept-Encoding"] == "br, identity;q=0"
+        usage.write_pending_snapshot(flush_request_id="before-response")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="before-response",
+        )
+
+        flow.response = http.Response.make(
+            200,
+            b"",
+            {
+                "Content-Type": "text/event-stream",
+                "Content-Encoding": "br",
+            },
+        )
+        mitm_addon.responseheaders(flow)
+
+        assert flow.response.status_code == 502
+        assert flow.response.content == b""
+        stream = response_stream(flow)
+        assert stream(b"uninspectable upstream bytes") == b""
+        assert stream(b"") == b""
+        mitm_addon.response(flow)
+        assert usage.flush_usage_events(trigger="test") == 0
+
+    assert usage_webhook_server.request_count == 0
+    usage.write_pending_snapshot(flush_request_id="after-response")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-response",
     )
 
 

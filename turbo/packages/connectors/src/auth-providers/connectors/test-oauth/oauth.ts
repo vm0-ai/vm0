@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { reportedOAuthScopes } from "../../oauth/scope";
 
 const TEST_OAUTH_AUTHORIZATION_URL = "/api/test/oauth-provider/authorize";
 const TEST_OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";
@@ -21,6 +22,10 @@ interface TokenResponse {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
+}
+
+interface GrantTokenResponse extends Omit<TokenResponse, "scopes"> {
   scopes: string[];
 }
 
@@ -75,6 +80,7 @@ function apiPreviewAliasFromWebUrl(
 }
 
 function runtimeBaseUrl(): string {
+  const configuredWebUrl = process.env.OKOU_WEB_URL;
   const configuredApiUrl = process.env.VM0_API_BACKEND_URL;
   if (configuredApiUrl && !isPreviewPlaceholder(configuredApiUrl)) {
     return (
@@ -87,7 +93,7 @@ function runtimeBaseUrl(): string {
     return apiPreviewAliasFromWebUrl(vercelUrl) ?? vercelUrl;
   }
 
-  const configuredFallbackUrls = [process.env.VM0_WEB_URL, process.env.APP_URL];
+  const configuredFallbackUrls = [configuredWebUrl, process.env.APP_URL];
   const concreteConfiguredFallbackUrl = configuredFallbackUrls.find((url) => {
     return url && !isPreviewPlaceholder(url);
   });
@@ -185,17 +191,18 @@ async function postToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope?.split(" ") ?? [],
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }
 
 export async function exchangeTestOAuthCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
-): Promise<TokenResponse> {
-  return postToken(
+): Promise<GrantTokenResponse> {
+  const token = await postToken(
     new URLSearchParams({
       grant_type: "authorization_code",
       client_id: clientId,
@@ -206,6 +213,10 @@ export async function exchangeTestOAuthCode(
     "exchange",
     undefined,
   );
+  return {
+    ...token,
+    scopes: token.scopes ?? [...authCodeGrant.scopes],
+  };
 }
 
 export async function refreshTestOAuthToken(

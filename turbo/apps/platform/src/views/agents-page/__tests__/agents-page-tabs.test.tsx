@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,33 +9,30 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
 const agents = [
-  {
-    id: "c0000000-0000-4000-a000-000000000001",
+  createMockAgentResponse({
+    agentId: "c0000000-0000-4000-a000-000000000001",
     ownerId: "user_alice",
     displayName: "Research Agent",
     description: "Tracks market updates",
     sound: null,
     avatarUrl: null,
     visibility: "public",
-    headVersionId: "version_1",
-    updatedAt: "2024-01-01T00:00:00Z",
-  },
-  {
-    id: "c0000000-0000-4000-a000-000000000002",
+  }),
+  createMockAgentResponse({
+    agentId: "c0000000-0000-4000-a000-000000000002",
     ownerId: "user_bob",
     displayName: "Private Ops",
     description: "Handles internal tasks",
     sound: null,
     avatarUrl: null,
     visibility: "private",
-    headVersionId: "version_2",
-    updatedAt: "2024-01-02T00:00:00Z",
-  },
-] satisfies TeamComposeItem[];
+  }),
+] satisfies AgentResponse[];
 
 function findAgentCard(name: string): HTMLElement | null {
   const nameElement = screen.queryAllByText(name).find((element) => {
@@ -78,7 +75,7 @@ async function expectVisibleTooltip(text: string): Promise<void> {
 describe("agents page (redesign)", () => {
   it("filters agents by tab and shows creator only on public cards", async () => {
     const user = userEvent.setup();
-    context.mocks.data.team(agents);
+    context.mocks.data.agents(agents);
     context.mocks.data.orgMembers({
       members: [
         {
@@ -139,7 +136,7 @@ describe("agents page (redesign)", () => {
 
   it("shows the private empty state when there are no private agents", async () => {
     const user = userEvent.setup();
-    context.mocks.data.team([agents[0]]);
+    context.mocks.data.agents([agents[0]]);
     context.mocks.data.orgMembers({ members: [] });
 
     detachedSetupPage({
@@ -158,14 +155,14 @@ describe("agents page (redesign)", () => {
 
   it("shows agent unread indicators", async () => {
     const user = userEvent.setup();
-    context.mocks.data.team(agents);
+    context.mocks.data.agents(agents);
     context.mocks.data.orgMembers({ members: [] });
 
     context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       return respond(200, {
         agents: {
-          [agents[0].id]: "unread",
-          [agents[1].id]: "unread",
+          [agents[0].agentId]: "unread",
+          [agents[1].agentId]: "unread",
         },
         threads: {},
       });

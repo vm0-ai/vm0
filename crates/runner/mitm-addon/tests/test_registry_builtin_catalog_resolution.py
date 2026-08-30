@@ -17,7 +17,7 @@ from tests.registry_builtin_helpers import (
     write_catalog_cache,
     write_registry_with_cache,
 )
-from tests.registry_helpers import builtin_vm, inline_vm, write_multi_vm_registry
+from tests.registry_helpers import builtin_sandbox, inline_sandbox, write_multi_sandbox_registry
 
 
 class TestRegistryBuiltinCatalogResolution:
@@ -134,29 +134,31 @@ class TestRegistryBuiltinCatalogResolution:
 
         assert str(error.value) == expected_message
 
-    def test_malformed_connector_runtime_targets_reject_only_affected_vm(self, tmp_path, mitm_ctx):
+    def test_malformed_connector_runtime_targets_reject_only_affected_sandbox(
+        self, tmp_path, mitm_ctx
+    ):
         registry_path = tmp_path / "registry.json"
-        malformed_vm = inline_vm("run-malformed")
-        malformed_vm["connectorRuntimeTargets"] = [{"kind": "unsupported"}]
-        write_multi_vm_registry(
+        malformed_sandbox = inline_sandbox("run-malformed")
+        malformed_sandbox["connectorRuntimeTargets"] = [{"kind": "unsupported"}]
+        write_multi_sandbox_registry(
             registry_path,
             {
-                "10.200.0.1": malformed_vm,
-                "10.200.0.2": inline_vm("run-valid"),
+                "10.200.0.1": malformed_sandbox,
+                "10.200.0.2": inline_sandbox("run-valid"),
             },
         )
 
         with mitm_ctx():
             state = registry.load_registry_state(str(registry_path))
-            malformed_context = registry.get_vm_context("10.200.0.1", str(registry_path))
-            valid_context = registry.get_vm_context("10.200.0.2", str(registry_path))
+            malformed_context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
+            valid_context = registry.get_sandbox_context("10.200.0.2", str(registry_path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert set(state.vms) == {"10.200.0.2"}
-        assert set(state.invalid_vms) == {"10.200.0.1"}
-        invalid_vm = state.invalid_vms["10.200.0.1"]
-        assert invalid_vm.reason == "invalid_firewalls"
-        assert invalid_vm.message == "connector runtime targets must use a supported kind"
+        assert set(state.sandboxes) == {"10.200.0.2"}
+        assert set(state.invalid_sandboxes) == {"10.200.0.1"}
+        invalid_sandbox = state.invalid_sandboxes["10.200.0.1"]
+        assert invalid_sandbox.reason == "invalid_firewalls"
+        assert invalid_sandbox.message == "connector runtime targets must use a supported kind"
         assert malformed_context is None
         assert valid_context is not None
         _, compiled_firewalls, _ = valid_context
@@ -164,11 +166,11 @@ class TestRegistryBuiltinCatalogResolution:
 
     def test_builtin_firewall_entry_resolves_from_catalog_cache(self, tmp_path, mitm_ctx):
         source_id = "550e8400-e29b-41d4-a716-446655440001"
-        vm = builtin_vm("run-github", "github")
-        vm["firewalls"][0]["sourceId"] = source_id
+        sandbox = builtin_sandbox("run-github", "github")
+        sandbox["firewalls"][0]["sourceId"] = source_id
         registry_path, cache_path = write_registry_with_cache(
             tmp_path,
-            {"10.200.0.1": vm},
+            {"10.200.0.1": sandbox},
             {"github": github_cache_firewall()},
         )
 
@@ -176,16 +178,16 @@ class TestRegistryBuiltinCatalogResolution:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["name"] == "github"
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://api.github.com"
-        assert vm_info["firewalls"][0]["apis"][0]["id"] == "run-github:0"
-        assert vm_info["firewalls"][0]["sourceId"] == source_id
-        assert vm_info["firewalls"][0]["apis"][0]["sourceId"] == source_id
+        assert sandbox_info["firewalls"][0]["name"] == "github"
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://api.github.com"
+        assert sandbox_info["firewalls"][0]["apis"][0]["id"] == "run-github:0"
+        assert sandbox_info["firewalls"][0]["sourceId"] == source_id
+        assert sandbox_info["firewalls"][0]["apis"][0]["sourceId"] == source_id
 
     def test_registered_custom_candidate_shadows_only_matching_builtin_api(
         self, tmp_path, mitm_ctx
@@ -193,7 +195,7 @@ class TestRegistryBuiltinCatalogResolution:
         custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
         builtin_name = "multi-api-service"
         custom_name = "custom_connector_550e8400e29b41d4a716446655440000"
-        vm = {
+        sandbox = {
             "runId": "run-overlap",
             "billableFirewalls": [],
             "cliAgentType": "claude-code",
@@ -255,7 +257,7 @@ class TestRegistryBuiltinCatalogResolution:
         }
         registry_path, cache_path = write_registry_with_cache(
             tmp_path,
-            {"10.200.0.1": vm},
+            {"10.200.0.1": sandbox},
             {builtin_name: catalog_firewall},
         )
 
@@ -263,7 +265,7 @@ class TestRegistryBuiltinCatalogResolution:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert context is not None
         _, compiled_firewalls, compiled_policies = context
@@ -292,12 +294,12 @@ class TestRegistryBuiltinCatalogResolution:
         marker = connector_runtime_metadata.CONNECTOR_RUNTIME_KIND_MARKER
         builtin = github_cache_firewall()
         builtin[marker] = "custom"
-        vm = builtin_vm("run-source-metadata", "github")
-        vm["connectorRuntimeTargets"] = [
+        sandbox = builtin_sandbox("run-source-metadata", "github")
+        sandbox["connectorRuntimeTargets"] = [
             {"kind": "builtin", "connectorSlug": "github"},
             {"kind": "custom", "customConnectorId": custom_connector_id},
         ]
-        vm["firewalls"].extend(
+        sandbox["firewalls"].extend(
             [
                 {
                     "kind": "inline",
@@ -320,7 +322,7 @@ class TestRegistryBuiltinCatalogResolution:
         )
         registry_path, cache_path = write_registry_with_cache(
             tmp_path,
-            {"10.200.0.1": vm},
+            {"10.200.0.1": sandbox},
             {"github": builtin},
         )
 
@@ -328,13 +330,13 @@ class TestRegistryBuiltinCatalogResolution:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert context is not None
-        vm_info, _, _ = context
-        assert vm_info["firewalls"][0][marker] == "builtin"
-        assert vm_info["firewalls"][1][marker] == "custom"
-        assert marker not in vm_info["firewalls"][2]
+        sandbox_info, _, _ = context
+        assert sandbox_info["firewalls"][0][marker] == "builtin"
+        assert sandbox_info["firewalls"][1][marker] == "custom"
+        assert marker not in sandbox_info["firewalls"][2]
 
     def test_custom_candidate_route_changes_reconcile_owner_and_billing(self, tmp_path, mitm_ctx):
         custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
@@ -369,7 +371,7 @@ class TestRegistryBuiltinCatalogResolution:
                     "unknownPolicy": "allow",
                 }
             }
-            vm: dict[str, object] = {
+            sandbox: dict[str, object] = {
                 "runId": "run-dynamic-owner",
                 "cliAgentType": "claude-code",
                 "connectorRuntimeTargets": [
@@ -381,7 +383,7 @@ class TestRegistryBuiltinCatalogResolution:
                 "billableFirewalls": [builtin_name],
             }
             if custom_base is None:
-                vm["omittedCustomConnectorIds"] = [custom_connector_id]
+                sandbox["omittedCustomConnectorIds"] = [custom_connector_id]
             else:
                 firewalls.append(
                     {
@@ -405,14 +407,14 @@ class TestRegistryBuiltinCatalogResolution:
                     "ask": [],
                     "unknownPolicy": "allow",
                 }
-            write_multi_vm_registry(registry_path, {"10.200.0.1": vm})
+            write_multi_sandbox_registry(registry_path, {"10.200.0.1": sandbox})
             revision += 1
             timestamp = 1_700_000_000_000_000_000 + revision
             os.utime(registry_path, ns=(timestamp, timestamp))
 
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
             assert context is not None
-            vm_info, compiled_firewalls, compiled_policies = context
+            sandbox_info, compiled_firewalls, compiled_policies = context
             result = matching.match_compiled_firewall_request(
                 request_url,
                 "GET",
@@ -420,7 +422,7 @@ class TestRegistryBuiltinCatalogResolution:
                 compiled_policies,
             )
             assert isinstance(result, matching.FirewallAllow)
-            return result.name, auth.is_billable_firewall(result.name, vm_info)
+            return result.name, auth.is_billable_firewall(result.name, sandbox_info)
 
         with mitm_ctx(
             registry_path=str(registry_path),
@@ -444,9 +446,9 @@ class TestRegistryBuiltinCatalogResolution:
     def test_builtin_firewall_entry_prefers_runner_catalog_cache(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-cache-only", "cache-only")},
+            {"10.200.0.1": builtin_sandbox("run-cache-only", "cache-only")},
         )
         write_catalog_cache(
             cache_path,
@@ -464,12 +466,12 @@ class TestRegistryBuiltinCatalogResolution:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        api = vm_info["firewalls"][0]["apis"][0]
+        api = sandbox_info["firewalls"][0]["apis"][0]
         assert api["base"] == "https://cache-only.example.com"
         assert api["auth"]["awsSigv4"]["accessKeyId"] == "${{ secrets.AWS_ACCESS_KEY_ID }}"
         assert api["hostPolicy"]["exactHosts"] == ["cache-only.example.com"]
@@ -478,14 +480,14 @@ class TestRegistryBuiltinCatalogResolution:
             builtin_host_policy.CompiledBuiltinHostPolicy,
         )
 
-    def test_catalog_api_ids_are_reassigned_per_vm(self, tmp_path, mitm_ctx):
+    def test_catalog_api_ids_are_reassigned_per_sandbox(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
         firewall = cache_firewall("cache-only", "https://cache-only.example.com")
         firewall["apis"][0]["id"] = "catalog-owned-id"
-        write_multi_vm_registry(
+        write_multi_sandbox_registry(
             registry_path,
-            {"10.200.0.1": builtin_vm("run-cache-only", "cache-only")},
+            {"10.200.0.1": builtin_sandbox("run-cache-only", "cache-only")},
         )
         write_catalog_cache(
             cache_path,
@@ -498,12 +500,12 @@ class TestRegistryBuiltinCatalogResolution:
             registry_path=str(registry_path),
             builtin_firewall_catalog_cache_path=str(cache_path),
         ):
-            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            context = registry.get_sandbox_context("10.200.0.1", str(registry_path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["id"] == "run-cache-only:0"
+        assert sandbox_info["firewalls"][0]["apis"][0]["id"] == "run-cache-only:0"
 
     def test_missing_runner_catalog_cache_fails_closed(self, tmp_path):
         cache_path = tmp_path / "missing-builtin-firewall-catalog-cache.json"
@@ -520,7 +522,7 @@ class TestRegistryBuiltinCatalogResolution:
             f"cache_file_missing \\({cache_path}\\)",
         ):
             registry_firewalls.resolve_firewall_entries(
-                builtin_vm("run-fallback", "fallback"),
+                builtin_sandbox("run-fallback", "fallback"),
                 builtin_firewall_catalog_snapshot=snapshot,
             )
 

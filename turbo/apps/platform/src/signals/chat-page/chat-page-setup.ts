@@ -1,9 +1,9 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
+import { ChatThreadPage } from "../../views/okou-page/chat-thread-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { searchParams$ } from "../route.ts";
 import {
   SIDEBAR_PARAM,
@@ -13,20 +13,23 @@ import {
   setupRightThreadNotFound$,
   unloadRightThread$,
 } from "./chat-thread-panes.ts";
-import { resolvedThreadMeta } from "./chat-thread-event-sourcing.ts";
+import { resolveThreadMeta$ } from "./chat-thread-event-sourcing.ts";
 import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
+  recordBootstrapThreadMetadataTiming$,
 } from "../../lib/posthog.ts";
 
 const setupResolvedLeftThread$ = command(
-  async (
-    { get, set },
-    threadId: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const meta = await get(resolvedThreadMeta(threadId));
+  async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
+    const resolution = await set(resolveThreadMeta$, threadId, signal);
     signal.throwIfAborted();
+    set(recordBootstrapThreadMetadataTiming$, {
+      localDurationMs: resolution.localDurationMs,
+      remoteDurationMs: resolution.remoteDurationMs,
+      source: resolution.source,
+    });
+    const { meta } = resolution;
     if (meta) {
       await set(setupLeftThread$, meta, signal);
       return;
@@ -36,12 +39,8 @@ const setupResolvedLeftThread$ = command(
 );
 
 const setupResolvedRightThread$ = command(
-  async (
-    { get, set },
-    threadId: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const meta = await get(resolvedThreadMeta(threadId));
+  async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
+    const { meta } = await set(resolveThreadMeta$, threadId, signal);
     signal.throwIfAborted();
     if (meta) {
       await set(setupRightThread$, meta, signal);
@@ -59,7 +58,7 @@ const internalSetupChatPage$ = command(
       throw new Error("threadId is required to load chat page");
     }
 
-    set(updatePage$, createElement(ZeroChatThreadPage), "sidebar");
+    set(updatePage$, createElement(ChatThreadPage), "sidebar");
 
     set(captureNavigationTiming$);
 

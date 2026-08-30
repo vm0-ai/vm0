@@ -21,7 +21,6 @@ export const APPLICATION_OWNED_AGENT_EXECUTION_PLAN = {
       "OKOU_APP_URL",
       "OKOU_PRESENTATION_RUNBOOK_ARCHIVE_VERSION",
       "OKOU_TOKEN",
-      "OKOU_WEBSITE_TEMPLATE_ARCHIVE_VERSION",
     ],
     legacySerializedBindings: {
       agentId: "OKOU_AGENT_ID",

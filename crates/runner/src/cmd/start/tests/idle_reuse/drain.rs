@@ -101,7 +101,7 @@ async fn job_completing_during_active_draining_is_not_parked() {
     assert_eq!(
         idle_pool.lock().await.len(),
         0,
-        "teardown must leave no idle VM",
+        "teardown must leave no idle sandbox",
     );
     assert_eq!(
         budget.allocated().2,
@@ -168,7 +168,7 @@ async fn soft_drain_resume_opens_parking_before_running_ack() {
     assert_eq!(
         budget.allocated().2,
         1,
-        "parked VM should retain its budget lease",
+        "parked sandbox should retain its budget lease",
     );
 
     env.trigger_stopping().await;
@@ -181,17 +181,17 @@ async fn soft_drain_resume_opens_parking_before_running_ack() {
 }
 
 /// Regression (G2): on SIGTERM from Running, teardown's
-/// `drain_idle_pool` is the *only* site that clears `idle_vms` in
+/// `drain_idle_pool` is the *only* site that clears `idle_sandboxes` in
 /// `status.json` — Draining mode is skipped entirely. Pre-fix, the
 /// stale list leaked into the final `"stopped"` snapshot.
 #[tokio::test(start_paused = true)]
-async fn shutdown_clears_idle_vms_in_status_json() {
+async fn shutdown_clears_idle_sandboxes_in_status_json() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let status_path = env._temp_dir.path().join("status.json");
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
-    // Park a VM via a normal job → status.json records the idle VM.
+    // Park a sandbox via a normal job → status.json records the idle sandbox.
     let run_id = RunId::new_v4();
     push_job(
         &env,
@@ -204,9 +204,9 @@ async fn shutdown_clears_idle_vms_in_status_json() {
         .wait_completion(run_id, Duration::from_secs(5))
         .await;
     wait_idle_pool_reuse_keys(&idle_pool, &["sess-status-clean"], Duration::from_secs(5)).await;
-    assert_eq!(idle_pool.lock().await.len(), 1, "VM parked");
+    assert_eq!(idle_pool.lock().await.len(), 1, "sandbox parked");
 
-    // Pre-shutdown sanity: status.json lists the idle VM.
+    // Pre-shutdown sanity: status.json lists the idle sandbox.
     wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &["sess-status-clean"],
@@ -217,14 +217,17 @@ async fn shutdown_clears_idle_vms_in_status_json() {
     let pre: serde_json::Value =
         serde_json::from_str(&tokio::fs::read_to_string(&status_path).await.unwrap()).unwrap();
     let pre_len = pre
-        .get("idle_vms")
+        .get("idle_sandboxes")
         .and_then(|v| v.as_array())
         .map(|a| a.len())
         .unwrap_or(0);
-    assert_eq!(pre_len, 1, "pre-shutdown status.json should list the VM");
+    assert_eq!(
+        pre_len, 1,
+        "pre-shutdown status.json should list the sandbox"
+    );
 
     // SIGTERM path: Draining mode is bypassed, so teardown's
-    // drain_idle_pool is the only site that can clear idle_vms.
+    // drain_idle_pool is the only site that can clear idle_sandboxes.
     env.trigger_stopping().await;
     assert_run_exits_within(
         run_handle,
@@ -233,17 +236,17 @@ async fn shutdown_clears_idle_vms_in_status_json() {
     )
     .await;
 
-    // Post-shutdown: mode=stopped, idle_vms empty/absent.
+    // Post-shutdown: mode=stopped, idle_sandboxes empty/absent.
     let post: serde_json::Value =
         serde_json::from_str(&tokio::fs::read_to_string(&status_path).await.unwrap()).unwrap();
     assert_eq!(post["mode"], "stopped");
     let post_len = post
-        .get("idle_vms")
+        .get("idle_sandboxes")
         .and_then(|v| v.as_array())
         .map(|a| a.len())
         .unwrap_or(0);
     assert_eq!(
         post_len, 0,
-        "status.json idle_vms must be cleared after shutdown: {post}",
+        "status.json idle_sandboxes must be cleared after shutdown: {post}",
     );
 }

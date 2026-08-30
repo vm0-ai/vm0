@@ -10,7 +10,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
 import { DEFAULT_IMAGE_MODEL_ENV } from "@okouai/core/image-model-catalog";
-import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
 
@@ -55,8 +54,7 @@ describe("okou generate website command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("OKOU_TOKEN", undefined);
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "previous");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
   });
 
   afterEach(() => {
@@ -84,7 +82,7 @@ describe("okou generate website command", () => {
     expect(stdout).not.toContain("federated");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain(
-      "https://static.okou.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
+      "https://static.okou.io/html-resources/website/v1/d7138a8fc889c7fda5e57e463d178c37e97a1bb4fd752f56a793dc2e53c1935a/website.json",
     );
     expect(stdout).not.toContain("Sources:");
     expect(stdout).not.toContain("vm0-ai/vm0-skills");
@@ -113,10 +111,6 @@ describe("okou generate website command", () => {
     expect(stdout).toContain(
       "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
     );
-    expect(stdout).toContain("Built-in Website template release: previous");
-    expect(stdout).not.toContain("use `seedream4` by default");
-    expect(stdout).not.toContain("Keep at most 3 image generations");
-    expect(stdout).not.toContain("Embed this URL in HTML");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
@@ -143,9 +137,7 @@ describe("okou generate website command", () => {
     },
   );
 
-  it("should expose the latest independent registry inside the rollout", async () => {
-    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
-
+  it("should emit the image batch workflow exactly once", async () => {
     await generateCommand.parseAsync([
       "node",
       "cli",
@@ -155,23 +147,35 @@ describe("okou generate website command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain(
-      "https://static.okou.io/html-resources/website/v1/f0ad1af26306b7cbd9e4e1505a9991e8e9330ca507d5890245553c760878be04/website.json",
+    const imageWorkflowLines = stdout.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow: use supplied images first;");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain(
+      "one outside-site TSV row per selected real slot",
     );
-    expect(stdout).toContain("Built-in Website template release: latest");
-    expect(stdout).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+    expect(imageWorkflow).toContain("asset-id<TAB>raw prompt<TAB>size");
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
     );
-    expect(stdout).toContain(
-      "Keep at most 3 image generations in flight at once",
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
     );
-    expect(stdout).toContain(
-      "Embed the `Embed this URL in HTML` value returned by the generator",
+    expect(imageWorkflow).toContain("author the HTML while it runs");
+    expect(imageWorkflow).toContain("<state-dir>/results.tsv");
+    expect(imageWorkflow).toContain("data-generation-size");
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain("keep its state outside the site");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
     );
+    expect(imageWorkflow).toContain("never call `okou generate image`");
+    expect(imageWorkflow).toContain("or a template image wrapper directly");
+    expect(imageWorkflow).not.toContain("a fourth is rejected");
   });
 
-  it("should keep seedream4 inside a run with a default image model", async () => {
-    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
+  it("should let the image batch own its settings with a default image model", async () => {
     vi.stubEnv(DEFAULT_IMAGE_MODEL_ENV, "qwen-image");
 
     await generateCommand.parseAsync([
@@ -184,7 +188,7 @@ describe("okou generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+      "let the command own generation settings/concurrency/retry",
     );
     expect(stdout).not.toContain("use `qwen-image` by default");
     expect(stdout).not.toContain("run default image model");
@@ -257,26 +261,7 @@ describe("okou generate website command", () => {
       "Selected template package: okou resource pull template:dot-matrix --dir ./generated/resources",
     );
     expect(stdout).toContain(
-      "Selected template archive SHA-256: f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
-    );
-  });
-
-  it("should pin the latest built-in package inside the rollout", async () => {
-    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
-
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "website",
-      "--prompt",
-      "Kinetic onchain brand studio",
-      "--template",
-      "dot-matrix",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain(
-      "Selected template archive SHA-256: cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+      "Selected template archive SHA-256: 5d9f69b7f9625681b5b6183623cbece78c4f40dc6fe585ca799212d05e589623",
     );
   });
 

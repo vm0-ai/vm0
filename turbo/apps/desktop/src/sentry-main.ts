@@ -11,9 +11,9 @@ const sentryEnvironment =
   process.env.SENTRY_ENVIRONMENT ?? __DESKTOP_SENTRY_ENVIRONMENT__;
 
 if (sentryDsn) {
-  process.env.VM0_DESKTOP_SENTRY_DSN = sentryDsn;
-  process.env.VM0_DESKTOP_SENTRY_RELEASE = sentryRelease;
-  process.env.VM0_DESKTOP_SENTRY_ENVIRONMENT = sentryEnvironment;
+  process.env.OKOU_DESKTOP_SENTRY_DSN = sentryDsn;
+  process.env.OKOU_DESKTOP_SENTRY_RELEASE = sentryRelease;
+  process.env.OKOU_DESKTOP_SENTRY_ENVIRONMENT = sentryEnvironment;
 
   Sentry.init({
     dsn: sentryDsn,

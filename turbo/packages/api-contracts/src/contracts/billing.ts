@@ -81,6 +81,11 @@ const usageAllowanceSchema = z.object({
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   canBuyConcurrency: z.boolean().optional(),
+  // New web/app -> old API rollout: keep this optional while a pre-#29359 API
+  // can still serve or remain a rollback target. After that gate closes,
+  // #29592 removes the rollout-only rationale/test. Current APIs may still
+  // omit the amount when the configured Stripe Price is unavailable.
+  concurrencyUnitAmountCents: z.number().int().positive().optional(),
   concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   memberInviteUsagePackRequired: z.boolean().optional(),
@@ -134,10 +139,16 @@ const usagePackPurchasePreviewResponseSchema =
     purchaseType: z.literal("usage_pack"),
   });
 
+const googleAdsPaidConversionSchema = z.object({
+  transactionId: z.string().min(1),
+  valueUsd: z.number().positive(),
+});
+
 const billingPurchaseConfirmResponseSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("completed"),
     hostedInvoiceUrl: z.null(),
+    googleAdsConversion: googleAdsPaidConversionSchema.optional(),
   }),
   z.object({
     status: z.literal("pending_payment"),
@@ -151,6 +162,7 @@ const billingPurchaseConfirmResponseSchema = z.discriminatedUnion("status", [
 
 const checkoutCompleteResponseSchema = z.object({
   completed: z.boolean(),
+  googleAdsConversion: googleAdsPaidConversionSchema.optional(),
 });
 
 const redeemCodeResponseSchema = z.object({
@@ -1403,6 +1415,9 @@ export type UsagePackPurchasePreviewResponse = z.infer<
 >;
 export type BillingPurchaseConfirmResponse = z.infer<
   typeof billingPurchaseConfirmResponseSchema
+>;
+export type GoogleAdsPaidConversion = z.infer<
+  typeof googleAdsPaidConversionSchema
 >;
 export type RedeemCodeResponse = z.infer<typeof redeemCodeResponseSchema>;
 export type ConcurrencyCheckoutRequest = z.infer<

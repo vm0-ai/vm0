@@ -7,9 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/video-io-generate";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { VIDEO_MODEL_CONFIGS } from "@okouai/core/video-model-catalog";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   isVideoModelId,
   type VideoModelId,
@@ -58,7 +56,6 @@ import {
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import type { AuthContext } from "../../types/auth";
 
 const videoBody$ = bodyResultOf(videoIoGenerateContract.post);
@@ -67,7 +64,7 @@ function resolveGenerationPublicBrand(
   auth: AuthContext,
   requestPublicBrand: PublicBrand,
 ): PublicBrand {
-  return auth.tokenType === "zero" ? auth.publicBrand : requestPublicBrand;
+  return auth.tokenType === "agent" ? auth.publicBrand : requestPublicBrand;
 }
 
 async function loadRunVideoModel(
@@ -93,26 +90,10 @@ async function loadRunVideoModel(
 
 async function loadDefaultRunVideoModel(
   db: ReadonlyDb,
-  orgId: string,
-  userId: string,
   runId: string | undefined,
   signal: AbortSignal,
 ): Promise<VideoModelId | null> {
   if (!runId) {
-    return null;
-  }
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    orgId,
-    userId,
-  );
-  signal.throwIfAborted();
-  if (
-    !isFeatureEnabled(
-      FeatureSwitchKey.VideoModelSelection,
-      featureSwitchContext,
-    )
-  ) {
     return null;
   }
   const runVideoModel = await loadRunVideoModel(db, runId);
@@ -430,17 +411,11 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const runId =
-    auth.tokenType === "zero" || auth.tokenType === "sandbox"
+    auth.tokenType === "agent" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
   const publicBrand = resolveGenerationPublicBrand(auth, get(publicBrand$));
-  const runVideoModel = await loadDefaultRunVideoModel(
-    db,
-    auth.orgId,
-    auth.userId,
-    runId,
-    signal,
-  );
+  const runVideoModel = await loadDefaultRunVideoModel(db, runId, signal);
   // The run's model is a default, not an override: it applies only when the
   // request names no model of its own. A caller that asks for a specific model
   // — because the user asked for it in the prompt — gets that model.

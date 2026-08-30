@@ -13,6 +13,8 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import type { TemplatePickerEntryCategory } from "../../signals/okou-page/template-picker-entry.ts";
+import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
 import { OnboardingConnectorSetup } from "./onboarding-connectors.tsx";
 import { onboardingMakeOptions } from "./onboarding-data.ts";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
@@ -33,22 +35,56 @@ const BRANCH_STATE_PARAMS = [
   ONBOARDING_CHECKOUT_STATE_PARAM,
 ] as const;
 
+const SLACK_ICON_URL = platformStaticAssetUrl(
+  "views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+);
+
 function choicePath(choice: OnboardingChoice) {
   switch (choice) {
+    case "slack": {
+      return ROUTES.works;
+    }
     case "workflow": {
       return ROUTES.onboardingWorkflowPicker;
     }
     case "presentation": {
-      return ROUTES.onboardingPresentationTemplate;
+      return ROUTES.home;
     }
     case "video": {
-      return ROUTES.onboardingVideoTemplate;
+      return ROUTES.home;
     }
     case "images": {
-      return ROUTES.onboardingImageTemplate;
+      return ROUTES.home;
+    }
+    case "website": {
+      return ROUTES.home;
     }
     case "explore": {
       return ROUTES.home;
+    }
+  }
+}
+
+function choiceTemplatePickerCategory(
+  choice: OnboardingChoice,
+): TemplatePickerEntryCategory | null {
+  switch (choice) {
+    case "presentation": {
+      return "slides";
+    }
+    case "images": {
+      return "illustration";
+    }
+    case "video": {
+      return "video";
+    }
+    case "website": {
+      return "website";
+    }
+    case "slack":
+    case "workflow":
+    case "explore": {
+      return null;
     }
   }
 }
@@ -121,6 +157,37 @@ function PromptOnboarding() {
   );
 }
 
+function SlackChoiceIllustration() {
+  return (
+    <span
+      data-testid="onboarding-slack-illustration"
+      aria-hidden="true"
+      className="relative block h-10 w-10 shrink-0"
+    >
+      <svg viewBox="0 0 40 40" className="absolute inset-0 size-full">
+        <path
+          fill="#3EB7B8"
+          d="M5.3 10.7C6.7 5.4 12.1 3.4 18 4.2c5.8.8 13.7 1.8 16.2 6.8 2.7 5.4.5 14.7-3 19.5-3.7 5-12.6 5.6-18.3 2.8-5.6-2.8-10.1-7.9-9.3-13.5.4-3.3.9-6.2 1.7-9.1Z"
+        />
+        <path
+          fill="white"
+          stroke="#758087"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.2"
+          d="M10.4 9.3c4.4-3.4 12.4-3.1 17 .1 5 3.4 6.2 10.5 3.2 15.3-3 4.8-9.8 7.2-15.2 5.5l-6.8 3.9 1.6-6.1c-5.1-4-4.9-14.8.2-18.7Z"
+        />
+      </svg>
+      <img
+        data-testid="onboarding-slack-icon"
+        src={SLACK_ICON_URL}
+        alt=""
+        className="absolute inset-0 size-full object-contain"
+      />
+    </span>
+  );
+}
+
 export function OnboardingMakePage() {
   const { t } = useTranslation();
   const draft = useGet(onboardingDraft$);
@@ -137,13 +204,25 @@ export function OnboardingMakePage() {
 
   const handleChoice = (choice: OnboardingChoice): void => {
     setDraft({ choice });
-    if (choice === "explore") {
+    const templatePickerCategory = choiceTemplatePickerCategory(choice);
+    if (
+      choice === "slack" ||
+      templatePickerCategory !== null ||
+      choice === "explore"
+    ) {
       const redeemCode = searchParams.get("redeemCode")?.trim() || null;
-      const completeAndOpenHome = async (): Promise<void> => {
+      const completeAndOpenDestination = async (): Promise<void> => {
         await complete(redeemCode, pageSignal);
-        navigateTo(ROUTES.home, { preserve: false, replace: true });
+        navigateTo(choicePath(choice), {
+          preserve: false,
+          replace: true,
+          updates:
+            templatePickerCategory === null
+              ? undefined
+              : { templatePicker: templatePickerCategory },
+        });
       };
-      detach(completeAndOpenHome(), Reason.DomCallback);
+      detach(completeAndOpenDestination(), Reason.DomCallback);
       return;
     }
     navigateTo(choicePath(choice), {
@@ -164,7 +243,7 @@ export function OnboardingMakePage() {
       })}
     >
       <div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        className="grid grid-cols-1 gap-3 pb-12 sm:grid-cols-2 sm:pb-0"
         role="radiogroup"
         aria-label={t(($) => {
           return $.onboarding.make.projectTypeLabel;
@@ -187,16 +266,20 @@ export function OnboardingMakePage() {
                 "flex min-h-[72px] items-center gap-3 rounded-xl border bg-background px-4 py-3.5 text-left shadow-[var(--zero-card-shadow)] transition-colors sm:px-6 sm:py-[15px]",
                 "hover:border-primary/55",
                 selected ? "border-primary" : "border-border",
-                option.id === "workflow" && "sm:col-span-2",
+                option.id === "explore" && "sm:col-span-2",
               )}
             >
-              <img
-                src={option.imageUrl}
-                alt=""
-                width={48}
-                height={48}
-                className="h-10 w-10 shrink-0 object-contain"
-              />
+              {option.imageUrl ? (
+                <img
+                  src={option.imageUrl}
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="h-10 w-10 shrink-0 object-contain"
+                />
+              ) : (
+                <SlackChoiceIllustration />
+              )}
               <span className="min-w-0">
                 <span className="block text-sm font-medium">
                   {option.title}

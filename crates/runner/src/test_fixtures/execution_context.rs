@@ -11,6 +11,7 @@ pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
         sandbox_token: "tok".into(),
         storage_manifest: None,
         environment: None,
+        platform_environment: None,
         resume_session: None,
         secret_values: None,
         local_secret_env_keys: None,

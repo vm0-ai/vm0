@@ -465,11 +465,6 @@
     },
     "chat": "Chatten",
     "description": "Klicken Sie auf eine beliebige Karte, um eine Unterhaltung zu beginnen. Es könnte sich um eine On-Demand-Aufgabe, einen wiederkehrenden Workflow oder einen Sub-Agenten handeln.",
-    "entry": {
-      "description": "Durchsuchen Sie Anwendungsfälle über alle Integrationen hinweg",
-      "title": "Ideen und Anwendungsfälle",
-      "viewAll": "Alle anzeigen"
-    },
     "search": {
       "accessibilityLabel": "Anwendungsfälle suchen",
       "empty": "Zu Ihrer Suche passen keine Anwendungsfälle.",
@@ -619,20 +614,24 @@
     "pinAgentDescription": "Wähle einen Agenten aus, den du an die Seitenleiste anheften möchtest.",
     "pinned": "Angepinnt",
     "pinnedAgents": "Angepinnte Agenten",
+    "pinSuccess": "{{agentName}} angepinnt",
     "resultCount_one": "{{count}} Ergebnis",
     "resultCount_other": "{{count}} Ergebnisse",
     "searchAgents": "Suchagenten...",
     "searchAgentsAndChats": "Agenten und Chats suchen...",
-    "searchChatsAndMessages": "Chats und Nachrichten durchsuchen...",
     "searching": "Suche...",
+    "searchWorkspace": "Chats, Nachrichten, Workflows und Artefakte durchsuchen...",
     "sections": {
+      "artifacts": "Artefakte",
       "chats": "Chats",
       "lead": "Lead",
       "messages": "Nachrichten",
-      "others": "Andere"
+      "others": "Andere",
+      "workflows": "Workflows"
     },
     "talkTo": "Sprechen mit",
-    "unpin": "Nicht mehr anheften"
+    "unpin": "Nicht mehr anheften",
+    "unpinSuccess": "{{agentName}} nicht mehr angepinnt"
   },
   "status": {
     "unread": "Ungelesen"

@@ -107,7 +107,7 @@ export async function downloadSlackFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/okou/integrations/slack/download-file", baseUrl);
+  const url = new URL("/api/integrations/slack/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
 
   const headers: Record<string, string> = {

@@ -5,7 +5,7 @@ const requiredJsonValueSchema = z.unknown().refine((value) => {
   return value !== undefined;
 }, "Expected a JSON value");
 
-/** Canonical payload envelope for one raw chat-event row. */
+/** Canonical payload envelope for a raw chat-event row. */
 const chatEventRowPayloadSchema = z
   .object({
     content: z.string().optional(),
@@ -16,26 +16,29 @@ const chatEventRowPayloadSchema = z
   })
   .strict();
 
+const chatEventRowBaseShape = {
+  id: z.string(),
+  chatThreadId: z.string(),
+  runId: z.string().nullable(),
+  revokesEventId: z.string().nullable(),
+  contextType: z.string().nullable(),
+  contextId: z.string().nullable(),
+  runEventSequenceNumber: z.number().int().nullable(),
+  runEventId: z.string().nullable(),
+  /** Strictly increasing within a thread; it may start above 1 and have gaps. */
+  seqId: z.number().int(),
+  createdAt: z.iso.datetime(),
+};
+
 /**
- * One canonical chat_events row and the strict outer wire shape emitted by
- * the Snapshot and Raw Event endpoints. Version-specific payload projection is
- * selected by X-Chat-Event-Schema-Version.
+ * One canonical chat_events row and the strict output.tool-free outer wire
+ * shape emitted by the Snapshot and Raw Event endpoints.
  */
 export const chatEventRowSchema = z
   .object({
-    id: z.string(),
-    chatThreadId: z.string(),
-    runId: z.string().nullable(),
-    revokesEventId: z.string().nullable(),
+    ...chatEventRowBaseShape,
     eventType: chatEventTypeSchema,
     payload: chatEventRowPayloadSchema.nullable(),
-    contextType: z.string().nullable(),
-    contextId: z.string().nullable(),
-    runEventSequenceNumber: z.number().int().nullable(),
-    runEventId: z.string().nullable(),
-    /** Strictly increasing within a thread; it may start above 1 and have gaps. */
-    seqId: z.number().int(),
-    createdAt: z.iso.datetime(),
   })
   .strict();
 

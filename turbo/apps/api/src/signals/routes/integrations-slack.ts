@@ -1,14 +1,12 @@
 import { command, computed, type Computed } from "ccstate";
-import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 import {
   slackOrgStatusSchema,
   integrationsSlackContract,
 } from "@okouai/api-contracts/contracts/integrations-slack";
+import { integrationsSlackDownloadFileContract } from "@okouai/api-contracts/contracts/integrations";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
-import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
-import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 import {
   appUrlForPublicBrand,
   publicBrandPresentation,
@@ -27,7 +25,7 @@ import {
   slackOrgInstallation,
   slackOrgStatus,
 } from "../services/slack-data.service";
-import { userConfiguredAgentEnvironmentRequirements } from "../services/agent-compose-content";
+import { userConfiguredAgentEnvironmentRequirements } from "../services/agent-execution-config";
 import { publishSlackAdminSignal$ } from "../services/slack-connect.service";
 import { getFileInfo, isSlackApiClientError } from "../../lib/slack-client";
 import {
@@ -44,33 +42,9 @@ import { userSecrets, userVariables } from "../services/user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { env } from "../../lib/env";
+import { OFFICIAL_SLACK_APP_NAME } from "../../lib/slack-official-app";
 import type { RouteEntry } from "../route-entry";
 import { bestEffort, settle } from "../utils";
-
-const c = initContract();
-
-const slackDownloadFileContract = c.router({
-  download: {
-    method: "GET",
-    path: "/api/okou/integrations/slack/download-file",
-    headers: authHeadersSchema,
-    query: z.object({
-      file_id: z.string().optional(),
-    }),
-    responses: {
-      200: c.otherResponse({
-        contentType: "application/octet-stream",
-        body: z.unknown(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      413: apiErrorSchema,
-      502: apiErrorSchema,
-    },
-    summary: "Download a Slack file via org bot token",
-  },
-});
 
 type SlackEnvironment = NonNullable<
   z.infer<typeof slackOrgStatusSchema>["environment"]
@@ -284,7 +258,7 @@ function buildUninstalledAppHomeView(publicBrand: PublicBrand): SlackView {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:warning: *${assistantName} is not installed for this workspace*\nAsk a workspace admin to install ${assistantName} from the platform.`,
+          text: `:warning: *${OFFICIAL_SLACK_APP_NAME} is not installed for this workspace*\nAsk a workspace admin to install ${OFFICIAL_SLACK_APP_NAME} from the platform.`,
         },
       },
       {
@@ -327,6 +301,7 @@ const uninstallSlackIntegration$ = command(
       readonly db: Db;
       readonly orgId: string;
       readonly userId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -366,7 +341,7 @@ const uninstallSlackIntegration$ = command(
           }),
         ),
       );
-      const view = buildUninstalledAppHomeView(installation.publicBrand);
+      const view = buildUninstalledAppHomeView(args.publicBrand);
       await Promise.allSettled(
         connections.map((connection) => {
           return client.publishAppHome(connection.slackUserId, view);
@@ -423,6 +398,7 @@ const disconnectSlackIntegration$ = command(
       readonly db: Db;
       readonly orgId: string;
       readonly userId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -487,7 +463,7 @@ const disconnectSlackIntegration$ = command(
         buildDisconnectedAppHomeView({
           workspaceId: installation.slackWorkspaceId,
           slackUserId: connection.slackUserId,
-          publicBrand: installation.publicBrand,
+          publicBrand: args.publicBrand,
         }),
       ),
     );
@@ -503,6 +479,7 @@ const disconnectSlackIntegration$ = command(
 const deleteSlackIntegration$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const query = get(deleteSlackIntegrationQuery$);
     const db = set(writeDb$);
 
@@ -513,14 +490,14 @@ const deleteSlackIntegration$ = command(
 
       return await set(
         uninstallSlackIntegration$,
-        { db, orgId: auth.orgId, userId: auth.userId },
+        { db, orgId: auth.orgId, userId: auth.userId, publicBrand },
         signal,
       );
     }
 
     return await set(
       disconnectSlackIntegration$,
-      { db, orgId: auth.orgId, userId: auth.userId },
+      { db, orgId: auth.orgId, userId: auth.userId, publicBrand },
       signal,
     );
   },
@@ -598,7 +575,7 @@ function slackFileFetchErrorResponse(error: unknown): Response | null {
 
 const getSlackDownloadFileInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const query = get(queryOf(slackDownloadFileContract.download));
+  const query = get(queryOf(integrationsSlackDownloadFileContract.download));
   const fileId = query.file_id;
 
   if (!fileId) {
@@ -705,7 +682,7 @@ export const integrationsSlackRoutes: readonly RouteEntry[] = [
     handler: authRoute(slackReadAuth, deleteSlackIntegration$),
   },
   {
-    route: slackDownloadFileContract.download,
+    route: integrationsSlackDownloadFileContract.download,
     handler: authRoute(slackDownloadAuth, getSlackDownloadFileInner$),
   },
 ];

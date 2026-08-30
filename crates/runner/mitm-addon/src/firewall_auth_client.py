@@ -1,4 +1,48 @@
-"""Client and response parsing for the runner firewall auth endpoint."""
+"""Client and response parsing for the runner firewall auth endpoint.
+
+Transport contract
+------------------
+``fetch_firewall_headers`` serializes one firewall-auth request, builds the platform request through
+``platform_api.make_api_request``, selects a connection route, performs the HTTP exchange, and
+parses the bounded response. The request body preserves ``FirewallAuthRequest``'s omission semantics
+and stable JSON serialization. The bearer ``Authorization`` header belongs to the platform origin.
+Proxy credentials come from the selected environment proxy and must stay at the proxy boundary.
+
+The route depends on the origin scheme and the environment proxy decision:
+
+=================  ===============================  ================================================
+Origin             Direct or ``no_proxy``            HTTP environment proxy
+=================  ===============================  ================================================
+HTTP               Connect to the origin and send    Connect to the proxy and send an absolute-form
+                   the path/query target.            target; ``Host`` remains the origin authority.
+HTTPS              Connect to the origin, negotiate  Connect to the proxy, issue ``CONNECT`` for the
+                   TLS for the origin, and send     origin authority, then negotiate origin TLS
+                   the path/query target.            through the tunnel and send the path/query
+                                                     target.
+=================  ===============================  ================================================
+
+Proxy selection uses the standard environment settings for the origin scheme and ``no_proxy``
+bypass rules. Only HTTP proxy endpoints are supported; an HTTPS or other proxy endpoint is rejected.
+For an HTTP origin, proxy authorization is sent in ``Proxy-Authorization`` on the absolute-form
+request. For an HTTPS origin, it is sent only on ``CONNECT`` and is never forwarded through the
+tunnel to the origin. After ``CONNECT`` succeeds, any bytes already buffered from the proxy are
+rejected before TLS. Origin certificate verification and SNI use the origin hostname, not the proxy
+hostname.
+
+The transport resolves hostnames through the add-on DNS resolver (literal IP addresses bypass DNS),
+normalizes and deduplicates the resolved addresses, and attempts them in resolver order. The first
+attempt starts immediately; later attempts are staggered by 0.25 seconds and at most four attempts
+are active at once. Among completed successes, the lowest original address index is the
+deterministic winner. Failed, cancelled, losing, and still-pending attempts are aborted. The winning
+socket is handed to the stream wrapper, which owns it together with the stream writer through proxy
+CONNECT and TLS, request writing, and response parsing. Normal completion closes the writer and raw
+socket. Exceptions and cancellation abort both transports.
+
+Proxy CONNECT response headers and h11 incomplete events are bounded at 64 KiB. The origin response
+body is bounded at ``MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES`` (256 KiB). One monotonic
+``FIREWALL_AUTH_FETCH_DEADLINE_SECONDS`` deadline (10 seconds by default) covers DNS, connection
+racing, proxy CONNECT, TLS, request writing, response headers, and the bounded response body.
+"""
 
 import asyncio
 import base64

@@ -465,11 +465,6 @@
     },
     "chat": "Chat",
     "description": "Cliquez sur n'importe quelle carte pour démarrer une conversation. Cela pourrait devenir une tâche à la demande, un workflow récurrent ou un sous-agent.",
-    "entry": {
-      "description": "Parcourir les cas d'utilisation de tous les connecteurs",
-      "title": "Idées et cas d'utilisation",
-      "viewAll": "Voir tout"
-    },
     "search": {
       "accessibilityLabel": "Rechercher des cas d'utilisation",
       "empty": "Aucun cas d'utilisation ne correspond à votre recherche.",
@@ -619,21 +614,25 @@
     "pinAgentDescription": "Choisissez un agent à épingler à la barre latérale.",
     "pinned": "Épinglé",
     "pinnedAgents": "Agents épinglés",
+    "pinSuccess": "{{agentName}} épinglé",
     "resultCount_one": "{{count}} résultat",
     "resultCount_many": "{{count}} résultats",
     "resultCount_other": "{{count}} résultats",
     "searchAgents": "Rechercher des agents...",
     "searchAgentsAndChats": "Rechercher des agents et des chats...",
-    "searchChatsAndMessages": "Rechercher dans les chats et les messages...",
     "searching": "Recherche...",
+    "searchWorkspace": "Rechercher des chats, messages, workflows et artefacts...",
     "sections": {
+      "artifacts": "Artefacts",
       "chats": "Chats",
       "lead": "Piste",
       "messages": "Messages",
-      "others": "Autres"
+      "others": "Autres",
+      "workflows": "Workflows"
     },
     "talkTo": "Parler à",
-    "unpin": "Détacher"
+    "unpin": "Détacher",
+    "unpinSuccess": "{{agentName}} détaché"
   },
   "status": {
     "unread": "Non lu"

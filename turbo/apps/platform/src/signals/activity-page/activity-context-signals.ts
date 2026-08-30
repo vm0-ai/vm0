@@ -7,7 +7,7 @@ import { apiClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
 
-interface ZeroActivityContext {
+interface ActivityContext {
   runId: string;
   context: RunContextResponse | null;
 }
@@ -16,7 +16,7 @@ interface ZeroActivityContext {
  * Run context snapshot fetched from Axiom via the context API.
  * Returns null if context is not available (old runs or ingestion delay).
  */
-export const zeroActivityContext$ = computed(async (get) => {
+export const activityContext$ = computed(async (get) => {
   const runId = get(currentRunId$);
   if (!runId) {
     return null;
@@ -31,10 +31,10 @@ export const zeroActivityContext$ = computed(async (get) => {
     return {
       runId,
       context: null,
-    } satisfies ZeroActivityContext;
+    } satisfies ActivityContext;
   }
   return {
     runId,
     context: result.body,
-  } satisfies ZeroActivityContext;
+  } satisfies ActivityContext;
 });

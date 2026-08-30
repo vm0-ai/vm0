@@ -154,9 +154,9 @@ async def _start_websocket(
     flow.response = http.Response.make(101, headers=response_headers)
     flow.websocket = WebSocketData()
     if run_id is not None:
-        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
     if proxy_log_path is not None:
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
 
     running = _RunningWebSocket(
         layer=websocket.WebsocketLayer(context, flow),
@@ -795,6 +795,150 @@ async def test_read_split_message_reuses_mutable_fragment(
     assert running.flow.websocket.messages[-1].content == b"split-across-reads"
 
 
+@pytest.mark.parametrize("from_client", [True, False])
+async def test_message_frame_limit_counts_frames_across_read_splits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    from_client: bool,
+) -> None:
+    monkeypatch.setattr(websocket_framing, "MAX_MESSAGE_DATA_FRAMES", 1)
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        accepted = await _start_websocket(addon_context)
+        accepted_content = b"split-across-reads"
+        accepted_wire = _peer(from_client=from_client).send(_message_event(accepted_content))
+        accepted_header_size = len(accepted_wire) - len(accepted_content)
+        accepted_source = _bounded_source_websocket(
+            accepted,
+            from_client=from_client,
+        )
+        accepted_budget = accepted_source._vm0_message_limit._budget
+
+        first_read = await _handle_event(
+            addon_context,
+            accepted,
+            events.DataReceived(
+                _source_connection(accepted, from_client=from_client),
+                accepted_wire[: accepted_header_size + 1],
+            ),
+        )
+        assert first_read == []
+        assert accepted_budget.data_frames == 1
+        assert accepted_budget.decoded_bytes == 1
+        assert accepted_budget.aggregate_budget.decoded_bytes == 1
+
+        second_read = await _handle_event(
+            addon_context,
+            accepted,
+            events.DataReceived(
+                _source_connection(accepted, from_client=from_client),
+                accepted_wire[accepted_header_size + 1 : accepted_header_size + 2],
+            ),
+        )
+        assert second_read == []
+        assert accepted_budget.data_frames == 1
+        assert accepted_budget.decoded_bytes == 2
+        assert accepted_budget.aggregate_budget.decoded_bytes == 2
+
+        completed = await _handle_event(
+            addon_context,
+            accepted,
+            events.DataReceived(
+                _source_connection(accepted, from_client=from_client),
+                accepted_wire[accepted_header_size + 2 :],
+            ),
+        )
+
+        hooks = _message_hooks(completed)
+        sends = _data_sends(completed)
+        assert len(hooks) == 1
+        assert len(sends) == 1
+        assert completed.index(hooks[0]) < completed.index(sends[0])
+        assert accepted.flow.websocket is not None
+        assert accepted.flow.websocket.timestamp_end is None
+        assert [message.content for message in accepted.flow.websocket.messages] == [
+            accepted_content
+        ]
+        assert accepted_budget.data_frames == 0
+        assert accepted_budget.decoded_bytes == 0
+        assert accepted_budget.aggregate_budget.decoded_bytes == len(accepted_content)
+        await asyncio.sleep(0)
+        assert accepted_budget.aggregate_budget.decoded_bytes == 0
+
+        rejected = await _start_websocket(addon_context)
+        rejected_peer = _peer(from_client=from_client)
+        first_frame_content = b"first-frame"
+        first_frame_wire = rejected_peer.send(
+            _message_event(first_frame_content, message_finished=False)
+        )
+        first_frame_header_size = len(first_frame_wire) - len(first_frame_content)
+        rejected_source = _bounded_source_websocket(
+            rejected,
+            from_client=from_client,
+        )
+        rejected_budget = rejected_source._vm0_message_limit._budget
+
+        first_frame_start = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                first_frame_wire[: first_frame_header_size + 1],
+            ),
+        )
+        first_frame_complete = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                first_frame_wire[first_frame_header_size + 1 :],
+            ),
+        )
+
+        assert first_frame_start == []
+        assert first_frame_complete == []
+        assert rejected_budget.data_frames == 1
+        assert rejected_budget.decoded_bytes == len(first_frame_content)
+        assert rejected_budget.aggregate_budget.decoded_bytes == len(first_frame_content)
+
+        second_frame_content = b"second-frame"
+        second_frame_wire = rejected_peer.send(_message_event(second_frame_content))
+        second_frame_header_size = len(second_frame_wire) - len(second_frame_content)
+        second_frame_header = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                second_frame_wire[:second_frame_header_size],
+            ),
+        )
+        assert second_frame_header == []
+        assert rejected_budget.data_frames == 1
+
+        over_limit = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                second_frame_wire[second_frame_header_size : second_frame_header_size + 1],
+            ),
+        )
+
+    assert _message_hooks(over_limit) == []
+    assert _data_sends(over_limit) == []
+    assert rejected.flow.websocket is not None
+    assert rejected.flow.websocket.close_code == 1009
+    assert rejected.flow.websocket.messages == []
+    assert not rejected.flow.live
+    assert sum(len(fragment) for fragment in rejected_source.frame_buf) == 0
+    assert rejected_budget.data_frames == 0
+    assert rejected_budget.decoded_bytes == 0
+    assert rejected_budget.aggregate_budget.decoded_bytes == 0
+
+
 async def test_fragmented_message_limits_ignore_interleaved_control_frames(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -917,6 +1061,73 @@ async def test_compressed_fragmented_message_limits_are_cumulative(
             addon_context,
             from_client=from_client,
         )
+
+
+@pytest.mark.parametrize("from_client", [True, False])
+async def test_uncompressed_message_after_deflate_negotiation_clears_state(
+    tmp_path: Path,
+    from_client: bool,
+) -> None:
+    contents = [b"uncompressed", b"compressed"]
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        running = await _start_websocket(
+            addon_context,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        source = _bounded_source_websocket(running, from_client=from_client)
+        assert len(source._vm0_bounded_deflates) == 1
+        bounded_deflate = source._vm0_bounded_deflates[0]
+
+        uncompressed_frame = _peer(from_client=from_client).send(_message_event(contents[0]))
+        assert uncompressed_frame[0] & 0x40 == 0
+        uncompressed = await _handle_event(
+            addon_context,
+            running,
+            events.DataReceived(
+                _source_connection(running, from_client=from_client),
+                uncompressed_frame,
+            ),
+        )
+
+        assert len(_message_hooks(uncompressed)) == 1
+        assert len(_data_sends(uncompressed)) == 1
+        assert running.flow.websocket is not None
+        assert running.flow.websocket.timestamp_end is None
+        assert [message.content for message in running.flow.websocket.messages] == contents[:1]
+        assert sum(len(fragment) for fragment in source.frame_buf) == 0
+        assert bounded_deflate._decompressor is None
+        assert bounded_deflate._inbound_compressed is None
+        assert source._vm0_message_limit._budget.decoded_bytes == 0
+        assert source._vm0_message_limit._budget.data_frames == 0
+
+        compressed_frame = _peer(
+            from_client=from_client,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        ).send(_message_event(contents[1]))
+        assert compressed_frame[0] & 0x40 == 0x40
+        compressed = await _handle_event(
+            addon_context,
+            running,
+            events.DataReceived(
+                _source_connection(running, from_client=from_client),
+                compressed_frame,
+            ),
+        )
+
+    assert len(_message_hooks(compressed)) == 1
+    assert len(_data_sends(compressed)) == 1
+    assert running.flow.websocket is not None
+    assert running.flow.websocket.timestamp_end is None
+    assert [message.content for message in running.flow.websocket.messages] == contents
+    assert sum(len(fragment) for fragment in source.frame_buf) == 0
+    assert bounded_deflate._decompressor is not None
+    assert bounded_deflate._inbound_compressed is None
+    assert source._vm0_message_limit._budget.decoded_bytes == 0
+    assert source._vm0_message_limit._budget.data_frames == 0
 
 
 async def test_compression_preserves_context_takeover_and_is_connection_local(

@@ -1,15 +1,18 @@
 """Tests for registry built-in base URL variable resolution."""
 
 import json
+from collections.abc import Iterator
 from unittest.mock import MagicMock
 
 import pytest
 
+import builtin_firewall_cache
 import builtin_host_policy
 import registry
 from tests.builtin_firewall_cache_helpers import serialize_builtin_firewall_catalog_cache
+from tests.process_log_helpers import capture_addon_process_events
 from tests.registry_helpers import (
-    assert_invalid_builtin_vm,
+    assert_invalid_builtin_sandbox,
     write_trusted_catalog_cache_text,
 )
 from tests.registry_helpers import (
@@ -25,13 +28,12 @@ class _RegistryOptions:
 
 
 @pytest.fixture(autouse=True)
-def registry_ctx(monkeypatch) -> MagicMock:
+def registry_ctx(monkeypatch) -> Iterator[MagicMock]:
     options = _RegistryOptions()
-    log = MagicMock()
-    monkeypatch.setattr(registry.ctx, "options", options, raising=False)
-    monkeypatch.setattr(registry.ctx, "log", log, raising=False)
+    monkeypatch.setattr(builtin_firewall_cache.ctx, "options", options, raising=False)
     _TEST_BUILTIN_FIREWALLS.clear()
-    return log
+    with capture_addon_process_events() as log:
+        yield log
 
 
 def install_test_builtin_firewall(
@@ -109,7 +111,7 @@ def write_builtin_firewall_registry(
     firewall = cache_firewall or _TEST_BUILTIN_FIREWALLS.get(name) or _builtin_firewall(name)
     cache_path = _cache_path_for_registry(path)
     _write_catalog_cache(cache_path, {firewall["name"]: firewall})
-    registry.ctx.options.vm0_builtin_firewall_catalog_cache_path = str(cache_path)
+    builtin_firewall_cache.ctx.options.vm0_builtin_firewall_catalog_cache_path = str(cache_path)
 
 
 class TestRegistryBuiltinBaseUrlVars:
@@ -122,12 +124,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"ZENDESK_SUBDOMAIN": "acme"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
 
     def test_builtin_trailing_authority_fragment_resolves_with_provider_policy(self, tmp_path):
         name = "audit"
@@ -144,12 +146,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"HOST": "tenant.example.com"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        api = vm_info["firewalls"][0]["apis"][0]
+        api = sandbox_info["firewalls"][0]["apis"][0]
         assert api["base"] == "https://api-tenant.example.com/v1"
         assert isinstance(
             api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
@@ -171,12 +173,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"TENANT": "acme"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
 
     @pytest.mark.parametrize(
         ("base_url_vars", "expected_message"),
@@ -185,7 +187,7 @@ class TestRegistryBuiltinBaseUrlVars:
             ({"ZENDESK_SUBDOMAIN": 1}, "baseUrlVars must contain string values"),
         ],
     )
-    def test_malformed_base_url_vars_reject_vm(
+    def test_malformed_base_url_vars_reject_sandbox(
         self, tmp_path, base_url_vars: object, expected_message: str
     ) -> None:
         path = tmp_path / "registry.json"
@@ -196,14 +198,14 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"ZENDESK_SUBDOMAIN": "acme"},
         )
         data = json.loads(path.read_text())
-        data["vms"]["10.200.0.1"]["firewalls"][0]["baseUrlVars"] = base_url_vars
+        data["sandboxes"]["10.200.0.1"]["firewalls"][0]["baseUrlVars"] = base_url_vars
         path.write_text(json.dumps(data))
 
-        invalid_vm = assert_invalid_builtin_vm(path)
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
         state = registry.load_registry_state(str(path))
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert "10.200.0.1" not in state.vms
-        assert invalid_vm.message == expected_message
+        assert "10.200.0.1" not in state.sandboxes
+        assert invalid_sandbox.message == expected_message
 
     def test_builtin_fixed_provider_suffix_rejects_authority_escape(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -214,8 +216,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"SHOPIFY_SHOP": "attacker.example:443/capture"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "SHOPIFY_SHOP"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "SHOPIFY_SHOP"' in invalid_sandbox.message
 
     def test_builtin_fixed_provider_suffix_rejects_encoded_structure(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -226,8 +228,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"SHOPIFY_SHOP": "attacker.example%3A443%2Fcapture"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "SHOPIFY_SHOP"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "SHOPIFY_SHOP"' in invalid_sandbox.message
 
     def test_builtin_fixed_provider_suffix_accepts_multi_label_fragment(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -238,12 +240,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"SNOWFLAKE_ACCOUNT": "xy12345.us-east-1.aws"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == (
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == (
             "https://xy12345.us-east-1.aws.snowflakecomputing.com/api"
         )
 
@@ -256,8 +258,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"SNOWFLAKE_ACCOUNT": "xy12345.us-east-1.aws/capture"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "SNOWFLAKE_ACCOUNT"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "SNOWFLAKE_ACCOUNT"' in invalid_sandbox.message
 
     def test_builtin_provider_owned_whole_authority_accepts_allowed_host(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -268,12 +270,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"JIRA_DOMAIN": "acme.atlassian.net"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.atlassian.net"
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == "https://acme.atlassian.net"
 
     def test_builtin_host_policy_marks_resolved_api_for_runtime_enforcement(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -284,12 +286,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"JIRA_DOMAIN": "acme.atlassian.net"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        api = vm_info["firewalls"][0]["apis"][0]
+        api = sandbox_info["firewalls"][0]["apis"][0]
         assert isinstance(
             api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
             builtin_host_policy.CompiledBuiltinHostPolicy,
@@ -306,12 +308,12 @@ class TestRegistryBuiltinBaseUrlVars:
                 base_url_vars={"JIRA_DOMAIN": host},
             )
 
-            context = registry.get_vm_context("10.200.0.1", str(path))
+            context = registry.get_sandbox_context("10.200.0.1", str(path))
 
             assert context is not None
-            vm_info, compiled_firewalls, _ = context
+            sandbox_info, compiled_firewalls, _ = context
             assert compiled_firewalls is not None
-            assert vm_info["firewalls"][0]["apis"][0]["base"] == f"https://{host}"
+            assert sandbox_info["firewalls"][0]["apis"][0]["base"] == f"https://{host}"
 
     def test_builtin_provider_owned_rejects_unsafe_idna_compatibility_host(self, tmp_path):
         install_test_builtin_firewall(
@@ -327,8 +329,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "catalog cache unavailable: cache_invalid" in invalid_sandbox.message
 
     def test_builtin_provider_owned_accepts_percent_encoded_idna_host(self, tmp_path):
         install_test_builtin_firewall(
@@ -344,12 +346,14 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"API_HOST": "b%C3%BCcher.example.com"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://b%C3%BCcher.example.com")
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == (
+            "https://b%C3%BCcher.example.com"
+        )
 
     def test_builtin_public_destination_rejects_unsafe_idna_compatibility_host(self, tmp_path):
         install_test_builtin_firewall(
@@ -365,8 +369,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "catalog cache unavailable: cache_invalid" in invalid_sandbox.message
 
     def test_builtin_public_destination_rejects_empty_port_authority(self, tmp_path):
         install_test_builtin_firewall(
@@ -382,8 +386,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "catalog cache unavailable: cache_invalid" in invalid_sandbox.message
 
     def test_builtin_public_destination_rejects_wildcard_hosts(self, tmp_path):
         for index, value in enumerate(("https://*.example.com", "https://%2a.example.com")):
@@ -395,8 +399,8 @@ class TestRegistryBuiltinBaseUrlVars:
                 base_url_vars={"STRAPI_BASE_URL": value},
             )
 
-            invalid_vm = assert_invalid_builtin_vm(path)
-            assert "resolved base URL is invalid" in invalid_vm.message
+            invalid_sandbox = assert_invalid_builtin_sandbox(path)
+            assert "resolved base URL is invalid" in invalid_sandbox.message
 
     def test_builtin_public_destination_rejects_userinfo(self, tmp_path):
         for index, value in enumerate(
@@ -410,8 +414,8 @@ class TestRegistryBuiltinBaseUrlVars:
                 base_url_vars={"STRAPI_BASE_URL": value},
             )
 
-            invalid_vm = assert_invalid_builtin_vm(path)
-            assert "resolved base URL is invalid" in invalid_vm.message
+            invalid_sandbox = assert_invalid_builtin_sandbox(path)
+            assert "resolved base URL is invalid" in invalid_sandbox.message
 
     def test_builtin_provider_owned_whole_authority_rejects_unowned_hosts(self, tmp_path):
         for value in [
@@ -428,8 +432,8 @@ class TestRegistryBuiltinBaseUrlVars:
                 base_url_vars={"JIRA_DOMAIN": value},
             )
 
-            invalid_vm = assert_invalid_builtin_vm(path)
-            assert "host policy does not allow resolved host" in invalid_vm.message
+            invalid_sandbox = assert_invalid_builtin_sandbox(path)
+            assert "host policy does not allow resolved host" in invalid_sandbox.message
 
     @pytest.mark.parametrize(
         ("host_policy", "expected_message"),
@@ -511,11 +515,11 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"API_HOST": "api.example.com"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
 
         warning_messages = [call.args[0] for call in registry_ctx.warn.call_args_list]
         assert any(expected_message in message for message in warning_messages)
-        assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
+        assert "catalog cache unavailable: cache_invalid" in invalid_sandbox.message
 
     def test_builtin_provider_owned_whole_authority_rejects_non_default_port(self, tmp_path):
         install_test_builtin_firewall(
@@ -531,8 +535,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"API_HOST": "api.example.com"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "host policy does not allow non-default ports" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "host policy does not allow non-default ports" in invalid_sandbox.message
 
     def test_builtin_whole_authority_rejects_path_injection(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -543,8 +547,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"JIRA_DOMAIN": "attacker.example/capture"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "JIRA_DOMAIN"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "JIRA_DOMAIN"' in invalid_sandbox.message
 
     def test_builtin_base_url_var_rejects_firewall_parameter_syntax(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -555,8 +559,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "https://{host}.example.test"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "STRAPI_BASE_URL"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "STRAPI_BASE_URL"' in invalid_sandbox.message
 
     def test_builtin_base_url_var_rejects_unicode_whitespace(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -567,8 +571,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "https://strapi.example.test/work\u00a0flows"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "STRAPI_BASE_URL"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "STRAPI_BASE_URL"' in invalid_sandbox.message
 
     def test_builtin_public_destination_accepts_public_host_with_port(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -579,12 +583,14 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "https://strapi.example.test:8443"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://strapi.example.test:8443")
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == (
+            "https://strapi.example.test:8443"
+        )
 
     def test_builtin_public_destination_accepts_public_ip_literals(self, tmp_path):
         for value in [
@@ -599,12 +605,12 @@ class TestRegistryBuiltinBaseUrlVars:
                 base_url_vars={"STRAPI_BASE_URL": value},
             )
 
-            context = registry.get_vm_context("10.200.0.1", str(path))
+            context = registry.get_sandbox_context("10.200.0.1", str(path))
 
             assert context is not None
-            vm_info, compiled_firewalls, _ = context
+            sandbox_info, compiled_firewalls, _ = context
             assert compiled_firewalls is not None
-            assert vm_info["firewalls"][0]["apis"][0]["base"] == value
+            assert sandbox_info["firewalls"][0]["apis"][0]["base"] == value
 
     def test_builtin_public_destination_rejects_non_public_ip_literals(self, tmp_path):
         for value in [
@@ -619,8 +625,8 @@ class TestRegistryBuiltinBaseUrlVars:
                 base_url_vars={"STRAPI_BASE_URL": value},
             )
 
-            invalid_vm = assert_invalid_builtin_vm(path)
-            assert "host policy does not allow non-public IP literal" in invalid_vm.message
+            invalid_sandbox = assert_invalid_builtin_sandbox(path)
+            assert "host policy does not allow non-public IP literal" in invalid_sandbox.message
 
     def test_builtin_public_destination_rejects_trailing_dot_ip_literal(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -631,8 +637,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "https://8.8.8.8."},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "host policy does not allow non-public IP literal" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "host policy does not allow non-public IP literal" in invalid_sandbox.message
 
     def test_builtin_public_destination_rejects_scoped_ip_literal(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -643,8 +649,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "https://[2606:4700:4700::1111%25lo]"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_sandbox.message
 
     def test_builtin_public_destination_rejects_bracketed_ipv4_literal(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -655,8 +661,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "https://[8.8.8.8]"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_sandbox.message
 
     def test_builtin_public_destination_rejects_ipvfuture_literal(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -667,8 +673,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "https://[v1.invalid]"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_sandbox.message
 
     @pytest.mark.parametrize(
         "value",
@@ -686,8 +692,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": value},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_sandbox.message
 
     def test_builtin_base_url_prefix_preserves_fixed_path_suffix(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -698,12 +704,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"N8N_BASE_URL": "https://n8n.example.test/workflows"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == (
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == (
             "https://n8n.example.test/workflows/api/v1"
         )
 
@@ -716,12 +722,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"N8N_BASE_URL": "https://n8n.example.test/work%2fflows"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == (
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == (
             "https://n8n.example.test/work%2fflows/api/v1"
         )
 
@@ -734,11 +740,11 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"N8N_BASE_URL": "https://n8n.example.test/workflows/.."},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
         assert (
             'base URL variable "N8N_BASE_URL" must not contain unsafe path segments '
             "before a fixed path suffix"
-        ) in invalid_vm.message
+        ) in invalid_sandbox.message
 
     def test_builtin_base_url_prefix_rejects_encoded_path_dot_segments(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -749,11 +755,11 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"N8N_BASE_URL": "https://n8n.example.test/workflows/%2e%2e"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
         assert (
             'base URL variable "N8N_BASE_URL" must not contain unsafe path segments '
             "before a fixed path suffix"
-        ) in invalid_vm.message
+        ) in invalid_sandbox.message
 
     def test_builtin_path_segment_var_accepts_fixed_suffix(self, tmp_path):
         install_test_builtin_firewall(
@@ -768,12 +774,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"TENANT": "acme:prod"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == (
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == (
             "https://api.example.test/accounts/acme:prod/v1"
         )
 
@@ -790,8 +796,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"TENANT": "acme/../admin"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "TENANT"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "TENANT"' in invalid_sandbox.message
 
     def test_builtin_path_segment_var_rejects_encoded_path_separator(self, tmp_path):
         install_test_builtin_firewall(
@@ -806,8 +812,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"TENANT": "acme%252fprod"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "TENANT"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "TENANT"' in invalid_sandbox.message
 
     def test_builtin_path_segment_var_rejects_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
@@ -822,8 +828,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"TENANT": "%2e%2e"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "TENANT"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "TENANT"' in invalid_sandbox.message
 
     def test_builtin_path_segment_var_rejects_path_parameter_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
@@ -838,8 +844,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"TENANT": "..;type=folder"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "TENANT"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "TENANT"' in invalid_sandbox.message
 
     def test_builtin_path_segment_var_rejects_nested_encoded_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
@@ -854,8 +860,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"TENANT": "%252e%252e"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "TENANT"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "TENANT"' in invalid_sandbox.message
 
     def test_builtin_path_segment_var_rejects_compatibility_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
@@ -870,8 +876,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"TENANT": "\uff0e\uff0e"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "TENANT"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "TENANT"' in invalid_sandbox.message
 
     def test_builtin_path_var_allows_dot_outside_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
@@ -886,12 +892,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"VERSION": "%2e1"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://api.example.test/v%2e1")
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == ("https://api.example.test/v%2e1")
 
     def test_builtin_path_vars_reject_combined_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
@@ -906,8 +912,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"A": ".", "B": "."},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "resolved base URL has unsafe path segments" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "resolved base URL has unsafe path segments" in invalid_sandbox.message
 
     def test_builtin_path_vars_accept_combined_safe_segment(self, tmp_path):
         install_test_builtin_firewall(
@@ -922,12 +928,12 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"A": "v", "B": "1"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == (
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == (
             "https://api.example.test/accounts/v1/v1"
         )
 
@@ -944,12 +950,14 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"API_PORT": "8443"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://api.example.test:8443/v1")
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == (
+            "https://api.example.test:8443/v1"
+        )
 
     def test_builtin_port_var_rejects_non_numeric_port(self, tmp_path):
         install_test_builtin_firewall(
@@ -964,8 +972,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"API_PORT": "443/path"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert 'base URL variable "API_PORT"' in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert 'base URL variable "API_PORT"' in invalid_sandbox.message
 
     def test_credentialed_builtin_firewall_entry_rejects_http_dynamic_base(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -976,8 +984,8 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "http://strapi.example.test"},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "credentialed base URL must use https" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "credentialed base URL must use https" in invalid_sandbox.message
 
     def test_credentialed_builtin_firewall_entry_accepts_https_dynamic_base(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -988,14 +996,14 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={"STRAPI_BASE_URL": "https://strapi.example.test"},
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
+        sandbox_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://strapi.example.test")
+        assert sandbox_info["firewalls"][0]["apis"][0]["base"] == ("https://strapi.example.test")
 
-    def test_builtin_firewall_entry_missing_dynamic_var_rejects_vm(self, tmp_path):
+    def test_builtin_firewall_entry_missing_dynamic_var_rejects_sandbox(self, tmp_path):
         path = tmp_path / "registry.json"
         write_builtin_firewall_registry(
             path,
@@ -1004,15 +1012,15 @@ class TestRegistryBuiltinBaseUrlVars:
             base_url_vars={},
         )
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "ZENDESK_SUBDOMAIN" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "ZENDESK_SUBDOMAIN" in invalid_sandbox.message
 
     def test_builtin_firewall_entry_does_not_read_top_level_vars(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
             json.dumps(
                 {
-                    "vms": {
+                    "sandboxes": {
                         "10.200.0.1": {
                             "runId": "run-zendesk",
                             "billableFirewalls": [],
@@ -1027,10 +1035,10 @@ class TestRegistryBuiltinBaseUrlVars:
         )
         cache_path = _cache_path_for_registry(path)
         _write_catalog_cache(cache_path, {"zendesk": _builtin_firewall("zendesk")})
-        registry.ctx.options.vm0_builtin_firewall_catalog_cache_path = str(cache_path)
+        builtin_firewall_cache.ctx.options.vm0_builtin_firewall_catalog_cache_path = str(cache_path)
 
-        invalid_vm = assert_invalid_builtin_vm(path)
-        assert "ZENDESK_SUBDOMAIN" in invalid_vm.message
+        invalid_sandbox = assert_invalid_builtin_sandbox(path)
+        assert "ZENDESK_SUBDOMAIN" in invalid_sandbox.message
 
     def test_unknown_builtin_firewall_entry_is_omitted(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -1042,13 +1050,13 @@ class TestRegistryBuiltinBaseUrlVars:
             cache_firewall=_builtin_firewall("zendesk"),
         )
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
         state = registry.load_registry_state(str(path))
 
         assert context is not None
-        vm_info, compiled_firewalls, _ = context
-        assert vm_info["firewalls"] == []
+        sandbox_info, compiled_firewalls, _ = context
+        assert sandbox_info["firewalls"] == []
         assert compiled_firewalls is None
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.invalid_vms == {}
+        assert state.invalid_sandboxes == {}
         assert state.omitted_builtin_firewalls == {"10.200.0.1": frozenset({"missing-firewall"})}

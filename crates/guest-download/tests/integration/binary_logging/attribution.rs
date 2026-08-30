@@ -1,11 +1,11 @@
 use super::{BinaryLoggingFixture, assert_action_types_present};
-use crate::support::{create_tar_gz, read_http_request_path, write_manifest};
+use crate::support::{TcpTestServer, create_tar_gz, read_http_request_path, write_manifest};
 use httpmock::prelude::*;
 use httpmock::{HttpMockRequest, HttpMockResponse};
 use serde_json::{Value, json};
-use std::io::Write as _;
-use std::net::TcpListener;
+use std::io::{self, Write as _};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
@@ -49,11 +49,14 @@ fn start_delayed_archive_server(
     archive: Vec<u8>,
     header_delay: Duration,
     body_delay: Duration,
-) -> std::io::Result<(String, thread::JoinHandle<std::io::Result<()>>)> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let url = format!("http://{}/archive.tar.gz", listener.local_addr()?);
-    let handle = thread::spawn(move || {
-        let (mut stream, _) = listener.accept()?;
+) -> io::Result<TcpTestServer<()>> {
+    TcpTestServer::start(move |server| {
+        let mut stream = server.accept()?.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Interrupted,
+                "delayed archive server stopped before receiving a request",
+            )
+        })?;
         assert_eq!(read_http_request_path(&mut stream)?, "/archive.tar.gz");
         thread::sleep(header_delay);
         write!(
@@ -65,8 +68,7 @@ fn start_delayed_archive_server(
         thread::sleep(body_delay);
         stream.write_all(&archive)?;
         stream.flush()
-    });
-    Ok((url, handle))
+    })
 }
 
 #[test]
@@ -552,14 +554,15 @@ fn binary_aggregates_remote_attribution_across_retries() {
 fn binary_separates_response_header_and_body_read_wait() {
     let archive = create_tar_gz(&[("delayed.txt", b"delayed")]).unwrap();
     let delay = Duration::from_millis(80);
-    let (url, server) = start_delayed_archive_server(archive, delay, delay).unwrap();
+    let server = start_delayed_archive_server(archive, delay, delay).unwrap();
+    let url = format!("{}/archive.tar.gz", server.base_url());
     let fixture = BinaryLoggingFixture::new("remote-attribution-delays").unwrap();
     let mount = fixture.dir.path().join("storage");
     let manifest =
         write_manifest(&fixture.dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
     let output = fixture.run_manifest_path(&manifest).unwrap();
-    server.join().unwrap().unwrap();
+    server.finish().unwrap();
 
     assert!(
         output.status.success(),
@@ -579,6 +582,21 @@ fn binary_separates_response_header_and_body_read_wait() {
         "header wait was {header_wait}ms: {ops:?}"
     );
     assert!(body_wait >= 50, "body wait was {body_wait}ms: {ops:?}");
+}
+
+#[test]
+fn delayed_archive_server_without_request_returns_bounded_error() {
+    let server = start_delayed_archive_server(Vec::new(), Duration::ZERO, Duration::ZERO).unwrap();
+    let (finished_tx, finished_rx) = mpsc::channel();
+    let completion = thread::spawn(move || {
+        let result = server.finish();
+        let _ = finished_tx.send(());
+        result
+    });
+
+    finished_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+    let error = completion.join().unwrap().unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::Interrupted);
 }
 
 #[test]

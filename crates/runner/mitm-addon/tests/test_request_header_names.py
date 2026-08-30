@@ -46,14 +46,14 @@ async def test_requestheaders_rejects_over_budget_names_before_header_processing
     assert flow.response.status_code == 431
     assert flow.response.content == b""
     assert flow.request.headers.fields == retained_fields
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     _assert_no_request_stream(flow)
 
     await mitm_addon.request(flow)
 
     assert flow.request.headers.fields == retained_fields
     assert connector_intent.from_flow(flow) == connector_intent.ABSENT
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
 
 
 async def test_requestheaders_accepts_name_budget_and_preserves_existing_header_behavior(

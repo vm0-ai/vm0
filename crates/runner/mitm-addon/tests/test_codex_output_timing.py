@@ -13,6 +13,7 @@ from mitmproxy import http
 import codex_output_timing
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import model_provider_failure
 import openai_responses_events
 import usage
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
@@ -20,6 +21,7 @@ from tests.model_provider_flow_helpers import make_openai_responses_websocket_fl
 from tests.model_provider_websocket_helpers import (
     ScheduledWebSocketTrim,
     capture_deferred_websocket_trims,
+    capture_openai_responses_extractor_feeds,
     feed_websocket_server_message,
     set_websocket_message,
 )
@@ -113,7 +115,7 @@ def test_default_codex_excludes_prewarm_and_reports_content_free_milestones(
     sync_usage_executor,
 ) -> None:
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     secret = "provider-secret-that-must-not-be-reported"
     generated_request_received_at = 1_700_000_000.125
 
@@ -255,7 +257,7 @@ def test_tool_turns_reconnects_and_reused_sandboxes_preserve_run_boundaries(
         _feed_generated_response(reconnect)
 
         reused_sandbox_run = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        reused_sandbox_run.metadata[metadata_keys.VM_RUN_ID] = "run-reused-sandbox"
+        reused_sandbox_run.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-reused-sandbox"
         mitm_addon.responseheaders(reused_sandbox_run)
         _feed_generated_response(reused_sandbox_run)
 
@@ -364,6 +366,57 @@ def test_websocket_event_type_is_probed_once(
     assert probe_calls == 1
 
 
+def test_ambiguous_client_correlations_keep_timing_without_full_parse(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+    usage_webhook_server: UsageWebhookServer,
+    sync_usage_executor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+    model_provider_failure.admit_flow(flow)
+    full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
+    probe_code = json_probe.probe_top_level_string_field.__code__
+    probe_calls = 0
+
+    def count_probe(frame: FrameType, event: str, _arg: object) -> None:
+        nonlocal probe_calls
+        if event == "call" and frame.f_code is probe_code:
+            probe_calls += 1
+
+    with mitm_ctx(api_url=usage_webhook_server.api_url):
+        mitm_addon.responseheaders(flow)
+        _feed_client_event(flow, b"not-json")
+        assert full_body_feeds.count(b"not-json") == 1
+        full_body_feeds.clear()
+
+        previous_profile = sys.getprofile()
+        sys.setprofile(count_probe)
+        try:
+            _feed_client_event(
+                flow,
+                _event("response.create"),
+                received_at=1_700_000_000.125,
+            )
+        finally:
+            sys.setprofile(previous_profile)
+
+        feed_websocket_server_message(flow, _event("response.created"))
+        feed_websocket_server_message(flow, _event("response.output_item.added"))
+
+    assert probe_calls == 1
+    assert full_body_feeds == []
+    assert [
+        operation["action_type"]
+        for operation in _operations(_timing_requests(usage_webhook_server))
+    ] == [
+        _FIRST_GENERATED_RESPONSE_CREATE_SENT,
+        _FIRST_GENERATED_RESPONSE_CREATED,
+        _FIRST_OUTPUT_ITEM_ADDED,
+    ]
+
+
 def test_eviction_and_reset_release_retained_buffered_report(
     tmp_path: Path,
     real_flow,
@@ -382,12 +435,12 @@ def test_eviction_and_reset_release_retained_buffered_report(
         patch.object(codex_output_timing._store, "_max_tracked_runs", 1),
     ):
         first_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-first"
+        first_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-first"
         mitm_addon.responseheaders(first_flow)
         _feed_generated_response(first_flow, include_text=False)
 
         second_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        second_flow.metadata[metadata_keys.VM_RUN_ID] = "run-second"
+        second_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-second"
         mitm_addon.responseheaders(second_flow)
         _feed_generated_response(second_flow, include_text=False)
 
@@ -430,7 +483,7 @@ def test_lru_hit_recency_preserves_recent_buffered_report(
 
     def codex_flow(run_id: str) -> http.HTTPFlow:
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
         mitm_addon.responseheaders(flow)
         return flow
 

@@ -3,7 +3,9 @@
 use std::time::Duration;
 
 use guest_contracts::storage_manifest::Manifest;
-use sandbox::{EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use sandbox::{
+    EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox, StorageManifestRequest,
+};
 use tracing::{info, warn};
 
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir};
@@ -17,10 +19,6 @@ pub(super) fn guest_download_command() -> String {
     format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST)
 }
 
-pub(super) fn guest_download_stdin_command() -> String {
-    format!("{} --manifest-stdin", guest::DOWNLOAD_BIN)
-}
-
 pub(super) fn guest_storage_manifest_cleanup_command() -> String {
     format!("rm -f -- {}", guest::STORAGE_MANIFEST)
 }
@@ -32,7 +30,7 @@ pub(super) fn guest_download_env<'a>(
     [
         (guest_contracts::env::RUN_ID_ENV, run_id),
         (
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             runtime_dir,
         ),
     ]
@@ -47,10 +45,23 @@ pub(super) async fn download_storages(
         .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
     let run_id = context.run_id.to_string();
     let runtime_dir = guest_runtime_dir(context.run_id)?;
-    let download_env = guest_download_env(&run_id, &runtime_dir);
-    let use_stdin = manifest_json.len() <= vsock_proto::MAX_EXEC_STDIN_BYTES;
-    let download_cmd = if use_stdin {
-        guest_download_stdin_command()
+    let use_dedicated = manifest_json.len() <= vsock_proto::MAX_EXEC_STDIN_BYTES;
+    let transport = if use_dedicated {
+        "dedicated"
+    } else {
+        "fallback"
+    };
+
+    info!(run_id = %context.run_id, transport, "downloading storages");
+    let result = if use_dedicated {
+        sandbox
+            .apply_storage_manifest(&StorageManifestRequest {
+                manifest_json: &manifest_json,
+                run_id: &run_id,
+                runtime_dir: &runtime_dir,
+                timeout: DEFAULT_EXEC_TIMEOUT,
+            })
+            .await
     } else {
         remove_fallback_storage_manifest(sandbox).await?;
         if let Err(error) = sandbox
@@ -60,29 +71,27 @@ pub(super) async fn download_storages(
             cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
             return Err(error.into());
         }
-        guest_download_command()
+        let download_cmd = guest_download_command();
+        let download_env = guest_download_env(&run_id, &runtime_dir);
+        sandbox
+            .exec_with_diagnostic_label(
+                &ExecRequest {
+                    cmd: &download_cmd,
+                    timeout: DEFAULT_EXEC_TIMEOUT,
+                    env: &download_env,
+                    sudo: false,
+                    expected_exit_codes: &[],
+                    stdin_bytes: None,
+                    output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+                },
+                "storage-download",
+            )
+            .await
     };
-    let stdin_bytes = use_stdin.then_some(manifest_json.as_slice());
-
-    info!(run_id = %context.run_id, "downloading storages");
-    let result = match sandbox
-        .exec_with_diagnostic_label(
-            &ExecRequest {
-                cmd: &download_cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &download_env,
-                sudo: false,
-                expected_exit_codes: &[],
-                stdin_bytes,
-                output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
-            },
-            "storage-download",
-        )
-        .await
-    {
+    let result = match result {
         Ok(result) => result,
         Err(e) => {
-            if !use_stdin {
+            if !use_dedicated {
                 cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
             }
             return Err(e.into());
@@ -90,7 +99,7 @@ pub(super) async fn download_storages(
     };
 
     if !helper_exec_succeeded(&result) {
-        if !use_stdin {
+        if !use_dedicated {
             cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
         }
         return Err(RunnerError::Internal(format_guest_download_failure(

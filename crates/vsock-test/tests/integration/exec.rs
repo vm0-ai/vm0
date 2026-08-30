@@ -138,6 +138,7 @@ async fn test_exec_while_waiting_for_exit() {
     let handle = h
         .host()
         .start_supervised_exec(SupervisedExecRequest {
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::None,
             command: "exec sleep 60",
             env: &[],

@@ -447,6 +447,10 @@ export function agentRunRunner(args: {
   Promise<{
     readonly sandboxReuseResult: SandboxReuseResult | null;
     readonly workspaceReuseResult: WorkspaceReuseResult | null;
+    readonly runnerHostname: string | null;
+    readonly runnerVersion: string | null;
+    readonly runnerId: string | null;
+    readonly runnerHeartbeatGeneration: number | null;
   } | null>
 > {
   return computed(async (get) => {
@@ -454,6 +458,10 @@ export function agentRunRunner(args: {
       .select({
         sandboxReuseResult: agentRuns.sandboxReuseResult,
         workspaceReuseResult: agentRuns.workspaceReuseResult,
+        runnerHostname: agentRuns.runnerHostname,
+        runnerVersion: agentRuns.runnerVersion,
+        runnerId: agentRuns.runnerId,
+        runnerHeartbeatGeneration: agentRuns.runnerHeartbeatGeneration,
       })
       .from(agentRuns)
       .where(
@@ -480,6 +488,10 @@ export function agentRunRunner(args: {
       workspaceReuseResult: workspaceResult.success
         ? workspaceResult.data
         : null,
+      runnerHostname: row.runnerHostname,
+      runnerVersion: row.runnerVersion,
+      runnerId: row.runnerId,
+      runnerHeartbeatGeneration: row.runnerHeartbeatGeneration,
     };
   });
 }

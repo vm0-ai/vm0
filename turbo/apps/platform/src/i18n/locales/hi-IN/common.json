@@ -37,13 +37,18 @@
       "environmentMapping": "पर्यावरण मानचित्रण",
       "featureFlags": "फ़ीचर झंडे",
       "firewalls": "फ़ायरवाल",
+      "modelProvider": "मॉडल प्रदाता",
+      "modelRoute": "मॉडल रूट",
       "mountPath": "पर्वत पथ",
       "name": "नाम",
       "networkPolicies": "नेटवर्क नीतियाँ",
       "none": "कोई नहीं",
       "prompt": "प्रॉम्प्ट",
       "runId": "ID चलाएँ",
+      "runtimeModel": "रनटाइम मॉडल",
+      "runtimeProvider": "रनटाइम प्रदाता",
       "secrets": "रहस्य",
+      "selectedModel": "चयनित मॉडल",
       "session": "सत्र",
       "storageName": "भंडारण का नाम",
       "systemPrompt": "सिस्टम प्रॉम्प्ट",
@@ -116,7 +121,10 @@
         "cacheMiss": "कोई भी कैश किया गया कार्यस्थान पुन: उपयोग कुंजी से मेल नहीं खाता।",
         "deviceLimitMismatch": "निष्क्रिय पूल प्रविष्टि मौजूद है लेकिन इसकी डिवाइस दर सीमक स्थिति मेल नहीं खाती है।",
         "diskPressure": "रनर पर डिस्क दबाव के कारण कार्यस्थान का पुन: उपयोग छोड़ दिया गया।",
+        "environment": "परिवेश",
         "featureDisabled": "इस रन के लिए सैंडबॉक्स का पुन: उपयोग अक्षम है।",
+        "generation": "जनरेशन",
+        "hostname": "होस्टनाम",
         "invalidMetadata": "कैश किए गए कार्यस्थान का मेटाडेटा अमान्य था।",
         "invalidWorkingDir": "अनुरोधित कार्य निर्देशिका का पुन: उपयोग नहीं किया जा सका।",
         "lockBusy": "कोई अन्य रन उसी कार्यस्थान को तैयार कर रहा था।",
@@ -124,21 +132,28 @@
         "noSessionId": "पुराना परिणाम: सैंडबॉक्स का पुन: उपयोग न होने का सटीक कारण उपलब्ध नहीं है।",
         "notConfigured": "इस रन के लिए कार्यस्थान का पुन: उपयोग कॉन्फ़िगर नहीं किया गया था।",
         "notReused": "पुन: उपयोग नहीं किया गया",
+        "outcomeUnavailableDescription": "अतिरिक्त विवरण उपलब्ध नहीं हैं।",
         "poolMiss": "निष्क्रिय पूल में कोई मेल खाता सैंडबॉक्स नहीं मिला।",
         "profileMismatch": "निष्क्रिय पूल प्रविष्टि मौजूद है लेकिन इसकी प्रोफ़ाइल मेल नहीं खाती।",
         "provisioning": "तैयार किया जा रहा है",
         "reused": "पुन: उपयोग",
         "reusedDescription": "सैंडबॉक्स को निष्क्रिय पूल से हटा दिया गया था।",
+        "runnerId": "रनर आईडी",
         "sandbox": "सैंडबॉक्स",
         "sandboxPrepareFallback": "कैश किया गया कार्यस्थान मिला, लेकिन सैंडबॉक्स तैयार होने के बाद उसका उपयोग नहीं किया जा सका।",
         "sandboxReusedDescription": "पुन: उपयोग किए गए सैंडबॉक्स में कार्यस्थान उपलब्ध रहा।",
         "startup": "प्रारंभ",
         "startupCold": "कोल्ड स्टार्ट",
+        "startupColdDescription": "एक नया सैंडबॉक्स और कार्यस्थान तैयार किया गया।",
         "startupSandbox": "सैंडबॉक्स पुन: उपयोग",
+        "startupSandboxDescription": "सैंडबॉक्स और उसके कार्यस्थान का पुन: उपयोग किया गया।",
         "startupUnknown": "अज्ञात",
+        "startupUnknownDescription": "स्टार्टअप पुन: उपयोग का विवरण उपलब्ध नहीं है।",
         "startupWorkspace": "कार्यस्थान पुन: उपयोग",
+        "startupWorkspaceDescription": "एक नए सैंडबॉक्स ने कैश किए गए कार्यस्थान को पुनर्स्थापित किया।",
         "unavailable": "अनुपलब्ध",
         "unparkFailed": "अनपार्क प्रयास विफल; एक ताज़ा सैंडबॉक्स का प्रावधान किया गया था।",
+        "version": "संस्करण",
         "workspace": "कार्यस्थान",
         "workspaceNoReuseKey": "कोई कार्यस्थान पुन: उपयोग कुंजी उपलब्ध नहीं थी।",
         "workspaceReusedDescription": "कार्यस्थान को रनर कैश से पुनर्स्थापित किया गया।"
@@ -426,7 +441,7 @@
       "ariaLabel": "साइड बार",
       "chat": "चैट",
       "collapse": "साइडबार को संक्षिप्त करें",
-      "expand": "साइडबार का विस्तार करें",
+      "hideChatList": "चैट सूची छिपाएं",
       "manage": "प्रबंधित करें",
       "mobile": {
         "invite": "आमंत्रित करें",
@@ -449,7 +464,8 @@
         "workflows": "वर्कफ़्लो",
         "works": "काम करता है"
       },
-      "searchConversations": "वार्तालाप खोजें",
+      "searchWorkspace": "वर्कस्पेस खोजें",
+      "showChatList": "चैट सूची दिखाएं",
       "workspaceSwitcher": {
         "create": "वर्कस्पेस बनाएं",
         "creating": "बनाया जा रहा है...",
@@ -483,6 +499,25 @@
       "shareArtifact": "आर्टिफ़ैक्ट शेयर करें",
       "zoomIn": "ज़ूम इन",
       "zoomOut": "ज़ूम आउट"
+    },
+    "annotation": {
+      "attach": "चिह्न संलग्न करें",
+      "draftOnly": "चिह्न ड्राफ़्ट में रहते हैं — भेजने तक बदल सकते हैं",
+      "inkLabel": "रंग {{color}}",
+      "notePlaceholder": "यहाँ क्या बदलना चाहिए, लिखें",
+      "open": "टिप्पणी करें",
+      "redo": "फिर से करें",
+      "removeMark": "चिह्न हटाएँ",
+      "subtitle_one": "{{count}} चिह्न",
+      "subtitle_other": "{{count}} चिह्न",
+      "textPlaceholder": "लेबल लिखें",
+      "tools": {
+        "arrow": "तीर",
+        "box": "बॉक्स",
+        "pen": "बनाएँ",
+        "text": "टेक्स्ट"
+      },
+      "undo": "पूर्ववत करें"
     },
     "attachments": {
       "cancelUpload": "अपलोड {{filename}} रद्द करें",
@@ -616,7 +651,7 @@
       "illustration": "चित्रण",
       "illustrationPreview": "{{title}} चित्रण पूर्वावलोकन",
       "importDeck": "अपना डेक इंपोर्ट करें",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} स्लाइड",
       "importedSlides_other": "{{count}} स्लाइड",
       "multiAccent": "बहु-उच्चारण",
@@ -672,6 +707,12 @@
       "tryDifferentSearch": "भिन्न खोज का प्रयास करें.",
       "use": "उपयोग",
       "useThisTemplate": "इस टेम्पलेट का उपयोग करें",
+      "visibility": {
+        "change": "बदलें",
+        "changeLabel": "टेम्पलेट की दृश्यता बदलें",
+        "privateState": "केवल आप इसे देख और उपयोग कर सकते हैं",
+        "workspaceState": "इस वर्कस्पेस में कोई भी इसका उपयोग कर सकता है"
+      },
       "website": "वेबसाइट",
       "websitePreview": "{{title}} वेबसाइट टेम्पलेट पूर्वावलोकन",
       "workflow": "वर्कफ़्लो",
@@ -1010,8 +1051,152 @@
       "signIn": "दाखिल करना",
       "signUp": "साइन अप करें"
     },
+    "homeLink": "{{brandName}} होम पर जाएं",
     "loading": "प्रमाणीकरण लोड हो रहा है",
-    "toggleTheme": "थीम टॉगल करें"
+    "theme": {
+      "darkEnabled": "डार्क थीम चालू है",
+      "lightEnabled": "लाइट थीम चालू है"
+    },
+    "toggleTheme": "थीम टॉगल करें",
+    "v2": {
+      "continuation": {
+        "activationErrorDescription": "हम आपका साइन-इन पूरा नहीं कर सके। फिर से शुरू करके दोबारा कोशिश करें।",
+        "activationErrorTitle": "साइन-इन पूरा नहीं हो सका",
+        "chooseOrganizationDescription": "{{brandName}} पर जारी रखने के लिए कोई संगठन चुनें।",
+        "chooseOrganizationTitle": "कोई संगठन चुनें",
+        "completeDescription": "आपको {{brandName}} पर ले जाया जा रहा है।",
+        "completeTitle": "साइन-इन पूरा हुआ",
+        "loadingDescription": "जाँचा जा रहा है कि आपके खाते के लिए आगे क्या आवश्यक है।",
+        "loadingTitle": "साइन-इन पूरा किया जा रहा है",
+        "noOrganizationsDescription": "इस खाते के लिए कोई संगठन उपलब्ध नहीं है। संगठन व्यवस्थापक से पहुँच माँगें, फिर दोबारा शुरू करें।",
+        "noOrganizationsTitle": "कोई संगठन उपलब्ध नहीं है",
+        "recoveryAction": "फिर से शुरू करें",
+        "secondFactorDescription": "इस साइन-इन के लिए एक अतिरिक्त सत्यापन चरण आवश्यक है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
+        "secondFactorTitle": "अतिरिक्त सत्यापन आवश्यक है",
+        "selectOrganization": "{{organizationName}} के साथ जारी रखें",
+        "signedInAs": "{{identifier}} के रूप में साइन इन किया गया",
+        "unsupportedDescription": "आपके खाते ने ऐसा प्रमाणीकरण चरण लौटाया है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
+        "unsupportedTitle": "साइन-इन चरण उपलब्ध नहीं है"
+      },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
+      "signIn": {
+        "addAccount": "खाता जोड़ें",
+        "appleMethod": "Apple के साथ जारी रखें",
+        "back": "वापस",
+        "chooseAccountSubtitle": "वह खाता चुनें जिसके साथ आप जारी रखना चाहते हैं।",
+        "chooseAccountTitle": "एक खाता चुनें",
+        "chooseMethodSubtitle": "समस्याओं का सामना कर रहे हैं? साइन इन करने के लिए आप इनमें से किसी भी विधि का उपयोग कर सकते हैं।",
+        "chooseMethodTitle": "दूसरी विधि का उपयोग करें",
+        "clientTrustNotice": "आप एक नए डिवाइस से साइन इन कर रहे हैं। हम आपके खाते को सुरक्षित रखने के लिए सत्यापन मांग रहे हैं।",
+        "codeExpired": "यह सत्यापन कोड समाप्त हो गया है। नया कोड माँगें।",
+        "codeLabel": "सत्यापन कोड",
+        "completeSubtitle": "आप जल्द ही पुनर्निर्देशित किए जाएंगे",
+        "completeTitle": "साइन इन हो रहा है...",
+        "confirmPasswordLabel": "पासवर्ड की पुष्टि करें",
+        "continue": "जारी रखें",
+        "editIdentifier": "ईमेल पता या उपयोगकर्ता नाम संपादित करें",
+        "emailAddressLabel": "ईमेल पता",
+        "emailAddressPlaceholder": "अपना ईमेल पता दर्ज करें",
+        "emailCodeMethod": "{{identifier}} पर ईमेल कोड",
+        "emailCodeSubtitle": "{{brandName}} पर जारी रखने के लिए",
+        "emailCodeTitle": "अपना ईमेल जांचें",
+        "emailSupport": "सहायता को ईमेल करें",
+        "forgotPassword": "पासवर्ड भूल गए?",
+        "getHelp": "सहायता प्राप्त करें",
+        "googleMethod": "Google के साथ जारी रखें",
+        "helpDescription": "यदि आपको अपने खाते में साइन इन करने में परेशानी हो रही है, तो हमें ईमेल करें और हम जल्द से जल्द आपकी पहुँच बहाल करने में सहायता करेंगे।",
+        "helpTitle": "सहायता प्राप्त करें",
+        "hidePassword": "पासवर्ड छिपाएँ",
+        "identifierLabel": "ईमेल पता या उपयोगकर्ता नाम",
+        "identifierPlaceholder": "अपना ईमेल पता या उपयोगकर्ता नाम दर्ज करें",
+        "lastUsed": "अंतिम समय प्रयोग हुआ",
+        "methodsHelpPrompt": "इनमें से कोई विकल्प नहीं है?",
+        "newPasswordLabel": "नया पासवर्ड",
+        "newPasswordSubtitle": "सुरक्षा कारणों से, आपका पासवर्ड रीसेट करना आवश्यक है।",
+        "newPasswordTitle": "नया पासवर्ड सेट करें",
+        "noAccount": "खाता नहीं है?",
+        "noMethodsMessage": "साइन इन जारी नहीं रख सकते। कोई उपलब्ध प्रमाणीकरण कारक नहीं है।",
+        "noMethodsTitle": "साइन इन नहीं कर सकते",
+        "passkeyCancelled": "पासकी सत्यापन रद्द कर दिया गया या समय समाप्त हो गया।",
+        "passkeyMethod": "अपनी पासकी से साइन इन करें",
+        "passkeyUnavailable": "इस डिवाइस पर पासकी समर्थित नहीं हैं।",
+        "passwordLabel": "पासवर्ड",
+        "passwordMethod": "अपने पासवर्ड से साइन इन करें",
+        "passwordMismatch": "पासवर्ड मेल नहीं खाते।",
+        "passwordPlaceholder": "अपना पासवर्ड दर्ज करें",
+        "passwordResetMethod": "अपना पासवर्ड रीसेट करें",
+        "passwordSubtitle": "अपने खाते से जुड़ा पासवर्ड दर्ज करें",
+        "passwordTitle": "अपना पासवर्ड दर्ज करें",
+        "recoveryMethodsDivider": "या किसी अन्य तरीके से साइन इन करें",
+        "recoveryTitle": "पासवर्ड भूल गए?",
+        "resendCode": "कोड नहीं मिला? फिर से भेजें",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "resetPassword": "पासवर्ड रीसेट करें",
+        "resetPasswordCodeSubtitle": "पहले, अपने ईमेल पते पर भेजा गया कोड दर्ज करें",
+        "resetPasswordCodeTitle": "पासवर्ड रीसेट करें",
+        "separator": "या",
+        "showPassword": "पासवर्ड दिखाएँ",
+        "signOutOfOtherSessions": "अन्य सभी डिवाइस से साइन आउट करें",
+        "signUp": "साइन अप करें",
+        "startSubtitle": "वापस आने पर स्वागत है! जारी रखने के लिए कृपया साइन इन करें",
+        "title": "{{brandName}} में साइन इन करें",
+        "unknownError": "यह कार्रवाई पूरी नहीं हो सकी। कृपया बाद में फिर से प्रयास करें या समस्या बनी रहने पर सहायता से संपर्क करें।",
+        "useAnotherMethod": "दूसरी विधि का उपयोग करें",
+        "usernameLabel": "उपयोगकर्ता नाम",
+        "usernamePlaceholder": "अपना उपयोगकर्ता नाम दर्ज करें",
+        "verify": "सत्यापित करें"
+      },
+      "signUp": {
+        "alreadyHaveAccount": "पहले से ही खाता है?",
+        "appleMethod": "Apple के साथ जारी रखें",
+        "back": "वापस",
+        "captchaError": "असफल बॉट सत्यापन के कारण साइन अप असफल रहा। पुनः प्रयास करने के लिए कृपया पृष्ठ को रिफ्रेश करें या अधिक सहायता के लिए सपोर्ट से संपर्क करें।",
+        "captchaExpired": "बॉट सत्यापन की समय-सीमा समाप्त हो गई है। फिर से कोशिश करें।",
+        "captchaLoading": "लोड हो रहा है…",
+        "captchaSubtitle": "कृपया प्रतीक्षा करें, हम आपके अनुरोध का सत्यापन कर रहे हैं।",
+        "captchaTitle": "आपके अनुरोध का सत्यापन किया जा रहा है",
+        "codeExpired": "यह सत्यापन कोड समाप्त हो गया है। नया कोड माँगें।",
+        "codeLabel": "सत्यापन कोड",
+        "completeSubtitle": "साइन अप हो रहा है...",
+        "completeTitle": "सफलतापूर्वक साइन अप हो गया",
+        "continue": "जारी रखें",
+        "description": "स्वागत है! आरंभ करने के लिए कृपया विवरण भरें।",
+        "editEmailAddress": "ईमेल पता संपादित करें",
+        "emailAddressLabel": "ईमेल पता",
+        "emailAddressPlaceholder": "अपना ईमेल पता दर्ज करें",
+        "emailCodeSubtitle": "अपने ईमेल पर भेजा गया सत्यापन कोड दर्ज करें",
+        "emailCodeTitle": "अपना ईमेल सत्यापित करें",
+        "firstNameLabel": "पहला नाम",
+        "firstNamePlaceholder": "अपना पहला नाम दर्ज करें",
+        "googleMethod": "Google के साथ जारी रखें",
+        "hidePassword": "पासवर्ड छिपाएँ",
+        "lastNameLabel": "अंतिम नाम",
+        "lastNamePlaceholder": "अपना अंतिम नाम दर्ज करें",
+        "legalPrivacyOnly": "मैं <privacy>गोपनीयता नीति</privacy> से सहमत हूं",
+        "legalRequired": "जारी रखने के लिए कृपया शर्तों को पढ़ें और स्वीकार करें",
+        "legalTermsAndPrivacy": "मैं <terms>सेवा की शर्तें</terms> और <privacy>गोपनीयता नीति</privacy> से सहमत हूं",
+        "legalTermsOnly": "मैं <terms>सेवा की शर्तें</terms> से सहमत हूं",
+        "optional": "वैकल्पिक",
+        "passwordInvalid": "आपका पासवर्ड पर्याप्त मजबूत नहीं है।",
+        "passwordLabel": "पासवर्ड",
+        "passwordPlaceholder": "पासवर्ड बनाएं",
+        "resendCode": "कोड नहीं मिला? फिर से भेजें",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "restart": "दूसरी विधि का उपयोग करें",
+        "retry": "पुनः प्रयास करें",
+        "separator": "या",
+        "showPassword": "पासवर्ड दिखाएँ",
+        "signIn": "साइन इन करें",
+        "title": "अपना खाता बनाएं",
+        "unknownError": "यह कार्रवाई पूरी नहीं हो सकी। कृपया बाद में फिर से प्रयास करें या समस्या बनी रहने पर सहायता से संपर्क करें।",
+        "unknownMessage": "साइन अप वर्तमान में अक्षम हैं। यदि आपका मानना है कि आपके पास पहुंच होनी चाहिए, तो कृपया सहायता से संपर्क करें।",
+        "unknownTitle": "पहुंच सीमित है",
+        "verify": "सत्यापित करें"
+      }
+    }
   },
   "authorization": {
     "browser": {
@@ -1088,7 +1273,6 @@
         "updatedTitle": "अनुमतियाँ अद्यतन की गईं"
       },
       "saving": "सहेजा जा रहा है...",
-      "unknownEndpoints": "अज्ञात समापनबिंदु",
       "userFallback": "वहाँ",
       "wouldLike": "करना चाहेंगे"
     }
@@ -1515,7 +1699,6 @@
         "inviteMember": "इंसानों को बुलाएँ 🤝",
         "otherChannels": "Telegram और फ़ोन"
       },
-      "invitePeople": "लोगों को आमंत्रित करें",
       "taglines": {
         "anonymous": {
           "buildSomething": "कुछ बनाने के लिए तैयार हैं?",
@@ -1553,6 +1736,9 @@
       "loadingFile": "{{filename}} लोड हो रहा है",
       "previewFile": "पूर्वावलोकन {{filename}}",
       "title": "संलग्नक",
+      "unavailable": "{{filename}} अब उपलब्ध नहीं है। भेजने के लिए इसे दोबारा अपलोड करें।",
+      "unavailableCount_one": "{{count}} अटैचमेंट अब उपलब्ध नहीं है। भेजने के लिए उसे दोबारा अपलोड करें।",
+      "unavailableCount_other": "{{count}} अटैचमेंट अब उपलब्ध नहीं हैं। भेजने के लिए उन्हें दोबारा अपलोड करें।",
       "uploadFailed": "{{filename}} अपलोड करने में विफल",
       "uploadFailedRetry": "{{filename}} अपलोड करने में विफल. पुनः प्रयास करें।",
       "uploadsFailed": "कुछ अनुलग्नक अपलोड करने में विफल रहे. पुनः प्रयास करें।"
@@ -1654,6 +1840,37 @@
       "weeklyAt": "{{time}} पर हर सप्ताह",
       "weeklyOnAt": "हर सप्ताह {{days}} पर {{time}} पर"
     },
+    "banking": {
+      "accountFallback": "बैंक खाता",
+      "actionFailed": "बैंकिंग कार्रवाई विफल रही",
+      "active_one": "{{count}} खाते के लिए एक्सेस सक्रिय",
+      "active_other": "{{count}} खातों के लिए एक्सेस सक्रिय",
+      "automationOff": "केवल पढ़ने की एक्सेस ऑटोमेशन रन के लिए उपलब्ध नहीं है।",
+      "cancel": "रद्द करें",
+      "change": "बदलें",
+      "connect": "बैंक कनेक्ट करें",
+      "continue": "जारी रखें",
+      "duration": "एक्सेस अवधि",
+      "expiresAt": "{{time}} को समाप्त होगा",
+      "grant": "एक्सेस दें",
+      "institutionFallback": "वित्तीय संस्थान",
+      "loadFailed": "बैंकिंग एक्सेस लोड नहीं हो सकी",
+      "noAccounts": "कोई सक्रिय खाता उपलब्ध नहीं है। पहले संस्थान को फिर से कनेक्ट या सुधारें।",
+      "oneDay": "24 घंटे",
+      "oneHour": "1 घंटा",
+      "popupBlocked": "Zero के लिए पॉप-अप की अनुमति दें, फिर दोबारा कोशिश करें।",
+      "readOnly": "खाते, बैलेंस और लेन-देन · केवल पढ़ने के लिए",
+      "repair": "सुधारें",
+      "repairRequired": "{{institution}} को सुधारने की आवश्यकता है",
+      "retry": "दोबारा कोशिश करें",
+      "revoke": "एक्सेस वापस लें",
+      "revokeConfirm": "इस एजेंट की बैंकिंग एक्सेस वापस लें?",
+      "selectAccounts": "खाते चुनें",
+      "sevenDays": "7 दिन",
+      "thirtyDays": "30 दिन",
+      "title": "बैंकिंग एक्सेस अनुरोध",
+      "waiting": "Mastercard Data Connect की प्रतीक्षा हो रही है। वहाँ प्रक्रिया पूरी करें, फिर Chat पर लौटें।"
+    },
     "billing": {
       "addCreditsToContinue": "{{assistantName}} के साथ चैट जारी रखने के लिए क्रेडिट जोड़ें।",
       "askAdminCredits": "वर्कस्पेस व्यवस्थापक से क्रेडिट जोड़ने के लिए कहें ताकि आप {{assistantName}} के साथ चैट करना जारी रख सकें।",
@@ -1678,18 +1895,17 @@
       "agentSuggestions": "एजेंट",
       "configureModel": "मॉडल कॉन्फ़िगर करें",
       "createWorkflow": "वर्कफ़्लो बनाएँ",
+      "imageModelForThisChat": "इस चैट के लिए इमेज मॉडल",
       "message": "संदेश",
+      "modelForThisChat": "इस चैट के लिए मॉडल",
       "placeholder": "मुझसे वर्कफ़्लो ऑटोमेट करने और टास्क मैनेज करने के लिए कहें...",
       "selectedModelUnavailable": "चयनित मॉडल उपलब्ध नहीं है. भेजने से पहले इसे कॉन्फ़िगर करें.",
       "selectedModelUnavailableToast": "चयनित मॉडल उपलब्ध नहीं है",
       "selectModel": "मॉडल चुनें",
-      "setAsDefault": "डिफ़ॉल्ट के रूप में सेट करें",
-      "temporaryFastModeDisabledNotice": "इस रन के लिए फ़ास्ट मोड अस्थायी रूप से बंद है",
-      "temporaryFastModeEnabledNotice": "इस रन के लिए फ़ास्ट मोड अस्थायी रूप से चालू है",
-      "temporaryImageModelNotice": "इमेज के लिए अस्थायी रूप से {{model}} पर स्विच किया गया",
-      "temporaryModelNotice": "अस्थायी रूप से {{model}} पर स्विच किया गया",
-      "temporaryVideoModelNotice": "वीडियो के लिए अस्थायी रूप से {{model}} पर स्विच किया गया",
+      "temporarilySwitchTo": "अस्थायी रूप से इस पर स्विच करें",
       "threadSuggestions": "चैट थ्रेड",
+      "useForFutureChats": "भविष्य की चैट के लिए इस मॉडल का इस्तेमाल करें",
+      "videoModelForThisChat": "इस चैट के लिए वीडियो मॉडल",
       "visualAttachmentsUnsupported": "{{modelName}} छवियों या वीडियो को नहीं पहचान सकता। उन्हें संलग्न करने के लिए दृष्टि-सक्षम मॉडल पर स्विच करें।",
       "workflows": {
         "empty": "कोई मेल खाता वर्कफ़्लो नहीं",
@@ -1719,17 +1935,24 @@
       "yourComputer": "आपका कंप्यूटर"
     },
     "connectors": {
+      "accountForThread": "इस थ्रेड के लिए खाता",
       "add": "{{connectorName}} जोड़ें",
       "addConnectors": "कनेक्टर्स जोड़ें",
       "authorizationFailed": "{{connectorName}} कनेक्ट हुआ लेकिन {{agentName}} के लिए अधिकृत नहीं किया जा सका",
       "authorized": "{{connectorName}} जुड़ा हुआ है और {{agentName}} के लिए अधिकृत है",
       "available_one": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
+      "back": "पीछे",
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
+      "defaultAccountFor": "{{connector}} · डिफ़ॉल्ट खाता उपयोग हो रहा है: {{account}}",
+      "fallsBackTo": "{{account}} पर वापस जाता है",
       "find": "कनेक्टर ढूंढें...",
+      "noUsableAccount": "कोई उपयोग योग्य खाता नहीं",
       "remove": "{{connectorName}} हटाएँ",
-      "title": "कनेक्टर्स"
+      "selectedAccountFor": "{{connector}} · चुना गया खाता: {{account}}",
+      "title": "कनेक्टर्स",
+      "useDefault": "डिफ़ॉल्ट उपयोग करें"
     },
     "documentTitle": "चैट",
     "errors": {
@@ -1775,12 +1998,102 @@
       "agents": "एजेंट",
       "back": "वापस",
       "content": "सामग्री",
-      "description": "चुनी गई सामग्री को किसी एजेंट या चैट में फ़ॉरवर्ड करें।",
+      "description": "चुनी गई सामग्री पर काम जारी रखने के लिए उसे किसी एजेंट या चैट में भेजें।",
       "noResults": "कोई एजेंट या चैट नहीं मिली",
       "search": "एजेंट और चैट खोजें...",
       "sent": "सफलतापूर्वक फ़ॉरवर्ड किया गया",
       "threads": "चैट",
       "title": "फ़ॉरवर्ड करें"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "अवतार चुनें",
+        "help": "प्रस्तुतकर्ता चुनें या बिना अवतार के आगे बढ़ें",
+        "none": "कोई अवतार नहीं"
+      },
+      "cardDescription": "फ़ाइल या स्क्रीन रिकॉर्डिंग को तैयार वीडियो में बदलें",
+      "description": "स्रोत जोड़ें, वैकल्पिक अवतार और आवाज़ चुनें, फिर चैट थ्रेड में वीडियो बनाएँ।",
+      "errors": {
+        "recordingEmpty": "रिकॉर्डिंग खाली थी। कृपया फिर से कोशिश करें।",
+        "recordingFailed": "स्क्रीन रिकॉर्डिंग शुरू नहीं हो सकी। Chrome के नवीन संस्करण में फिर से कोशिश करें।",
+        "recordingPermission": "कुछ भी साझा नहीं किया गया। तैयार होने पर टैब, विंडो या स्क्रीन चुनें।",
+        "recordingShareEnded": "रिकॉर्डिंग शुरू होने से पहले स्क्रीन साझा करना बंद हो गया।",
+        "recordingUnsupported": "यह ब्राउज़र स्क्रीन रिकॉर्डिंग का समर्थन नहीं करता।",
+        "sendFailed": "चैट थ्रेड नहीं बन सका। आपका स्रोत अभी भी स्थानीय रूप से सुरक्षित है और बैकअप के रूप में डाउनलोड किया गया है।",
+        "uploadFailed": "स्रोत अपलोड नहीं हो सका। यह अभी भी स्थानीय रूप से सुरक्षित है और बैकअप के रूप में डाउनलोड किया गया है।"
+      },
+      "footer": {
+        "back": "वापस",
+        "createInChat": "चैट में बनाएँ",
+        "download": "स्रोत डाउनलोड करें",
+        "next": "आगे",
+        "startRecording": "स्क्रीन चुनें और शुरू करें",
+        "stopRecording": "रिकॉर्डिंग रोकें"
+      },
+      "recording": {
+        "chooseSurface": "टैब, विंडो या स्क्रीन चुनें",
+        "countdown": "उलटी गिनती के बाद रिकॉर्डिंग शुरू होगी",
+        "description": "Chrome पूछेगा कि क्या साझा करना है। तीन सेकंड की उलटी गिनती पूरी होने के बाद ही रिकॉर्डिंग शुरू होगी।",
+        "heading": "अपनी स्क्रीन रिकॉर्ड करें",
+        "localNote": "आप Chrome की साझा करने वाली पट्टी से रोक सकते हैं या यहाँ लौट सकते हैं। चैट थ्रेड बनने तक रिकॉर्डिंग स्थानीय रहेगी।",
+        "microphone": "माइक्रोफ़ोन",
+        "microphoneHelp": "प्रदर्शन करते समय वर्णन जोड़ें",
+        "recordingLocally": "स्थानीय रूप से रिकॉर्ड हो रहा है",
+        "systemAudio": "सिस्टम ऑडियो",
+        "systemAudioHelp": "उपलब्ध स्रोत Chrome और आपके सिस्टम पर निर्भर करते हैं"
+      },
+      "review": {
+        "avatar": "अवतार",
+        "heading": "अपने इंट्रो वीडियो की समीक्षा करें",
+        "help": "नई चैट थ्रेड में Zero को मिलने वाले विकल्पों की पुष्टि करें",
+        "instructions": "संपादन निर्देश",
+        "source": "स्रोत",
+        "voice": "आवाज़"
+      },
+      "source": {
+        "chatDescription": "अभी थ्रेड खोलें और Zero के साथ वीडियो को आकार दें",
+        "chatDetail": "स्रोत, अवतार या आवाज़ बाद में चैट में जोड़ें",
+        "chatTitle": "चैट में शुरू करें",
+        "documentDescription": "अपनी सामग्री को वर्णन वाले इंट्रो वीडियो में बदलें",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "स्लाइड या दस्तावेज़ अपलोड करें",
+        "dropDescription": "स्लाइड, दस्तावेज़ या रिकॉर्डिंग",
+        "dropTitle": "स्रोत यहाँ छोड़ें",
+        "heading": "आप कैसे शुरू करना चाहते हैं?",
+        "help": "अपनी मौजूदा सामग्री जोड़ें, स्क्रीन रिकॉर्ड करें या वीडियो को अपने शब्दों में बताएँ",
+        "recordDescription": "टैब, विंडो या पूरी स्क्रीन चुनें",
+        "recordDetail": "तीन सेकंड की उलटी गिनती के बाद शुरू होता है",
+        "recordTitle": "अपनी स्क्रीन रिकॉर्ड करें",
+        "videoDescription": "AI को गति, फ़्रेमिंग और वर्णन बेहतर करने दें",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "रिकॉर्डिंग अपलोड करें"
+      },
+      "sourceReview": {
+        "format": "फ़ॉर्मैट",
+        "heading": "आपका स्रोत तैयार है",
+        "help": "आगे बढ़ने से पहले फ़ाइल जाँचें",
+        "inBrowser": "इस ब्राउज़र में",
+        "inTab": "यह टैब बंद होने तक",
+        "replace": "स्रोत बदलें",
+        "saved": "सुरक्षित",
+        "source": "स्रोत"
+      },
+      "steps": {
+        "avatar": "अवतार",
+        "label": "इंट्रो वीडियो के चरण",
+        "review": "समीक्षा",
+        "source": "स्रोत",
+        "voice": "आवाज़"
+      },
+      "title": "इंट्रो वीडियो बनाएँ",
+      "voice": {
+        "heading": "आवाज़ चुनें",
+        "help": "आगे बढ़ने से पहले नमूना सुनें",
+        "none": "बिना वॉइसओवर",
+        "noneDescription": "बिना वर्णन के कैप्शन-केंद्रित वीडियो बनाएँ",
+        "original": "मूल ऑडियो",
+        "originalDescription": "अपलोड किए गए वीडियो या रिकॉर्डिंग का ऑडियो बनाए रखें"
+      }
     },
     "mail": {
       "bcc": "गुप्त प्रतिलिपि",
@@ -1851,6 +2164,7 @@
       "expiresInHours_one": "{{count}} घंटे में समाप्त होता है",
       "expiresInHours_other": "{{count}} घंटे में समाप्त होता है",
       "loadFailed": "अनुमति स्थिति लोड नहीं की जा सकी",
+      "otherEndpoints": "अन्य समापन बिंदु",
       "unknown": "अज्ञात अनुमति",
       "updated": "अनुमतियाँ अद्यतन की गईं",
       "updateFailed": "अनुमतियाँ अपडेट नहीं की जा सकीं"
@@ -1877,6 +2191,7 @@
       "loadingGoal": "लक्ष्य लोड हो रहा है...",
       "message_one": "{{count}} संदेश",
       "message_other": "{{count}} संदेश",
+      "morningBrief": "सुबह की संक्षिप्त जानकारी",
       "openGoalDetails": "लक्ष्य विवरण खोलें",
       "pendingAutomationEvent": "लंबित ऑटोमेशन कार्यक्रम",
       "queuedMessage": "पंक्तिबद्ध संदेश",
@@ -2124,6 +2439,43 @@
       "title": "{{connector}} पहुंच प्रबंधित करें",
       "unnamedAgent": "अज्ञात"
     },
+    "accounts": {
+      "accountName": "खाते का नाम",
+      "accountsUnavailable": "इस कनेक्टर के लिए खाते उपलब्ध नहीं हैं।",
+      "actions": "खाते की कार्रवाइयाँ",
+      "addAccount": "खाता जोड़ें",
+      "connected": "कनेक्टेड",
+      "default": "डिफ़ॉल्ट",
+      "deleteAccount": "खाता हटाएँ",
+      "deleteDescription": "इस खाते का उपयोग करने वाले थ्रेड डिफ़ॉल्ट इनहेरिटेंस पर लौट जाएँगे।",
+      "deleteDescriptionWithCount": "{{value}} थ्रेड डिफ़ॉल्ट इनहेरिटेंस पर लौट जाएँगे।",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "{{account}} को हटाएँ?",
+      "fallbackName": "खाता #{{id}}",
+      "find": "खाते खोजें",
+      "loading": "खाते लोड हो रहे हैं…",
+      "loadingMore": "लोड हो रहा है…",
+      "loadMore": "और लोड करें",
+      "makeDefault": "डिफ़ॉल्ट बनाएँ",
+      "managerTitle": "{{connector}} खाते प्रबंधित करें",
+      "namePromptDescription": "आप इसे छोड़ सकते हैं और खाते को बाद में नाम दे सकते हैं।",
+      "namePromptTitle": "अपने {{connector}} खाते को नाम दें",
+      "noAccounts": "कोई खाता नहीं",
+      "noAccountsFound": "कोई खाता नहीं मिला",
+      "reconnectRequired": "दोबारा कनेक्ट करना आवश्यक है",
+      "rename": "नाम बदलें",
+      "skipName": "छोड़ें",
+      "summaryMany": "{{value}} खाते",
+      "summaryMany_one": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} खाता",
+      "summaryOne_one": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{value}}/{{total}} पर ध्यान देना आवश्यक है",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_other": ""
+    },
     "actions": {
       "apply": "आवेदन करना",
       "authorize": "अधिकृत",
@@ -2186,6 +2538,8 @@
       "access": {
         "add": "पहुंच जोड़ें",
         "manage": "{{connector}} पहुंच प्रबंधित करें",
+        "summaryMany": "{{value}} एजेंट",
+        "unavailable": "पहुंच उपलब्ध नहीं है",
         "usedBy": "द्वारा उपयोग किया जाता है"
       },
       "categories": {
@@ -2521,8 +2875,8 @@
         "connectTitle": "Slack से कनेक्ट करें",
         "invalidDescription": "यह पेज Slack कनेक्ट लिंक से खोला जाना है।",
         "open": "Slack खोलें",
-        "successDescription": "किसी भी चैनल में @Zero का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
-        "successDescriptionWorkspace": "आप {{workspace}} से कनेक्ट हैं. किसी भी चैनल में @Zero का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
+        "successDescription": "किसी भी चैनल में इंस्टॉल किए गए बॉट का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
+        "successDescriptionWorkspace": "आप {{workspace}} से कनेक्ट हैं. किसी भी चैनल में इंस्टॉल किए गए बॉट का उल्लेख करें या चैट शुरू करने के लिए DM भेजें।",
         "successTitle": "Slack से जुड़ा!"
       },
       "teams": {
@@ -2532,7 +2886,7 @@
         "invalidDescription": "यह पेज Microsoft Teams कनेक्ट लिंक से खोला जाना है।",
         "open": "टीमें खोलें",
         "providerName": "Microsoft Teams",
-        "successDescription": "आप {{team}} से जुड़े हैं। चैटिंग शुरू करने के लिए Teams में @Zero का उल्लेख करें।",
+        "successDescription": "आप {{team}} से जुड़े हैं। चैटिंग शुरू करने के लिए Teams में @{{botName}} का उल्लेख करें।",
         "successTitle": "Microsoft Teams से जुड़ा"
       },
       "telegram": {
@@ -2676,12 +3030,12 @@
         "copied": "{{label}} कॉपी किया गया",
         "copy": "प्रतिलिपि",
         "create": {
-          "descriptionAfter": ", {{brandName}} नामक एक एंटरप्राइज़ कस्टम ऐप बनाएं, {{brandName}} आइकन अपलोड करें, फिर बॉट क्षमता जोड़ें।",
+          "descriptionAfter": ", अपनी पसंद के नाम और आइकन के साथ एक एंटरप्राइज़ कस्टम ऐप बनाएं, फिर बॉट क्षमता जोड़ें।",
           "descriptionBefore": "में",
-          "downloadIcon": "{{brandName}} आइकन डाउनलोड करें",
-          "iconAlt": "{{brandName}} ऐप आइकन",
+          "downloadIcon": "वैकल्पिक {{brandName}} आइकन डाउनलोड करें",
+          "iconAlt": "वैकल्पिक {{brandName}} ऐप आइकन",
           "iconHint": ", या अपनी पसंद के किसी भी आइकन का उपयोग करें।",
-          "iconTitle": "{{brandName}} ऐप आइकन",
+          "iconTitle": "वैकल्पिक {{brandName}} ऐप आइकन",
           "imageAlt": "Feishu ऐप निर्माण फॉर्म जिसमें ऐप का नाम, आइकन और क्रिएट बटन हाइलाइट किया गया है",
           "title": "एक एंटरप्राइज़ कस्टम ऐप बनाएं"
         },
@@ -2821,7 +3175,7 @@
           "testReceived": "Strapi परीक्षण वेबहुक प्राप्त हुआ"
         },
         "webhookUrl": "वेबहुक URL",
-        "whereZeroWorks": "जहां {{assistantName}} काम करता है"
+        "whereAssistantWorks": "जहां {{assistantName}} काम करता है"
       },
       "telegram": {
         "addBot": "बॉट जोड़ें",
@@ -2860,7 +3214,7 @@
         "moreOptions": "{{bot}} के लिए अधिक विकल्प",
         "newBotToken": "नया बॉट टोकन",
         "notConnected": "जुड़े नहीं हैं",
-        "officialBot": "{{assistantName}} आधिकारिक बॉट",
+        "officialBot": "आधिकारिक Telegram बॉट",
         "officialDescription": "{{brandName}} द्वारा प्रदान किया गया आधिकारिक बॉट।",
         "officialMissing": "आधिकारिक बॉट कॉन्फ़िगरेशन अनुपलब्ध है.",
         "pageDescription": "इस वर्कस्पेस के लिए बॉट रूटिंग प्रबंधित करें",
@@ -2976,15 +3330,6 @@
       "doneTitle": "सदस्यता छोड़ दी गई",
       "errorBody": "यह सदस्यता समाप्त लिंक अमान्य है या समाप्त हो गया है। आप सेटिंग में ईमेल सूचनाएं प्रबंधित कर सकते हैं.",
       "errorTitle": "कुछ गलत हो गया"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "सुबह की संक्षिप्त जानकारी",
-      "doneBody": "अब आपको दैनिक मॉर्निंग ब्रीफ़ ईमेल प्राप्त नहीं होगी. आप इसे सेटिंग्स में किसी भी समय वापस चालू कर सकते हैं।",
-      "doneTitle": "मॉर्निंग ब्रीफ बंद कर दिया गया",
-      "errorBody": "सदस्यता समाप्त करने वाला लिंक अमान्य या अधूरा है. नवीनतम मॉर्निंग ब्रीफ ईमेल खोलें और उसके सदस्यता समाप्त लिंक का उपयोग करें, या सेटिंग्स में प्राथमिकता प्रबंधित करें।",
-      "errorTitle": "यह लिंक अमान्य है",
-      "loadingLabel": "सदस्यता समाप्त स्थिति लोड हो रही है",
-      "managePreferences": "प्राथमिकताएँ प्रबंधित करें"
     },
     "pwaInstall": {
       "banner": "बेहतर अनुभव के लिए {{assistantName}} इंस्टॉल करें",
@@ -3117,9 +3462,17 @@
           "description": "स्लाइड और स्पीकर जेनरेट करें",
           "title": "एक प्रस्तुति तैयार करें"
         },
+        "slack": {
+          "description": "अपने कार्यक्षेत्र में अपने AI टीममेट के साथ चैट करें",
+          "title": "Slack में Okou से चैट करें"
+        },
         "video": {
           "description": "अपने विचारों को वीडियो में बदलें",
           "title": "वीडियो निर्माण"
+        },
+        "website": {
+          "description": "साझा करने योग्य पेज बनाएं और प्रकाशित करें",
+          "title": "वेबसाइट बनाएं"
         },
         "workflow": {
           "description": "पूर्व निर्धारित टेम्प्लेट से अन्वेषण करें",
@@ -3261,7 +3614,7 @@
       "whatItDoes": "यह क्या करता है"
     },
     "workflowRun": {
-      "continueWithZero": "{{assistantName}} के साथ जारी रखें",
+      "continueWithAssistant": "{{assistantName}} के साथ जारी रखें",
       "createWorkflow": "वर्कफ़्लो बनाएँ",
       "customNoteLabel": "अपने वर्कफ़्लो का वर्णन करें",
       "customNotePlaceholder": "बताएं कि आप {{assistantName}} से क्या बनवाना चाहते हैं",
@@ -4426,7 +4779,6 @@
         "usage": {
           "balanceDescription": "आपकी टीम के पास खर्च करने के लिए कितना बचा है।",
           "balanceTitle": "क्रेडिट शेष",
-          "balanceUsageDescription": "आपकी टीम का क्रेडिट बैलेंस और उपयोग।",
           "usageDescription": "चैट, ऑटोमेशन और चैनलों पर आपका क्रेडिट उपयोग।",
           "usageTitle": "क्रेडिट उपयोग"
         }
@@ -4440,7 +4792,7 @@
         "start": "मेरा डेटा निर्यात करें",
         "starting": "निर्यात शुरू हो रहा है"
       },
-      "backToZero": "{{assistantName}} पर वापस जाएँ",
+      "backToAssistant": "{{assistantName}} पर वापस जाएँ",
       "description": "{{assistantName}} में आपके द्वारा बनाई गई फ़ाइलें और टेक्स्ट रिकॉर्ड डाउनलोड करें।",
       "documentTitle": "डेटा निर्यात करें",
       "duration": {
@@ -4727,6 +5079,20 @@
         "sectionTitle": "खाता एवं सुरक्षा"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "हर इंटरफ़ेस परत में एक चमकदार और हल्का रंग पैलेट लागू करें।",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "कलर थीम"
+        },
         "description": "चुनें कि इंटरफ़ेस कैसा दिखेगा.",
         "sectionTitle": "उपस्थिति",
         "theme": {
@@ -4738,6 +5104,30 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "cancelAction": "कूलडाउन रद्द करें",
+          "cancelDescription": "इस ग्लोबल कूलडाउन को रद्द करने पर रूट उन सभी वर्कस्पेस के लिए तुरंत उपलब्ध हो जाएगा जहाँ अंतर्निर्मित मॉडल फ़ॉलबैक सक्षम है।",
+          "cancelling": "रद्द किया जा रहा है...",
+          "cancelTitle": "ग्लोबल कूलडाउन रद्द करें?",
+          "cancelWarning": "बाद में योग्य विफलता होने पर यह रूट फिर से कूलडाउन में जा सकता है।",
+          "description": "फ़ॉलबैक चयन से अस्थायी रूप से बाहर किए गए अंतर्निर्मित मॉडल रूट देखें।",
+          "disabled": "अक्षम",
+          "disabledExplanation": "इस वर्कस्पेस के लिए अंतर्निर्मित मॉडल फ़ॉलबैक अक्षम है, इसलिए ये ग्लोबल कूलडाउन अभी यहाँ अनदेखे किए जा रहे हैं।",
+          "empty": "अभी कोई अंतर्निर्मित मॉडल रूट ग्लोबल कूलडाउन में नहीं है।",
+          "enabled": "सक्षम",
+          "globalActive": "सक्रिय ग्लोबल कूलडाउन",
+          "globalExplanation": "कूलडाउन ग्लोबल परिचालन स्थिति है। यह इस वर्कस्पेस को केवल तभी प्रभावित कर सकती है जब यहाँ अंतर्निर्मित मॉडल फ़ॉलबैक सक्षम हो।",
+          "keepCooldown": "कूलडाउन बनाए रखें",
+          "loading": "अंतर्निर्मित मॉडल कूलडाउन डायग्नोस्टिक्स लोड हो रहे हैं...",
+          "providerType": "प्रदाता प्रकार",
+          "refresh": "रीफ़्रेश करें",
+          "selectedModel": "चुना गया मॉडल",
+          "title": "अंतर्निर्मित मॉडल फ़ॉलबैक",
+          "unavailable": "अंतर्निर्मित मॉडल कूलडाउन डायग्नोस्टिक्स उपलब्ध नहीं हैं।",
+          "unavailableUntil": "इस समय तक अनुपलब्ध",
+          "upstreamModel": "अपस्ट्रीम मॉडल",
+          "workspaceFallback": "वर्कस्पेस फ़ॉलबैक"
+        },
         "capture": {
           "description": "डिबगिंग के लिए नेटवर्क लॉग में HTTP हेडर नाम, चयनित सुरक्षित हेडर मान और बॉडी कैप्चर करें।",
           "disabled": "अक्षम",
@@ -4763,24 +5153,6 @@
           "title": "रीयल-टाइम कनेक्शन निदान",
           "unavailable": "अनुपलब्ध"
         },
-        "managedModelCooldown": {
-          "description": "फ़ॉलबैक चयन से अस्थायी रूप से बाहर किए गए प्रबंधित मॉडल रूट देखें।",
-          "disabled": "अक्षम",
-          "disabledExplanation": "इस वर्कस्पेस के लिए प्रबंधित मॉडल फ़ॉलबैक अक्षम है, इसलिए ये ग्लोबल कूलडाउन अभी यहाँ अनदेखे किए जा रहे हैं।",
-          "empty": "अभी कोई प्रबंधित मॉडल रूट ग्लोबल कूलडाउन में नहीं है।",
-          "enabled": "सक्षम",
-          "globalActive": "सक्रिय ग्लोबल कूलडाउन",
-          "globalExplanation": "कूलडाउन ग्लोबल परिचालन स्थिति है। यह इस वर्कस्पेस को केवल तभी प्रभावित कर सकती है जब यहाँ प्रबंधित मॉडल फ़ॉलबैक सक्षम हो।",
-          "loading": "प्रबंधित मॉडल कूलडाउन डायग्नोस्टिक्स लोड हो रहे हैं...",
-          "providerType": "प्रदाता प्रकार",
-          "refresh": "रीफ़्रेश करें",
-          "selectedModel": "चुना गया मॉडल",
-          "title": "प्रबंधित मॉडल फ़ॉलबैक",
-          "unavailable": "प्रबंधित मॉडल कूलडाउन डायग्नोस्टिक्स उपलब्ध नहीं हैं।",
-          "unavailableUntil": "इस समय तक अनुपलब्ध",
-          "upstreamModel": "अपस्ट्रीम मॉडल",
-          "workspaceFallback": "वर्कस्पेस फ़ॉलबैक"
-        },
         "tab": "डिबग"
       },
       "documentTitle": "प्राथमिकताएँ",
@@ -4800,16 +5172,6 @@
           "spanish": "Español"
         },
         "title": "भाषा"
-      },
-      "morningBrief": {
-        "description": "आपके शेड्यूल, एक्शन आइटम और कनेक्टेड GitHub, Gmail और Google Calendar से अपडेट के साथ दैनिक 7:00 AM ईमेल",
-        "nextEmail": "अगला ईमेल: {{date}}",
-        "nextEmailInTimezone": "अगला ईमेल: {{date}} ({{timezone}})",
-        "notScheduled": "अगला ईमेल: अभी तक शेड्यूल नहीं किया गया है - पुन: शेड्यूल करने के लिए स्विच को बंद और चालू करें",
-        "sending": "भेजा जा रहा है...",
-        "sendNow": "अब भेजें",
-        "title": "सुबह की संक्षिप्त जानकारी",
-        "triggeredToast": "मॉर्निंग ब्रीफ शुरू हो गया, ईमेल शीघ्र ही आ जाता है"
       },
       "pageDescription": "अपनी उपस्थिति और एजेंट रनटाइम प्राथमिकताएँ प्रबंधित करें।",
       "pageTitle": "प्राथमिकताएँ",
@@ -5021,15 +5383,20 @@
       "viewSource": "आरेख स्रोत"
     },
     "notFound": {
+      "action": "होम पर वापस जाएँ",
       "description": "आप जिस पृष्ठ की तलाश कर रहे हैं वह मौजूद नहीं है।",
       "title": "पृष्ठ नहीं मिला"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "यह साझा बातचीत मौजूद नहीं है।",
+    "handoffDescription": "{{assistantName}} संदर्भ को एक नई चैट में ले जाता है",
+    "handoffPrompt": "इस साझा बातचीत को मेरे साथ जारी रखें: {{url}}",
+    "makeConversationYours": "इस बातचीत को अपना बनाएं",
     "notFoundTitle": "साझा बातचीत नहीं मिली",
-    "tryOkou": "{{assistantName}} आज़माएँ"
+    "share": "साझा करें",
+    "signIn": "साइन इन करें",
+    "signUp": "साइन अप करें",
+    "tryItYourself": "खुद आज़माएं"
   },
   "usage": {
     "displayNames": {
@@ -5774,6 +6141,67 @@
       },
       "title": "वर्कफ़्लो",
       "viewAutomations": "ऑटोमेशन देखें"
+    },
+    "official": {
+      "activeInstallationDescription": "यह आधिकारिक वर्कफ़्लो चालू रहता है और इसकी प्रबंधित सामग्री केवल पढ़ने योग्य रहती है।",
+      "activeInstallationTitle": "आधिकारिक वर्कफ़्लो",
+      "agent": "एजेंट",
+      "automationCount_one": "{{count}} ऑटोमेशन",
+      "automationCount_other": "{{count}} ऑटोमेशन",
+      "badge": "आधिकारिक",
+      "browse": "आधिकारिक वर्कफ़्लो देखें",
+      "chooseValue": "मान चुनें",
+      "copySucceededUninstallFailed": "कॉपी तैयार है, लेकिन मूल आधिकारिक वर्कफ़्लो को अनइंस्टॉल नहीं किया जा सका।",
+      "description": "vm0 द्वारा प्रबंधित वर्कफ़्लो इंस्टॉल करें।",
+      "empty": "कोई आधिकारिक वर्कफ़्लो उपलब्ध नहीं है।",
+      "includedAutomations": "शामिल ऑटोमेशन",
+      "install": "इंस्टॉल करें",
+      "installDescription": "एक एजेंट चुनें और हर आवश्यक पैरामीटर पूरा करें। सभी शामिल ऑटोमेशन इंस्टॉल किए जाएंगे।",
+      "installed": "आधिकारिक वर्कफ़्लो इंस्टॉल हो गया",
+      "installErrorDescription": "एजेंट और पैरामीटर मान जांचें, फिर दोबारा कोशिश करें।",
+      "installErrorTitle": "आधिकारिक वर्कफ़्लो इंस्टॉल नहीं किया जा सका",
+      "installTitle": "{{name}} इंस्टॉल करें",
+      "intendedOff": "बंद रहना चाहिए",
+      "intendedOn": "चालू रहना चाहिए",
+      "loadErrorDescription": "यह कैटलॉग उपलब्ध नहीं हो सकता है या आपके खाते के लिए सक्षम नहीं है।",
+      "loadErrorTitle": "आधिकारिक वर्कफ़्लो लोड नहीं किए जा सके",
+      "no": "नहीं",
+      "noParameters": "किसी पैरामीटर की आवश्यकता नहीं है।",
+      "noResults": "आपकी खोज से कोई आधिकारिक वर्कफ़्लो मेल नहीं खाता।",
+      "notFound": "यह आधिकारिक वर्कफ़्लो नहीं मिला।",
+      "parameterCount_one": "{{count}} पैरामीटर",
+      "parameterCount_other": "{{count}} पैरामीटर",
+      "parameterRequired": "{{key}} (आवश्यक)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "फिर से कॉन्फ़िगर करें",
+      "reconfigured": "आधिकारिक वर्कफ़्लो फिर से कॉन्फ़िगर किया गया",
+      "reconfigureDescription": "इस वर्कफ़्लो या इसके ऑटोमेशन को बदले बिना टाइप किए गए पैरामीटर अपडेट करें।",
+      "reconfigureDialogDescription": "हर प्रबंधित ऑटोमेशन की समीक्षा करें और उसके पैरामीटर अपडेट करें।",
+      "reconfigureErrorDescription": "आवश्यक मानों की समीक्षा करें और फिर से कोशिश करें।",
+      "reconfigureErrorTitle": "आधिकारिक वर्कफ़्लो फिर से कॉन्फ़िगर नहीं किया जा सका",
+      "reconfigureTitle": "इंस्टॉलेशन पैरामीटर",
+      "reconfigureUnavailable": "प्रामाणिक पैरामीटर मेटाडेटा अस्थायी रूप से उपलब्ध नहीं है।",
+      "retiredBadge": "आधिकारिक · सेवानिवृत्त",
+      "retiredDefinitionDescription": "इस सुरक्षित परिभाषा को देखा जा सकता है, लेकिन अब इसे इंस्टॉल नहीं किया जा सकता।",
+      "retiredInstallationDescription": "यह परिभाषा सेवानिवृत्त है। आपकी मौजूदा इंस्टॉलेशन अनइंस्टॉल किए जाने तक चालू और केवल पढ़ने योग्य रहेगी।",
+      "retiredInstallationTitle": "आधिकारिक वर्कफ़्लो सेवानिवृत्त",
+      "retiredTitle": "सेवानिवृत्त परिभाषा",
+      "retry": "फिर से कोशिश करें",
+      "search": "आधिकारिक वर्कफ़्लो खोजें",
+      "selectAgent": "एजेंट चुनें",
+      "statusCurrent": "वर्तमान",
+      "statusFailed": "विफल",
+      "statusNeedsReconfiguration": "फिर से कॉन्फ़िगर करना आवश्यक है",
+      "statusReconciling": "समन्वय हो रहा है",
+      "title": "आधिकारिक वर्कफ़्लो",
+      "unavailableInstallationDescription": "स्वीकृत परिभाषा अस्थायी रूप से उपलब्ध नहीं है। मौजूदा संचालन नियंत्रण उपलब्ध रहते हैं।",
+      "unavailableInstallationTitle": "आधिकारिक परिभाषा उपलब्ध नहीं है",
+      "uninstall": "अनइंस्टॉल करें",
+      "uninstallConfirm": "इससे आधिकारिक इंस्टॉलेशन और उसके सभी ऑटोमेशन हट जाएंगे। इस क्रिया को पूर्ववत नहीं किया जा सकता।",
+      "uninstallDescription": "इस आधिकारिक वर्कफ़्लो इंस्टॉलेशन को उसके प्रबंधित जीवनचक्र के माध्यम से हटाएं।",
+      "uninstallTitle": "आधिकारिक वर्कफ़्लो अनइंस्टॉल करें",
+      "viewAndInstall": "देखें और इंस्टॉल करें",
+      "yes": "हाँ"
     }
   },
   "works": {

@@ -3,7 +3,7 @@ use crate::executor::tests::support::{minimal_context, test_executor_config, tes
 use crate::types::SandboxReuseResult;
 
 #[tokio::test]
-async fn run_in_sandbox_folds_timezone_sync_into_restore_exec() {
+async fn run_in_sandbox_folds_timezone_sync_into_fixed_restore_operation() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
@@ -27,25 +27,17 @@ async fn run_in_sandbox_folds_timezone_sync_into_restore_exec() {
     .await
     .unwrap();
 
-    let exec_calls = sandbox.exec_calls();
-    let restore_calls = exec_calls
-        .iter()
-        .filter(|call| call.cmd.contains("guest-reseed"))
-        .collect::<Vec<_>>();
+    let restore_calls = sandbox.guest_state_restore_calls();
     assert_eq!(
         restore_calls.len(),
         1,
-        "restore should run once; calls: {exec_calls:?}"
+        "restore should run once; calls: {restore_calls:?}"
     );
-    let restore_command = &restore_calls[0].cmd;
-    assert!(
-        restore_command.contains("if test -f /usr/share/zoneinfo/Asia/Shanghai"),
-        "restore should include timezone sync; command: {restore_command}"
+    assert_eq!(
+        restore_calls[0].timezone,
+        sandbox_mock::GuestStateRestoreTimezoneCall::BestEffort("Asia/Shanghai".into())
     );
-    assert!(
-        restore_command.contains("guest timezone sync failed"),
-        "timezone sync should remain best-effort; command: {restore_command}"
-    );
+    let exec_calls = sandbox.exec_calls();
     let standalone_timezone_calls = exec_calls
         .iter()
         .filter(|call| {
@@ -56,14 +48,6 @@ async fn run_in_sandbox_folds_timezone_sync_into_restore_exec() {
     assert!(
         standalone_timezone_calls.is_empty(),
         "restore path should not run a separate timezone exec; calls: {exec_calls:?}"
-    );
-    assert_eq!(
-        exec_calls
-            .iter()
-            .filter(|call| call.cmd.contains("/usr/share/zoneinfo/Asia/Shanghai"))
-            .count(),
-        1,
-        "timezone sync should appear in exactly one exec; calls: {exec_calls:?}"
     );
 }
 
@@ -99,10 +83,5 @@ async fn run_in_sandbox_runs_standalone_timezone_sync_without_restore_exec() {
             .starts_with("if test -f /usr/share/zoneinfo/Asia/Shanghai")),
         "fresh path should keep standalone timezone sync; calls: {exec_calls:?}"
     );
-    assert!(
-        exec_calls
-            .iter()
-            .all(|call| !call.cmd.contains("guest-reseed")),
-        "fresh path should not run guest state restore; calls: {exec_calls:?}"
-    );
+    assert!(sandbox.guest_state_restore_calls().is_empty());
 }

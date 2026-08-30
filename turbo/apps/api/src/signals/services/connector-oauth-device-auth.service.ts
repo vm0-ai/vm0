@@ -13,6 +13,7 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import {
+  connectorGrantScopes,
   resolveConnectorAuthClient,
   type ConnectorAuthClient,
 } from "@okouai/connectors/connector-auth-method";
@@ -52,6 +53,7 @@ import {
   connectorConnectionWriteRejection,
   upsertConnectorTokenConnection$,
 } from "./connector-data.service";
+import { resolveOAuthRequestedScopeSnapshot } from "./connector-oauth-scope-snapshot.service";
 import { normalizeDeviceAuthStartOptionsWithMethod } from "./connector-catalog-form-fields.service";
 import {
   authorizeConnectedConnector$,
@@ -60,7 +62,6 @@ import {
 } from "./connected-connector-authorization.service";
 import {
   connectorAccountSiblingWritesEnabled,
-  parseStoredConnectorAccountMutationIntent,
   storedConnectorAccountMutationSelection,
 } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
@@ -90,8 +91,10 @@ const deviceAuthSessionSelection = Object.freeze({
   encryptedProviderState:
     connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
   accountMutation: storedConnectorAccountMutationSelection(
-    connectorOauthDeviceAuthorizationSessions,
+    connectorOauthDeviceAuthorizationSessions.accountMutation,
   ),
+  oauthRequestedScopes:
+    connectorOauthDeviceAuthorizationSessions.oauthRequestedScopes,
   userCode: connectorOauthDeviceAuthorizationSessions.userCode,
   verificationUri: connectorOauthDeviceAuthorizationSessions.verificationUri,
   verificationUriComplete:
@@ -107,6 +110,16 @@ const deviceAuthSessionSelection = Object.freeze({
 
 type DeviceAuthSessionRow =
   typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
+
+function deviceRequestedOauthScopes(
+  storedScopes: string | null,
+  resolvedMethod: ResolvedConnectorActionMethod,
+): readonly string[] {
+  return resolveOAuthRequestedScopeSnapshot(
+    storedScopes,
+    connectorGrantScopes(resolvedMethod.method.grant),
+  );
+}
 
 type PendingPollBody = Extract<
   ConnectorOauthDeviceAuthSessionPollResponse,
@@ -892,12 +905,17 @@ async function runClaimedSession(
     session: args.session,
     connectorSlug: args.resolvedMethod.connectorSlug,
   });
+  const requestedScopes = deviceRequestedOauthScopes(
+    args.session.oauthRequestedScopes,
+    args.resolvedMethod,
+  );
   const pollResult = await pollConnectorDeviceAuthorizationWithMethod({
     connectorSlug: args.resolvedMethod.connectorSlug,
     authMethodId: args.resolvedMethod.authMethodId,
     method: args.resolvedMethod.method,
     authClient: args.authClient,
     deviceCode: providerState.deviceCode,
+    scopes: requestedScopes,
     ...(providerState.pollState === undefined
       ? {}
       : { pollState: providerState.pollState }),
@@ -1004,6 +1022,7 @@ async function createDeviceAuthSession(
     readonly allowSiblings: boolean;
     readonly sessionToken: string;
     readonly encryptedProviderState: string;
+    readonly oauthRequestedScopes: readonly string[];
     readonly userCode: string;
     readonly verificationUri: string;
     readonly verificationUriComplete: string | undefined;
@@ -1053,6 +1072,7 @@ async function createDeviceAuthSession(
         sessionTokenHash: sessionTokenHash(args.sessionToken),
         encryptedProviderState: args.encryptedProviderState,
         accountMutation: args.account,
+        oauthRequestedScopes: JSON.stringify(args.oauthRequestedScopes),
         userCode: args.userCode,
         verificationUri: args.verificationUri,
         verificationUriComplete: args.verificationUriComplete,
@@ -1166,6 +1186,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
           connectorAccountSiblingWritesEnabled(featureSwitchContext),
         sessionToken,
         encryptedProviderState,
+        oauthRequestedScopes: connectorGrantScopes(resolvedMethod.method.grant),
         userCode: startResult.userCode,
         verificationUri: startResult.verificationUri,
         verificationUriComplete: startResult.verificationUriComplete,
@@ -1303,12 +1324,14 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
               snapshot: resolvedMethod.snapshot,
               outputs: result.token.outputs,
               userInfo: result.token.userInfo,
-              oauthScopes: result.token.scopes,
+              oauthRequestedScopes: deviceRequestedOauthScopes(
+                claimedSession.oauthRequestedScopes,
+                resolvedMethod,
+              ),
+              oauthGrantedScopes: result.token.scopes,
               expiresIn: result.token.expiresIn,
               extraConnectorSecrets: result.token.extraConnectorSecrets,
-              account: parseStoredConnectorAccountMutationIntent(
-                claimedSession.accountMutation,
-              ),
+              account: claimedSession.accountMutation,
             },
             signal,
           );

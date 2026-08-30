@@ -1,7 +1,6 @@
 import { command } from "ccstate";
-import type { TeamComposeItem } from "@okouai/core";
 import { createElement } from "react";
-import { AgentDetailPage } from "../../views/team-page/zero-team-detail-page.tsx";
+import { AgentDetailPage } from "../../views/team-page/agent-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
@@ -11,9 +10,9 @@ import {
   defaultAgentId$,
   rememberLastUsedAgentId$,
 } from "../agent.ts";
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { setActiveAgent$ } from "../zero-page/job-detail";
+import { setActiveAgent$ } from "../okou-page/job-detail";
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { i18n } from "../../i18n/index.ts";
 
@@ -31,8 +30,8 @@ export const setupAgentDetailPage$ = command(
     const agents = await get(agents$);
     signal.throwIfAborted();
 
-    const agent = agents.find((a: TeamComposeItem) => {
-      return a.id === agentId;
+    const agent = agents.find((candidate) => {
+      return candidate.agentId === agentId;
     });
     if (!agent) {
       const defaultAgentId = await get(defaultAgentId$);

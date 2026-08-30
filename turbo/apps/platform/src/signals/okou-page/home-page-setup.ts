@@ -1,0 +1,53 @@
+import { command } from "ccstate";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
+import { homeAgentId$ } from "../agent.ts";
+import { setupAgentsPage$ } from "../agents-page/agents-page-setup.ts";
+import { onboardGuard$ } from "./onboard-guard.ts";
+import { parseTemplatePickerEntryCategory } from "./template-picker-entry.ts";
+
+export const setupHomePage$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (await set(onboardGuard$, signal)) {
+      return;
+    }
+
+    // Redirect bare / to /agents/:id/chat. Keep prompt deep links intact so
+    // paid-onboarding handoffs can prefill the chat composer on arrival.
+    // ?queue= is also forwarded so the queue drawer opens on arrival.
+    const homeAgentId = await get(homeAgentId$);
+    signal.throwIfAborted();
+    if (!homeAgentId) {
+      await set(setupAgentsPage$, signal);
+      return;
+    }
+    const params = get(searchParams$);
+    const prompt = params.get("prompt");
+    const queue = params.get("queue");
+    const settings = params.get("settings");
+    const billingView = params.get("billingView");
+    const templatePicker = parseTemplatePickerEntryCategory(
+      params.get("templatePicker"),
+    );
+    const forwardParams = new URLSearchParams();
+    if (prompt) {
+      forwardParams.set("prompt", prompt);
+    }
+    if (queue) {
+      forwardParams.set("queue", queue);
+    }
+    if (settings) {
+      forwardParams.set("settings", settings);
+    }
+    if (billingView) {
+      forwardParams.set("billingView", billingView);
+    }
+    if (templatePicker) {
+      forwardParams.set("templatePicker", templatePicker);
+    }
+    set(detachedNavigateTo$, "/agents/:agentId/chat", {
+      pathParams: { agentId: homeAgentId },
+      searchParams: forwardParams.size > 0 ? forwardParams : undefined,
+      replace: true,
+    });
+  },
+);

@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   teamsBotContract,
   type TeamsInboundActivity,
@@ -17,6 +18,7 @@ import {
 import { env } from "../../lib/env";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
 import { logger } from "../../lib/log";
+import { teamsBotDisplayName } from "../../lib/teams-official-app";
 import { authorization$, publicBrand$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import {
@@ -90,11 +92,8 @@ function buildTeamsLoginPromptCard(args: {
   };
 }
 
-function queueUrl(installation: TeamsInstallation | null): string {
-  return `${appUrlForPublicBrand(
-    env("APP_URL"),
-    installation?.publicBrand ?? "vm0",
-  )}/?queue=1`;
+function queueUrl(publicBrand: PublicBrand): string {
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/?queue=1`;
 }
 
 function buildTeamsQueueText(url: string): string {
@@ -148,7 +147,7 @@ type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 
 function dispatchReplyContent(
   dispatch: TeamsDispatchReplySource,
-  installation: TeamsInstallation | null,
+  publicBrand: PublicBrand,
 ): {
   readonly replyText: string | null;
   readonly card?: TeamsAdaptiveCard;
@@ -169,7 +168,7 @@ function dispatchReplyContent(
     };
   }
   if (dispatch.kind === "queued") {
-    const url = queueUrl(installation);
+    const url = queueUrl(publicBrand);
     return {
       replyText: buildTeamsQueueText(url),
       card: buildTeamsQueueCard({ url }),
@@ -188,13 +187,13 @@ function teamsInstallWelcomeActivity(
 
 function buildTeamsInstallWelcomeMention(
   activity: TeamsInstallWelcomeActivity,
-  assistantName: string,
+  botName: string,
 ): TeamsMentionEntity | null {
   if (activity.conversationType === "personal" || activity.sender.id === "") {
     return null;
   }
 
-  const name = activity.sender.name ?? `the person who added ${assistantName}`;
+  const name = activity.sender.name ?? `the person who added ${botName}`;
   return {
     type: "mention",
     text: `<at>${name}</at>`,
@@ -208,28 +207,27 @@ function buildTeamsInstallWelcomeMention(
 function buildTeamsInstallWelcomeContent(
   activity: TeamsInstallWelcomeActivity,
   installation: TeamsInstallation,
+  publicBrand: PublicBrand,
 ): {
   readonly text: string;
   readonly entities?: readonly TeamsMentionEntity[];
 } {
-  const { assistantName, brandName } = publicBrandPresentation(
-    installation.publicBrand,
-  );
-  const mentionName = installation.botName ?? assistantName;
-  const mention = buildTeamsInstallWelcomeMention(activity, assistantName);
+  const { brandName } = publicBrandPresentation(publicBrand);
+  const botName = teamsBotDisplayName(installation.botName);
+  const mention = buildTeamsInstallWelcomeMention(activity, botName);
   if (!mention) {
-    return { text: teamsWelcomeText(installation) };
+    return { text: teamsWelcomeText(installation, publicBrand) };
   }
 
   return {
     text: [
-      `${mention.text} added ${assistantName} to this Teams workspace.`,
+      `${mention.text} added ${botName} to this Teams workspace.`,
       "",
-      `${assistantName} connects Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.`,
+      `${botName} connects Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.`,
       "",
       `To get started, use \`connect\` to link this Teams workspace to ${brandName}. An org admin may need to complete workspace setup first.`,
       "",
-      `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@${mentionName}\` with a task or send a DM to work privately.`,
+      `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@${botName}\` with a task or send a DM to work privately.`,
     ].join("\n"),
     entities: [mention],
   };
@@ -241,6 +239,7 @@ const sendTeamsInstallWelcome$ = command(
     args: {
       readonly activity: TeamsInboundActivity;
       readonly installation: TeamsInstallation;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -252,6 +251,7 @@ const sendTeamsInstallWelcome$ = command(
     const welcome = buildTeamsInstallWelcomeContent(
       welcomeActivity,
       args.installation,
+      args.publicBrand,
     );
     const reply = await sendTeamsMessage(
       {
@@ -282,6 +282,7 @@ const dispatchTeamsMessageAndReply$ = command(
     args: {
       readonly activity: TeamsMessageActivity;
       readonly installation: TeamsInstallation | null;
+      readonly publicBrand: PublicBrand;
       readonly apiStartTime: number;
       readonly timing: ApiDispatchTimingCollector;
     },
@@ -291,6 +292,7 @@ const dispatchTeamsMessageAndReply$ = command(
       dispatchTeamsMessageToAgent$,
       {
         activity: args.activity,
+        publicBrand: args.publicBrand,
         installation: args.installation,
         apiStartTime: args.apiStartTime,
         timing: args.timing,
@@ -301,7 +303,7 @@ const dispatchTeamsMessageAndReply$ = command(
 
     const { replyText, card } = dispatchReplyContent(
       dispatch,
-      args.installation,
+      args.publicBrand,
     );
     if (!replyText) {
       return;
@@ -332,143 +334,137 @@ const dispatchTeamsMessageAndReply$ = command(
   },
 );
 
-const handleZeroTeamsBot$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const request = get(request$);
-    const publicBrand = get(publicBrand$);
-    const apiStartTime = now();
-    const bodyText = await request.text();
-    signal.throwIfAborted();
+const handleTeamsBot$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const request = get(request$);
+  const publicBrand = get(publicBrand$);
+  const apiStartTime = now();
+  const bodyText = await request.text();
+  signal.throwIfAborted();
 
-    const body = safeJsonParse(bodyText);
-    const normalized = normalizeTeamsActivity(body);
-    if (!normalized.ok) {
-      return errorResponse(400, normalized.error, "BAD_REQUEST");
-    }
+  const body = safeJsonParse(bodyText);
+  const normalized = normalizeTeamsActivity(body);
+  if (!normalized.ok) {
+    return errorResponse(400, normalized.error, "BAD_REQUEST");
+  }
 
-    const serviceUrl =
-      normalized.activity.kind === "unsupported"
-        ? readTeamsActivityServiceUrl(body)
-        : normalized.activity.serviceUrl;
-    if (!serviceUrl) {
-      return errorResponse(
-        400,
-        "Missing Teams activity serviceUrl",
-        "BAD_REQUEST",
-      );
-    }
+  const serviceUrl =
+    normalized.activity.kind === "unsupported"
+      ? readTeamsActivityServiceUrl(body)
+      : normalized.activity.serviceUrl;
+  if (!serviceUrl) {
+    return errorResponse(
+      400,
+      "Missing Teams activity serviceUrl",
+      "BAD_REQUEST",
+    );
+  }
 
-    const auth = await verifyTeamsBotAuthorization(
-      {
-        authorization: get(authorization$),
-        serviceUrl,
-        channelId: readTeamsActivityChannelId(body),
-      },
+  const auth = await verifyTeamsBotAuthorization(
+    {
+      authorization: get(authorization$),
+      serviceUrl,
+      channelId: readTeamsActivityChannelId(body),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (!auth.ok) {
+    return errorResponse(auth.status, auth.message, authErrorCode(auth.status));
+  }
+
+  const activityResult = await set(
+    recordTeamsInstallationActivity$,
+    { activity: normalized.activity },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (activityResult.kind === "removed" && activityResult.orgId) {
+    await set(
+      publishTeamsChanged$,
+      { orgId: activityResult.orgId, userIds: activityResult.userIds },
       signal,
     );
     signal.throwIfAborted();
-
-    if (!auth.ok) {
-      return errorResponse(
-        auth.status,
-        auth.message,
-        authErrorCode(auth.status),
-      );
-    }
-
-    const activityResult = await set(
-      recordTeamsInstallationActivity$,
-      { activity: normalized.activity, publicBrand },
+  }
+  if (activityResult.kind === "upserted" && activityResult.installation.orgId) {
+    await set(
+      publishTeamsChanged$,
+      { orgId: activityResult.installation.orgId },
       signal,
     );
     signal.throwIfAborted();
+  }
 
-    if (activityResult.kind === "removed" && activityResult.orgId) {
-      await set(
-        publishTeamsChanged$,
-        { orgId: activityResult.orgId, userIds: activityResult.userIds },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-    if (
-      activityResult.kind === "upserted" &&
-      activityResult.installation.orgId
-    ) {
-      await set(
-        publishTeamsChanged$,
-        { orgId: activityResult.installation.orgId },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-
-    const installation =
-      activityResult.kind === "upserted" ? activityResult.installation : null;
-    const timing = new ApiDispatchTimingCollector();
-    timing.recordElapsed(
-      "api_dispatch_pre_create_zero_teams_entrypoint_gap",
-      "nested",
-      apiStartTime,
+  const installation =
+    activityResult.kind === "upserted" ? activityResult.installation : null;
+  const timing = new ApiDispatchTimingCollector();
+  timing.recordElapsed(
+    "api_dispatch_pre_create_zero_teams_entrypoint_gap",
+    "nested",
+    apiStartTime,
+  );
+  if (normalized.activity.kind === "message") {
+    waitUntil(
+      tapError(
+        set(
+          dispatchTeamsMessageAndReply$,
+          {
+            activity: normalized.activity,
+            installation,
+            publicBrand,
+            apiStartTime,
+            timing,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Error handling Teams message activity", { error });
+        },
+      ),
     );
-    if (normalized.activity.kind === "message") {
-      waitUntil(
-        tapError(
-          set(
-            dispatchTeamsMessageAndReply$,
-            {
-              activity: normalized.activity,
-              installation,
-              apiStartTime,
-              timing,
-            },
-            signal,
-          ),
-          (error) => {
-            L.error("Error handling Teams message activity", { error });
-          },
-        ),
-      );
-    }
+  }
 
-    if (
-      teamsInstallWelcomeActivity(normalized.activity) &&
-      activityResult.kind === "upserted"
-    ) {
-      waitUntil(
-        tapError(
-          set(
-            sendTeamsInstallWelcome$,
-            {
-              activity: normalized.activity,
-              installation: activityResult.installation,
-            },
-            signal,
-          ),
-          (error) => {
-            L.error("Error sending Teams install welcome", { error });
+  if (
+    teamsInstallWelcomeActivity(normalized.activity) &&
+    activityResult.kind === "upserted"
+  ) {
+    waitUntil(
+      tapError(
+        set(
+          sendTeamsInstallWelcome$,
+          {
+            activity: normalized.activity,
+            installation: activityResult.installation,
+            publicBrand,
           },
+          signal,
         ),
-      );
-    }
+        (error) => {
+          L.error("Error sending Teams install welcome", { error });
+        },
+      ),
+    );
+  }
 
-    return {
-      status: 200 as const,
-      body: {
-        ok: true as const,
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      activity: normalized.activity,
+      connectUrl: buildTeamsConnectUrlForActivity({
         activity: normalized.activity,
-        connectUrl: buildTeamsConnectUrlForActivity({
-          activity: normalized.activity,
-          installation,
-        }),
-      },
-    };
-  },
-);
+        publicBrand,
+        installation,
+      }),
+    },
+  };
+});
 
 export const teamsBotRoutes: readonly RouteEntry[] = [
   {
     route: teamsBotContract.post,
-    handler: handleZeroTeamsBot$,
+    handler: handleTeamsBot$,
   },
 ];

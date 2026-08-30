@@ -21,7 +21,7 @@ from body_limits import STREAM_BUFFER_LIMIT
 from tests.aws_sigv4_helpers import resolved_aws_sigv4_credentials
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import _assert_no_request_stream
 from tests.upstream_connection_helpers import (
     mark_connected_tls_upstream,
@@ -34,11 +34,11 @@ def _write_public_destination_firewall_registry(
     *,
     auth_config: dict[str, object] | None = None,
     unknown_policy: str = "deny",
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ):
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="example",
             api_entry={
@@ -54,7 +54,7 @@ def _write_public_destination_firewall_registry(
                 "ask": [],
                 "unknownPolicy": unknown_policy,
             },
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -211,6 +211,7 @@ async def test_public_destination_allows_public_runtime_destination(
                 "refreshed_connectors": [],
                 "refreshed_secrets": [],
                 "cache_hit": False,
+                "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
             },
             id="header",
         ),
@@ -223,6 +224,7 @@ async def test_public_destination_allows_public_runtime_destination(
                 "refreshed_connectors": [],
                 "refreshed_secrets": [],
                 "cache_hit": False,
+                "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
             },
             id="query",
         ),
@@ -240,6 +242,7 @@ async def test_public_destination_allows_public_runtime_destination(
                 "refreshed_connectors": [],
                 "refreshed_secrets": [],
                 "cache_hit": False,
+                "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
             },
             id="aws-sigv4",
         ),
@@ -1124,7 +1127,7 @@ async def test_public_destination_revalidates_connected_peer_after_requestheader
 ):
     reg_path = _write_public_destination_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = _public_destination_flow(
         real_flow,
@@ -1164,7 +1167,7 @@ async def test_public_destination_requestheaders_defers_unresolved_hostname_unti
 ):
     reg_path = _write_public_destination_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = _public_destination_flow(
         real_flow,
@@ -1203,7 +1206,7 @@ async def test_public_destination_requestheaders_deferred_hostname_still_blocks_
 ):
     reg_path = _write_public_destination_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = _public_destination_flow(
         real_flow,
@@ -1349,7 +1352,7 @@ async def test_public_destination_revalidates_cached_policy_allow_classification
     reg_path = _write_public_destination_firewall_registry(
         tmp_path,
         unknown_policy="allow",
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = _public_destination_flow(
         real_flow,
@@ -1401,7 +1404,7 @@ async def test_firewall_allow_header_auth_requestheaders_blocks_public_destinati
     }
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="strapi",
             api_entry=api_entry,
@@ -1411,7 +1414,7 @@ async def test_firewall_allow_header_auth_requestheaders_blocks_public_destinati
                 "ask": [],
                 "unknownPolicy": "allow",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -1453,7 +1456,7 @@ async def test_public_destination_requestheaders_blocks_before_early_auth(
 ):
     reg_path = _write_public_destination_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = _public_destination_flow(
         real_flow,
@@ -1485,7 +1488,7 @@ async def test_public_destination_requestheaders_kills_unknown_length_before_ear
 ):
     reg_path = _write_public_destination_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = _public_destination_flow(
         real_flow,

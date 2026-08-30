@@ -1,21 +1,17 @@
 use super::{BinaryLoggingFixture, assert_download_total_success_present};
 use crate::process;
 use crate::support::{
-    assert_does_not_contain_any, create_tar_gz, read_http_request_path, write_manifest,
+    TcpTestServer, TcpTestServerControl, assert_does_not_contain_any, create_tar_gz,
+    read_http_request_path, write_manifest,
 };
 use httpmock::prelude::*;
 use std::io;
-use std::net::TcpListener;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const EXPECTED_RETRY_ATTEMPTS: usize = 3;
-const SERVER_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const SERVER_STREAM_READ_TIMEOUT: Duration = Duration::from_secs(1);
 const SERVER_START_TIMEOUT: Duration = Duration::from_secs(5);
-const SERVER_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
-const SERVER_JOIN_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 fn validate_attempt_warning(
     log_name: &str,
@@ -68,10 +64,8 @@ enum ConnectionBehavior {
 }
 
 struct ConnectionDropServer {
-    base_url: String,
-    stop_tx: Sender<()>,
+    server: TcpTestServer<usize>,
     request_started_rx: Receiver<()>,
-    handle: Option<thread::JoinHandle<io::Result<usize>>>,
 }
 
 impl ConnectionDropServer {
@@ -84,25 +78,19 @@ impl ConnectionDropServer {
     }
 
     fn start_with_behavior(behavior: ConnectionBehavior) -> io::Result<Self> {
-        let listener = TcpListener::bind("127.0.0.1:0")?;
-        listener.set_nonblocking(true)?;
-        let base_url = format!("http://{}", listener.local_addr()?);
-        let (stop_tx, stop_rx) = mpsc::channel();
         let (request_started_tx, request_started_rx) = mpsc::channel();
-        let handle = thread::spawn(move || {
-            serve_dropped_connections(listener, stop_rx, request_started_tx, behavior)
-        });
+        let server = TcpTestServer::start(move |server| {
+            serve_dropped_connections(server, request_started_tx, behavior)
+        })?;
 
         Ok(Self {
-            base_url,
-            stop_tx,
+            server,
             request_started_rx,
-            handle: Some(handle),
         })
     }
 
     fn base_url(&self) -> &str {
-        &self.base_url
+        self.server.base_url()
     }
 
     fn wait_for_request(&self) -> io::Result<()> {
@@ -120,75 +108,28 @@ impl ConnectionDropServer {
         }
     }
 
-    fn finish(mut self) -> io::Result<usize> {
-        self.shutdown()
-    }
-
-    fn shutdown(&mut self) -> io::Result<usize> {
-        let handle = self
-            .handle
-            .take()
-            .ok_or_else(|| io::Error::other("connection-drop server lost its thread"))?;
-        let _ = self.stop_tx.send(());
-        let deadline = Instant::now() + SERVER_CLEANUP_TIMEOUT;
-        while !handle.is_finished() {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!(
-                        "connection-drop server did not stop within {SERVER_CLEANUP_TIMEOUT:?}"
-                    ),
-                ));
-            }
-            thread::sleep(remaining.min(SERVER_JOIN_POLL_INTERVAL));
-        }
-
-        handle
-            .join()
-            .map_err(|_| io::Error::other("connection-drop server panicked"))?
-    }
-}
-
-impl Drop for ConnectionDropServer {
-    fn drop(&mut self) {
-        if self.handle.is_some() {
-            let _ = self.shutdown();
-        }
+    fn finish(self) -> io::Result<usize> {
+        self.server.finish()
     }
 }
 
 fn serve_dropped_connections(
-    listener: TcpListener,
-    stop_rx: Receiver<()>,
+    server: TcpTestServerControl,
     request_started_tx: Sender<()>,
     behavior: ConnectionBehavior,
 ) -> io::Result<usize> {
     let mut accepted = 0;
     loop {
-        match stop_rx.try_recv() {
-            Ok(()) | Err(mpsc::TryRecvError::Disconnected) => return Ok(accepted),
-            Err(mpsc::TryRecvError::Empty) => {}
-        }
-
-        match listener.accept() {
-            Ok((mut stream, _)) => {
-                stream.set_read_timeout(Some(SERVER_STREAM_READ_TIMEOUT))?;
-                read_http_request_path(&mut stream)?;
-                accepted += 1;
-                let _ = request_started_tx.send(());
-                if matches!(behavior, ConnectionBehavior::Hold) {
-                    let _ = stop_rx.recv();
-                    return Ok(accepted);
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                match stop_rx.recv_timeout(SERVER_POLL_INTERVAL) {
-                    Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(accepted),
-                    Err(mpsc::RecvTimeoutError::Timeout) => {}
-                }
-            }
-            Err(error) => return Err(error),
+        let Some(mut stream) = server.accept()? else {
+            return Ok(accepted);
+        };
+        stream.set_read_timeout(Some(SERVER_STREAM_READ_TIMEOUT))?;
+        read_http_request_path(&mut stream)?;
+        accepted += 1;
+        let _ = request_started_tx.send(());
+        if matches!(behavior, ConnectionBehavior::Hold) {
+            server.wait_for_shutdown();
+            return Ok(accepted);
         }
     }
 }

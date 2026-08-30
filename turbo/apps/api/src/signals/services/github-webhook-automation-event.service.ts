@@ -19,6 +19,7 @@ import {
   type GithubAutomationEventConfig,
   type WorkflowAutomationEventType,
 } from "@okouai/api-contracts/contracts/workflows";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import {
   workflowUserAutomationThreads,
@@ -26,9 +27,11 @@ import {
   workflowGithubProcessedEvents,
   workflows,
 } from "@okouai/db/schema/workflow";
+import { resolveImmutableDedupeInsert } from "../../lib/immutable-dedupe-insert";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
+import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
@@ -701,20 +704,23 @@ async function recordProcessedDelivery(args: {
   readonly event: GithubWebhookAutomationEvent;
 }): Promise<string | null> {
   const subject = eventSubject(args.event);
-  const [row] = await args.db
-    .insert(workflowGithubProcessedEvents)
-    .values({
-      automationId: args.automation.automation.id,
-      githubDeliveryId: args.deliveryId,
-      repo: eventRepository(args.event).full_name,
-      subjectType: subject.type,
-      subjectNumber: subject.number,
-      action: eventAction(args.event),
-      labelNameNormalized: null,
-      createdAt: nowDate(),
-    })
-    .onConflictDoNothing()
-    .returning({ id: workflowGithubProcessedEvents.id });
+  const row = resolveImmutableDedupeInsert(
+    await settle(
+      args.db
+        .insert(workflowGithubProcessedEvents)
+        .values({
+          automationId: args.automation.automation.id,
+          githubDeliveryId: args.deliveryId,
+          repo: eventRepository(args.event).full_name,
+          subjectType: subject.type,
+          subjectNumber: subject.number,
+          action: eventAction(args.event),
+          labelNameNormalized: null,
+          createdAt: nowDate(),
+        })
+        .returning({ id: workflowGithubProcessedEvents.id }),
+    ),
+  );
   return row?.id ?? null;
 }
 
@@ -960,6 +966,7 @@ const startGithubWebhookAutomation$ = command(
       readonly deliveryId: string;
       readonly event: GithubWebhookAutomationEvent;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
       readonly timing: AutomationEventRunTiming;
     },
     signal: AbortSignal,
@@ -974,6 +981,7 @@ const startGithubWebhookAutomation$ = command(
           chatThreadId: args.automation.chatThreadId,
         },
         automationContext: context,
+        publicBrand: args.publicBrand,
         apiStartTime: args.apiStartTime,
         triggerSource: "automation-event",
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
@@ -993,6 +1001,7 @@ export const dispatchGithubWebhookAutomations$ = command(
       readonly deliveryId: string;
       readonly event: GithubWebhookAutomationEvent;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
       readonly backgroundScheduledAt?: number;
     },
     signal: AbortSignal,
@@ -1089,6 +1098,7 @@ export const dispatchGithubWebhookAutomations$ = command(
           deliveryId: args.deliveryId,
           event: args.event,
           apiStartTime: args.apiStartTime,
+          publicBrand: args.publicBrand,
           timing: runTiming,
         },
         signal,

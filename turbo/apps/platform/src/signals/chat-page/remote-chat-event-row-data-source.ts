@@ -3,7 +3,11 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  LEGACY_CHAT_EVENT_PROJECTION,
+  withoutLegacyChatEventProjection,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import {
@@ -17,7 +21,12 @@ const L = logger("ChatEventRowRemote");
 export const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 
 type ChatEventRowsPage =
-  | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
+  | {
+      readonly kind: "rows";
+      readonly rows: readonly ChatEventRow[];
+      readonly cursor: ChatEventCursor;
+      readonly hasMore: boolean;
+    }
   | { readonly kind: "expired" };
 
 export const listRowsAfter$ = command(
@@ -30,27 +39,29 @@ export const listRowsAfter$ = command(
     signal: AbortSignal,
   ): Promise<ChatEventRowsPage> => {
     const client = get(apiClient$)(chatThreadEventsContract);
-    const result = await accept(
-      client.rows({
-        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-        params: { threadId },
-        query:
-          cursor.lastEventId === null
-            ? {
-                sinceSeqId: cursor.lastSeqId,
-                limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-              }
-            : {
-                sinceSeqId: cursor.lastSeqId,
-                sinceEventId: cursor.lastEventId,
-                limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-              },
-        fetchOptions: { signal },
-      }),
-      [200, 410],
-      signal,
-      { showErrorToast: false },
-    );
+    const response = await client.rows({
+      headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+      params: { threadId },
+      query:
+        cursor.lastEventId === null
+          ? {
+              sinceSeqId: cursor.lastSeqId,
+              limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+            }
+          : {
+              sinceSeqId: cursor.lastSeqId,
+              sinceEventId: cursor.lastEventId,
+              // Stage 1 App-to-API adapter for retained pre-Stage-1 targets.
+              // Remove under vm0-ai/vm0#30329 when that API gate closes.
+              sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
+              limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
+            },
+      fetchOptions: { signal },
+    });
+    signal.throwIfAborted();
+    const result = await accept(Promise.resolve(response), [200, 410], signal, {
+      showErrorToast: false,
+    });
     signal.throwIfAborted();
     assertChatEventSchemaVersion(result.headers);
     if (result.status === 410) {
@@ -62,7 +73,12 @@ export const listRowsAfter$ = command(
       cursor,
       count: result.body.rows.length,
     });
-    return { kind: "rows", rows: result.body.rows };
+    return {
+      kind: "rows",
+      rows: result.body.rows,
+      cursor: withoutLegacyChatEventProjection(result.body.cursor),
+      hasMore: result.body.hasMore,
+    };
   },
 );
 
@@ -79,17 +95,21 @@ export const fetchChatEventSnapshotRows$ = command(
     threadId: string,
     signal: AbortSignal,
   ): Promise<{
-    readonly rows: readonly ChatEventRow[];
-    readonly lastEventId: string;
-    readonly lastSeqId: number;
-  } | null> => {
+    readonly snapshot: {
+      readonly rows: readonly ChatEventRow[];
+      readonly lastEventId: string | null;
+      readonly lastSeqId: number;
+    } | null;
+  }> => {
     const client = get(apiClient$)(chatThreadEventsContract);
+    const response = await client.snapshot({
+      headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+      params: { threadId },
+      fetchOptions: { signal },
+    });
+    signal.throwIfAborted();
     const download = await accept(
-      client.snapshot({
-        headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
-        params: { threadId },
-        fetchOptions: { signal },
-      }),
+      Promise.resolve(response),
       [200, 404],
       signal,
     );
@@ -97,34 +117,39 @@ export const fetchChatEventSnapshotRows$ = command(
     assertChatEventSchemaVersion(download.headers);
     if (download.status === 404) {
       L.debug("fetchChatEventSnapshotRows$: no snapshot yet", { threadId });
-      return null;
+      return { snapshot: null };
     }
-    const response = await fetch(download.body.url, { signal });
-    if (!response.ok) {
+    const snapshotResponse = await fetch(download.body.url, { signal });
+    if (!snapshotResponse.ok) {
       throw new Error(
-        `chat event snapshot download failed with status ${response.status}`,
+        `chat event snapshot download failed with status ${snapshotResponse.status}`,
       );
     }
-    const text = await response.text();
+    const text = await snapshotResponse.text();
     signal.throwIfAborted();
-    if (text.length === 0 || !text.endsWith("\n")) {
+    if (text.length > 0 && !text.endsWith("\n")) {
       throw new Error("chat event snapshot must be newline-delimited JSON");
     }
-    const rows = text
-      .slice(0, -1)
-      .split("\n")
-      .map((line) => {
-        return chatEventRowSchema.parse(JSON.parse(line));
-      });
+    const rows =
+      text.length === 0
+        ? []
+        : text
+            .slice(0, -1)
+            .split("\n")
+            .map((line) => {
+              return chatEventRowSchema.parse(JSON.parse(line));
+            });
     L.debug("fetchChatEventSnapshotRows$", {
       threadId,
       count: rows.length,
       lastSeqId: download.body.lastSeqId,
     });
     return {
-      rows,
-      lastEventId: download.body.lastEventId,
-      lastSeqId: download.body.lastSeqId,
+      snapshot: {
+        rows,
+        lastEventId: download.body.lastEventId,
+        lastSeqId: download.body.lastSeqId,
+      },
     };
   },
 );

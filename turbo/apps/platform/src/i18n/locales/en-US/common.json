@@ -37,13 +37,18 @@
       "environmentMapping": "Environment Mapping",
       "featureFlags": "Feature Flags",
       "firewalls": "Firewalls",
+      "modelProvider": "Model Provider",
+      "modelRoute": "Model Route",
       "mountPath": "Mount Path",
       "name": "Name",
       "networkPolicies": "Network Policies",
       "none": "None",
       "prompt": "Prompt",
       "runId": "Run ID",
+      "runtimeModel": "Runtime Model",
+      "runtimeProvider": "Runtime Provider",
       "secrets": "Secrets",
+      "selectedModel": "Selected Model",
       "session": "Session",
       "storageName": "Storage Name",
       "systemPrompt": "System Prompt",
@@ -116,7 +121,10 @@
         "cacheMiss": "No cached workspace matched the reuse key.",
         "deviceLimitMismatch": "Idle pool entry exists but its device rate limiter state does not match.",
         "diskPressure": "Workspace reuse was skipped because the runner was under disk pressure.",
+        "environment": "Environment",
         "featureDisabled": "Sandbox reuse is disabled for this run.",
+        "generation": "Generation",
+        "hostname": "Hostname",
         "invalidMetadata": "Cached workspace metadata was invalid.",
         "invalidWorkingDir": "The requested working directory could not be reused.",
         "lockBusy": "Another run was preparing the same workspace.",
@@ -124,21 +132,28 @@
         "noSessionId": "Legacy result: the exact reason the sandbox was not reused is unavailable.",
         "notConfigured": "Workspace reuse was not configured for this run.",
         "notReused": "Not reused",
+        "outcomeUnavailableDescription": "Additional details are unavailable.",
         "poolMiss": "No matching sandbox found in the idle pool.",
         "profileMismatch": "Idle pool entry exists but its profile does not match.",
         "provisioning": "Provisioning",
         "reused": "Reused",
         "reusedDescription": "Sandbox was unparked from the idle pool.",
+        "runnerId": "Runner ID",
         "sandbox": "Sandbox",
         "sandboxPrepareFallback": "A cached workspace was found but could not be used after sandbox preparation.",
         "sandboxReusedDescription": "Workspace remained available inside the reused sandbox.",
         "startup": "Startup",
         "startupCold": "Cold start",
+        "startupColdDescription": "A fresh sandbox and workspace were prepared.",
         "startupSandbox": "Sandbox reuse",
+        "startupSandboxDescription": "The sandbox and its workspace were reused.",
         "startupUnknown": "Unknown",
+        "startupUnknownDescription": "Startup reuse details are unavailable.",
         "startupWorkspace": "Workspace reuse",
+        "startupWorkspaceDescription": "A fresh sandbox restored a cached workspace.",
         "unavailable": "Unavailable",
         "unparkFailed": "Unpark attempt failed; a fresh sandbox was provisioned.",
+        "version": "Version",
         "workspace": "Workspace",
         "workspaceNoReuseKey": "No workspace reuse key was available.",
         "workspaceReusedDescription": "Workspace was restored from the runner cache."
@@ -426,7 +441,7 @@
       "ariaLabel": "Sidebar",
       "chat": "Chat",
       "collapse": "Collapse sidebar",
-      "expand": "Expand sidebar",
+      "hideChatList": "Hide chat list",
       "manage": "Manage",
       "mobile": {
         "invite": "Invite",
@@ -447,9 +462,10 @@
       "rail": {
         "new": "New",
         "workflows": "Workflows",
-        "works": "Works"
+        "works": "Channels"
       },
-      "searchConversations": "Search conversations",
+      "searchWorkspace": "Search workspace",
+      "showChatList": "Show chat list",
       "workspaceSwitcher": {
         "create": "Create workspace",
         "creating": "Creating…",
@@ -483,6 +499,25 @@
       "shareArtifact": "Share artifact",
       "zoomIn": "Zoom in",
       "zoomOut": "Zoom out"
+    },
+    "annotation": {
+      "attach": "Attach marks",
+      "draftOnly": "Marks stay in the draft — you can change them until you send",
+      "inkLabel": "Ink {{color}}",
+      "notePlaceholder": "Say what should change here",
+      "open": "Annotate",
+      "redo": "Redo",
+      "removeMark": "Remove mark",
+      "subtitle_one": "{{count}} mark",
+      "subtitle_other": "{{count}} marks",
+      "textPlaceholder": "Type the label",
+      "tools": {
+        "arrow": "Arrow",
+        "box": "Box",
+        "pen": "Draw",
+        "text": "Text"
+      },
+      "undo": "Undo"
     },
     "attachments": {
       "cancelUpload": "Cancel upload {{filename}}",
@@ -616,7 +651,7 @@
       "illustration": "Illustration",
       "illustrationPreview": "{{title}} illustration preview",
       "importDeck": "Import your own deck",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slides",
       "multiAccent": "Multi-accent",
@@ -672,6 +707,12 @@
       "tryDifferentSearch": "Try a different search.",
       "use": "Use",
       "useThisTemplate": "Use this template",
+      "visibility": {
+        "change": "Change",
+        "changeLabel": "Change template visibility",
+        "privateState": "Only you can see and use it",
+        "workspaceState": "Anyone in this workspace can use it"
+      },
       "website": "Website",
       "websitePreview": "{{title}} website template preview",
       "workflow": "Workflow",
@@ -1010,8 +1051,152 @@
       "signIn": "Sign in",
       "signUp": "Sign up"
     },
+    "homeLink": "Go to {{brandName}} home",
     "loading": "Loading authentication",
-    "toggleTheme": "Toggle theme"
+    "theme": {
+      "darkEnabled": "Dark theme enabled",
+      "lightEnabled": "Light theme enabled"
+    },
+    "toggleTheme": "Toggle theme",
+    "v2": {
+      "continuation": {
+        "activationErrorDescription": "We couldn't finish signing you in. Start over and try again.",
+        "activationErrorTitle": "Sign-in couldn't be completed",
+        "chooseOrganizationDescription": "Choose an organization to continue to {{brandName}}.",
+        "chooseOrganizationTitle": "Choose an organization",
+        "completeDescription": "Taking you to {{brandName}}.",
+        "completeTitle": "Sign-in complete",
+        "loadingDescription": "Checking what your account needs next.",
+        "loadingTitle": "Finishing sign-in",
+        "noOrganizationsDescription": "This account doesn't have an organization available. Ask an organization administrator for access, then start over.",
+        "noOrganizationsTitle": "No organization available",
+        "recoveryAction": "Start over",
+        "secondFactorDescription": "This sign-in requires an additional verification step that this page doesn't support. Start over to try another sign-in method.",
+        "secondFactorTitle": "Additional verification required",
+        "selectOrganization": "Continue with {{organizationName}}",
+        "signedInAs": "Signed in as {{identifier}}",
+        "unsupportedDescription": "Your account returned an authentication step that this page doesn't support. Start over to try another sign-in method.",
+        "unsupportedTitle": "Sign-in step unavailable"
+      },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
+      "signIn": {
+        "addAccount": "Add account",
+        "appleMethod": "Continue with Apple",
+        "back": "Back",
+        "chooseAccountSubtitle": "Select the account with which you wish to continue.",
+        "chooseAccountTitle": "Choose an account",
+        "chooseMethodSubtitle": "Facing issues? You can use any of these methods to sign in.",
+        "chooseMethodTitle": "Use another method",
+        "clientTrustNotice": "You're signing in from a new device. We're asking for verification to keep your account secure.",
+        "codeExpired": "This verification code has expired. Request a new code.",
+        "codeLabel": "Verification code",
+        "completeSubtitle": "You will be redirected soon",
+        "completeTitle": "Signing in...",
+        "confirmPasswordLabel": "Confirm password",
+        "continue": "Continue",
+        "editIdentifier": "Edit identifier",
+        "emailAddressLabel": "Email address",
+        "emailAddressPlaceholder": "Enter your email address",
+        "emailCodeMethod": "Email code to {{identifier}}",
+        "emailCodeSubtitle": "to continue to {{brandName}}",
+        "emailCodeTitle": "Check your email",
+        "emailSupport": "Email support",
+        "forgotPassword": "Forgot password?",
+        "getHelp": "Get help",
+        "googleMethod": "Continue with Google",
+        "helpDescription": "If you have trouble signing into your account, email us and we will work with you to restore access as soon as possible.",
+        "helpTitle": "Get help",
+        "hidePassword": "Hide password",
+        "identifierLabel": "Email address or username",
+        "identifierPlaceholder": "Enter your email address or username",
+        "lastUsed": "Last used",
+        "methodsHelpPrompt": "Don’t have any of these?",
+        "newPasswordLabel": "New password",
+        "newPasswordSubtitle": "For security reasons, it is required to reset your password.",
+        "newPasswordTitle": "Set new password",
+        "noAccount": "Don’t have an account?",
+        "noMethodsMessage": "Cannot proceed with sign in. There's no available authentication factor.",
+        "noMethodsTitle": "Cannot sign in",
+        "passkeyCancelled": "Passkey verification was cancelled or timed out.",
+        "passkeyMethod": "Sign in with your passkey",
+        "passkeyUnavailable": "Passkeys are not supported on this device.",
+        "passwordLabel": "Password",
+        "passwordMethod": "Sign in with your password",
+        "passwordMismatch": "Passwords don't match.",
+        "passwordPlaceholder": "Enter your password",
+        "passwordResetMethod": "Reset your password",
+        "passwordSubtitle": "Enter the password associated with your account",
+        "passwordTitle": "Enter your password",
+        "recoveryMethodsDivider": "Or, sign in with another method",
+        "recoveryTitle": "Forgot Password?",
+        "resendCode": "Didn't receive a code? Resend",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "resetPassword": "Reset Password",
+        "resetPasswordCodeSubtitle": "First, enter the code sent to your email address",
+        "resetPasswordCodeTitle": "Reset password",
+        "separator": "or",
+        "showPassword": "Show password",
+        "signOutOfOtherSessions": "Sign out of all other devices",
+        "signUp": "Sign up",
+        "startSubtitle": "Welcome back! Please sign in to continue",
+        "title": "Sign in to {{brandName}}",
+        "unknownError": "This action couldn't be completed. Please try again later or contact support if this persists.",
+        "useAnotherMethod": "Use another method",
+        "usernameLabel": "Username",
+        "usernamePlaceholder": "Enter your username",
+        "verify": "Verify"
+      },
+      "signUp": {
+        "alreadyHaveAccount": "Already have an account?",
+        "appleMethod": "Continue with Apple",
+        "back": "Back",
+        "captchaError": "Sign up unsuccessful due to failed bot validation. Please refresh the page to try again or reach out to support for more assistance.",
+        "captchaExpired": "Bot verification expired. Try again.",
+        "captchaLoading": "Loading…",
+        "captchaSubtitle": "Please wait while we verify your request.",
+        "captchaTitle": "Verifying your request",
+        "codeExpired": "This verification code has expired. Request a new code.",
+        "codeLabel": "Verification code",
+        "completeSubtitle": "Signing up...",
+        "completeTitle": "Successfully signed up",
+        "continue": "Continue",
+        "description": "Welcome! Please fill in the details to get started.",
+        "editEmailAddress": "Edit email address",
+        "emailAddressLabel": "Email address",
+        "emailAddressPlaceholder": "Enter your email address",
+        "emailCodeSubtitle": "Enter the verification code sent to your email",
+        "emailCodeTitle": "Verify your email",
+        "firstNameLabel": "First name",
+        "firstNamePlaceholder": "Enter your first name",
+        "googleMethod": "Continue with Google",
+        "hidePassword": "Hide password",
+        "lastNameLabel": "Last name",
+        "lastNamePlaceholder": "Enter your last name",
+        "legalPrivacyOnly": "I agree to the <privacy>Privacy Policy</privacy>",
+        "legalRequired": "Please read and accept the terms to continue",
+        "legalTermsAndPrivacy": "I agree to the <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>",
+        "legalTermsOnly": "I agree to the <terms>Terms of Service</terms>",
+        "optional": "Optional",
+        "passwordInvalid": "Your password is not strong enough.",
+        "passwordLabel": "Password",
+        "passwordPlaceholder": "Create a password",
+        "resendCode": "Didn't receive a code? Resend",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "restart": "Use another method",
+        "retry": "Try again",
+        "separator": "or",
+        "showPassword": "Show password",
+        "signIn": "Sign in",
+        "title": "Create your account",
+        "unknownError": "This action couldn't be completed. Please try again later or contact support if this persists.",
+        "unknownMessage": "Sign ups are currently disabled. If you believe you should have access, please contact support.",
+        "unknownTitle": "Access restricted",
+        "verify": "Verify"
+      }
+    }
   },
   "authorization": {
     "browser": {
@@ -1088,7 +1273,6 @@
         "updatedTitle": "Permissions updated"
       },
       "saving": "Saving...",
-      "unknownEndpoints": "Unknown endpoints",
       "userFallback": "there",
       "wouldLike": "Would like to"
     }
@@ -1515,7 +1699,6 @@
         "inviteMember": "Invite humans 🤝",
         "otherChannels": "Telegram and phone"
       },
-      "invitePeople": "Invite people",
       "taglines": {
         "anonymous": {
           "buildSomething": "Ready to build something?",
@@ -1553,6 +1736,9 @@
       "loadingFile": "Loading {{filename}}",
       "previewFile": "Preview {{filename}}",
       "title": "Attachments",
+      "unavailable": "{{filename}} is no longer available. Upload it again to send.",
+      "unavailableCount_one": "{{count}} attachment is no longer available. Upload it again to send.",
+      "unavailableCount_other": "{{count}} attachments are no longer available. Upload them again to send.",
       "uploadFailed": "Failed to upload {{filename}}",
       "uploadFailedRetry": "Failed to upload {{filename}}. Try again.",
       "uploadsFailed": "Some attachments failed to upload. Try again."
@@ -1654,6 +1840,37 @@
       "weeklyAt": "Every week at {{time}}",
       "weeklyOnAt": "Every week on {{days}} at {{time}}"
     },
+    "banking": {
+      "accountFallback": "Bank account",
+      "actionFailed": "Banking action failed",
+      "active_one": "Access active for {{count}} account",
+      "active_other": "Access active for {{count}} accounts",
+      "automationOff": "Read-only access is unavailable to automation runs.",
+      "cancel": "Cancel",
+      "change": "Change",
+      "connect": "Connect a bank",
+      "continue": "Continue",
+      "duration": "Access duration",
+      "expiresAt": "Expires {{time}}",
+      "grant": "Grant access",
+      "institutionFallback": "Bank institution",
+      "loadFailed": "Couldn't load banking access",
+      "noAccounts": "No healthy accounts are available. Reconnect or repair the institution first.",
+      "oneDay": "24 hours",
+      "oneHour": "1 hour",
+      "popupBlocked": "Allow popups for Zero, then try again.",
+      "readOnly": "Accounts, balances, and transactions · read only",
+      "repair": "Repair",
+      "repairRequired": "{{institution}} needs repair",
+      "retry": "Retry",
+      "revoke": "Revoke",
+      "revokeConfirm": "Revoke this Agent's banking access?",
+      "selectAccounts": "Select accounts",
+      "sevenDays": "7 days",
+      "thirtyDays": "30 days",
+      "title": "Banking access request",
+      "waiting": "Waiting for Mastercard Data Connect. Finish there, then return to Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Add credits to keep chatting with {{assistantName}}.",
       "askAdminCredits": "Ask a workspace admin to add credits so you can keep chatting with {{assistantName}}.",
@@ -1678,18 +1895,17 @@
       "agentSuggestions": "Agents",
       "configureModel": "Configure model",
       "createWorkflow": "Create workflow",
+      "imageModelForThisChat": "Image model for this chat",
       "message": "Message",
+      "modelForThisChat": "Model for this chat",
       "placeholder": "Ask me to automate workflows, manage tasks...",
       "selectedModelUnavailable": "The selected model is not available. Configure it before sending.",
       "selectedModelUnavailableToast": "The selected model is not available",
       "selectModel": "Select model",
-      "setAsDefault": "Set as default",
-      "temporaryFastModeDisabledNotice": "Fast mode is temporarily disabled for this run",
-      "temporaryFastModeEnabledNotice": "Fast mode is temporarily enabled for this run",
-      "temporaryImageModelNotice": "Temporarily switched to {{model}} for images",
-      "temporaryModelNotice": "Temporarily switched to {{model}}",
-      "temporaryVideoModelNotice": "Temporarily switched to {{model}} for video",
+      "temporarilySwitchTo": "Temporarily switch to",
       "threadSuggestions": "Chat threads",
+      "useForFutureChats": "Use this for future chats",
+      "videoModelForThisChat": "Video model for this chat",
       "visualAttachmentsUnsupported": "{{modelName}} cannot recognize images or videos. Switch to a vision-capable model to attach them.",
       "workflows": {
         "empty": "No matching workflows",
@@ -1719,17 +1935,24 @@
       "yourComputer": "Your computer"
     },
     "connectors": {
+      "accountForThread": "Account for this chat",
       "add": "Add {{connectorName}}",
       "addConnectors": "Add connectors",
       "authorizationFailed": "{{connectorName}} connected but could not be authorized for {{agentName}}",
       "authorized": "{{connectorName}} connected and authorized for {{agentName}}",
       "available_one": "Available connectors to connect ({{count}})",
       "available_other": "Available connectors to connect ({{count}})",
+      "back": "Back",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
+      "defaultAccountFor": "{{connector}} · Using default account: {{account}}",
+      "fallsBackTo": "Falls back to {{account}}",
       "find": "Find connectors...",
+      "noUsableAccount": "No usable account",
       "remove": "Remove {{connectorName}}",
-      "title": "Connectors"
+      "selectedAccountFor": "{{connector}} · Selected account: {{account}}",
+      "title": "Connectors",
+      "useDefault": "Use default"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -1775,12 +1998,102 @@
       "agents": "Agents",
       "back": "Back",
       "content": "Content",
-      "description": "Forward selected content to an agent or chat.",
+      "description": "Send selected content to an agent or chat to continue working on it.",
       "noResults": "No agents or chats found",
       "search": "Search agents and chats...",
       "sent": "Forwarded successfully",
       "threads": "Chats",
       "title": "Forward to"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "Choose an avatar",
+        "help": "Choose a presenter or continue without one",
+        "none": "No avatar"
+      },
+      "cardDescription": "Turn a file or screen recording into a finished video",
+      "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
+      "errors": {
+        "recordingEmpty": "The recording was empty. Please try again.",
+        "recordingFailed": "Screen recording could not start. Try again in a recent Chrome browser.",
+        "recordingPermission": "Nothing was shared. Choose a tab, window, or screen when you are ready.",
+        "recordingShareEnded": "Screen sharing ended before recording started.",
+        "recordingUnsupported": "Screen recording is not supported in this browser.",
+        "sendFailed": "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
+        "uploadFailed": "The source could not be uploaded. It is still saved locally and has been downloaded as a backup."
+      },
+      "footer": {
+        "back": "Back",
+        "createInChat": "Create in chat",
+        "download": "Download source",
+        "next": "Next",
+        "startRecording": "Choose screen and start",
+        "stopRecording": "Stop recording"
+      },
+      "recording": {
+        "chooseSurface": "Choose a tab, window, or screen",
+        "countdown": "Recording starts after the countdown",
+        "description": "Chrome will ask what to share. Recording begins only after the three-second countdown finishes.",
+        "heading": "Record your screen",
+        "localNote": "You can stop from Chrome's sharing bar or return here. The recording stays local until the chat thread is created.",
+        "microphone": "Microphone",
+        "microphoneHelp": "Add narration while you demonstrate",
+        "recordingLocally": "Recording locally",
+        "systemAudio": "System audio",
+        "systemAudioHelp": "Available sources depend on Chrome and your system"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Review your intro video",
+        "help": "Confirm the choices Zero will receive in the new chat thread",
+        "instructions": "Editing instructions",
+        "source": "Source",
+        "voice": "Voice"
+      },
+      "source": {
+        "chatDescription": "Open a thread now and shape the video with Zero",
+        "chatDetail": "Add a source, avatar, or voice later in chat",
+        "chatTitle": "Start in chat",
+        "documentDescription": "Turn your content into a narrated intro video",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Upload slides or a document",
+        "dropDescription": "Slides, documents, or recordings",
+        "dropTitle": "Drop a source here",
+        "heading": "How do you want to start?",
+        "help": "Add something you already have, record your screen, or describe the video in your own words",
+        "recordDescription": "Choose a tab, window, or your entire screen",
+        "recordDetail": "Starts after a three-second countdown",
+        "recordTitle": "Record your screen",
+        "videoDescription": "Let AI tighten the pacing, framing, and narration",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Upload a recording"
+      },
+      "sourceReview": {
+        "format": "Format",
+        "heading": "Your source is ready",
+        "help": "Check the file before you continue",
+        "inBrowser": "In this browser",
+        "inTab": "Until this tab closes",
+        "replace": "Replace source",
+        "saved": "Saved",
+        "source": "Source"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Intro video steps",
+        "review": "Review",
+        "source": "Source",
+        "voice": "Voice"
+      },
+      "title": "Create an intro video",
+      "voice": {
+        "heading": "Choose a voice",
+        "help": "Preview a sample before you continue",
+        "none": "No voiceover",
+        "noneDescription": "Create a caption-led video without narration",
+        "original": "Original audio",
+        "originalDescription": "Keep the audio from the uploaded video or recording"
+      }
     },
     "mail": {
       "bcc": "bcc",
@@ -1851,6 +2164,7 @@
       "expiresInHours_one": "Expires in {{count}} hour",
       "expiresInHours_other": "Expires in {{count}} hours",
       "loadFailed": "Couldn't load permission status",
+      "otherEndpoints": "other endpoints",
       "unknown": "Unknown permission",
       "updated": "Permissions updated",
       "updateFailed": "Couldn't update permissions"
@@ -1877,6 +2191,7 @@
       "loadingGoal": "Loading goal...",
       "message_one": "{{count}} message",
       "message_other": "{{count}} messages",
+      "morningBrief": "Morning Brief",
       "openGoalDetails": "Open goal details",
       "pendingAutomationEvent": "Pending automation event",
       "queuedMessage": "Queued message",
@@ -2124,6 +2439,35 @@
       "title": "Manage {{connector}} access",
       "unnamedAgent": "Unnamed"
     },
+    "accounts": {
+      "accountName": "Account name",
+      "accountsUnavailable": "Accounts are unavailable for this connector.",
+      "actions": "Account actions",
+      "addAccount": "Add account",
+      "connected": "Connected",
+      "default": "Default",
+      "deleteAccount": "Delete account",
+      "deleteDescription": "Threads using this account will return to default inheritance.",
+      "deleteDescriptionWithCount": "{{value}} threads will return to default inheritance.",
+      "deleteTitle": "Delete {{account}}?",
+      "fallbackName": "Account #{{id}}",
+      "find": "Find accounts",
+      "loading": "Loading accounts…",
+      "loadingMore": "Loading…",
+      "loadMore": "Load more",
+      "makeDefault": "Make default",
+      "managerTitle": "Manage {{connector}} accounts",
+      "namePromptDescription": "You can skip this and name the account later.",
+      "namePromptTitle": "Name your {{connector}} account",
+      "noAccounts": "No accounts",
+      "noAccountsFound": "No accounts found",
+      "reconnectRequired": "Reconnect required",
+      "rename": "Rename",
+      "skipName": "Skip",
+      "summaryMany": "{{value}} accounts",
+      "summaryOne": "{{value}} account",
+      "summaryWithAttention": "{{value}}/{{total}} need attention"
+    },
     "actions": {
       "apply": "Apply",
       "authorize": "Authorize",
@@ -2186,6 +2530,8 @@
       "access": {
         "add": "Add access",
         "manage": "Manage {{connector}} access",
+        "summaryMany": "{{value}} agents",
+        "unavailable": "Access unavailable",
         "usedBy": "Used by "
       },
       "categories": {
@@ -2521,8 +2867,8 @@
         "connectTitle": "Connect to Slack",
         "invalidDescription": "This page is meant to be opened from a Slack connect link.",
         "open": "Open Slack",
-        "successDescription": "Mention @Zero in any channel or send a DM to start chatting.",
-        "successDescriptionWorkspace": "You're connected to {{workspace}}. Mention @Zero in any channel or send a DM to start chatting.",
+        "successDescription": "Mention the installed bot in any channel or send a DM to start chatting.",
+        "successDescriptionWorkspace": "You're connected to {{workspace}}. Mention the installed bot in any channel or send a DM to start chatting.",
         "successTitle": "Connected to Slack!"
       },
       "teams": {
@@ -2532,7 +2878,7 @@
         "invalidDescription": "This page is meant to be opened from a Microsoft Teams connect link.",
         "open": "Open Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "You are connected to {{team}}. Mention @Zero in Teams to start chatting.",
+        "successDescription": "You are connected to {{team}}. Mention @{{botName}} in Teams to start chatting.",
         "successTitle": "Connected to Microsoft Teams"
       },
       "telegram": {
@@ -2676,12 +3022,12 @@
         "copied": "{{label}} copied",
         "copy": "Copy",
         "create": {
-          "descriptionAfter": ", create an enterprise custom app named {{brandName}}, upload the {{brandName}} icon, then add the Bot capability.",
+          "descriptionAfter": ", create an enterprise custom app using the name and icon you want, then add the Bot capability.",
           "descriptionBefore": "In the ",
-          "downloadIcon": "Download the {{brandName}} icon",
-          "iconAlt": "{{brandName}} app icon",
+          "downloadIcon": "Download the optional {{brandName}} icon",
+          "iconAlt": "Optional {{brandName}} app icon",
           "iconHint": ", or use any icon you prefer.",
-          "iconTitle": "{{brandName}} app icon",
+          "iconTitle": "Optional {{brandName}} app icon",
           "imageAlt": "Feishu app creation form with the app name, icon, and Create button highlighted",
           "title": "Create an enterprise custom app"
         },
@@ -2821,7 +3167,7 @@
           "testReceived": "Strapi test webhook received"
         },
         "webhookUrl": "Webhook URL",
-        "whereZeroWorks": "Where {{assistantName}} works"
+        "whereAssistantWorks": "Where {{assistantName}} works"
       },
       "telegram": {
         "addBot": "Add bot",
@@ -2860,7 +3206,7 @@
         "moreOptions": "More options for {{bot}}",
         "newBotToken": "New bot token",
         "notConnected": "Not connected",
-        "officialBot": "{{assistantName}} official bot",
+        "officialBot": "Official Telegram bot",
         "officialDescription": "Official bot provided by {{brandName}}.",
         "officialMissing": "Official bot configuration is missing.",
         "pageDescription": "Manage bot routing for this workspace",
@@ -2976,15 +3322,6 @@
       "doneTitle": "Unsubscribed",
       "errorBody": "This unsubscribe link is invalid or expired. You can manage email notifications in Settings.",
       "errorTitle": "Something went wrong"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "You will no longer receive the daily Morning Brief email. You can turn it back on any time in Settings.",
-      "doneTitle": "Morning Brief turned off",
-      "errorBody": "The unsubscribe link is invalid or incomplete. Open the latest Morning Brief email and use its unsubscribe link, or manage the preference in Settings.",
-      "errorTitle": "This link is invalid",
-      "loadingLabel": "Loading unsubscribe status",
-      "managePreferences": "Manage preferences"
     },
     "pwaInstall": {
       "banner": "Install {{assistantName}} for a better experience",
@@ -3117,9 +3454,17 @@
           "description": "Generate slides and speaker",
           "title": "Generate a presentation"
         },
+        "slack": {
+          "description": "Chat with your AI teammate in your workspace",
+          "title": "Chat with Okou in Slack"
+        },
         "video": {
           "description": "Turn your ideas into video",
           "title": "Video production"
+        },
+        "website": {
+          "description": "Create and publish a shareable page",
+          "title": "Build a website"
         },
         "workflow": {
           "description": "Explore from preset templates",
@@ -3261,7 +3606,7 @@
       "whatItDoes": "What it does"
     },
     "workflowRun": {
-      "continueWithZero": "Continue with {{assistantName}}",
+      "continueWithAssistant": "Continue with {{assistantName}}",
       "createWorkflow": "Create workflow",
       "customNoteLabel": "Describe your workflow",
       "customNotePlaceholder": "Describe what you want {{assistantName}} to build",
@@ -4426,7 +4771,6 @@
         "usage": {
           "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
-          "balanceUsageDescription": "Your team's credit balance and usage.",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"
         }
@@ -4440,7 +4784,7 @@
         "start": "Export my data",
         "starting": "Starting export"
       },
-      "backToZero": "Back to {{assistantName}}",
+      "backToAssistant": "Back to {{assistantName}}",
       "description": "Download the files and text records you created in {{assistantName}}.",
       "documentTitle": "Export data",
       "duration": {
@@ -4727,6 +5071,20 @@
         "sectionTitle": "Account & Security"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Carry a bright, subtle palette across every interface layer.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Color theme"
+        },
         "description": "Choose how the interface looks.",
         "sectionTitle": "Appearance",
         "theme": {
@@ -4738,6 +5096,30 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "cancelAction": "Cancel cooldown",
+          "cancelDescription": "Cancelling this global cooldown makes the route immediately eligible for every workspace with built-in model fallback enabled.",
+          "cancelling": "Cancelling...",
+          "cancelTitle": "Cancel global cooldown?",
+          "cancelWarning": "A later qualifying failure can place this route back in cooldown.",
+          "description": "Inspect the built-in model routes temporarily excluded from fallback selection.",
+          "disabled": "disabled",
+          "disabledExplanation": "Built-in model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
+          "empty": "No built-in model routes are currently in global cooldown.",
+          "enabled": "enabled",
+          "globalActive": "global active cooldowns",
+          "globalExplanation": "Cooldowns are global operational state. They can affect this workspace only while built-in model fallback is enabled here.",
+          "keepCooldown": "Keep cooldown",
+          "loading": "Loading built-in model cooldown diagnostics...",
+          "providerType": "Provider type",
+          "refresh": "Refresh",
+          "selectedModel": "Selected model",
+          "title": "Built-in model fallback",
+          "unavailable": "Built-in model cooldown diagnostics are unavailable.",
+          "unavailableUntil": "Unavailable until",
+          "upstreamModel": "Upstream model",
+          "workspaceFallback": "workspace fallback"
+        },
         "capture": {
           "description": "Capture HTTP header names, selected safe header values, and bodies in network logs for debugging.",
           "disabled": "Disabled",
@@ -4763,24 +5145,6 @@
           "title": "Realtime connection diagnostics",
           "unavailable": "unavailable"
         },
-        "managedModelCooldown": {
-          "description": "Inspect the managed model routes temporarily excluded from fallback selection.",
-          "disabled": "disabled",
-          "disabledExplanation": "Managed model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
-          "empty": "No managed model routes are currently in global cooldown.",
-          "enabled": "enabled",
-          "globalActive": "global active cooldowns",
-          "globalExplanation": "Cooldowns are global operational state. They can affect this workspace only while managed model fallback is enabled here.",
-          "loading": "Loading managed model cooldown diagnostics...",
-          "providerType": "Provider type",
-          "refresh": "Refresh",
-          "selectedModel": "Selected model",
-          "title": "Managed model fallback",
-          "unavailable": "Managed model cooldown diagnostics are unavailable.",
-          "unavailableUntil": "Unavailable until",
-          "upstreamModel": "Upstream model",
-          "workspaceFallback": "workspace fallback"
-        },
         "tab": "Debug"
       },
       "documentTitle": "Preferences",
@@ -4800,16 +5164,6 @@
           "spanish": "Español"
         },
         "title": "Language"
-      },
-      "morningBrief": {
-        "description": "A daily 7:00 AM email with your schedule, action items, and updates from connected GitHub, Gmail, and Google Calendar",
-        "nextEmail": "Next email: {{date}}",
-        "nextEmailInTimezone": "Next email: {{date}} ({{timezone}})",
-        "notScheduled": "Next email: not scheduled yet — turn the switch off and on to reschedule",
-        "sending": "Sending...",
-        "sendNow": "Send now",
-        "title": "Morning Brief",
-        "triggeredToast": "Morning Brief triggered, the email arrives shortly"
       },
       "pageDescription": "Manage your appearance and agent runtime preferences",
       "pageTitle": "Preferences",
@@ -5021,15 +5375,20 @@
       "viewSource": "Diagram source"
     },
     "notFound": {
+      "action": "Back to home",
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "This shared conversation does not exist.",
+    "handoffDescription": "{{assistantName}} carries the context into a new chat",
+    "handoffPrompt": "Continue this shared conversation with me: {{url}}",
+    "makeConversationYours": "Make this conversation yours",
     "notFoundTitle": "Shared conversation not found",
-    "tryOkou": "Try {{assistantName}}"
+    "share": "Share",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "tryItYourself": "Try it yourself"
   },
   "usage": {
     "displayNames": {
@@ -5774,6 +6133,67 @@
       },
       "title": "Workflows",
       "viewAutomations": "View automations"
+    },
+    "official": {
+      "activeInstallationDescription": "This Official Workflow remains operational and its managed content stays read-only.",
+      "activeInstallationTitle": "Official Workflow",
+      "agent": "Agent",
+      "automationCount_one": "{{count}} automation",
+      "automationCount_other": "{{count}} automations",
+      "badge": "Official",
+      "browse": "Browse Official",
+      "chooseValue": "Choose a value",
+      "copySucceededUninstallFailed": "The copy is ready, but the original Official Workflow could not be uninstalled.",
+      "description": "Install managed workflows maintained by vm0.",
+      "empty": "No Official Workflows are available.",
+      "includedAutomations": "Included automations",
+      "install": "Install",
+      "installDescription": "Choose an Agent and complete every required parameter. All included automations will be installed.",
+      "installed": "Official Workflow installed",
+      "installErrorDescription": "Check the Agent and parameter values, then try again.",
+      "installErrorTitle": "Official Workflow could not be installed",
+      "installTitle": "Install {{name}}",
+      "intendedOff": "intended off",
+      "intendedOn": "intended on",
+      "loadErrorDescription": "This catalog may be unavailable or not enabled for your account.",
+      "loadErrorTitle": "Official Workflows could not be loaded",
+      "no": "No",
+      "noParameters": "No parameters are required.",
+      "noResults": "No Official Workflows match your search.",
+      "notFound": "This Official Workflow was not found.",
+      "parameterCount_one": "{{count}} parameter",
+      "parameterCount_other": "{{count}} parameters",
+      "parameterRequired": "{{key}} (required)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Reconfigure",
+      "reconfigured": "Official Workflow reconfigured",
+      "reconfigureDescription": "Update typed parameters without replacing this Workflow or its automations.",
+      "reconfigureDialogDescription": "Review every managed automation and update its parameters.",
+      "reconfigureErrorDescription": "Review the required values and try again.",
+      "reconfigureErrorTitle": "Official Workflow could not be reconfigured",
+      "reconfigureTitle": "Installation parameters",
+      "reconfigureUnavailable": "Authoritative parameter metadata is temporarily unavailable.",
+      "retiredBadge": "Official · Retired",
+      "retiredDefinitionDescription": "This retained Definition can be viewed, but it can no longer be installed.",
+      "retiredInstallationDescription": "This Definition is retired. Your existing installation remains operational and read-only until you uninstall it.",
+      "retiredInstallationTitle": "Official Workflow retired",
+      "retiredTitle": "Retired Definition",
+      "retry": "Try again",
+      "search": "Search Official Workflows",
+      "selectAgent": "Select an Agent",
+      "statusCurrent": "Current",
+      "statusFailed": "Failed",
+      "statusNeedsReconfiguration": "Needs reconfiguration",
+      "statusReconciling": "Reconciling",
+      "title": "Official Workflows",
+      "unavailableInstallationDescription": "The accepted Definition is temporarily unavailable. Existing operational controls remain available.",
+      "unavailableInstallationTitle": "Official Definition unavailable",
+      "uninstall": "Uninstall",
+      "uninstallConfirm": "This removes the Official installation and all of its automations. This action cannot be undone.",
+      "uninstallDescription": "Remove this Official Workflow installation through its managed lifecycle.",
+      "uninstallTitle": "Uninstall Official Workflow",
+      "viewAndInstall": "View and install",
+      "yes": "Yes"
     }
   },
   "works": {

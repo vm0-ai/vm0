@@ -1,0 +1,199 @@
+diff --git a/.build/common.ts b/.build/common.ts
+index 2497d443f..42a8da45d 100644
+--- a/.build/common.ts
++++ b/.build/common.ts
+@@ -8,39 +8,9 @@ export interface PackageOptions {
+  * Shared common options for both ESBuild and Vite
+  */
+ export const packageOptions = {
+-  parser: {
+-    name: 'mermaid-parser',
+-    packageName: 'parser',
+-    file: 'index.ts',
+-  },
+   mermaid: {
+     name: 'mermaid',
+     packageName: 'mermaid',
+     file: 'mermaid.ts',
+   },
+-  'mermaid-example-diagram': {
+-    name: 'mermaid-example-diagram',
+-    packageName: 'mermaid-example-diagram',
+-    file: 'detector.ts',
+-  },
+-  'mermaid-zenuml': {
+-    name: 'mermaid-zenuml',
+-    packageName: 'mermaid-zenuml',
+-    file: 'detector.ts',
+-  },
+-  'mermaid-layout-elk': {
+-    name: 'mermaid-layout-elk',
+-    packageName: 'mermaid-layout-elk',
+-    file: 'layouts.ts',
+-  },
+-  'mermaid-layout-tidy-tree': {
+-    name: 'mermaid-layout-tidy-tree',
+-    packageName: 'mermaid-layout-tidy-tree',
+-    file: 'index.ts',
+-  },
+-  examples: {
+-    name: 'mermaid-examples',
+-    packageName: 'examples',
+-    file: 'index.ts',
+-  },
+ } as const satisfies Record<string, PackageOptions>;
+diff --git a/.esbuild/build.ts b/.esbuild/build.ts
+index ae1e77002..9d3f2b09b 100644
+--- a/.esbuild/build.ts
++++ b/.esbuild/build.ts
+@@ -1,7 +1,6 @@
+ import { build } from 'esbuild';
+ import { cp, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+ import { packageOptions } from '../.build/common.js';
+-import { generateLangium } from '../.build/generateLangium.js';
+ import type { MermaidBuildOptions } from './util.js';
+ import { defaultOptions, getBuildConfig } from './util.js';
+ 
+@@ -21,6 +20,14 @@ const buildPackage = async (entryName: keyof typeof packageOptions) => {
+       minify: true,
+       metafile: shouldVisualize,
+     },
++    // package.esm.tiny.min.mjs
++    {
++      ...commonOptions,
++      minify: true,
++      includeLargeFeatures: false,
++      metafile: shouldVisualize,
++      sourcemap: false,
++    },
+     // package.core.mjs
+     { ...commonOptions, core: true },
+   ];
+@@ -93,7 +100,6 @@ const buildTinyMermaid = async () => {
+ };
+ 
+ const main = async () => {
+-  await generateLangium();
+   await mkdir('stats', { recursive: true });
+   const packageNames = Object.keys(packageOptions) as (keyof typeof packageOptions)[];
+   // it should build `parser` before `mermaid` because it's a dependency
+diff --git a/packages/mermaid/src/diagram-api/diagram-orchestration.ts b/packages/mermaid/src/diagram-api/diagram-orchestration.ts
+index ece82f2f9..cdbbcc39e 100644
+--- a/packages/mermaid/src/diagram-api/diagram-orchestration.ts
++++ b/packages/mermaid/src/diagram-api/diagram-orchestration.ts
+@@ -1,44 +1,9 @@
+-import c4 from '../diagrams/c4/c4Detector.js';
+ import flowchart from '../diagrams/flowchart/flowDetector.js';
+ import flowchartV2 from '../diagrams/flowchart/flowDetector-v2.js';
+-import swimlanes from '../diagrams/swimlanes/detector.js';
+-import er from '../diagrams/er/erDetector.js';
+-import git from '../diagrams/git/gitGraphDetector.js';
+-import gantt from '../diagrams/gantt/ganttDetector.js';
+-import { info } from '../diagrams/info/infoDetector.js';
+-import { pie } from '../diagrams/pie/pieDetector.js';
+-import quadrantChart from '../diagrams/quadrant-chart/quadrantDetector.js';
+-import xychart from '../diagrams/xychart/xychartDetector.js';
+-import requirement from '../diagrams/requirement/requirementDetector.js';
+ import sequence from '../diagrams/sequence/sequenceDetector.js';
+-import classDiagram from '../diagrams/class/classDetector.js';
+-import classDiagramV2 from '../diagrams/class/classDetector-V2.js';
+-import state from '../diagrams/state/stateDetector.js';
+-import stateV2 from '../diagrams/state/stateDetector-V2.js';
+-import journey from '../diagrams/user-journey/journeyDetector.js';
+ import errorDiagram from '../diagrams/error/errorDiagram.js';
+-import flowchartElk from '../diagrams/flowchart/elk/detector.js';
+-import timeline from '../diagrams/timeline/detector.js';
+-import mindmap from '../diagrams/mindmap/detector.js';
+-import kanban from '../diagrams/kanban/detector.js';
+-import sankey from '../diagrams/sankey/sankeyDetector.js';
+-import { packet } from '../diagrams/packet/detector.js';
+-import { radar } from '../diagrams/radar/detector.js';
+-import block from '../diagrams/block/blockDetector.js';
+-import treeView from '../diagrams/treeView/detector.js';
+-import architecture from '../diagrams/architecture/architectureDetector.js';
+-import eventmodeling from '../diagrams/eventmodeling/detector.js';
+-import { ishikawa } from '../diagrams/ishikawa/ishikawaDetector.js';
+-import venn from '../diagrams/venn/vennDetector.js';
+ import { registerLazyLoadedDiagrams } from './detectType.js';
+ import { registerDiagram } from './diagramAPI.js';
+-import { treemap } from '../diagrams/treemap/detector.js';
+-import wardley from '../diagrams/wardley/wardleyDetector.js';
+-import { cynefin } from '../diagrams/cynefin/cynefinDetector.js';
+-import { railroad } from '../diagrams/railroad/railroadDetector.js';
+-import { railroadEbnf } from '../diagrams/railroad/ebnfDetector.js';
+-import { railroadAbnf } from '../diagrams/railroad/abnfDetector.js';
+-import { railroadPeg } from '../diagrams/railroad/pegDetector.js';
+ import '../type.d.ts';
+ 
+ let hasLoadedDiagrams = false;
+@@ -83,46 +48,6 @@ export const addDiagrams = () => {
+     }
+   );
+ 
+-  if (injected.includeLargeFeatures) {
+-    registerLazyLoadedDiagrams(flowchartElk, mindmap, architecture);
+-  }
+-
+   // Ordering of detectors is important. The first one to return true will be used.
+-  registerLazyLoadedDiagrams(
+-    c4,
+-    kanban,
+-    classDiagramV2,
+-    classDiagram,
+-    er,
+-    gantt,
+-    info,
+-    pie,
+-    requirement,
+-    sequence,
+-    swimlanes,
+-    flowchartV2,
+-    flowchart,
+-    timeline,
+-    git,
+-    stateV2,
+-    state,
+-    journey,
+-    quadrantChart,
+-    sankey,
+-    packet,
+-    xychart,
+-    block,
+-    eventmodeling,
+-    treeView,
+-    radar,
+-    ishikawa,
+-    treemap,
+-    railroad,
+-    railroadEbnf,
+-    railroadAbnf,
+-    railroadPeg,
+-    venn,
+-    wardley,
+-    cynefin
+-  );
++  registerLazyLoadedDiagrams(sequence, flowchartV2, flowchart);
+ };
+diff --git a/packages/mermaid/src/rendering-util/render.ts b/packages/mermaid/src/rendering-util/render.ts
+index 33b381708..683aa1c7b 100644
+--- a/packages/mermaid/src/rendering-util/render.ts
++++ b/packages/mermaid/src/rendering-util/render.ts
+@@ -43,18 +43,6 @@ const registerDefaultLayoutLoaders = () => {
+       name: 'dagre',
+       loader: async () => await import('./layout-algorithms/dagre/index.js'),
+     },
+-    {
+-      name: 'swimlane',
+-      loader: async () => await import('./layout-algorithms/swimlanes/index.js'),
+-    },
+-    ...(injected.includeLargeFeatures
+-      ? [
+-          {
+-            name: 'cose-bilkent',
+-            loader: async () => await import('./layout-algorithms/cose-bilkent/index.js'),
+-          },
+-        ]
+-      : []),
+   ]);
+ };
+ 

@@ -1,18 +1,18 @@
 //! [`JobProvider`] backed by a file queue in a shared group directory.
 //!
 //! `submit` writes a `{job_id}.job` file under the requested profile
-//! partition. Runners poll only the profile partitions they support and race
+//! partition. Runners watch only the profile partitions they support and race
 //! to claim discovered jobs via group-wide `{job_id}.claim` files (O_EXCL).
 //! The winning runner executes the job and writes a group-wide
 //! `{job_id}.result` file that `submit` polls for.
 
 mod cancel;
+mod watch;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -22,19 +22,66 @@ use crate::local_queue::{LocalClaimResult, LocalDiscoveredJob, LocalQueue};
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState};
 use cancel::{LocalCancelScanner, LocalCancelWatcher};
+use watch::{QueueFileKind, RECONCILE_INTERVAL, ensure_watcher, next_change_or_pending};
 
-/// Poll interval for discovering new job files and local cancel markers.
-const POLL_INTERVAL: Duration = Duration::from_millis(100);
+#[cfg(test)]
+#[derive(Clone, Default)]
+struct ScanObserver {
+    inner: Arc<ScanObserverInner>,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct ScanObserverInner {
+    count: AtomicUsize,
+    changed: tokio::sync::Notify,
+}
+
+#[cfg(test)]
+impl ScanObserver {
+    fn record(&self) {
+        self.inner.count.fetch_add(1, Ordering::Relaxed);
+        self.inner.changed.notify_one();
+    }
+
+    fn count(&self) -> usize {
+        self.inner.count.load(Ordering::Relaxed)
+    }
+
+    async fn wait_for_count(&self, expected: usize) {
+        loop {
+            if self.count() >= expected {
+                return;
+            }
+            self.inner.changed.notified().await;
+        }
+    }
+
+    fn observe(&self) -> ScanObservation {
+        ScanObservation(self.clone())
+    }
+}
+
+#[cfg(test)]
+struct ScanObservation(ScanObserver);
+
+#[cfg(test)]
+impl Drop for ScanObservation {
+    fn drop(&mut self) {
+        self.0.record();
+    }
+}
+
 /// [`JobProvider`] backed by a file queue in a shared group directory.
 ///
-/// - `discover()` polls supported profile partitions under `jobs/`.
+/// - `discover()` watches and reconciles supported profile partitions under `jobs/`.
 /// - `claim()` atomically creates `claims/{job_id}.claim` via `O_EXCL`.
 /// - `complete()` writes `results/{job_id}.result`.
 ///
-/// A provider-owned watcher scans `cancels/{run_id}.cancel` independently from
-/// discovery so active-job cancellation remains live while discovery is gated
-/// by capacity or drain mode. `discover()` also performs the same scan as a
-/// fast path, but correctness does not depend on discovery being polled.
+/// A provider-owned watcher reconciles `cancels/{run_id}.cancel` independently
+/// from discovery so active-job cancellation remains live while discovery is
+/// gated by capacity or drain mode. Claim performs one additional reconciliation
+/// after ownership changes so a preexisting marker cannot be stranded.
 pub struct LocalProvider {
     queue: LocalQueue,
     supported_profiles: Vec<String>,
@@ -42,6 +89,8 @@ pub struct LocalProvider {
     cancel: CancellationToken,
     cancel_scanner: LocalCancelScanner,
     cancel_watcher: LocalCancelWatcher,
+    #[cfg(test)]
+    job_scan_observer: ScanObserver,
 }
 
 impl LocalProvider {
@@ -84,10 +133,14 @@ impl LocalProvider {
             cancel,
             cancel_scanner,
             cancel_watcher,
+            #[cfg(test)]
+            job_scan_observer: ScanObserver::default(),
         })
     }
 
     async fn find_unclaimed_job_blocking(&self) -> Option<JobCandidate> {
+        #[cfg(test)]
+        let _scan_observation = self.job_scan_observer.observe();
         let start = self.profile_cursor.fetch_add(1, Ordering::Relaxed);
         let queue = self.queue.clone();
         let supported_profiles = self.supported_profiles.clone();
@@ -103,6 +156,42 @@ impl LocalProvider {
             }
         }
     }
+
+    fn job_watch_paths(&self) -> Vec<PathBuf> {
+        self.supported_profiles
+            .iter()
+            .filter_map(|profile| match crate::local_queue::profile_jobs_dir(
+                self.queue.group_dir(),
+                profile,
+            ) {
+                Ok(path) => Some(path),
+                Err(error) => {
+                    warn!(profile, error = %error, "local: invalid supported profile watch path");
+                    None
+                }
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    async fn wait_for_job_scan_count(&self, expected: usize) {
+        self.job_scan_observer.wait_for_count(expected).await;
+    }
+
+    #[cfg(test)]
+    fn job_scan_count(&self) -> usize {
+        self.job_scan_observer.count()
+    }
+
+    #[cfg(test)]
+    async fn wait_for_cancel_scan_count(&self, expected: usize) {
+        self.cancel_scanner.wait_for_scan_count(expected).await;
+    }
+
+    #[cfg(test)]
+    fn cancel_scan_count(&self) -> usize {
+        self.cancel_scanner.scan_count()
+    }
 }
 
 fn job_candidate_from_discovered(discovered: LocalDiscoveredJob) -> JobCandidate {
@@ -117,12 +206,15 @@ fn job_candidate_from_discovered(discovered: LocalDiscoveredJob) -> JobCandidate
 #[async_trait::async_trait]
 impl JobProvider for LocalProvider {
     async fn discover(&self) -> Option<JobCandidate> {
+        let watch_paths = self.job_watch_paths();
+        let mut watcher = None;
         loop {
             if self.cancel.is_cancelled() {
                 return None;
             }
-            // Check for cancel requests before looking for new jobs.
-            self.cancel_scanner.scan_cancel_files().await;
+            if let Err(error) = ensure_watcher(&mut watcher, &watch_paths, QueueFileKind::Job) {
+                warn!(error = %error, "local: job watcher unavailable, using reconciliation");
+            }
             if let Some(candidate) = self.find_unclaimed_job_blocking().await {
                 info!(
                     run_id = %candidate.run_id(),
@@ -133,7 +225,13 @@ impl JobProvider for LocalProvider {
             }
             tokio::select! {
                 () = self.cancel.cancelled() => return None,
-                () = tokio::time::sleep(POLL_INTERVAL) => {}
+                () = tokio::time::sleep(RECONCILE_INTERVAL) => {}
+                result = next_change_or_pending(&mut watcher) => {
+                    if let Err(error) = result {
+                        warn!(error = %error, "local: job watcher failed, using reconciliation");
+                        watcher = None;
+                    }
+                }
             }
         }
     }
@@ -171,6 +269,7 @@ impl JobProvider for LocalProvider {
             sandbox_token: String::new(),
             storage_manifest: None,
             environment: environment_merge.environment,
+            platform_environment: None,
             resume_session: req
                 .session_id
                 .as_ref()
@@ -206,6 +305,7 @@ impl JobProvider for LocalProvider {
         match ClaimedJob::local_with_active_input_source(run_id, context, active_input_source) {
             Ok(claimed) => {
                 self.cancel_scanner.mark_owned_claim(run_id).await;
+                self.cancel_scanner.scan_cancel_files().await;
                 info!(run_id = %run_id, "local: job claimed");
                 Some(claimed)
             }

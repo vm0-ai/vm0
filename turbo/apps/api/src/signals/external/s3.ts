@@ -40,7 +40,7 @@ interface S3FileEntry {
   readonly size: number;
 }
 
-interface MultipartS3Part {
+export interface MultipartS3Part {
   readonly partNumber: number;
   readonly etag: string;
 }
@@ -547,6 +547,7 @@ export function createMultipartS3Upload(
   key: string,
   contentType: string,
   metadata?: Readonly<Record<string, string>>,
+  signal?: AbortSignal,
 ): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
     const client = get(s3ClientForBucket(bucket));
@@ -557,6 +558,7 @@ export function createMultipartS3Upload(
         ContentType: contentType,
         Metadata: metadata,
       }),
+      { abortSignal: signal },
     );
     if (!response.UploadId) {
       throw new Error("R2 did not return a multipart upload ID");
@@ -584,6 +586,35 @@ export function generatePresignedUploadPartUrl(
       }),
       { expiresIn },
     );
+  });
+}
+
+export function uploadMultipartS3Part(
+  args: {
+    readonly bucket: string;
+    readonly key: string;
+    readonly uploadId: string;
+    readonly partNumber: number;
+    readonly body: Uint8Array;
+  },
+  signal?: AbortSignal,
+): Computed<Promise<MultipartS3Part>> {
+  return computed(async (get): Promise<MultipartS3Part> => {
+    const client = get(s3ClientForBucket(args.bucket));
+    const result = await client.send(
+      new UploadPartCommand({
+        Bucket: args.bucket,
+        Key: args.key,
+        UploadId: args.uploadId,
+        PartNumber: args.partNumber,
+        Body: args.body,
+      }),
+      { abortSignal: signal },
+    );
+    if (!result.ETag) {
+      throw new Error("R2 did not return a multipart part ETag");
+    }
+    return { partNumber: args.partNumber, etag: result.ETag };
   });
 }
 
@@ -624,6 +655,7 @@ export function completeMultipartS3Upload(
   key: string,
   uploadId: string,
   parts: readonly MultipartS3Part[],
+  signal?: AbortSignal,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(s3ClientForBucket(bucket));
@@ -638,6 +670,7 @@ export function completeMultipartS3Upload(
           }),
         },
       }),
+      { abortSignal: signal },
     );
   });
 }
@@ -646,6 +679,7 @@ export function abortMultipartS3Upload(
   bucket: string,
   key: string,
   uploadId: string,
+  signal?: AbortSignal,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(s3ClientForBucket(bucket));
@@ -655,6 +689,7 @@ export function abortMultipartS3Upload(
         Key: key,
         UploadId: uploadId,
       }),
+      { abortSignal: signal },
     );
   });
 }

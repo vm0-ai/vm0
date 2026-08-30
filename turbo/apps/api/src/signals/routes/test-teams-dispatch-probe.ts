@@ -6,7 +6,7 @@ import {
 import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/teams-bot";
 
 import { now } from "../../lib/time";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, settle } from "../utils";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
@@ -17,7 +17,7 @@ import {
 } from "./test-endpoint-helpers";
 
 const DEFAULT_SERVICE_URL = "https://smba.trafficmanager.net/amer/";
-const DEFAULT_BOT_ID = "28:e2e-zero-bot";
+const DEFAULT_BOT_ID = "28:e2e-okou-bot";
 const DEFAULT_BOT_NAME = "Zero";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -176,6 +176,7 @@ const postTestTeamsDispatchProbe$ = command(
         dispatchTeamsMessageToAgent$,
         {
           activity,
+          publicBrand: get(publicBrand$),
           apiStartTime,
           timing: new ApiDispatchTimingCollector(),
         },

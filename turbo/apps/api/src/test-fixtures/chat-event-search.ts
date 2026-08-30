@@ -138,13 +138,13 @@ export async function removeChatSearchSourceEventsFixture(
 export async function updateChatSearchSourceThreadFixture(args: {
   readonly chatThreadId: string;
   readonly userId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
 }): Promise<void> {
   const updated = await db()
     .update(chatThreads)
     .set({
       userId: args.userId,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
     })
     .where(eq(chatThreads.id, args.chatThreadId))
     .returning({ id: chatThreads.id });

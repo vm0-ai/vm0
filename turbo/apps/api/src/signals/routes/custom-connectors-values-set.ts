@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroCustomConnectorValuesContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorValuesContract } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -9,10 +9,8 @@ import type { RouteEntry } from "../route-entry";
 
 const setValuesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroCustomConnectorValuesContract.set));
-  const bodyResult = await get(
-    bodyResultOf(zeroCustomConnectorValuesContract.set),
-  );
+  const params = get(pathParamsOf(customConnectorValuesContract.set));
+  const bodyResult = await get(bodyResultOf(customConnectorValuesContract.set));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -38,7 +36,7 @@ const setValuesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const customConnectorsValuesSetRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorValuesContract.set,
+    route: customConnectorValuesContract.set,
     handler: authRoute(
       {
         requireOrganization: true,

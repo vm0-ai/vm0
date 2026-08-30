@@ -14,12 +14,8 @@ export {
   type BuildInfoRouteResponse,
 } from "./build-info";
 export {
-  healthAuthContract,
   healthContract,
   healthResponseSchema,
-  type HealthAuthContract,
-  type HealthAuthRouteResponse,
-  type HealthContract,
   type HealthResponse,
   type HealthRouteResponse,
 } from "./health";
@@ -79,20 +75,9 @@ export {
 export {
   AGENT_NAME_REGEX,
   agentNameSchema,
-  volumeConfigSchema,
-  artifactConfigSchema,
-  artifactsArraySchema,
   MOUNT_PATH_TEMPLATE,
   expandMountPath,
-  agentDefinitionSchema,
-  agentComposeContentSchema,
-  agentComposeApiContentSchema,
-  composeResponseSchema,
-  createComposeResponseSchema,
-  // Inferred types
-  type ComposeResponse,
-  type ArtifactConfig,
-} from "./composes";
+} from "./agents";
 export {
   ALL_RUN_STATUSES,
   runStatusSchema,
@@ -140,18 +125,6 @@ export {
   type ImageRecognitionRequest,
   type ImageRecognitionResponse,
 } from "./image-recognition";
-export {
-  TRANSLATION_MAX_LANGUAGE_CHARS,
-  TRANSLATION_MAX_RESULT_TEXT_CHARS,
-  TRANSLATION_MAX_SOURCE_TEXT_CHARS,
-  translationContract,
-  translationLanguageSchema,
-  translationRequestSchema,
-  translationResponseSchema,
-  type TranslationContract,
-  type TranslationRequest,
-  type TranslationResponse,
-} from "./translation";
 export {
   modelPoliciesMainContract,
   type ModelPoliciesMainContract,
@@ -256,7 +229,6 @@ export {
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
-  webhookModelUsageObservationContract,
   webhookUsageEventContract,
   type WebhookClerkContract,
   type WebhookUsageEventContract,
@@ -295,10 +267,6 @@ export {
   type EmailUnsubscribeQuery,
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
-export {
-  morningBriefContract,
-  type MorningBriefContract,
-} from "./morning-brief";
 export {
   emailMorningBriefUnsubscribeContract,
   type EmailMorningBriefUnsubscribeContract,
@@ -432,7 +400,6 @@ export {
   cronConnectorOauthStateCleanupResponseSchema,
   cronDrainEmailOutboxContract,
   cronDrainEmailOutboxResponseSchema,
-  cronExecuteMorningBriefsContract,
   cronExecuteWorkflowAutomationsContract,
   cronRenewGmailWatchesContract,
   cronRenewGmailWatchesResponseSchema,
@@ -488,6 +455,7 @@ export {
 } from "./variables";
 export {
   modelProviderTypeSchema,
+  modelProviderWriteTypeSchema,
   modelProviderFrameworkSchema,
   modelProviderResponseSchema,
   modelProviderListResponseSchema,
@@ -528,6 +496,7 @@ export {
   getVm0ModelPriceTier,
   // Selectable provider filtering
   getSelectableProviderTypes,
+  isBuiltInModelProviderType,
   // Multi-auth provider support
   hasAuthMethods,
   getAuthMethodsForType,
@@ -535,10 +504,12 @@ export {
   getSecretsForAuthMethod,
   getSecretNamesForAuthMethod,
   type ModelProviderType,
+  type ModelProviderWriteType,
+  type BuiltInModelProviderType,
   type ModelProviderFramework,
   type ModelProviderEnvBindings,
   type ModelProviderResponse,
-  type Vm0ModelPriceTier,
+  type ModelPriceTier,
   type ModelProviderListResponse,
   type UpsertModelProviderRequest,
   type UpsertModelProviderResponse,
@@ -550,21 +521,21 @@ export {
   type SupportedRunModel,
   type ModelProviderCredentialScope,
   type DefaultOrgModelPolicySeed,
-  type Vm0ManagedRouteCandidate,
-  type Vm0ManagedRouteProviderType,
-  type Vm0ManagedRouteTarget,
+  type BuiltInModelRouteCandidate,
+  type BuiltInModelRouteProviderType,
+  type BuiltInModelRouteTarget,
   // Multi-auth provider types
   type SecretFieldConfig,
   type AuthMethodConfig,
   // Firewall gateway for model providers
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
-  // VM0 managed provider
+  // VM0 built-in provider
   VM0_MODEL_TO_PROVIDER,
-  VM0_MANAGED_ROUTE_PROVIDERS,
+  VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS,
   VM0_MODEL_ALIAS_TO_MODEL,
-  getVm0ManagedRouteCandidates,
-  getVm0ManagedRouteVendors,
+  getVm0BuiltInModelRouteCandidates,
+  getVm0BuiltInModelRouteVendors,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
@@ -646,6 +617,9 @@ export {
   type ChatUserMessageEvent,
   type ChatUsageEvent,
   type PersistedAttachment,
+  type ImageAnnotation,
+  type ImageAnnotationMark,
+  type ImageAnnotationMarkShape,
   type AttachFile,
   type ResolvedAttachFile,
   type ChatThreadArtifactFile,
@@ -747,10 +721,15 @@ export {
 } from "./logs";
 
 export {
+  CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS,
+  CONNECTOR_ACCOUNT_LIST_MAX_LIMIT,
+  connectorAccountEffectiveLabel,
+  connectorAccountExternalIdentity,
   connectorAccountDisplayNameSchema,
   connectorAccountTargetSchema,
   connectorAccountConnectionSchema,
   connectorAccountSelectionSchema,
+  connectorAccountInspectionResultSchema,
   connectorAccountMutationIntentSchema,
   connectorAccountTargetQuerySchema,
   connectorAccountListQuerySchema,
@@ -758,7 +737,9 @@ export {
   connectorAccountsContract,
   type ConnectorAccountTarget,
   type ConnectorAccountConnection,
+  type ConnectorAccountIdentityFields,
   type ConnectorAccountSelection,
+  type ConnectorAccountInspectionResult,
   type ConnectorAccountMutationIntent,
   type ConnectorAccountSummary,
 } from "./connector-accounts";
@@ -781,9 +762,6 @@ export {
 } from "./connector-schemas";
 
 export {
-  parseBasicAuthTemplates,
-  replaceBasicAuthTemplates,
-  extractSecretNamesFromApis,
   firewallPermissionSchema,
   firewallApiSchema,
   firewallSchema,
@@ -798,7 +776,6 @@ export {
   firewallPolicySchema,
   networkPolicySchema,
   type FirewallConfig,
-  type ExpandedFirewallConfig,
   type FirewallApi,
   type Firewall,
   type Firewalls,
@@ -810,12 +787,19 @@ export {
   type FirewallPolicy,
   type FirewallPolicies,
   type NetworkPolicy,
+  networkPoliciesSchema,
+  type NetworkPolicies,
+} from "@okouai/connectors/firewall-contracts";
+
+export {
+  parseBasicAuthTemplates,
+  replaceBasicAuthTemplates,
+  extractSecretNamesFromApis,
+  type ExpandedFirewallConfig,
   type FirewallTemplateReferenceNamespace,
   type FirewallTemplateReferences,
   type BasicAuthTemplateArg,
   type BasicAuthTemplateMatch,
-  networkPoliciesSchema,
-  type NetworkPolicies,
   hasBaseUrlParams,
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
@@ -839,6 +823,11 @@ export {
   type UpdateUserPreferencesRequest,
   sendModeSchema,
   type SendMode,
+  themePreferenceSchema,
+  type ThemePreference,
+  COLOR_THEMES,
+  colorThemeSchema,
+  type ColorTheme,
   userLocaleSchema,
   type UserLocale,
 } from "./user-preferences";
@@ -847,7 +836,7 @@ export {
   updateFeatureSwitchesRequestSchema,
   type FeatureSwitchesResponse,
   type UpdateFeatureSwitchesRequest,
-} from "./zero-feature-switches";
+} from "./feature-switches";
 export {
   orgRoleSchema,
   orgMemberSchema,
@@ -997,13 +986,31 @@ export {
   type WorkflowAutomationsContract,
 } from "./workflows";
 export {
+  officialWorkflowCatalogSummarySchema,
+  officialWorkflowCatalogDetailSchema,
+  officialWorkflowInstallRequestSchema,
+  officialWorkflowReconfigureRequestSchema,
+  officialWorkflowInstallationDefinitionSchema,
+  officialWorkflowInstallationResponseSchema,
+  officialWorkflowsContract,
+  officialWorkflowInstallationsContract,
+  type OfficialWorkflowCatalogSummary,
+  type OfficialWorkflowCatalogDetail,
+  type OfficialWorkflowInstallRequest,
+  type OfficialWorkflowReconfigureRequest,
+  type OfficialWorkflowInstallationDefinition,
+  type OfficialWorkflowInstallationResponse,
+  type OfficialWorkflowsContract,
+  type OfficialWorkflowInstallationsContract,
+} from "./official-workflows";
+export {
   userConnectorsContract,
   userConnectorEnabledSlugsSchema,
   type UserConnectorEnabledSlugs,
   type UserConnectorsContract,
 } from "./user-connectors";
 export {
-  zeroUserPermissionGrantsContract,
+  userPermissionGrantsContract,
   userPermissionGrantScopeSchema,
   userPermissionGrantActionSchema,
   userPermissionGrantApplyModeSchema,
@@ -1018,24 +1025,24 @@ export {
   type ListUserPermissionGrantsQuery,
   type ApplyUserPermissionGrant,
   type ApplyUserPermissionGrantsRequest,
-  type ZeroUserPermissionGrantsContract,
-} from "./zero-user-permission-grants";
+  type UserPermissionGrantsContract,
+} from "./user-permission-grants";
 export {
-  zeroConnectorsMainContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorScopeDiffContract,
-  zeroConnectorManualGrantContract,
-  zeroConnectorNoAuthGrantContract,
-  zeroConnectorOauthDeviceAuthSessionContract,
-  zeroConnectorsSearchContract,
-  type ZeroConnectorsMainContract,
-  type ZeroConnectorsBySlugContract,
-  type ZeroConnectorScopeDiffContract,
-  type ZeroConnectorManualGrantContract,
-  type ZeroConnectorNoAuthGrantContract,
-  type ZeroConnectorOauthDeviceAuthSessionContract,
-  type ZeroConnectorsSearchContract,
-} from "./zero-connectors";
+  connectorsMainContract,
+  connectorsBySlugContract,
+  connectorScopeDiffContract,
+  connectorManualGrantContract,
+  connectorNoAuthGrantContract,
+  connectorOauthDeviceAuthSessionContract,
+  connectorsSearchContract,
+  type ConnectorsMainContract,
+  type ConnectorsBySlugContract,
+  type ConnectorScopeDiffContract,
+  type ConnectorManualGrantContract,
+  type ConnectorNoAuthGrantContract,
+  type ConnectorOauthDeviceAuthSessionContract,
+  type ConnectorsSearchContract,
+} from "./connectors";
 export {
   CONNECTOR_CATALOG_MAX_RAW_BYTES,
   publicConnectorCatalogIconSchema,
@@ -1126,36 +1133,36 @@ export {
   type RunRunnerResponse,
 } from "./run-routes";
 export {
-  managedModelCooldownDiagnosticsSchema,
+  builtInModelCooldownDiagnosticsSchema,
   modelProviderCooldownDiagnosticsContract,
   modelProvidersMainContract,
   modelProvidersByTypeContract,
-  type ManagedModelCooldownDiagnostics,
+  type BuiltInModelCooldownDiagnostics,
   type ModelProviderCooldownDiagnosticsContract,
   type ModelProvidersMainContract,
   type ModelProvidersByTypeContract,
 } from "./model-provider-routes";
 export {
-  zeroPersonalModelProvidersMainContract,
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProviderAccountsByIdContract,
-  type ZeroPersonalModelProvidersMainContract,
-  type ZeroPersonalModelProvidersByTypeContract,
-  type ZeroPersonalModelProviderAccountsByIdContract,
-} from "./zero-personal-model-providers";
+  personalModelProvidersMainContract,
+  personalModelProvidersByTypeContract,
+  personalModelProviderAccountsByIdContract,
+  type PersonalModelProvidersMainContract,
+  type PersonalModelProvidersByTypeContract,
+  type PersonalModelProviderAccountsByIdContract,
+} from "./personal-model-providers";
 export {
   userPreferencesContract,
   type UserPreferencesContract,
 } from "./user-preferences";
 export {
-  zeroFeatureSwitchesContract,
-  type ZeroFeatureSwitchesContract,
-} from "./zero-feature-switches";
+  featureSwitchesContract,
+  type FeatureSwitchesContract,
+} from "./feature-switches";
 export {
-  zeroCustomConnectorsContract,
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorOAuth2Contract,
+  customConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorValuesContract,
+  customConnectorOAuth2Contract,
   customConnectorResponseSchema,
   customConnectorListResponseSchema,
   createCustomConnectorBodySchema,
@@ -1168,10 +1175,10 @@ export {
   INTEGRATION_MANAGED_CUSTOM_CONNECTOR_PROVIDER_ADAPTERS,
   isIntegrationManagedCustomConnector,
   isIntegrationManagedCustomConnectorProviderAdapter,
-  type ZeroCustomConnectorsContract,
-  type ZeroCustomConnectorByIdContract,
-  type ZeroCustomConnectorValuesContract,
-  type ZeroCustomConnectorOAuth2Contract,
+  type CustomConnectorsContract,
+  type CustomConnectorByIdContract,
+  type CustomConnectorValuesContract,
+  type CustomConnectorOAuth2Contract,
   type CustomConnectorResponse,
   type CustomConnectorAuthMode,
   type CustomConnectorOAuthProviderAdapter,
@@ -1181,17 +1188,17 @@ export {
   type CustomConnectorValueInput,
   type SetCustomConnectorValuesBody,
   type UpdateCustomConnectorBody,
-} from "./zero-custom-connectors";
+} from "./custom-connectors";
 export {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   agentCustomConnectorGrantSchema,
   agentCustomConnectorGrantsSchema,
   agentCustomConnectorUpdateSchema,
   type AgentCustomConnectorGrant,
   type AgentCustomConnectorGrants,
   type AgentCustomConnectorUpdate,
-  type ZeroAgentCustomConnectorsContract,
-} from "./zero-agent-custom-connectors";
+  type AgentCustomConnectorsContract,
+} from "./agent-custom-connectors";
 export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,
@@ -1225,6 +1232,14 @@ export {
   type SendPhoneMessageResponse,
   integrationsPhoneDownloadFileContract,
   type IntegrationsPhoneDownloadFileContract,
+  integrationsGithubDownloadFileContract,
+  type IntegrationsGithubDownloadFileContract,
+  integrationsSlackDownloadFileContract,
+  type IntegrationsSlackDownloadFileContract,
+  integrationsTeamsDownloadFileContract,
+  type IntegrationsTeamsDownloadFileContract,
+  integrationsTelegramDownloadFileContract,
+  type IntegrationsTelegramDownloadFileContract,
   integrationsTelegramBotListContract,
   type IntegrationsTelegramBotListContract,
   type TelegramBotListItem,
@@ -1432,19 +1447,25 @@ export {
   type WebSearchResult,
 } from "./web-search";
 export {
+  findManagedSocialKitTool,
+  managedSocialKitToolCatalog,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
-  MANAGED_SOCIALKIT_OPERATIONS,
-  SOCIALKIT_MAX_PATH_CHARS,
-  SOCIALKIT_MAX_QUERY_ENTRIES,
-  SOCIALKIT_MAX_QUERY_VALUE_CHARS,
-  findManagedSocialKitOperation,
+  MANAGED_SOCIALKIT_TOOLS,
+  SOCIALKIT_MAX_INPUT_VALUE_CHARS,
   socialContract,
   socialKitRequestSchema,
   socialKitResponseSchema,
-  type ManagedSocialKitOperation,
+  type ManagedSocialKitCollection,
+  type ManagedSocialKitPagination,
+  type ManagedSocialKitResultField,
+  type ManagedSocialKitTool,
+  type ManagedSocialKitToolDefinition,
+  type ManagedSocialKitToolCatalogEntry,
+  type ManagedSocialKitToolName,
   type SocialContract,
+  type SocialKitInput,
   type SocialKitRequest,
-  type SocialKitRequestMethod,
+  type SocialKitResult,
   type SocialKitResponse,
 } from "./social";
 export {

@@ -71,10 +71,13 @@ mod connection;
 mod exec_operation;
 mod file;
 mod guest_dns_readiness;
+mod guest_state_restore;
+mod guest_storage_manifest;
 mod operation_tracker;
 #[cfg(test)]
 mod tests;
 
+use std::fmt;
 use std::io;
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
@@ -95,10 +98,55 @@ pub use exec_operation::{
     ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus, ExecControlHandle,
     ExecControlOutcome, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
     ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest, SupervisedExecCancelHandle,
-    SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest,
+    SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest, SupervisedExecStartTiming,
 };
-pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
+pub use file::{COPY_FILE_STREAM_MAX_BYTES, CopyFileOptions, CopyFileResult, WriteFileEntry};
 pub use guest_dns_readiness::GuestDnsReadinessResult;
+pub use guest_state_restore::GuestStateRestoreResult;
+pub use guest_storage_manifest::GuestStorageManifestResult;
+
+/// Host-observed stage at which a request deadline expired.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequestTimeoutStage {
+    /// The request frame had not reached its write boundary.
+    BeforeFrameWrite,
+    /// The request frame write had started and may be partial.
+    FrameWrite,
+    /// The request frame completed but no terminal response arrived.
+    AwaitingTerminalResponse,
+}
+
+/// Typed request deadline error carried inside [`io::ErrorKind::TimedOut`].
+#[derive(Debug)]
+pub struct RequestTimeoutError {
+    stage: RequestTimeoutStage,
+    timeout: Duration,
+}
+
+impl RequestTimeoutError {
+    /// Create a timeout error for an observed request stage and total budget.
+    pub const fn new(stage: RequestTimeoutStage, timeout: Duration) -> Self {
+        Self { stage, timeout }
+    }
+
+    /// Return the request stage observed when the deadline expired.
+    pub const fn stage(&self) -> RequestTimeoutStage {
+        self.stage
+    }
+
+    /// Return the configured end-to-end request timeout.
+    pub const fn timeout(&self) -> Duration {
+        self.timeout
+    }
+}
+
+impl fmt::Display for RequestTimeoutError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("request timeout")
+    }
+}
+
+impl std::error::Error for RequestTimeoutError {}
 
 /// Observer called when a request frame reaches the guest-write boundary.
 ///
@@ -306,7 +354,8 @@ impl VsockHost {
     /// Start a supervised exec operation and wait for its PID acknowledgement.
     ///
     /// `request.start_timeout` bounds both start-frame writing and waiting for
-    /// `MSG_EXEC_STARTED`. If it elapses after the complete start frame is
+    /// `MSG_EXEC_STARTED` for workloads or `MSG_EXEC_AGENT_READY` for Agents.
+    /// If it elapses after the complete start frame is
     /// written, the host sends `MSG_EXEC_CANCEL` before returning a timeout
     /// error. If the bounded cancel write also times out, the connection is
     /// poisoned. If the cancel write succeeds, the connection remains open but
@@ -317,6 +366,19 @@ impl VsockHost {
         request: SupervisedExecRequest<'_>,
     ) -> io::Result<SupervisedExecHandle> {
         exec_operation::start_supervised_exec_on_shared(&self.shared, request).await
+    }
+
+    /// Start a supervised process whose streamed stdout is delivered through
+    /// the sandbox process-output queue.
+    ///
+    /// The request must not stream stderr. When stdout streams, the returned
+    /// handle owns a bounded [`sandbox::ProcessOutputReceiver`] until it is
+    /// taken with [`SupervisedExecHandle::take_process_output_receiver`].
+    pub async fn start_supervised_process(
+        &self,
+        request: SupervisedExecRequest<'_>,
+    ) -> io::Result<SupervisedExecHandle> {
+        exec_operation::start_supervised_process_on_shared(&self.shared, request).await
     }
 
     /// Run a capture-only exec operation with default capture limits.

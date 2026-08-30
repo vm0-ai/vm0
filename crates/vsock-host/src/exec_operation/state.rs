@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
+use std::time::Instant;
 
+use sandbox::{ProcessOutputChunk, ProcessOutputReceiver};
 use tokio::sync::{mpsc, oneshot};
-use vsock_proto::{ExecControlNonce, ExecControlStatus, ExecOutputPolicy, ExecTermination};
+use vsock_proto::{
+    ExecControlNonce, ExecControlStatus, ExecOutputPolicy, ExecProcessRole, ExecTermination,
+};
 
 use crate::{
     CompositeNormalOperation, ConnectionState, RouteId, Shared, normal_operation_transition_error,
@@ -16,7 +20,8 @@ use super::diagnostics::{
 };
 use super::frame::remove_pending_exec_control;
 use super::types::{
-    ExecControlOutcome, ExecOperationResult, ExecOutputEvent, exec_control_status_error,
+    ExecControlOutcome, ExecOperationResult, ExecOutputEvent, SupervisedExecStartTiming,
+    exec_control_status_error,
 };
 use super::{
     DEFAULT_EXEC_STREAM_CAPACITY, EXEC_OPERATION_CLOSE_ACTIVE_LOG_LIMIT, MAX_EXEC_STREAM_CAPACITY,
@@ -218,7 +223,7 @@ pub(in crate::exec_operation) struct ExecOperation {
     pub(in crate::exec_operation) lifecycle: ExecOperationLifecycle,
     pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
     pub(in crate::exec_operation) result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
-    pub(in crate::exec_operation) stream_tx: Option<mpsc::Sender<ExecOutputEvent>>,
+    pub(in crate::exec_operation) stream_tx: Option<ExecStreamSender>,
     pub(in crate::exec_operation) stdout_capture: ExecCaptureState,
     pub(in crate::exec_operation) stderr_capture: ExecCaptureState,
     pub(in crate::exec_operation) stdout_stream: Option<ExecStreamState>,
@@ -232,7 +237,14 @@ pub(in crate::exec_operation) struct ExecOperation {
 pub(in crate::exec_operation) enum ExecOperationLifecycle {
     OneShot,
     SupervisedAwaitingStart {
-        start_tx: Option<oneshot::Sender<io::Result<u32>>>,
+        start_tx: Option<oneshot::Sender<io::Result<(u32, SupervisedExecStartTiming)>>>,
+        role: ExecProcessRole,
+        control_nonce: Option<ExecControlNonce>,
+    },
+    SupervisedAwaitingAgentReady {
+        start_tx: Option<oneshot::Sender<io::Result<(u32, SupervisedExecStartTiming)>>>,
+        pid: u32,
+        shell_started_at: Instant,
         control_nonce: Option<ExecControlNonce>,
     },
     SupervisedStarted {
@@ -258,7 +270,8 @@ pub(in crate::exec_operation) enum ExecOperationNormalTracking {
 pub(in crate::exec_operation) struct TerminalExecOperation {
     pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
     pub(in crate::exec_operation) result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
-    pub(in crate::exec_operation) start_tx: Option<oneshot::Sender<io::Result<u32>>>,
+    pub(in crate::exec_operation) start_tx:
+        Option<oneshot::Sender<io::Result<(u32, SupervisedExecStartTiming)>>>,
     pub(in crate::exec_operation) log_lifecycle: ExecTerminalLogLifecycle,
     pub(in crate::exec_operation) stream_overflowed: bool,
     pub(in crate::exec_operation) host_cancel_requested: bool,
@@ -268,7 +281,9 @@ impl ExecOperation {
     pub(in crate::exec_operation) fn allows_output(&self) -> bool {
         matches!(
             self.lifecycle,
-            ExecOperationLifecycle::OneShot | ExecOperationLifecycle::SupervisedStarted { .. }
+            ExecOperationLifecycle::OneShot
+                | ExecOperationLifecycle::SupervisedAwaitingAgentReady { .. }
+                | ExecOperationLifecycle::SupervisedStarted { .. }
         )
     }
 
@@ -312,7 +327,8 @@ impl ExecOperation {
                 "exec control is not supported by this operation",
             )),
             ExecOperationLifecycle::OneShot
-            | ExecOperationLifecycle::SupervisedAwaitingStart { .. } => {
+            | ExecOperationLifecycle::SupervisedAwaitingStart { .. }
+            | ExecOperationLifecycle::SupervisedAwaitingAgentReady { .. } => {
                 Err(exec_control_status_error(
                     ExecControlStatus::Inactive,
                     "exec operation is not active",
@@ -333,7 +349,8 @@ impl ExecOperation {
         } = self;
         let log_lifecycle = exec_terminal_log_lifecycle(&lifecycle);
         let start_tx = match lifecycle {
-            ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. } => start_tx,
+            ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. }
+            | ExecOperationLifecycle::SupervisedAwaitingAgentReady { start_tx, .. } => start_tx,
             ExecOperationLifecycle::OneShot | ExecOperationLifecycle::SupervisedStarted { .. } => {
                 None
             }
@@ -384,12 +401,97 @@ pub(in crate::exec_operation) enum ExecOperationTracking<'a> {
     Untracked,
 }
 
+#[derive(Clone, Copy)]
+pub(in crate::exec_operation) enum ExecStreamQueueKind {
+    Events,
+    ProcessOutput,
+}
+
+#[derive(Clone)]
+pub(in crate::exec_operation) enum ExecStreamSender {
+    Events(mpsc::Sender<ExecOutputEvent>),
+    ProcessOutput(mpsc::Sender<ProcessOutputChunk>),
+}
+
+pub(in crate::exec_operation) enum ExecStreamPermit {
+    Events(mpsc::OwnedPermit<ExecOutputEvent>),
+    ProcessOutput(mpsc::OwnedPermit<ProcessOutputChunk>),
+}
+
+pub(in crate::exec_operation) enum ExecStreamTryReserveError {
+    Full(ExecStreamSender),
+    Closed(ExecStreamSender),
+}
+
+impl ExecStreamSender {
+    pub(in crate::exec_operation) fn try_reserve_owned(
+        self,
+    ) -> Result<ExecStreamPermit, ExecStreamTryReserveError> {
+        match self {
+            Self::Events(sender) => sender
+                .try_reserve_owned()
+                .map(ExecStreamPermit::Events)
+                .map_err(|error| match error {
+                    mpsc::error::TrySendError::Full(sender) => {
+                        ExecStreamTryReserveError::Full(Self::Events(sender))
+                    }
+                    mpsc::error::TrySendError::Closed(sender) => {
+                        ExecStreamTryReserveError::Closed(Self::Events(sender))
+                    }
+                }),
+            Self::ProcessOutput(sender) => sender
+                .try_reserve_owned()
+                .map(ExecStreamPermit::ProcessOutput)
+                .map_err(|error| match error {
+                    mpsc::error::TrySendError::Full(sender) => {
+                        ExecStreamTryReserveError::Full(Self::ProcessOutput(sender))
+                    }
+                    mpsc::error::TrySendError::Closed(sender) => {
+                        ExecStreamTryReserveError::Closed(Self::ProcessOutput(sender))
+                    }
+                }),
+        }
+    }
+}
+
+impl ExecStreamPermit {
+    pub(in crate::exec_operation) fn same_channel_as_sender(
+        &self,
+        sender: &ExecStreamSender,
+    ) -> bool {
+        match (self, sender) {
+            (Self::Events(permit), ExecStreamSender::Events(sender)) => {
+                permit.same_channel_as_sender(sender)
+            }
+            (Self::ProcessOutput(permit), ExecStreamSender::ProcessOutput(sender)) => {
+                permit.same_channel_as_sender(sender)
+            }
+            (Self::Events(_), ExecStreamSender::ProcessOutput(_))
+            | (Self::ProcessOutput(_), ExecStreamSender::Events(_)) => false,
+        }
+    }
+
+    pub(in crate::exec_operation) fn send(self, output: ExecOutputEvent) -> ExecStreamSender {
+        match self {
+            Self::Events(permit) => ExecStreamSender::Events(permit.send(output)),
+            Self::ProcessOutput(permit) => {
+                ExecStreamSender::ProcessOutput(permit.send(ProcessOutputChunk {
+                    bytes: output.chunk,
+                    truncated: output.truncated,
+                }))
+            }
+        }
+    }
+}
+
 pub(in crate::exec_operation) struct ExecOperationRegistrationInput<'a> {
     pub(in crate::exec_operation) label: &'a str,
     pub(in crate::exec_operation) stdout: ExecOutputPolicy,
     pub(in crate::exec_operation) stderr: ExecOutputPolicy,
     pub(in crate::exec_operation) stream_queue_capacity: Option<usize>,
+    pub(in crate::exec_operation) stream_queue_kind: ExecStreamQueueKind,
     pub(in crate::exec_operation) lifecycle: ExecOperationLifecycle,
+    pub(in crate::exec_operation) role: ExecProcessRole,
     pub(in crate::exec_operation) tracking: ExecOperationTracking<'a>,
 }
 
@@ -398,6 +500,7 @@ pub(in crate::exec_operation) struct ExecOperationRegistration {
     pub(in crate::exec_operation) diagnostic: ExecOperationDiagnostic,
     pub(in crate::exec_operation) result_rx: oneshot::Receiver<io::Result<ExecOperationResult>>,
     pub(in crate::exec_operation) stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
+    pub(in crate::exec_operation) process_output_rx: Option<ProcessOutputReceiver>,
     pub(in crate::exec_operation) registration_guard: ExecOperationRegistrationGuard,
     pub(in crate::exec_operation) tracks_normal_operation: bool,
 }
@@ -544,15 +647,22 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
         stdout,
         stderr,
         stream_queue_capacity,
+        stream_queue_kind,
         lifecycle,
+        role,
         tracking,
     } = input;
-    let (stream_tx, stream_rx) = match stream_queue_capacity {
-        Some(capacity) => {
+    let (stream_tx, stream_rx, process_output_rx) = match (stream_queue_capacity, stream_queue_kind)
+    {
+        (Some(capacity), ExecStreamQueueKind::Events) => {
             let (tx, rx) = mpsc::channel(capacity);
-            (Some(tx), Some(rx))
+            (Some(ExecStreamSender::Events(tx)), Some(rx), None)
         }
-        None => (None, None),
+        (Some(capacity), ExecStreamQueueKind::ProcessOutput) => {
+            let (tx, rx) = mpsc::channel(capacity);
+            (Some(ExecStreamSender::ProcessOutput(tx)), None, Some(rx))
+        }
+        (None, _) => (None, None, None),
     };
     let (result_tx, result_rx) = oneshot::channel();
     let normal_operation = match tracking {
@@ -566,7 +676,11 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
     };
     let tracks_normal_operation = normal_operation.is_some();
     let (route_id, diagnostic) = shared.register_route(|route_id, state| {
-        let diagnostic = ExecOperationDiagnostic::new(route_id.wire_seq(), label);
+        let supervised = matches!(
+            lifecycle,
+            ExecOperationLifecycle::SupervisedAwaitingStart { .. }
+        );
+        let diagnostic = ExecOperationDiagnostic::new(route_id.wire_seq(), label, role, supervised);
         let operation = ExecOperation {
             route_id,
             normal_operation,
@@ -598,6 +712,7 @@ pub(in crate::exec_operation) fn register_exec_operation_start(
         diagnostic,
         result_rx,
         stream_rx,
+        process_output_rx,
         registration_guard: ExecOperationRegistrationGuard::new(Arc::clone(shared), route_id),
         tracks_normal_operation,
     })

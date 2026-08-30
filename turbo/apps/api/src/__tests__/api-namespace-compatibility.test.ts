@@ -34,16 +34,6 @@ const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
   "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
 };
 
-// A legacy path #28701 retired. Its contract still declares the canonical
-// branded form, so before that issue the blanket expansion derived the legacy
-// form, marked it, and `createAppWithRoutes` reported the first request that
-// reached it; now nothing registers it and the path 404s. Written out rather
-// than derived from the route table, so a slice that moves this contract has to
-// choose a new subject instead of silently testing nothing.
-const RETIRED_LEGACY_PATH = "/api/zero/integrations/slack/download-file";
-const RETIRED_LEGACY_CANONICAL_PATH =
-  "/api/okou/integrations/slack/download-file";
-
 // A row #28701 removed from the compatibility table whose path did not retire
 // with it: `MIGRATED_BRANDED_PATHS` names both branded forms of the neutral
 // `/api/org` contract, so the table row recorded that the path was owed rather
@@ -92,14 +82,38 @@ function missingCompatibilityPaths(
     .sort();
 }
 
-function requireBrandedRoute(): RouteEntry {
+// A route entry declaring a branded path, for the two guards below that pin how
+// the expansion treats one. #28946 moved the last contract off `/api/okou/**`,
+// so `ROUTES` no longer holds such an entry and it has to be composed. The
+// expansion still has to handle a branded declaration — `apiNamespaceAliasPaths`
+// and `servesNamespaceAliasPath` both branch on one — and these are the only
+// tests left that reach that branch.
+//
+// Composed from a real neutral route so everything but the path is ordinary,
+// and from one whose canonical form `LEGACY_ZERO_PATHS` does not name, so the
+// expansion's own rule decides whether the legacy form registers rather than a
+// table row deciding for it.
+function brandedRouteSource(): RouteEntry {
   const entry = ROUTES.find(({ route }) => {
-    return route.path.startsWith("/api/okou/");
+    if (brandedApiNamespace(route.path) !== undefined) {
+      return false;
+    }
+    if (!route.path.startsWith("/api/")) {
+      return false;
+    }
+    return LEGACY_ZERO_PATHS[brandedPath(route.path)] === undefined;
   });
   if (!entry) {
-    throw new Error("Expected at least one branded API route");
+    throw new Error("Expected a neutral /api/ route to compose a branded path");
   }
-  return entry;
+  return {
+    route: { ...entry.route, path: brandedPath(entry.route.path) },
+    handler: entry.handler,
+  };
+}
+
+function brandedPath(neutralPath: string): string {
+  return `${CANONICAL_PREFIX}${neutralPath.slice("/api".length)}`;
 }
 
 // Per-endpoint behaviour is covered through the endpoints themselves. This
@@ -180,20 +194,6 @@ describe("API namespace compatibility", () => {
     expect(derived).toStrictEqual([]);
   });
 
-  it("retires a legacy path the table no longer names while keeping its canonical form", () => {
-    expect(
-      ROUTES.filter((entry) => {
-        return entry.route.path === RETIRED_LEGACY_CANONICAL_PATH;
-      }),
-      `Expected a contract declaring ${RETIRED_LEGACY_CANONICAL_PATH} for this guard to retire something`,
-    ).not.toHaveLength(0);
-
-    expect(registrationsFor(RETIRED_LEGACY_PATH)).toStrictEqual([]);
-    expect(
-      registrationsFor(RETIRED_LEGACY_CANONICAL_PATH).length,
-    ).toBeGreaterThan(0);
-  });
-
   // The issue that narrowed the table proposed `/api/zero/org` as the retired
   // subject, from a request-log window where its traffic had stopped. It is not
   // retired, and this pins why: the row removed from the compatibility table is
@@ -224,7 +224,7 @@ describe("API namespace compatibility", () => {
   });
 
   it("registers the canonical form when the source contract uses the legacy Zero path", () => {
-    const source = requireBrandedRoute();
+    const source = brandedRouteSource();
     const zeroSource: RouteEntry = {
       route: {
         ...source.route,
@@ -241,7 +241,7 @@ describe("API namespace compatibility", () => {
   });
 
   it("rejects duplicate method and path registrations", () => {
-    const source = requireBrandedRoute();
+    const source = brandedRouteSource();
     const composedRouteSlice = withApiNamespaceAliases([source, source]);
 
     expect(composedRouteSlice).toHaveLength(2);

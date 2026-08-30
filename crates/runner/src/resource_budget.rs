@@ -28,7 +28,7 @@ pub struct ResourceBudget {
 /// Owned reservation against a [`ResourceBudget`].
 ///
 /// The lease releases its reservation when dropped. Drop must never panic:
-/// idle VM cleanup may run while unwinding from sandbox/factory failures, and
+/// idle sandbox cleanup may run while unwinding from sandbox/factory failures, and
 /// a panic here would turn a cleanup failure into a budget leak or task abort.
 #[must_use = "dropping a BudgetLease releases the reserved resources"]
 pub struct BudgetLease {

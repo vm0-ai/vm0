@@ -33,7 +33,7 @@ from tests.connector_diagnostic_helpers import (
 )
 from tests.flow_helpers import header_map
 from tests.mitmproxy_http_framing_helpers import CLIENT_IP, start_http_layer
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
 
 def _start_head_firewall_request(
@@ -79,7 +79,7 @@ async def test_head_firewall_block_emits_no_response_data(
 ) -> None:
     registry_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",

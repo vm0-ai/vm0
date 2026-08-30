@@ -1,6 +1,7 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
 import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -48,6 +49,7 @@ type ChatEventDisplayContext =
         readonly channelId: string;
         readonly messageTs: string;
         readonly botUserId: string;
+        readonly publicBrand: PublicBrand;
         readonly conversationContext: string;
         readonly messageText: string;
         readonly messageFiles: ChatSlackMessageFiles;
@@ -81,6 +83,7 @@ type ChatEventDisplayContext =
         readonly senderOpenId: string;
         readonly connectionId: string;
         readonly installationId: string;
+        readonly publicBrand: PublicBrand;
       };
       readonly teamsContext?: never;
       readonly telegramContext?: never;
@@ -106,6 +109,7 @@ type ChatEventDisplayContext =
         readonly threadId: string;
         readonly serviceUrl: string;
         readonly teamsAppId: string | null;
+        readonly publicBrand: PublicBrand;
         readonly senderUserId: string;
         readonly senderDisplayName: string | null;
         readonly senderPrincipalName: string | null;
@@ -128,6 +132,7 @@ type ChatEventDisplayContext =
         readonly threadContext: string;
         readonly rootMessageId: string | null;
         readonly thinkingMessageId: string | null;
+        readonly publicBrand: PublicBrand;
         readonly userLinkId: string;
         readonly userLinkKind: "custom" | "official";
         readonly chatType: string;
@@ -154,6 +159,7 @@ type ChatEventDisplayContext =
         readonly messageText: string;
         readonly triggerReactionId: string | null;
         readonly triggerCommentBody: string | null;
+        readonly publicBrand: PublicBrand;
       };
       readonly morningBriefContext?: never;
       readonly agentphoneContext?: never;
@@ -191,6 +197,7 @@ type ChatEventDisplayContext =
         readonly toNumber: string;
         readonly userLinkId: string;
         readonly agentphoneAgentId: string;
+        readonly publicBrand: PublicBrand;
       };
     }
   | {
@@ -226,8 +233,9 @@ type InputPromptEvent = ChatEventIdentity &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
     readonly content?: null;
-    readonly contextType?: "web";
+    readonly contextType?: "web" | "agent_run";
     readonly contextId?: string;
+    readonly requiredOfficialWorkflowIds?: readonly string[];
   };
 
 type InputAutomationEvent = ChatEventIdentity &
@@ -239,6 +247,7 @@ type InputAutomationEvent = ChatEventIdentity &
     readonly workflowAutomationEventType?: WorkflowAutomationEventType;
     readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
     readonly connectorSourceId?: string;
+    readonly publicBrand?: PublicBrand;
     readonly triggerBrief: string | null;
   };
 
@@ -446,6 +455,7 @@ type NewDisplayContext =
       readonly channelId: string;
       readonly messageTs: string;
       readonly botUserId: string;
+      readonly publicBrand: PublicBrand;
       readonly conversationContext: string;
       readonly messageText: string;
       readonly messageFiles: ChatSlackMessageFiles;
@@ -473,6 +483,7 @@ type NewDisplayContext =
       readonly senderOpenId: string;
       readonly connectionId: string;
       readonly installationId: string;
+      readonly publicBrand: PublicBrand;
     }
   | {
       readonly type: "teams";
@@ -492,6 +503,7 @@ type NewDisplayContext =
       readonly threadId: string;
       readonly serviceUrl: string;
       readonly teamsAppId: string | null;
+      readonly publicBrand: PublicBrand;
       readonly senderUserId: string;
       readonly senderDisplayName: string | null;
       readonly senderPrincipalName: string | null;
@@ -508,6 +520,7 @@ type NewDisplayContext =
       readonly threadContext: string;
       readonly rootMessageId: string | null;
       readonly thinkingMessageId: string | null;
+      readonly publicBrand: PublicBrand;
       readonly userLinkId: string;
       readonly userLinkKind: "custom" | "official";
       readonly chatType: string;
@@ -528,6 +541,7 @@ type NewDisplayContext =
       readonly messageText: string;
       readonly triggerReactionId: string | null;
       readonly triggerCommentBody: string | null;
+      readonly publicBrand: PublicBrand;
     }
   | {
       readonly type: "agentphone";
@@ -545,6 +559,7 @@ type NewDisplayContext =
       readonly toNumber: string;
       readonly userLinkId: string;
       readonly agentphoneAgentId: string;
+      readonly publicBrand: PublicBrand;
     }
   | {
       readonly type: "automation";
@@ -555,6 +570,7 @@ type NewDisplayContext =
       readonly workflowAutomationEventType: WorkflowAutomationEventType | null;
       readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
       readonly connectorSourceId: string | null;
+      readonly publicBrand: PublicBrand;
       readonly triggerBrief: string | null;
     }
   | {
@@ -592,6 +608,11 @@ function newAutomationDisplayContext(
         : null,
     connectorSourceId:
       "connectorSourceId" in values ? (values.connectorSourceId ?? null) : null,
+    // Deliberate current-contract default: automation producers without a
+    // provider Host are VM0 until every producer supplies an authoritative
+    // public brand and this input can become required.
+    publicBrand:
+      "publicBrand" in values ? (values.publicBrand ?? "vm0") : "vm0",
     triggerBrief:
       "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
   };
@@ -622,6 +643,7 @@ function newDisplayContext(
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
       botUserId: slackContext.botUserId,
+      publicBrand: slackContext.publicBrand,
       conversationContext: slackContext.conversationContext,
       messageText: slackContext.messageText,
       messageFiles: slackContext.messageFiles,
@@ -780,6 +802,7 @@ async function insertAgentphoneDisplayContext(
     toNumber: context.toNumber,
     userLinkId: context.userLinkId,
     agentphoneAgentId: context.agentphoneAgentId,
+    publicBrand: context.publicBrand,
     createdAt,
   });
 }
@@ -799,6 +822,7 @@ async function insertTelegramDisplayContext(
     threadContext: context.threadContext,
     rootMessageId: context.rootMessageId,
     thinkingMessageId: context.thinkingMessageId,
+    publicBrand: context.publicBrand,
     userLinkId: context.userLinkId,
     userLinkKind: context.userLinkKind,
     chatType: context.chatType,
@@ -842,6 +866,7 @@ async function insertDisplayContext(
       channelId: context.channelId,
       messageTs: context.messageTs,
       botUserId: context.botUserId,
+      publicBrand: context.publicBrand,
       conversationContext: context.conversationContext,
       messageText: context.messageText,
       messageFiles: context.messageFiles,
@@ -872,6 +897,7 @@ async function insertDisplayContext(
       senderOpenId: context.senderOpenId,
       connectionId: context.connectionId,
       installationId: context.installationId,
+      publicBrand: context.publicBrand,
       createdAt,
     });
     return;
@@ -894,6 +920,7 @@ async function insertDisplayContext(
       threadId: context.threadId,
       serviceUrl: context.serviceUrl,
       teamsAppId: context.teamsAppId,
+      publicBrand: context.publicBrand,
       senderUserId: context.senderUserId,
       senderDisplayName: context.senderDisplayName,
       senderPrincipalName: context.senderPrincipalName,
@@ -918,6 +945,7 @@ async function insertDisplayContext(
       messageText: context.messageText,
       triggerReactionId: context.triggerReactionId,
       triggerCommentBody: context.triggerCommentBody,
+      publicBrand: context.publicBrand,
       createdAt,
     });
     return;
@@ -934,6 +962,7 @@ async function insertDisplayContext(
       eventType: context.workflowAutomationEventType,
       eventPayload: context.workflowAutomationEventPayload,
       connectorSourceId: context.connectorSourceId,
+      publicBrand: context.publicBrand,
       triggerBrief: context.triggerBrief,
       createdAt,
     });
@@ -1000,6 +1029,10 @@ function canonicalChatEventValues(
           : undefined,
     eventType: values.eventType,
     payload: canonicalChatEventPayload(values),
+    requiredOfficialWorkflowIds:
+      "requiredOfficialWorkflowIds" in values
+        ? values.requiredOfficialWorkflowIds
+        : undefined,
     contextType,
     contextId,
     runEventSequenceNumber:

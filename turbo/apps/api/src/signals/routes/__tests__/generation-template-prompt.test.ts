@@ -485,6 +485,23 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
   });
 
+  it("keeps workflow template guidance brand-neutral", () => {
+    for (const item of WORKFLOW_TEMPLATE_ITEMS) {
+      const result = buildGenerationTemplatePrompt({
+        type: "workflow",
+        selection: {
+          workflowTemplateId: item.id,
+        },
+      });
+
+      expect(result.status).toBe("resolved");
+      if (result.status !== "resolved") {
+        return;
+      }
+      expect(result.prompt).not.toMatch(/\b(?:Zero|Okou)\b/u);
+    }
+  });
+
   it("builds website template package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
     const resourceId = item.resourceId;
@@ -493,15 +510,12 @@ describe("buildGenerationTemplatePrompt", () => {
       throw new Error("Expected current Website template package");
     }
 
-    const result = buildGenerationTemplatePrompt(
-      {
-        type: "website",
-        selection: {
-          websiteTemplateId: item.id,
-        },
+    const result = buildGenerationTemplatePrompt({
+      type: "website",
+      selection: {
+        websiteTemplateId: item.id,
       },
-      { latestWebsiteTemplatesEnabled: true },
-    );
+    });
 
     expect(result).toStrictEqual({
       status: "resolved",
@@ -520,18 +534,42 @@ describe("buildGenerationTemplatePrompt", () => {
       `okou resource pull ${resourceId} --dir ./generated/resources`,
     );
     expect(result.prompt).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
+      `Read ./generated/resources/${item.sourcePath}/SKILL.md before authoring`,
     );
     expect(result.prompt).toContain(
-      "Keep at most 3 image generations in flight at once",
+      "Assemble the page once with `node tools/compose.mjs <section-ids...>`",
     );
-    expect(result.prompt).toContain(
-      "Embed the `Embed this URL in HTML` value returned by the generator",
+    const imageWorkflowLines = result.prompt.split("\n").filter((line) => {
+      return line.startsWith("- Image workflow: use supplied images first;");
+    });
+    expect(imageWorkflowLines).toHaveLength(1);
+    const imageWorkflow = imageWorkflowLines[0] ?? "";
+    expect(imageWorkflow).toContain(
+      "one outside-site TSV row per selected real slot",
     );
-    expect(result.prompt).toContain(
-      `./generated/resources/${item.sourcePath}/render.mjs`,
+    expect(imageWorkflow).toContain("asset-id<TAB>raw prompt<TAB>size");
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch start <manifest\.tsv> <state-dir>/,
     );
-    expect(result.prompt).toContain("okou host <output-dir> --site <slug>");
+    expect(imageWorkflow).toMatch(
+      /npx --yes --package="\$\{CLI_PKG_URL\}" okou generate image-batch wait <state-dir>/,
+    );
+    expect(imageWorkflow).toContain("author the HTML while it runs");
+    expect(imageWorkflow).toContain("<state-dir>/results.tsv");
+    expect(imageWorkflow).toContain("data-generation-size");
+    expect(imageWorkflow).toContain("with no manifest skip this workflow");
+    expect(imageWorkflow).toContain("keep its state outside the site");
+    expect(imageWorkflow).toContain(
+      "let the command own generation settings/concurrency/retry",
+    );
+    expect(imageWorkflow).toContain("never call `okou generate image`");
+    expect(imageWorkflow).toContain("or a template image wrapper directly");
+    expect(imageWorkflow).not.toContain("a fourth is rejected");
+    expect(result.prompt).toContain("until it prints QA_READY");
+    expect(result.prompt).toContain("okou host ./publish --site <slug>");
+    expect(result.prompt).toContain("checks/verify-published.sh <url>");
+    expect(result.prompt).not.toContain("render.mjs");
+    expect(result.prompt).not.toContain("tools/generate-images.mjs");
     expect(result.prompt).toContain("built-in R2-backed package");
     expect(result.prompt).not.toContain("okou generate website --template");
   });
@@ -539,15 +577,12 @@ describe("buildGenerationTemplatePrompt", () => {
   it("selects every current website template package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       const resourceId = item.resourceId;
-      const result = buildGenerationTemplatePrompt(
-        {
-          type: "website",
-          selection: {
-            websiteTemplateId: item.id,
-          },
+      const result = buildGenerationTemplatePrompt({
+        type: "website",
+        selection: {
+          websiteTemplateId: item.id,
         },
-        { latestWebsiteTemplatesEnabled: true },
-      );
+      });
 
       expect(result).toStrictEqual({
         status: "resolved",
@@ -561,41 +596,13 @@ describe("buildGenerationTemplatePrompt", () => {
       expect(result.prompt).toContain(`Template package id: ${resourceId}`);
       expect(result.prompt).toContain(`Package resource: ${resourceId}`);
       expect(result.prompt).toContain(
-        `./generated/resources/${item.sourcePath}/render.mjs`,
+        `Read ./generated/resources/${item.sourcePath}/SKILL.md before authoring`,
       );
+      expect(result.prompt).toContain(
+        "okou generate image-batch start <manifest.tsv> <state-dir>",
+      );
+      expect(result.prompt).not.toContain("tools/generate-images.mjs");
     }
-  });
-
-  it("keeps the pre-cutover website picker package outside the rollout", () => {
-    const item = WEBSITE_TEMPLATE_ITEMS[0]!;
-    const previousResourceId = `${item.resourceId}-v2`;
-    const previousPackage = findWebsiteTemplatePackage(previousResourceId);
-    if (!previousPackage) {
-      throw new Error("Expected pre-cutover Website template package");
-    }
-    const result = buildGenerationTemplatePrompt({
-      type: "website",
-      selection: {
-        websiteTemplateId: item.id,
-      },
-    });
-
-    expect(result).toStrictEqual({
-      status: "resolved",
-      prompt: expect.stringContaining(
-        `okou resource pull ${previousResourceId} --dir ./generated/resources`,
-      ),
-    });
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain(
-      `Template archive SHA-256: ${previousPackage.source.archive.sha256}`,
-    );
-    expect(result.prompt).toContain("resolve-images.mjs");
-    expect(result.prompt).not.toContain("use `seedream4` by default");
-    expect(result.prompt).not.toContain("Keep at most 3 image generations");
-    expect(result.prompt).not.toContain("Embed this URL in HTML");
   });
 
   it("rejects unknown workflow templates", () => {

@@ -70,11 +70,11 @@ const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
 const PIDS_MAX_FILE: &str = "pids.max";
 const CODEX_AUTH_FILENAME: &str = "auth.json";
 #[cfg(debug_assertions)]
-const TEST_CONTAINMENT_ROOT_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_ROOT";
+const TEST_CONTAINMENT_ROOT_ENV: &str = "OKOU_TEST_PROCESS_CONTAINMENT_ROOT";
 #[cfg(debug_assertions)]
-const TEST_CONTAINMENT_CURRENT_GROUP_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP";
+const TEST_CONTAINMENT_CURRENT_GROUP_ENV: &str = "OKOU_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP";
 #[cfg(debug_assertions)]
-const TEST_CODEX_HOME_DIR_ENV: &str = "VM0_TEST_CODEX_HOME_DIR";
+const TEST_CODEX_HOME_DIR_ENV: &str = "OKOU_TEST_CODEX_HOME_DIR";
 const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 
 /// Failure returned by the reuse-preparation helper.

@@ -1,18 +1,24 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
+use api_contracts::generated::types::runners::runs::{
+    CodexRuntimeConfig, PiLaunchConfig, PiModelConfig,
+};
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
-use sandbox::Sandbox;
-use serde::Deserialize;
+use guest_contracts::connector_account_context::{
+    RunConnectorAccountContext, RunConnectorAccountTarget,
+};
+use sandbox::{Sandbox, WriteFileEntry};
 
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::{JOB_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
+use crate::types::{
+    ConnectorRuntimeTargetRegistration, ExecutionContext, SandboxReuseResult, WorkspaceReuseResult,
+};
 
 pub(super) struct ProtectedModelProviderEnvKey {
     name: &'static str,
@@ -139,32 +145,6 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
     Ok(prepared_run_payload)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PiLaunchConfigV2 {
-    schema_version: u8,
-    api_first_turn: PiApiFirstTurnConfigV1,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PiApiFirstTurnConfigV1 {
-    schema_version: u8,
-    resource_snapshot_digest: String,
-    manifest_url: String,
-    session_url: String,
-    deadline_at: u64,
-    base_session: PiBaseSession,
-    sandbox_event_sequence_start: u8,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PiBaseSession {
-    session_id: String,
-    sha256: serde_json::Value,
-}
-
 fn is_sha256(value: &str) -> bool {
     value.len() == 64
         && value
@@ -172,9 +152,16 @@ fn is_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+// Generated enums and explicit versions intentionally fail closed. A future
+// enum value or schema version must reach runners before the API emits it;
+// unknown additive object fields remain safe because the original JSON is
+// forwarded after this validation view is discarded.
 fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Result<(), String> {
-    let launch: PiLaunchConfigV2 = serde_json::from_value(value.clone())
+    let launch: PiLaunchConfig = serde_json::from_value(value.clone())
         .map_err(|error| format!("Pi launch config v2 is invalid: {error}"))?;
+    if value.pointer("/apiFirstTurn/baseSession/sha256").is_none() {
+        return Err("Pi H0 sha256 must be present".to_string());
+    }
     if launch.schema_version != 2 {
         return Err("Pi launch config schemaVersion must be 2".to_string());
     }
@@ -195,19 +182,39 @@ fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Res
             return Err(format!("Pi API first-turn {name} must use HTTP or HTTPS"));
         }
     }
-    if slot.deadline_at == 0 {
+    if slot.deadline_at <= 0 {
         return Err("Pi API first-turn deadlineAt must be positive".to_string());
     }
-    if slot.sandbox_event_sequence_start != 1 {
-        return Err("Pi Sandbox event sequence must start at 1".to_string());
+    if !(1..=i32::MAX as u64).contains(&slot.sandbox_event_sequence_start) {
+        return Err("Pi Sandbox event sequence start must be between 1 and 2147483647".to_string());
     }
     if slot.base_session.session_id != session_id {
         return Err("Pi H0 session id does not match pi_session_id".to_string());
     }
-    match slot.base_session.sha256 {
-        serde_json::Value::Null => {}
-        serde_json::Value::String(hash) if is_sha256(&hash) => {}
-        _ => return Err("Pi H0 sha256 must be null or a lowercase SHA-256".to_string()),
+    if let Some(hash) = slot.base_session.sha256
+        && !is_sha256(&hash)
+    {
+        return Err("Pi H0 sha256 must be null or a lowercase SHA-256".to_string());
+    }
+    Ok(())
+}
+
+fn is_pi_credential_secret_name(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    matches!(bytes.next(), Some(b'A'..=b'Z' | b'_'))
+        && bytes.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
+    let model: PiModelConfig = serde_json::from_value(value.clone())
+        .map_err(|error| format!("Pi model config is invalid: {error}"))?;
+    url::Url::parse(&model.base_url)
+        .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
+    if model.model.is_empty() {
+        return Err("Pi model config model must not be empty".to_string());
+    }
+    if !is_pi_credential_secret_name(&model.credential_secret_name) {
+        return Err("Pi model config credentialSecretName is invalid".to_string());
     }
     Ok(())
 }
@@ -228,9 +235,11 @@ fn validate_pi_execution_context(context: &ExecutionContext) -> Result<(), Strin
         .as_ref()
         .ok_or_else(|| "Pi execution context is missing pi_launch_config".to_string())?;
     validate_pi_launch_config(launch_config, session_id)?;
-    if context.pi_model_config.is_none() {
-        return Err("Pi execution context is missing pi_model_config".to_string());
-    }
+    let model_config = context
+        .pi_model_config
+        .as_ref()
+        .ok_or_else(|| "Pi execution context is missing pi_model_config".to_string())?;
+    validate_pi_model_config(model_config)?;
     if let Some(resume) = &context.resume_session
         && resume.cli_agent_session_id != session_id
     {
@@ -368,13 +377,20 @@ fn for_each_guest_user_env_entry<'a>(
     context: &'a ExecutionContext,
     mut visit: impl FnMut(&'a str, &'a str),
 ) {
-    if let Some(user_env) = &context.environment {
-        for (key, value) in user_env {
-            if !is_runner_owned_env_key(key) {
-                visit(key, value);
-            }
-        }
-    }
+    let is_untrusted_runner_owned: fn(&str) -> bool = if context.platform_environment.is_some() {
+        is_runner_owned_env_key
+    } else {
+        // Old API/stored context -> new runner: preserve the exact
+        // pre-platformEnvironment filter until prior API rollback targets,
+        // supported pre-field contexts, and old runners/sandboxes pass the
+        // #28914 drain gates.
+        guest_contracts::env::is_pre_platform_environment_runner_owned_env_key
+    };
+    for_each_filtered_environment_entry(
+        context.environment.as_ref(),
+        is_untrusted_runner_owned,
+        &mut visit,
+    );
 
     if let Some(tz) = &context.user_timezone {
         let has_tz = context
@@ -383,6 +399,26 @@ fn for_each_guest_user_env_entry<'a>(
             .is_some_and(|env| env.contains_key("TZ"));
         if !has_tz {
             visit("TZ", tz);
+        }
+    }
+
+    if let Some(platform_environment) = &context.platform_environment {
+        for (key, value) in platform_environment {
+            visit(key, value);
+        }
+    }
+}
+
+fn for_each_filtered_environment_entry<'a>(
+    environment: Option<&'a HashMap<String, String>>,
+    is_runner_owned: fn(&str) -> bool,
+    visit: &mut impl FnMut(&'a str, &'a str),
+) {
+    if let Some(environment) = environment {
+        for (key, value) in environment {
+            if !is_runner_owned(key) {
+                visit(key, value);
+            }
         }
     }
 }
@@ -401,34 +437,92 @@ pub(super) fn guest_run_payload_file_path(run_id: RunId) -> RunnerResult<String>
     })
 }
 
-pub(super) async fn write_user_env_file(
+pub(super) fn guest_connector_account_context_file_path(run_id: RunId) -> RunnerResult<String> {
+    guest_runtime_path(run_id, |dir| {
+        dir.join(guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME)
+            .join(guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILENAME)
+    })
+}
+
+pub(super) async fn write_connector_account_context_file(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+) -> RunnerResult<String> {
+    let targets = context
+        .connector_runtime_targets
+        .iter()
+        .map(|target| match target {
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug,
+                source_id,
+                ..
+            } => RunConnectorAccountTarget::Builtin {
+                connector_slug: connector_slug.clone(),
+                connection_id: source_id.clone(),
+            },
+            ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id,
+                source_id,
+                ..
+            } => RunConnectorAccountTarget::Custom {
+                custom_connector_id: custom_connector_id.clone(),
+                connection_id: source_id.clone(),
+            },
+        })
+        .collect();
+    let payload = serde_json::to_vec(&RunConnectorAccountContext {
+        schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
+        targets,
+    })
+    .map_err(|e| RunnerError::Internal(format!("serialize connector account context: {e}")))?;
+    let file_path = guest_connector_account_context_file_path(context.run_id)?;
+    sandbox.write_private_file(&file_path, &payload).await?;
+    Ok(file_path)
+}
+
+pub(super) struct RequiredAgentFiles {
+    pub(super) user_env_file: Option<String>,
+    pub(super) run_payload_file: String,
+}
+
+pub(super) async fn write_required_agent_files(
     sandbox: &dyn Sandbox,
     run_id: RunId,
     user_env: &HashMap<String, String>,
-) -> RunnerResult<Option<String>> {
-    if user_env.is_empty() {
-        return Ok(None);
-    }
-
-    let file_path = guest_user_env_file_path(run_id)?;
-    let payload = serde_json::to_vec(user_env)
-        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
-    sandbox.write_private_file(&file_path, &payload).await?;
-
-    Ok(Some(file_path))
-}
-
-pub(super) async fn write_run_payload_file(
-    sandbox: &dyn Sandbox,
-    run_id: RunId,
     run_payload: &guest_contracts::env::RunPayload,
-) -> RunnerResult<String> {
-    let file_path = guest_run_payload_file_path(run_id)?;
-    let payload = serde_json::to_vec(run_payload)
+) -> RunnerResult<RequiredAgentFiles> {
+    let run_payload_file = guest_run_payload_file_path(run_id)?;
+    let run_payload_bytes = serde_json::to_vec(run_payload)
         .map_err(|e| RunnerError::Internal(format!("serialize run payload: {e}")))?;
-    sandbox.write_private_file(&file_path, &payload).await?;
 
-    Ok(file_path)
+    let user_env_file = if user_env.is_empty() {
+        sandbox
+            .write_private_file(&run_payload_file, &run_payload_bytes)
+            .await?;
+        None
+    } else {
+        let user_env_file = guest_user_env_file_path(run_id)?;
+        let user_env_bytes = serde_json::to_vec(user_env)
+            .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
+        sandbox
+            .write_private_files(&[
+                WriteFileEntry {
+                    path: &user_env_file,
+                    content: &user_env_bytes,
+                },
+                WriteFileEntry {
+                    path: &run_payload_file,
+                    content: &run_payload_bytes,
+                },
+            ])
+            .await?;
+        Some(user_env_file)
+    };
+
+    Ok(RequiredAgentFiles {
+        user_env_file,
+        run_payload_file,
+    })
 }
 
 pub(super) fn build_env_json_with_host_env(
@@ -491,40 +585,43 @@ fn build_env_json_with_host_env_inner(
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
 
-    env.insert(guest_contracts::env::API_URL_ENV.into(), api_url.into());
+    env.insert(
+        guest_contracts::env::CANONICAL_API_URL_ENV.into(),
+        api_url.into(),
+    );
     env.insert(
         guest_contracts::env::RUN_ID_ENV.into(),
         context.run_id.to_string(),
     );
     env.insert(
-        guest_contracts::env::API_TOKEN_ENV.into(),
+        guest_contracts::env::CANONICAL_API_TOKEN_ENV.into(),
         context.sandbox_token.clone(),
     );
     env.insert(
-        guest_contracts::env::SANDBOX_ID_ENV.into(),
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV.into(),
         sandbox_id.into(),
     );
     env.insert(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV.into(),
         guest_runtime_dir(context.run_id)?,
     );
     env.insert(
-        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV.into(),
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
     );
     if let Some(workspace_reuse_result) = workspace_reuse_result {
         env.insert(
-            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV.into(),
+            guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV.into(),
             workspace_reuse_result.as_wire().into(),
         );
     }
     env.insert(
-        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
+        guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
         JOB_TIMEOUT.as_secs().to_string(),
     );
     insert_guest_agent_tuning_env(&mut env, context);
     env.insert(
-        guest_contracts::env::API_START_TIME_ENV.into(),
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV.into(),
         context
             .api_start_time
             .map(|t| t.to_string())
@@ -554,7 +651,7 @@ fn build_env_json_with_host_env_inner(
                 session.cli_agent_session_id.clone()
             };
         env.insert(
-            guest_contracts::env::RESUME_SESSION_ID_ENV.into(),
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV.into(),
             session_id,
         );
     }
@@ -736,9 +833,11 @@ pub(super) fn insert_guest_agent_tuning_env(
     let Some(user_env) = &context.environment else {
         return;
     };
-    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
-        if let Some(value) = user_env.get(*key) {
-            env.insert((*key).into(), value.clone());
+    for (legacy_input, canonical_bootstrap_output) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+    {
+        if let Some(value) = user_env.get(legacy_input) {
+            env.insert(canonical_bootstrap_output.into(), value.clone());
         }
     }
 }
@@ -761,8 +860,8 @@ impl HostEnv {
 }
 
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
-    // The entire VM0_ namespace is runner-owned, including retired keys such
-    // as VM0_WORKING_DIR. Canonical keys outside it must stay explicit.
+    // The entire OKOU_ and VM0_ namespaces are runner-owned. Bootstrap keys
+    // outside them must stay explicit.
     guest_contracts::env::is_runner_owned_env_key(key)
 }
 

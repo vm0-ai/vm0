@@ -171,6 +171,20 @@ type ClaimNextComputerUseHostCommandResult =
       readonly command: ReturnType<typeof serializeCommand>;
     };
 
+type CompleteComputerUseHostCommandParams =
+  | {
+      readonly hostToken: string;
+      readonly commandId: string;
+      readonly status: "succeeded";
+      readonly result: ComputerUseCommandResult;
+    }
+  | {
+      readonly hostToken: string;
+      readonly commandId: string;
+      readonly status: "failed";
+      readonly error: ComputerUseCommandError;
+    };
+
 type CompleteComputerUseHostCommandResult =
   | { readonly status: "completed" }
   | { readonly status: "invalid_token" }
@@ -301,18 +315,18 @@ async function clearComputerUseHostThreadBindings(params: {
     )
     .returning({
       id: chatThreads.id,
-      agentComposeId: chatThreads.agentId,
+      agentId: chatThreads.agentId,
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     });
   for (const thread of threads) {
-    if (!thread.agentComposeId) {
+    if (!thread.agentId) {
       continue;
     }
     await appendChatThreadEvent(params.tx, {
       kind: "computer_use_host_updated",
       userId: params.userId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       computerUseHostId: null,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
       createdAt: now,
@@ -482,6 +496,88 @@ function extensionForPluginMime(mimeType: string): string {
 function numberField(result: ComputerUseCommandResult, key: string): number {
   const value = result[key];
   return typeof value === "number" ? value : 0;
+}
+
+interface ComputerUseJsonSanitization<T> {
+  readonly value: T;
+  readonly nulCharacterCount: number;
+  readonly keyCollisionCount: number;
+}
+
+/**
+ * PostgreSQL JSONB rejects U+0000 in both string values and object keys.
+ * Preserve the invalid boundary visibly with U+FFFD before any completion
+ * result reaches object storage metadata, command persistence, or audit data.
+ */
+function sanitizeComputerUseJsonString(
+  value: string,
+): ComputerUseJsonSanitization<string> {
+  if (!value.includes("\0")) {
+    return { value, nulCharacterCount: 0, keyCollisionCount: 0 };
+  }
+  const parts = value.split("\0");
+  return {
+    value: parts.join("\uFFFD"),
+    nulCharacterCount: parts.length - 1,
+    keyCollisionCount: 0,
+  };
+}
+
+function isComputerUseJsonRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizeComputerUseJsonRecord(
+  value: Record<string, unknown>,
+): ComputerUseJsonSanitization<Record<string, unknown>> {
+  const entries: [string, unknown][] = [];
+  const keys = new Set<string>();
+  let nulCharacterCount = 0;
+  let keyCollisionCount = 0;
+  for (const [key, entry] of Object.entries(value)) {
+    const sanitizedKey = sanitizeComputerUseJsonString(key);
+    const sanitizedEntry = sanitizeComputerUseJsonValue(entry);
+    nulCharacterCount +=
+      sanitizedKey.nulCharacterCount + sanitizedEntry.nulCharacterCount;
+    keyCollisionCount += sanitizedEntry.keyCollisionCount;
+    if (keys.has(sanitizedKey.value)) {
+      keyCollisionCount += 1;
+    }
+    keys.add(sanitizedKey.value);
+    // Object.fromEntries keeps the later value when normalized keys collide.
+    entries.push([sanitizedKey.value, sanitizedEntry.value]);
+  }
+  return {
+    value: Object.fromEntries(entries),
+    nulCharacterCount,
+    keyCollisionCount,
+  };
+}
+
+function sanitizeComputerUseJsonValue(
+  value: unknown,
+): ComputerUseJsonSanitization<unknown> {
+  if (typeof value === "string") {
+    return sanitizeComputerUseJsonString(value);
+  }
+  if (Array.isArray(value)) {
+    const sanitized: unknown[] = [];
+    let nulCharacterCount = 0;
+    let keyCollisionCount = 0;
+    for (const entry of value) {
+      const sanitizedEntry = sanitizeComputerUseJsonValue(entry);
+      sanitized.push(sanitizedEntry.value);
+      nulCharacterCount += sanitizedEntry.nulCharacterCount;
+      keyCollisionCount += sanitizedEntry.keyCollisionCount;
+    }
+    return { value: sanitized, nulCharacterCount, keyCollisionCount };
+  }
+  if (isComputerUseJsonRecord(value)) {
+    return sanitizeComputerUseJsonRecord(value);
+  }
+  return { value, nulCharacterCount: 0, keyCollisionCount: 0 };
 }
 
 /**
@@ -1291,13 +1387,14 @@ export const stopComputerUseHost$ = command(
   ): Promise<StopComputerUseHostResult> => {
     const db = set(writeDb$);
     const now = nowDate();
-    const { result, userId, threadBindingsCleared } = await db.transaction(
-      async (tx) => {
+    const { result, userId, orgId, threadBindingsCleared } =
+      await db.transaction(async (tx) => {
         const host = await hostFromToken(tx, params.hostToken, signal);
         if (!host) {
           return {
             result: { status: "invalid_token" as const },
             userId: null,
+            orgId: null,
             threadBindingsCleared: false,
           };
         }
@@ -1327,16 +1424,16 @@ export const stopComputerUseHost$ = command(
         return {
           result: { status: "stopped" as const, hostId: host.id },
           userId: host.userId,
+          orgId: host.orgId,
           threadBindingsCleared,
         };
-      },
-    );
+      });
     signal.throwIfAborted();
     if (userId) {
       await publishComputerUseHostsChanged(userId);
       signal.throwIfAborted();
       if (threadBindingsCleared) {
-        await publishThreadListChanged(userId);
+        await publishThreadListChanged({ userId, orgId });
         signal.throwIfAborted();
       }
     }
@@ -1843,22 +1940,27 @@ function logComputerUseCommandStateMetrics(
   );
 }
 
+function logComputerUseCompletionSanitization(
+  row: ComputerUseCommandRow | null,
+  nulCharacterCount: number,
+  keyCollisionCount: number,
+): void {
+  if (!row || nulCharacterCount === 0) {
+    return;
+  }
+  L.warn("Replaced NUL characters in computer-use completion", {
+    commandId: row.id,
+    kind: row.kind,
+    status: row.status,
+    nulCharacterCount,
+    keyCollisionCount,
+  });
+}
+
 export const completeComputerUseHostCommand$ = command(
   async (
     { get, set },
-    params:
-      | {
-          readonly hostToken: string;
-          readonly commandId: string;
-          readonly status: "succeeded";
-          readonly result: ComputerUseCommandResult;
-        }
-      | {
-          readonly hostToken: string;
-          readonly commandId: string;
-          readonly status: "failed";
-          readonly error: ComputerUseCommandError;
-        },
+    params: CompleteComputerUseHostCommandParams,
     signal: AbortSignal,
   ): Promise<CompleteComputerUseHostCommandResult> => {
     const db = set(writeDb$);
@@ -1879,15 +1981,21 @@ export const completeComputerUseHostCommand$ = command(
       return commandState;
     }
 
+    let nulCharacterCount = 0;
+    let keyCollisionCount = 0;
     let storedResult: ComputerUseCommandResult | null = null;
+    let suppliedError: ComputerUseCommandError | null = null;
     if (params.status === "succeeded") {
+      const sanitizedResult = sanitizeComputerUseJsonRecord(params.result);
+      nulCharacterCount = sanitizedResult.nulCharacterCount;
+      keyCollisionCount = sanitizedResult.keyCollisionCount;
       storedResult = await get(
         offloadScreenshotForResult(
           db,
           {
             hostToken: params.hostToken,
             commandId: params.commandId,
-            result: params.result,
+            result: sanitizedResult.value,
           },
           signal,
         ),
@@ -1903,6 +2011,12 @@ export const completeComputerUseHostCommand$ = command(
           signal,
         ),
       );
+    } else {
+      const sanitizedMessage = sanitizeComputerUseJsonString(
+        params.error.message,
+      );
+      nulCharacterCount = sanitizedMessage.nulCharacterCount;
+      suppliedError = { ...params.error, message: sanitizedMessage.value };
     }
     const storageError = commandErrorFromResult(storedResult);
     const completedAt = nowDate();
@@ -1921,12 +2035,11 @@ export const completeComputerUseHostCommand$ = command(
         return currentState;
       }
 
-      const finalError =
-        storageError ?? (params.status === "failed" ? params.error : null);
+      const finalError = storageError ?? suppliedError;
       const finalStatus = finalError ? "failed" : params.status;
       const commandResult =
         finalStatus === "succeeded" && params.status === "succeeded"
-          ? (storedResult ?? params.result)
+          ? storedResult
           : { error: finalError };
       const [updated] = await tx
         .update(computerUseCommands)
@@ -1968,6 +2081,11 @@ export const completeComputerUseHostCommand$ = command(
       return { status: "completed" as const };
     });
     signal.throwIfAborted();
+    logComputerUseCompletionSanitization(
+      completedCommand,
+      nulCharacterCount,
+      keyCollisionCount,
+    );
     logComputerUseCommandStateMetrics(completedCommand);
     return result;
   },

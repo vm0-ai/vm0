@@ -10,6 +10,7 @@ import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
 import { agentExists } from "../services/agent-data.service";
+import { persistAgentDraft } from "../services/agent-draft-write.service";
 import type { RouteEntry } from "../route-entry";
 
 const agentReadAuth = {
@@ -87,43 +88,15 @@ const patchAgentDraftInner$ = command(
     const draftAttachments = bodyResult.data.draftAttachments ?? null;
     const draftUserMessage = bodyResult.data.draftUserMessage;
     const writeDb = set(writeDb$);
-
-    if (
-      !draftUserMessage &&
-      !(draftAttachments && draftAttachments.length > 0)
-    ) {
-      await writeDb
-        .delete(agentDrafts)
-        .where(
-          and(
-            eq(agentDrafts.userId, auth.userId),
-            eq(agentDrafts.orgId, auth.orgId),
-            eq(agentDrafts.agentId, params.id),
-          ),
-        );
-      signal.throwIfAborted();
-      return { status: 204 as const, body: undefined };
-    }
-
     const updatedAt = nowDate();
-    await writeDb
-      .insert(agentDrafts)
-      .values({
-        userId: auth.userId,
-        orgId: auth.orgId,
-        agentId: params.id,
-        draftUserMessage,
-        draftAttachments,
-        updatedAt,
-      })
-      .onConflictDoUpdate({
-        target: [agentDrafts.userId, agentDrafts.orgId, agentDrafts.agentId],
-        set: {
-          draftUserMessage,
-          draftAttachments,
-          updatedAt,
-        },
-      });
+    await persistAgentDraft(writeDb, {
+      userId: auth.userId,
+      orgId: auth.orgId,
+      agentId: params.id,
+      draftUserMessage,
+      draftAttachments,
+      updatedAt,
+    });
     signal.throwIfAborted();
 
     return { status: 204 as const, body: undefined };

@@ -16,7 +16,7 @@ function client() {
 }
 
 describe("POST /api/zero/chat/events authorization", () => {
-  it("rejects a zero token without chat-event:write", async () => {
+  it("rejects an agent token without chat-event:write", async () => {
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "okou",

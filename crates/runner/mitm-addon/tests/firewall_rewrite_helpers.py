@@ -2,6 +2,7 @@
 
 from urllib.parse import urlparse
 
+import auth
 import flow_metadata_keys as metadata_keys
 from tests.firewall_auth_helpers import make_allow
 
@@ -47,7 +48,7 @@ def _make_rewrite_inputs(
             request_body=request_body,
             request_headers=request_headers,
         )
-    flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "test-run"
 
     auth_config = {"headers": {}, "base": "${{ secrets.WEBHOOK }}"}
     if auth_overrides:
@@ -56,7 +57,7 @@ def _make_rewrite_inputs(
         "base": api_base,
         "auth": auth_config,
     }
-    vm_info = {
+    sandbox_info = {
         "runId": "run-1",
         "sandboxToken": "tok",
         "encryptedSecrets": "iv:tag:data",
@@ -80,10 +81,11 @@ def _make_rewrite_inputs(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
     if token_overrides:
         token_meta.update(token_overrides)
-    return flow, allow, vm_info, token_meta
+    return flow, allow, sandbox_info, token_meta
 
 
 def make_success_rewrite_inputs(

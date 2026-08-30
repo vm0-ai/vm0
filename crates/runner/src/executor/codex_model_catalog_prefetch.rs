@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::{
-    ExecOutputLimits, ExecTermination, GuestProcessCancelHandle, GuestProcessHandle,
-    ProcessControlMode, ProcessExit, ProcessOutputMode, Sandbox, StartProcessRequest,
+    ExecOutputLimits, ExecTermination, GuestProcessCancelHandle, GuestProcessHandle, ProcessExit,
+    ProcessOutputMode, Sandbox, StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -93,7 +93,6 @@ impl StartedCodexModelCatalogPrefetch {
                 0,
                 PREFETCH_STDERR_LIMIT_BYTES,
             )),
-            control: ProcessControlMode::None,
         };
         let result = tokio::select! {
             biased;

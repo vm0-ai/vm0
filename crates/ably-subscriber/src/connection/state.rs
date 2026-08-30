@@ -62,8 +62,9 @@ impl ConnState {
             return Some(Instant::now());
         }
 
-        let renew_in_ms = (remaining_ms as u128).saturating_sub(margin.as_millis());
-        let renew_in = Duration::from_millis(u64::try_from(renew_in_ms).ok()?);
+        let remaining = Duration::from_millis(u64::try_from(remaining_ms).ok()?);
+        let effective_margin = margin.min(remaining / 2);
+        let renew_in = remaining - effective_margin;
         checked_deadline_after(renew_in)
     }
 
@@ -519,21 +520,6 @@ mod tests {
 
         let renewal_at = ConnState::compute_renewal_at(&token, Duration::from_secs(300))
             .expect("expired tokens should still schedule renewal");
-        assert!(renewal_at <= Instant::now());
-    }
-
-    #[test]
-    fn token_inside_renewal_margin_is_scheduled_immediately() {
-        let token = TokenDetails {
-            token: "tok".to_string(),
-            expires: unix_now_ms() + 60_000,
-            issued: 0,
-            capability: None,
-            client_id: None,
-        };
-
-        let renewal_at = ConnState::compute_renewal_at(&token, Duration::from_secs(300))
-            .expect("tokens inside the renewal margin should schedule renewal");
         assert!(renewal_at <= Instant::now());
     }
 

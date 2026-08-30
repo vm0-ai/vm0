@@ -100,6 +100,14 @@ def block_registry_unavailable(
     flow: http.HTTPFlow,
     unavailable: registry.RegistryUnavailable,
 ) -> None:
+    """Block the flow with a fail-closed 503 response for an unavailable registry.
+
+    The JSON response contains the fixed ``registry_unavailable`` error, the
+    fixed user-visible ``message`` ``Proxy registry is unavailable``, and the
+    ``reason`` copied from ``RegistryUnavailable.reason``. The response message
+    is intentionally distinct from ``RegistryUnavailable.message``, which
+    remains detailed internal failure context.
+    """
     flow_metadata.set_firewall_decision(
         flow.metadata,
         "BLOCK",
@@ -116,22 +124,30 @@ def block_registry_unavailable(
     )
 
 
-def block_invalid_registry_vm(
+def block_invalid_registry_sandbox(
     flow: http.HTTPFlow,
-    invalid_vm: registry.InvalidVmEntry,
+    invalid_sandbox: registry.InvalidSandboxEntry,
 ) -> None:
+    """Block a flow for an invalid registry sandbox with a fail-closed 503.
+
+    The JSON response contains the fixed ``invalid_registry_sandbox`` error,
+    ``message`` copied verbatim from ``InvalidSandboxEntry.message``, and
+    ``reason`` copied verbatim from ``InvalidSandboxEntry.reason``. The reason
+    is the stable category; the message is detailed validation text for the
+    individual sandbox entry.
+    """
     flow_metadata.set_firewall_decision(
         flow.metadata,
         "BLOCK",
-        error="invalid_registry_vm",
+        error="invalid_registry_sandbox",
     )
     flow.response = make_local_json_response(
         flow,
         503,
         {
-            "error": "invalid_registry_vm",
-            "message": invalid_vm.message,
-            "reason": invalid_vm.reason,
+            "error": "invalid_registry_sandbox",
+            "message": invalid_sandbox.message,
+            "reason": invalid_sandbox.reason,
         },
     )
 
@@ -148,7 +164,8 @@ def block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
         {
             "error": _STALE_TLS_ADMISSION_ERROR,
             "message": (
-                "Request blocked: TLS admission is no longer backed by a valid proxy registry VM"
+                "Request blocked: TLS admission is no longer backed by a valid "
+                "proxy registry sandbox"
             ),
             "reason": reason,
         },

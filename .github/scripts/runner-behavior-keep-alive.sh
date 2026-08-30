@@ -32,7 +32,7 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --profile vm0/default \
   --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
   --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-  --name ${SVC} \
+  --hostname ${HOST} \
   --group ${GROUP} \
   --runner-dirname ${SVC} \
   --max-concurrent 2 \
@@ -108,32 +108,32 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --prompt 'touch /tmp/keepalive-marker && echo turn1-done' \
   || fail "Turn 1 failed"
 
-# Turn 2: submit with the same chat thread — should reuse the VM.
-# If VM was reused, the marker file from turn 1 still exists (exit 0).
-# If a new VM was created, the file is missing and test exits non-zero.
-echo "--- Turn 2: verify marker file persists (VM reused) ---"
+# Turn 2: submit with the same chat thread — should reuse the sandbox.
+# If sandbox was reused, the marker file from turn 1 still exists (exit 0).
+# If a new sandbox was created, the file is missing and test exits non-zero.
+echo "--- Turn 2: verify marker file persists (sandbox reused) ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'test -f /tmp/keepalive-marker' \
-  || fail "Turn 2: marker file not found — VM was not reused"
-echo "PASS: Turn 2 completed (VM reused, filesystem persisted)"
+  || fail "Turn 2: marker file not found — sandbox was not reused"
+echo "PASS: Turn 2 completed (sandbox reused, filesystem persisted)"
 
-# Turn 3: keep the provider session but use a different chat thread — should create a new VM.
-# The marker file must NOT exist in the new VM (thread isolation).
-echo "--- Turn 3: different chat thread creates new VM ---"
+# Turn 3: keep the provider session but use a different chat thread — should create a new sandbox.
+# The marker file must NOT exist in the new sandbox (thread isolation).
+echo "--- Turn 3: different chat thread creates new sandbox ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$ISOLATED_CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'test ! -f /tmp/keepalive-marker' \
   || fail "Turn 3: marker file found — chat thread isolation broken"
-echo "PASS: Turn 3 completed (new VM for different chat thread)"
+echo "PASS: Turn 3 completed (new sandbox for different chat thread)"
 
 # A privileged guest can stack an unrelated mount over the canonical workspace
 # after a turn starts. Idle admission must reject that sandbox, so the next turn
-# receives a fresh VM whose workspace is backed by /dev/vdb.
+# receives a fresh sandbox whose workspace is backed by /dev/vdb.
 TAMPER_SESSION_ID="e2e-keepalive-tampered-mount"
 echo "--- Tamper turn 1: replace canonical workspace mount before idle admission ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
@@ -274,7 +274,7 @@ test "$(readlink -f "$source")" = /dev/vdb' \
 echo "PASS: overlapping runner exec could not produce a reusable sandbox"
 
 # Regression gate for sandbox_id/run_id conflation (#9552):
-# at this point the runner has parked idle VMs whose FC workspace
+# at this point the runner has parked idle sandboxes whose FC workspace
 # names (= sandbox_id) are divorced from any active run_id.
 # `runner doctor --name <svc>` must still report 0 warnings.
 # Scope to this CI run's runner name so that unrelated runners
@@ -283,9 +283,9 @@ echo "--- runner doctor --name $SVC (expect 0 warnings) ---"
 DOCTOR_OUT=$(sudo "$BIN_DIR/runner" doctor --name "$SVC" 2>&1 || true)
 echo "$DOCTOR_OUT"
 if ! grep -q '^0 warning(s) found$' <<<"$DOCTOR_OUT"; then
-  fail "runner doctor reported warnings with parked idle VMs — regression for #9552"
+  fail "runner doctor reported warnings with parked idle sandboxes — regression for #9552"
 fi
-echo "PASS: runner doctor clean with parked VMs"
+echo "PASS: runner doctor clean with parked sandboxes"
 
 # Stop transient service (drains idle pool)
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force

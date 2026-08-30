@@ -135,6 +135,7 @@ function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
 async function requestOauthStart(
   connectorSlug: string,
   options: {
+    readonly accountIntent?: "add" | "single-account";
     readonly authMethod?: ConnectorAuthMethodId;
     readonly authenticated?: boolean;
     readonly callbackTarget?: "app";
@@ -156,7 +157,7 @@ async function requestOauthStart(
     headers,
     body: JSON.stringify({
       authMethod: options.authMethod ?? "oauth",
-      account: { intent: "single-account" },
+      account: { intent: options.accountIntent ?? "single-account" },
       ...(options.callbackTarget
         ? { callbackTarget: options.callbackTarget }
         : {}),
@@ -199,8 +200,8 @@ async function rejectProviderAuthorization(
 
 describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   beforeEach(() => {
-    mockEnv("VM0_API_BACKEND_URL", API_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     mockOAuthEnv();
   });
 
@@ -216,6 +217,20 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(response.status).toBe(200);
     const authorizationUrl = await authorizationUrlFromResponse(response);
     expectOauthState(authorizationUrl);
+  });
+
+  it("returns the future connection id for an unnamed account addition", async () => {
+    const response = await requestOauthStart("test-oauth", {
+      accountIntent: "add",
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(200);
+    const body = connectorOauthStartResponseSchema.parse(await response.json());
+    expect(body.connectionId).toBeTruthy();
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("keeps an omitted callback target on the existing Web callback", async () => {
@@ -270,7 +285,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   });
 
   it("uses the configured web origin for local OAuth callback URLs", async () => {
-    mockEnv("VM0_WEB_URL", LOCAL_WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", LOCAL_WEB_ORIGIN);
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("github", {
@@ -405,13 +420,18 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("airtable", {
+      accountIntent: "add",
       callbackTarget: "app",
       headers: authHeaders(),
       origin: OKOU_API_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const authorizationUrl = await authorizationUrlFromResponse(response);
+    const startBody = connectorOauthStartResponseSchema.parse(
+      await response.json(),
+    );
+    const authorizationUrl = new URL(startBody.authorizationUrl);
+    expect(startBody.connectionId).toBeTruthy();
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://airtable.com/oauth2/v1/authorize",
     );
@@ -446,6 +466,14 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(tokenBodies).toHaveLength(1);
     expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
     expect(tokenBodies[0]?.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]+$/u);
+    const connected = await app.request(
+      `${API_ORIGIN}/api/connectors/airtable`,
+      { headers: authHeaders() },
+    );
+    expect(connected.status).toBe(200);
+    await expect(connected.json()).resolves.toMatchObject({
+      id: startBody.connectionId,
+    });
   });
 
   it("reuses the direct Okou redirect URI for a Google token exchange", async () => {
@@ -1032,8 +1060,8 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
 
   it("keeps API-origin OAuth callbacks on the PR API when WWW uses Omby staging", async () => {
     mockAuthenticatedSession();
-    mockEnv("VM0_API_BACKEND_URL", "https://pr-19337-api.vm6.ai");
-    mockEnv("VM0_WEB_URL", "https://staging-www.omby.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://pr-19337-api.vm6.ai");
+    mockEnv("OKOU_WEB_URL", "https://staging-www.omby.ai");
 
     const response = await requestOauthStart("cloudflare", {
       headers: authHeaders(),
@@ -1050,10 +1078,10 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("uses the canonical API origin when VM0_API_BACKEND_URL is localhost", async () => {
+  it("uses the canonical API origin when OKOU_API_BACKEND_URL is localhost", async () => {
     mockAuthenticatedSession();
-    mockEnv("VM0_API_BACKEND_URL", LOCAL_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_API_BACKEND_URL", LOCAL_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
 
     const response = await requestOauthStart("cloudflare", {
       headers: authHeaders(),
@@ -1070,10 +1098,10 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("keeps Cloudflare OAuth callbacks on the canonical API origin when VM0_API_BACKEND_URL is a tunnel", async () => {
+  it("keeps Cloudflare OAuth callbacks on the canonical API origin when OKOU_API_BACKEND_URL is a tunnel", async () => {
     mockAuthenticatedSession();
-    mockEnv("VM0_API_BACKEND_URL", "https://tunnel-liangyou-vm2-www.vm7.ai");
-    mockEnv("VM0_WEB_URL", "https://www.vm7.ai:8443");
+    mockEnv("OKOU_API_BACKEND_URL", "https://tunnel-liangyou-vm2-www.vm7.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm7.ai:8443");
 
     const response = await requestOauthStart("cloudflare", {
       headers: authHeaders(),

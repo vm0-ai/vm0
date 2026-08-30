@@ -37,13 +37,18 @@
       "environmentMapping": "環境マッピング",
       "featureFlags": "機能フラグ",
       "firewalls": "ファイアウォール",
+      "modelProvider": "モデルプロバイダー",
+      "modelRoute": "モデルルート",
       "mountPath": "マウントパス",
       "name": "名前",
       "networkPolicies": "ネットワークポリシー",
       "none": "なし",
       "prompt": "プロンプト",
       "runId": "実行ID",
+      "runtimeModel": "ランタイムモデル",
+      "runtimeProvider": "ランタイムプロバイダー",
       "secrets": "シークレット",
+      "selectedModel": "選択されたモデル",
       "session": "セッション",
       "storageName": "ストレージ名",
       "systemPrompt": "システムプロンプト",
@@ -116,7 +121,10 @@
         "cacheMiss": "再利用キーに一致するキャッシュ済みワークスペースがありませんでした。",
         "deviceLimitMismatch": "アイドル プール エントリは存在しますが、そのデバイス レート リミッタの状態が一致しません。",
         "diskPressure": "ランナーのディスク使用量が逼迫していたため、ワークスペースの再利用をスキップしました。",
+        "environment": "環境",
         "featureDisabled": "この実行ではサンドボックスの再利用が無効になっています。",
+        "generation": "世代",
+        "hostname": "ホスト名",
         "invalidMetadata": "キャッシュ済みワークスペースのメタデータが無効でした。",
         "invalidWorkingDir": "指定された作業ディレクトリを再利用できませんでした。",
         "lockBusy": "別の実行が同じワークスペースを準備していました。",
@@ -124,21 +132,28 @@
         "noSessionId": "従来の結果です。サンドボックスが再利用されなかった正確な理由は確認できません。",
         "notConfigured": "この実行ではワークスペースの再利用が構成されていませんでした。",
         "notReused": "再利用されない",
+        "outcomeUnavailableDescription": "追加の詳細は利用できません。",
         "poolMiss": "アイドル状態のプールに一致するサンドボックスが見つかりません。",
         "profileMismatch": "アイドル プール エントリは存在しますが、そのプロファイルが一致しません。",
         "provisioning": "プロビジョニング中",
         "reused": "再利用",
         "reusedDescription": "サンドボックスがアイドル状態のプールからパーク解除されました。",
+        "runnerId": "ランナー ID",
         "sandbox": "サンドボックス",
         "sandboxPrepareFallback": "キャッシュ済みワークスペースが見つかりましたが、サンドボックスの準備後に使用できませんでした。",
         "sandboxReusedDescription": "再利用されたサンドボックス内でワークスペースを引き続き利用できました。",
         "startup": "起動",
         "startupCold": "コールドスタート",
+        "startupColdDescription": "新しいサンドボックスとワークスペースが準備されました。",
         "startupSandbox": "サンドボックス再利用",
+        "startupSandboxDescription": "サンドボックスとそのワークスペースが再利用されました。",
         "startupUnknown": "不明",
+        "startupUnknownDescription": "起動時の再利用に関する詳細は利用できません。",
         "startupWorkspace": "ワークスペース再利用",
+        "startupWorkspaceDescription": "新しいサンドボックスでキャッシュ済みのワークスペースが復元されました。",
         "unavailable": "利用不可",
         "unparkFailed": "パーク解除の試行は失敗しました。新しいサンドボックスがプロビジョニングされました。",
+        "version": "バージョン",
         "workspace": "ワークスペース",
         "workspaceNoReuseKey": "ワークスペースの再利用キーがありませんでした。",
         "workspaceReusedDescription": "ワークスペースがランナーのキャッシュから復元されました。"
@@ -426,7 +441,7 @@
       "ariaLabel": "サイドバー",
       "chat": "チャット",
       "collapse": "サイドバーを折りたたむ",
-      "expand": "サイドバーを展開する",
+      "hideChatList": "チャットリストを非表示",
       "manage": "管理",
       "mobile": {
         "invite": "招待する",
@@ -449,7 +464,8 @@
         "workflows": "ワークフロー",
         "works": "連携先"
       },
-      "searchConversations": "会話を検索する",
+      "searchWorkspace": "ワークスペースを検索",
+      "showChatList": "チャットリストを表示",
       "workspaceSwitcher": {
         "create": "ワークスペースの作成",
         "creating": "作成中…",
@@ -483,6 +499,24 @@
       "shareArtifact": "アーティファクトを共有する",
       "zoomIn": "Zoom 内",
       "zoomOut": "Zoom アウト"
+    },
+    "annotation": {
+      "attach": "マークを添付",
+      "draftOnly": "マークは下書きに残ります。送信するまで変更できます",
+      "inkLabel": "色 {{color}}",
+      "notePlaceholder": "ここをどう変えたいか書いてください",
+      "open": "注釈",
+      "redo": "やり直す",
+      "removeMark": "マークを削除",
+      "subtitle_other": "{{count}} 件のマーク",
+      "textPlaceholder": "ラベルを入力",
+      "tools": {
+        "arrow": "矢印",
+        "box": "矩形",
+        "pen": "手描き",
+        "text": "テキスト"
+      },
+      "undo": "元に戻す"
     },
     "attachments": {
       "cancelUpload": "アップロードをキャンセル {{filename}}",
@@ -616,7 +650,7 @@
       "illustration": "イラストレーション",
       "illustrationPreview": "{{title}} イラストのプレビュー",
       "importDeck": "自分のデッキをインポート",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
       "multiAccent": "マルチアクセント",
@@ -672,6 +706,12 @@
       "tryDifferentSearch": "別の検索を試してください。",
       "use": "使用する",
       "useThisTemplate": "このテンプレートを使用してください",
+      "visibility": {
+        "change": "変更",
+        "changeLabel": "テンプレートの公開範囲を変更",
+        "privateState": "自分だけが表示・使用できます",
+        "workspaceState": "このワークスペースの全員が使用できます"
+      },
       "website": "ウェブサイト",
       "websitePreview": "{{title}} Web サイト テンプレートのプレビュー",
       "workflow": "ワークフロー",
@@ -1010,8 +1050,152 @@
       "signIn": "サインイン",
       "signUp": "サインアップ"
     },
+    "homeLink": "{{brandName}} のホームに移動",
     "loading": "認証を読み込み中",
-    "toggleTheme": "テーマの切り替え"
+    "theme": {
+      "darkEnabled": "ダークテーマを有効にしました",
+      "lightEnabled": "ライトテーマを有効にしました"
+    },
+    "toggleTheme": "テーマの切り替え",
+    "v2": {
+      "continuation": {
+        "activationErrorDescription": "サインインを完了できませんでした。最初からやり直してください。",
+        "activationErrorTitle": "サインインを完了できませんでした",
+        "chooseOrganizationDescription": "{{brandName}} に進む組織を選択してください。",
+        "chooseOrganizationTitle": "組織を選択",
+        "completeDescription": "{{brandName}} に移動しています。",
+        "completeTitle": "サインイン完了",
+        "loadingDescription": "アカウントに必要な次の手順を確認しています。",
+        "loadingTitle": "サインインを完了しています",
+        "noOrganizationsDescription": "このアカウントで利用できる組織がありません。組織の管理者にアクセスを依頼してから、最初からやり直してください。",
+        "noOrganizationsTitle": "利用できる組織がありません",
+        "recoveryAction": "最初からやり直す",
+        "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
+        "secondFactorTitle": "追加の確認が必要です",
+        "selectOrganization": "{{organizationName}} で続行",
+        "signedInAs": "{{identifier}} としてサインイン中",
+        "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
+        "unsupportedTitle": "サインイン手順を利用できません"
+      },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
+      "signIn": {
+        "addAccount": "アカウントを追加",
+        "appleMethod": "Appleで続ける",
+        "back": "戻る",
+        "chooseAccountSubtitle": "続行するアカウントを選択してください。",
+        "chooseAccountTitle": "アカウントを選択",
+        "chooseMethodSubtitle": "問題が発生していますか？これらの方法を使用してサインインすることができます。",
+        "chooseMethodTitle": "別の方法を使用",
+        "clientTrustNotice": "新しいデバイスからサインインしています。アカウントのセキュリティを保つため、確認をお願いしています。",
+        "codeExpired": "この確認コードは期限切れです。新しいコードをリクエストしてください。",
+        "codeLabel": "検証コード",
+        "completeSubtitle": "まもなくリダイレクトされます",
+        "completeTitle": "サインイン中...",
+        "confirmPasswordLabel": "パスワードの確認",
+        "continue": "続ける",
+        "editIdentifier": "メールアドレスまたはユーザー名を編集",
+        "emailAddressLabel": "メールアドレス",
+        "emailAddressPlaceholder": "メールアドレスを入力してください",
+        "emailCodeMethod": "{{identifier}}にメールコードを送信",
+        "emailCodeSubtitle": "{{brandName}} へ進む",
+        "emailCodeTitle": "メールを確認",
+        "emailSupport": "サポートにメールする",
+        "forgotPassword": "パスワードをお忘れですか？",
+        "getHelp": "ヘルプを利用する",
+        "googleMethod": "Googleで続ける",
+        "helpDescription": "アカウントへのサインインでお困りの場合は、メールでお問い合わせください。できるだけ早くアクセスを復旧できるようサポートします。",
+        "helpTitle": "ヘルプを利用する",
+        "hidePassword": "パスワードを非表示",
+        "identifierLabel": "メールアドレスまたはユーザー名",
+        "identifierPlaceholder": "メールアドレスまたはユーザー名を入力してください",
+        "lastUsed": "最後に使用したもの",
+        "methodsHelpPrompt": "これらの方法を利用できませんか？",
+        "newPasswordLabel": "新しいパスワード",
+        "newPasswordSubtitle": "セキュリティ上の理由から、パスワードのリセットが必要です。",
+        "newPasswordTitle": "パスワードをリセット",
+        "noAccount": "アカウントをお持ちでないですか？",
+        "noMethodsMessage": "サインインできません。利用可能な認証方法がありません。",
+        "noMethodsTitle": "サインインできません",
+        "passkeyCancelled": "パスキーの確認はキャンセルされたか、タイムアウトしました。",
+        "passkeyMethod": "パスキーでサインインする",
+        "passkeyUnavailable": "このデバイスではパスキーはサポートされていません。",
+        "passwordLabel": "パスワード",
+        "passwordMethod": "パスワードでサインインする",
+        "passwordMismatch": "パスワードが一致しません。",
+        "passwordPlaceholder": "パスワードを入力",
+        "passwordResetMethod": "パスワードをリセット",
+        "passwordSubtitle": "アカウントに関連付けられたパスワードを入力してください",
+        "passwordTitle": "パスワードを入力",
+        "recoveryMethodsDivider": "または、別の方法でサインイン",
+        "recoveryTitle": "パスワードをお忘れですか？",
+        "resendCode": "コードを再送信",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "resetPassword": "パスワードをリセット",
+        "resetPasswordCodeSubtitle": "まず、メールアドレスに送信されたコードを入力してください",
+        "resetPasswordCodeTitle": "パスワードをリセット",
+        "separator": "または",
+        "showPassword": "パスワードを表示",
+        "signOutOfOtherSessions": "他のすべてのデバイスからサインアウト",
+        "signUp": "サインアップ",
+        "startSubtitle": "お帰りなさい！続行するにはサインインしてください",
+        "title": "{{brandName}} にサインイン",
+        "unknownError": "この操作を完了できませんでした。後でもう一度お試しいただくか、問題が解決しない場合はサポートにお問い合わせください。",
+        "useAnotherMethod": "別の方法を使用する",
+        "usernameLabel": "ユーザー名",
+        "usernamePlaceholder": "ユーザー名を入力してください",
+        "verify": "確認する"
+      },
+      "signUp": {
+        "alreadyHaveAccount": "アカウントをお持ちですか？",
+        "appleMethod": "Appleで続ける",
+        "back": "戻る",
+        "captchaError": "ボット検証に失敗したため、サインアップに失敗しました。ページを更新して再試行するか、サポートに連絡してさらに支援を受けてください。",
+        "captchaExpired": "ボット確認の有効期限が切れました。もう一度お試しください。",
+        "captchaLoading": "読み込み中…",
+        "captchaSubtitle": "リクエストを確認しています。しばらくお待ちください。",
+        "captchaTitle": "リクエストを確認しています",
+        "codeExpired": "この確認コードは期限切れです。新しいコードをリクエストしてください。",
+        "codeLabel": "確認コード",
+        "completeSubtitle": "登録中...",
+        "completeTitle": "登録が完了しました",
+        "continue": "続ける",
+        "description": "ようこそ！始めるには詳細を入力してください",
+        "editEmailAddress": "メールアドレスを編集",
+        "emailAddressLabel": "メールアドレス",
+        "emailAddressPlaceholder": "メールアドレスを入力してください",
+        "emailCodeSubtitle": "メールに送信された確認コードを入力してください",
+        "emailCodeTitle": "メールアドレスを確認",
+        "firstNameLabel": "名",
+        "firstNamePlaceholder": "名を入力してください",
+        "googleMethod": "Googleで続ける",
+        "hidePassword": "パスワードを非表示",
+        "lastNameLabel": "姓",
+        "lastNamePlaceholder": "姓を入力してください",
+        "legalPrivacyOnly": "<privacy>個人情報保護方針</privacy>に同意します",
+        "legalRequired": "続行する前に、利用条件を読み同意してください",
+        "legalTermsAndPrivacy": "<terms>利用規約</terms>と<privacy>個人情報保護方針</privacy>に同意します",
+        "legalTermsOnly": "<terms>利用規約</terms>に同意します",
+        "optional": "任意",
+        "passwordInvalid": "パスワードの強度が不十分です。",
+        "passwordLabel": "パスワード",
+        "passwordPlaceholder": "パスワードを作成",
+        "resendCode": "コードを再送信",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "restart": "別の方法を使用する",
+        "retry": "もう一度試す",
+        "separator": "または",
+        "showPassword": "パスワードを表示",
+        "signIn": "サインイン",
+        "title": "アカウントを作成",
+        "unknownError": "この操作を完了できませんでした。後でもう一度お試しいただくか、問題が解決しない場合はサポートにお問い合わせください。",
+        "unknownMessage": "現在サインアップは無効になっています。アクセス権限があると思われる場合は、サポートまでご連絡ください。",
+        "unknownTitle": "アクセス制限",
+        "verify": "確認する"
+      }
+    }
   },
   "authorization": {
     "browser": {
@@ -1088,7 +1272,6 @@
         "updatedTitle": "権限が更新されました"
       },
       "saving": "保存中...",
-      "unknownEndpoints": "不明なエンドポイント",
       "userFallback": "そこに",
       "wouldLike": "したいです"
     }
@@ -1515,7 +1698,6 @@
         "inviteMember": "人間を招待 🤝",
         "otherChannels": "Telegram、電話"
       },
-      "invitePeople": "人を招待する",
       "taglines": {
         "anonymous": {
           "buildSomething": "何かを構築する準備はできていますか?",
@@ -1553,6 +1735,8 @@
       "loadingFile": "{{filename}} をロードしています",
       "previewFile": "{{filename}} のプレビュー",
       "title": "添付ファイル",
+      "unavailable": "{{filename}} は利用できなくなりました。送信するにはもう一度アップロードしてください。",
+      "unavailableCount_other": "{{count}} 件の添付ファイルは利用できなくなりました。送信するにはもう一度アップロードしてください。",
       "uploadFailed": "{{filename}} のアップロードに失敗しました",
       "uploadFailedRetry": "{{filename}} のアップロードに失敗しました。もう一度やり直してください。",
       "uploadsFailed": "一部の添付ファイルのアップロードに失敗しました。もう一度やり直してください。"
@@ -1654,6 +1838,36 @@
       "weeklyAt": "毎週 {{time}} で",
       "weeklyOnAt": "毎週 {{days}} の {{time}}"
     },
+    "banking": {
+      "accountFallback": "銀行口座",
+      "actionFailed": "銀行の操作に失敗しました",
+      "active_other": "{{count}}口座へのアクセスが有効です",
+      "automationOff": "自動化の実行では読み取り専用アクセスを利用できません。",
+      "cancel": "キャンセル",
+      "change": "変更",
+      "connect": "銀行を接続",
+      "continue": "続ける",
+      "duration": "アクセス期間",
+      "expiresAt": "{{time}}に期限切れ",
+      "grant": "アクセスを許可",
+      "institutionFallback": "金融機関",
+      "loadFailed": "銀行アクセスを読み込めませんでした",
+      "noAccounts": "利用可能な正常な口座がありません。まず金融機関を再接続または修復してください。",
+      "oneDay": "24時間",
+      "oneHour": "1時間",
+      "popupBlocked": "Zeroのポップアップを許可してから、もう一度お試しください。",
+      "readOnly": "口座、残高、取引 · 読み取り専用",
+      "repair": "修復",
+      "repairRequired": "{{institution}}は修復が必要です",
+      "retry": "再試行",
+      "revoke": "取り消す",
+      "revokeConfirm": "このエージェントの銀行アクセスを取り消しますか？",
+      "selectAccounts": "口座を選択",
+      "sevenDays": "7日間",
+      "thirtyDays": "30日間",
+      "title": "銀行アクセスのリクエスト",
+      "waiting": "Mastercard Data Connectでの操作を待っています。そこで完了してから、チャットに戻ってください。"
+    },
     "billing": {
       "addCreditsToContinue": "クレジットを追加すると、{{assistantName}} とのチャットを続けることができます。",
       "askAdminCredits": "{{assistantName}} とチャットを続けることができるように、ワークスペース管理者にクレジットを追加するように依頼してください。",
@@ -1678,18 +1892,17 @@
       "agentSuggestions": "エージェント",
       "configureModel": "モデルの構成",
       "createWorkflow": "ワークフローの作成",
+      "imageModelForThisChat": "このチャットの画像モデル",
       "message": "メッセージ",
+      "modelForThisChat": "このチャットのモデル",
       "placeholder": "ワークフローの自動化、タスクの管理を依頼してください...",
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
-      "setAsDefault": "デフォルトに設定",
-      "temporaryFastModeDisabledNotice": "この実行では一時的に高速モードが無効です",
-      "temporaryFastModeEnabledNotice": "この実行では一時的に高速モードが有効です",
-      "temporaryImageModelNotice": "画像モデルを一時的に {{model}} に切り替えました",
-      "temporaryModelNotice": "一時的に {{model}} に切り替えました",
-      "temporaryVideoModelNotice": "動画モデルを一時的に {{model}} に切り替えました",
+      "temporarilySwitchTo": "一時的な切り替え先",
       "threadSuggestions": "チャットスレッド",
+      "useForFutureChats": "今後のチャットでも使用",
+      "videoModelForThisChat": "このチャットの動画モデル",
       "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
         "empty": "一致するワークフローがありません",
@@ -1719,17 +1932,24 @@
       "yourComputer": "あなたのコンピュータ"
     },
     "connectors": {
+      "accountForThread": "このスレッドのアカウント",
       "add": "{{connectorName}} を追加",
       "addConnectors": "コネクタの追加",
       "authorizationFailed": "{{connectorName}} は接続されましたが、{{agentName}} に対して認証できませんでした",
       "authorized": "{{connectorName}} が接続され、{{agentName}} に対して承認されました",
       "available_one": "接続可能なコネクタ ({{count}})",
       "available_other": "接続可能なコネクタ ({{count}})",
+      "back": "戻る",
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
+      "defaultAccountFor": "{{connector}} · デフォルトアカウントを使用中: {{account}}",
+      "fallsBackTo": "{{account}} にフォールバック",
       "find": "コネクタを検索...",
+      "noUsableAccount": "使用可能なアカウントがありません",
       "remove": "{{connectorName}} を削除します",
-      "title": "コネクター"
+      "selectedAccountFor": "{{connector}} · 選択中のアカウント: {{account}}",
+      "title": "コネクター",
+      "useDefault": "デフォルトを使用"
     },
     "documentTitle": "チャット",
     "errors": {
@@ -1775,12 +1995,102 @@
       "agents": "エージェント",
       "back": "戻る",
       "content": "内容",
-      "description": "選択した内容をエージェントまたはチャットに転送します。",
+      "description": "選択した内容をエージェントまたはチャットに送り、そのまま作業を続けます。",
       "noResults": "エージェントまたはチャットが見つかりません",
       "search": "エージェントとチャットを検索...",
       "sent": "転送しました",
       "threads": "チャット",
       "title": "転送先"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "アバターを選択",
+        "help": "プレゼンターを選ぶか、アバターなしで続行します",
+        "none": "アバターなし"
+      },
+      "cardDescription": "ファイルや画面録画を完成した動画に変換",
+      "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",
+      "errors": {
+        "recordingEmpty": "録画が空でした。もう一度お試しください。",
+        "recordingFailed": "画面録画を開始できませんでした。最新の Chrome でもう一度お試しください。",
+        "recordingPermission": "共有対象が選択されませんでした。準備ができたらタブ、ウィンドウ、または画面を選択してください。",
+        "recordingShareEnded": "録画開始前に画面共有が終了しました。",
+        "recordingUnsupported": "このブラウザは画面録画に対応していません。",
+        "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
+        "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
+      },
+      "footer": {
+        "back": "戻る",
+        "createInChat": "チャットで作成",
+        "download": "素材をダウンロード",
+        "next": "次へ",
+        "startRecording": "画面を選んで開始",
+        "stopRecording": "録画を停止"
+      },
+      "recording": {
+        "chooseSurface": "タブ、ウィンドウ、または画面を選択",
+        "countdown": "カウントダウン終了後に録画を開始します",
+        "description": "Chrome が共有対象を確認します。3 秒のカウントダウンが終わるまで録画は始まりません。",
+        "heading": "画面を録画",
+        "localNote": "Chrome の共有バーまたはこの画面から停止できます。チャットスレッドが作成されるまで録画はローカルに保持されます。",
+        "microphone": "マイク",
+        "microphoneHelp": "操作を見せながらナレーションを追加",
+        "recordingLocally": "ローカルで録画中",
+        "systemAudio": "システム音声",
+        "systemAudioHelp": "利用できる音声は Chrome とシステムによって異なります"
+      },
+      "review": {
+        "avatar": "アバター",
+        "heading": "イントロビデオを確認",
+        "help": "新しいチャットスレッドに送る設定を確認してください",
+        "instructions": "編集指示",
+        "source": "素材",
+        "voice": "音声"
+      },
+      "source": {
+        "chatDescription": "今すぐスレッドを開き、Zero と動画を作り上げます",
+        "chatDetail": "素材、アバター、音声は後からチャットで追加できます",
+        "chatTitle": "チャットから開始",
+        "documentDescription": "コンテンツをナレーション付きイントロビデオに変換",
+        "documentFormats": "PPTX、PPT、PDF、DOC、DOCX",
+        "documentTitle": "スライドまたは文書をアップロード",
+        "dropDescription": "スライド、文書、または録画",
+        "dropTitle": "素材をここにドロップ",
+        "heading": "どのように始めますか？",
+        "help": "手元の素材を追加するか、画面を録画するか、作りたい動画を言葉で説明してください",
+        "recordDescription": "タブ、ウィンドウ、または画面全体を選択",
+        "recordDetail": "3 秒のカウントダウン後に開始",
+        "recordTitle": "画面を録画",
+        "videoDescription": "AI がテンポ、フレーミング、ナレーションを整えます",
+        "videoFormats": "MP4、MOV、WEBM",
+        "videoTitle": "録画をアップロード"
+      },
+      "sourceReview": {
+        "format": "形式",
+        "heading": "素材の準備ができました",
+        "help": "続行する前にファイルを確認してください",
+        "inBrowser": "このブラウザ内",
+        "inTab": "このタブを閉じるまで",
+        "replace": "素材を置き換える",
+        "saved": "保存先",
+        "source": "素材"
+      },
+      "steps": {
+        "avatar": "アバター",
+        "label": "イントロビデオの手順",
+        "review": "確認",
+        "source": "素材",
+        "voice": "音声"
+      },
+      "title": "イントロビデオを作成",
+      "voice": {
+        "heading": "音声を選択",
+        "help": "続行する前にサンプルを再生できます",
+        "none": "ナレーションなし",
+        "noneDescription": "ナレーションを使わず字幕中心の動画を作成",
+        "original": "元の音声",
+        "originalDescription": "アップロードした動画または録画の音声を維持"
+      }
     },
     "mail": {
       "bcc": "BCC",
@@ -1851,6 +2161,7 @@
       "expiresInHours_one": "{{count}} 時間後に期限切れになります",
       "expiresInHours_other": "{{count}} 時間で期限切れになります",
       "loadFailed": "権限ステータスを読み込めませんでした",
+      "otherEndpoints": "その他のエンドポイント",
       "unknown": "不明な権限",
       "updated": "権限が更新されました",
       "updateFailed": "権限を更新できませんでした"
@@ -1877,6 +2188,7 @@
       "loadingGoal": "目標を読み込んでいます...",
       "message_one": "{{count}} メッセージ",
       "message_other": "{{count}} メッセージ",
+      "morningBrief": "モーニングブリーフ",
       "openGoalDetails": "目標の詳細を開く",
       "pendingAutomationEvent": "保留中のオートメーションイベント",
       "queuedMessage": "キューに入れられたメッセージ",
@@ -2123,6 +2435,39 @@
       "title": "{{connector}} アクセスを管理する",
       "unnamedAgent": "無名"
     },
+    "accounts": {
+      "accountName": "アカウント名",
+      "accountsUnavailable": "このコネクターのアカウントは利用できません。",
+      "actions": "アカウント操作",
+      "addAccount": "アカウントを追加",
+      "connected": "接続済み",
+      "default": "デフォルト",
+      "deleteAccount": "アカウントを削除",
+      "deleteDescription": "このアカウントを使用しているスレッドは、デフォルトの継承に戻ります。",
+      "deleteDescriptionWithCount": "{{value}} 件のスレッドがデフォルトの継承に戻ります。",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "{{account}} を削除しますか？",
+      "fallbackName": "アカウント #{{id}}",
+      "find": "アカウントを検索",
+      "loading": "アカウントを読み込み中…",
+      "loadingMore": "読み込み中…",
+      "loadMore": "さらに読み込む",
+      "makeDefault": "デフォルトに設定",
+      "managerTitle": "{{connector}} のアカウントを管理",
+      "namePromptDescription": "この手順をスキップして、後でアカウントに名前を付けることもできます。",
+      "namePromptTitle": "{{connector}} アカウントに名前を付ける",
+      "noAccounts": "アカウントなし",
+      "noAccountsFound": "アカウントが見つかりません",
+      "reconnectRequired": "再接続が必要です",
+      "rename": "名前を変更",
+      "skipName": "スキップ",
+      "summaryMany": "{{value}} 件のアカウント",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} 件のアカウント",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{value}}/{{total}} 件に対応が必要",
+      "summaryWithAttention_other": ""
+    },
     "actions": {
       "apply": "申し込む",
       "authorize": "承認する",
@@ -2185,6 +2530,8 @@
       "access": {
         "add": "アクセス権の追加",
         "manage": "{{connector}} アクセスを管理する",
+        "summaryMany": "{{value}} 件のエージェント",
+        "unavailable": "アクセスを利用できません",
         "usedBy": "使用者 "
       },
       "categories": {
@@ -2520,8 +2867,8 @@
         "connectTitle": "Slack に接続します",
         "invalidDescription": "このページは、Slack 接続リンクから開かれるように設計されています。",
         "open": "Slack を開く",
-        "successDescription": "チャットを開始するには、任意のチャンネルで @Zero にメンションするか、DM を送信してください。",
-        "successDescriptionWorkspace": "{{workspace}} に接続しています。チャットを開始するには、任意のチャンネルで @Zero にメンションするか、DM を送信してください。",
+        "successDescription": "チャットを開始するには、任意のチャンネルでインストール済みのボットにメンションするか、DM を送信してください。",
+        "successDescriptionWorkspace": "{{workspace}} に接続しています。チャットを開始するには、任意のチャンネルでインストール済みのボットにメンションするか、DM を送信してください。",
         "successTitle": "Slack に接続しました!"
       },
       "teams": {
@@ -2531,7 +2878,7 @@
         "invalidDescription": "このページは、Microsoft Teams 接続リンクから開かれるように設計されています。",
         "open": "オープンチーム",
         "providerName": "Microsoft Teams",
-        "successDescription": "{{team}} に接続されています。チャットを開始するには、Teams で @Zero にメンションします。",
+        "successDescription": "{{team}} に接続されています。チャットを開始するには、Teams で @{{botName}} にメンションします。",
         "successTitle": "Microsoft Teams に接続されました"
       },
       "telegram": {
@@ -2675,12 +3022,12 @@
         "copied": "{{label}} がコピーされました",
         "copy": "コピー",
         "create": {
-          "descriptionAfter": "、{{brandName}} という名前のエンタープライズ カスタム アプリを作成し、{{brandName}} アイコンをアップロードしてから、ボット機能を追加します。",
+          "descriptionAfter": "、任意の名前とアイコンでエンタープライズ カスタム アプリを作成してから、ボット機能を追加します。",
           "descriptionBefore": "で ",
-          "downloadIcon": "{{brandName}} アイコンをダウンロードします",
-          "iconAlt": "{{brandName}} アプリ アイコン",
+          "downloadIcon": "任意の {{brandName}} アイコンをダウンロードします",
+          "iconAlt": "任意の {{brandName}} アプリ アイコン",
           "iconHint": "、またはお好みのアイコンを使用してください。",
-          "iconTitle": "{{brandName}} アプリ アイコン",
+          "iconTitle": "任意の {{brandName}} アプリ アイコン",
           "imageAlt": "Feishu アプリ名、アイコン、および [作成] ボタンが強調表示されたアプリ作成フォーム",
           "title": "エンタープライズカスタムアプリを作成する"
         },
@@ -2820,7 +3167,7 @@
           "testReceived": "Strapi テスト Webhook を受信しました"
         },
         "webhookUrl": "Webhook URL",
-        "whereZeroWorks": "{{assistantName}} が機能する場所"
+        "whereAssistantWorks": "{{assistantName}} が機能する場所"
       },
       "telegram": {
         "addBot": "ボットの追加",
@@ -2859,7 +3206,7 @@
         "moreOptions": "{{bot}} のその他のオプション",
         "newBotToken": "新しいボットトークン",
         "notConnected": "接続されていません",
-        "officialBot": "{{assistantName}} 公式ボット",
+        "officialBot": "Telegram 公式ボット",
         "officialDescription": "{{brandName}} が提供する公式 bot。",
         "officialMissing": "公式ボット設定がありません。",
         "pageDescription": "このワークスペースのボット ルーティングを管理する",
@@ -2975,15 +3322,6 @@
       "doneTitle": "購読解除済み",
       "errorBody": "この購読解除リンクは無効であるか、期限切れです。メール通知は設定で管理できます。",
       "errorTitle": "何か問題が発生しました"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "モーニングブリーフ",
-      "doneBody": "毎日の Morning Brief メールは受信されなくなります。設定でいつでもオンに戻すことができます。",
-      "doneTitle": "モーニングブリーフがオフになりました",
-      "errorBody": "購読解除リンクが無効か不完全です。最新の Morning Brief メールを開いて購読解除リンクを使用するか、設定で設定を管理します。",
-      "errorTitle": "このリンクは無効です",
-      "loadingLabel": "購読解除ステータスを読み込んでいます",
-      "managePreferences": "設定の管理"
     },
     "pwaInstall": {
       "banner": "{{assistantName}} をインストールするとエクスペリエンスが向上します",
@@ -3116,9 +3454,17 @@
           "description": "スライドとスピーカーを生成する",
           "title": "プレゼンテーションを生成する"
         },
+        "slack": {
+          "description": "ワークスペースでAIチームメイトとチャット",
+          "title": "SlackでOkouとチャット"
+        },
         "video": {
           "description": "あなたのアイデアをビデオに変換しましょう",
           "title": "映像制作"
+        },
+        "website": {
+          "description": "共有できるページを作って公開する",
+          "title": "ウェブサイトを作る"
         },
         "workflow": {
           "description": "プリセットテンプレートから探索する",
@@ -3260,7 +3606,7 @@
       "whatItDoes": "何をするのか"
     },
     "workflowRun": {
-      "continueWithZero": "{{assistantName}} に進みます",
+      "continueWithAssistant": "{{assistantName}} に進みます",
       "createWorkflow": "ワークフローの作成",
       "customNoteLabel": "ワークフローを説明する",
       "customNotePlaceholder": "{{assistantName}} で構築したいものを説明してください",
@@ -4425,7 +4771,6 @@
         "usage": {
           "balanceDescription": "チームが使える残高です。",
           "balanceTitle": "クレジット残高",
-          "balanceUsageDescription": "チームのクレジット残高と使用量。",
           "usageDescription": "チャット、オートメーション、チャネル全体でのクレジットの使用状況。",
           "usageTitle": "クレジット使用量"
         }
@@ -4439,7 +4784,7 @@
         "start": "データをエクスポートする",
         "starting": "エクスポートの開始"
       },
-      "backToZero": "{{assistantName}} に戻る",
+      "backToAssistant": "{{assistantName}} に戻る",
       "description": "{{assistantName}} で作成したファイルとテキスト レコードをダウンロードします。",
       "documentTitle": "データのエクスポート",
       "duration": {
@@ -4726,6 +5071,20 @@
         "sectionTitle": "アカウントとセキュリティ"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "明るく淡いカラーパレットをインターフェース全体に反映します。",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "カラーテーマ"
+        },
         "description": "インターフェイスの外観を選択します。",
         "sectionTitle": "外観",
         "theme": {
@@ -4737,6 +5096,30 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "cancelAction": "クールダウンを解除",
+          "cancelDescription": "このグローバルクールダウンを解除すると、内蔵モデルのフォールバックが有効なすべてのワークスペースで、このルートが直ちに利用可能になります。",
+          "cancelling": "解除しています...",
+          "cancelTitle": "グローバルクールダウンを解除しますか？",
+          "cancelWarning": "後で対象となる障害が発生すると、このルートは再びクールダウンに入ることがあります。",
+          "description": "フォールバック選択から一時的に除外されている内蔵モデルルートを確認します。",
+          "disabled": "無効",
+          "disabledExplanation": "このワークスペースでは内蔵モデルのフォールバックが無効なため、これらのグローバルクールダウンは現在ここでは無視されます。",
+          "empty": "現在、グローバルクールダウン中の内蔵モデルルートはありません。",
+          "enabled": "有効",
+          "globalActive": "有効なグローバルクールダウン",
+          "globalExplanation": "クールダウンはグローバルな運用状態です。このワークスペースで内蔵モデルのフォールバックが有効な場合にのみ影響します。",
+          "keepCooldown": "クールダウンを維持",
+          "loading": "内蔵モデルのクールダウン診断を読み込んでいます...",
+          "providerType": "プロバイダータイプ",
+          "refresh": "更新",
+          "selectedModel": "選択されたモデル",
+          "title": "内蔵モデルのフォールバック",
+          "unavailable": "内蔵モデルのクールダウン診断は利用できません。",
+          "unavailableUntil": "利用不可期限",
+          "upstreamModel": "アップストリームモデル",
+          "workspaceFallback": "ワークスペースのフォールバック"
+        },
         "capture": {
           "description": "デバッグのために、HTTP ヘッダー名、選択された安全なヘッダー値、および本文をネットワーク ログにキャプチャします。",
           "disabled": "障害者",
@@ -4762,24 +5145,6 @@
           "title": "リアルタイム接続診断",
           "unavailable": "利用不可"
         },
-        "managedModelCooldown": {
-          "description": "フォールバック選択から一時的に除外されている管理対象モデルルートを確認します。",
-          "disabled": "無効",
-          "disabledExplanation": "このワークスペースでは管理対象モデルのフォールバックが無効なため、これらのグローバルクールダウンは現在ここでは無視されます。",
-          "empty": "現在、グローバルクールダウン中の管理対象モデルルートはありません。",
-          "enabled": "有効",
-          "globalActive": "有効なグローバルクールダウン",
-          "globalExplanation": "クールダウンはグローバルな運用状態です。このワークスペースで管理対象モデルのフォールバックが有効な場合にのみ影響します。",
-          "loading": "管理対象モデルのクールダウン診断を読み込んでいます...",
-          "providerType": "プロバイダータイプ",
-          "refresh": "更新",
-          "selectedModel": "選択されたモデル",
-          "title": "管理対象モデルのフォールバック",
-          "unavailable": "管理対象モデルのクールダウン診断は利用できません。",
-          "unavailableUntil": "利用不可期限",
-          "upstreamModel": "アップストリームモデル",
-          "workspaceFallback": "ワークスペースのフォールバック"
-        },
         "tab": "デバッグ"
       },
       "documentTitle": "設定",
@@ -4799,16 +5164,6 @@
           "spanish": "Español"
         },
         "title": "言語"
-      },
-      "morningBrief": {
-        "description": "接続されている GitHub、Gmail、Google Calendar からのスケジュール、アクション アイテム、更新情報を含む毎日午前 7 時のメール",
-        "nextEmail": "次のメール: {{date}}",
-        "nextEmailInTimezone": "次のメール: {{date}} ({{timezone}})",
-        "notScheduled": "次のメール: まだスケジュールされていません — スイッチをオフにしてからオンにし、スケジュールを変更してください",
-        "sending": "送信中...",
-        "sendNow": "今すぐ送信",
-        "title": "モーニングブリーフ",
-        "triggeredToast": "モーニング ブリーフがトリガーされ、すぐにメールが届きます"
       },
       "pageDescription": "外観とエージェントの実行時の設定を管理する",
       "pageTitle": "設定",
@@ -5020,15 +5375,20 @@
       "viewSource": "図のソース"
     },
     "notFound": {
+      "action": "ホームに戻る",
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "この共有された会話は存在しません。",
+    "handoffDescription": "{{assistantName}} がコンテキストを新しいチャットに引き継ぎます",
+    "handoffPrompt": "この共有された会話を私と続けてください: {{url}}",
+    "makeConversationYours": "この会話を自分のものに",
     "notFoundTitle": "共有された会話が見つかりません",
-    "tryOkou": "{{assistantName}}を試す"
+    "share": "共有",
+    "signIn": "ログイン",
+    "signUp": "新規登録",
+    "tryItYourself": "自分で試す"
   },
   "usage": {
     "displayNames": {
@@ -5773,6 +6133,67 @@
       },
       "title": "ワークフロー",
       "viewAutomations": "オートメーションを表示する"
+    },
+    "official": {
+      "activeInstallationDescription": "この公式ワークフローは引き続き動作し、管理対象コンテンツは読み取り専用のままです。",
+      "activeInstallationTitle": "公式ワークフロー",
+      "agent": "エージェント",
+      "automationCount_one": "{{count}} 件の自動化",
+      "automationCount_other": "{{count}} 件の自動化",
+      "badge": "公式",
+      "browse": "公式を探す",
+      "chooseValue": "値を選択",
+      "copySucceededUninstallFailed": "コピーは準備できましたが、元の公式ワークフローをアンインストールできませんでした。",
+      "description": "vm0 が管理・保守するワークフローをインストールします。",
+      "empty": "利用可能な公式ワークフローはありません。",
+      "includedAutomations": "含まれる自動化",
+      "install": "インストール",
+      "installDescription": "エージェントを選択し、必須パラメーターをすべて入力してください。含まれるすべての自動化がインストールされます。",
+      "installed": "公式ワークフローをインストールしました",
+      "installErrorDescription": "エージェントとパラメーター値を確認して、もう一度お試しください。",
+      "installErrorTitle": "公式ワークフローをインストールできませんでした",
+      "installTitle": "{{name}} をインストール",
+      "intendedOff": "オフに設定",
+      "intendedOn": "オンに設定",
+      "loadErrorDescription": "このカタログは利用できないか、アカウントで有効になっていない可能性があります。",
+      "loadErrorTitle": "公式ワークフローを読み込めませんでした",
+      "no": "いいえ",
+      "noParameters": "必要なパラメーターはありません。",
+      "noResults": "検索に一致する公式ワークフローはありません。",
+      "notFound": "この公式ワークフローは見つかりませんでした。",
+      "parameterCount_one": "{{count}} 個のパラメーター",
+      "parameterCount_other": "{{count}} 個のパラメーター",
+      "parameterRequired": "{{key}}（必須）",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "再構成",
+      "reconfigured": "公式ワークフローを再構成しました",
+      "reconfigureDescription": "このワークフローや自動化を置き換えずに、型付きパラメーターを更新します。",
+      "reconfigureDialogDescription": "管理対象の自動化をすべて確認し、パラメーターを更新してください。",
+      "reconfigureErrorDescription": "必須の値を確認して、もう一度お試しください。",
+      "reconfigureErrorTitle": "公式ワークフローを再構成できませんでした",
+      "reconfigureTitle": "インストールパラメーター",
+      "reconfigureUnavailable": "正規のパラメーターメタデータは一時的に利用できません。",
+      "retiredBadge": "公式 · 廃止",
+      "retiredDefinitionDescription": "保持されているこの定義は表示できますが、新たにインストールすることはできません。",
+      "retiredInstallationDescription": "この定義は廃止されています。既存のインストールは、アンインストールするまで動作し、読み取り専用のままです。",
+      "retiredInstallationTitle": "廃止された公式ワークフロー",
+      "retiredTitle": "廃止された定義",
+      "retry": "もう一度試す",
+      "search": "公式ワークフローを検索",
+      "selectAgent": "エージェントを選択",
+      "statusCurrent": "最新",
+      "statusFailed": "失敗",
+      "statusNeedsReconfiguration": "再構成が必要",
+      "statusReconciling": "同期中",
+      "title": "公式ワークフロー",
+      "unavailableInstallationDescription": "承認済みの定義は一時的に利用できません。既存の操作コントロールは引き続き利用できます。",
+      "unavailableInstallationTitle": "公式定義を利用できません",
+      "uninstall": "アンインストール",
+      "uninstallConfirm": "公式インストールとそのすべての自動化を削除します。この操作は元に戻せません。",
+      "uninstallDescription": "管理されたライフサイクルを通じて、この公式ワークフローのインストールを削除します。",
+      "uninstallTitle": "公式ワークフローをアンインストール",
+      "viewAndInstall": "表示してインストール",
+      "yes": "はい"
     }
   },
   "works": {

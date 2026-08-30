@@ -4,10 +4,7 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 
-import {
-  setupAppWithRoutes,
-  setupRawAppRequestWithRoutes,
-} from "../../../../__tests__/test-app";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import type { RouteEntry } from "../../../route-entry";
@@ -86,32 +83,6 @@ export function createMapsBillingApi(context: TestContext) {
   return {
     configureMapsProvider(): void {
       mockEnv("OKOU_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
-    },
-
-    /**
-     * Geocodes through a path the typed client cannot express. `mapsContract`
-     * declares only the neutral path, so the branded paths that
-     * `MIGRATED_BRANDED_PATHS` keeps alive for released CLI builds are
-     * unreachable through `mapsContract` by construction.
-     */
-    async requestMapsGeocodeAtPath(
-      actor: ApiTestUser,
-      path: string,
-      body: { readonly address: string },
-    ): Promise<{ readonly status: number; readonly body: unknown }> {
-      authenticate(context, actor);
-      const request = setupRawAppRequestWithRoutes({
-        context,
-        routes: mapsBillingRoutes,
-      });
-      return await request(path, {
-        method: "POST",
-        headers: {
-          authorization: CLERK_SESSION_AUTHORIZATION,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
     },
 
     async readBillingStatus(

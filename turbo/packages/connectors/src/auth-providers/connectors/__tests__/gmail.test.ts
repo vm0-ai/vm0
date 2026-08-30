@@ -64,4 +64,40 @@ describe("connector/providers/gmail", () => {
       name: "Test User",
     });
   });
+
+  it("uses all requested scopes when Google omits scope", async () => {
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        return HttpResponse.json({ access_token: "gmail-test-token" });
+      }),
+      http.get("https://openidconnect.googleapis.com/v1/userinfo", () => {
+        return HttpResponse.json({ sub: "google-user-123" });
+      }),
+    );
+    const authorizationUrl = new URL(
+      buildGmailAuthorizationUrl(
+        authCodeGrant(),
+        "client-id",
+        "https://example.com/callback",
+        "test-state",
+      ),
+    );
+    const authorizationScopes =
+      authorizationUrl.searchParams.get("scope")?.split(" ") ?? [];
+
+    const result = await exchangeGmailCode(
+      authCodeGrantFixture(authorizationScopes),
+      "client-id",
+      "client-secret",
+      "test-code",
+      "https://example.com/callback",
+    );
+
+    expect(result.scopes).toEqual([
+      "https://www.googleapis.com/auth/gmail.modify",
+      "openid",
+      "email",
+      "profile",
+    ]);
+  });
 });

@@ -69,6 +69,7 @@ interface CustomConnectorCredentialDefinition {
 
 interface CustomConnectorStoredConnection {
   readonly id: string;
+  readonly updatedAt: Date;
   readonly customConnectorId: string;
   readonly storedAuthMethod: string;
   readonly storedStorageVersion: number;
@@ -81,8 +82,15 @@ interface CustomConnectorStoredConnection {
 }
 
 interface ConnectedCustomConnectorConnection {
+  readonly id: string;
+  readonly updatedAt: Date;
   readonly authMode: OrgCustomConnectorAuthMode;
   readonly storageVersion: number;
+}
+
+interface ConnectedCustomConnectorAccount {
+  readonly id: string;
+  readonly updatedAt: Date;
 }
 
 export type CustomConnectorCredentialAccess =
@@ -129,6 +137,7 @@ function customConnectorStoredConnectionsQuery(
       id: sql`${connectors.id}`
         .mapWith(connectors.id)
         .as("member_connector_id"),
+      updatedAt: connectors.updatedAt,
       customConnectorId: sql`${orgCustomConnectors.id}`
         .mapWith(orgCustomConnectors.id)
         .as("custom_connector_id"),
@@ -573,6 +582,7 @@ export async function loadCurrentCustomConnectorStoredValues(
     .with(storedConnections, storedValues)
     .select({
       id: storedConnections.id,
+      updatedAt: storedConnections.updatedAt,
       customConnectorId: storedConnections.customConnectorId,
       storedAuthMethod: storedConnections.storedAuthMethod,
       storedStorageVersion: storedConnections.storedStorageVersion,
@@ -618,6 +628,8 @@ export async function loadConnectedCustomConnectorConnections(
   for (const row of rows) {
     if (customConnectorStoredConnectionIsConnected(row, now)) {
       connectedConnections.set(row.customConnectorId, {
+        id: row.id,
+        updatedAt: row.updatedAt,
         authMode: row.definitionAuthMethod,
         storageVersion: row.definitionStorageVersion,
       });
@@ -626,16 +638,18 @@ export async function loadConnectedCustomConnectorConnections(
   return connectedConnections;
 }
 
-export function customConnectorDefinitionHasConnectedConnection(args: {
+export function customConnectorDefinitionConnectedAccount(args: {
   readonly connectedConnections: ReadonlyMap<
     string,
     ConnectedCustomConnectorConnection
   >;
   readonly definition: CustomConnectorCredentialDefinition;
-}): boolean {
+}): ConnectedCustomConnectorAccount | null {
   const connection = args.connectedConnections.get(args.definition.id);
-  return (
+  const current =
     connection?.authMode === args.definition.authMode &&
-    connection.storageVersion === args.definition.storageVersion
-  );
+    connection.storageVersion === args.definition.storageVersion;
+  return current
+    ? { id: connection.id, updatedAt: connection.updatedAt }
+    : null;
 }

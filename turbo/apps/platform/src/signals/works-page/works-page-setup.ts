@@ -1,21 +1,18 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { ZeroWorksPage } from "../../views/zero-page/zero-works-page.tsx";
+import { WorksPage } from "../../views/okou-page/works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import {
-  initSlackOrg$,
-  watchSlackConnection$,
-} from "../zero-page/zero-slack.ts";
-import { watchTeamsConnection$ } from "../zero-page/zero-teams.ts";
-import { watchGithubIntegration$ } from "../zero-page/zero-github.ts";
+import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
+import { initSlackOrg$, watchSlackConnection$ } from "../okou-page/slack.ts";
+import { watchTeamsConnection$ } from "../okou-page/teams.ts";
+import { watchGithubIntegration$ } from "../okou-page/github.ts";
 import {
   resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
   watchAgentPhoneConnection$,
-} from "../zero-page/zero-agentphone.ts";
+} from "../okou-page/agentphone.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { detach, Reason } from "../utils.ts";
@@ -47,7 +44,7 @@ const initWorksRedirect$ = command(({ get, set }) => {
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(resetAgentPhoneConnectUi$);
   set(setAgentPhoneConnectDialogOpen$, false);
-  set(updatePage$, createElement(ZeroWorksPage), "sidebar");
+  set(updatePage$, createElement(WorksPage), "sidebar");
   set(
     updateDocumentTitle$,
     i18n.t(($) => {

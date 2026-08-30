@@ -167,11 +167,11 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     connectorSlugs: ["github", "vercel", "slack"],
     behavior: [
       "A PR is labeled ready-to-merge",
-      "Zero reviews and waits on CI",
+      "Review the pull request and wait for CI",
       "Merged and posted to Slack",
     ],
     missingInfo:
-      "Connectors: github required; vercel, slack optional.\nSuggested trigger: Add a github-pull-request event trigger with the labeled action on the ready-to-merge label so it runs the moment a PR is labeled.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask for the repository, whether Zero may merge or should only recommend a merge, and the merge method. Ask only one short question at a time. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
+      "Connectors: github required; vercel, slack optional.\nSuggested trigger: Add a github-pull-request event trigger with the labeled action on the ready-to-merge label so it runs the moment a PR is labeled.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask for the repository, whether the workflow may merge or should only recommend a merge, and the merge method. Ask only one short question at a time. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:file-sentry-crashes-github",
@@ -182,7 +182,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "File the worst Sentry errors as GitHub issues.",
     connectorSlugs: ["sentry", "github", "linear", "slack"],
     behavior: [
-      "Zero pulls new Sentry errors",
+      "Pull new Sentry errors",
       "Ranked by user impact",
       "Issues filed and owner pinged",
     ],
@@ -199,7 +199,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     connectorSlugs: ["github", "notion", "slack"],
     behavior: [
       "A PR is labeled shipped",
-      "Zero gathers merged PRs",
+      "Gather merged pull requests",
       "Release notes saved to Notion",
     ],
     missingInfo:
@@ -232,7 +232,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     connectorSlugs: ["github", "notion", "figma"],
     behavior: [
       "An issue is labeled needs-spec",
-      "Zero expands it into a PRD",
+      "Expand it into a PRD",
       "Saved to Notion",
     ],
     missingInfo:
@@ -248,7 +248,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     connectorSlugs: ["github", "slack", "notion"],
     behavior: [
       "A PR is labeled release",
-      "Zero drafts the changelog",
+      "Draft the changelog",
       "Posted to Slack and Notion",
     ],
     missingInfo:
@@ -262,7 +262,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Keep a Notion roadmap in sync with Linear.",
     connectorSlugs: ["linear", "notion"],
     behavior: [
-      "Zero reads Linear status",
+      "Read Linear status",
       "Mapped to Now / Next / Later",
       "Board updated in Notion",
     ],
@@ -278,7 +278,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Surface the week's biggest usage shifts.",
     connectorSlugs: ["posthog", "slack"],
     behavior: [
-      "Zero reads PostHog",
+      "Read PostHog",
       "Compared week over week",
       "Shifts posted to Slack",
     ],
@@ -293,7 +293,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Flag Figma designs with no Linear task.",
     connectorSlugs: ["figma", "linear", "slack"],
     behavior: [
-      "Zero scans Figma frames",
+      "Scan Figma frames",
       "Finds frames without a task",
       "Gaps posted to Slack",
     ],
@@ -326,7 +326,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Post daily visitors and signups to Slack.",
     connectorSlugs: ["plausible", "slack", "posthog", "clerk"],
     behavior: [
-      "Zero pulls the metrics",
+      "Pull the metrics",
       "Assembled into a KPI snapshot",
       "Posted to Slack",
     ],
@@ -342,7 +342,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Run saved SQL and append results to a Sheet.",
     connectorSlugs: ["snowflake", "google-sheets", "slack"],
     behavior: [
-      "Zero runs the query",
+      "Run the query",
       "Results formatted",
       "Written to Google Sheets",
     ],
@@ -358,7 +358,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Post the signup funnel's biggest drop-off.",
     connectorSlugs: ["posthog", "slack"],
     behavior: [
-      "Zero runs the funnel",
+      "Run the funnel",
       "Biggest drop-off identified",
       "Posted to Slack",
     ],
@@ -374,7 +374,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Alert Slack when a key metric moves sharply.",
     connectorSlugs: ["plausible", "slack", "posthog"],
     behavior: [
-      "Zero checks the metric",
+      "Check the metric",
       "Compared to normal range",
       "Alert posted to Slack",
     ],
@@ -389,7 +389,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Attribute each signup to its source in a Sheet.",
     connectorSlugs: ["clerk", "google-sheets", "plausible"],
     behavior: [
-      "Zero reads new signups",
+      "Read new signups",
       "Attributed to a channel",
       "Logged to Google Sheets",
     ],
@@ -404,11 +404,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Turn the week's metrics into a ready-to-present deck in Gamma.",
     shortDescription: "Turn the week's metrics into a Gamma deck.",
     connectorSlugs: ["google-sheets", "gamma", "plausible", "slack"],
-    behavior: [
-      "Zero gathers the numbers",
-      "Deck built in Gamma",
-      "Posted to Slack",
-    ],
+    behavior: ["Gather the numbers", "Deck built in Gamma", "Posted to Slack"],
     missingInfo:
       "Connectors: google-sheets, gamma required; plausible, slack optional.\nSuggested trigger: Add a schedule trigger (e.g. weekly).\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -455,7 +451,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Report the week's keyword rank movers.",
     connectorSlugs: ["ahrefs", "similarweb", "notion"],
     behavior: [
-      "Zero reads keyword positions",
+      "Read keyword positions",
       "Movers identified",
       "Reported in Notion",
     ],
@@ -471,7 +467,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Publish the day's scheduled social posts.",
     connectorSlugs: ["notion", "strapi", "buffer"],
     behavior: [
-      "Zero reads today's calendar",
+      "Read today's calendar",
       "Published to the CMS",
       "Social queued in Buffer",
     ],
@@ -487,7 +483,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Turn each new blog post into social posts.",
     connectorSlugs: ["strapi", "buffer", "x"],
     behavior: [
-      "Zero finds new posts",
+      "Find new posts",
       "Cut into social variants",
       "Queued in Buffer",
     ],
@@ -503,7 +499,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Assemble recent updates into a newsletter.",
     connectorSlugs: ["github", "mailchimp"],
     behavior: [
-      "Zero gathers what shipped",
+      "Gather what shipped",
       "Newsletter drafted",
       "Staged in Mailchimp",
     ],
@@ -519,7 +515,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Compare ad spend and ROAS to last month.",
     connectorSlugs: ["google-ads", "slack", "meta-ads"],
     behavior: [
-      "Zero reads ad performance",
+      "Read ad performance",
       "Compared to prior period",
       "Anomalies flagged in Slack",
     ],
@@ -552,7 +548,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Spot buying signals and log qualified leads.",
     connectorSlugs: ["gmail", "apollo", "google-sheets", "slack"],
     behavior: [
-      "Zero scans new mail",
+      "Scan new mail",
       "Lead enriched and logged",
       "Next step suggested",
     ],
@@ -567,7 +563,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Add unknown email senders to HubSpot.",
     connectorSlugs: ["gmail", "hubspot", "apollo"],
     behavior: [
-      "Zero spots an unknown sender",
+      "Spot an unknown sender",
       "Contact created and enriched",
       "Logged for follow-up",
     ],
@@ -582,7 +578,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Research each new signup and post a snapshot.",
     connectorSlugs: ["clerk", "slack", "apollo"],
     behavior: [
-      "Zero reads new signups",
+      "Read new signups",
       "Researched with Apollo",
       "Snapshot posted to Slack",
     ],
@@ -596,11 +592,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     description: "Find contacts who didn't reply and draft the next follow-up.",
     shortDescription: "Draft follow-ups for contacts who didn't reply.",
     connectorSlugs: ["instantly", "gmail", "apollo"],
-    behavior: [
-      "Zero checks sequence status",
-      "Next touch drafted",
-      "Ready in Gmail",
-    ],
+    behavior: ["Check sequence status", "Next touch drafted", "Ready in Gmail"],
     missingInfo:
       "Connectors: instantly, gmail required; apollo optional.\nSuggested trigger: Add a schedule trigger (e.g. every morning). Instantly has no native event trigger, so poll for non-repliers.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -629,7 +621,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Pull Gong call notes into the HubSpot deal.",
     connectorSlugs: ["gong", "hubspot", "slack"],
     behavior: [
-      "Zero reads the transcript",
+      "Read the transcript",
       "Summary and next steps drafted",
       "Logged to HubSpot",
     ],
@@ -679,7 +671,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     connectorSlugs: ["intercom", "notion", "gmail"],
     behavior: [
       "A question arrives",
-      "Zero checks the Notion FAQ",
+      "Check the Notion FAQ",
       "Reply drafted for review",
     ],
     missingInfo:
@@ -709,7 +701,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Flag churn risk and draft a recovery email.",
     connectorSlugs: ["clerk", "stripe", "zendesk", "resend", "slack"],
     behavior: [
-      "Zero scans accounts",
+      "Scan accounts",
       "At-risk accounts flagged",
       "Recovery email drafted",
     ],
@@ -725,7 +717,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Post a daily summary of Zendesk tickets.",
     connectorSlugs: ["zendesk", "slack"],
     behavior: [
-      "Zero reads the queue",
+      "Read the queue",
       "Grouped by severity and age",
       "Posted to Slack",
     ],
@@ -748,7 +740,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "sentry",
     ],
     behavior: [
-      "Zero gathers the signals",
+      "Gather the signals",
       "Assembled into a pulse",
       "Posted to Slack",
     ],
@@ -763,11 +755,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Round up the day's relevant industry news into a Slack brief.",
     shortDescription: "Round up the day's industry news for Slack.",
     connectorSlugs: ["exa", "slack"],
-    behavior: [
-      "Zero scans the news",
-      "Distilled into a brief",
-      "Posted to Slack",
-    ],
+    behavior: ["Scan the news", "Distilled into a brief", "Posted to Slack"],
     missingInfo:
       "Connectors: exa, slack required.\nSuggested trigger: Add a schedule trigger (e.g. every morning).\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -779,11 +767,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Turn the month's metrics into a business review deck in Gamma.",
     shortDescription: "Turn the month's metrics into a review deck.",
     connectorSlugs: ["stripe", "gamma", "clerk"],
-    behavior: [
-      "Zero pulls the numbers",
-      "Deck built in Gamma",
-      "Ready to present",
-    ],
+    behavior: ["Pull the numbers", "Deck built in Gamma", "Ready to present"],
     missingInfo:
       "Connectors: stripe, gamma required; clerk optional.\nSuggested trigger: Add a schedule trigger (e.g. weekly).\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -794,11 +778,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     description: "Surface the few emails that actually need your attention.",
     shortDescription: "Surface the emails that need your attention.",
     connectorSlugs: ["gmail", "slack"],
-    behavior: [
-      "Zero reads the inbox",
-      "Priorities identified",
-      "Posted to Slack",
-    ],
+    behavior: ["Read the inbox", "Priorities identified", "Posted to Slack"],
     missingInfo:
       "Connectors: gmail, slack required.\nSuggested trigger: Add a gmail-new-message event trigger, or a schedule trigger that runs a few times a day.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -810,11 +790,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Assemble metrics and highlights into an investor update in Docs.",
     shortDescription: "Assemble metrics into an investor update.",
     connectorSlugs: ["stripe", "google-docs", "google-sheets"],
-    behavior: [
-      "Zero gathers KPIs",
-      "Update drafted",
-      "Editable in Google Docs",
-    ],
+    behavior: ["Gather KPIs", "Update drafted", "Editable in Google Docs"],
     missingInfo:
       "Connectors: stripe, google-docs required; google-sheets optional.\nSuggested trigger: Add a schedule trigger (e.g. monthly).\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -826,7 +802,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Surface contacts you haven't emailed lately.",
     connectorSlugs: ["gmail", "google-calendar", "slack"],
     behavior: [
-      "Zero reviews your contacts",
+      "Review the user's contacts",
       "Quiet relationships surfaced",
       "Openers suggested",
     ],
@@ -857,7 +833,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     description: "Roll up Asana project status into a single board in Notion.",
     shortDescription: "Roll up Asana project status into Notion.",
     connectorSlugs: ["asana", "notion"],
-    behavior: ["Zero reads Asana", "Rolled into one board", "Digest posted"],
+    behavior: ["Read Asana", "Rolled into one board", "Digest posted"],
     missingInfo:
       "Connectors: asana, notion required.\nSuggested trigger: Add a schedule trigger (e.g. every morning). Asana has no native event trigger, so poll on a cadence.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -869,7 +845,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Turn meeting notes into tasks in Asana.",
     connectorSlugs: ["fireflies", "asana"],
     behavior: [
-      "Zero reads the transcript",
+      "Read the transcript",
       "Action items extracted",
       "Tasks created in Asana",
     ],
@@ -914,7 +890,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     description: "Find overdue Asana tasks and nudge their owners on Slack.",
     shortDescription: "Nudge the owners of overdue Asana tasks.",
     connectorSlugs: ["asana", "slack"],
-    behavior: ["Zero scans Asana", "Owners identified", "Nudges sent in Slack"],
+    behavior: ["Scan Asana", "Owners identified", "Nudges sent in Slack"],
     missingInfo:
       "Connectors: asana, slack required.\nSuggested trigger: Add a schedule trigger (e.g. every morning).\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -975,7 +951,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Sort your inbox and draft replies to the emails that need them.",
     shortDescription: "Sort your inbox and draft the replies needed.",
     connectorSlugs: ["gmail"],
-    behavior: ["Zero reads new mail", "Sorted by urgency", "Replies drafted"],
+    behavior: ["Read new mail", "Sorted by urgency", "Replies drafted"],
     missingInfo:
       "Connectors: gmail required.\nSuggested trigger: Add a gmail-new-message event trigger so it runs on each new incoming email.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -1003,7 +979,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     shortDescription: "Digest your newsletters into one summary.",
     connectorSlugs: ["gmail", "slack"],
     behavior: [
-      "Zero collects newsletters",
+      "Collect newsletters",
       "Digested into one summary",
       "Posted to Slack",
     ],
@@ -1018,7 +994,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Share a recap with decisions and action items after each meeting.",
     shortDescription: "Share decisions and action items after meetings.",
     connectorSlugs: ["fireflies", "gmail", "slack"],
-    behavior: ["Zero reads the transcript", "Recap written", "Sent to you"],
+    behavior: ["Read the transcript", "Recap written", "Sent to you"],
     missingInfo:
       "Connectors: fireflies required; gmail, slack optional.\nSuggested trigger: Add a google-meet-transcript-generated event trigger if you meet on Google Meet; otherwise a schedule trigger, since Fireflies has no native event trigger.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
@@ -1029,11 +1005,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     description: "Turn the emails you flag into Todoist tasks automatically.",
     shortDescription: "Turn flagged emails into Todoist tasks.",
     connectorSlugs: ["gmail", "todoist"],
-    behavior: [
-      "You flag an email",
-      "Zero researches it",
-      "Task filed in Todoist",
-    ],
+    behavior: ["You flag an email", "Research it", "Task filed in Todoist"],
     missingInfo:
       "Connectors: gmail, todoist required.\nSuggested trigger: Add a gmail-label-applied event trigger on the label you apply to flag an email.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),

@@ -11,7 +11,10 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import {
+  isBuiltInModelProviderType,
+  type SupportedRunModel,
+} from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -31,8 +34,8 @@ import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
-  publishUserSignal,
 } from "../external/realtime";
 import { now, nowDate } from "../../lib/time";
 import {
@@ -70,6 +73,7 @@ import { generateAndPersistInitialThinkingMessage } from "./chat-initial-thinkin
 import {
   isCodexFastServiceTierSupported,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
+  modelProviderWriteTypeForLaunch,
   type ModelFirstPin,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
@@ -80,7 +84,7 @@ import {
   resolvePersistedChatThreadModel,
   type PersistedChatThreadModelResolutionPath,
 } from "./chat-thread-model.service";
-import { resolveNewChatThreadMediaModels } from "./chat-thread-media-model.service";
+import { loadNewChatThreadMediaModels } from "./chat-thread-media-model.service";
 import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import {
   revokeChatEvent,
@@ -88,7 +92,10 @@ import {
   type NewChatEvent,
   replaceChatEvent,
 } from "./chat-event.service";
-import { webChatPublicBrandContextId } from "./web-chat-public-brand-context.service";
+import {
+  officialWorkflowQueueContextId,
+  webChatPublicBrandContextId,
+} from "./web-chat-public-brand-context.service";
 import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import {
   agentRunSourceTitleSnapshot,
@@ -108,7 +115,9 @@ import {
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
+  type ChatThreadEventTransaction,
 } from "./chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "./chat-thread-organization.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { registerCanonicalWebInputAssets } from "./canonical-asset.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
@@ -146,6 +155,11 @@ import {
   type PresentationTemplateVolume,
 } from "./presentation-template-data.service";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
+import {
+  logTemplateUsage,
+  type TemplateUsageLogContext,
+} from "../../lib/template-usage-log";
+import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -239,6 +253,7 @@ interface NormalSendArgs {
   readonly preloadedAgent?: AgentForChatSend;
   readonly timing?: ApiDispatchTimingCollector;
   readonly agentRunPreCreateSource?: AgentRunPreCreateSource;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
 }
 
 interface PreparedNormalSend {
@@ -247,6 +262,13 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
   readonly generationTemplatePrompt: string;
+  /**
+   * The selections behind that guidance, reported once the run is created.
+   * Carried through preparation rather than reported during it: preparation can
+   * still fail afterwards, and a queue-first send that stays queued is reported
+   * by the claim path instead.
+   */
+  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
   /**
    * Guidance packages to mount for this run, one per uploaded template the
    * message selected and this caller was authorised for.
@@ -270,7 +292,7 @@ interface PreparedNormalSend {
 function normalSendTriggerSource(
   auth: OrganizationAuthContext,
 ): "web" | "agent" {
-  return auth.tokenType === "zero" ? "agent" : "web";
+  return auth.tokenType === "agent" ? "agent" : "web";
 }
 
 async function resolveChatAgentRunSourceById(
@@ -331,7 +353,7 @@ async function resolveChatAgentRunSource(
   readonly annotation: ChatAgentRunSourceAnnotation | null;
   readonly autonomyBudget: number;
 } | null> {
-  if (auth.tokenType !== "zero") {
+  if (auth.tokenType !== "agent") {
     return null;
   }
   return await resolveChatAgentRunSourceById(db, auth, auth.runId);
@@ -361,7 +383,7 @@ async function resolveNormalSendAgentRunSource(params: {
   }
   if (params.sourceRunId !== undefined) {
     if (
-      params.auth.tokenType === "zero" ||
+      params.auth.tokenType === "agent" ||
       params.auth.tokenType === "sandbox"
     ) {
       return {
@@ -389,7 +411,7 @@ async function resolveNormalSendAgentRunSource(params: {
   }
   const resolved = await resolveChatAgentRunSource(params.db, params.auth);
   if (resolved === null) {
-    return params.auth.tokenType === "zero"
+    return params.auth.tokenType === "agent"
       ? { response: badRequestMessage("Agent source run not found") }
       : { source: null };
   }
@@ -432,16 +454,14 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly latestWebsiteTemplatesEnabled: boolean;
   readonly latestPresentationTemplatesEnabled: boolean;
-  readonly videoModelSelectionEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
   /**
-   * Carried whole so thread creation can resolve its media pins without
-   * reloading the switches this request already read.
+   * Carried whole so downstream checks can read it without reloading the
+   * switches this request already read.
    */
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -624,6 +644,7 @@ async function resolveClientEventId(
   db: Db,
   params: {
     readonly clientEventId: string;
+    readonly orgId: string;
     readonly threadId: string;
     readonly userId: string;
   },
@@ -663,7 +684,12 @@ async function resolveClientEventId(
         ne(replacementChatEvent.eventType, "control.interrupt"),
       ),
     )
-    .where(eq(chatEvents.id, params.clientEventId))
+    .where(
+      and(
+        eq(chatEvents.id, params.clientEventId),
+        chatThreadOrganizationCondition(db, params.orgId),
+      ),
+    )
     .limit(1);
   return resolveExistingClientEventIdRow(event, params);
 }
@@ -814,7 +840,11 @@ const resolveIncomingAttachFileMetadata$ = command(
             wave.map(async (file) => {
               const object = await set(
                 resolveArtifactObject$,
-                { userId: args.userId, id: file.fileId },
+                {
+                  userId: args.userId,
+                  id: file.fileId,
+                  filenameHint: file.filenameSnapshot,
+                },
                 signal,
               );
               return { file, object };
@@ -871,6 +901,7 @@ async function loadAgentForChatSend(
 
 async function resolveClientEventSend(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
   readonly clientEventId: string | undefined;
@@ -880,6 +911,7 @@ async function resolveClientEventSend(params: {
   }
   const resolution = await resolveClientEventId(params.db, {
     clientEventId: params.clientEventId,
+    orgId: params.orgId,
     threadId: params.threadId,
     userId: params.userId,
   });
@@ -936,7 +968,9 @@ async function withBuiltInModelRuntimeRoute(
 ): Promise<ResolvedRunConfiguration | NormalSendFailure> {
   if (
     configuration.providerAdmission.error ||
-    configuration.providerAdmission.effectiveModelProvider !== "vm0"
+    !isBuiltInModelProviderType(
+      configuration.providerAdmission.effectiveModelProvider,
+    )
   ) {
     return configuration;
   }
@@ -955,7 +989,7 @@ async function withBuiltInModelRuntimeRoute(
     ? { ...configuration, builtInModelRuntimeRoute }
     : fallbackEnabled
       ? modelProviderUnavailable(
-          "Every managed route for this model is temporarily unavailable",
+          "Every built-in model route for this model is temporarily unavailable",
         )
       : providerUnavailable(
           "No model provider configured: no built-in model key is configured",
@@ -968,7 +1002,7 @@ async function resolveExplicitRunConfiguration(params: {
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly codexFastModeEnabled: boolean;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedRunConfiguration | NormalSendFailure | undefined> {
   const modelSelection = params.body.modelSelection;
@@ -1034,7 +1068,7 @@ async function resolveExplicitRunConfiguration(params: {
         codexFastModeEnabled: params.codexFastModeEnabled,
       }),
     },
-    params.managedModelProviderFallbackEnabled,
+    params.builtInModelProviderFallbackEnabled,
   );
 }
 
@@ -1049,16 +1083,8 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
-    latestWebsiteTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.LatestWebsiteTemplates,
-      context,
-    ),
     latestPresentationTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.LatestPresentationTemplates,
-      context,
-    ),
-    videoModelSelectionEnabled: isFeatureEnabled(
-      FeatureSwitchKey.VideoModelSelection,
       context,
     ),
     presentationTemplatesEnabled: isFeatureEnabled(
@@ -1066,8 +1092,8 @@ async function resolveNormalSendFeatureSwitches(
       context,
     ),
     featureSwitchContext: context,
-    managedModelProviderFallbackEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ManagedModelProviderFallback,
+    builtInModelProviderFallbackEnabled: isFeatureEnabled(
+      FeatureSwitchKey.BuiltInModelProviderFallback,
       context,
     ),
   };
@@ -1083,25 +1109,21 @@ function resolveSelectedTemplateContext(
   mountedUserPresentationTemplateIds: readonly string[],
 ): {
   readonly generationTemplatePrompt: string;
+  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
 } {
+  const resolved = resolveThreadGenerationTemplatePrompt({
+    explicit: runtimeBody.primaryTemplate,
+    explicitTemplates: runtimeBody.templates,
+    latestPresentationTemplatesEnabled:
+      featureSwitches.latestPresentationTemplatesEnabled,
+    presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
+    mountedUserPresentationTemplateIds,
+  });
   return {
-    generationTemplatePrompt: resolveThreadGenerationTemplatePrompt({
-      explicit: runtimeBody.primaryTemplate,
-      explicitTemplates: runtimeBody.templates,
-      latestWebsiteTemplatesEnabled:
-        featureSwitches.latestWebsiteTemplatesEnabled,
-      latestPresentationTemplatesEnabled:
-        featureSwitches.latestPresentationTemplatesEnabled,
-      presentationTemplatesEnabled:
-        featureSwitches.presentationTemplatesEnabled,
-      mountedUserPresentationTemplateIds,
-    }),
-    // Gated with the composer control that produces it, so a client that keeps
-    // sending the field after the switch is turned off stops being honoured.
-    videoRunOptions: featureSwitches.videoModelSelectionEnabled
-      ? (runtimeBody.runOptions?.video ?? null)
-      : null,
+    generationTemplatePrompt: resolved.prompt,
+    generationTemplateIdentities: resolved.identities,
+    videoRunOptions: runtimeBody.runOptions?.video ?? null,
   };
 }
 
@@ -1130,8 +1152,6 @@ async function validateGenerationTemplatePrompt(
   const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
-      latestWebsiteTemplatesEnabled:
-        featureSwitches.latestWebsiteTemplatesEnabled,
       latestPresentationTemplatesEnabled:
         featureSwitches.latestPresentationTemplatesEnabled,
       presentationTemplatesEnabled:
@@ -1225,14 +1245,15 @@ async function maybePersistExplicitCodexServiceTier(params: {
         and(
           eq(chatThreads.id, params.threadId),
           eq(chatThreads.userId, params.userId),
+          chatThreadOrganizationCondition(tx, params.orgId),
           isNotNull(chatThreads.agentId),
         ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return;
     }
     await appendChatThreadEvent(tx, {
@@ -1240,7 +1261,7 @@ async function maybePersistExplicitCodexServiceTier(params: {
       userId: params.userId,
       orgId: params.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       serviceTier: chatThreadServiceTierFromCodex(codexServiceTier),
       createdAt: updatedAt,
     });
@@ -1276,14 +1297,15 @@ async function updateThreadComputerAccess(params: {
         and(
           eq(chatThreads.id, params.threadId),
           eq(chatThreads.userId, params.userId),
+          chatThreadOrganizationCondition(tx, params.orgId),
           isNotNull(chatThreads.agentId),
         ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return;
     }
     await appendChatThreadEvent(tx, {
@@ -1291,7 +1313,7 @@ async function updateThreadComputerAccess(params: {
       userId: params.userId,
       orgId: params.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       computerUseHostId: params.hostId,
       cloudBrowserEnabled: params.cloudBrowserEnabled,
       createdAt: updatedAt,
@@ -1424,26 +1446,29 @@ async function createChatThread(
     readonly chatThreadEventId: string | undefined;
     readonly pin: ThreadModelPin;
     readonly codexServiceTier: CodexServiceTier | null;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<CreateChatThreadResult> {
   return await db.transaction(async (tx) => {
-    const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+    const mediaModels = await loadNewChatThreadMediaModels(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      featureSwitchContext: args.featureSwitchContext,
     });
+    const pinColumns = chatThreadModelPinColumns(args.pin);
     if (args.clientThreadId) {
       const [thread] = await tx
         .insert(chatThreads)
         .values({
           id: args.clientThreadId,
           userId: args.userId,
-          agentComposeId: args.agentId,
+          agentId: args.agentId,
           title: null,
-          ...chatThreadModelPinColumns(args.pin),
+          modelProviderId: pinColumns.modelProviderId,
+          modelProviderType: pinColumns.modelProviderType,
+          modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+          selectedModel: pinColumns.selectedModel,
           codexServiceTier: args.codexServiceTier,
-          ...mediaModels,
+          selectedVideoModel: mediaModels.selectedVideoModel,
+          selectedImageModel: mediaModels.selectedImageModel,
         })
         .onConflictDoNothing({ target: chatThreads.id })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -1453,7 +1478,7 @@ async function createChatThread(
           userId: args.userId,
           orgId: args.orgId,
           chatThreadId: thread.id,
-          agentComposeId: args.agentId,
+          agentId: args.agentId,
           eventId: args.chatThreadEventId,
           title: null,
           selectedModel: args.pin.selectedModel,
@@ -1487,11 +1512,15 @@ async function createChatThread(
       .insert(chatThreads)
       .values({
         userId: args.userId,
-        agentComposeId: args.agentId,
+        agentId: args.agentId,
         title: null,
-        ...chatThreadModelPinColumns(args.pin),
+        modelProviderId: pinColumns.modelProviderId,
+        modelProviderType: pinColumns.modelProviderType,
+        modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+        selectedModel: pinColumns.selectedModel,
         codexServiceTier: args.codexServiceTier,
-        ...mediaModels,
+        selectedVideoModel: mediaModels.selectedVideoModel,
+        selectedImageModel: mediaModels.selectedImageModel,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {
@@ -1502,7 +1531,7 @@ async function createChatThread(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: thread.id,
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       eventId: args.chatThreadEventId,
       title: null,
       selectedModel: args.pin.selectedModel,
@@ -1531,6 +1560,7 @@ function resolveInitialThreadModelPin(params: {
 
 function loadTimedExistingThreadSnapshot(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
   readonly timing?: ApiDispatchTimingCollector;
@@ -1546,7 +1576,7 @@ function loadTimedExistingThreadSnapshot(params: {
           computerUseHostId: chatThreads.computerUseHostId,
           cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
           ...persistedChatThreadModelSnapshotColumns(),
-          agentComposeId: agents.id,
+          agentId: agents.id,
         })
         .from(chatThreads)
         .innerJoin(agents, eq(agents.id, chatThreads.agentId))
@@ -1554,6 +1584,7 @@ function loadTimedExistingThreadSnapshot(params: {
           and(
             eq(chatThreads.id, params.threadId),
             eq(chatThreads.userId, params.userId),
+            eq(agents.orgId, params.orgId),
           ),
         )
         .limit(1);
@@ -1574,8 +1605,7 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly managedModelProviderFallbackEnabled: boolean;
+  readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
@@ -1591,7 +1621,6 @@ async function resolveThread(params: {
       pin: params.initialPin,
       codexServiceTier:
         params.explicitRunConfiguration.codexServiceTier ?? null,
-      featureSwitchContext: params.featureSwitchContext,
     });
     if ("status" in thread) {
       return thread;
@@ -1610,11 +1639,12 @@ async function resolveThread(params: {
 
   const [thread] = await loadTimedExistingThreadSnapshot({
     db: params.db,
+    orgId: params.orgId,
     userId: params.userId,
     threadId: params.existingThreadId,
     timing: params.timing,
   });
-  if (!thread?.agentComposeId) {
+  if (!thread?.agentId) {
     return notFound("Chat thread not found");
   }
 
@@ -1654,7 +1684,7 @@ async function resolveThread(params: {
         providerAdmission: persisted.providerAdmission,
         codexServiceTier: persisted.runCodexServiceTier,
       },
-      params.managedModelProviderFallbackEnabled,
+      params.builtInModelProviderFallbackEnabled,
     );
     if ("status" in resolvedRunConfiguration) {
       return resolvedRunConfiguration;
@@ -1678,8 +1708,9 @@ async function resolveThread(params: {
   };
 }
 
-function appendUnassociatedUserMessage(params: {
+interface AppendUnassociatedUserMessageParams {
   readonly db: Db;
+  readonly timing?: ApiDispatchTimingCollector;
   readonly threadId: string;
   readonly userId: string;
   readonly orgId: string;
@@ -1693,36 +1724,116 @@ function appendUnassociatedUserMessage(params: {
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
   readonly publicBrand: PublicBrand;
-}): Promise<ClientEventIdResolution> {
-  return params.db.transaction(async (tx) => {
-    await tx
-      .update(chatThreads)
-      .set({
-        draftUserMessage: null,
-        draftAttachments: null,
-      })
-      .where(
-        and(
-          eq(chatThreads.id, params.threadId),
-          eq(chatThreads.userId, params.userId),
-        ),
-      );
+  readonly requiredOfficialWorkflowIds?: readonly string[];
+}
 
-    const explicitId = params.clientEventId ?? undefined;
-    const fileMetadata = params.attachFileMetadata;
-    const event: NewChatEvent = {
-      ...(explicitId ? { id: explicitId } : {}),
-      chatThreadId: params.threadId,
-      eventType: "input.prompt",
-      userMessage: params.userMessage,
-      runId: null,
-      ...(params.triggerSource === "web"
-        ? {
-            contextType: "web",
-            contextId: webChatPublicBrandContextId(params.publicBrand),
-          }
-        : {}),
-      ...(params.triggerSource === "agent" && params.agentRunSource
+async function resolveExistingUnassociatedClientEventId(
+  tx: ChatThreadEventTransaction,
+  params: AppendUnassociatedUserMessageParams,
+  explicitId: string,
+): Promise<ClientEventIdResolution> {
+  const [existing] = await tx
+    .select({
+      chatThreadId: chatEvents.chatThreadId,
+      threadUserId: chatThreads.userId,
+      eventType: chatEvents.eventType,
+      content: canonicalChatEventContent(),
+      runId: chatEvents.runId,
+      revokesEventId: chatEvents.revokesEventId,
+      error: canonicalChatEventError(),
+      eventCreatedAt: chatEvents.createdAt,
+      runStatus: agentRuns.status,
+      runCreatedAt: agentRuns.createdAt,
+      replacementEventId: replacementChatEvent.id,
+      replacementRunId: replacementChatEvent.runId,
+      replacementError: canonicalChatEventError(replacementChatEvent.payload),
+      replacementRunStatus: replacementAgentRun.status,
+      replacementRunCreatedAt: replacementAgentRun.createdAt,
+    })
+    .from(chatEvents)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+    .leftJoin(
+      agentRuns,
+      and(eq(agentRuns.id, chatEvents.runId), runOwnedChatEventCondition()),
+    )
+    .leftJoin(
+      replacementChatEvent,
+      eq(replacementChatEvent.revokesEventId, chatEvents.id),
+    )
+    .leftJoin(
+      replacementAgentRun,
+      and(
+        eq(replacementAgentRun.id, replacementChatEvent.runId),
+        ne(replacementChatEvent.eventType, "control.interrupt"),
+      ),
+    )
+    .where(eq(chatEvents.id, explicitId))
+    .limit(1);
+  const resolution = resolveExistingClientEventIdRow(existing, {
+    threadId: params.threadId,
+    userId: params.userId,
+  });
+  return resolution.kind === "available" ? { kind: "conflict" } : resolution;
+}
+
+async function appendUnassociatedUserMessageTransaction(
+  tx: ChatThreadEventTransaction,
+  params: AppendUnassociatedUserMessageParams,
+): Promise<ClientEventIdResolution> {
+  await measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft",
+    "nested",
+    () => {
+      return tx
+        .update(chatThreads)
+        .set({
+          draftUserMessage: null,
+          draftAttachments: null,
+        })
+        .where(
+          and(
+            eq(chatThreads.id, params.threadId),
+            eq(chatThreads.userId, params.userId),
+          ),
+        );
+    },
+  );
+
+  const explicitId = params.clientEventId ?? undefined;
+  const fileMetadata = params.attachFileMetadata;
+  if (params.requiredOfficialWorkflowIds?.length === 0) {
+    throw new Error("Official Workflow source claim cannot be empty");
+  }
+  if (
+    params.requiredOfficialWorkflowIds !== undefined &&
+    params.triggerSource === "agent" &&
+    params.agentRunSource === null
+  ) {
+    throw new Error("Official agent queue source is missing its source Run");
+  }
+  const event: NewChatEvent = {
+    ...(explicitId ? { id: explicitId } : {}),
+    chatThreadId: params.threadId,
+    eventType: "input.prompt",
+    userMessage: params.userMessage,
+    runId: null,
+    ...(params.requiredOfficialWorkflowIds === undefined
+      ? {}
+      : {
+          requiredOfficialWorkflowIds: params.requiredOfficialWorkflowIds,
+        }),
+    ...(params.triggerSource === "web"
+      ? {
+          contextType: "web",
+          contextId:
+            params.requiredOfficialWorkflowIds === undefined
+              ? webChatPublicBrandContextId(params.publicBrand)
+              : officialWorkflowQueueContextId(params.publicBrand),
+        }
+      : {}),
+    ...(params.triggerSource === "agent" && params.agentRunSource
+      ? params.requiredOfficialWorkflowIds === undefined
         ? {
             agentRunContext: {
               sourceRunId: params.agentRunSource.runId,
@@ -1730,79 +1841,77 @@ function appendUnassociatedUserMessage(params: {
               sourceAgentId: params.agentRunSource.agentId,
             },
           }
-        : {}),
+        : {
+            contextType: "agent_run",
+            contextId: officialWorkflowQueueContextId(params.publicBrand),
+          }
+      : {}),
+  };
+  const inserted = await measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event",
+    "nested",
+    () => {
+      return params.revokesEventId
+        ? replaceChatEvent(tx, params.revokesEventId, event)
+        : insertChatEvent(tx, event, "id");
+    },
+  );
+  if (inserted) {
+    await measureApiDispatchTiming(
+      params.timing,
+      "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets",
+      "nested",
+      () => {
+        return registerCanonicalWebInputAssets(tx, {
+          chatThreadId: params.threadId,
+          userId: params.userId,
+          orgId: params.orgId,
+          files: fileMetadata ?? [],
+        });
+      },
+    );
+    if (params.touchThreadSort) {
+      await measureApiDispatchTiming(
+        params.timing,
+        "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort",
+        "nested",
+        () => {
+          return touchChatThreadLastMessageAt(
+            tx,
+            params.threadId,
+            inserted.createdAt,
+            params.chatThreadSortEventId,
+          );
+        },
+      );
+    }
+    return {
+      kind: "queued",
+      createdAt: inserted.createdAt,
+      inserted: true,
+      messageId: inserted.id,
     };
-    const inserted = params.revokesEventId
-      ? await replaceChatEvent(tx, params.revokesEventId, event)
-      : await insertChatEvent(tx, event, "id");
-    if (inserted) {
-      await registerCanonicalWebInputAssets(tx, {
-        chatThreadId: params.threadId,
-        userId: params.userId,
-        orgId: params.orgId,
-        files: fileMetadata ?? [],
+  }
+  if (!explicitId) {
+    throw new Error("Failed to insert unassociated user message");
+  }
+  return await resolveExistingUnassociatedClientEventId(tx, params, explicitId);
+}
+
+function appendUnassociatedUserMessage(
+  params: AppendUnassociatedUserMessageParams,
+): Promise<ClientEventIdResolution> {
+  return measureApiDispatchTiming(
+    params.timing,
+    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction",
+    "nested",
+    () => {
+      return params.db.transaction((tx) => {
+        return appendUnassociatedUserMessageTransaction(tx, params);
       });
-      if (params.touchThreadSort) {
-        await touchChatThreadLastMessageAt(
-          tx,
-          params.threadId,
-          inserted.createdAt,
-          params.chatThreadSortEventId,
-        );
-      }
-      return {
-        kind: "queued",
-        createdAt: inserted.createdAt,
-        inserted: true,
-        messageId: inserted.id,
-      };
-    }
-    if (!explicitId) {
-      throw new Error("Failed to insert unassociated user message");
-    }
-    const [existing] = await tx
-      .select({
-        chatThreadId: chatEvents.chatThreadId,
-        threadUserId: chatThreads.userId,
-        eventType: chatEvents.eventType,
-        content: canonicalChatEventContent(),
-        runId: chatEvents.runId,
-        revokesEventId: chatEvents.revokesEventId,
-        error: canonicalChatEventError(),
-        eventCreatedAt: chatEvents.createdAt,
-        runStatus: agentRuns.status,
-        runCreatedAt: agentRuns.createdAt,
-        replacementEventId: replacementChatEvent.id,
-        replacementRunId: replacementChatEvent.runId,
-        replacementError: canonicalChatEventError(replacementChatEvent.payload),
-        replacementRunStatus: replacementAgentRun.status,
-        replacementRunCreatedAt: replacementAgentRun.createdAt,
-      })
-      .from(chatEvents)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-      .leftJoin(
-        agentRuns,
-        and(eq(agentRuns.id, chatEvents.runId), runOwnedChatEventCondition()),
-      )
-      .leftJoin(
-        replacementChatEvent,
-        eq(replacementChatEvent.revokesEventId, chatEvents.id),
-      )
-      .leftJoin(
-        replacementAgentRun,
-        and(
-          eq(replacementAgentRun.id, replacementChatEvent.runId),
-          ne(replacementChatEvent.eventType, "control.interrupt"),
-        ),
-      )
-      .where(eq(chatEvents.id, explicitId))
-      .limit(1);
-    const resolution = resolveExistingClientEventIdRow(existing, {
-      threadId: params.threadId,
-      userId: params.userId,
-    });
-    return resolution.kind === "available" ? { kind: "conflict" } : resolution;
-  });
+    },
+  );
 }
 
 async function clearThreadDraft(
@@ -2137,22 +2246,30 @@ function appendInterruptUserMessage(params: {
   });
 }
 
-async function publishChatEventCreated(
-  userId: string,
-  threadId: string,
-): Promise<void> {
-  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+async function publishChatEventCreated(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly threadId: string;
+}): Promise<void> {
+  await publishChatThreadMessageCreatedSafely(args);
 }
 
 async function assertOwnedThread(
   db: Db,
   threadId: string,
   userId: string,
+  orgId: string,
 ): Promise<ReturnType<typeof notFound> | undefined> {
   const [thread] = await db
     .select({ id: chatThreads.id })
     .from(chatThreads)
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .where(
+      and(
+        eq(chatThreads.id, threadId),
+        eq(chatThreads.userId, userId),
+        chatThreadOrganizationCondition(db, orgId),
+      ),
+    )
     .limit(1);
   return thread ? undefined : notFound("Chat thread not found");
 }
@@ -2163,6 +2280,7 @@ const handleRecallSend$ = command(
     args: {
       readonly body: RecallSendBody;
       readonly userId: string;
+      readonly orgId: string;
     },
     signal: AbortSignal,
   ) => {
@@ -2171,6 +2289,7 @@ const handleRecallSend$ = command(
       db,
       args.body.threadId,
       args.userId,
+      args.orgId,
     );
     signal.throwIfAborted();
     if (ownership) {
@@ -2188,7 +2307,11 @@ const handleRecallSend$ = command(
       return badRequestMessage(result.message);
     }
 
-    await publishChatEventCreated(args.userId, args.body.threadId);
+    await publishChatEventCreated({
+      userId: args.userId,
+      orgId: args.orgId,
+      threadId: args.body.threadId,
+    });
     signal.throwIfAborted();
     return {
       status: 201 as const,
@@ -2216,6 +2339,7 @@ const handleInterruptSend$ = command(
       db,
       args.body.threadId,
       args.userId,
+      args.orgId,
     );
     signal.throwIfAborted();
     if (ownership) {
@@ -2233,7 +2357,11 @@ const handleInterruptSend$ = command(
       return badRequestMessage(result.message);
     }
 
-    await publishChatEventCreated(args.userId, args.body.threadId);
+    await publishChatEventCreated({
+      userId: args.userId,
+      orgId: args.orgId,
+      threadId: args.body.threadId,
+    });
     signal.throwIfAborted();
 
     const cancelResult = await set(
@@ -2315,8 +2443,8 @@ function resolveTimedExplicitRunConfiguration(
         userId: args.userId,
         body: args.body,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        managedModelProviderFallbackEnabled:
-          featureSwitches.managedModelProviderFallbackEnabled,
+        builtInModelProviderFallbackEnabled:
+          featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,
       });
     },
@@ -2382,9 +2510,8 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        featureSwitchContext: featureSwitches.featureSwitchContext,
-        managedModelProviderFallbackEnabled:
-          featureSwitches.managedModelProviderFallbackEnabled,
+        builtInModelProviderFallbackEnabled:
+          featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,
       });
       if (!("status" in resolved)) {
@@ -2480,6 +2607,7 @@ async function resolveTimedPreflightClientEvent(
         () => {
           return resolveClientEventSend({
             db,
+            orgId: args.orgId,
             userId: args.userId,
             threadId,
             clientEventId: args.body.clientEventId,
@@ -2510,11 +2638,50 @@ function resolveTimedNormalSendAgentRunSource(
       normal_send_agent_run_source_kind:
         args.body.sourceRunId !== undefined
           ? "forward"
-          : args.auth.tokenType === "zero"
+          : args.auth.tokenType === "agent"
             ? "agent"
             : "none",
     },
   );
+}
+
+function normalSendTemplateUsageContext(
+  args: NormalSendArgs,
+  thread: PreparedNormalSend["thread"],
+): TemplateUsageLogContext {
+  return {
+    dispatchPath: "normal-send",
+    orgId: args.orgId,
+    userId: args.userId,
+    chatThreadId: thread.threadId,
+    triggerSource: normalSendTriggerSource(args.auth),
+  };
+}
+
+/**
+ * Persist the explicit model and service-tier choices this send carried.
+ *
+ * Both writes settle the same decision — what the user pinned for this one
+ * message — and only the model selection is part of the prepared value, so they
+ * travel together rather than sitting inline among unrelated resolution steps.
+ */
+async function persistTimedExplicitSelections(
+  args: NormalSendArgs,
+  db: Db,
+  thread: PreparedNormalSend["thread"],
+  runConfiguration: PreparedNormalSend["runConfiguration"],
+  signal: AbortSignal,
+) {
+  const persistedExplicitSelection =
+    await maybePersistTimedExplicitModelFirstSelection(
+      args,
+      db,
+      runConfiguration.codexServiceTier,
+    );
+  signal.throwIfAborted();
+  await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
+  signal.throwIfAborted();
+  return persistedExplicitSelection;
 }
 
 function usesPi(
@@ -2611,21 +2778,18 @@ const prepareNormalSend$ = command(
     }
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
-    const { generationTemplatePrompt, videoRunOptions } =
-      resolveSelectedTemplateContext(
-        runtimeBody,
-        featureSwitches,
-        authorizedTemplates.userPresentationTemplateIds,
-      );
-    const persistedExplicitSelection =
-      await maybePersistTimedExplicitModelFirstSelection(
-        args,
-        db,
-        runConfiguration.codexServiceTier,
-      );
-    signal.throwIfAborted();
-    await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
-    signal.throwIfAborted();
+    const templateContext = resolveSelectedTemplateContext(
+      runtimeBody,
+      featureSwitches,
+      authorizedTemplates.userPresentationTemplateIds,
+    );
+    const persistedExplicitSelection = await persistTimedExplicitSelections(
+      args,
+      db,
+      thread,
+      runConfiguration,
+      signal,
+    );
     const computerAccess = await resolveTimedComputerAccess(args, db, thread);
     signal.throwIfAborted();
     if ("status" in computerAccess) {
@@ -2647,11 +2811,13 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       body: runtimeBody,
-      generationTemplatePrompt,
+      generationTemplatePrompt: templateContext.generationTemplatePrompt,
+      generationTemplateIdentities:
+        templateContext.generationTemplateIdentities,
       presentationTemplateVolumes: userPresentationTemplateVolumes(
         authorizedTemplates.userPresentationTemplateIds,
       ),
-      videoRunOptions,
+      videoRunOptions: templateContext.videoRunOptions,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.agentRunPreCreateSource === undefined,
@@ -2668,11 +2834,13 @@ const prepareNormalSend$ = command(
 
 async function queueUnassociatedNormalEvent(params: {
   readonly prepared: PreparedNormalSend;
+  readonly timing?: ApiDispatchTimingCollector;
   readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly touchThreadSort: boolean;
   readonly orgId: string;
   readonly publicBrand: PublicBrand;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
 }): Promise<{
   readonly response:
     | CreatedChatEventResponse
@@ -2682,6 +2850,7 @@ async function queueUnassociatedNormalEvent(params: {
 }> {
   const resolution = await appendUnassociatedUserMessage({
     db: params.prepared.db,
+    timing: params.timing,
     threadId: params.prepared.thread.threadId,
     userId: params.userId,
     orgId: params.orgId,
@@ -2695,9 +2864,17 @@ async function queueUnassociatedNormalEvent(params: {
     triggerSource: params.prepared.triggerSource,
     agentRunSource: params.prepared.agentRunSource,
     publicBrand: params.publicBrand,
+    ...(params.requiredOfficialWorkflowIds === undefined
+      ? {}
+      : {
+          requiredOfficialWorkflowIds: params.requiredOfficialWorkflowIds,
+        }),
   });
   if (resolution.kind === "queued" && resolution.inserted) {
-    await publishThreadListChanged(params.userId);
+    await publishThreadListChanged({
+      userId: params.userId,
+      orgId: params.orgId,
+    });
   }
   const response = clientEventIdResolutionResponse(
     resolution,
@@ -2772,11 +2949,15 @@ function scheduleAssociatedUserMessage(params: {
         clearDraft: true,
       });
       if (inserted) {
-        await publishUserSignal(
-          [params.userId],
-          `chatThreadMessageCreated:${params.threadId}`,
-        );
-        await publishThreadListChanged(params.userId);
+        await publishChatEventCreated({
+          userId: params.userId,
+          orgId: params.orgId,
+          threadId: params.threadId,
+        });
+        await publishThreadListChanged({
+          userId: params.userId,
+          orgId: params.orgId,
+        });
       }
       if (params.appendInitialThinking) {
         await bestEffort(
@@ -2784,6 +2965,7 @@ function scheduleAssociatedUserMessage(params: {
             db: params.db,
             threadId: params.threadId,
             userId: params.userId,
+            orgId: params.orgId,
             runId: params.runId,
             currentPrompt: params.body.prompt,
           }),
@@ -2832,6 +3014,7 @@ function scheduleCreatedChatRunSideEffects(params: {
       body: params.body,
       threadId: params.thread.threadId,
       userId: params.userId,
+      orgId: params.orgId,
       runId: params.runId,
       createdAt: params.queueFirstClaim.createdAt,
       appendQueueMarker: params.runStatus === "queued",
@@ -2865,6 +3048,7 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
   readonly body: RuntimeNormalSendBody;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly runId: string;
   readonly createdAt: Date;
   readonly appendQueueMarker: boolean;
@@ -2881,13 +3065,18 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
           });
         });
       }
-      await publishChatEventCreated(params.userId, params.threadId);
+      await publishChatEventCreated({
+        userId: params.userId,
+        orgId: params.orgId,
+        threadId: params.threadId,
+      });
       if (params.appendInitialThinking) {
         await bestEffort(
           generateAndPersistInitialThinkingMessage({
             db: params.db,
             threadId: params.threadId,
             userId: params.userId,
+            orgId: params.orgId,
             runId: params.runId,
             currentPrompt: params.body.prompt,
           }),
@@ -2923,6 +3112,7 @@ async function buildInsufficientCreditsAssistantMessage(params: {
 async function appendQueueFirstInsufficientCreditsEvents(params: {
   readonly prepared: PreparedNormalSend;
   readonly userId: string;
+  readonly orgId: string;
   readonly eventId: string;
   readonly assistantContent: string;
 }): Promise<CreatedChatEventResponse> {
@@ -2989,7 +3179,11 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
     }
     return queuedMessage.createdAt;
   });
-  await publishChatEventCreated(params.userId, params.prepared.thread.threadId);
+  await publishChatEventCreated({
+    userId: params.userId,
+    orgId: params.orgId,
+    threadId: params.prepared.thread.threadId,
+  });
   return {
     status: 201,
     body: {
@@ -3018,6 +3212,7 @@ async function appendInsufficientCreditsEvents(params: {
     return appendQueueFirstInsufficientCreditsEvents({
       prepared: params.prepared,
       userId: params.userId,
+      orgId: params.orgId,
       eventId: params.queueFirstEventId,
       assistantContent,
     });
@@ -3083,9 +3278,16 @@ async function appendInsufficientCreditsEvents(params: {
     return { createdAt, inserted: userMessage !== null };
   });
 
-  await publishChatEventCreated(params.userId, params.prepared.thread.threadId);
+  await publishChatEventCreated({
+    userId: params.userId,
+    orgId: params.orgId,
+    threadId: params.prepared.thread.threadId,
+  });
   if (result.inserted) {
-    await publishThreadListChanged(params.userId);
+    await publishThreadListChanged({
+      userId: params.userId,
+      orgId: params.orgId,
+    });
   }
 
   return {
@@ -3146,6 +3348,14 @@ function cliAgentTypeForRun(prepared: PreparedNormalSend) {
   return prepared.piExecution
     ? ("pi" as const)
     : prepared.runConfiguration.providerAdmission.cliAgentType;
+}
+
+function requiredOfficialWorkflowRunArgs(
+  workflowIds: readonly string[] | undefined,
+) {
+  return workflowIds === undefined
+    ? {}
+    : { requiredOfficialWorkflowIds: workflowIds };
 }
 
 function buildCreateAgentRunArgs(params: {
@@ -3209,7 +3419,11 @@ function buildCreateAgentRunArgs(params: {
       prompt: prepared.body.agentPrompt,
       agentId: args.body.agentId,
       ...(providerAdmission.effectiveModelProvider
-        ? { modelProvider: providerAdmission.effectiveModelProvider }
+        ? {
+            modelProvider: modelProviderWriteTypeForLaunch(
+              providerAdmission.effectiveModelProvider,
+            ),
+          }
         : {}),
       ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
       ...(args.body.captureNetworkBodies ? { captureNetworkBodies: true } : {}),
@@ -3231,6 +3445,7 @@ function buildCreateAgentRunArgs(params: {
     ...(args.agentRunPreCreateSource
       ? { agentRunPreCreateSource: args.agentRunPreCreateSource }
       : {}),
+    ...requiredOfficialWorkflowRunArgs(args.requiredOfficialWorkflowIds),
   };
 }
 
@@ -3251,12 +3466,14 @@ async function buildTimedCreateAgentRunArgs(params: {
 
 async function resolveQueueFirstEventAfterLostClaim(params: {
   readonly db: Db;
+  readonly orgId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly eventId: string;
 }) {
   const resolution = await resolveClientEventId(params.db, {
     clientEventId: params.eventId,
+    orgId: params.orgId,
     threadId: params.threadId,
     userId: params.userId,
   });
@@ -3377,6 +3594,7 @@ const createNormalChatRun$ = command(
     if (!queuedMessage || queuedMessage.id !== queueFirstEventId) {
       return await resolveQueueFirstEventAfterLostClaim({
         db: prepared.db,
+        orgId: args.orgId,
         threadId: prepared.thread.threadId,
         userId: args.userId,
         eventId: queueFirstEventId,
@@ -3422,6 +3640,7 @@ const createNormalChatRun$ = command(
     if (isQueueFirstRunClaimLost(runResult)) {
       return await resolveQueueFirstEventAfterLostClaim({
         db: prepared.db,
+        orgId: args.orgId,
         threadId: prepared.thread.threadId,
         userId: args.userId,
         eventId: queueFirstEventId,
@@ -3430,6 +3649,14 @@ const createNormalChatRun$ = command(
     if (runResult.status !== 201) {
       return runResult;
     }
+    // The run now exists, which is what makes this a use. Reporting any earlier
+    // counts sends that never produced one: a lost claim hands the message to
+    // another dispatcher that reports it through `queued-claim`, and a non-201
+    // result leaves no run at all.
+    logTemplateUsage(
+      normalSendTemplateUsageContext(args, prepared.thread),
+      prepared.generationTemplateIdentities,
+    );
     const response = createdNormalChatRunResponse({
       runId: runResult.body.runId,
       threadId: prepared.thread.threadId,
@@ -3490,6 +3717,7 @@ export const sendNormalEvent$ = command(
             async () => {
               return await resolveClientEventSend({
                 db: prepared.db,
+                orgId: args.orgId,
                 userId: args.userId,
                 threadId: prepared.thread.threadId,
                 clientEventId: args.body.clientEventId,
@@ -3561,6 +3789,7 @@ const sendQueueFirstNormalEvent$ = command(
       async () => {
         return await queueUnassociatedNormalEvent({
           prepared,
+          timing: args.timing,
           body: prepared.body,
           userId: args.userId,
           touchThreadSort: shouldTouchThreadSortFromNormalSend(
@@ -3569,6 +3798,11 @@ const sendQueueFirstNormalEvent$ = command(
           ),
           orgId: args.orgId,
           publicBrand: args.publicBrand,
+          ...(args.requiredOfficialWorkflowIds === undefined
+            ? {}
+            : {
+                requiredOfficialWorkflowIds: args.requiredOfficialWorkflowIds,
+              }),
         });
       },
     );
@@ -3596,7 +3830,11 @@ const sendQueueFirstNormalEvent$ = command(
     );
     signal.throwIfAborted();
     if (dispatch === "wait") {
-      await publishChatEventCreated(args.userId, threadId);
+      await publishChatEventCreated({
+        userId: args.userId,
+        orgId: args.orgId,
+        threadId,
+      });
       signal.throwIfAborted();
       await set(
         drainChatThreadQueueForThread$,
@@ -3613,7 +3851,11 @@ const sendQueueFirstNormalEvent$ = command(
       // The thread is idle but an older unclaimed message holds the queue
       // head (e.g. left behind by a cancelled run). Dispatch the head so the
       // thread keeps draining; this message stays queued behind it (#21392).
-      await publishChatEventCreated(args.userId, threadId);
+      await publishChatEventCreated({
+        userId: args.userId,
+        orgId: args.orgId,
+        threadId,
+      });
       signal.throwIfAborted();
       await set(
         drainChatThreadQueueForThread$,
@@ -3654,7 +3896,7 @@ export const handleSendChatEvent$ = command(
     if (isRecallSendBody(body)) {
       return await set(
         handleRecallSend$,
-        { body, userId: auth.userId },
+        { body, userId: auth.userId, orgId: auth.orgId },
         signal,
       );
     }

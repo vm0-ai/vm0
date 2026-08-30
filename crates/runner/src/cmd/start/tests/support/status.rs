@@ -5,7 +5,7 @@ use super::wait::{WaitProbe, wait_for_probe};
 struct StatusSnapshot {
     active_runs: Vec<ActiveRunSnapshot>,
     #[serde(default)]
-    idle_vms: Vec<IdleVmSnapshot>,
+    idle_sandboxes: Vec<IdleSandboxSnapshot>,
 }
 
 #[derive(serde::Deserialize)]
@@ -25,7 +25,7 @@ struct ActiveRunSnapshot {
 }
 
 #[derive(serde::Deserialize)]
-struct IdleVmSnapshot {
+struct IdleSandboxSnapshot {
     reuse_key: String,
 }
 
@@ -34,7 +34,11 @@ pub(in super::super) async fn status_idle_reuse_keys_and_active_runs(
 ) -> (Vec<String>, Vec<String>) {
     let raw = tokio::fs::read_to_string(status_path).await.unwrap();
     let status: StatusSnapshot = serde_json::from_str(&raw).unwrap();
-    let mut reuse_keys: Vec<String> = status.idle_vms.into_iter().map(|vm| vm.reuse_key).collect();
+    let mut reuse_keys: Vec<String> = status
+        .idle_sandboxes
+        .into_iter()
+        .map(|sandbox| sandbox.reuse_key)
+        .collect();
     reuse_keys.sort_unstable();
     let mut run_ids: Vec<String> = status
         .active_runs
@@ -92,7 +96,7 @@ pub(in super::super) async fn wait_status_mode(
 }
 
 #[tokio::test]
-async fn status_parser_defaults_omitted_idle_vms_to_empty() {
+async fn status_parser_defaults_omitted_idle_sandboxes_to_empty() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("status.json");
     tokio::fs::write(
@@ -113,7 +117,9 @@ async fn status_parser_defaults_omitted_idle_vms_to_empty() {
 async fn status_parser_requires_active_runs() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("status.json");
-    tokio::fs::write(&path, r#"{"idle_vms":[]}"#).await.unwrap();
+    tokio::fs::write(&path, r#"{"idle_sandboxes":[]}"#)
+        .await
+        .unwrap();
 
     let _ = status_idle_reuse_keys_and_active_runs(&path).await;
 }
@@ -169,8 +175,9 @@ pub(in super::super) async fn publish_idle_status(pool: &SharedIdlePool, status:
     let snapshot = pool.lock().await.status_snapshot();
     assert!(
         status
-            .set_idle_info_at_revision(snapshot.revision, snapshot.idle_vms)
+            .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
             .await
+            .unwrap()
     );
 }
 
@@ -187,7 +194,7 @@ pub(in super::super) async fn wait_status_idle_empty_with_active_run(
             WaitProbe::Ready(())
         } else {
             WaitProbe::Pending(format!(
-                "status did not atomically clear idle_vms and add active run {expected} within {timeout:?} (idle: {idle_reuse_keys:?}, active: {active_runs:?})",
+                "status did not atomically clear idle_sandboxes and add active run {expected} within {timeout:?} (idle: {idle_reuse_keys:?}, active: {active_runs:?})",
             ))
         }
     })

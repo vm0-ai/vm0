@@ -1,16 +1,17 @@
 import { Buffer } from "node:buffer";
 
-import type {
-  ConnectorAccountConnection,
-  ConnectorAccountSummary,
-  ConnectorAccountTarget,
+import {
+  connectorAccountTargetKey,
+  type ConnectorAccountConnection,
+  type ConnectorAccountSummary,
+  type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorReconnectReasonSchema,
   type ConnectorReconnectReason,
 } from "@okouai/api-contracts/contracts/connector-schemas";
-import { isIntegrationManagedCustomConnectorProviderAdapter } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { isIntegrationManagedCustomConnectorProviderAdapter } from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectors } from "@okouai/db/schema/connector";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
@@ -24,6 +25,7 @@ import {
   desc,
   eq,
   ilike,
+  inArray,
   isNotNull,
   lt,
   lte,
@@ -102,6 +104,7 @@ function accountSelection() {
     externalUsername: connectors.externalUsername,
     externalEmail: connectors.externalEmail,
     oauthScopes: connectors.oauthScopes,
+    oauthGrantedScopes: connectors.oauthGrantedScopes,
     tokenExpiresAt: connectors.tokenExpiresAt,
     needsReconnect: connectors.needsReconnect,
     reconnectReason: connectors.reconnectReason,
@@ -162,6 +165,7 @@ async function loadConnectorAccountRows(
     readonly userId: string;
     readonly target?: ConnectorAccountTarget;
     readonly connectionId?: string;
+    readonly connectionIds?: readonly string[];
     readonly cursor?: ConnectorAccountCursor;
     readonly limit?: number;
     readonly search?: string;
@@ -187,6 +191,7 @@ async function loadConnectorAccountRows(
     searchPattern === undefined
       ? undefined
       : or(
+          ilike(sql`${connectors.id}::text`, searchPattern),
           ilike(connectors.displayName, searchPattern),
           ilike(connectors.externalEmail, searchPattern),
           ilike(connectors.externalUsername, searchPattern),
@@ -229,6 +234,9 @@ async function loadConnectorAccountRows(
         eq(connectors.userId, args.userId),
         args.target ? targetCondition(args.target) : undefined,
         args.connectionId ? eq(connectors.id, args.connectionId) : undefined,
+        args.connectionIds
+          ? inArray(connectors.id, [...args.connectionIds])
+          : undefined,
         args.defaultOnly ? eq(connectors.isDefault, true) : undefined,
         cursorCondition,
         searchCondition,
@@ -394,7 +402,7 @@ function builtinConnection(
     externalId: row.externalId,
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
-    oauthScopes: parseOauthScopes(row.oauthScopes),
+    oauthScopes: parseOauthScopes(row.oauthGrantedScopes),
     connectionStatus,
     reconnectReason:
       !runtimeMethod || !storageCompatible
@@ -480,12 +488,6 @@ function projectConnection(
     return snapshot ? builtinConnection(row, snapshot, now) : null;
   }
   return customConnection(row, now);
-}
-
-function connectorAccountTargetKey(target: ConnectorAccountTarget): string {
-  return target.kind === "builtin"
-    ? `builtin:${target.connectorSlug}`
-    : `custom:${target.customConnectorId}`;
 }
 
 type ConnectorAccountSummaryGroup = Awaited<
@@ -688,6 +690,30 @@ export async function getConnectorAccount(
   }
   const snapshot = await loadCurrentConnectorRuntimeSnapshot(db);
   return projectConnection(row, snapshot, nowDate());
+}
+
+export async function listConnectorAccountsByIds(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectionIds: readonly string[];
+  },
+): Promise<readonly ConnectorAccountConnection[]> {
+  const connectionIds = [...new Set(args.connectionIds)];
+  if (connectionIds.length === 0) {
+    return [];
+  }
+  const rows = await loadConnectorAccountRows(db, {
+    ...args,
+    connectionIds,
+  });
+  const snapshot = await loadCurrentConnectorRuntimeSnapshot(db);
+  const now = nowDate();
+  return rows.flatMap((row) => {
+    const connection = projectConnection(row, snapshot, now);
+    return connection ? [connection] : [];
+  });
 }
 
 async function exactOwnedAccountExists(

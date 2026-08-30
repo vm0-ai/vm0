@@ -664,9 +664,9 @@ mod tests {
 
     use super::*;
 
-    const LARGE_SUCCESS_OUTPUT_CHILD_ENV: &str = "VM0_RUN_IGNORED_CHILD_LARGE_SUCCESS_OUTPUT_TEST";
-    const LARGE_OUTPUT_CHILD_ENV: &str = "VM0_RUN_IGNORED_CHILD_LARGE_OUTPUT_TEST";
-    const TIMEOUT_CHILD_ENV: &str = "VM0_RUN_IGNORED_CHILD_TIMEOUT_TEST";
+    const LARGE_SUCCESS_OUTPUT_CHILD_ENV: &str = "OKOU_RUN_IGNORED_CHILD_LARGE_SUCCESS_OUTPUT_TEST";
+    const LARGE_OUTPUT_CHILD_ENV: &str = "OKOU_RUN_IGNORED_CHILD_LARGE_OUTPUT_TEST";
+    const TIMEOUT_CHILD_ENV: &str = "OKOU_RUN_IGNORED_CHILD_TIMEOUT_TEST";
 
     #[tokio::test]
     async fn run_ignored_child_test_preserves_tail_after_large_output() {

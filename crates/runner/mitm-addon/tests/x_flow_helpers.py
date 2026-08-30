@@ -100,8 +100,8 @@ def make_x_usage_flow(
         request_body=request_body,
         request_encoding=request_encoding,
     )
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "test-token"
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "test-token"
     flow.metadata[metadata_keys.FIREWALL_PERMISSION] = permission
     flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = rule
     set_response_stream_buffer(flow, body)
@@ -115,7 +115,7 @@ def make_x_pipeline_flow(
     path: str = "/2/tweets",
     query: str = "",
     original_url: str | None = None,
-    vm_run_id: str = "run-abc-123",
+    sandbox_run_id: str = "run-abc-123",
     sandbox_value: str = "test-token",
     firewall_action: str = "ALLOW",
     permission: str = "tweet.read",
@@ -135,10 +135,10 @@ def make_x_pipeline_flow(
         content_type=content_type,
         content_encoding=content_encoding,
     )
-    flow.metadata[metadata_keys.VM_RUN_ID] = vm_run_id
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = sandbox_value
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = sandbox_run_id
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = sandbox_value
     flow.metadata[metadata_keys.FIREWALL_ACTION] = firewall_action
     http_network_log.set_target(
         flow,

@@ -79,6 +79,12 @@ export async function workflowAutomationCanFire(
   if (!args.automation.enabled && !claimedOnceSchedule) {
     return false;
   }
+  if (
+    args.automation.officialBlueprintKey !== null &&
+    args.automation.officialReconciliationStatus !== "current"
+  ) {
+    return false;
+  }
 
   return await workflowAutomationOwnerCanReadTarget(
     db,

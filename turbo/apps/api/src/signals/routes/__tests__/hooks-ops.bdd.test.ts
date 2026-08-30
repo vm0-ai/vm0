@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { buildInfoContract } from "@okouai/api-contracts/contracts/build-info";
 import { healthContract } from "@okouai/api-contracts/contracts/health";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -11,14 +11,14 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
-  healthAuthProbeContract,
-  healthAuthProbeRoutes,
-} from "../health-auth-probe";
-import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import {
+  testAuthProbeContract,
+  testAuthProbeRoutes,
+} from "./helpers/auth-probe";
 import { createRouteMocks } from "./helpers/route-test";
 import { buildInfoRoutes } from "../build-info";
 import { healthRoutes } from "../health";
@@ -43,15 +43,15 @@ function buildInfoClient() {
   return setupApp({ context, routes: buildInfoRoutes })(buildInfoContract);
 }
 
-function healthAuthClient() {
-  return setupApp({ context, routes: healthAuthProbeRoutes })(
-    healthAuthProbeContract,
+function authProbeClient() {
+  return setupApp({ context, routes: testAuthProbeRoutes })(
+    testAuthProbeContract,
   );
 }
 
 function featureSwitchesClient() {
   return setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
 }
 
@@ -103,14 +103,14 @@ describe("OPS-02: API health and auth boundary", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
-  it("checks public health and authenticated health probe through HTTP routes", async () => {
+  it("checks public health and the auth boundary through HTTP routes", async () => {
     const admin = api.user();
 
     const health = await accept(healthClient().check(), [200]);
     expect(health.body).toStrictEqual({ status: "ok" });
 
     const unauthorized = await accept(
-      healthAuthClient().check({
+      authProbeClient().check({
         headers: headersFor(null),
         query: {},
       }),
@@ -120,7 +120,7 @@ describe("OPS-02: API health and auth boundary", () => {
     expect(unauthorized.body.error.code).toBe("UNAUTHORIZED");
 
     const authenticated = await accept(
-      healthAuthClient().check({
+      authProbeClient().check({
         headers: headersFor(admin),
         query: {},
       }),
@@ -202,7 +202,8 @@ describe("OPS-01: feature switch routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.ChatErrorRecovery]: true,
-            [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+            [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
+            [FeatureSwitchKey.PresentationTemplates]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
         },
@@ -213,7 +214,10 @@ describe("OPS-01: feature switch routes", () => {
       ownerUpdate.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeTruthy();
     expect(
-      ownerUpdate.body.switches[FeatureSwitchKey.ManagedModelProviderFallback],
+      ownerUpdate.body.switches[FeatureSwitchKey.BuiltInModelProviderFallback],
+    ).toBeTruthy();
+    expect(
+      ownerUpdate.body.switches[FeatureSwitchKey.PresentationTemplates],
     ).toBeTruthy();
     expect(ownerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
 
@@ -225,7 +229,10 @@ describe("OPS-01: feature switch routes", () => {
       peerRead.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeTruthy();
     expect(
-      peerRead.body.switches[FeatureSwitchKey.ManagedModelProviderFallback],
+      peerRead.body.switches[FeatureSwitchKey.BuiltInModelProviderFallback],
+    ).toBeTruthy();
+    expect(
+      peerRead.body.switches[FeatureSwitchKey.PresentationTemplates],
     ).toBeTruthy();
     expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
@@ -237,7 +244,10 @@ describe("OPS-01: feature switch routes", () => {
       outsiderRead.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeUndefined();
     expect(
-      outsiderRead.body.switches[FeatureSwitchKey.ManagedModelProviderFallback],
+      outsiderRead.body.switches[FeatureSwitchKey.BuiltInModelProviderFallback],
+    ).toBeUndefined();
+    expect(
+      outsiderRead.body.switches[FeatureSwitchKey.PresentationTemplates],
     ).toBeUndefined();
     const peerUpdate = await accept(
       featureSwitchesClient().update({
@@ -245,7 +255,8 @@ describe("OPS-01: feature switch routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.ChatErrorRecovery]: false,
-            [FeatureSwitchKey.ManagedModelProviderFallback]: false,
+            [FeatureSwitchKey.BuiltInModelProviderFallback]: false,
+            [FeatureSwitchKey.PresentationTemplates]: false,
           },
         },
       }),
@@ -255,7 +266,10 @@ describe("OPS-01: feature switch routes", () => {
       peerUpdate.body.switches[FeatureSwitchKey.ChatErrorRecovery],
     ).toBeFalsy();
     expect(
-      peerUpdate.body.switches[FeatureSwitchKey.ManagedModelProviderFallback],
+      peerUpdate.body.switches[FeatureSwitchKey.BuiltInModelProviderFallback],
+    ).toBeFalsy();
+    expect(
+      peerUpdate.body.switches[FeatureSwitchKey.PresentationTemplates],
     ).toBeFalsy();
     expect(peerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
@@ -270,7 +284,12 @@ describe("OPS-01: feature switch routes", () => {
     ).toBeFalsy();
     expect(
       ownerReadAfterPeerUpdate.body.switches[
-        FeatureSwitchKey.ManagedModelProviderFallback
+        FeatureSwitchKey.BuiltInModelProviderFallback
+      ],
+    ).toBeFalsy();
+    expect(
+      ownerReadAfterPeerUpdate.body.switches[
+        FeatureSwitchKey.PresentationTemplates
       ],
     ).toBeFalsy();
     expect(
@@ -292,8 +311,11 @@ describe("OPS-01: feature switch routes", () => {
     ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[
-        FeatureSwitchKey.ManagedModelProviderFallback
+        FeatureSwitchKey.BuiltInModelProviderFallback
       ],
+    ).toBeUndefined();
+    expect(
+      peerReadAfterDelete.body.switches[FeatureSwitchKey.PresentationTemplates],
     ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.Dummy],

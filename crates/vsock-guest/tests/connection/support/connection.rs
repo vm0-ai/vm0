@@ -8,8 +8,11 @@ use std::time::{Duration, Instant};
 
 use vsock_guest::{
     handle_connection_with_test_dns_readiness_program,
+    handle_connection_with_test_guest_agent_program,
+    handle_connection_with_test_guest_state_restore_program,
     handle_connection_with_test_process_containment,
     handle_connection_with_test_process_containment_and_exec_drain_deadline,
+    handle_connection_with_test_storage_manifest_program,
 };
 
 use super::protocol::read_message_with_context;
@@ -45,6 +48,30 @@ pub(crate) fn start_guest_connection_with_dns_readiness_program(
 ) -> (GuestConnectionHandle, UnixStream) {
     start_guest_connection_with_handler(move |stream| {
         handle_connection_with_test_dns_readiness_program(stream, program)
+    })
+}
+
+pub(crate) fn start_guest_connection_with_storage_manifest_program(
+    program: std::path::PathBuf,
+) -> (GuestConnectionHandle, UnixStream) {
+    start_guest_connection_with_handler(move |stream| {
+        handle_connection_with_test_storage_manifest_program(stream, program)
+    })
+}
+
+pub(crate) fn start_guest_connection_with_guest_state_restore_program(
+    program: std::path::PathBuf,
+) -> (GuestConnectionHandle, UnixStream) {
+    start_guest_connection_with_handler(move |stream| {
+        handle_connection_with_test_guest_state_restore_program(stream, program)
+    })
+}
+
+pub(crate) fn start_guest_connection_with_guest_agent_program(
+    program: std::path::PathBuf,
+) -> (GuestConnectionHandle, UnixStream) {
+    start_guest_connection_with_handler(move |stream| {
+        handle_connection_with_test_guest_agent_program(stream, program)
     })
 }
 
@@ -142,7 +169,8 @@ fn read_guest_ready_with_timeout(stream: &mut UnixStream, timeout: Duration) {
         .set_read_timeout(Some(timeout))
         .expect("set guest connection readiness read timeout");
     let context = format!("guest connection readiness failed before {timeout:?} deadline");
-    let _ = read_message_with_context(stream, &context);
+    let ready = read_message_with_context(stream, &context);
+    assert_eq!(ready.msg_type, vsock_proto::MSG_READY);
 }
 
 pub(crate) fn finish_guest_connection(handle: GuestConnectionHandle, host_stream: UnixStream) {

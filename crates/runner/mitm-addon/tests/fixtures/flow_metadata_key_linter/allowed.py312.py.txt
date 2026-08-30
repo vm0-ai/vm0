@@ -1,26 +1,26 @@
 
 type_alias_shadow_meta = flow.metadata
 type type_alias_shadow_meta = int
-value = type_alias_shadow_meta["vm_run_id"]
+value = type_alias_shadow_meta["sandbox_run_id"]
 type_alias_value_shadow_meta = flow.metadata
-type type_alias_value_shadow_meta = type_alias_value_shadow_meta["vm_run_id"]
+type type_alias_value_shadow_meta = type_alias_value_shadow_meta["sandbox_run_id"]
 function_type_alias_shadow_meta = flow.metadata
 def function_type_alias_local_shadow():
-    value = function_type_alias_shadow_meta["vm_run_id"]
+    value = function_type_alias_shadow_meta["sandbox_run_id"]
     type function_type_alias_shadow_meta = int
 class TypeAliasDoesNotSeeClassAlias:
     class_type_alias_meta = flow.metadata
     type class_type_alias_meta = int
-    value = class_type_alias_meta["vm_run_id"]
+    value = class_type_alias_meta["sandbox_run_id"]
 type_param_shadow_meta = flow.metadata
 def function_type_param_shadows_outer[type_param_shadow_meta](
-    arg: type_param_shadow_meta["vm_run_id"],
+    arg: type_param_shadow_meta["sandbox_run_id"],
 ) -> type_param_shadow_meta["firewall_name"]:
     type_param_shadow_meta["firewall_base"]
 class ClassTypeParamShadowsOuter[type_param_shadow_meta](type_param_shadow_meta):
-    value = type_param_shadow_meta["vm_run_id"]
+    value = type_param_shadow_meta["sandbox_run_id"]
     def method(self):
         type_param_shadow_meta["firewall_name"]
 type TypeAliasTypeParamShadowsOuter[type_param_shadow_meta] = type_param_shadow_meta[
-    "vm_run_id"
+    "sandbox_run_id"
 ]

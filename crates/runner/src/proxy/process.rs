@@ -1,11 +1,12 @@
 //! Mitmdump process supervision.
 
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 use tracing::{error, info, warn};
 
@@ -13,8 +14,8 @@ use super::flush::{
     MitmJsonlFlushHandle, UsageFlushTarget, new_usage_state_id, usage_flush_state_guard,
 };
 use super::managed_process::ManagedMitmdump;
-use super::registry::{ProxyRegistryHandle, VmRegistration, write_empty_registry};
-use super::runtime::{MitmdumpRuntime, RUNTIME_MARKER_ENV};
+use super::registry::{ProxyRegistryHandle, SandboxRegistration, write_empty_registry};
+use super::runtime::{CANONICAL_RUNTIME_MARKER_ENV, MitmdumpRuntime};
 use super::stderr::log_mitmdump_stderr_line;
 use crate::error::{RunnerError, RunnerResult};
 
@@ -23,13 +24,174 @@ include!(concat!(env!("OUT_DIR"), "/addon_files.rs"));
 
 /// Timeout for waiting for mitmdump to become ready after spawn.
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
+const START_MAX_ATTEMPTS: usize = 3;
 const ADDON_READY_FILENAME: &str = "addon-ready";
+/// Maximum raw bytes retained from one mitmdump stdout or stderr record.
+const MITMDUMP_LOG_RECORD_MAX_BYTES: usize = 64 * 1024;
 /// Short bounded retry for Linux `execve` returning ETXTBSY while a freshly
 /// installed/replaced mitmdump binary is still observed as writable.
 const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
 const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const RUNNER_TOKEN_ENV: &str = "VM0_MITM_RUNNER_TOKEN";
+const RUNNER_TOKEN_ENV: &str = "OKOU_MITM_RUNNER_TOKEN";
+
+#[derive(Debug)]
+enum MitmdumpStartupFailure {
+    PortInUse(RunnerError),
+    Other(RunnerError),
+}
+
+impl MitmdumpStartupFailure {
+    fn into_runner_error(self) -> RunnerError {
+        match self {
+            Self::PortInUse(error) | Self::Other(error) => error,
+        }
+    }
+
+    fn is_port_in_use(&self) -> bool {
+        matches!(self, Self::PortInUse(_))
+    }
+}
+
+impl From<RunnerError> for MitmdumpStartupFailure {
+    fn from(error: RunnerError) -> Self {
+        Self::Other(error)
+    }
+}
+
+impl std::fmt::Display for MitmdumpStartupFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PortInUse(error) | Self::Other(error) => error.fmt(formatter),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum MitmdumpLogRecord {
+    Line(String),
+    Oversized { observed_bytes: usize },
+}
+
+fn finish_mitmdump_log_record(
+    mut retained: Vec<u8>,
+    observed_bytes: usize,
+    oversized: bool,
+    terminated_by_newline: bool,
+) -> io::Result<MitmdumpLogRecord> {
+    if oversized {
+        return Ok(MitmdumpLogRecord::Oversized { observed_bytes });
+    }
+
+    if terminated_by_newline && retained.last() == Some(&b'\r') {
+        retained.pop();
+    }
+    String::from_utf8(retained)
+        .map(MitmdumpLogRecord::Line)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+async fn read_mitmdump_log_record<R>(reader: &mut R) -> io::Result<Option<MitmdumpLogRecord>>
+where
+    R: AsyncBufRead + Unpin,
+{
+    let mut retained = Vec::new();
+    let mut observed_bytes = 0usize;
+    let mut oversized = false;
+
+    loop {
+        let (consumed_bytes, terminated_by_newline) = {
+            let available = reader.fill_buf().await?;
+            if available.is_empty() {
+                if observed_bytes == 0 {
+                    return Ok(None);
+                }
+                return finish_mitmdump_log_record(retained, observed_bytes, oversized, false)
+                    .map(Some);
+            }
+
+            let fragment_bytes = available
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .unwrap_or(available.len());
+            let terminated_by_newline = fragment_bytes < available.len();
+            observed_bytes = observed_bytes.saturating_add(fragment_bytes);
+
+            if !oversized {
+                let remaining_bytes = MITMDUMP_LOG_RECORD_MAX_BYTES.saturating_sub(retained.len());
+                if fragment_bytes <= remaining_bytes {
+                    let (fragment, _) = available.split_at(fragment_bytes);
+                    retained.extend_from_slice(fragment);
+                } else {
+                    oversized = true;
+                    retained.clear();
+                }
+            }
+
+            (
+                fragment_bytes + usize::from(terminated_by_newline),
+                terminated_by_newline,
+            )
+        };
+        reader.consume(consumed_bytes);
+
+        if terminated_by_newline {
+            return finish_mitmdump_log_record(retained, observed_bytes, oversized, true).map(Some);
+        }
+    }
+}
+
+fn log_oversized_mitmdump_record(stream: &'static str, observed_bytes: usize) {
+    warn!(
+        target: "mitmdump",
+        stream,
+        max_bytes = MITMDUMP_LOG_RECORD_MAX_BYTES,
+        observed_bytes,
+        "discarded oversized mitmdump log record"
+    );
+}
+
+async fn monitor_mitmdump_stdout<R>(stdout: R)
+where
+    R: AsyncRead + Unpin,
+{
+    // TermLog is warning-only, but its level is not preserved in the text
+    // stream. Keep native stdout in Runner-local logs; addon events that need
+    // Axiom bypass TermLog through the stderr envelope.
+    let mut reader = tokio::io::BufReader::new(stdout);
+    while let Ok(Some(record)) = read_mitmdump_log_record(&mut reader).await {
+        match record {
+            MitmdumpLogRecord::Line(line) if !line.is_empty() => {
+                info!(target: "mitmdump", "{line}");
+            }
+            MitmdumpLogRecord::Line(_) => {}
+            MitmdumpLogRecord::Oversized { observed_bytes } => {
+                log_oversized_mitmdump_record("stdout", observed_bytes);
+            }
+        }
+    }
+}
+
+async fn monitor_mitmdump_stderr<R>(stderr: R, port: u16) -> bool
+where
+    R: AsyncRead + Unpin,
+{
+    let mut reader = tokio::io::BufReader::new(stderr);
+    let mut port_in_use = false;
+    while let Ok(Some(record)) = read_mitmdump_log_record(&mut reader).await {
+        match record {
+            MitmdumpLogRecord::Line(line) if !line.is_empty() => {
+                port_in_use |= mitmdump_stderr_reports_port_in_use(&line, port);
+                log_mitmdump_stderr_line(&line);
+            }
+            MitmdumpLogRecord::Line(_) => {}
+            MitmdumpLogRecord::Oversized { observed_bytes } => {
+                log_oversized_mitmdump_record("stderr", observed_bytes);
+            }
+        }
+    }
+    port_in_use
+}
 
 /// Configuration for starting the proxy.
 #[derive(Clone)]
@@ -160,30 +322,56 @@ impl MitmProxy {
                 "mitmdump process is already started".to_string(),
             ));
         }
-        let runtime = self
-            .runtime
-            .as_ref()
-            .ok_or_else(|| RunnerError::Internal("missing mitmdump runtime owner".to_string()))?;
-        let child = spawn_mitmdump(
-            &self.config,
-            runtime,
-            self.port,
-            &self.crash_tx,
-            &self.stopping,
-            &self.usage_state_id,
-        )
-        .await?;
-        self.child = Some(child);
-        info!(port = self.port, "mitmdump started");
-        Ok(())
+        let runtime =
+            Arc::clone(self.runtime.as_ref().ok_or_else(|| {
+                RunnerError::Internal("missing mitmdump runtime owner".to_string())
+            })?);
+
+        let mut attempt = 1;
+        loop {
+            let stopping = Arc::new(AtomicBool::new(false));
+            self.stopping = Arc::clone(&stopping);
+            match spawn_mitmdump(
+                &self.config,
+                &runtime,
+                self.port,
+                &self.crash_tx,
+                &stopping,
+                &self.usage_state_id,
+            )
+            .await
+            {
+                Ok(child) => {
+                    self.child = Some(child);
+                    info!(port = self.port, "mitmdump started");
+                    return Ok(());
+                }
+                Err(error) if error.is_port_in_use() && attempt < START_MAX_ATTEMPTS => {
+                    warn!(
+                        attempt,
+                        max_attempts = START_MAX_ATTEMPTS,
+                        port = self.port,
+                        error = %error,
+                        "mitmdump port was claimed before startup; retrying with a fresh port",
+                    );
+                    self.port = find_available_port()?;
+                    attempt += 1;
+                }
+                Err(error) => return Err(error.into_runner_error()),
+            }
+        }
     }
 
-    /// The port mitmdump is listening on.
+    /// The selected mitmdump port.
+    ///
+    /// Initial startup may replace this port while recovering from a bind
+    /// collision. Call this after [`Self::start`] before publishing the port
+    /// to sandbox network configuration.
     pub fn port(&self) -> u16 {
         self.port
     }
 
-    /// Create a cloneable handle for registry operations (register/unregister VMs).
+    /// Create a cloneable handle for registry operations (register/unregister sandboxes).
     ///
     /// The handle is `Clone + Send + Sync` and uses file locking for concurrent
     /// access, making it safe to share across executor tasks.
@@ -209,20 +397,20 @@ impl MitmProxy {
         }
     }
 
-    /// Register a VM in the proxy registry so the addon can identify its traffic.
-    pub async fn register_vm(
+    /// Register a sandbox in the proxy registry so the addon can identify its traffic.
+    pub async fn register_sandbox(
         &self,
         source_ip: &str,
-        registration: &VmRegistration<'_>,
+        registration: &SandboxRegistration<'_>,
     ) -> RunnerResult<()> {
         self.registry_handle()
-            .register_vm(source_ip, registration)
+            .register_sandbox(source_ip, registration)
             .await
     }
 
-    /// Unregister a VM from the proxy registry.
-    pub async fn unregister_vm(&self, source_ip: &str) -> RunnerResult<()> {
-        self.registry_handle().unregister_vm(source_ip).await
+    /// Unregister a sandbox from the proxy registry.
+    pub async fn unregister_sandbox(&self, source_ip: &str) -> RunnerResult<()> {
+        self.registry_handle().unregister_sandbox(source_ip).await
     }
 
     /// Current mitmdump usage state expected in the usage-pending state file.
@@ -489,6 +677,7 @@ impl MitmRestartParams {
             &self.usage_state_id,
         )
         .await
+        .map_err(MitmdumpStartupFailure::into_runner_error)
     }
 }
 
@@ -502,7 +691,7 @@ async fn spawn_mitmdump(
     crash_tx: &mpsc::Sender<()>,
     stopping: &Arc<AtomicBool>,
     usage_state_id: &str,
-) -> RunnerResult<ManagedMitmdump> {
+) -> Result<ManagedMitmdump, MitmdumpStartupFailure> {
     let _prepared_ca = crate::ca::prepare_for_proxy(&config.ca_dir, &config.ca_lock_path).await?;
     let launch = runtime.create_launch_dir().await?;
     let launch_path = launch.path().to_path_buf();
@@ -514,7 +703,8 @@ async fn spawn_mitmdump(
             return Err(RunnerError::Internal(format!(
                 "remove stale addon ready marker {}: {error}",
                 addon_ready_path.display()
-            )));
+            ))
+            .into());
         }
     }
     let mut cmd = tokio::process::Command::new(&config.mitmdump_bin);
@@ -573,7 +763,7 @@ async fn spawn_mitmdump(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     cmd.env("TMPDIR", &launch_path)
-        .env(RUNTIME_MARKER_ENV, &launch_path)
+        .env(CANONICAL_RUNTIME_MARKER_ENV, &launch_path)
         .process_group(0);
     cmd.kill_on_drop(true);
 
@@ -586,34 +776,16 @@ async fn spawn_mitmdump(
     let child = spawn_mitmdump_child(&mut cmd, &config.mitmdump_bin).await?;
     let mut child = ManagedMitmdump::new(child, launch, Arc::clone(runtime))?;
 
-    // Stream stdout to tracing; when the pipe closes (process exited),
-    // send a crash notification unless we're in a graceful stop.
-    if let Some(stdout) = child.child_mut().and_then(|child| child.stdout.take()) {
-        let crash_tx = crash_tx.clone();
-        let stopping = Arc::clone(stopping);
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    info!(target: "mitmdump", "{line}");
-                }
-            }
-            // Pipe closed — process exited.
-            if !stopping.load(Ordering::Acquire) {
-                let _ = crash_tx.send(()).await;
-            }
-        });
-    }
-    if let Some(stderr) = child.child_mut().and_then(|child| child.stderr.take()) {
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    log_mitmdump_stderr_line(&line);
-                }
-            }
-        });
-    }
+    // Start draining stdout before readiness so the child cannot block on a
+    // full pipe. Crash forwarding is attached only after startup succeeds.
+    let stdout_monitor = child
+        .child_mut()
+        .and_then(|child| child.stdout.take())
+        .map(|stdout| tokio::spawn(async move { monitor_mitmdump_stdout(stdout).await }));
+    let stderr_monitor = child
+        .child_mut()
+        .and_then(|child| child.stderr.take())
+        .map(|stderr| tokio::spawn(async move { monitor_mitmdump_stderr(stderr, port).await }));
 
     if let Err(error) = wait_for_ready(
         child.child_mut().ok_or_else(|| {
@@ -627,11 +799,50 @@ async fn spawn_mitmdump(
     .await
     {
         stopping.store(true, Ordering::Release);
-        child.force_stop().await?;
-        return Err(error);
+        let stop_result = child.force_stop().await;
+        let stdout_result = match stdout_monitor {
+            Some(stdout_monitor) => stdout_monitor.await.map_err(|join_error| {
+                RunnerError::Internal(format!(
+                    "join mitmdump stdout monitor after startup failure: {join_error}"
+                ))
+            }),
+            None => Ok(()),
+        };
+        let port_in_use_result = match stderr_monitor {
+            Some(stderr_monitor) => stderr_monitor.await.map_err(|join_error| {
+                RunnerError::Internal(format!(
+                    "join mitmdump stderr monitor after startup failure: {join_error}"
+                ))
+            }),
+            None => Ok(false),
+        };
+        stop_result?;
+        stdout_result?;
+        if port_in_use_result? {
+            return Err(MitmdumpStartupFailure::PortInUse(error));
+        }
+        return Err(MitmdumpStartupFailure::Other(error));
+    }
+
+    if let Some(stdout_monitor) = stdout_monitor {
+        let crash_tx = crash_tx.clone();
+        let stopping = Arc::clone(stopping);
+        tokio::spawn(async move {
+            let _ = stdout_monitor.await;
+            if !stopping.load(Ordering::Acquire) {
+                let _ = crash_tx.send(()).await;
+            }
+        });
     }
 
     Ok(child)
+}
+
+fn mitmdump_stderr_reports_port_in_use(line: &str, port: u16) -> bool {
+    let line = line.to_ascii_lowercase();
+    line.contains("failed to listen on")
+        && line.contains(&format!(":{port}"))
+        && line.contains("address already in use")
 }
 
 fn is_text_file_busy(error: &std::io::Error) -> bool {
@@ -766,6 +977,172 @@ mod tests {
     use super::*;
     use crate::paths::HomePaths;
     use std::os::unix::fs::PermissionsExt;
+    use tokio::io::AsyncWriteExt;
+    use tracing::Level;
+    use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    async fn capture_mitmdump_monitor_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let output = future.with_subscriber(subscriber).await;
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    async fn write_oversized_record_then(mut writer: tokio::io::DuplexStream, next_record: &[u8]) {
+        let oversized = vec![b'x'; MITMDUMP_LOG_RECORD_MAX_BYTES + 1];
+        writer.write_all(&oversized).await.unwrap();
+        writer.write_all(b"\n").await.unwrap();
+        writer.write_all(next_record).await.unwrap();
+        writer.write_all(b"\n").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bounded_mitmdump_reader_accepts_record_at_limit() {
+        let mut input = vec![b'x'; MITMDUMP_LOG_RECORD_MAX_BYTES];
+        input.push(b'\n');
+        let mut reader = tokio::io::BufReader::with_capacity(1024, input.as_slice());
+
+        let record = read_mitmdump_log_record(&mut reader).await.unwrap();
+
+        let MitmdumpLogRecord::Line(line) = record.unwrap() else {
+            panic!("record at limit should not be discarded");
+        };
+        assert_eq!(line.len(), MITMDUMP_LOG_RECORD_MAX_BYTES);
+        assert!(line.bytes().all(|byte| byte == b'x'));
+    }
+
+    #[tokio::test]
+    async fn bounded_mitmdump_reader_finishes_oversized_record_at_eof() {
+        let input = vec![b'x'; MITMDUMP_LOG_RECORD_MAX_BYTES + 1];
+        let mut reader = tokio::io::BufReader::with_capacity(1024, input.as_slice());
+
+        let record = read_mitmdump_log_record(&mut reader).await.unwrap();
+
+        assert_eq!(
+            record,
+            Some(MitmdumpLogRecord::Oversized {
+                observed_bytes: MITMDUMP_LOG_RECORD_MAX_BYTES + 1,
+            })
+        );
+        assert!(
+            read_mitmdump_log_record(&mut reader)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn stdout_monitor_discards_oversized_record_and_recovers() {
+        let (writer, reader) = tokio::io::duplex(1024);
+        let future = async {
+            tokio::join!(
+                write_oversized_record_then(writer, b"stdout recovered"),
+                monitor_mitmdump_stdout(reader),
+            );
+        };
+
+        let (_, events) = capture_mitmdump_monitor_events(future).await;
+
+        assert_eq!(
+            events.len(),
+            2,
+            "unexpected stdout monitor events: {events:#?}"
+        );
+        let overflow = captured_event(&events, "discarded oversized mitmdump log record");
+        assert_eq!(
+            overflow.fields.get("stream").map(String::as_str),
+            Some("stdout")
+        );
+        assert_eq!(
+            overflow.fields.get("max_bytes").map(String::as_str),
+            Some(MITMDUMP_LOG_RECORD_MAX_BYTES.to_string().as_str())
+        );
+        assert_eq!(
+            overflow.fields.get("observed_bytes").map(String::as_str),
+            Some((MITMDUMP_LOG_RECORD_MAX_BYTES + 1).to_string().as_str())
+        );
+        assert_eq!(
+            overflow.fields.len(),
+            4,
+            "overflow event leaked record content"
+        );
+        let recovered = captured_event(&events, "stdout recovered");
+        assert_eq!(recovered.level, Level::INFO);
+    }
+
+    #[tokio::test]
+    async fn stderr_monitor_discards_oversized_record_and_recovers() {
+        let next_record = br#"VM0_ADDON_EVENT {"version":1,"level":"error","message":"failed"}"#;
+        let (writer, reader) = tokio::io::duplex(1024);
+        let future = async {
+            let (_, port_in_use) = tokio::join!(
+                write_oversized_record_then(writer, next_record),
+                monitor_mitmdump_stderr(reader, 4321),
+            );
+            port_in_use
+        };
+
+        let (port_in_use, events) = capture_mitmdump_monitor_events(future).await;
+
+        assert!(!port_in_use);
+        assert_eq!(
+            events.len(),
+            2,
+            "unexpected stderr monitor events: {events:#?}"
+        );
+        let overflow = captured_event(&events, "discarded oversized mitmdump log record");
+        assert_eq!(
+            overflow.fields.get("stream").map(String::as_str),
+            Some("stderr")
+        );
+        assert_eq!(
+            overflow.fields.get("observed_bytes").map(String::as_str),
+            Some((MITMDUMP_LOG_RECORD_MAX_BYTES + 1).to_string().as_str())
+        );
+        assert_eq!(
+            overflow.fields.len(),
+            4,
+            "overflow event leaked record content"
+        );
+
+        let recovered = events
+            .iter()
+            .find(|event| event.level == Level::ERROR)
+            .unwrap_or_else(|| panic!("missing recovered addon event; events={events:#?}"));
+        assert_eq!(
+            recovered.fields.len(),
+            1,
+            "unexpected fields: {recovered:#?}"
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                recovered
+                    .fields
+                    .get("message")
+                    .expect("recovered addon event should have a message"),
+            )
+            .expect("recovered addon event should contain a JSON log"),
+            serde_json::json!({"level": "error", "message": "failed"})
+        );
+    }
 
     fn write_fake_listening_mitmdump(path: &Path) {
         std::fs::write(
@@ -773,8 +1150,9 @@ mod tests {
             r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$0.args"
-printf '%s\n%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" \
-  "${VM0_MITM_RUNNER_TOKEN-}" > "$0.env"
+printf '%s\n%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" \
+  "${OKOU_MITM_RUNNER_TOKEN-}" > "$0.env"
+cp -f "/proc/$$/environ" "$0.environ"
 port=""
 ready_path=""
 usage_state_id=""
@@ -796,12 +1174,19 @@ from pathlib import Path
 
 port = int(sys.argv[1])
 ready_path = Path(sys.argv[2])
-ready_path.parent.mkdir(parents=True, exist_ok=True)
-ready_path.write_text(sys.argv[3], encoding="utf-8")
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(("127.0.0.1", port))
+try:
+    sock.bind(("127.0.0.1", port))
+except OSError as error:
+    print(
+        f"Transparent Proxy failed to listen on *:{port}: {error}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from error
 sock.listen(1)
+ready_path.parent.mkdir(parents=True, exist_ok=True)
+ready_path.write_text(sys.argv[3], encoding="utf-8")
 while True:
     conn, _ = sock.accept()
     conn.close()
@@ -814,6 +1199,10 @@ PY
         std::fs::set_permissions(path, perms).unwrap();
     }
 
+    fn retired_runtime_marker_env() -> String {
+        ["VM0", "MITMDUMP", "RUNTIME", "DIR"].join("_")
+    }
+
     #[test]
     fn embedded_addon_reads_runner_token_environment() {
         let source = ADDON_FILES
@@ -824,46 +1213,34 @@ PY
         assert!(source.contains(&format!("RUNNER_AUTH_ENV = \"{RUNNER_TOKEN_ENV}\"")));
     }
 
-    fn write_forking_listening_mitmdump(path: &Path) {
+    fn write_forking_ready_mitmdump(path: &Path) {
         std::fs::write(
             path,
             r#"#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
-port=""
+printf '%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" > "$0.env"
 ready_path=""
 usage_state_id=""
-prev=""
 for arg in "$@"; do
-  if [ "$prev" = "--listen-port" ]; then
-    port="$arg"
-  fi
   case "$arg" in
     vm0_addon_ready_path=*) ready_path="${arg#vm0_addon_ready_path=}" ;;
     vm0_usage_state_id=*) usage_state_id="${arg#vm0_usage_state_id=}" ;;
   esac
-  prev="$arg"
 done
-python3 - "$port" "$ready_path" "$usage_state_id" "$0.descendant" <<'PY' &
+python3 - "$ready_path" "$usage_state_id" "$0.descendant" <<'PY' &
 import os
 import signal
-import socket
 import sys
 from pathlib import Path
 
 for handled in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     signal.signal(handled, signal.SIG_IGN)
-Path(sys.argv[4]).write_text(str(os.getpid()), encoding="utf-8")
-ready_path = Path(sys.argv[2])
+Path(sys.argv[3]).write_text(str(os.getpid()), encoding="utf-8")
+ready_path = Path(sys.argv[1])
 ready_path.parent.mkdir(parents=True, exist_ok=True)
-ready_path.write_text(sys.argv[3], encoding="utf-8")
-sock = socket.socket()
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(("127.0.0.1", int(sys.argv[1])))
-sock.listen(1)
+ready_path.write_text(sys.argv[2], encoding="utf-8")
 while True:
-    conn, _ = sock.accept()
-    conn.close()
+    signal.pause()
 PY
 wait "$!"
 "#,
@@ -886,7 +1263,8 @@ import time
 from pathlib import Path
 
 Path(f"{sys.argv[0]}.env").write_text(
-    f"{os.environ['TMPDIR']}\n{os.environ['VM0_MITMDUMP_RUNTIME_DIR']}\n",
+    f"{os.environ['TMPDIR']}\n"
+    f"{os.environ['OKOU_MITMDUMP_RUNTIME_DIR']}\n",
     encoding="utf-8",
 )
 port = None
@@ -913,12 +1291,12 @@ if descendant_pid == 0:
         time.sleep(60)
 
 signal.signal(signal.SIGTERM, lambda _signum, _frame: sys.exit(0))
-ready_path.parent.mkdir(parents=True, exist_ok=True)
-ready_path.write_text(usage_state_id, encoding="utf-8")
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(("127.0.0.1", port))
 sock.listen(1)
+ready_path.parent.mkdir(parents=True, exist_ok=True)
+ready_path.write_text(usage_state_id, encoding="utf-8")
 while True:
     connection, _ = sock.accept()
     connection.close()
@@ -935,7 +1313,8 @@ while True:
             path,
             r#"#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n%s\n' "$TMPDIR" "$VM0_MITMDUMP_RUNTIME_DIR" > "$0.env"
+printf '%s\n%s\n' "$TMPDIR" "$OKOU_MITMDUMP_RUNTIME_DIR" > "$0.env"
+printf 'attempt\n' >> "$0.attempts"
 python3 - "$0.descendant" <<'PY' &
 import os
 import signal
@@ -952,6 +1331,7 @@ PY
 while [ ! -s "$0.descendant" ]; do
   sleep 0.01
 done
+printf 'addon warning: address already in use\n' >&2
 exit 42
 "#,
         )
@@ -1154,6 +1534,38 @@ exit 42
         assert!(port > 0, "expected non-zero port, got {port}");
     }
 
+    #[tokio::test]
+    async fn initial_start_retries_an_occupied_selected_port() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        crate::ca::ensure(&home).await.unwrap();
+        let fake_mitmdump = dir.path().join("fake-mitmdump");
+        write_fake_listening_mitmdump(&fake_mitmdump);
+        let config = test_proxy_config(dir.path(), &home, fake_mitmdump);
+        let (mut proxy, mut crash_rx) = MitmProxy::new(config).await.unwrap();
+        let occupied_port = proxy.port();
+        let unrelated_listener = tokio::net::TcpListener::bind(("0.0.0.0", occupied_port))
+            .await
+            .unwrap();
+
+        proxy.start().await.unwrap();
+
+        assert_ne!(proxy.port(), occupied_port);
+        tokio::net::TcpStream::connect(("127.0.0.1", proxy.port()))
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                crash_rx.try_recv(),
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+            ),
+            "failed startup attempt must not report a crash after retry"
+        );
+
+        proxy.stop().await.unwrap();
+        drop(unrelated_listener);
+    }
+
     #[test]
     fn addon_scripts_are_embedded() {
         let files: Vec<&str> = ADDON_FILES.iter().map(|(name, _)| *name).collect();
@@ -1173,6 +1585,7 @@ exit 42
             "auth_base_rewrite.py",
             "flow_metadata_keys.py",
             "generated/__init__.py",
+            "generated/builtin_firewall_cache.py",
             "generated/model_usage.py",
             "generated/public_destination_policy.py",
             "matching.py",
@@ -1279,7 +1692,7 @@ exit 42
         assert!(addon_dir.join("mitm_addon.py").is_file());
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        assert_eq!(registry["vms"], serde_json::json!({}));
+        assert_eq!(registry["sandboxes"], serde_json::json!({}));
     }
 
     #[tokio::test]
@@ -1463,6 +1876,23 @@ exit 42
         assert_eq!(environment.len(), 3);
         assert_eq!(environment[0], environment[1]);
         assert_eq!(environment[2], "runner-token");
+        let launched_environ = std::fs::read(fake_mitmdump.with_extension("environ")).unwrap();
+        let tmpdir = launched_environ
+            .split(|byte| *byte == 0)
+            .find_map(|entry| entry.strip_prefix(b"TMPDIR="))
+            .expect("launched mitmdump environment should contain TMPDIR");
+        let mut canonical_markers = launched_environ
+            .split(|byte| *byte == 0)
+            .filter_map(|entry| entry.strip_prefix(b"OKOU_MITMDUMP_RUNTIME_DIR="));
+        assert_eq!(
+            canonical_markers.next(),
+            Some(tmpdir),
+            "the canonical runtime marker must equal TMPDIR"
+        );
+        assert!(
+            canonical_markers.next().is_none(),
+            "the launched mitmdump environment must contain exactly one canonical runtime marker"
+        );
         let launch_path = Path::new(environment[0]);
         assert_eq!(launch_path.parent(), Some(config.runtime_dir.as_path()));
         assert!(
@@ -1637,27 +2067,26 @@ exit 42
         let fake_mitmdump = dir.path().join("failing-mitmdump");
         write_forking_failing_mitmdump(&fake_mitmdump);
         let config = test_proxy_config(dir.path(), &home, fake_mitmdump.clone());
-        let runtime = acquire_test_runtime(&config).await;
-        let (crash_tx, _crash_rx) = mpsc::channel(1);
-        let stopping = Arc::new(AtomicBool::new(false));
+        let runtime_dir = config.runtime_dir.clone();
+        let (mut proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
+        let selected_port = proxy.port();
 
-        let error = spawn_mitmdump(
-            &config,
-            &runtime,
-            find_available_port().unwrap(),
-            &crash_tx,
-            &stopping,
-            "usage-state-test",
-        )
-        .await
-        .err()
-        .expect("expected startup failure");
+        let error = proxy.start().await.expect_err("expected startup failure");
 
         assert!(
             error
                 .to_string()
                 .contains("mitmdump exited immediately with 42"),
             "unexpected error: {error}"
+        );
+        assert_eq!(proxy.port(), selected_port);
+        assert_eq!(
+            std::fs::read_to_string(fake_mitmdump.with_extension("attempts"))
+                .unwrap()
+                .lines()
+                .count(),
+            1,
+            "non-port startup failures must not be retried"
         );
         let descendant_pid: u32 =
             std::fs::read_to_string(fake_mitmdump.with_extension("descendant"))
@@ -1671,7 +2100,7 @@ exit 42
         let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
         let launch_path = PathBuf::from(environment.lines().next().unwrap());
         assert!(!launch_path.exists());
-        assert_no_launch_dirs(&config.runtime_dir).await;
+        assert_no_launch_dirs(&runtime_dir).await;
     }
 
     #[tokio::test]
@@ -1680,10 +2109,13 @@ exit 42
         let home = HomePaths::with_root(dir.path().join("home"));
         crate::ca::ensure(&home).await.unwrap();
         let fake_mitmdump = dir.path().join("forking-mitmdump");
-        write_forking_listening_mitmdump(&fake_mitmdump);
+        write_forking_ready_mitmdump(&fake_mitmdump);
         let config = test_proxy_config(dir.path(), &home, fake_mitmdump.clone());
         let runtime_dir = config.runtime_dir.clone();
+        let readiness_listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let readiness_port = readiness_listener.local_addr().unwrap().port();
         let (mut proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
+        proxy.port = readiness_port;
         proxy.start().await.unwrap();
 
         let descendant_path = fake_mitmdump.with_extension("descendant");
@@ -1780,28 +2212,29 @@ exit 42
     }
 
     #[tokio::test]
-    async fn proxy_startup_reconciles_only_marked_private_launches() {
+    async fn proxy_startup_reconciles_canonical_marker_and_only_private_launches() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
         let config = test_proxy_config(dir.path(), &home, dir.path().join("mitmdump"));
         let runtime = acquire_test_runtime(&config).await;
-        let launch = runtime.create_launch_dir().await.unwrap();
-        let stale_launch = launch.path().to_path_buf();
+        let stale_launch = config.runtime_dir.join("launch-canonical");
+        std::fs::create_dir(&stale_launch).unwrap();
         std::fs::create_dir(stale_launch.join("_MEI-stale")).unwrap();
         std::fs::write(stale_launch.join("_MEI-stale/payload"), b"stale").unwrap();
 
         let mut stale_process = tokio::process::Command::new("sleep")
             .arg("60")
+            .env_remove(CANONICAL_RUNTIME_MARKER_ENV)
             .env("TMPDIR", &stale_launch)
-            .env(RUNTIME_MARKER_ENV, &stale_launch)
+            .env(CANONICAL_RUNTIME_MARKER_ENV, &stale_launch)
             .process_group(0)
+            .kill_on_drop(true)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
         let stale_pid = stale_process.id().unwrap();
-        let stale_launch = launch.keep();
         drop(runtime);
 
         let unrelated_sibling = config.runtime_dir.join("keep-me");
@@ -1815,7 +2248,7 @@ exit 42
 
         let status = tokio::time::timeout(Duration::from_secs(2), stale_process.wait())
             .await
-            .expect("stale marked process was not terminated")
+            .expect("stale canonical-marked process was not terminated")
             .unwrap();
         assert!(
             !status.success(),
@@ -1823,11 +2256,45 @@ exit 42
         );
         assert!(
             wait_for_pid_absent(stale_pid).await,
-            "stale marked process {stale_pid} remains live"
+            "stale canonical-marked process {stale_pid} remains live"
         );
-        assert!(!stale_launch.exists());
+        assert!(!stale_launch.exists(), "stale launch directory remains");
         assert!(unrelated_sibling.is_dir());
         assert!(unrelated_shared.path().is_dir());
+    }
+
+    #[tokio::test]
+    async fn proxy_startup_ignores_retired_legacy_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let config = test_proxy_config(dir.path(), &home, dir.path().join("mitmdump"));
+        let runtime = acquire_test_runtime(&config).await;
+        let stale_launch = config.runtime_dir.join("launch-retired");
+        std::fs::create_dir(&stale_launch).unwrap();
+        let retired_marker = retired_runtime_marker_env();
+        drop(runtime);
+
+        let mut retired_process = tokio::process::Command::new("sleep")
+            .arg("60")
+            .env_remove(CANONICAL_RUNTIME_MARKER_ENV)
+            .env("TMPDIR", &stale_launch)
+            .env(retired_marker, &stale_launch)
+            .process_group(0)
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let (_proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
+
+        assert!(
+            retired_process.try_wait().unwrap().is_none(),
+            "retired legacy-only marker made the process eligible for signalling"
+        );
+        assert!(!stale_launch.exists(), "stale launch directory remains");
+        retired_process.kill().await.unwrap();
     }
 
     #[tokio::test]

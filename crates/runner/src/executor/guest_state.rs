@@ -1,6 +1,9 @@
 //! Guest state repair helpers used before agent execution.
 
-use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, Sandbox};
+use sandbox::{
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestStateRestoreRequest,
+    GuestStateRestoreTimezone, Sandbox,
+};
 
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use crate::guest_timezone::{GuestTimezoneIntent, is_shell_safe_name};
@@ -31,20 +34,16 @@ fn helper_exec_exit_code(result: &sandbox::ExecResult) -> Option<i32> {
     }
 }
 
-fn host_unix_timestamp_secs() -> String {
-    format!(
-        "{:.3}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs_f64()
-    )
+fn host_unix_timestamp() -> std::time::Duration {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
 }
 
-fn read_host_entropy() -> RunnerResult<Vec<u8>> {
+fn read_host_entropy() -> RunnerResult<[u8; ENTROPY_SIZE]> {
     use std::io::Read;
 
-    let mut entropy = vec![0u8; ENTROPY_SIZE];
+    let mut entropy = [0u8; ENTROPY_SIZE];
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut entropy))
         .map_err(|e| RunnerError::Internal(format!("read host entropy: {e}")))?;
@@ -69,21 +68,6 @@ fn timezone_sync_command(tz: &str) -> String {
     format!("if test -f /usr/share/zoneinfo/{tz}; then {body}; fi")
 }
 
-fn timezone_sync_best_effort_command(tz: &str) -> String {
-    let body = timezone_sync_body(tz);
-    format!(
-        "if test -f /usr/share/zoneinfo/{tz}; then {{ {body}; }} || echo \"{TIMEZONE_SYNC_FAILED_MARKER}\" >&2; fi"
-    )
-}
-
-fn timezone_sync_required_command(tz: &str) -> String {
-    let body = timezone_sync_body(tz);
-    format!(
-        "test -f /usr/share/zoneinfo/{tz} || {{ echo \"{TIMEZONE_UNAVAILABLE_MARKER}\" >&2; exit 1; }}\n\
-         {{ {body}; }} || {{ status=$?; echo \"{TIMEZONE_SYNC_FAILED_MARKER}\" >&2; exit \"$status\"; }}"
-    )
-}
-
 fn stderr_contains_marker(result: &sandbox::ExecResult, marker: &str) -> bool {
     result
         .stderr
@@ -92,7 +76,9 @@ fn stderr_contains_marker(result: &sandbox::ExecResult, marker: &str) -> bool {
 }
 
 fn log_embedded_timezone_failure(run_id: RunId, tz: &str, result: &sandbox::ExecResult) {
-    if !stderr_contains_marker(result, TIMEZONE_SYNC_FAILED_MARKER) {
+    if !stderr_contains_marker(result, TIMEZONE_SYNC_FAILED_MARKER)
+        && !stderr_contains_marker(result, TIMEZONE_UNAVAILABLE_MARKER)
+    {
         return;
     }
 
@@ -110,7 +96,8 @@ fn log_embedded_timezone_failure(run_id: RunId, tz: &str, result: &sandbox::Exec
     );
 }
 
-/// Restores snapshot-sensitive guest state in one exec before the agent starts.
+/// Restores snapshot-sensitive guest state in one fixed operation before the
+/// agent starts.
 ///
 /// On ARM64 with kernel 6.1, VMGenID does not work (the driver only supports
 /// ACPI; DeviceTree support requires kernel 6.10+). All VMs restored from the
@@ -162,36 +149,21 @@ async fn restore_guest_state_inner(
     sandbox: &dyn Sandbox,
     timezone: Option<GuestTimezone<'_>>,
 ) -> RunnerResult<()> {
-    let timestamp = host_unix_timestamp_secs();
+    let timestamp = host_unix_timestamp();
     let entropy = read_host_entropy()?;
-    let mut cmd = format!(
-        r#"date -s "@{timestamp}" || {{ status=$?; echo "guest clock sync failed" >&2; exit "$status"; }}
-guest-reseed || {{ status=$?; echo "guest-reseed failed" >&2; exit "$status"; }}"#
-    );
-    if let Some(timezone) = timezone {
-        cmd.push('\n');
-        match timezone {
-            GuestTimezone::BestEffort { name, .. } => {
-                cmd.push_str(&timezone_sync_best_effort_command(name));
-            }
-            GuestTimezone::Required { name } => {
-                cmd.push_str(&timezone_sync_required_command(name));
-            }
-        }
-    }
+    let request_timezone = match timezone {
+        None => GuestStateRestoreTimezone::None,
+        Some(GuestTimezone::BestEffort { name, .. }) => GuestStateRestoreTimezone::BestEffort(name),
+        Some(GuestTimezone::Required { name }) => GuestStateRestoreTimezone::Required(name),
+    };
     let result = sandbox
-        .exec_with_diagnostic_label(
-            &ExecRequest {
-                cmd: &cmd,
-                timeout: DEFAULT_EXEC_TIMEOUT,
-                env: &[],
-                sudo: true,
-                expected_exit_codes: &[],
-                stdin_bytes: Some(&entropy),
-                output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-            },
-            "guest-state-restore",
-        )
+        .restore_guest_state(&GuestStateRestoreRequest {
+            unix_seconds: timestamp.as_secs(),
+            unix_nanoseconds: timestamp.subsec_nanos(),
+            entropy: &entropy,
+            timezone: request_timezone,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+        })
         .await?;
 
     if let Some(GuestTimezone::Required { name }) = timezone

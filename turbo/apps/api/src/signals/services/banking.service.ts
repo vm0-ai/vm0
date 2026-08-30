@@ -31,7 +31,7 @@ import {
 import { env } from "../../lib/env";
 import { singleton } from "../../lib/singleton";
 import { now, nowDate } from "../../lib/time";
-import type { ZeroAuthContext } from "../../types/auth";
+import type { AgentAuthContext } from "../../types/auth";
 import { type Db, writeDb$ } from "../external/db";
 import { safeJsonParse } from "../utils";
 
@@ -39,7 +39,7 @@ const APP_TOKEN_REFRESH_MS = 90 * 60 * 1000;
 const FINICITY_BASE_URL = "https://api.finicity.com";
 const PROVIDER = "finicity";
 
-type BankingAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
+type BankingAuth = Extract<AgentAuthContext, { readonly orgId: string }>;
 type BankingAccountRow = InferSelectModel<typeof bankingAccounts>;
 
 interface CachedFinicityAppToken {
@@ -54,7 +54,7 @@ interface BankingGatewayArgs<TBody> {
 
 type ErrorStatus = 400 | 403 | 502 | 503;
 
-interface BankingErrorResponse {
+export interface BankingErrorResponse {
   readonly status: ErrorStatus;
   readonly body: {
     readonly error: {
@@ -240,9 +240,13 @@ async function getFinicityAppToken(
   return body.token;
 }
 
-async function fetchFinicityJson(
+export async function fetchFinicityJson(
   path: string,
   signal: AbortSignal,
+  request: {
+    readonly method?: "GET" | "POST";
+    readonly body?: unknown;
+  } = {},
 ): Promise<unknown | BankingErrorResponse> {
   const credentials = finicityCredentials();
   if ("status" in credentials) {
@@ -254,13 +258,19 @@ async function fetchFinicityJson(
   }
 
   const response = await fetch(`${FINICITY_BASE_URL}${path}`, {
-    method: "GET",
+    method: request.method ?? "GET",
     signal,
     headers: {
       Accept: "application/json",
+      ...(request.body === undefined
+        ? {}
+        : { "Content-Type": "application/json" }),
       "Finicity-App-Key": credentials.appKey,
       "Finicity-App-Token": appToken,
     },
+    ...(request.body === undefined
+      ? {}
+      : { body: JSON.stringify(request.body) }),
   });
   const body = await readResponseBody(response);
   return response.ok ? body : badGateway(finicityErrorMessage(body));
@@ -439,10 +449,12 @@ async function findBankingGrant(
         eq(bankingConnections.orgId, auth.orgId),
         eq(bankingConnections.userId, auth.userId),
         eq(bankingConnections.provider, PROVIDER),
-        eq(bankingConnections.status, "active"),
+        or(
+          eq(bankingConnections.status, "active"),
+          eq(bankingConnections.status, "repair_required"),
+        ),
         isNull(bankingConnections.revokedAt),
         isNull(bankingConnections.deletedAt),
-        isNull(bankingConnections.repairRequiredAt),
         or(
           isNull(bankingConnections.consentExpiresAt),
           gt(bankingConnections.consentExpiresAt, nowValue),
@@ -451,6 +463,7 @@ async function findBankingGrant(
         eq(bankingAgentEnablements.userId, auth.userId),
         eq(bankingAgentEnablements.agentId, agentId),
         isNull(bankingAgentEnablements.revokedAt),
+        gt(bankingAgentEnablements.expiresAt, nowValue),
       ),
     )
     .limit(1);
@@ -501,6 +514,7 @@ async function enabledBankingAccounts(
         eq(bankingAccounts.orgId, auth.orgId),
         eq(bankingAccounts.userId, auth.userId),
         eq(bankingAccounts.enabled, true),
+        isNull(bankingAccounts.repairRequiredAt),
         inArray(bankingAccounts.providerAccountId, grant.accountProviderIds),
       ),
     );
@@ -823,7 +837,9 @@ export const bankingTransactions$ = command(
   },
 );
 
-function isBankingErrorResponse(value: unknown): value is BankingErrorResponse {
+export function isBankingErrorResponse(
+  value: unknown,
+): value is BankingErrorResponse {
   if (!isRecord(value)) {
     return false;
   }

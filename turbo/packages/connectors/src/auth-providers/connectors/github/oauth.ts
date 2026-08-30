@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 
@@ -85,7 +86,7 @@ export async function exchangeGitHubCode(
 
   return {
     accessToken: data.access_token,
-    scopes: data.scope ? data.scope.split(",") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, ","),
   };
 }
 

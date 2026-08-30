@@ -16,6 +16,27 @@ ruby -e '
 
   desktop = YAML.safe_load(File.read(ARGV[0]), aliases: true).fetch("jobs")
   release = YAML.safe_load(File.read(ARGV[1]), aliases: true).fetch("jobs")
+  desktop_text = File.read(ARGV[0])
+  release_text = File.read(ARGV[1])
+
+  canonical_signing_identity = "OKOU_DESKTOP_SIGNING_IDENTITY"
+  canonical_writer_counts = {
+    "OKOU_DESKTOP_PRODUCT" => [8, 2],
+    "OKOU_DESKTOP_PLATFORM_URL" => [11, 2],
+    canonical_signing_identity => [0, 5],
+  }
+  canonical_writer_counts.each do |name, expected_counts|
+    actual_counts = [desktop_text.scan(name).length, release_text.scan(name).length]
+    raise "Desktop workflows must use the complete canonical environment writer surface" unless actual_counts == expected_counts
+  end
+  legacy_prefix = "VM0_"
+  legacy_names = ["DESKTOP_PRODUCT", "DESKTOP_PLATFORM_URL", "DESKTOP_SIGNING_IDENTITY"].map do |suffix|
+    legacy_prefix + suffix
+  end
+  legacy_writer_present = legacy_names.any? do |name|
+    desktop_text.include?(name) || release_text.include?(name)
+  end
+  raise "Desktop workflows must not use legacy environment writers" if legacy_writer_present
 
   detector = desktop.fetch("detect-desktop-version")
   build = desktop.fetch("build-macos")
@@ -30,9 +51,9 @@ ruby -e '
 
   okou_build = build.fetch("steps").find { |step| step["id"] == "build-okou-prod" }
   raise "Desktop CI must build the Okou product" unless okou_build
-  raise "Okou CI build must select the Okou product" unless okou_build.fetch("env").fetch("VM0_DESKTOP_PRODUCT") == "okou"
-  raise "Okou CI build must use app.okou.ai" unless okou_build.fetch("env").fetch("VM0_DESKTOP_PLATFORM_URL") == "https://app.okou.ai"
-  raise "Okou CI build must package runtime product identity" unless okou_build.fetch("run").include?("product: process.env.VM0_DESKTOP_PRODUCT")
+  raise "Okou CI build must select the Okou product" unless okou_build.fetch("env").fetch("OKOU_DESKTOP_PRODUCT") == "okou"
+  raise "Okou CI build must use app.okou.ai" unless okou_build.fetch("env").fetch("OKOU_DESKTOP_PLATFORM_URL") == "https://app.okou.ai"
+  raise "Okou CI build must package runtime product identity" unless okou_build.fetch("run").include?("product: process.env.OKOU_DESKTOP_PRODUCT")
 
   okou_verify = build.fetch("steps").find { |step| step["name"] == "Verify Okou production artifact" }.fetch("run")
   raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.desktop")
@@ -43,9 +64,9 @@ ruby -e '
   raise "deploy-desktop must use a SHA-addressed R2 prefix" unless artifact_step.fetch("run").include?(ARGV[6])
 
   build_step = deploy.fetch("steps").find { |step| step["name"] == "Build canonical unsigned Desktop app" }
-  raise "canonical Desktop build must skip signing" unless build_step.fetch("env").fetch("VM0_DESKTOP_SKIP_SIGNING") == "true"
+  raise "canonical Desktop build must skip signing" unless build_step.fetch("env").fetch("OKOU_DESKTOP_SKIP_SIGNING") == "true"
   raise "canonical Desktop build must package Okou" unless build_step.fetch("run").include?("Okou.app")
-  raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("run").include?("VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai")
+  raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("run").include?("OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai")
 
   artifact_build = deploy.fetch("steps").find { |step| step["name"] == "Create canonical Desktop artifact" }.fetch("run")
   raise "canonical artifact must contain the Okou app" unless artifact_build.include?("Okou-darwin-arm64/Okou.app")
@@ -54,6 +75,8 @@ ruby -e '
   raise "canonical artifact must upload the Okou archive" unless artifact_upload.include?("okou-app.tar.gz")
 
   promote = release.fetch("promote-desktop-release")
+  expected_signing_identity = "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)"
+  raise "Desktop promotion must define the canonical signing identity" unless promote.fetch("env").fetch(canonical_signing_identity) == expected_signing_identity
   raise "Desktop promotion must use production environment" unless promote.fetch("environment") == "production"
   checkout = promote.fetch("steps").find { |step| step["uses"].to_s.start_with?("actions/checkout@") }
   raise "Desktop promotion must check out release_target" unless checkout.fetch("with").fetch("ref") == ARGV[4]
@@ -64,7 +87,40 @@ ruby -e '
   raise "Desktop promotion must address artifacts by release_target" unless download.include?(ARGV[5])
   raise "Desktop promotion must require the Okou app archive" unless download.include?("--require-okou")
 
-  promote_text = File.read(ARGV[1]).split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
+  promote_text = release_text.split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
+  dollar = 36.chr
+  canonical_credentials = {
+    "OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" => dollar + "{{ steps.notary-key.outputs.path }}",
+    "OKOU_DESKTOP_NOTARIZE_API_KEY_ID" => dollar + "{{ secrets.APP_STORE_CONNECT_API_KEY_ID }}",
+    "OKOU_DESKTOP_NOTARIZE_API_ISSUER" => dollar + "{{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}",
+  }
+  legacy_credentials = [
+    "VM0_DESKTOP_NOTARIZE_API_KEY_PATH",
+    "VM0_DESKTOP_NOTARIZE_API_KEY_ID",
+    "VM0_DESKTOP_NOTARIZE_API_ISSUER",
+  ]
+  credential_steps = promote.fetch("steps").select do |step|
+    environment = step.fetch("env", {})
+    canonical_credentials.keys.any? { |name| environment.key?(name) }
+  end
+  raise "Desktop promotion must define one atomic API credential source" unless credential_steps.length == 1
+  notarize_step = credential_steps.fetch(0)
+  raise "Desktop promotion must bind the canonical API credential triple together" unless notarize_step.fetch("env") == canonical_credentials
+
+  canonical_occurrences_are_exact = canonical_credentials.keys.all? do |name|
+    release_text.scan(name).length == 2
+  end
+  raise "Desktop release workflow must use each canonical API credential alias exactly twice" unless canonical_occurrences_are_exact
+  raise "Desktop release workflow must not use legacy API credential aliases" if legacy_credentials.any? { |name| release_text.include?(name) }
+
+  notarize_run = notarize_step.fetch("run")
+  raise "Desktop app signing must consume the atomic API credential source" unless notarize_run.include?("sign-and-notarize-packaged-app.mjs")
+  canonical_notarytool_arguments = [
+    "--key \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_KEY_PATH\"",
+    "--key-id \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_KEY_ID\"",
+    "--issuer \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_ISSUER\"",
+  ]
+  raise "Desktop DMG notarization must consume the canonical API credential triple" unless canonical_notarytool_arguments.all? { |argument| notarize_run.include?(argument) }
   raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @okouai/desktop build")
   raise "Desktop promotion must sign the downloaded app" unless promote_text.include?("sign-and-notarize-packaged-app.mjs")
   raise "Desktop promotion must select a product signing identity" unless promote_text.include?("--product")

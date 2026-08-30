@@ -305,6 +305,28 @@ pub fn select_claude_compact_generation(
 }
 
 /// Select Claude Code's latest compact generation from an already-open source.
+///
+/// The caller must open the source before calling this variant and provide the
+/// handle containing the Claude Code JSONL history to inspect. The selection
+/// and fail-closed eligibility rules are the same as
+/// [`select_claude_compact_generation`]: the newest recognized compact boundary
+/// supersedes older candidates, and an invalid or otherwise ineligible source
+/// returns [`ClaudeHistorySelection::Ineligible`] instead of an older
+/// generation.
+///
+/// The source contents are never modified. For a source large enough to
+/// inspect, selection ignores the handle's incoming offset and may leave the
+/// cursor repositioned. Cursor preservation is not guaranteed, so callers
+/// must not rely on the cursor position after this function returns.
+///
+/// The selector only chooses an in-memory candidate; staging, checkpoint
+/// commit, and live-file reconciliation remain the caller's responsibility.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] when an underlying source metadata, seek, or read
+/// operation fails. Source-open errors do not apply because this variant
+/// receives an already-open handle.
 pub fn select_claude_compact_generation_from_file(
     source: &mut File,
     expected_session_id: &str,

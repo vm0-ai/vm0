@@ -168,8 +168,9 @@ grep -r 'globalThis\.services\.db\.\(insert\|update\|delete\)' turbo \
 
 **21. Tests Importing Internal Services**
 ```bash
-# Test files importing from internal lib/ — means testing implementation, not behavior
-grep -rE "from.*['\"].*lib/infra|from.*['\"].*lib/zero" turbo \
+# Test files importing service modules directly — means testing implementation,
+# not behavior. Route tests should go through the API helpers instead.
+grep -rE "from ['\"].*\.service" turbo \
   --include="*.test.ts" --include="*.test.tsx" -l
 ```
 

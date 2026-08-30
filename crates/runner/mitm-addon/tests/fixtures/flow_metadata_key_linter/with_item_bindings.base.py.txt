@@ -2,38 +2,38 @@ def sync_later_context_uses_shadowed_name(flow, first, second):
     metadata = flow.metadata
     with (
         first() as metadata,
-        second(metadata["vm_run_id"]),
+        second(metadata["sandbox_run_id"]),
     ):
-        body_value = metadata["vm_run_id"]
-    after_value = metadata["vm_run_id"]
+        body_value = metadata["sandbox_run_id"]
+    after_value = metadata["sandbox_run_id"]
     return body_value, after_value
 
 async def async_later_context_uses_shadowed_name(flow, first, second):
     metadata = flow.metadata
     async with (
         first() as metadata,
-        second(metadata["vm_run_id"]),
+        second(metadata["sandbox_run_id"]),
     ):
-        body_value = metadata["vm_run_id"]
-    after_value = metadata["vm_run_id"]
+        body_value = metadata["sandbox_run_id"]
+    after_value = metadata["sandbox_run_id"]
     return body_value, after_value
 
 def sync_current_context_uses_alias_before_binding(flow, first, second):
     metadata = flow.metadata
     with (
-        first(metadata["vm_run_id"]) as metadata,
-        second(metadata["vm_run_id"]),
+        first(metadata["sandbox_run_id"]) as metadata,
+        second(metadata["sandbox_run_id"]),
     ):
-        body_value = metadata["vm_run_id"]
-    after_value = metadata["vm_run_id"]
+        body_value = metadata["sandbox_run_id"]
+    after_value = metadata["sandbox_run_id"]
     return body_value, after_value
 
 async def async_current_context_uses_alias_before_binding(flow, first, second):
     metadata = flow.metadata
     async with (
-        first(metadata["vm_run_id"]) as metadata,
-        second(metadata["vm_run_id"]),
+        first(metadata["sandbox_run_id"]) as metadata,
+        second(metadata["sandbox_run_id"]),
     ):
-        body_value = metadata["vm_run_id"]
-    after_value = metadata["vm_run_id"]
+        body_value = metadata["sandbox_run_id"]
+    after_value = metadata["sandbox_run_id"]
     return body_value, after_value

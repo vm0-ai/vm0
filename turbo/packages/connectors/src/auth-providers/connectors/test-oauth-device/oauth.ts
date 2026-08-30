@@ -6,6 +6,7 @@ import type {
 } from "../../provider-flow-types";
 import type { ConnectorAuthProviderGrantResult } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 import {
   resolveTestOAuthProviderUrl,
   testOAuthPreviewBypassHeaders,
@@ -133,6 +134,7 @@ function devicePollErrorResult(args: {
 export async function pollTestOAuthDeviceAuth(args: {
   readonly clientId: string;
   readonly deviceCode: string;
+  readonly scopes: readonly string[];
 }): Promise<TestOAuthDevicePollResult> {
   const response = await fetch(getDeviceTokenUrl(), {
     method: "POST",
@@ -180,7 +182,7 @@ export async function pollTestOAuthDeviceAuth(args: {
         accessToken: data.access_token,
       },
       expiresIn: data.expires_in,
-      scopes: data.scope?.split(" ") ?? [],
+      scopes: effectiveOAuthScopes(data.scope, args.scopes, " "),
       userInfo: {
         id: "test-oauth-device-user",
         username: "test-oauth-device-user",

@@ -5,7 +5,17 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { PUBLIC_DESTINATION_ADDRESS_POLICY } from "@okouai/connectors/public-destination-policy";
 
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "../contracts/model-price-tiers";
+import {
+  BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
+  BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
+} from "../contracts/runners";
 
+const generatedBuiltinFirewallCachePath = fileURLToPath(
+  new URL(
+    "../../../../../crates/runner/mitm-addon/src/generated/builtin_firewall_cache.py",
+    import.meta.url,
+  ),
+);
 const generatedModelUsagePath = fileURLToPath(
   new URL(
     "../../../../../crates/runner/mitm-addon/src/generated/model_usage.py",
@@ -25,9 +35,9 @@ const generatedPackageInitPath = fileURLToPath(
   ),
 );
 
-function pythonInteger(value: number): string {
+function pythonPositiveInteger(value: number, label: string): string {
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`invalid model usage threshold: ${String(value)}`);
+    throw new Error(`invalid ${label}: ${String(value)}`);
   }
   return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, "_");
 }
@@ -65,10 +75,28 @@ function renderModelUsageContract(): string {
     "MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS: Final[dict[str, int]] = {",
   ];
   for (const [model, threshold] of entries) {
-    lines.push(`    ${JSON.stringify(model)}: ${pythonInteger(threshold)},`);
+    lines.push(
+      `    ${JSON.stringify(model)}: ${pythonPositiveInteger(threshold, "model usage threshold")},`,
+    );
   }
   lines.push("}", "");
   return lines.join("\n");
+}
+
+export function renderBuiltinFirewallCacheContract(): string {
+  return [
+    '"""Generated builtin firewall cache contract shared with Rust.',
+    "",
+    "Do not edit by hand; regenerate with",
+    "``cd turbo && pnpm -F @okouai/api-contracts generate:python``.",
+    '"""',
+    "",
+    "from typing import Final",
+    "",
+    `BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: Final[int] = ${pythonPositiveInteger(BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION, "builtin firewall cache schema version")}`,
+    `BUILTIN_FIREWALL_CATALOG_MAX_BYTES: Final[int] = ${pythonPositiveInteger(BUILTIN_FIREWALL_CATALOG_MAX_BYTES, "builtin firewall catalog maximum bytes")}`,
+    "",
+  ].join("\n");
 }
 
 function renderPublicDestinationPolicyContract(): string {
@@ -106,6 +134,10 @@ export async function generatePythonBindings(): Promise<void> {
     '"""Generated Python bindings shared from TypeScript contracts."""\n',
   );
   await writeFile(generatedModelUsagePath, renderModelUsageContract());
+  await writeFile(
+    generatedBuiltinFirewallCachePath,
+    renderBuiltinFirewallCacheContract(),
+  );
   await writeFile(
     generatedPublicDestinationPolicyPath,
     renderPublicDestinationPolicyContract(),

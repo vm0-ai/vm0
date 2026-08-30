@@ -42,7 +42,6 @@ function buildCommands(): Command[] {
     new Command("web-search"),
     new Command("social"),
     new Command("recognize"),
-    new Command("translate"),
     new Command("finance"),
     new Command("seo"),
     new Command("banking"),
@@ -167,7 +166,7 @@ describe("registerCommands", () => {
     vi.stubEnv("OKOU_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -213,7 +212,6 @@ describe("registerCommands", () => {
       "web-search",
       "social",
       "recognize",
-      "translate",
       "finance",
       "seo",
       "banking",
@@ -242,7 +240,7 @@ describe("registerCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -256,7 +254,7 @@ describe("registerCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -797,34 +795,6 @@ describe("registerCommands", () => {
     expect(visibleCommandNames(buildProgram())).toContain("recognize");
     expect(buildHelpText(decodeSandboxTokenPayload(eligibleToken))).toContain(
       "Recognize an image?",
-    );
-  });
-
-  it("should expose translation only to capable Zero runs", () => {
-    vi.stubEnv("OKOU_TOKEN", undefined);
-    const noTokenProgram = buildProgram();
-    expect(registeredCommandNames(noTokenProgram)).toContain("translate");
-    expect(hiddenCommandNames(noTokenProgram)).toContain("translate");
-
-    const missingCapabilityToken = buildOkouToken({
-      scope: "okou",
-      userId: "user-1",
-      orgId: "org-1",
-      capabilities: [],
-    });
-    vi.stubEnv("OKOU_TOKEN", missingCapabilityToken);
-    expect(hiddenCommandNames(buildProgram())).toContain("translate");
-
-    const capableToken = buildOkouToken({
-      scope: "okou",
-      userId: "user-1",
-      orgId: "org-1",
-      capabilities: ["translation:write"],
-    });
-    vi.stubEnv("OKOU_TOKEN", capableToken);
-    expect(visibleCommandNames(buildProgram())).toContain("translate");
-    expect(buildHelpText(decodeSandboxTokenPayload(capableToken))).toContain(
-      "Translate text?",
     );
   });
 

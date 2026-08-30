@@ -2,7 +2,7 @@
 //!
 //! # Why a dedicated test binary
 //!
-//! The pre-existing `tests/integration/mod.rs` binary defaults to Claude. This
+//! The pre-existing `tests/integration.rs` binary defaults to Claude. This
 //! binary keeps Codex metadata tests separate so their setup can stay focused
 //! on Codex config and file layout.
 //!
@@ -225,7 +225,7 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
             .json_body_includes(format!(r#"{{"cliAgentSessionId":"{thread_id}"}}"#));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "codex-derived-checkpoint"}));
+            .json_body(json!({"checkpointId": "codex-derived-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let config = fixture.config(&server.base_url(), "test-token")?;
@@ -235,6 +235,7 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
         paths: fixture.paths().clone(),
         http,
         workload_containment: None,
+        process_control_endpoint: None,
     };
     let session_metadata = guest_agent::session_metadata::CapturedSessionMetadata::for_test(
         thread_id,

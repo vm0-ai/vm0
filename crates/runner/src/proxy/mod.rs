@@ -2,7 +2,7 @@
 //!
 //! This module owns the Rust side of the runner's transparent proxy. It
 //! extracts the embedded Python addon into the runner's `mitm-addon`
-//! directory, starts `mitmdump` with runner-specific options, publishes VM
+//! directory, starts `mitmdump` with runner-specific options, publishes sandbox
 //! metadata through the proxy registry, and coordinates crash notification,
 //! restart, webhook delivery drain, JSONL log flush, and graceful stop behavior.
 //!
@@ -70,4 +70,4 @@ pub(crate) use registry::{
     ConnectorRuntimeFailCloseOutcome, ConnectorRuntimeRegistryUpdate,
     CustomConnectorRuntimeRegistryState,
 };
-pub use registry::{ProxyRegistryHandle, VmRegistration};
+pub use registry::{ProxyRegistryHandle, SandboxRegistration};

@@ -1,7 +1,8 @@
 use crate::error::ProtocolError;
 use crate::read::{
-    checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
-    expect_consumed, read_i32, read_slice, read_str, read_u8, read_u16, read_u32,
+    checked_payload_len_add, ensure_payload_fits_message, ensure_u16_count, ensure_u16_len,
+    ensure_u32_count, ensure_u32_len, expect_consumed, read_i32, read_slice, read_str, read_u8,
+    read_u16, read_u32,
 };
 use crate::wire::EXEC_FLAG_SUDO;
 
@@ -14,6 +15,9 @@ pub(super) const EXEC_OUTPUT_POLICY_CAPTURE_AND_STREAM: u8 = 0x03;
 
 pub(super) const EXEC_LIFECYCLE_ONE_SHOT: u8 = 0x00;
 pub(super) const EXEC_LIFECYCLE_SUPERVISED: u8 = 0x01;
+
+pub(super) const EXEC_PROCESS_ROLE_WORKLOAD: u8 = 0x00;
+pub(super) const EXEC_PROCESS_ROLE_AGENT: u8 = 0x01;
 
 pub(super) const EXEC_TIMEOUT_DURATION: u8 = 0x00;
 pub(super) const EXEC_TIMEOUT_NONE: u8 = 0x01;
@@ -76,6 +80,15 @@ pub enum ExecLifecyclePolicy {
     Supervised,
 }
 
+/// Semantic role of a process started through the exec transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecProcessRole {
+    /// Ordinary contained workload.
+    Workload,
+    /// Controlled guest Agent operation.
+    Agent,
+}
+
 /// Exec timeout policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecTimeoutPolicy {
@@ -103,9 +116,28 @@ pub enum ExecControlPolicy {
 }
 
 /// Parameters for encoding an exec_start payload with extended metadata.
+///
+/// # Process contract
+///
+/// The `lifecycle`, `role`, and `control` fields form one semantic contract. The
+/// following combinations are accepted:
+///
+/// | Role | Lifecycle | Control | Meaning |
+/// | --- | --- | --- | --- |
+/// | [`ExecProcessRole::Workload`] | [`ExecLifecyclePolicy::OneShot`] | [`ExecControlPolicy::Disabled`] | One-shot contained workload |
+/// | [`ExecProcessRole::Workload`] | [`ExecLifecyclePolicy::Supervised`] | [`ExecControlPolicy::Disabled`] | Ordinary supervised workload |
+/// | [`ExecProcessRole::Workload`] | [`ExecLifecyclePolicy::Supervised`] | `Enabled { sink: false, .. }` | Controlled supervised workload without a guest sink |
+/// | [`ExecProcessRole::Agent`] | [`ExecLifecyclePolicy::Supervised`] | `Enabled { sink: true, .. }` | Controlled Agent operation with a guest sink |
+///
+/// An `Agent` therefore requires a supervised lifecycle and an enabled control
+/// sink. A controlled `Workload` is supervised with an enabled control channel
+/// but `sink: false`. Every other combination is rejected during both encoding
+/// and decoding by [`validate_exec_process_contract`].
 pub struct ExecStartEncodeRequest<'a> {
     /// Process lifecycle policy to encode.
     pub lifecycle: ExecLifecyclePolicy,
+    /// Semantic process role to encode.
+    pub role: ExecProcessRole,
     /// Protocol timeout policy to encode.
     pub timeout: ExecTimeoutPolicy,
     /// UTF-8 command string to execute.
@@ -135,10 +167,16 @@ pub struct ExecStartEncodeRequest<'a> {
 }
 
 /// Decoded exec_start payload.
+///
+/// Its `lifecycle`, `role`, and `control` fields satisfy the process contract
+/// documented on [`ExecStartEncodeRequest`]. Decoding rejects every other
+/// combination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedExecStart<'a> {
     /// Decoded process lifecycle policy.
     pub lifecycle: ExecLifecyclePolicy,
+    /// Decoded semantic process role.
+    pub role: ExecProcessRole,
     /// Decoded protocol timeout policy.
     pub timeout: ExecTimeoutPolicy,
     /// Command string borrowed from the decoded payload.
@@ -225,6 +263,13 @@ fn append_exec_lifecycle(p: &mut Vec<u8>, lifecycle: ExecLifecyclePolicy) {
     });
 }
 
+fn append_exec_process_role(p: &mut Vec<u8>, role: ExecProcessRole) {
+    p.push(match role {
+        ExecProcessRole::Workload => EXEC_PROCESS_ROLE_WORKLOAD,
+        ExecProcessRole::Agent => EXEC_PROCESS_ROLE_AGENT,
+    });
+}
+
 fn append_exec_timeout_policy(p: &mut Vec<u8>, timeout: ExecTimeoutPolicy) {
     match timeout {
         ExecTimeoutPolicy::Duration { timeout_ms } => {
@@ -269,6 +314,38 @@ fn validate_exec_timeout_policy(timeout: ExecTimeoutPolicy) -> Result<(), Protoc
     Ok(())
 }
 
+/// Validate the semantic role, lifecycle, and transport-control combination.
+///
+/// The accepted combinations are documented on [`ExecStartEncodeRequest`].
+/// This same contract is enforced by the exec-start encoder and decoder.
+pub fn validate_exec_process_contract(
+    role: ExecProcessRole,
+    lifecycle: ExecLifecyclePolicy,
+    control: ExecControlPolicy,
+) -> Result<(), ProtocolError> {
+    match (role, lifecycle, control) {
+        (ExecProcessRole::Workload, ExecLifecyclePolicy::OneShot, ExecControlPolicy::Disabled)
+        | (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Disabled,
+        )
+        | (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled { sink: false, .. },
+        )
+        | (
+            ExecProcessRole::Agent,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled { sink: true, .. },
+        ) => Ok(()),
+        _ => Err(ProtocolError::InvalidPayload(
+            "exec start role, lifecycle, and control combination invalid",
+        )),
+    }
+}
+
 fn append_exec_output_policy(p: &mut Vec<u8>, policy: ExecOutputPolicy) {
     match policy {
         ExecOutputPolicy::Discard => p.push(EXEC_OUTPUT_POLICY_DISCARD),
@@ -309,6 +386,7 @@ pub fn encode_exec_start(
 ) -> Result<Vec<u8>, ProtocolError> {
     encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
+        role: ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::Duration { timeout_ms },
         command,
         env,
@@ -335,18 +413,18 @@ pub fn encode_exec_start_with_expected_exit_codes(
     let cmd = request.command.as_bytes();
     let label_bytes = request.label.as_bytes();
     let cmd_len = ensure_u32_len("command", cmd.len())?;
-    let env_count = ensure_u32_len("env_count", request.env.len())?;
+    let env_count = ensure_u32_count("env_count", request.env.len())?;
     if request.env.len() > MAX_EXEC_ENV_VARS {
-        return Err(ProtocolError::PayloadTooLarge(
+        return Err(ProtocolError::PayloadCountTooLarge(
             "env_count",
             request.env.len(),
         ));
     }
     let label_len = ensure_u16_len("label", label_bytes.len())?;
     let expected_exit_count =
-        ensure_u16_len("expected_exit_count", request.expected_exit_codes.len())?;
+        ensure_u16_count("expected_exit_count", request.expected_exit_codes.len())?;
     if request.expected_exit_codes.len() > MAX_EXEC_EXPECTED_EXIT_CODES {
-        return Err(ProtocolError::PayloadTooLarge(
+        return Err(ProtocolError::PayloadCountTooLarge(
             "expected_exit_count",
             request.expected_exit_codes.len(),
         ));
@@ -358,8 +436,9 @@ pub fn encode_exec_start_with_expected_exit_codes(
     let control_policy_len = exec_control_policy_encoded_len(request.control);
     let stdin_policy_len = exec_stdin_policy_encoded_len(request.stdin_bytes)?;
     validate_exec_timeout_policy(request.timeout)?;
+    validate_exec_process_contract(request.role, request.lifecycle, request.control)?;
 
-    let mut payload_len = 1 + timeout_policy_len + 1 + 4;
+    let mut payload_len = 1 + 1 + timeout_policy_len + 1 + 4;
     payload_len = checked_payload_len_add(payload_len, cmd.len())?;
     payload_len = checked_payload_len_add(payload_len, 4)?;
     for (key, val) in request.env {
@@ -383,6 +462,7 @@ pub fn encode_exec_start_with_expected_exit_codes(
 
     let mut p = Vec::with_capacity(payload_len);
     append_exec_lifecycle(&mut p, request.lifecycle);
+    append_exec_process_role(&mut p, request.role);
     append_exec_timeout_policy(&mut p, request.timeout);
     p.push(if request.sudo { EXEC_FLAG_SUDO } else { 0 });
     p.extend_from_slice(&cmd_len.to_be_bytes());
@@ -473,6 +553,19 @@ fn decode_exec_lifecycle(
     }
 }
 
+fn decode_exec_process_role(
+    payload: &[u8],
+    offset: &mut usize,
+) -> Result<ExecProcessRole, ProtocolError> {
+    match read_u8(payload, offset, "exec start process role truncated")? {
+        EXEC_PROCESS_ROLE_WORKLOAD => Ok(ExecProcessRole::Workload),
+        EXEC_PROCESS_ROLE_AGENT => Ok(ExecProcessRole::Agent),
+        _ => Err(ProtocolError::InvalidPayload(
+            "exec start process role invalid",
+        )),
+    }
+}
+
 fn decode_exec_timeout_policy(
     payload: &[u8],
     offset: &mut usize,
@@ -551,6 +644,7 @@ fn decode_exec_stdin_policy<'a>(
 pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, ProtocolError> {
     let mut offset = 0;
     let lifecycle = decode_exec_lifecycle(payload, &mut offset)?;
+    let role = decode_exec_process_role(payload, &mut offset)?;
     let timeout = decode_exec_timeout_policy(payload, &mut offset)?;
     let flags = read_u8(payload, &mut offset, "exec start flags truncated")?;
     if flags & !EXEC_FLAG_SUDO != 0 {
@@ -639,8 +733,10 @@ pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, Protoco
     let control = decode_exec_control_policy(payload, &mut offset)?;
     let stdin_bytes = decode_exec_stdin_policy(payload, &mut offset)?;
     expect_consumed(payload, offset, "exec start trailing bytes")?;
+    validate_exec_process_contract(role, lifecycle, control)?;
     Ok(DecodedExecStart {
         lifecycle,
+        role,
         timeout,
         command,
         env,

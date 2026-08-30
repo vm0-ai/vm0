@@ -20,8 +20,11 @@ import {
   materializePendingActiveInputPrompts,
   pendingActiveInputBudgetRows,
   pendingActiveInputRows,
+  type MaterializedActiveInputPrompt,
   type PendingActiveInputRow,
 } from "./active-input-prompt.service";
+import { logTemplateUsage } from "../../lib/template-usage-log";
+import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 import { lockChatQueueThread } from "./chat-event-queue.service";
 import { replaceLoadedChatEvent } from "./chat-event.service";
 
@@ -88,6 +91,7 @@ type PreparedReservation =
       readonly deliveryId: string;
       readonly sourceEventId: string;
       readonly prompt: string;
+      readonly templateIdentities: readonly GenerationTemplateIdentity[];
     };
 
 type ReserveTransitionResult =
@@ -150,13 +154,13 @@ async function loadActiveInputDeliveryScope(
 
 function materializedPrompt(
   row: PendingActiveInputRow,
-  prompts: ReadonlyMap<string, string>,
-): string {
-  const prompt = prompts.get(row.id);
-  if (prompt === undefined) {
+  prompts: ReadonlyMap<string, MaterializedActiveInputPrompt>,
+): MaterializedActiveInputPrompt {
+  const materialized = prompts.get(row.id);
+  if (materialized === undefined) {
     throw new Error("Active input prompt materialization is missing");
   }
-  return prompt;
+  return materialized;
 }
 
 async function prepareReservation(
@@ -183,16 +187,22 @@ async function prepareReservation(
   if (!prompts) {
     throw new Error("Pending active input cannot be materialized");
   }
-  const prompt = materializedPrompt(row, prompts);
+  const materialized = materializedPrompt(row, prompts);
   const deliveryId = randomUUID();
-  if (!activeInputDeliveryPromptFitsControlPayload(deliveryId, prompt)) {
+  if (
+    !activeInputDeliveryPromptFitsControlPayload(
+      deliveryId,
+      materialized.prompt,
+    )
+  ) {
     return { kind: "rejected", reason: "payload_too_large" };
   }
   return {
     kind: "ready",
     deliveryId,
     sourceEventId: row.id,
-    prompt,
+    prompt: materialized.prompt,
+    templateIdentities: materialized.templateIdentities,
   };
 }
 
@@ -347,7 +357,7 @@ async function materializeDelivery(
   if (!prompts) {
     throw new Error("Active input delivery cannot be rematerialized");
   }
-  const prompt = materializedPrompt(row, prompts);
+  const { prompt } = materializedPrompt(row, prompts);
   if (
     !activeInputDeliveryPromptFitsControlPayload(delivery.deliveryId, prompt)
   ) {
@@ -382,6 +392,20 @@ export async function reserveActiveInputDelivery(
       continue;
     }
     if (result.outcome === "created") {
+      // The delivery row now exists, so this prompt reaches the run exactly
+      // once. Materialization is the wrong place to report it: it runs again on
+      // every retry and on every retrieval of an already-open delivery.
+      if (prepared.kind === "ready") {
+        logTemplateUsage(
+          {
+            dispatchPath: "active-input",
+            orgId: scope.orgId,
+            userId: scope.userId,
+            chatThreadId: scope.chatThreadId,
+          },
+          prepared.templateIdentities,
+        );
+      }
       return {
         outcome: "reserved",
         deliveryId: result.deliveryId,

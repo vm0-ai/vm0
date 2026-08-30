@@ -27,6 +27,8 @@ import {
 } from "../../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
+  BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
   BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
@@ -39,6 +41,7 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+  RUNNER_HOSTNAME_MAX_LENGTH,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -101,9 +104,17 @@ const activeInputControlPayloadMaxBytesDoc = [
   "Maximum serialized active-input control payload accepted by runner and guest process control.",
   "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
 ] as const;
+const agentExecutionTimeoutSecondsDoc = [
+  "Maximum execution budget for one agent run, in seconds.",
+  "The runner enforces this deadline and the API includes it in the agent-facing system prompt.",
+] as const;
 const builtinFirewallCatalogMaxBytesDoc = [
   "Maximum builtin firewall catalog response and cache size accepted by runners.",
-  "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
+  "This Runner wire and cache boundary is independent of the larger full connector catalog source-ingestion limit.",
+] as const;
+const builtinFirewallCatalogCacheSchemaVersionDoc = [
+  "Schema version written to builtin firewall catalog cache files and accepted by the mitm addon.",
+  "This value is generated for both Rust and Python consumers so cache compatibility cannot drift between them.",
 ] as const;
 const runnerCancellationRecoveryGraceMsDoc = [
   "Maximum cooperative user-cancellation recovery window enforced by runners.",
@@ -123,6 +134,11 @@ const connectorRuntimeSyncRunTerminalErrorCodeDoc = [
 const runnerPollExcludedRunIdsMaxDoc = [
   "Maximum runner-local claim cooldown exclusions accepted by the poll endpoint.",
   "Rust runners use this shared contract value to bound local cooldown state and poll request size.",
+] as const;
+
+const runnerHostnameMaxLengthDoc = [
+  "Maximum configured runner hostname length accepted by the runner-facing API.",
+  "Rust runners use JavaScript UTF-16 string length semantics when enforcing this shared boundary.",
 ] as const;
 const sessionHistoryEncodingGzipDoc = [
   "Wire and blob metadata value for gzip-compressed resume session history.",
@@ -163,6 +179,10 @@ const clientRequestIdHeaderDoc = [
 
 function rustString(value: string): RustConstantValue {
   return { kind: "string", value };
+}
+
+function rustU32(value: number): RustConstantValue {
+  return { kind: "u32", value };
 }
 
 function rustU64(value: number): RustConstantValue {
@@ -245,6 +265,18 @@ const expectedBindings = [
   },
   {
     rustModulePath: ["runners"],
+    rustConstName: "AGENT_EXECUTION_TIMEOUT_SECONDS",
+    value: rustU64(AGENT_EXECUTION_TIMEOUT_SECONDS),
+    rustDoc: agentExecutionTimeoutSecondsDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION",
+    value: rustU32(BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION),
+    rustDoc: builtinFirewallCatalogCacheSchemaVersionDoc,
+  },
+  {
+    rustModulePath: ["runners"],
     rustConstName: "BUILTIN_FIREWALL_CATALOG_MAX_BYTES",
     value: rustU64(BUILTIN_FIREWALL_CATALOG_MAX_BYTES),
     rustDoc: builtinFirewallCatalogMaxBytesDoc,
@@ -278,6 +310,12 @@ const expectedBindings = [
     rustConstName: "CANCELLATION_RECOVERY_STALE_AFTER_MS",
     value: rustU64(CANCELLATION_RECOVERY_STALE_AFTER_MS),
     rustDoc: cancellationRecoveryStaleAfterMsDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_HOSTNAME_MAX_LENGTH",
+    value: rustU64(RUNNER_HOSTNAME_MAX_LENGTH),
+    rustDoc: runnerHostnameMaxLengthDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -490,6 +528,8 @@ describe("Rust constant bindings", () => {
   });
 
   it("renders deterministic Rust constants for the supported registry", () => {
+    expect(BUILTIN_FIREWALL_CATALOG_MAX_BYTES).toBe(16 * 1024 * 1024);
+
     const firstRender = renderRustConstants(rustConstantBindings);
     const secondRender = renderRustConstants(rustConstantBindings);
 
@@ -550,7 +590,13 @@ describe("Rust constant bindings", () => {
       `pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = ${ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES};`,
     );
     expect(firstRender).toContain(
+      `pub const AGENT_EXECUTION_TIMEOUT_SECONDS: u64 = ${AGENT_EXECUTION_TIMEOUT_SECONDS};`,
+    );
+    expect(firstRender).toContain(
       `pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = ${BUILTIN_FIREWALL_CATALOG_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: u32 = ${BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION};`,
     );
     expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,
@@ -560,6 +606,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = ${CANCELLATION_RECOVERY_STALE_AFTER_MS};`,
+    );
+    expect(firstRender).toContain(
+      `pub const RUNNER_HOSTNAME_MAX_LENGTH: u64 = ${RUNNER_HOSTNAME_MAX_LENGTH};`,
     );
     expect(firstRender).toContain(
       `pub const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX: u64 = ${RUNNER_POLL_EXCLUDED_RUN_IDS_MAX};`,
@@ -690,6 +739,19 @@ describe("Rust constant bindings", () => {
       ]);
     }).toThrow("invalid u64 constant value");
   });
+
+  it.each([-1, 0x1_0000_0000])(
+    "fails clearly when a u32 constant value is invalid",
+    (value: number) => {
+      expect(() => {
+        normalizeConstantBindings([
+          validBinding({
+            value: rustU32(value),
+          }),
+        ]);
+      }).toThrow("invalid u32 constant value");
+    },
+  );
 
   it("fails clearly when Rust module docs are missing", () => {
     expect(() => {

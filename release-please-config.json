@@ -43,11 +43,19 @@
             "release-type": "node",
             "skip-changelog": true
         },
+        "turbo/packages/connector-catalog-validation": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
         "turbo/packages/db": {
             "release-type": "node",
             "skip-changelog": true
         },
         "turbo/packages/pi-agent-runtime": {
+            "release-type": "node",
+            "skip-changelog": true
+        },
+        "turbo/packages/ui": {
             "release-type": "node",
             "skip-changelog": true
         },

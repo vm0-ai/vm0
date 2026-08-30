@@ -31,7 +31,7 @@ fn warn_invalid_api_start_time_once(op_name: &str, api_start: &str) {
 
     log_warn!(
         LOG_TAG,
-        "Skipping E2E {op_name}: invalid VM0_API_START_TIME={api_start:?}; expected Unix epoch milliseconds"
+        "Skipping E2E {op_name}: invalid OKOU_API_START_TIME={api_start:?}; expected Unix epoch milliseconds"
     );
 }
 

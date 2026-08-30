@@ -1,7 +1,7 @@
 //! Fast-tier coverage for non-ChatGPT Codex app-server runs.
 
-#[path = "common/codex_app_server_startup.rs"]
 mod codex_app_server_startup;
+mod codex_app_server_startup_policy;
 mod common;
 
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ async fn codex_app_server_enables_fast_mode_without_chatgpt_account()
             user_env: HashMap::from([
                 ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
                 ("OPENAI_MODEL".to_string(), "gpt-5.6-luna".to_string()),
-                ("VM0_CODEX_SERVICE_TIER".to_string(), "fast".to_string()),
+                ("OKOU_CODEX_SERVICE_TIER".to_string(), "fast".to_string()),
             ]),
             expect_fast_mode: true,
         },

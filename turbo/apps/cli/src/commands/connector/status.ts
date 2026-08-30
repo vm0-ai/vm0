@@ -13,6 +13,12 @@ import {
   connectorActionUrl,
   printCallbackActionUrlExample,
 } from "./action-url";
+import {
+  isRunBoundConnectorContext,
+  resolveRunConnectorAccountView,
+  runConnectorAccountUnavailableMessage,
+  type RunConnectorAccountEntry,
+} from "./run-account-context";
 
 const LABEL_WIDTH = 16;
 
@@ -157,14 +163,118 @@ async function printStandaloneAction(
   }
 }
 
+function printRunConnectorDetails(connector: RunConnectorAccountEntry): void {
+  console.log(`Connector: ${chalk.cyan(connector.slug)}`);
+  console.log();
+  if (connector.account.state === "not-admitted") {
+    console.log(
+      `${"Account Used:".padEnd(LABEL_WIDTH)}${chalk.dim("unavailable for this run")}`,
+    );
+    console.log();
+    console.log(
+      "Reconnect or change the thread selection, then start a new run.",
+    );
+    return;
+  }
+  console.log(
+    `${"Account Used:".padEnd(LABEL_WIDTH)}${
+      connector.account.state === "available"
+        ? connector.account.label
+        : chalk.dim("metadata unavailable or deleted")
+    }`,
+  );
+  console.log(
+    `${"Connection ID:".padEnd(LABEL_WIDTH)}${connector.account.connectionId}`,
+  );
+  if (connector.account.state === "metadata-unavailable") {
+    console.log(
+      `${"Current Status:".padEnd(LABEL_WIDTH)}${chalk.dim("unavailable")}`,
+    );
+    return;
+  }
+  console.log(
+    `${"Current Status:".padEnd(LABEL_WIDTH)}${connector.account.metadata.connectionStatus}`,
+  );
+  console.log(
+    `${"Auth Method:".padEnd(LABEL_WIDTH)}${connector.account.metadata.authMethod}`,
+  );
+  if (connector.account.metadata.reconnectReason) {
+    console.log(
+      `${"Reconnect Reason:".padEnd(LABEL_WIDTH)}${connector.account.metadata.reconnectReason}`,
+    );
+  }
+}
+
+async function printRunConnectorStatus(
+  connectorSlug: string,
+  json: boolean,
+): Promise<void> {
+  const view = await resolveRunConnectorAccountView();
+  if (view.state === "unavailable") {
+    if (json) {
+      console.log(
+        JSON.stringify(
+          {
+            context: "run",
+            state: "unavailable",
+            reason: view.reason,
+            connector: null,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.log(runConnectorAccountUnavailableMessage(view.reason));
+    }
+    return;
+  }
+  const connector = view.connectors.find((candidate) => {
+    return candidate.slug === connectorSlug;
+  });
+  if (!connector) {
+    throw new Error(
+      `Connector is not available in this run: ${connectorSlug}`,
+      {
+        cause: new Error(
+          `Available connectors: ${view.connectors
+            .map((candidate) => {
+              return candidate.slug;
+            })
+            .join(", ")}`,
+        ),
+      },
+    );
+  }
+  if (json) {
+    console.log(
+      JSON.stringify(
+        { context: "run", state: "available", connector },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  printRunConnectorDetails(connector);
+}
+
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a connector")
   .argument("<slug>", "Connector slug (e.g., github)")
   .option("--agent <id>", "Show authorization state for the given agent")
+  .option("--json", "Output connector status as JSON")
   .action(
     withErrorHandler(
-      async (connectorSlug: string, options: { agent?: string }) => {
+      async (
+        connectorSlug: string,
+        options: { agent?: string; json?: boolean },
+      ) => {
+        if (isRunBoundConnectorContext()) {
+          await printRunConnectorStatus(connectorSlug, options.json ?? false);
+          return;
+        }
         const [catalog, agentCtx] = await Promise.all([
           listConnectorCatalogStatus(),
           resolveAgentContext(options.agent),
@@ -182,6 +292,29 @@ export const statusCommand = new Command()
               ),
             },
           );
+        }
+
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              {
+                context: "current",
+                connector,
+                authorization: agentCtx
+                  ? {
+                      agentId: agentCtx.agentId,
+                      displayName: agentCtx.displayName,
+                      authorized: agentCtx.authorizedConnectorSlugs.has(
+                        connector.slug,
+                      ),
+                    }
+                  : null,
+              },
+              null,
+              2,
+            ),
+          );
+          return;
         }
 
         console.log(`Connector: ${chalk.cyan(connector.slug)}`);

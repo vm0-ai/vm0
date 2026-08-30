@@ -55,8 +55,8 @@ describe("POST /api/billing/downgrade", () => {
   });
 
   beforeEach(() => {
-    mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
-    mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
+    mockEnv("OKOU_PRICE_PRO", TEST_PRICE_PRO);
+    mockEnv("OKOU_PRICE_TEAM", TEST_PRICE_TEAM);
   });
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
@@ -316,8 +316,8 @@ describe("POST /api/billing/downgrade", () => {
   });
 
   it("preserves usage packs when scheduling team to pro", async () => {
-    mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_PRO", TEST_USAGE_PACK_PLAN_PRO);
-    mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_TEAM", TEST_USAGE_PACK_PLAN_TEAM);
+    mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_PRO", TEST_USAGE_PACK_PLAN_PRO);
+    mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_TEAM", TEST_USAGE_PACK_PLAN_TEAM);
     context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
 
     const subId = `sub-usage-pack-team-pro-${randomUUID().slice(0, 8)}`;

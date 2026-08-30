@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/user-permission-grants";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -15,8 +15,8 @@ const userPermissionGrantAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
-const listQuery$ = queryOf(zeroUserPermissionGrantsContract.list);
-const applyBody$ = bodyResultOf(zeroUserPermissionGrantsContract.apply);
+const listQuery$ = queryOf(userPermissionGrantsContract.list);
+const applyBody$ = bodyResultOf(userPermissionGrantsContract.apply);
 
 function permissionGrantScopeFromQuery(query: { readonly agentId?: string }): {
   readonly agentId: string;
@@ -81,14 +81,14 @@ const applyUserPermissionGrantsInner$ = command(
 
 export const userPermissionGrantsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroUserPermissionGrantsContract.list,
+    route: userPermissionGrantsContract.list,
     handler: authRoute(
       userPermissionGrantAuthOptions,
       listUserPermissionGrantsInner$,
     ),
   },
   {
-    route: zeroUserPermissionGrantsContract.apply,
+    route: userPermissionGrantsContract.apply,
     handler: authRoute(
       userPermissionGrantAuthOptions,
       applyUserPermissionGrantsInner$,

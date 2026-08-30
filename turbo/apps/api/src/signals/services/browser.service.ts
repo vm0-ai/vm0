@@ -104,7 +104,7 @@ const TERMINAL_RUN_STATUSES = [
   "timeout",
   "cancelled",
 ] as const;
-const L = logger("ZeroBrowser");
+const L = logger("Browser");
 const browserTabSnapshotSchema = z.array(z.string().max(8192)).max(50);
 
 const BROWSER_SESSION_SELECTION = {
@@ -518,6 +518,7 @@ async function createBrowserScreenState(
 interface ActiveBrowserInstance {
   readonly chatThreadId: string;
   readonly providerSessionId: string;
+  readonly orgId: string;
   readonly userId: string;
 }
 
@@ -707,11 +708,12 @@ async function stopActiveBrowserInstance(
     threadId: target.chatThreadId,
   });
   if (stopped.eventSeqId !== null) {
-    await publishChatThreadMessageCreatedSafely(
-      target.userId,
-      target.chatThreadId,
-      stopped.eventSeqId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: target.userId,
+      orgId: target.orgId,
+      threadId: target.chatThreadId,
+      syncThroughSeqId: stopped.eventSeqId,
+    });
   }
   signal.throwIfAborted();
   return true;
@@ -787,6 +789,7 @@ async function ensureBrowserCapacity(
     .select({
       chatThreadId: browserSessions.chatThreadId,
       providerSessionId: browserSessionInstances.providerSessionId,
+      orgId: browserSessions.orgId,
       userId: browserSessions.userId,
     })
     .from(browserSessionInstances)
@@ -1965,6 +1968,7 @@ const inspectActiveConnection$ = command(
       {
         chatThreadId: browser.chatThreadId,
         providerSessionId: instance.providerSessionId,
+        orgId: browser.orgId,
         userId: browser.userId,
       },
       "provider",
@@ -2278,11 +2282,12 @@ export const openBrowserForThread$ = command(
         "BROWSER_EVENT_ID_CONFLICT",
       );
     }
-    await publishChatThreadMessageCreatedSafely(
-      context.value.userId,
-      context.value.chatThreadId,
-      event.seqId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: context.value.userId,
+      orgId: context.value.orgId,
+      threadId: context.value.chatThreadId,
+      syncThroughSeqId: event.seqId,
+    });
     signal.throwIfAborted();
     return {
       kind: "ok",
@@ -2330,11 +2335,12 @@ export const closeBrowserForThread$ = command(
         "BROWSER_EVENT_ID_CONFLICT",
       );
     }
-    await publishChatThreadMessageCreatedSafely(
-      thread.userId,
-      thread.chatThreadId,
-      event.seqId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: thread.userId,
+      orgId: args.orgId,
+      threadId: thread.chatThreadId,
+      syncThroughSeqId: event.seqId,
+    });
     signal.throwIfAborted();
     return {
       kind: "ok",
@@ -2696,6 +2702,7 @@ export const stopThreadBrowsers$ = command(
       .select({
         chatThreadId: browserSessions.chatThreadId,
         providerSessionId: browserSessionInstances.providerSessionId,
+        orgId: browserSessions.orgId,
         userId: browserSessions.userId,
       })
       .from(browserSessionInstances)
@@ -3535,6 +3542,7 @@ const reconcileBrowserInstance$ = command(
       {
         chatThreadId: row.browser.chatThreadId,
         providerSessionId: row.instance.providerSessionId,
+        orgId: row.browser.orgId,
         userId: row.browser.userId,
       },
       reason,

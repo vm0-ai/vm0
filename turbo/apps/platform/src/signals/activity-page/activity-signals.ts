@@ -15,7 +15,7 @@ import type {
   AgentEvent,
   AgentEventsResponse,
   LogStatus,
-} from "../zero-page/log-types.ts";
+} from "../okou-page/log-types.ts";
 import { groupVisibleGroups, type EventGroup } from "./log-detail-utils.ts";
 import {
   formatActivityClockTime,
@@ -32,7 +32,7 @@ type AgentEventsClient = InitClientReturn<
   InitClientArgs
 >;
 
-interface ZeroActivityEvents {
+interface ActivityEvents {
   readonly runId: string;
   readonly events: AgentEvent[];
   readonly status: LogStatus;
@@ -46,10 +46,10 @@ type ActivityEventsState =
     }
   | {
       readonly phase: "ready";
-      readonly data: ZeroActivityEvents;
+      readonly data: ActivityEvents;
     };
 
-interface ZeroActivityVisibleGroups {
+interface ActivityVisibleGroups {
   readonly runId: string | null;
   readonly groups: EventGroup[];
   readonly loading: boolean;
@@ -99,7 +99,7 @@ async function fetchAgentEventBatch(
     readonly expectedSequence?: number;
   },
   signal: AbortSignal,
-): Promise<Omit<ZeroActivityEvents, "runId">> {
+): Promise<Omit<ActivityEvents, "runId">> {
   const firstPage = await fetchAgentEventPage(
     client,
     runId,
@@ -152,7 +152,7 @@ async function fetchAgentEventBatch(
 
 const internalActivityEventsState$ = state<ActivityEventsState | null>(null);
 
-export const zeroActivityEvents$ = computed((get) => {
+export const activityEvents$ = computed((get) => {
   const runId = get(currentRunId$);
   const state = get(internalActivityEventsState$);
   if (!runId || state?.phase !== "ready" || state.data.runId !== runId) {
@@ -161,7 +161,7 @@ export const zeroActivityEvents$ = computed((get) => {
   return state.data;
 });
 
-const zeroActivityEventsLoading$ = computed((get) => {
+const activityEventsLoading$ = computed((get) => {
   const runId = get(currentRunId$);
   const state = get(internalActivityEventsState$);
   return state?.phase === "loading" && state.runId === runId;
@@ -190,7 +190,7 @@ function visibleEventSequence(events: readonly AgentEvent[]): number {
   return visibleThrough;
 }
 
-function reachedTerminalEventWatermark(data: ZeroActivityEvents): boolean {
+function reachedTerminalEventWatermark(data: ActivityEvents): boolean {
   return (
     isTerminalStatus(data.status) &&
     data.lastEventSequence !== null &&
@@ -218,8 +218,8 @@ function mergeAgentEvents(
 }
 
 function activityEventsMadeProgress(
-  previous: ZeroActivityEvents,
-  current: ZeroActivityEvents,
+  previous: ActivityEvents,
+  current: ActivityEvents,
 ): boolean {
   return (
     current.events.length !== previous.events.length ||
@@ -253,10 +253,10 @@ export const setupActivityEvents$ = command(
     let current = {
       runId,
       ...initial,
-    } satisfies ZeroActivityEvents;
+    } satisfies ActivityEvents;
     set(internalActivityEventsState$, { phase: "ready", data: current });
 
-    await get(zeroActivityDetail$);
+    await get(activityDetail$);
     signal.throwIfAborted();
     // Allow React to render the initial event history and bind the scroll
     // container before restoring the pre-removal bottom position.
@@ -318,7 +318,7 @@ export const setupActivityEvents$ = command(
   },
 );
 
-export const zeroActivityDetail$ = computed(async (get) => {
+export const activityDetail$ = computed(async (get) => {
   const runId = get(currentRunId$);
   if (!runId) {
     return null;
@@ -335,27 +335,27 @@ export const zeroActivityDetail$ = computed(async (get) => {
 
 const internalStepSearch$ = state("");
 
-export const zeroActivityStepSearch$ = computed((get) => {
+export const activityStepSearch$ = computed((get) => {
   return get(internalStepSearch$);
 });
 
-export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
+export const setActivityStepSearch$ = command(({ set }, value: string) => {
   set(internalStepSearch$, value);
 });
 
-export const zeroActivityVisibleGroups$ = computed(async (get) => {
+export const activityVisibleGroups$ = computed(async (get) => {
   const runId = get(currentRunId$);
   const [detail, events] = await Promise.all([
-    get(zeroActivityDetail$),
-    get(zeroActivityEvents$),
+    get(activityDetail$),
+    get(activityEvents$),
   ]);
-  const loading = get(zeroActivityEventsLoading$);
+  const loading = get(activityEventsLoading$);
   if (!detail || !events || events.runId !== detail.id) {
     return {
       runId,
       groups: [],
       loading,
-    } satisfies ZeroActivityVisibleGroups;
+    } satisfies ActivityVisibleGroups;
   }
   return {
     runId: detail.id,
@@ -363,7 +363,7 @@ export const zeroActivityVisibleGroups$ = computed(async (get) => {
       framework: detail.framework,
     }),
     loading: false,
-  } satisfies ZeroActivityVisibleGroups;
+  } satisfies ActivityVisibleGroups;
 });
 
 export function formatLogTime(createdAt: string): string {

@@ -38,6 +38,7 @@ from usage.underbilling import log_usage_underbilling
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_OK_MIN = 200
 _HTTP_STATUS_REDIRECT_MIN = 300
+_HTTP_STATUS_BAD_GATEWAY = 502
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
@@ -70,9 +71,11 @@ def _anthropic_incomplete_accounting_status(
     return "recovered_partial"
 
 
-class _ResponseUsageStreamSetup(NamedTuple):
+class _ResponseStreamSetup(NamedTuple):
     parser: _ResponseChunkParser | None
     needs_buffered_fallback: bool
+    finish_stream: Callable[[], object] | None = None
+    reject_uninspectable: bool = False
 
 
 def model_usage_protocol(flow: http.HTTPFlow) -> usage.ModelUsageProtocol:
@@ -99,7 +102,7 @@ def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
         return False
     if http_response_classification.has_event_stream_media_type(response):
         return False
-    return not _is_confirmed_websocket_upgrade_response(flow)
+    return not is_confirmed_websocket_upgrade_response(flow)
 
 
 def _make_response_decode_session(
@@ -173,29 +176,36 @@ def _maybe_log_response_encoding_inspection_risk(
     )
 
 
-def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStreamSetup:
-    # Set up usage extraction for response classes that need body inspection.
-    # Usage parsers consume chunks separately from the optional capped buffer.
+def _configure_response_inspection_stream(
+    flow: http.HTTPFlow,
+    failure_observer: model_provider_failure.HttpResponseFailureObserver | None,
+) -> _ResponseStreamSetup:
+    # Set up model inspection or connector usage extraction for response classes
+    # that need it. Parsers consume chunks separately from the optional buffer.
     response = flow.response
     if response is None:
-        return _ResponseUsageStreamSetup(None, False)
+        return _ResponseStreamSetup(None, False)
 
-    # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
+    # Platform-billable firewall flag, sourced from sandbox_info["billableFirewalls"]
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
     # and the incremental response parsers used for connector billing payload
     # extraction. Model-provider usage reporting is gated separately.
     is_billable_flow = flow_metadata.is_firewall_billable(flow.metadata)
     is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
-    model_protocol = model_usage_protocol(flow) if is_observable_model_provider else None
+    model_protocol = (
+        model_usage_protocol(flow)
+        if is_observable_model_provider or failure_observer is not None
+        else None
+    )
     if (
         is_observable_model_provider
         and model_protocol == "openai_responses"
-        and _is_confirmed_websocket_upgrade_response(flow)
+        and is_confirmed_websocket_upgrade_response(flow)
     ):
         model_websocket_usage.activate(flow)
-        return _ResponseUsageStreamSetup(None, False)
+        return _ResponseStreamSetup(None, False)
     if not http_response_classification.can_have_body(flow, response):
-        return _ResponseUsageStreamSetup(None, False)
+        return _ResponseStreamSetup(None, False)
     if model_protocol is not None:
         if http_response_classification.has_event_stream_media_type(response):
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
@@ -216,7 +226,11 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
 
                 parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor(
                     on_parse_error=log_parse_error,
-                    on_terminal_usage=record_openai_terminal_usage,
+                    on_terminal_usage=(
+                        record_openai_terminal_usage if is_observable_model_provider else None
+                    ),
+                    include_usage=is_observable_model_provider,
+                    failure_observer=failure_observer,
                 )
             elif model_protocol == "openai_chat_completions":
                 usage_protocol = _OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL
@@ -226,6 +240,8 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                 )
                 parser_fn, usage_dict = usage.create_openai_chat_completions_sse_usage_extractor(
                     on_parse_error=log_parse_error,
+                    include_usage=is_observable_model_provider,
+                    failure_observer=failure_observer,
                 )
             else:
                 usage_protocol = _ANTHROPIC_MESSAGES_SSE_PROTOCOL
@@ -233,90 +249,180 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                     flow,
                     usage_protocol=usage_protocol,
                 )
-                lifecycle_observer = _anthropic_lifecycle_observer(flow)
+                lifecycle_observer = (
+                    _anthropic_lifecycle_observer(flow) if is_observable_model_provider else None
+                )
                 parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
                     on_parse_error=log_parse_error,
                     on_lifecycle_event=lifecycle_observer,
-                    on_accounting_event=anthropic_accounting_events.add,
+                    on_accounting_event=(
+                        anthropic_accounting_events.add if is_observable_model_provider else None
+                    ),
+                    include_usage=is_observable_model_provider,
+                    failure_observer=failure_observer,
                 )
             decode_session = _make_response_decode_session(parser_fn, response.headers)
             if decode_session is None:
-                _maybe_log_response_encoding_inspection_risk(flow, response)
-                return _ResponseUsageStreamSetup(None, False)
-            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_dict
+                if is_observable_model_provider:
+                    _maybe_log_response_encoding_inspection_risk(flow, response)
+                if failure_observer is not None:
+                    model_provider_failure.register_response_finish(
+                        flow,
+                        failure_observer.finish,
+                    )
+                return _ResponseStreamSetup(
+                    None,
+                    False,
+                    reject_uninspectable=(
+                        is_billable_flow
+                        and is_observable_model_provider
+                        and _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
+                    ),
+                )
 
-            def finish_sse_usage() -> None:
-                decode_error = decode_session.finish_error()
-                if decode_error is not None:
-                    log_parse_error("compressed_body", decode_error)
-                    if (
-                        usage_protocol == _ANTHROPIC_MESSAGES_SSE_PROTOCOL
-                        and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
-                    ):
-                        accounting_status = _anthropic_incomplete_accounting_status(
-                            usage_dict,
-                            anthropic_accounting_events,
-                        )
-                        anthropic_accounting.report_incomplete(
-                            flow,
-                            accounting_status,
-                        )
-                    elif (
-                        usage_protocol == _OPENAI_RESPONSES_SSE_PROTOCOL
-                        and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
-                    ):
-                        usage_dict.clear()
-                        usage.merge_openai_responses_usage_result(
-                            usage_dict,
-                            openai_recoverable_usage,
-                        )
-                    else:
-                        usage_dict.clear()
-                else:
-                    parser_fn.finish()
-                if lifecycle_observer is not None:
-                    claude_output_timing.retry_pending(flow)
+            finished = False
 
-            flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_usage
-            return _ResponseUsageStreamSetup(decode_session.feed, False)
+            def finish_sse_response() -> object:
+                nonlocal finished
+                if not finished:
+                    decode_error = decode_session.finish_error()
+                    if decode_error is None:
+                        parser_fn.finish()
+                    elif is_observable_model_provider:
+                        log_parse_error("compressed_body", decode_error)
+                        if (
+                            usage_protocol == _ANTHROPIC_MESSAGES_SSE_PROTOCOL
+                            and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
+                        ):
+                            accounting_status = _anthropic_incomplete_accounting_status(
+                                usage_dict,
+                                anthropic_accounting_events,
+                            )
+                            anthropic_accounting.report_incomplete(
+                                flow,
+                                accounting_status,
+                            )
+                        elif (
+                            usage_protocol == _OPENAI_RESPONSES_SSE_PROTOCOL
+                            and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
+                        ):
+                            usage_dict.clear()
+                            usage.merge_openai_responses_usage_result(
+                                usage_dict,
+                                openai_recoverable_usage,
+                            )
+                        else:
+                            usage_dict.clear()
+                    if lifecycle_observer is not None:
+                        claude_output_timing.retry_pending(flow)
+                    finished = True
+                return failure_observer.finish() if failure_observer is not None else None
 
-        extractor = usage.create_model_json_usage_extractor(model_protocol)
+            def finish_sse_stream() -> object:
+                finish_sse_response()
+                return failure_observer.settle() if failure_observer is not None else None
+
+            if is_observable_model_provider:
+                flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_dict
+                flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_response
+            if failure_observer is not None:
+                model_provider_failure.register_response_finish(flow, finish_sse_response)
+            return _ResponseStreamSetup(
+                decode_session.feed,
+                False,
+                finish_sse_stream if failure_observer is not None else None,
+            )
+
+        extractor = usage.create_model_json_response_inspector(
+            model_protocol,
+            include_usage=is_observable_model_provider,
+            include_failure=failure_observer is not None,
+        )
         decode_session = _make_response_decode_session(
             extractor.feed,
             response.headers,
             should_continue=extractor.accepts_more_input,
         )
         if decode_session is None:
-            _maybe_log_response_encoding_inspection_risk(flow, response)
-            return _ResponseUsageStreamSetup(
+            if is_observable_model_provider:
+                _maybe_log_response_encoding_inspection_risk(flow, response)
+            if failure_observer is not None:
+                model_provider_failure.register_response_finish(
+                    flow,
+                    failure_observer.finish,
+                )
+            needs_buffered_fallback = (
+                is_observable_model_provider
+                and uses_model_json_fallback(flow)
+                and body_decoding.can_decode_json_usage_body(response.headers)
+            )
+            return _ResponseStreamSetup(
                 None,
-                uses_model_json_fallback(flow)
-                and body_decoding.can_decode_json_usage_body(response.headers),
+                needs_buffered_fallback,
+                reject_uninspectable=(
+                    is_billable_flow
+                    and is_observable_model_provider
+                    and _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
+                    and not needs_buffered_fallback
+                ),
             )
 
+        inspection: usage.ModelJsonResponseInspection | None = None
+        decode_error: str | None = None
+        finished = False
+
+        def finish_json_response() -> object:
+            nonlocal decode_error, finished, inspection
+            if not finished:
+                decode_error = decode_session.finish_error()
+                if decode_error is None:
+                    inspection = extractor.finish()
+                    if failure_observer is not None:
+                        failure_observer.observe_json(inspection.failure)
+                finished = True
+            return failure_observer.finish() if failure_observer is not None else None
+
         def finish_json_usage() -> tuple[dict | None, str | None]:
-            decode_error = decode_session.finish_error()
+            finish_json_response()
             if decode_error is not None:
                 return None, decode_error
-            return extractor.finish()
+            if inspection is None:
+                return None, None
+            return inspection.usage, inspection.usage_error
 
-        flow.metadata[_MODEL_JSON_USAGE_FINISH] = finish_json_usage
-        return _ResponseUsageStreamSetup(decode_session.feed, False)
+        def finish_json_stream() -> object:
+            finish_json_response()
+            return failure_observer.settle() if failure_observer is not None else None
+
+        if is_observable_model_provider:
+            flow.metadata[_MODEL_JSON_USAGE_FINISH] = finish_json_usage
+        if failure_observer is not None:
+            model_provider_failure.register_response_finish(flow, finish_json_response)
+        return _ResponseStreamSetup(
+            decode_session.feed,
+            False,
+            finish_json_stream if failure_observer is not None else None,
+        )
 
     if not is_billable_flow:
-        return _ResponseUsageStreamSetup(None, False)
+        return _ResponseStreamSetup(None, False)
     if not body_decoding.can_stream_decode_usage(response.headers):
         firewall_name = flow_metadata.firewall_name(flow.metadata)
-        if (
+        requires_response_inspection = (
             _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
             and usage.has_connector_response_parser(firewall_name)
-        ):
+        )
+        if requires_response_inspection:
             _maybe_log_response_encoding_inspection_risk(flow, response)
-        return _ResponseUsageStreamSetup(
-            None,
+        needs_buffered_fallback = (
             http_response_classification.can_have_body(flow, response)
             and body_decoding.can_decode_json_usage_body(response.headers)
-            and usage.needs_connector_response_buffer_fallback(flow),
+            and usage.needs_connector_response_buffer_fallback(flow)
+        )
+        return _ResponseStreamSetup(
+            None,
+            needs_buffered_fallback,
+            reject_uninspectable=(requires_response_inspection and not needs_buffered_fallback),
         )
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
@@ -341,12 +447,12 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                     connector_parser.finish()
 
             flow.metadata[_CONNECTOR_RESPONSE_FINISH] = finish_connector_response
-        return _ResponseUsageStreamSetup(decode_session.feed, False)
+        return _ResponseStreamSetup(decode_session.feed, False)
 
-    return _ResponseUsageStreamSetup(None, False)
+    return _ResponseStreamSetup(None, False)
 
 
-def _is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
+def is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
     response = flow.response
     if response is None:
         return False
@@ -378,6 +484,20 @@ def _is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
     return response_accept == expected_accept
 
 
+def _discard_uninspectable_response_body(_chunk: bytes) -> bytes:
+    return b""
+
+
+def _reject_uninspectable_response(flow: http.HTTPFlow) -> None:
+    model_provider_failure.release_flow(flow)
+    flow.response = http.Response.make(
+        _HTTP_STATUS_BAD_GATEWAY,
+        b"",
+        {"Content-Type": "text/plain"},
+    )
+    flow.response.stream = _discard_uninspectable_response_body
+
+
 def configure_response_stream(flow: http.HTTPFlow) -> None:
     """Enable pass-through response streaming and body consumers.
 
@@ -389,8 +509,15 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
         return
 
     metrics = {"total_bytes": 0}
-    usage_parser, needs_buffered_fallback = _configure_response_usage_stream(flow)
-    failure_parser = model_provider_failure.configure_response_parser(flow)
+    failure_observer = model_provider_failure.configure_response_observer(flow)
+    setup = _configure_response_inspection_stream(flow, failure_observer)
+    if setup.reject_uninspectable:
+        _reject_uninspectable_response(flow)
+        return
+
+    response_parser = setup.parser
+    needs_buffered_fallback = setup.needs_buffered_fallback
+    finish_stream = setup.finish_stream
     retain_body = flow_metadata.should_capture_body(flow.metadata) or needs_buffered_fallback
     buf = bytearray() if retain_body else None
     buffer_state = {"truncated": False} if retain_body else None
@@ -404,10 +531,10 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
             else:
                 buf.extend(chunk[:remaining])
                 buffer_state["truncated"] = True
-        if usage_parser is not None:
-            usage_parser(chunk)
-        if failure_parser is not None:
-            failure_parser(chunk)
+        if response_parser is not None:
+            response_parser(chunk)
+        if not chunk and finish_stream is not None:
+            finish_stream()
         return chunk
 
     flow.response.stream = stream_and_observe

@@ -9,6 +9,8 @@ import { command } from "ccstate";
 import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
 import {
   fireGoogleAdsConversion,
+  GOOGLE_ADS_ADSMARCH_CHECKOUT_START_SEND_TO,
+  GOOGLE_ADS_ADSMARCH_ONBOARDING_START_SEND_TO,
   GOOGLE_ADS_CHECKOUT_START_SEND_TO,
   GOOGLE_ADS_ONBOARDING_START_SEND_TO,
 } from "./google-ads-conversion.ts";
@@ -20,13 +22,24 @@ const ONBOARDING_START_CONVERSION_KEY =
   "vm0.googleAdsOnboardingStartConversionRecorded";
 const CHECKOUT_START_CONVERSION_KEY =
   "vm0.googleAdsCheckoutStartConversionRecorded";
+const ADSMARCH_ONBOARDING_START_CONVERSION_KEY =
+  "vm0.googleAdsAdsmarchOnboardingStartConversionRecorded";
+const ADSMARCH_CHECKOUT_START_CONVERSION_KEY =
+  "vm0.googleAdsAdsmarchCheckoutStartConversionRecorded";
 const ONBOARDING_START_CONVERSION_VALUE_USD = 1;
 const CHECKOUT_START_CONVERSION_VALUE_USD = 1;
+const ADSMARCH_CHECKOUT_START_CONVERSION_VALUE_USD = 5;
 const onboardingStartConversionStorage = sessionStorageSignals(
   ONBOARDING_START_CONVERSION_KEY,
 );
 const checkoutStartConversionStorage = sessionStorageSignals(
   CHECKOUT_START_CONVERSION_KEY,
+);
+const adsmarchOnboardingStartConversionStorage = sessionStorageSignals(
+  ADSMARCH_ONBOARDING_START_CONVERSION_KEY,
+);
+const adsmarchCheckoutStartConversionStorage = sessionStorageSignals(
+  ADSMARCH_CHECKOUT_START_CONVERSION_KEY,
 );
 
 // Ordered so `step_index` / `step_count` stay comparable across the three
@@ -88,6 +101,19 @@ export const capturePaidOnboardingStepViewed$ = command(
         GOOGLE_ADS_ONBOARDING_START_SEND_TO,
       );
     }
+
+    const adsmarchConversionFired = fireGoogleAdsConversion({
+      sendTo: GOOGLE_ADS_ADSMARCH_ONBOARDING_START_SEND_TO,
+      dedupeValue: GOOGLE_ADS_ADSMARCH_ONBOARDING_START_SEND_TO,
+      value: ONBOARDING_START_CONVERSION_VALUE_USD,
+      storedDedupeValue: get(adsmarchOnboardingStartConversionStorage.get$),
+    });
+    if (adsmarchConversionFired) {
+      set(
+        adsmarchOnboardingStartConversionStorage.set$,
+        GOOGLE_ADS_ADSMARCH_ONBOARDING_START_SEND_TO,
+      );
+    }
   },
 );
 
@@ -126,6 +152,19 @@ export const capturePaidOnboardingRedirectToStripe$ = command(
       set(
         checkoutStartConversionStorage.set$,
         GOOGLE_ADS_CHECKOUT_START_SEND_TO,
+      );
+    }
+
+    const adsmarchConversionFired = fireGoogleAdsConversion({
+      sendTo: GOOGLE_ADS_ADSMARCH_CHECKOUT_START_SEND_TO,
+      dedupeValue: GOOGLE_ADS_ADSMARCH_CHECKOUT_START_SEND_TO,
+      value: ADSMARCH_CHECKOUT_START_CONVERSION_VALUE_USD,
+      storedDedupeValue: get(adsmarchCheckoutStartConversionStorage.get$),
+    });
+    if (adsmarchConversionFired) {
+      set(
+        adsmarchCheckoutStartConversionStorage.set$,
+        GOOGLE_ADS_ADSMARCH_CHECKOUT_START_SEND_TO,
       );
     }
   },

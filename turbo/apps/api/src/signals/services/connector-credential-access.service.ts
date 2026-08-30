@@ -20,6 +20,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
 import {
+  getConnectorRuntimeConnector,
   getConnectorRuntimeMethod,
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSelection,
@@ -87,18 +88,32 @@ export function resolveStoredConnectorRuntimeMethod(args: {
     readonly connectorSlug: string;
   };
 }): ConnectorRuntimeMethod | undefined {
+  const runtimeConnector = getConnectorRuntimeConnector(
+    args.snapshot,
+    args.stored.connectorSlug,
+  );
+  if (
+    runtimeConnector === undefined ||
+    !runtimeConnector.catalogConnector.authMethods.some((method) => {
+      return method.id === args.stored.authMethodId;
+    })
+  ) {
+    return undefined;
+  }
+
   const runtimeMethod = getConnectorRuntimeMethod({
     snapshot: args.snapshot,
     connectorSlug: args.stored.connectorSlug,
     authMethodId: args.stored.authMethodId,
-    requireExecutable: true,
   });
-  if (runtimeMethod === undefined) {
+  if (runtimeMethod?.executable !== true) {
     log.warn("Stored connector runtime method is unavailable", {
       connectorId: args.stored.connectorId,
       connectorSlug: args.stored.connectorSlug,
       authMethodId: args.stored.authMethodId,
+      reason: "missing_executable_capability",
     });
+    return undefined;
   }
   return runtimeMethod;
 }

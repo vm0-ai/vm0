@@ -18,7 +18,7 @@ import {
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState } from "./helpers/runtime-state";
+import { seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState } from "./helpers/runtime-state";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   generatedStripeCustomerId,
@@ -40,8 +40,8 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-async function seedVm0ManagedDefaultModelKey(): Promise<void> {
-  await seedVm0ManagedDefaultModelKeyState(context);
+async function seedVm0BuiltInDefaultModelKey(): Promise<void> {
+  await seedVm0BuiltInDefaultModelKeyState(context);
 }
 
 interface AllowanceEntitlementArgs {
@@ -51,7 +51,7 @@ interface AllowanceEntitlementArgs {
 }
 
 /**
- * An org whose runs can be admitted with the vm0 managed model key. Tier and
+ * An org whose runs can be admitted with the vm0 built-in model key. Tier and
  * credit balance are pinned through the org-metadata fixture; the allowance
  * entitlement (when given), window activation, usage events, and settlement
  * all run through product paths.
@@ -64,7 +64,7 @@ async function vm0AllowanceActor(args: {
   readonly orgId: string;
   readonly agentId: string;
 }> {
-  await seedVm0ManagedDefaultModelKey();
+  await seedVm0BuiltInDefaultModelKey();
   const bdd = createBddApi(context);
   const api = createRunsApi(context);
   const actor = bdd.user();
@@ -139,7 +139,7 @@ async function createVm0Run(
   return await api.createRun(actor, {
     agentId,
     prompt,
-    modelProvider: "vm0",
+    modelProvider: "built-in",
   });
 }
 
@@ -451,7 +451,7 @@ describe("Usage Allowance", () => {
       {
         agentId,
         prompt: "vm0 run rejected after allowance exhaustion",
-        modelProvider: "vm0",
+        modelProvider: "built-in",
       },
       [402],
     );

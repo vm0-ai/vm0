@@ -31,7 +31,10 @@ async fn codex_app_server_backend_ignores_secondary_thread_notifications()
                 resume_session_id: None,
             },
         )?;
-        std::env::set_var("VM0_API_START_TIME", "1699999999000");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+            "1699999999000",
+        );
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);

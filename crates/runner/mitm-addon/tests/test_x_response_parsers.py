@@ -444,6 +444,21 @@ class TestXJsonFinalize:
         response_streaming.finalize_connector_response_state(flow)
         assert flow.metadata[metadata_keys.X_JSON_STATE] == state
 
+    def test_finalizes_x_json_state_without_negative_counts(self, real_flow):
+        flow = self._billable_x_json_flow(real_flow)
+        mitm_addon.responseheaders(flow)
+
+        response_stream(flow)(
+            b'{"data":[{"id":"1"}],"meta":{"result_count":-1,"total_tweet_count":-2}}'
+        )
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert flow.metadata[metadata_keys.X_JSON_STATE] == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 1,
+        }
+
     def test_protocol_shaped_data_array_stays_within_work_limit(self, real_flow):
         flow = self._billable_x_json_flow(real_flow)
         data_item = b'{"id":"123456"}'

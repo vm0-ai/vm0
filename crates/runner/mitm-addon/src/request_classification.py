@@ -37,11 +37,11 @@ REQUEST_CLASSIFICATION_METADATA_KEY = "_request_classification"
 # classification result. Restore it when the probe is not carried forward into
 # request handling.
 REQUEST_HEADERS_PROBE_METADATA_KEYS = (
-    metadata_keys.VM_RUN_ID,
-    metadata_keys.VM_NETWORK_LOG_PATH,
-    metadata_keys.VM_PROXY_LOG_PATH,
+    metadata_keys.SANDBOX_RUN_ID,
+    metadata_keys.SANDBOX_NETWORK_LOG_PATH,
+    metadata_keys.SANDBOX_PROXY_LOG_PATH,
     metadata_keys.CAPTURE_BODY,
-    metadata_keys.VM_SANDBOX_AUTH_KEY,
+    metadata_keys.SANDBOX_AUTH_KEY,
     metadata_keys.CLI_AGENT_TYPE,
     metadata_keys.BROWSER_USER_AGENT,
     metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
@@ -125,27 +125,29 @@ class StaleTlsAdmission:
 
 
 @dataclass(frozen=True)
-class InvalidRegistryVm:
-    invalid_vm: registry.InvalidVmEntry
-    kind: Literal["invalid_registry_vm"] = field(init=False, default="invalid_registry_vm")
+class InvalidRegistrySandbox:
+    invalid_sandbox: registry.InvalidSandboxEntry
+    kind: Literal["invalid_registry_sandbox"] = field(
+        init=False, default="invalid_registry_sandbox"
+    )
 
 
 @dataclass(frozen=True)
 class AuthorityDenied:
-    vm_info: dict
+    sandbox_info: dict
     authority_error: AuthorityValidationError
     kind: Literal["authority_denied"] = field(init=False, default="authority_denied")
 
 
 @dataclass(frozen=True)
 class ApiAllow:
-    vm_info: dict
+    sandbox_info: dict
     kind: Literal["api_allow"] = field(init=False, default="api_allow")
 
 
 @dataclass(frozen=True)
 class PlatformPathDenied:
-    vm_info: dict
+    sandbox_info: dict
     kind: Literal["platform_path_denied"] = field(
         init=False,
         default="platform_path_denied",
@@ -154,27 +156,27 @@ class PlatformPathDenied:
 
 @dataclass(frozen=True)
 class BrowserAllow:
-    vm_info: dict
+    sandbox_info: dict
     kind: Literal["browser_allow"] = field(init=False, default="browser_allow")
 
 
 @dataclass(frozen=True)
 class FirewallAmbiguous:
-    vm_info: dict
+    sandbox_info: dict
     firewall_ambiguous: matching.FirewallAmbiguous
     kind: Literal["firewall_ambiguous"] = field(init=False, default="firewall_ambiguous")
 
 
 @dataclass(frozen=True)
 class FirewallBlock:
-    vm_info: dict
+    sandbox_info: dict
     firewall_block: matching.FirewallBlock
     kind: Literal["firewall_block"] = field(init=False, default="firewall_block")
 
 
 @dataclass(frozen=True)
 class FirewallAllow:
-    vm_info: dict
+    sandbox_info: dict
     firewall_allow: matching.FirewallAllow
     builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
     kind: Literal["firewall_allow"] = field(init=False, default="firewall_allow")
@@ -182,7 +184,7 @@ class FirewallAllow:
 
 @dataclass(frozen=True)
 class FirewallPolicyAllow:
-    vm_info: dict
+    sandbox_info: dict
     firewall_allow: matching.FirewallAllow
     kind: Literal["firewall_policy_allow"] = field(
         init=False,
@@ -192,7 +194,7 @@ class FirewallPolicyAllow:
 
 @dataclass(frozen=True)
 class PublicDestinationDenied:
-    vm_info: dict
+    sandbox_info: dict
     public_destination_denial: PublicDestinationDenial
     kind: Literal["public_destination_denied"] = field(
         init=False,
@@ -202,7 +204,7 @@ class PublicDestinationDenied:
 
 @dataclass(frozen=True)
 class Allow:
-    vm_info: dict
+    sandbox_info: dict
     builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
     is_asterisk_form: bool
     kind: Literal["allow"] = field(init=False, default="allow")
@@ -214,7 +216,7 @@ class Allow:
 BlockingRequestClassification = (
     RegistryUnavailable
     | StaleTlsAdmission
-    | InvalidRegistryVm
+    | InvalidRegistrySandbox
     | AuthorityDenied
     | PlatformPathDenied
     | FirewallAmbiguous
@@ -282,14 +284,26 @@ def classification_for_request(
             api_url=api_url,
             tls_admission=tls_admission,
         )
+    return revalidate_classification_for_current_destination(flow, classification)
+
+
+def revalidate_classification_for_current_destination(
+    flow: http.HTTPFlow,
+    classification: RequestClassification,
+    *,
+    defer_unresolved_public_destination: bool = False,
+) -> RequestClassification:
+    """Recheck destination-dependent policy for an existing classification."""
+
     if isinstance(classification, FirewallAllow | FirewallPolicyAllow):
         public_destination_denial = current_public_destination_denial(
             flow,
             classification.firewall_allow,
+            defer_unresolved_hostnames=defer_unresolved_public_destination,
         )
         if public_destination_denial is not None:
             return PublicDestinationDenied(
-                vm_info=classification.vm_info,
+                sandbox_info=classification.sandbox_info,
                 public_destination_denial=public_destination_denial,
             )
     return classification
@@ -305,13 +319,13 @@ def classify_request(
 ) -> RequestClassification:
     """Classify a flow and write metadata needed by downstream hook handling.
 
-    The decision order is registry/TLS admission, registered VM resolution,
+    The decision order is registry/TLS admission, registered sandbox resolution,
     trusted authority validation, platform path admission, platform API allow,
     browser passthrough, firewall match, publicDestination runtime validation,
     and default allow.
 
-    After registry and TLS admission checks accept a registered VM,
-    classification stores VM/run metadata on the flow. Once trusted authority
+    After registry and TLS admission checks accept a registered sandbox,
+    classification stores sandbox/run metadata on the flow. Once trusted authority
     validation succeeds, it stores the original URL, trusted authority host, and
     network log target. Browser passthrough detection also records its metadata
     marker. Header-phase callers that use this as a probe must snapshot and
@@ -367,7 +381,8 @@ def _classify_request(
     trusted_authority: TrustedAuthority | None,
     defer_unresolved_public_destination: bool,
 ) -> RequestClassification:
-    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    client_peername = connection_endpoints.client_peername(flow.client_conn)
+    client_ip = client_peername[0] if client_peername is not None else None
 
     if not client_ip:
         if tls_admission is not None:
@@ -387,12 +402,12 @@ def _classify_request(
             stale_tls_reason="client_ip_mismatch",
         )
 
-    vm_info = registry_state.vms.get(client_ip)
-    if vm_info is None:
-        invalid_vm = registry_state.invalid_vms.get(client_ip)
-        if invalid_vm is not None:
-            return InvalidRegistryVm(
-                invalid_vm=invalid_vm,
+    sandbox_info = registry_state.sandboxes.get(client_ip)
+    if sandbox_info is None:
+        invalid_sandbox = registry_state.invalid_sandboxes.get(client_ip)
+        if invalid_sandbox is not None:
+            return InvalidRegistrySandbox(
+                invalid_sandbox=invalid_sandbox,
             )
         if tls_admission is not None:
             return StaleTlsAdmission(
@@ -400,7 +415,7 @@ def _classify_request(
             )
         return PassThrough()
 
-    run_id = vm_info.get("runId", "")
+    run_id = sandbox_info.get("runId", "")
     if (
         tls_admission is not None
         and tls_admission.run_id is not None
@@ -410,7 +425,7 @@ def _classify_request(
             stale_tls_reason="run_id_mismatch",
         )
 
-    _store_registered_request_metadata(flow, vm_info=vm_info, run_id=run_id)
+    _store_registered_request_metadata(flow, sandbox_info=sandbox_info, run_id=run_id)
 
     if is_browser_passthrough_heuristic(flow):
         flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
@@ -420,7 +435,7 @@ def _classify_request(
             trusted_authority = get_trusted_authority(flow)
         except AuthorityValidationError as e:
             return AuthorityDenied(
-                vm_info=vm_info,
+                sandbox_info=sandbox_info,
                 authority_error=e,
             )
 
@@ -442,12 +457,12 @@ def _classify_request(
             flow.request.path
         )
         if platform_path_decision == "deny":
-            return PlatformPathDenied(vm_info=vm_info)
+            return PlatformPathDenied(sandbox_info=sandbox_info)
         if platform_path_decision == "api_allow":
-            return ApiAllow(vm_info=vm_info)
+            return ApiAllow(sandbox_info=sandbox_info)
 
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
-        return BrowserAllow(vm_info=vm_info)
+        return BrowserAllow(sandbox_info=sandbox_info)
 
     is_asterisk_form = flow.request.path == "*"
     intent = connector_intent.from_flow(flow)
@@ -463,7 +478,7 @@ def _classify_request(
         omitted_builtin_firewalls | omitted_custom_connector_ids
     ):
         return Allow(
-            vm_info=vm_info,
+            sandbox_info=sandbox_info,
             builtin_firewall_catalog_snapshot=(registry_state.builtin_firewall_catalog_snapshot),
             is_asterisk_form=is_asterisk_form,
         )
@@ -481,12 +496,12 @@ def _classify_request(
         )
         if isinstance(result, matching.FirewallAmbiguous):
             return FirewallAmbiguous(
-                vm_info=vm_info,
+                sandbox_info=sandbox_info,
                 firewall_ambiguous=result,
             )
         if isinstance(result, matching.FirewallBlock):
             return FirewallBlock(
-                vm_info=vm_info,
+                sandbox_info=sandbox_info,
                 firewall_block=result,
             )
         if isinstance(result, matching.FirewallAllow | matching.FirewallPolicyAllow):
@@ -503,16 +518,16 @@ def _classify_request(
             )
             if public_destination_denial is not None:
                 return PublicDestinationDenied(
-                    vm_info=vm_info,
+                    sandbox_info=sandbox_info,
                     public_destination_denial=public_destination_denial,
                 )
             if isinstance(result, matching.FirewallPolicyAllow):
                 return FirewallPolicyAllow(
-                    vm_info=vm_info,
+                    sandbox_info=sandbox_info,
                     firewall_allow=firewall_allow,
                 )
             return FirewallAllow(
-                vm_info=vm_info,
+                sandbox_info=sandbox_info,
                 firewall_allow=firewall_allow,
                 builtin_firewall_catalog_snapshot=(
                     registry_state.builtin_firewall_catalog_snapshot
@@ -520,7 +535,7 @@ def _classify_request(
             )
 
     return Allow(
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         builtin_firewall_catalog_snapshot=registry_state.builtin_firewall_catalog_snapshot,
         is_asterisk_form=is_asterisk_form,
     )
@@ -544,7 +559,7 @@ def classification_needs_request_timing(classification: RequestClassification) -
 def should_stream_capture_request(classification: RequestClassification) -> bool:
     if not isinstance(classification, ApiAllow | BrowserAllow | FirewallPolicyAllow | Allow):
         return False
-    return bool(classification.vm_info.get("captureNetworkBodies", False))
+    return bool(classification.sandbox_info.get("captureNetworkBodies", False))
 
 
 def should_try_firewall_stream_capture_request(classification: RequestClassification) -> bool:
@@ -553,7 +568,7 @@ def should_try_firewall_stream_capture_request(classification: RequestClassifica
     allow = classification.firewall_allow
     if firewall_allow_uses_public_destination(allow):
         return False
-    return bool(classification.vm_info.get("captureNetworkBodies", False))
+    return bool(classification.sandbox_info.get("captureNetworkBodies", False))
 
 
 def firewall_allow_uses_public_destination(allow: matching.FirewallAllow) -> bool:
@@ -564,11 +579,14 @@ def firewall_allow_uses_public_destination(allow: matching.FirewallAllow) -> boo
 def current_public_destination_denial(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
+    *,
+    defer_unresolved_hostnames: bool = False,
 ) -> PublicDestinationDenial | None:
-    """Revalidate a cached firewall allow against the current runtime destination.
+    """Revalidate an existing firewall allow against the current runtime destination.
 
     Header-phase publicDestination checks may defer unresolved runtime hostnames
-    until the request phase can observe the final destination.
+    until the request phase can observe the final destination. Callers must opt
+    into that header-phase behavior explicitly.
     """
 
     trusted_authority_host = flow_metadata.trusted_authority_host(flow.metadata)
@@ -581,6 +599,7 @@ def current_public_destination_denial(
         flow,
         allow,
         trusted_authority_host=trusted_authority_host,
+        defer_unresolved_hostnames=defer_unresolved_hostnames,
     )
 
 
@@ -638,15 +657,15 @@ def restore_request_headers_probe_metadata(
 def _store_registered_request_metadata(
     flow: http.HTTPFlow,
     *,
-    vm_info: dict,
+    sandbox_info: dict,
     run_id: str,
 ) -> None:
-    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
-    flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
-    flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info["cliAgentType"]
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = sandbox_info.get("networkLogPath", "")
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = sandbox_info.get("proxyLogPath", "")
+    flow.metadata[metadata_keys.CAPTURE_BODY] = sandbox_info.get("captureNetworkBodies", False)
+    flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = sandbox_info.get("sandboxToken", "")
+    flow.metadata[metadata_keys.CLI_AGENT_TYPE] = sandbox_info["cliAgentType"]
 
 
 def _store_trusted_authority_metadata(

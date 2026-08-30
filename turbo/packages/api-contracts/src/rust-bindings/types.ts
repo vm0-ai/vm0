@@ -4,12 +4,17 @@ import {
   activeInputDeliveryReserveResponseSchema,
   activeInputDeliveryReceiptResponseSchema,
   artifactMissingRootPolicySchema,
+  builtInModelProviderConnectionSourceSchema,
+  piLaunchConfigSchema,
+  piModelConfigSchema,
   runnersModelProviderFailuresContract,
+  sessionHistoryEncodingSchema,
   storageMountEntrySchema,
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
   webhookCheckpointsContract,
+  webhookCheckpointsPrepareHistoryContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
@@ -72,7 +77,7 @@ export const rustTypeModuleDocs = [
   },
   {
     rustModulePath: ["runners", "runs", "model_provider_failures"],
-    rustDoc: ["DTOs for reporting bounded managed model provider failures."],
+    rustDoc: ["DTOs for reporting bounded built-in model provider failures."],
   },
   {
     rustModulePath: ["webhooks"],
@@ -85,6 +90,10 @@ export const rustTypeModuleDocs = [
   {
     rustModulePath: ["webhooks", "agent", "checkpoints"],
     rustDoc: ["DTOs for creating recoverable agent checkpoints."],
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustDoc: ["DTOs for preparing direct session-history uploads."],
   },
   {
     rustModulePath: ["webhooks", "agent", "storages"],
@@ -135,6 +144,93 @@ export const rustTypeBindings = [
           modelCatalog: [
             "Optional opaque Codex model catalog supplied by the API.",
           ],
+        },
+      },
+    ],
+  },
+  {
+    schema: piLaunchConfigSchema,
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiLaunchConfig",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "PiLaunchConfig",
+        rustDoc: [
+          "API-owned launch configuration forwarded to Pi in the sandbox.",
+        ],
+        fields: {
+          schemaVersion: ["Pi launch contract version."],
+          apiFirstTurn: ["Configuration for the API-mediated first turn."],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigApiFirstTurn",
+        rustDoc: ["API-mediated first-turn configuration for Pi."],
+        fields: {
+          schemaVersion: ["Pi API first-turn contract version."],
+          resourceSnapshotDigest: [
+            "Digest identifying the runtime resource snapshot.",
+          ],
+          manifestUrl: ["URL of the first-turn resource manifest."],
+          sessionUrl: ["URL of the first-turn session JSONL."],
+          deadlineAt: ["Unix timestamp in milliseconds for first-turn expiry."],
+          baseSession: ["Checkpoint used as the base Pi session."],
+          sandboxEventSequenceStart: [
+            "First sandbox event sequence number for the resumed session.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigApiFirstTurnBaseSession",
+        rustDoc: ["Pi session checkpoint used as the first-turn base."],
+        fields: {
+          sessionId: ["Pi session identifier."],
+          sha256: ["Nullable lowercase SHA-256 of the base session JSONL."],
+        },
+      },
+    ],
+  },
+  {
+    schema: piModelConfigSchema,
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfig",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "PiModelConfig",
+        rustDoc: ["API-owned non-secret Pi model configuration."],
+        fields: {
+          provider: ["Model provider selected for the Pi runtime."],
+          baseUrl: ["Base URL used for model requests."],
+          model: ["Provider model identifier."],
+          apiKeyEnv: ["Environment variable containing the provider key."],
+          credentialSecretName: [
+            "API-owned credential secret backing the environment entry.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigProvider",
+        rustDoc: ["Model providers supported by the Pi runtime contract."],
+        variants: {
+          deepseek: ["DeepSeek provider."],
+          moonshotai: ["Moonshot AI provider."],
+          openai: ["OpenAI provider."],
+          openrouter: ["OpenRouter provider."],
+          "vercel-ai-gateway": ["Vercel AI Gateway provider."],
+          codex: ["Codex provider."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigApiKeyEnv",
+        rustDoc: [
+          "Environment variables supported for Pi provider credentials.",
+        ],
+        variants: {
+          ANTHROPIC_AUTH_TOKEN: ["Anthropic authentication token."],
+          OPENAI_API_KEY: ["OpenAI-compatible API key."],
+          CHATGPT_ACCESS_TOKEN: ["ChatGPT access token."],
         },
       },
     ],
@@ -191,15 +287,36 @@ export const rustTypeBindings = [
     ],
   },
   {
+    schema: builtInModelProviderConnectionSourceSchema,
+    rustModulePath: ["runners", "runs", "model_provider_failures"],
+    rustTypeName: "RequestConnectionSource",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "RequestConnectionSource",
+        rustDoc: ["Source of an eligible connection failure."],
+        variants: {
+          provider_response: ["The provider returned a connection failure."],
+          upstream_transport: [
+            "The runner observed an upstream transport failure.",
+          ],
+        },
+      },
+    ],
+  },
+  {
     schema: runnersModelProviderFailuresContract.report.body,
     rustModulePath: ["runners", "runs", "model_provider_failures"],
     rustTypeName: "Request",
     direction: "request",
+    fieldTypeOverrides: {
+      connectionSource: "RequestConnectionSource",
+    },
     declarations: [
       {
-        rustTypeName: "RequestFailureKind",
+        rustTypeName: "Request",
         rustDoc: [
-          "Bounded provider-independent failure eligible for route cooldown.",
+          "Request body for reporting a built-in model provider failure.",
         ],
         variants: {
           authentication: ["Provider authentication failed."],
@@ -211,14 +328,8 @@ export const rustTypeBindings = [
           timeout: ["The provider inference request timed out."],
           connection: ["The provider connection failed."],
         },
-      },
-      {
-        rustTypeName: "Request",
-        rustDoc: [
-          "Request body for reporting a managed model provider failure.",
-        ],
         fields: {
-          failureKind: ["Normalized eligible provider failure kind."],
+          connectionSource: ["Required source of the connection failure."],
           retryAfterSeconds: [
             "Optional bounded provider retry delay in seconds.",
           ],
@@ -268,6 +379,9 @@ export const rustTypeBindings = [
           ],
           archiveSize: ["Optional exact encoded archive size in bytes."],
           empty: ["Whether the resolved Storage version is explicitly empty."],
+          baselineCandidate: [
+            "Whether this read-only mount participates in baseline stability observation.",
+          ],
           instructionsTargetFilename: [
             "Optional filename used when Storage instructions are normalized.",
           ],
@@ -282,9 +396,11 @@ export const rustTypeBindings = [
     ],
   },
   {
-    schema: webhookCheckpointsContract.create.body,
+    schema:
+      webhookCheckpointsContract.create.body.shape.artifactSnapshots.unwrap()
+        .element,
     rustModulePath: ["webhooks", "agent", "checkpoints"],
-    rustTypeName: "Request",
+    rustTypeName: "ArtifactSnapshot",
     direction: "request",
     fieldTypeOverrides: {
       missingRootPolicy:
@@ -292,7 +408,7 @@ export const rustTypeBindings = [
     },
     declarations: [
       {
-        rustTypeName: "RequestArtifactSnapshot",
+        rustTypeName: "ArtifactSnapshot",
         rustDoc: ["Artifact version captured by an agent checkpoint."],
         fields: {
           name: ["User-facing artifact name referenced by the run."],
@@ -303,6 +419,17 @@ export const rustTypeBindings = [
           ],
         },
       },
+    ],
+  },
+  {
+    schema: webhookCheckpointsContract.create.body,
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustTypeName: "Request",
+    direction: "request",
+    fieldTypeOverrides: {
+      artifactSnapshots: "Vec<ArtifactSnapshot>",
+    },
+    declarations: [
       {
         rustTypeName: "RequestVolumeVersionsSnapshot",
         rustDoc: ["Volume versions captured by an agent checkpoint."],
@@ -345,6 +472,89 @@ export const rustTypeBindings = [
           volumeVersionsSnapshot: [
             "Optional volume versions captured by the checkpoint.",
           ],
+        },
+      },
+    ],
+  },
+  {
+    schema: webhookCheckpointsContract.create.responses[200],
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
+    rustTypeName: "Response",
+    direction: "response",
+    fieldTypeOverrides: {
+      artifacts: "Vec<ArtifactSnapshot>",
+    },
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Response body returned after creating an agent checkpoint."],
+        fields: {
+          checkpointId: ["Created checkpoint identifier."],
+          agentSessionId: ["Agent session associated with the checkpoint."],
+          conversationId: ["Conversation captured by the checkpoint."],
+          artifacts: ["Optional artifact versions captured by the checkpoint."],
+          volumes: ["Optional volume versions captured by the checkpoint."],
+        },
+      },
+    ],
+  },
+  {
+    schema: sessionHistoryEncodingSchema,
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "SessionHistoryEncoding",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "SessionHistoryEncoding",
+        rustDoc: ["Encoding used for persisted CLI agent session history."],
+        variants: {
+          identity: ["Uncompressed session history bytes."],
+          gzip: ["Gzip-compressed session history bytes."],
+          zstd: ["Zstandard-compressed session history bytes."],
+        },
+      },
+    ],
+  },
+  {
+    schema: webhookCheckpointsPrepareHistoryContract.prepare.body,
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "Request",
+    direction: "request",
+    fieldTypeOverrides: {
+      rawSize: "u64",
+      encodedSize: "u64",
+      encoding: "SessionHistoryEncoding",
+    },
+    declarations: [
+      {
+        rustTypeName: "Request",
+        rustDoc: ["Request body for preparing a session-history upload."],
+        fields: {
+          runId: ["Agent run identifier bound to the sandbox token."],
+          hash: ["SHA-256 hash of the uncompressed session history."],
+          rawSize: ["Uncompressed session-history size in bytes."],
+          encodedSize: ["Encoded session-history size in bytes."],
+          encoding: ["Optional encoding used for the uploaded bytes."],
+        },
+      },
+    ],
+  },
+  {
+    schema: webhookCheckpointsPrepareHistoryContract.prepare.responses[200],
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
+    rustTypeName: "Response",
+    direction: "response",
+    fieldTypeOverrides: {
+      encoding: "SessionHistoryEncoding",
+    },
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["Response body returned when preparing session history."],
+        fields: {
+          presignedUrl: ["Optional presigned URL for uploading new content."],
+          existing: ["Whether the requested session history already exists."],
+          encoding: ["Optional encoding of the persisted session history."],
         },
       },
     ],

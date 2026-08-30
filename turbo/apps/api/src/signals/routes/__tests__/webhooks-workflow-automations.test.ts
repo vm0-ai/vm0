@@ -1,4 +1,5 @@
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -12,6 +13,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createRouteMocks } from "./helpers/route-test";
 import { workflowAutomationsRoutes } from "../workflow-automations";
+import { modelProvidersRoutes } from "../model-providers";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 
 const TEST_APP_ROUTES = Object.freeze([
@@ -32,6 +34,12 @@ function authHeaders() {
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
     workflowAutomationsContract,
+  );
+}
+
+function modelProvidersByTypeClient() {
+  return setupApp({ context, routes: modelProvidersRoutes })(
+    modelProvidersByTypeContract,
   );
 }
 
@@ -90,6 +98,40 @@ async function setupFixture(): Promise<{
   };
 }
 
+async function createWebhookAutomation(workflowId: string): Promise<{
+  readonly id: string;
+  readonly token: string;
+  readonly webhookUrl: string;
+  readonly secret: string;
+}> {
+  const created = await accept(
+    automationsClient().create({
+      headers: authHeaders(),
+      params: { workflowId },
+      body: { kind: "event", eventType: "webhook-received" },
+    }),
+    [201],
+  );
+  if (
+    created.body.kind !== "event" ||
+    created.body.eventType !== "webhook-received" ||
+    !created.body.webhookUrl ||
+    !created.body.webhookSecret
+  ) {
+    throw new Error("Expected a webhook automation with a one-time secret");
+  }
+  const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
+  if (!token) {
+    throw new Error("Expected webhook URL token");
+  }
+  return {
+    id: created.body.id,
+    token,
+    webhookUrl: created.body.webhookUrl,
+    secret: created.body.webhookSecret,
+  };
+}
+
 async function postWorkflowWebhook(args: {
   readonly token: string;
   readonly rawBody: string;
@@ -123,30 +165,9 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     const { workflowId } = await setupFixture();
     const runsApi = createRunsApi(context);
     const runnerGroup = runsApi.configureRunnerGroup();
-
-    const created = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: { kind: "event", eventType: "webhook-received" },
-      }),
-      [201],
-    );
-    if (
-      created.body.kind !== "event" ||
-      created.body.eventType !== "webhook-received" ||
-      !created.body.webhookUrl ||
-      !created.body.webhookSecret
-    ) {
-      throw new Error("Expected a webhook automation with a one-time secret");
-    }
-
-    const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
-    if (!token) {
-      throw new Error("Expected webhook URL token");
-    }
-    expect(new URL(created.body.webhookUrl).pathname).toBe(
-      `/api/webhooks/workflow-automations/${token}`,
+    const webhook = await createWebhookAutomation(workflowId);
+    expect(new URL(webhook.webhookUrl).pathname).toBe(
+      `/api/webhooks/workflow-automations/${webhook.token}`,
     );
 
     const rawBody = JSON.stringify({
@@ -155,9 +176,9 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     });
     const timestamp = Math.floor(now() / 1000);
     const first = await postWorkflowWebhook({
-      token,
+      token: webhook.token,
       rawBody,
-      secret: created.body.webhookSecret,
+      secret: webhook.secret,
       timestamp,
     });
 
@@ -215,15 +236,15 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     const serializedTiming = JSON.stringify(timingEvents);
     expect(serializedTiming).not.toContain("vm0-timing-sensitive-ping");
     expect(serializedTiming).not.toContain("vm0-timing-secret-value");
-    expect(serializedTiming).not.toContain(created.body.id);
+    expect(serializedTiming).not.toContain(webhook.id);
     expect(serializedTiming).not.toContain(WORKFLOW_NAME);
-    expect(serializedTiming).not.toContain(token);
-    expect(serializedTiming).not.toContain(created.body.webhookSecret);
+    expect(serializedTiming).not.toContain(webhook.token);
+    expect(serializedTiming).not.toContain(webhook.secret);
 
     const second = await postWorkflowWebhook({
-      token,
+      token: webhook.token,
       rawBody,
-      secret: created.body.webhookSecret,
+      secret: webhook.secret,
       timestamp,
     });
 
@@ -235,6 +256,92 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     // The duplicate retry does not enqueue a second runner job.
     const idleAfterDuplicate = await runsApi.pollRunner(runnerGroup);
     expect(idleAfterDuplicate.body.job).toBeNull();
+
+    const concurrentRawBody = JSON.stringify({
+      event: "concurrent-dedupe",
+      value: "same-delivery",
+    });
+    const concurrent = await Promise.all([
+      postWorkflowWebhook({
+        token: webhook.token,
+        rawBody: concurrentRawBody,
+        secret: webhook.secret,
+        timestamp,
+      }),
+      postWorkflowWebhook({
+        token: webhook.token,
+        rawBody: concurrentRawBody,
+        secret: webhook.secret,
+        timestamp,
+      }),
+    ]);
+    expect(concurrent).toStrictEqual(
+      expect.arrayContaining([
+        {
+          status: 200,
+          body: { success: true, duplicate: false },
+        },
+        {
+          status: 200,
+          body: { success: true, duplicate: true },
+        },
+      ]),
+    );
+    expect(concurrent).toHaveLength(2);
+  });
+
+  it("deletes a failed delivery so an identical request can retry", async () => {
+    const { actor, fixture, workflowId } = await setupFixture();
+    const runsApi = createRunsApi(context);
+    const webhook = await createWebhookAutomation(workflowId);
+    const rawBody = JSON.stringify({ event: "retry-after-dispatch-failure" });
+    const timestamp = Math.floor(now() / 1000);
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    await accept(
+      modelProvidersByTypeClient().delete({
+        headers: authHeaders(),
+        params: { type: "anthropic-api-key" },
+      }),
+      [204],
+    );
+    const failed = await postWorkflowWebhook({
+      token: webhook.token,
+      rawBody,
+      secret: webhook.secret,
+      timestamp,
+    });
+    expect(failed).toStrictEqual({
+      status: 500,
+      body: { error: "Failed to start webhook workflow run" },
+    });
+
+    await runsApi.ensureOrgModelProvider(actor);
+    const retried = await postWorkflowWebhook({
+      token: webhook.token,
+      rawBody,
+      secret: webhook.secret,
+      timestamp,
+    });
+    expect(retried).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        duplicate: false,
+        runId: expect.any(String),
+      },
+    });
+
+    const duplicate = await postWorkflowWebhook({
+      token: webhook.token,
+      rawBody,
+      secret: webhook.secret,
+      timestamp,
+    });
+    expect(duplicate).toStrictEqual({
+      status: 200,
+      body: { success: true, duplicate: true },
+    });
   });
 
   it("auto-disables only enabled webhooks after an effective Stripe downgrade", async () => {

@@ -335,6 +335,9 @@ describe("presentation template publish", () => {
       "presentationTemplatesChanged",
       null,
     );
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `user:${actor.userId}`,
+    );
 
     // The row is usable immediately: nothing is pending on a later transition.
     const listed = await accept(
@@ -342,6 +345,11 @@ describe("presentation template publish", () => {
       [200],
     );
     expect(listed.body).toHaveLength(1);
+    const catalogPreviewAssets = listed.body[0]?.previewAssets;
+    expect(catalogPreviewAssets).toHaveLength(2);
+    if (catalogPreviewAssets === undefined) {
+      throw new Error("Expected prefetched presentation preview assets");
+    }
     const detail = await accept(
       templateClient().get({
         headers: webHeaders(),
@@ -350,6 +358,35 @@ describe("presentation template publish", () => {
       [200],
     );
     expect(detail.body.pageUrls).toHaveLength(2);
+    expect(detail.body.previewAssets).toStrictEqual(catalogPreviewAssets);
+    expect(
+      catalogPreviewAssets.map((asset) => {
+        return asset.url;
+      }),
+    ).toStrictEqual(detail.body.pageUrls);
+    const previewAssetIds = catalogPreviewAssets.map((asset) => {
+      return asset.previewAssetId;
+    });
+    const firstPreviewUrls = await accept(
+      templateClient().resolvePreviewUrls({
+        headers: webHeaders(),
+        body: { previewAssetIds },
+      }),
+      [200],
+    );
+    const secondPreviewUrls = await accept(
+      templateClient().resolvePreviewUrls({
+        headers: webHeaders(),
+        body: { previewAssetIds },
+      }),
+      [200],
+    );
+    expect(firstPreviewUrls.body.assets).toHaveLength(2);
+    expect(firstPreviewUrls.body.assets[0]?.url).toBe(detail.body.pageUrls[0]);
+    expect(published.body.coverUrl).toBe(detail.body.pageUrls[0]);
+    expect(secondPreviewUrls.body.assets).toStrictEqual(
+      firstPreviewUrls.body.assets,
+    );
 
     // The guidance package is stored under a name derived from the row id.
     const storageName = getPresentationTemplateStorageName(published.body.id);
@@ -388,6 +425,8 @@ describe("presentation template publish", () => {
       canManage: true,
     });
 
+    context.mocks.ably.channelGet.mockClear();
+    context.mocks.ably.publish.mockClear();
     const shared = await accept(
       templateClient().update({
         headers: webHeaders(),
@@ -400,6 +439,30 @@ describe("presentation template publish", () => {
       visibility: "public",
       canManage: true,
     });
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "presentationTemplatesChanged",
+      null,
+    );
+
+    context.mocks.ably.channelGet.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("workspace template invalidation failed"),
+    );
+    const renamed = await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { title: "Workspace brand refreshed" },
+      }),
+      [200],
+    );
+    expect(renamed.body.title).toBe("Workspace brand refreshed");
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
+    );
 
     mocks.clerk.session(member.userId, member.orgId);
     const listedForMember = await accept(
@@ -409,8 +472,14 @@ describe("presentation template publish", () => {
     expect(listedForMember.body).toStrictEqual([
       expect.objectContaining({
         id: published.body.id,
+        title: "Workspace brand refreshed",
         visibility: "public",
         canManage: false,
+        previewAssets: expect.arrayContaining([
+          expect.objectContaining({
+            previewAssetId: expect.stringMatching(/^ptp:/),
+          }),
+        ]),
       }),
     ]);
     const detailForMember = await accept(
@@ -422,6 +491,25 @@ describe("presentation template publish", () => {
     );
     expect(detailForMember.body.pageUrls).toHaveLength(2);
     expect(detailForMember.body.canManage).toBeFalsy();
+    expect(detailForMember.body.previewAssets).toStrictEqual(
+      listedForMember.body[0]?.previewAssets,
+    );
+    const memberPreviewAssetIds = listedForMember.body[0]?.previewAssets?.map(
+      (asset) => {
+        return asset.previewAssetId;
+      },
+    );
+    if (memberPreviewAssetIds === undefined) {
+      throw new Error("Expected shared presentation preview asset ids");
+    }
+    const memberPreviewUrls = await accept(
+      templateClient().resolvePreviewUrls({
+        headers: webHeaders(),
+        body: { previewAssetIds: memberPreviewAssetIds },
+      }),
+      [200],
+    );
+    expect(memberPreviewUrls.body.assets).toHaveLength(2);
 
     await accept(
       templateClient().update({
@@ -440,6 +528,7 @@ describe("presentation template publish", () => {
     );
 
     mocks.clerk.session(owner.userId, owner.orgId);
+    context.mocks.ably.channelGet.mockClear();
     await accept(
       templateClient().update({
         headers: webHeaders(),
@@ -447,6 +536,9 @@ describe("presentation template publish", () => {
         body: { visibility: "private" },
       }),
       [200],
+    );
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${owner.orgId}`,
     );
 
     mocks.clerk.session(member.userId, member.orgId);
@@ -462,6 +554,14 @@ describe("presentation template publish", () => {
       }),
       [404],
     );
+    const revokedPreviewUrls = await accept(
+      templateClient().resolvePreviewUrls({
+        headers: webHeaders(),
+        body: { previewAssetIds: memberPreviewAssetIds },
+      }),
+      [200],
+    );
+    expect(revokedPreviewUrls.body.assets).toStrictEqual([]);
   });
 
   it("deletes a template exactly once when two requests race", async () => {
@@ -479,6 +579,16 @@ describe("presentation template publish", () => {
       [200],
     );
 
+    await accept(
+      templateClient().update({
+        headers: webHeaders(),
+        params: { templateId: published.body.id },
+        body: { visibility: "public" },
+      }),
+      [200],
+    );
+    context.mocks.ably.channelGet.mockClear();
+
     const params = { templateId: published.body.id };
     const [first, second] = await Promise.all([
       accept(
@@ -494,6 +604,10 @@ describe("presentation template publish", () => {
       return left - right;
     });
     expect(statuses).toStrictEqual([204, 404]);
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `org:${actor.orgId}`,
+    );
 
     const listed = await accept(
       templateClient().list({ headers: webHeaders() }),

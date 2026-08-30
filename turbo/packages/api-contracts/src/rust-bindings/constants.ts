@@ -16,6 +16,8 @@ import {
 } from "../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
+  BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
   BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
@@ -28,6 +30,7 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+  RUNNER_HOSTNAME_MAX_LENGTH,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -45,6 +48,10 @@ export type RustConstantValue =
   | {
       readonly kind: "string";
       readonly value: string;
+    }
+  | {
+      readonly kind: "u32";
+      readonly value: number;
     }
   | {
       readonly kind: "u64";
@@ -203,6 +210,10 @@ function rustString(value: string): RustConstantValue {
   return { kind: "string", value };
 }
 
+function rustU32(value: number): RustConstantValue {
+  return { kind: "u32", value };
+}
+
 function rustU64(value: number): RustConstantValue {
   return { kind: "u64", value };
 }
@@ -283,11 +294,29 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
+    rustConstName: "AGENT_EXECUTION_TIMEOUT_SECONDS",
+    value: rustU64(AGENT_EXECUTION_TIMEOUT_SECONDS),
+    rustDoc: [
+      "Maximum execution budget for one agent run, in seconds.",
+      "The runner enforces this deadline and the API includes it in the agent-facing system prompt.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION",
+    value: rustU32(BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION),
+    rustDoc: [
+      "Schema version written to builtin firewall catalog cache files and accepted by the mitm addon.",
+      "This value is generated for both Rust and Python consumers so cache compatibility cannot drift between them.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
     rustConstName: "BUILTIN_FIREWALL_CATALOG_MAX_BYTES",
     value: rustU64(BUILTIN_FIREWALL_CATALOG_MAX_BYTES),
     rustDoc: [
       "Maximum builtin firewall catalog response and cache size accepted by runners.",
-      "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
+      "This Runner wire and cache boundary is independent of the larger full connector catalog source-ingestion limit.",
     ],
   },
   {
@@ -332,6 +361,15 @@ export const rustConstantBindings = [
     rustDoc: [
       "Maximum API admission hold after public user cancellation when recovery completion is lost.",
       "The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_HOSTNAME_MAX_LENGTH",
+    value: rustU64(RUNNER_HOSTNAME_MAX_LENGTH),
+    rustDoc: [
+      "Maximum configured runner hostname length accepted by the runner-facing API.",
+      "Rust runners use JavaScript UTF-16 string length semantics when enforcing this shared boundary.",
     ],
   },
   {

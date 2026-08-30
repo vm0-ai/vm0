@@ -1,4 +1,17 @@
-"""Firewall auth cache, fetch admission, and force-refresh lifecycle."""
+"""Firewall auth cache, fetch admission, and force-refresh lifecycle.
+
+The cache separates credential identity from registry ownership freshness. A cache key is
+credential-equivalent when its ``(run_id, api_id, auth_identity)`` fields match. Its optional
+``registry_generation`` records which published registry snapshot authorized the lookup, but is
+not part of credential identity, so an unchanged auth identity can reuse its cached payload and
+refresh lifecycle across registry snapshots.
+
+Shared ownership is limited to one auth identity per ``(run_id, api_id)`` scope. A current registry
+generation may claim that scope or replace its previous identity. A stale generation can use
+existing equivalent state, but cannot create, replace, or reclaim shared ownership; when no
+equivalent state remains, its fetch uses detached state instead. Registry reconciliation also
+removes ownership for runs that are no longer active.
+"""
 
 import asyncio
 import time
@@ -21,9 +34,26 @@ class FirewallAuthFetchSaturatedError(Exception):
     """Raised when firewall auth fetch admission is saturated."""
 
 
+class FirewallAuthCacheEntryIdentity:
+    """Credential-free process-local identity for one cached auth result."""
+
+    __slots__ = ()
+
+
 @dataclass(frozen=True)
 class FirewallAuthCacheKey:
-    """Auth cache identity for one run, API, and resolved auth input set."""
+    """Auth cache identity for one run, API, and resolved auth input set.
+
+    ``registry_generation`` is ownership-freshness metadata rather than credential identity. It is
+    intentionally excluded from equality, hashing, and representation so an unchanged auth
+    identity reuses its cached payload and refresh lifecycle across registry generations. Lookup
+    checks the generation separately before allowing a key to mutate shared ownership.
+
+    The shared owner scope is one auth identity per ``(run_id, api_id)``. A current key with a
+    different ``auth_identity`` replaces the previous owner's state. A stale key cannot reclaim
+    that ownership; it can reuse equivalent existing state, or otherwise receives detached state
+    that is not stored in the shared cache.
+    """
 
     run_id: str
     api_id: str
@@ -41,6 +71,7 @@ class _FirewallHeaderCacheEntry:
     """Cached /firewall/auth response data for a single firewall key."""
 
     payload: FirewallAuthPayload
+    identity: FirewallAuthCacheEntryIdentity = field(default_factory=FirewallAuthCacheEntryIdentity)
     expires_at: object = None
 
 
@@ -59,12 +90,14 @@ class FirewallAuthStateSnapshotForTests:
     """Copied auth cache state exposed to tests without leaking private storage."""
 
     has_cached_headers: bool
+    has_in_flight_fetch: bool
     headers: dict[str, str] = field(default_factory=dict)
     resolved_secrets: list[str] = field(default_factory=list)
     base: str | None = None
     query: dict[str, str] | None = None
     aws_sigv4: AwsSigV4Credentials | None = None
     expires_at: object = None
+    cache_entry_identity: FirewallAuthCacheEntryIdentity | None = None
     force_refresh_pending: bool = False
     last_force_refresh_monotonic_at: float | None = None
 
@@ -90,7 +123,14 @@ _FORCE_REFRESH_COOLDOWN_SECS = 120.0
 
 
 def _get_auth_state(cache_key: FirewallAuthCacheKey) -> _FirewallAuthState:
-    """Return owned state, or detached state for a superseded registry key."""
+    """Return shared state, or detached state for a stale registry key.
+
+    A current key owns one ``(run_id, api_id)`` scope. Claiming that scope with a different
+    ``auth_identity`` evicts the previous shared state. Because ``registry_generation`` is excluded
+    from key equality, an unchanged auth identity reuses its lifecycle state across generations.
+    A stale key may use equivalent existing state, but cannot mutate shared ownership; if that
+    state is absent, it receives a detached state object.
+    """
     state = _auth_state.get(cache_key)
 
     registry_generation = cache_key.registry_generation
@@ -155,15 +195,31 @@ def request_force_refresh(cache_key: FirewallAuthCacheKey) -> None:
         state.force_refresh_pending = True
 
 
-def clear_cached_firewall_headers(cache_key: FirewallAuthCacheKey) -> None:
-    """Invalidate only cached headers while preserving refresh lifecycle state."""
+def invalidate_cached_firewall_headers(
+    cache_key: FirewallAuthCacheKey,
+    cache_entry_identity: FirewallAuthCacheEntryIdentity,
+) -> None:
+    """Invalidate and request refresh only for the currently cached entry."""
     state = _auth_state.get(cache_key)
-    if state:
-        state.cache = None
+    if state is None or state.cache is None or state.cache.identity is not cache_entry_identity:
+        return
+    state.cache = None
+    request_force_refresh(cache_key)
 
 
 def reconcile_registry_cache_ownership(active_run_generations: dict[str, int]) -> None:
-    """Reconcile cache ownership with the current registry generation."""
+    """Publish registry freshness and reconcile shared auth-cache ownership.
+
+    ``active_run_generations`` maps each active run to the generation of the registry snapshot just
+    published. Replacing this map makes only matching generations current for ownership mutation.
+    The ``(run_id, api_id)`` owner remains reusable across generations when the auth identity is
+    unchanged, because generation is excluded from cache-key equality. A current key with a new
+    identity replaces the prior owner, while stale keys cannot reclaim it.
+
+    Runs absent from ``active_run_generations`` are no longer active owners, so their entries are
+    removed from both ownership and auth state, including cached payload and refresh lifecycle
+    state.
+    """
     _active_registry_generations.clear()
     _active_registry_generations.update(active_run_generations)
 
@@ -271,6 +327,7 @@ def auth_state_snapshot_for_tests(
     if cache is None:
         return FirewallAuthStateSnapshotForTests(
             has_cached_headers=False,
+            has_in_flight_fetch=state.in_flight is not None,
             force_refresh_pending=state.force_refresh_pending,
             last_force_refresh_monotonic_at=state.last_force_refresh_monotonic_at,
         )
@@ -278,12 +335,14 @@ def auth_state_snapshot_for_tests(
     payload = cache.payload
     return FirewallAuthStateSnapshotForTests(
         has_cached_headers=True,
+        has_in_flight_fetch=state.in_flight is not None,
         headers=dict(payload.headers),
         resolved_secrets=list(payload.resolved_secrets),
         base=payload.base,
         query=dict(payload.query) if payload.query is not None else None,
         aws_sigv4=payload.aws_sigv4,
         expires_at=cache.expires_at,
+        cache_entry_identity=cache.identity,
         force_refresh_pending=state.force_refresh_pending,
         last_force_refresh_monotonic_at=state.last_force_refresh_monotonic_at,
     )
@@ -301,16 +360,18 @@ def _has_valid_expiry(value: object, now: float | None = None) -> bool:
 
 
 def _build_token_meta(
-    payload: FirewallAuthPayload,
+    cache_entry: _FirewallHeaderCacheEntry,
     *,
     cache_hit: bool,
     refreshed_connectors: list[str] | None = None,
     refreshed_secrets: list[str] | None = None,
 ) -> dict:
+    payload = cache_entry.payload
     token_meta: dict = {
         "headers": payload.headers,
         "resolved_secrets": payload.resolved_secrets,
         "cache_hit": cache_hit,
+        "cache_entry_identity": cache_entry.identity,
     }
     if refreshed_connectors is not None:
         token_meta["refreshed_connectors"] = refreshed_connectors
@@ -336,7 +397,7 @@ def _build_cache_hit(
             return None
     elif not _has_valid_expiry(expires_at, now):
         return None
-    return _build_token_meta(cached.payload, cache_hit=True)
+    return _build_token_meta(cached, cache_hit=True)
 
 
 def _observe_fetch_task_exception(task: asyncio.Task[dict]) -> None:
@@ -375,7 +436,7 @@ async def _fetch_and_cache_firewall_headers(
             state.cache = cache_entry
 
         return _build_token_meta(
-            result.payload,
+            cache_entry,
             cache_hit=False,
             refreshed_connectors=result.refreshed_connectors,
             refreshed_secrets=result.refreshed_secrets,
@@ -394,10 +455,16 @@ async def get_firewall_headers(
     Uses a state-owned per-key task so concurrent requests for the same
     auth identity coalesce even if an individual waiter is cancelled.
 
-    Cache is evicted when:
-    - The run is removed from the registry (see registry.load_registry)
-    - A 401 response is received (see response handler)
-    - The expiresAt timestamp from the auth endpoint has passed
+    Cached headers are physically cleared when:
+    - The run is removed from the registry (see registry.load_registry; its
+      auth state is evicted)
+    - A 401 response is received (see response handler; refresh lifecycle state
+      is preserved)
+
+    TTL expiry is different: once the expiresAt timestamp from the auth
+    endpoint has passed, the entry is treated as a cache miss and its headers
+    are never served. A successful refetch replaces the expired entry, while a
+    failed refetch leaves the expired entry stored for a later retry.
     """
     state = _get_auth_state(cache_key)
 
@@ -412,24 +479,32 @@ async def get_firewall_headers(
         fetch_task = state.in_flight
         created_fetch = fetch_task is None
         if fetch_task is None:
+            force_refresh = state.force_refresh_pending
+            force_refresh_started_at = time.monotonic() if force_refresh else None
             _reserve_firewall_auth_fetch()
 
-            # Consume the marker before creating the task so only this shared
-            # operation can trigger the refresh. Recording before the fetch
-            # preserves the intentional failed-refresh cooldown semantics.
-            force_refresh = state.force_refresh_pending
+            fetch_coroutine = _fetch_and_cache_firewall_headers(
+                state,
+                request,
+                force_refresh=force_refresh,
+            )
+            try:
+                fetch_task = asyncio.create_task(fetch_coroutine)
+            except BaseException:
+                fetch_coroutine.close()
+                _release_firewall_auth_fetch()
+                raise
+
+            state.in_flight = fetch_task
+
+            # Task selection and publication contain no await, so consuming
+            # the marker here is still atomic with choosing this shared fetch.
+            # Recording before the task runs preserves the intentional
+            # failed-refresh cooldown once task ownership has transferred.
             state.force_refresh_pending = False
             if force_refresh:
-                state.last_force_refresh_monotonic_at = time.monotonic()
+                state.last_force_refresh_monotonic_at = force_refresh_started_at
 
-            fetch_task = asyncio.create_task(
-                _fetch_and_cache_firewall_headers(
-                    state,
-                    request,
-                    force_refresh=force_refresh,
-                )
-            )
-            state.in_flight = fetch_task
             fetch_task.add_done_callback(_observe_fetch_task_exception)
 
         result = await asyncio.shield(fetch_task)

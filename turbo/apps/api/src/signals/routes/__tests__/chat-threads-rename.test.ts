@@ -5,6 +5,8 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
+import { DEFAULT_IMAGE_MODEL } from "@okouai/core/image-model-catalog";
+import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -126,8 +128,13 @@ describe("POST /api/chat-threads/:id/rename", () => {
       id: fixture.threadId,
       agentId: fixture.agentId,
       title: "CLI renamed title",
+      pinnedAt: null,
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       serviceTier: null,
+      computerUseHostId: null,
+      cloudBrowserEnabled: false,
+      selectedVideoModel: DEFAULT_VIDEO_MODEL,
+      selectedImageModel: DEFAULT_IMAGE_MODEL,
     });
   });
 
@@ -154,5 +161,48 @@ describe("POST /api/chat-threads/:id/rename", () => {
         message: "Missing required capability: chat-thread:write",
       },
     });
+  });
+
+  it("does not rename a same-user thread from another org", async () => {
+    const fixture = await seedChatThread("Original title");
+    const otherOrgId = `org_${randomUUID()}`;
+    await store.set(
+      seedOrgMembership$,
+      { orgId: otherOrgId, userId: fixture.userId },
+      context.signal,
+    );
+
+    const response = await accept(
+      renameClient().rename({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId: fixture.userId,
+            orgId: otherOrgId,
+            capabilities: ["chat-thread:write"],
+          })}`,
+        },
+        params: { id: fixture.threadId },
+        body: { title: "Wrong org title" },
+      }),
+      [404],
+    );
+    expect(response.body).toStrictEqual({
+      error: { code: "NOT_FOUND", message: "Chat thread not found" },
+    });
+
+    const metadataResponse = await accept(
+      metadataClient().get({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            capabilities: ["chat-thread:read"],
+          })}`,
+        },
+        params: { id: fixture.threadId },
+      }),
+      [200],
+    );
+    expect(metadataResponse.body.title).toBe("Original title");
   });
 });

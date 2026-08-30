@@ -1,9 +1,8 @@
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
 
 type ReadDb = Pick<Db, "select">;
 
@@ -29,21 +28,12 @@ const CAPABILITY_SELECTION = {
   baseConcurrencyLimit: orgPlanEntitlements.baseConcurrencyLimit,
   canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
   canBuyCredits: orgPlanEntitlements.canBuyCredits,
-  memberInviteUsagePackRequired: sql`
-    COALESCE(
-      (to_jsonb(${orgPlanEntitlements}) ->> 'member_invite_usage_pack_required')::boolean,
-      false
-    )
-  `.mapWith(pgBooleanDecoder),
-  memberInvitationAllowed: sql`
-      COALESCE(
-        (to_jsonb(${orgPlanEntitlements}) ->> 'member_invitation_allowed')::boolean,
-        ${orgPlanEntitlements.planKey} IN ('pro', 'team', 'custom')
-      )
-    `.mapWith(pgBooleanDecoder),
+  memberInviteUsagePackRequired:
+    orgPlanEntitlements.memberInviteUsagePackRequired,
+  memberInvitationAllowed: orgPlanEntitlements.memberInvitationAllowed,
   autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
   supportByok: orgPlanEntitlements.supportByok,
-  restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
+  restrictedBuiltInModels: orgPlanEntitlements.restrictedBuiltInModels,
   videoGenerationAllowed: orgPlanEntitlements.videoGenerationAllowed,
   workflowWebhookAutomationAllowed:
     orgPlanEntitlements.workflowWebhookTriggerAllowed,
@@ -51,56 +41,6 @@ const CAPABILITY_SELECTION = {
   audioDailyRateLimit: orgPlanEntitlements.audioDailyRateLimit,
   audioDailyDurationSeconds: orgPlanEntitlements.audioDailyDurationSeconds,
 } as const;
-
-export async function memberInviteUsagePackEntitlementSchemaAvailable(
-  db: ReadDb,
-): Promise<boolean> {
-  // A new API can deploy before migration 0898 during the DB/API rollout
-  // window. Remove this probe after 0898 is guaranteed across that window.
-  const [state] = await db
-    .select({
-      available: sql`
-        EXISTS (
-          SELECT 1
-          FROM pg_catalog.pg_attribute
-          WHERE attrelid = to_regclass('org_plan_entitlements')
-            AND attname = 'member_invite_usage_pack_required'
-            AND NOT attisdropped
-        )
-      `.mapWith(pgBooleanDecoder),
-    })
-    .from(sql`(SELECT 1) AS schema_probe`)
-    .limit(1);
-  if (!state) {
-    throw new Error("Member invite usage pack schema probe returned no row");
-  }
-  return state.available;
-}
-
-export async function memberInvitationEntitlementSchemaAvailable(
-  db: ReadDb,
-): Promise<boolean> {
-  // A new API can deploy before migration 0901 during the DB/API rollout
-  // window. Remove this probe after 0901 is guaranteed across that window.
-  const [state] = await db
-    .select({
-      available: sql`
-        EXISTS (
-          SELECT 1
-          FROM pg_catalog.pg_attribute
-          WHERE attrelid = to_regclass('org_plan_entitlements')
-            AND attname = 'member_invitation_allowed'
-            AND NOT attisdropped
-        )
-      `.mapWith(pgBooleanDecoder),
-    })
-    .from(sql`(SELECT 1) AS schema_probe`)
-    .limit(1);
-  if (!state) {
-    throw new Error("Member invitation schema probe returned no row");
-  }
-  return state.available;
-}
 
 function runtimeStatusForEntitlement(
   status: string,
@@ -147,8 +87,17 @@ export async function loadOrgPlanCapabilities(
     }
     throw new Error(`Missing org plan entitlement for ${orgId}`);
   }
+
+  if (capabilities.restrictedBuiltInModels === null) {
+    throw new Error(
+      `Unexpected NULL restricted_built_in_models for org plan entitlement ${orgId}`,
+    );
+  }
+
+  const { restrictedBuiltInModels, ...runtimeCapabilities } = capabilities;
   return {
-    ...capabilities,
+    ...runtimeCapabilities,
+    restrictedVm0Models: restrictedBuiltInModels,
     status: runtimeStatusForEntitlement(capabilities.status),
   };
 }

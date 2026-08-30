@@ -33,7 +33,7 @@ import response_streaming
 from tests.codex_model_catalog_cache_helpers import catalog_flow
 from tests.flow_helpers import header_map, response_stream
 from tests.mitmproxy_http_framing_helpers import CLIENT_IP, start_http_layer
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
 
 def _write_codex_firewall_registry(tmp_path: Path) -> Path:
@@ -41,7 +41,7 @@ def _write_codex_firewall_registry(tmp_path: Path) -> Path:
     return _write_registry(
         tmp_path,
         client_ip=CLIENT_IP,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             run_id="run-catalog-state-machine",
             firewall_name=firewall_name,
@@ -66,7 +66,7 @@ def _write_codex_firewall_registry(tmp_path: Path) -> Path:
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={
+            sandbox_fields={
                 "captureNetworkBodies": True,
                 "cliAgentType": "codex",
             },
@@ -127,7 +127,7 @@ async def test_http2_fresh_catalog_hit_completes_without_provider_connection(
             }
         ),
     )
-    seed_flow.metadata[metadata_keys.VM_RUN_ID] = "run-catalog-seed"
+    seed_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-catalog-seed"
     seed_flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
     seed_flow.metadata[metadata_keys.ORIGINAL_URL] = catalog_url
     await codex_model_catalog_cache.prepare_request(seed_flow, request_end_stream=True)
@@ -157,6 +157,7 @@ async def test_http2_fresh_catalog_hit_completes_without_provider_connection(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
     with (
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
@@ -269,9 +270,9 @@ async def _catalog_http_stream(
     flow = http.HTTPFlow(stream.context.client, stream.context.server)
     flow.request = request
     flow.live = True
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-catalog-state-machine"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-catalog-state-machine"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = ""
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = f"https://chatgpt.com{catalog_path}"

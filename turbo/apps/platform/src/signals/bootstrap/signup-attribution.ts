@@ -13,11 +13,14 @@ import { sessionStorageSignals } from "../external/session-storage.ts";
 import { readStoredAdAttributionMetadata$ } from "./ad-attribution.ts";
 import {
   fireGoogleAdsConversion,
+  GOOGLE_ADS_ADSMARCH_SIGNUP_SEND_TO,
   GOOGLE_ADS_SIGNUP_SEND_TO,
 } from "./google-ads-conversion.ts";
 
 const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
 const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
+const ADSMARCH_SIGNUP_CONVERSION_RECORDED_KEY =
+  "vm0.googleAdsAdsmarchSignupConversionRecorded";
 const SIGNUP_CONVERSION_VALUE_USD = 1;
 const SIGNUP_CONVERSION_MAX_USER_AGE_MS = 30 * 60 * 1000;
 const signupAttributionRecordedStorage = sessionStorageSignals(
@@ -25,6 +28,9 @@ const signupAttributionRecordedStorage = sessionStorageSignals(
 );
 const signupConversionRecordedStorage = sessionStorageSignals(
   SIGNUP_CONVERSION_RECORDED_KEY,
+);
+const adsmarchSignupConversionRecordedStorage = sessionStorageSignals(
+  ADSMARCH_SIGNUP_CONVERSION_RECORDED_KEY,
 );
 
 function timestampMs(value: unknown): number | null {
@@ -111,6 +117,17 @@ export const recordSignupAttribution$ = command(
       });
       if (conversionFired) {
         set(signupConversionRecordedStorage.set$, user.id);
+      }
+
+      const adsmarchConversionFired = fireGoogleAdsConversion({
+        sendTo: GOOGLE_ADS_ADSMARCH_SIGNUP_SEND_TO,
+        dedupeValue: user.id,
+        value: SIGNUP_CONVERSION_VALUE_USD,
+        storedDedupeValue: get(adsmarchSignupConversionRecordedStorage.get$),
+        transactionId: user.id,
+      });
+      if (adsmarchConversionFired) {
+        set(adsmarchSignupConversionRecordedStorage.set$, user.id);
       }
     }
   },

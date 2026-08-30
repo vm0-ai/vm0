@@ -42,6 +42,8 @@ from .buffer import (
     buffer_usage_events,
     configure_usage_buffer,
     drain_usage_events_after_executor_shutdown,
+    flush_billing_usage_events,
+    flush_model_usage_observations,
     flush_usage_events,
     reset_usage_buffer_for_tests,
 )
@@ -56,7 +58,9 @@ from .counters import (
     write_pending_snapshot,
 )
 from .model_json import (
+    ModelJsonResponseInspection,
     ModelUsageProtocol,
+    create_model_json_response_inspector,
     create_model_json_usage_extractor,
     extract_model_usage_with_error_from_json,
 )
@@ -70,6 +74,7 @@ from .openai_responses import (
     OpenAIResponsesClientEvent,
     OpenAIResponsesEvent,
     OpenAIResponsesServerEventInspection,
+    OpenAIResponsesServerFailureEvidence,
     OpenAIResponsesServerLifecycle,
     create_openai_responses_json_usage_extractor,
     create_openai_responses_sse_usage_extractor,
@@ -96,25 +101,30 @@ from .providers.model_provider import (
     report_model_provider_usage_observation,
     report_model_provider_usage_source,
 )
+from .reporting_context import configure_model_usage_observation_reporting
 
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR",
     "BufferedReportLease",
+    "ModelJsonResponseInspection",
     "ModelUsageProtocol",
     "OpenAIResponsesClientEvent",
     "OpenAIResponsesEvent",
     "OpenAIResponsesServerEventInspection",
+    "OpenAIResponsesServerFailureEvidence",
     "OpenAIResponsesServerLifecycle",
     "admit_buffered_report",
     "buffer_model_usage_observations",
     "buffer_source_model_usage_observations",
     "buffer_source_usage_events",
     "buffer_usage_events",
+    "configure_model_usage_observation_reporting",
     "configure_usage_buffer",
     "create_anthropic_messages_json_usage_extractor",
     "create_anthropic_messages_sse_usage_extractor",
     "create_connector_response_parser",
+    "create_model_json_response_inspector",
     "create_model_json_usage_extractor",
     "create_openai_chat_completions_json_usage_extractor",
     "create_openai_chat_completions_sse_usage_extractor",
@@ -128,6 +138,8 @@ __all__ = [
     "extract_openai_chat_completions_usage_with_error_from_json",
     "extract_openai_responses_usage_from_event",
     "extract_openai_responses_usage_with_error_from_json",
+    "flush_billing_usage_events",
+    "flush_model_usage_observations",
     "flush_usage_events",
     "has_connector_response_parser",
     "has_positive_model_provider_usage",

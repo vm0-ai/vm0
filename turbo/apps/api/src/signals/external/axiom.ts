@@ -25,11 +25,22 @@ const AXIOM_TRANSPORT_ERROR_MESSAGES = {
 
 const L = logger("api:axiom");
 
-function logClientError(client: "sessions" | "telemetry", error: Error): void {
-  L.error("Axiom client operation failed", { client, error });
+type AxiomClientName = "sessions" | "telemetry";
+
+function logClientError(
+  client: AxiomClientName,
+  error: Error,
+  dataset?: string,
+): void {
+  L.error("Axiom client operation failed", {
+    client,
+    ...(dataset === undefined ? {} : { dataset }),
+    failureKind: error.name === "TimeoutError" ? "timeout" : "transport_error",
+    error,
+  });
 }
 
-const sessionsAxiomClient = singleton(() => {
+const sessionsAxiomQueryClient = singleton(() => {
   return new Axiom({
     token: env("AXIOM_TOKEN_SESSIONS"),
     onError: (error) => {
@@ -38,13 +49,20 @@ const sessionsAxiomClient = singleton(() => {
   });
 });
 
-const telemetryAxiomClient = singleton(() => {
+const telemetryAxiomQueryClient = singleton(() => {
   return new Axiom({
     token: env("AXIOM_TOKEN_TELEMETRY"),
     onError: (error) => {
       logClientError("telemetry", error);
     },
   });
+});
+
+const axiomIngestClients = singleton(() => {
+  return {
+    sessions: new Map<string, Axiom>(),
+    telemetry: new Map<string, Axiom>(),
+  };
 });
 
 export function getDatasetName(base: string): string {
@@ -54,20 +72,34 @@ export function getDatasetName(base: string): string {
 function axiomClientForApl(apl: string): Axiom {
   const tokenEnvName = getAxiomTokenEnvNameForApl(apl);
   if (tokenEnvName === "AXIOM_TOKEN_SESSIONS") {
-    return sessionsAxiomClient();
+    return sessionsAxiomQueryClient();
   }
-  return telemetryAxiomClient();
+  return telemetryAxiomQueryClient();
 }
 
 function axiomClientForDataset(dataset: string): Axiom | null {
   const tokenEnvName = getAxiomTokenEnvNameForDataset(dataset);
-  if (!optionalEnv(tokenEnvName)) {
+  const token = optionalEnv(tokenEnvName);
+  if (!token) {
     return null;
   }
-  if (tokenEnvName === "AXIOM_TOKEN_SESSIONS") {
-    return sessionsAxiomClient();
+
+  const clientName: AxiomClientName =
+    tokenEnvName === "AXIOM_TOKEN_SESSIONS" ? "sessions" : "telemetry";
+  const clients = axiomIngestClients()[clientName];
+  const existing = clients.get(dataset);
+  if (existing) {
+    return existing;
   }
-  return telemetryAxiomClient();
+
+  const client = new Axiom({
+    token,
+    onError: (error) => {
+      logClientError(clientName, error, dataset);
+    },
+  });
+  clients.set(dataset, client);
+  return client;
 }
 
 export function ingestToAxiom(
@@ -336,33 +368,43 @@ export async function ingestAxiomDirect(
 }
 
 interface FlushAxiomOptions {
-  readonly client?: "all" | "sessions" | "telemetry";
+  readonly client?: "all" | AxiomClientName;
 }
 
 export async function flushAxiom(
   options: FlushAxiomOptions = {},
 ): Promise<void> {
-  const client = options.client ?? "all";
+  const selectedClient = options.client ?? "all";
   const flushes: {
-    readonly name: string;
-    readonly promise?: Promise<void>;
+    readonly client: AxiomClientName;
+    readonly dataset: string;
+    readonly promise: Promise<void>;
   }[] = [];
+  const clients = axiomIngestClients();
 
-  if (client === "all" || client === "sessions") {
-    flushes.push({
-      name: "sessions",
-      promise: optionalEnv("AXIOM_TOKEN_SESSIONS")
-        ? sessionsAxiomClient().flush()
-        : undefined,
-    });
+  if (
+    (selectedClient === "all" || selectedClient === "sessions") &&
+    optionalEnv("AXIOM_TOKEN_SESSIONS")
+  ) {
+    for (const [dataset, client] of clients.sessions) {
+      flushes.push({
+        client: "sessions",
+        dataset,
+        promise: client.flush(),
+      });
+    }
   }
-  if (client === "all" || client === "telemetry") {
-    flushes.push({
-      name: "telemetry",
-      promise: optionalEnv("AXIOM_TOKEN_TELEMETRY")
-        ? telemetryAxiomClient().flush()
-        : undefined,
-    });
+  if (
+    (selectedClient === "all" || selectedClient === "telemetry") &&
+    optionalEnv("AXIOM_TOKEN_TELEMETRY")
+  ) {
+    for (const [dataset, client] of clients.telemetry) {
+      flushes.push({
+        client: "telemetry",
+        dataset,
+        promise: client.flush(),
+      });
+    }
   }
 
   const results = await Promise.allSettled(
@@ -373,7 +415,8 @@ export async function flushAxiom(
   for (const [index, result] of results.entries()) {
     if (result.status === "rejected") {
       L.error("Axiom client flush failed", {
-        client: flushes[index]?.name ?? "unknown",
+        client: flushes[index]?.client ?? "unknown",
+        dataset: flushes[index]?.dataset ?? "unknown",
         error: result.reason,
       });
     }

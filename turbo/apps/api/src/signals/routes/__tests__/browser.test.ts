@@ -1689,7 +1689,7 @@ describe("okou browser route", () => {
     const failedResume = await createApp({
       signal: context.signal,
       routes: TEST_APP_ROUTES,
-    }).request(`/api/zero/chat-threads/${threadId}/browser/open`, {
+    }).request(`/api/chat-threads/${threadId}/browser/open`, {
       method: "POST",
       headers: {
         authorization: "Bearer clerk-session",
@@ -2692,7 +2692,7 @@ describe("okou browser route", () => {
     const collided = await createApp({
       signal: context.signal,
       routes: TEST_APP_ROUTES,
-    }).request(`/api/zero/chat-threads/${first.threadId}/browser/close`, {
+    }).request(`/api/chat-threads/${first.threadId}/browser/close`, {
       method: "POST",
       headers: {
         authorization: "Bearer clerk-session",

@@ -59,7 +59,7 @@ function configureProvider(): void {
 }
 
 describe("okou finance routes", () => {
-  it("rejects zero tokens without finance:read capability", async () => {
+  it("rejects agent tokens without finance:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Finance test actor must belong to an organization");

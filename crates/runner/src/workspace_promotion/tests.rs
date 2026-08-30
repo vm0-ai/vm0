@@ -18,8 +18,9 @@ use guest_contracts::session_history_identity::{
     SessionHistorySidecarRepresentation, SessionHistorySourceRef,
 };
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
-    Sandbox, SandboxFactory, SandboxId, StartProcessRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
+    GuestProcessHandle, ProcessExit, Sandbox, SandboxFactory, SandboxId, StartAgentProcessRequest,
+    StartProcessRequest,
 };
 use sandbox_mock::{ExecMatcher, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 use sha2::{Digest, Sha256};
@@ -146,6 +147,20 @@ impl Sandbox for PostCopyGateSandbox {
         self.inner.exec(request).await
     }
 
+    async fn apply_storage_manifest(
+        &self,
+        request: &sandbox::StorageManifestRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        self.inner.apply_storage_manifest(request).await
+    }
+
+    async fn restore_guest_state(
+        &self,
+        request: &sandbox::GuestStateRestoreRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        self.inner.restore_guest_state(request).await
+    }
+
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         self.inner.read_file(path, max_bytes).await
     }
@@ -175,6 +190,13 @@ impl Sandbox for PostCopyGateSandbox {
         request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
         self.inner.start_process(request).await
+    }
+
+    async fn start_agent_process(
+        &self,
+        request: &StartAgentProcessRequest<'_>,
+    ) -> sandbox::Result<GuestAgentProcessHandle> {
+        self.inner.start_agent_process(request).await
     }
 
     async fn wait_process(
@@ -230,6 +252,20 @@ impl Sandbox for PanicExecSandbox {
         panic!("simulated exec panic");
     }
 
+    async fn apply_storage_manifest(
+        &self,
+        _request: &sandbox::StorageManifestRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        panic!("unused apply_storage_manifest");
+    }
+
+    async fn restore_guest_state(
+        &self,
+        _request: &sandbox::GuestStateRestoreRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        panic!("unused restore_guest_state");
+    }
+
     async fn read_file(&self, _path: &str, _max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         Ok(None)
     }
@@ -256,6 +292,13 @@ impl Sandbox for PanicExecSandbox {
         _request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
         panic!("unused start_process");
+    }
+
+    async fn start_agent_process(
+        &self,
+        _request: &StartAgentProcessRequest<'_>,
+    ) -> sandbox::Result<GuestAgentProcessHandle> {
+        panic!("unused start_agent_process");
     }
 
     async fn wait_process(
@@ -372,6 +415,10 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     let exec_calls = sandbox.exec_calls();
     assert_eq!(exec_calls.len(), 3);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
+    assert_eq!(
+        exec_calls[0].env_keys,
+        vec![guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV]
+    );
     assert!(exec_calls[1].cmd.contains("rm -f --"));
     assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
     assert!(exec_calls[2].sudo);

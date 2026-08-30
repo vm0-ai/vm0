@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.9](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.8...process-control-ipc-v0.3.9) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy process-control endpoint reader ([#30130](https://github.com/vm0-ai/vm0/issues/30130)) ([57157de](https://github.com/vm0-ai/vm0/commit/57157de35208c779837373ce8cca6baf601d605b))
+
+## [0.3.8](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.7...process-control-ipc-v0.3.8) (2026-08-28)
+
+
+### Refactoring
+
+* **runtime:** cut process-control writer to canonical alias ([#29915](https://github.com/vm0-ai/vm0/issues/29915)) ([d24888e](https://github.com/vm0-ai/vm0/commit/d24888e360664ac892d1be16788f5b75abd2a26a))
+
+## [0.3.7](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.6...process-control-ipc-v0.3.7) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
+## [0.3.6](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.5...process-control-ipc-v0.3.6) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read process-control environment aliases ([#29071](https://github.com/vm0-ai/vm0/issues/29071)) ([c9cde49](https://github.com/vm0-ai/vm0/commit/c9cde495a4ba6f43c409476a68733bdade8cb99c))
+
 ## [0.3.5](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.4...process-control-ipc-v0.3.5) (2026-08-21)
 
 

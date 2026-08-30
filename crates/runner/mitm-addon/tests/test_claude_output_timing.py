@@ -128,7 +128,7 @@ def test_reports_content_free_lifecycle_milestones_and_preserves_usage(
     thinking_type: str,
 ) -> None:
     flow = _claude_sse_flow(real_flow, tmp_path)
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
     secret = "provider-secret-that-must-not-be-reported"
 
     with mitm_ctx(api_url=usage_webhook_server.api_url):
@@ -234,7 +234,7 @@ def test_tool_turns_reconnects_and_reused_sandboxes_preserve_run_boundaries(
         mitm_addon.response(reconnect)
 
         reused_sandbox_run = _claude_sse_flow(real_flow, tmp_path)
-        reused_sandbox_run.metadata[metadata_keys.VM_RUN_ID] = "run-reused-sandbox"
+        reused_sandbox_run.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-reused-sandbox"
         mitm_addon.responseheaders(reused_sandbox_run)
         _feed(
             reused_sandbox_run,
@@ -376,7 +376,7 @@ def test_incomplete_context_retains_timing_until_complete_retry(
         return delivery_available
 
     incomplete_flow = _claude_sse_flow(real_flow, tmp_path)
-    incomplete_flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = sandbox_token
+    incomplete_flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = sandbox_token
 
     with patch.object(
         usage.webhook,
@@ -453,12 +453,12 @@ def test_eviction_and_reset_release_retained_buffered_report(
         patch.object(claude_output_timing._store, "_max_tracked_runs", 1),
     ):
         first_flow = _claude_sse_flow(real_flow, tmp_path)
-        first_flow.metadata[metadata_keys.VM_RUN_ID] = "run-first"
+        first_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-first"
         mitm_addon.responseheaders(first_flow)
         _feed(first_flow, _message_start(include_usage=False))
 
         second_flow = _claude_sse_flow(real_flow, tmp_path)
-        second_flow.metadata[metadata_keys.VM_RUN_ID] = "run-second"
+        second_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-second"
         mitm_addon.responseheaders(second_flow)
         _feed(second_flow, _message_start(include_usage=False))
 
@@ -501,7 +501,7 @@ def test_lru_hit_recency_preserves_recent_buffered_report(
 
     def claude_flow(run_id: str) -> http.HTTPFlow:
         flow = _claude_sse_flow(real_flow, tmp_path)
-        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
         mitm_addon.responseheaders(flow)
         return flow
 

@@ -7,10 +7,10 @@ import {
   type PublicConnectorCatalogPermissionDetail,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
-  zeroUserPermissionGrantsContract,
+  userPermissionGrantsContract,
   type UserPermissionGrantResponse,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
-import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
+} from "@okouai/api-contracts/contracts/user-permission-grants";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-contracts";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -113,7 +113,7 @@ describe("permission allow page", () => {
       },
     );
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         capturedBody = body;
         const appliedGrant = body.grants[0];
@@ -267,11 +267,11 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const appliedGrant = body.grants[0];
         if (!appliedGrant) {
@@ -344,7 +344,7 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId,
@@ -397,7 +397,7 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId,
@@ -448,7 +448,7 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId,
@@ -521,7 +521,7 @@ describe("permission allow page", () => {
         });
       },
     );
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId,
@@ -569,7 +569,7 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId,
@@ -623,11 +623,11 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, grants);
     });
     context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
+      userPermissionGrantsContract.apply,
       ({ body, respond }) => {
         const appliedGrant = body.grants[0];
         if (!appliedGrant) {
@@ -666,8 +666,10 @@ describe("permission allow page", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Cloudflare")).toBeInTheDocument();
-    expect(screen.getByText("Unknown endpoints")).toBeInTheDocument();
-    expect(screen.getByText(UNKNOWN_PERMISSION_GRANT)).toBeInTheDocument();
+    expect(screen.getByText("Other endpoints")).toBeInTheDocument();
+    expect(
+      screen.queryByText(UNKNOWN_PERMISSION_GRANT),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByText("Confirm"));
 
@@ -701,7 +703,7 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId,
@@ -751,7 +753,7 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(403, {
         error: {
           code: "FORBIDDEN",
@@ -795,10 +797,10 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
-    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+    context.mocks.api(userPermissionGrantsContract.apply, ({ respond }) => {
       return respond(403, {
         error: {
           code: "FORBIDDEN",

@@ -8,11 +8,13 @@ use std::time::{Duration, Instant};
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, BorrowedRawMessage, DecodeWithError, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START,
-    MSG_GUEST_DNS_READINESS, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY,
-    MSG_RESUME_OPERATIONS, MSG_WRITE_FILE, MSG_WRITE_FILES,
+    MSG_GUEST_DNS_READINESS, MSG_GUEST_STATE_RESTORE, MSG_GUEST_STORAGE_MANIFEST,
+    MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
+    MSG_WRITE_FILE, MSG_WRITE_FILES, MSG_WRITE_PRIVATE_FILES,
 };
 
+use crate::agent_command::GuestAgentProgram;
 use crate::error::to_io_error;
 use crate::exec_control::{ExecControlRegistry, handle_decoded_exec_control as route_exec_control};
 use crate::exec_operation::{
@@ -22,6 +24,14 @@ use crate::exec_operation::{
 use crate::file_write_worker::{FileWriteKind, FileWriteSubmitError, FileWriteWorker};
 use crate::guest_dns_readiness::{
     GuestDnsReadinessProgram, GuestDnsReadinessSubmitError, GuestDnsReadinessWorker,
+};
+use crate::guest_state_restore::{
+    GuestStateRestoreProgram, GuestStateRestoreSubmission, GuestStateRestoreSubmitError,
+    GuestStateRestoreWorker,
+};
+use crate::guest_storage_manifest::{
+    GuestStorageManifestProgram, GuestStorageManifestSubmission, GuestStorageManifestSubmitError,
+    GuestStorageManifestWorker,
 };
 use crate::handlers::{MessageOutcome, handle_basic_message};
 use crate::log::log;
@@ -129,7 +139,10 @@ fn is_real_host_work_message(msg_type: u8) -> bool {
             | MSG_EXEC_CONTROL
             | MSG_WRITE_FILE
             | MSG_WRITE_FILES
+            | MSG_WRITE_PRIVATE_FILES
             | MSG_GUEST_DNS_READINESS
+            | MSG_GUEST_STATE_RESTORE
+            | MSG_GUEST_STORAGE_MANIFEST
             | MSG_QUIESCE_OPERATIONS
             | MSG_RESUME_OPERATIONS
             | MSG_MEMORY_SNAPSHOT
@@ -218,7 +231,7 @@ fn handle_quiesce_operations(
 
     match operation_state.enter_quiescing() {
         // Quiescing atomically fences new guest operations. Once pending is
-        // zero, this is the final race-free boundary before the VM is parked.
+        // zero, this is the final race-free boundary before the sandbox is parked.
         QuiesceResult::Quiesced => {
             match verify_exec_process_containment_empty(process_containment_mode) {
                 Ok(()) => send_empty_response(MSG_OPERATIONS_QUIESCED, seq, writer),
@@ -293,11 +306,21 @@ struct ConnectionDispatcher {
     connection_cancel: Arc<AtomicBool>,
     file_write_worker: FileWriteWorker,
     guest_dns_readiness_worker: GuestDnsReadinessWorker,
+    guest_state_restore_worker: GuestStateRestoreWorker,
+    guest_storage_manifest_worker: GuestStorageManifestWorker,
     exec_operation_registry: ExecOperationRegistry,
     exec_control_registry: ExecControlRegistry,
     operation_state: OperationState,
+    guest_agent_program: GuestAgentProgram,
     process_containment_mode: ProcessContainmentMode,
     exec_drain_deadline: Duration,
+}
+
+struct ConnectionPrograms {
+    guest_agent: GuestAgentProgram,
+    guest_dns_readiness: GuestDnsReadinessProgram,
+    guest_state_restore: GuestStateRestoreProgram,
+    guest_storage_manifest: GuestStorageManifestProgram,
 }
 
 impl ConnectionDispatcher {
@@ -306,23 +329,39 @@ impl ConnectionDispatcher {
         connection_cancel: Arc<AtomicBool>,
         process_containment_mode: ProcessContainmentMode,
         exec_drain_deadline: Duration,
-        guest_dns_readiness_program: GuestDnsReadinessProgram,
+        programs: ConnectionPrograms,
     ) -> io::Result<Self> {
         let file_write_worker =
             FileWriteWorker::start(writer.clone(), Arc::clone(&connection_cancel))?;
         let guest_dns_readiness_worker = GuestDnsReadinessWorker::start(
             writer.clone(),
             Arc::clone(&connection_cancel),
-            guest_dns_readiness_program,
+            programs.guest_dns_readiness,
+        );
+        let guest_storage_manifest_worker = GuestStorageManifestWorker::start(
+            writer.clone(),
+            Arc::clone(&connection_cancel),
+            programs.guest_storage_manifest,
+            process_containment_mode,
+            exec_drain_deadline,
+        );
+        let guest_state_restore_worker = GuestStateRestoreWorker::start(
+            writer.clone(),
+            Arc::clone(&connection_cancel),
+            programs.guest_state_restore,
+            exec_drain_deadline,
         );
         Ok(Self {
             writer,
             connection_cancel,
             file_write_worker,
             guest_dns_readiness_worker,
+            guest_state_restore_worker,
+            guest_storage_manifest_worker,
             exec_operation_registry: ExecOperationRegistry::default(),
             exec_control_registry: ExecControlRegistry::default(),
             operation_state: OperationState::default(),
+            guest_agent_program: programs.guest_agent,
             process_containment_mode,
             exec_drain_deadline,
         })
@@ -335,7 +374,10 @@ impl ConnectionDispatcher {
             MSG_EXEC_CONTROL => self.handle_exec_control(msg)?,
             MSG_WRITE_FILE => self.handle_file_write(msg, FileWriteKind::File)?,
             MSG_WRITE_FILES => self.handle_file_write(msg, FileWriteKind::Files)?,
+            MSG_WRITE_PRIVATE_FILES => self.handle_file_write(msg, FileWriteKind::PrivateFiles)?,
             MSG_GUEST_DNS_READINESS => self.handle_guest_dns_readiness(msg)?,
+            MSG_GUEST_STATE_RESTORE => self.handle_guest_state_restore(msg)?,
+            MSG_GUEST_STORAGE_MANIFEST => self.handle_guest_storage_manifest(msg)?,
             MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
             MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
             MSG_MEMORY_SNAPSHOT => self.handle_memory_snapshot(msg)?,
@@ -364,6 +406,7 @@ impl ConnectionDispatcher {
             decoded,
             self.process_containment_mode,
             self.exec_drain_deadline,
+            self.guest_agent_program.clone(),
         ) {
             Ok(request) => request,
             Err(error) => {
@@ -403,6 +446,11 @@ impl ConnectionDispatcher {
                     }
                 };
             request.attach_exec_control(registration.guard, registration.bootstrap_endpoint);
+        }
+        if let Err(error) = request.validate_control_attachment() {
+            operation_guard.release();
+            send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+            return Ok(());
         }
         start_exec_operation(
             request,
@@ -530,6 +578,119 @@ impl ConnectionDispatcher {
             Err(GuestDnsReadinessSubmitError::Start(error)) => send_error_response(
                 msg.seq,
                 &format!("failed to start guest DNS readiness worker: {error}"),
+                &self.writer,
+            ),
+        }
+    }
+
+    fn handle_guest_storage_manifest(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "guest storage manifest", &self.writer)? {
+            return Ok(());
+        }
+        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
+            return Ok(());
+        }
+        let decoded = match vsock_proto::decode_guest_storage_manifest_request(msg.payload) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+                return Ok(());
+            }
+        };
+        let Some(admission) = self.guest_storage_manifest_worker.try_admit() else {
+            send_error_response(
+                msg.seq,
+                "guest storage manifest operation already active",
+                &self.writer,
+            )?;
+            return Ok(());
+        };
+        let Some(operation_guard) =
+            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
+        else {
+            return Ok(());
+        };
+        match self.guest_storage_manifest_worker.submit(
+            GuestStorageManifestSubmission {
+                seq: msg.seq,
+                timeout_ms: decoded.timeout_ms,
+                run_id: decoded.run_id,
+                runtime_dir: decoded.runtime_dir,
+                manifest_json: decoded.manifest_json,
+            },
+            operation_guard,
+            admission,
+        ) {
+            Ok(()) => Ok(()),
+            Err(GuestStorageManifestSubmitError::Busy) => send_error_response(
+                msg.seq,
+                "guest storage manifest operation already active",
+                &self.writer,
+            ),
+            Err(GuestStorageManifestSubmitError::Disconnected) => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "guest storage manifest worker stopped",
+            )),
+            Err(GuestStorageManifestSubmitError::Start(error)) => send_error_response(
+                msg.seq,
+                &format!("failed to start guest storage manifest worker: {error}"),
+                &self.writer,
+            ),
+        }
+    }
+
+    fn handle_guest_state_restore(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "guest state restore", &self.writer)? {
+            return Ok(());
+        }
+        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
+            return Ok(());
+        }
+        let decoded = match vsock_proto::decode_guest_state_restore_request(msg.payload) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+                return Ok(());
+            }
+        };
+        let Some(admission) = self.guest_state_restore_worker.try_admit() else {
+            send_error_response(
+                msg.seq,
+                "guest state restore operation already active",
+                &self.writer,
+            )?;
+            return Ok(());
+        };
+        let Some(operation_guard) =
+            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
+        else {
+            return Ok(());
+        };
+        match self.guest_state_restore_worker.submit(
+            GuestStateRestoreSubmission {
+                seq: msg.seq,
+                timeout_ms: decoded.timeout_ms,
+                unix_seconds: decoded.unix_seconds,
+                unix_nanoseconds: decoded.unix_nanoseconds,
+                entropy: decoded.entropy,
+                timezone: decoded.timezone,
+            },
+            operation_guard,
+            admission,
+        ) {
+            Ok(()) => Ok(()),
+            Err(GuestStateRestoreSubmitError::Busy) => send_error_response(
+                msg.seq,
+                "guest state restore operation already active",
+                &self.writer,
+            ),
+            Err(GuestStateRestoreSubmitError::Disconnected) => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "guest state restore worker stopped",
+            )),
+            Err(GuestStateRestoreSubmitError::Start(error)) => send_error_response(
+                msg.seq,
+                &format!("failed to start guest state restore worker: {error}"),
                 &self.writer,
             ),
         }
@@ -668,7 +829,61 @@ pub fn handle_connection_with_test_dns_readiness_program(
         stream,
         ProcessContainmentMode::TestNoop,
         EXEC_OUTPUT_DRAIN_DEADLINE,
+        GuestAgentProgram::production(),
         GuestDnsReadinessProgram::for_test(program),
+        GuestStateRestoreProgram::production(),
+        GuestStorageManifestProgram::production(),
+    )
+}
+
+/// Handles a host-side test connection with a test storage helper executable.
+#[doc(hidden)]
+pub fn handle_connection_with_test_storage_manifest_program(
+    stream: UnixStream,
+    program: std::path::PathBuf,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        GuestAgentProgram::production(),
+        GuestDnsReadinessProgram::production(),
+        GuestStateRestoreProgram::production(),
+        GuestStorageManifestProgram::for_test(program),
+    )
+}
+
+/// Handles a host-side test connection with a test guest-state helper.
+#[doc(hidden)]
+pub fn handle_connection_with_test_guest_state_restore_program(
+    stream: UnixStream,
+    program: std::path::PathBuf,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        GuestAgentProgram::production(),
+        GuestDnsReadinessProgram::production(),
+        GuestStateRestoreProgram::for_test(program),
+        GuestStorageManifestProgram::production(),
+    )
+}
+
+/// Handles a host-side test connection with a fixed test Guest Agent executable.
+#[doc(hidden)]
+pub fn handle_connection_with_test_guest_agent_program(
+    stream: UnixStream,
+    program: std::path::PathBuf,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        GuestAgentProgram::for_test(program),
+        GuestDnsReadinessProgram::production(),
+        GuestStateRestoreProgram::production(),
+        GuestStorageManifestProgram::production(),
     )
 }
 
@@ -692,7 +907,10 @@ fn handle_connection_with_mode_and_exec_drain_deadline(
         stream,
         process_containment_mode,
         exec_drain_deadline,
+        GuestAgentProgram::production(),
         GuestDnsReadinessProgram::production(),
+        GuestStateRestoreProgram::production(),
+        GuestStorageManifestProgram::production(),
     )
 }
 
@@ -700,13 +918,19 @@ fn handle_connection_with_mode_and_program(
     stream: UnixStream,
     process_containment_mode: ProcessContainmentMode,
     exec_drain_deadline: Duration,
+    guest_agent_program: GuestAgentProgram,
     guest_dns_readiness_program: GuestDnsReadinessProgram,
+    guest_state_restore_program: GuestStateRestoreProgram,
+    guest_storage_manifest_program: GuestStorageManifestProgram,
 ) -> io::Result<()> {
     match handle_connection_with_outcome(
         stream,
         process_containment_mode,
         exec_drain_deadline,
+        guest_agent_program,
         guest_dns_readiness_program,
+        guest_state_restore_program,
+        guest_storage_manifest_program,
     ) {
         Ok(_) => Ok(()),
         Err(failure) => Err(failure.error),
@@ -717,7 +941,10 @@ fn handle_connection_with_outcome(
     stream: UnixStream,
     process_containment_mode: ProcessContainmentMode,
     exec_drain_deadline: Duration,
+    guest_agent_program: GuestAgentProgram,
     guest_dns_readiness_program: GuestDnsReadinessProgram,
+    guest_state_restore_program: GuestStateRestoreProgram,
+    guest_storage_manifest_program: GuestStorageManifestProgram,
 ) -> Result<ConnectionEnd, ConnectionFailure> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while worker threads write results.
@@ -745,7 +972,12 @@ fn handle_connection_with_outcome(
         connection_cancel.clone(),
         process_containment_mode,
         exec_drain_deadline,
-        guest_dns_readiness_program,
+        ConnectionPrograms {
+            guest_agent: guest_agent_program,
+            guest_dns_readiness: guest_dns_readiness_program,
+            guest_state_restore: guest_state_restore_program,
+            guest_storage_manifest: guest_storage_manifest_program,
+        },
     )
     .map_err(|error| session.failure(error))?;
     let mut buf = [0u8; READ_BUFFER_SIZE];
@@ -893,7 +1125,10 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                         stream,
                         process_containment_mode,
                         EXEC_OUTPUT_DRAIN_DEADLINE,
+                        GuestAgentProgram::production(),
                         GuestDnsReadinessProgram::production(),
+                        GuestStateRestoreProgram::production(),
+                        GuestStorageManifestProgram::production(),
                     )
                 })
         } else {
@@ -906,7 +1141,10 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                         stream,
                         process_containment_mode,
                         EXEC_OUTPUT_DRAIN_DEADLINE,
+                        GuestAgentProgram::production(),
                         GuestDnsReadinessProgram::production(),
+                        GuestStateRestoreProgram::production(),
+                        GuestStorageManifestProgram::production(),
                     )
                 })
         };
@@ -982,7 +1220,9 @@ mod tests {
             MSG_EXEC_CONTROL,
             MSG_WRITE_FILE,
             MSG_WRITE_FILES,
+            MSG_WRITE_PRIVATE_FILES,
             MSG_GUEST_DNS_READINESS,
+            MSG_GUEST_STORAGE_MANIFEST,
             MSG_QUIESCE_OPERATIONS,
             MSG_RESUME_OPERATIONS,
         ] {

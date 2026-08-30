@@ -254,13 +254,13 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
         &counter,
         &budget,
         1,
-        "non-reusable parked VM should be sent to destroy exactly once",
-        "non-reusable parked VM must retain budget while destroy is in-flight",
+        "non-reusable parked sandbox should be sent to destroy exactly once",
+        "non-reusable parked sandbox must retain budget while destroy is in-flight",
     );
     assert_idle_pool_len(
         &idle_pool,
         0,
-        "non-reusable parked VM must never enter the idle pool",
+        "non-reusable parked sandbox must never enter the idle pool",
     )
     .await;
     wait_status_idle_reuse_keys_and_active_runs(
@@ -273,7 +273,7 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
     assert_successful_completion_for_run(
         &env,
         run_id,
-        "host completion should report while non-reusable VM destroy is blocked",
+        "host completion should report while non-reusable sandbox destroy is blocked",
     )
     .await;
     destroy_gate.release_one();
@@ -312,14 +312,14 @@ async fn repeated_non_reusable_parks_use_fresh_sandboxes() {
             .handle
             .wait_completion(run_id, Duration::from_secs(5))
             .await
-            .expect("successful job should complete after non-reusable VM destroy");
+            .expect("successful job should complete after non-reusable sandbox destroy");
         assert_eq!(completion.exit_code, 0);
         assert!(completion.error.is_none());
         wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
         assert_idle_pool_len(
             &idle_pool,
             0,
-            "repeated non-reusable VMs must never cycle through the idle pool",
+            "repeated non-reusable sandboxes must never cycle through the idle pool",
         )
         .await;
     }
@@ -481,13 +481,13 @@ async fn assert_workspace_cache_after_late_cancellation(
         &counter,
         &budget,
         1,
-        "cancelled VM should be sent to destroy exactly once",
-        "cancelled VM must retain budget while destroy is in-flight",
+        "cancelled sandbox should be sent to destroy exactly once",
+        "cancelled sandbox must retain budget while destroy is in-flight",
     );
     assert_successful_completion_for_run(
         &env,
         run_id,
-        "host completion should report while cancelled VM destroy is blocked",
+        "host completion should report while cancelled sandbox destroy is blocked",
     )
     .await;
     destroy_gate.release_one();
@@ -531,7 +531,7 @@ async fn park_panic_destroys_sandbox_reports_completion_and_releases_budget() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
+async fn pool_full_rejected_sandbox_keeps_budget_until_destroy_and_completion() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let destroy_gate = MockLifecycleGate::new();
     overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
@@ -562,13 +562,13 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
         &counter,
         &budget,
         2,
-        "rejected VM should be sent to destroy",
-        "rejected active VM must retain its budget while destroy is in-flight",
+        "rejected sandbox should be sent to destroy",
+        "rejected active sandbox must retain its budget while destroy is in-flight",
     );
     assert_successful_completion_for_run(
         &env,
         run_id,
-        "host completion should report while rejected VM destroy is blocked",
+        "host completion should report while rejected sandbox destroy is blocked",
     )
     .await;
     destroy_gate.release_one();
@@ -621,8 +621,8 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
         &counter,
         &budget,
         1,
-        "rejected VM should be sent to destroy exactly once",
-        "rejected VM must retain budget while destroy is in-flight",
+        "rejected sandbox should be sent to destroy exactly once",
+        "rejected sandbox must retain budget while destroy is in-flight",
     );
     assert_idle_pool_len(
         &idle_pool,
@@ -633,7 +633,7 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
     assert_successful_completion_for_run(
         &env,
         run_id,
-        "host completion should report while rejected VM destroy is blocked",
+        "host completion should report while rejected sandbox destroy is blocked",
     )
     .await;
     destroy_gate.release_one();
@@ -685,19 +685,19 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
         &counter,
         &budget,
         1,
-        "cancelled VM should be sent to destroy exactly once",
-        "cancelled VM must retain budget while destroy is in-flight",
+        "cancelled sandbox should be sent to destroy exactly once",
+        "cancelled sandbox must retain budget while destroy is in-flight",
     );
     assert_idle_pool_len(
         &idle_pool,
         0,
-        "cancelled VM must not enter the idle pool after waiting for the lock",
+        "cancelled sandbox must not enter the idle pool after waiting for the lock",
     )
     .await;
     assert_successful_completion_for_run(
         &env,
         run_id,
-        "host completion should report while cancelled VM destroy is blocked",
+        "host completion should report while cancelled sandbox destroy is blocked",
     )
     .await;
     destroy_gate.release_one();
@@ -747,19 +747,19 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
         &counter,
         &budget,
         1,
-        "cancelled VM should be sent to destroy exactly once",
-        "cancelled VM must retain budget while destroy is in-flight",
+        "cancelled sandbox should be sent to destroy exactly once",
+        "cancelled sandbox must retain budget while destroy is in-flight",
     );
     assert_idle_pool_len(
         &idle_pool,
         0,
-        "cancelled VM must not enter the idle pool after park returns",
+        "cancelled sandbox must not enter the idle pool after park returns",
     )
     .await;
     assert_successful_completion_for_run(
         &env,
         run_id,
-        "host completion should report while cancelled VM destroy is blocked",
+        "host completion should report while cancelled sandbox destroy is blocked",
     )
     .await;
     destroy_gate.release_one();

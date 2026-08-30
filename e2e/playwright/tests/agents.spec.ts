@@ -1,23 +1,32 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 const pinnedAgentStory = [
   {
-    id: "c0000000-0000-4000-a000-000000000701",
+    agentId: "c0000000-0000-4000-a000-000000000701",
     displayName: "Research Agent",
   },
   {
-    id: "c0000000-0000-4000-a000-000000000702",
+    agentId: "c0000000-0000-4000-a000-000000000702",
     displayName: "Support Agent",
   },
   {
-    id: "c0000000-0000-4000-a000-000000000703",
+    agentId: "c0000000-0000-4000-a000-000000000703",
     displayName: "Operations Agent",
   },
 ] as const;
+const unreadThreadStory = {
+  id: "b0000000-0000-4000-a000-000000000704",
+  title: "Unread conversation",
+  createdAt: "2026-08-25T10:00:00.000Z",
+} as const;
 type PinnedAgentStoryEntry = (typeof pinnedAgentStory)[number];
+type PinnedAgentStoryControls = {
+  readonly setGradientColorThemes: (enabled: boolean) => void;
+  readonly setPinnedAgents: (agents: readonly PinnedAgentStoryEntry[]) => void;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -26,7 +35,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function mockPinnedAgentGrid(
   page: Page,
   defaultAgentId: string,
-): Promise<(agents: readonly PinnedAgentStoryEntry[]) => void> {
+): Promise<PinnedAgentStoryControls> {
+  let gradientColorThemes = false;
   let pinnedAgents: readonly PinnedAgentStoryEntry[] = pinnedAgentStory;
 
   await page.route("**/api/feature-switches", async (route) => {
@@ -41,23 +51,23 @@ async function mockPinnedAgentGrid(
         ...body,
         effectiveSwitches: {
           ...body.effectiveSwitches,
-          threeColumnNav: true,
+          gradientColorThemes,
         },
       },
     });
   });
 
-  await page.route("**/api/team", async (route) => {
+  await page.route("**/api/agents", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!Array.isArray(body) || !body.every(isRecord)) {
-      throw new Error("Team returned an unexpected response");
+      throw new Error("Agents returned an unexpected response");
     }
     const defaultAgent = body.find((agent) => {
-      return agent.id === defaultAgentId;
+      return agent.agentId === defaultAgentId;
     });
     if (!defaultAgent) {
-      throw new Error("Default agent is missing from the team response");
+      throw new Error("Default agent is missing from the agents response");
     }
     await route.fulfill({
       response,
@@ -89,14 +99,183 @@ async function mockPinnedAgentGrid(
       json: {
         ...body,
         pinnedAgentIds: pinnedAgents.map((agent) => {
-          return agent.id;
+          return agent.agentId;
         }),
       },
     });
   });
 
-  return (agents) => {
-    pinnedAgents = agents;
+  return {
+    setGradientColorThemes(enabled) {
+      gradientColorThemes = enabled;
+    },
+    setPinnedAgents(agents) {
+      pinnedAgents = agents;
+    },
+  };
+}
+
+async function mockUnreadThread(
+  page: Page,
+  defaultAgentId: string,
+): Promise<void> {
+  await page.route("**/api/chat-threads/snapshot", async (route) => {
+    await route.fulfill({
+      json: {
+        chatThreads: [
+          {
+            id: unreadThreadStory.id,
+            agentId: defaultAgentId,
+            title: unreadThreadStory.title,
+            sortAt: unreadThreadStory.createdAt,
+            createdAt: unreadThreadStory.createdAt,
+            updatedAt: unreadThreadStory.createdAt,
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
+          },
+        ],
+        latestEventId: null,
+        latestSeqId: null,
+      },
+    });
+  });
+  await page.route(
+    (url) => url.pathname === "/api/chat-threads/events",
+    async (route) => {
+      await route.fulfill({ json: { events: [], hasMore: false } });
+    },
+  );
+  await page.route("**/api/indicators", async (route) => {
+    await route.fulfill({
+      json: {
+        agents: { [defaultAgentId]: "unread" },
+        threads: { [unreadThreadStory.id]: "unread" },
+      },
+    });
+  });
+  await page.route(
+    (url) => url.pathname === "/api/chat-thread-unreads",
+    async (route) => {
+      await route.fulfill({
+        json: {
+          unreads: [
+            {
+              threadId: unreadThreadStory.id,
+              unreadAt: unreadThreadStory.createdAt,
+            },
+          ],
+        },
+      });
+    },
+  );
+}
+
+async function visibleIndicatorStyle(locator: Locator): Promise<{
+  readonly backgroundColor: string;
+  readonly borderRadius: string;
+  readonly boxShadow: string;
+  readonly height: string;
+  readonly width: string;
+}> {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderRadius: style.borderRadius,
+      boxShadow: style.boxShadow,
+      height: style.height,
+      width: style.width,
+    };
+  });
+}
+
+async function computedIconStyle(control: Locator): Promise<{
+  readonly height: string;
+  readonly opacity: string;
+  readonly width: string;
+}> {
+  const icon = control.locator("svg").first();
+  await expect(icon).toBeAttached();
+  return icon.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      height: style.height,
+      opacity: style.opacity,
+      width: style.width,
+    };
+  });
+}
+
+async function computedSurfaceStyle(
+  locator: Locator,
+  pseudoElement: string | null = null,
+): Promise<{
+  readonly backgroundColor: string;
+  readonly borderRightColor: string;
+  readonly luminance: number;
+}> {
+  return locator.evaluate((element, pseudo) => {
+    const style = getComputedStyle(element, pseudo);
+    const channels = style.backgroundColor
+      .match(/\d+(?:\.\d+)?/gu)
+      ?.slice(0, 3)
+      .map(Number);
+    const [red, green, blue] = channels ?? [];
+    if (red === undefined || green === undefined || blue === undefined) {
+      throw new Error(`Cannot read background color: ${style.backgroundColor}`);
+    }
+    return {
+      backgroundColor: style.backgroundColor,
+      borderRightColor: style.borderRightColor,
+      luminance: 0.2126 * red + 0.7152 * green + 0.0722 * blue,
+    };
+  }, pseudoElement);
+}
+
+async function computedColor(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => {
+    return getComputedStyle(element).color;
+  });
+}
+
+async function computedNavigationAppearance(page: Page) {
+  const rail = page.getByTestId("labeled-nav-rail");
+  const sidebar = page.getByTestId("chat-list-column");
+  const workspace = page.locator(".zero-workspace-bg");
+  const primaryCopy = rail.getByText("New", { exact: true });
+  const mutedCopy = rail.getByText("Connectors", { exact: true });
+  const hoverCopy = sidebar.getByText(/^Chats with .+$/u);
+
+  await Promise.all([
+    expect(rail).toBeVisible(),
+    expect(sidebar).toBeVisible(),
+    expect(workspace).toBeVisible(),
+    expect(primaryCopy).toBeVisible(),
+    expect(mutedCopy).toBeVisible(),
+    expect(hoverCopy).toBeVisible(),
+  ]);
+
+  const [railStyle, sidebarStyle, workspaceStyle, primary, muted, hover] =
+    await Promise.all([
+      computedSurfaceStyle(rail),
+      computedSurfaceStyle(sidebar),
+      computedSurfaceStyle(workspace, "::before"),
+      computedColor(primaryCopy),
+      computedColor(mutedCopy),
+      computedColor(hoverCopy),
+    ]);
+
+  return {
+    hover,
+    hoverCopy,
+    muted,
+    primary,
+    rail: railStyle,
+    sidebar: sidebarStyle,
+    workspace: workspaceStyle,
   };
 }
 
@@ -107,10 +286,60 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
-test("pinned agents use five equal columns and keep Pin in the first row", async ({
+test("onboarding workflow preview uses the shared dialog radius", async ({
+  page,
+}) => {
+  await page.route("**/api/onboarding/status", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body)) {
+      throw new Error("Onboarding status returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        needsOnboarding: true,
+        onboardingComplete: false,
+      },
+    });
+  });
+  await page.route("**/api/connector-catalog/status", async (route) => {
+    await route.fulfill({ json: { connectors: [] } });
+  });
+
+  const workflowUrl = new URL("/onboarding/workflow-run", appUrl);
+  workflowUrl.searchParams.set("choice", "workflow");
+  workflowUrl.searchParams.set("category", "marketing");
+  workflowUrl.searchParams.set("workflow", "track-keyword-ranks-ahrefs");
+  await page.goto(workflowUrl.toString());
+
+  await expect(
+    page.getByRole("heading", { name: "Review your workflow draft" }),
+  ).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Preview workflow details" }).click();
+
+  const preview = page.getByRole("dialog", {
+    name: "Audit a website's technical SEO",
+  });
+  await expect(preview).toBeVisible();
+  expect(
+    await preview.evaluate((element) => {
+      return getComputedStyle(element).borderRadius;
+    }),
+  ).toBe("14px");
+});
+
+test("three-column rail and unread indicators preserve their visual hierarchy", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    // The dark palette inverts surface luminance, so use light mode to verify
+    // the requested darker rail hierarchy without assuming dark-mode ordering.
+    localStorage.setItem("theme", "light");
+    localStorage.setItem("colorTheme", "blue-horizon");
+  });
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
   const defaultAgentId = new URL(page.url()).pathname.match(
@@ -120,13 +349,20 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
     throw new Error("Could not resolve the default agent from the sidebar");
   }
 
-  const setPinnedAgents = await mockPinnedAgentGrid(page, defaultAgentId);
+  const { setGradientColorThemes, setPinnedAgents } = await mockPinnedAgentGrid(
+    page,
+    defaultAgentId,
+  );
+  await mockUnreadThread(page, defaultAgentId);
   await Promise.all([
     ...[
       "/api/feature-switches",
       "/api/onboarding/status",
-      "/api/team",
+      "/api/agents",
       "/api/user-preferences",
+      "/api/chat-threads/snapshot",
+      "/api/indicators",
+      "/api/chat-thread-unreads",
     ].map((pathname) => {
       return page.waitForResponse((response) => {
         return (
@@ -139,12 +375,110 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
   ]);
 
   const grid = page.getByTestId("pinned-agents-grid");
+  const chatList = page.getByTestId("chat-list-column");
   const cards = grid.getByTestId("pinned-agent-card");
   const pinAgent = grid.getByRole("button", {
     name: "Pin an agent",
   });
   await expect(cards).toHaveCount(4);
   await expect(pinAgent).toBeVisible();
+
+  const featureOff = await computedNavigationAppearance(page);
+
+  setGradientColorThemes(true);
+  await Promise.all([
+    page.waitForResponse((response) => {
+      return (
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname === "/api/feature-switches"
+      );
+    }),
+    page.reload(),
+  ]);
+  await page.locator("#app-bootstrap-skeleton").waitFor({ state: "detached" });
+
+  const themed = await computedNavigationAppearance(page);
+
+  expect(themed.rail.backgroundColor).not.toBe(featureOff.rail.backgroundColor);
+  expect(themed.sidebar.backgroundColor).not.toBe(
+    featureOff.sidebar.backgroundColor,
+  );
+  expect(themed.workspace.backgroundColor).not.toBe(
+    featureOff.workspace.backgroundColor,
+  );
+  expect(themed.primary).not.toBe(featureOff.primary);
+  expect(themed.muted).not.toBe(featureOff.muted);
+  expect(themed.rail.backgroundColor).not.toBe(themed.sidebar.backgroundColor);
+  expect(themed.rail.luminance).toBeLessThan(themed.sidebar.luminance);
+  expect(themed.sidebar.luminance).toBeLessThan(themed.workspace.luminance);
+  expect(
+    featureOff.workspace.luminance - themed.workspace.luminance,
+  ).toBeLessThan(4);
+  expect(themed.rail.borderRightColor).not.toBe(
+    featureOff.rail.borderRightColor,
+  );
+  expect(themed.rail.borderRightColor).toMatch(/,\s*0\.5\)$/u);
+  expect(themed.primary).not.toBe(themed.muted);
+  expect(themed.hover).toBe(themed.muted);
+
+  await themed.hoverCopy.locator("..").hover();
+  await expect(themed.hoverCopy).toHaveCSS("color", themed.primary);
+
+  const defaultAgentCard = grid.locator(
+    `[data-testid="pinned-agent-card"][href="/agents/${defaultAgentId}/chat"]`,
+  );
+  const agentUnread = defaultAgentCard.getByLabel("Unread");
+  const threadRow = chatList
+    .locator(`[data-sidebar-chat-thread-id="${unreadThreadStory.id}"]`)
+    .locator("..");
+  const threadUnread = threadRow.getByLabel("Unread");
+  await expect(agentUnread).toBeVisible();
+  await expect(threadUnread).toBeVisible();
+
+  const [agentUnreadStyle, threadUnreadStyle] = await Promise.all([
+    visibleIndicatorStyle(agentUnread),
+    visibleIndicatorStyle(threadUnread),
+  ]);
+  expect(Number.parseFloat(threadUnreadStyle.width)).toBeGreaterThan(0);
+  expect(agentUnreadStyle).toStrictEqual(threadUnreadStyle);
+
+  expect(
+    await computedIconStyle(threadRow.getByTestId("chat-thread-menu-trigger")),
+  ).toStrictEqual({ height: "17px", opacity: "0.7", width: "17px" });
+
+  for (const control of [
+    chatList.getByLabel("Search workspace"),
+    chatList.getByLabel("New chat"),
+    chatList.getByLabel("Hide chat list"),
+    pinAgent,
+    chatList.getByLabel("Open chat list menu"),
+  ]) {
+    expect(await computedIconStyle(control)).toStrictEqual({
+      height: "18px",
+      opacity: "1",
+      width: "18px",
+    });
+  }
+
+  await page.getByLabel("Search workspace").click();
+  const searchDialog = page.getByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  await expect(searchDialog).toBeVisible();
+  expect(
+    await searchDialog.evaluate((element) => {
+      const command = element.querySelector('[data-slot="command"]');
+      if (!(command instanceof HTMLElement)) {
+        throw new Error("Search command surface is not rendered");
+      }
+      return {
+        command: getComputedStyle(command).borderRadius,
+        dialog: getComputedStyle(element).borderRadius,
+      };
+    }),
+  ).toStrictEqual({ command: "14px", dialog: "14px" });
+  await page.keyboard.press("Escape");
+  await expect(searchDialog).toBeHidden();
 
   await expect
     .poll(async () => {
@@ -259,6 +593,7 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
 test("reveal the default agent unread action from the whole row", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
   const defaultAgentId = new URL(page.url()).pathname.match(
@@ -279,7 +614,10 @@ test("reveal the default agent unread action from the whole row", async ({
   await page.reload();
   await page.locator("#app-bootstrap-skeleton").waitFor({ state: "detached" });
 
-  const defaultAgentRow = page.getByTestId("pinned-agent-card").filter({
+  await page.getByRole("button", { name: "Open menu" }).click();
+  const mobileSidebar = page.locator("aside.zero-pwa-fixed-cover");
+  await expect(mobileSidebar).toBeVisible();
+  const defaultAgentRow = mobileSidebar.getByTestId("pinned-agent-card").filter({
     has: page.locator(`a[href="/agents/${defaultAgentId}/chat"]`),
   });
   const unreadIndicator = defaultAgentRow.getByLabel("Unread");

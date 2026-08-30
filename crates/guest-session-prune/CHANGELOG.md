@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.3.53](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.52...guest-session-prune-v0.3.53) (2026-08-30)
+
+## [0.3.52](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.51...guest-session-prune-v0.3.52) (2026-08-30)
+
+## [0.3.51](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.50...guest-session-prune-v0.3.51) (2026-08-30)
+
+## [0.3.50](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.49...guest-session-prune-v0.3.50) (2026-08-29)
+
+## [0.3.49](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.48...guest-session-prune-v0.3.49) (2026-08-28)
+
+## [0.3.48](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.47...guest-session-prune-v0.3.48) (2026-08-28)
+
+## [0.3.47](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.46...guest-session-prune-v0.3.47) (2026-08-28)
+
+## [0.3.46](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.45...guest-session-prune-v0.3.46) (2026-08-28)
+
+## [0.3.45](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.44...guest-session-prune-v0.3.45) (2026-08-28)
+
+## [0.3.44](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.43...guest-session-prune-v0.3.44) (2026-08-28)
+
+## [0.3.43](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.42...guest-session-prune-v0.3.43) (2026-08-28)
+
+## [0.3.42](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.41...guest-session-prune-v0.3.42) (2026-08-27)
+
+## [0.3.41](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.40...guest-session-prune-v0.3.41) (2026-08-27)
+
+## [0.3.40](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.39...guest-session-prune-v0.3.40) (2026-08-27)
+
+
+### Performance Improvements
+
+* **guest-session-prune:** avoid duplicate codex buffers ([#29758](https://github.com/vm0-ai/vm0/issues/29758)) ([c890eb7](https://github.com/vm0-ai/vm0/commit/c890eb7e4e730fae6b483b34ab217623398e4d85))
+
+## [0.3.39](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.38...guest-session-prune-v0.3.39) (2026-08-26)
+
+## [0.3.38](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.37...guest-session-prune-v0.3.38) (2026-08-26)
+
+## [0.3.37](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.36...guest-session-prune-v0.3.37) (2026-08-25)
+
+## [0.3.36](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.35...guest-session-prune-v0.3.36) (2026-08-25)
+
+## [0.3.35](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.34...guest-session-prune-v0.3.35) (2026-08-25)
+
+## [0.3.34](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.33...guest-session-prune-v0.3.34) (2026-08-25)
+
+## [0.3.33](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.32...guest-session-prune-v0.3.33) (2026-08-24)
+
+## [0.3.32](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.31...guest-session-prune-v0.3.32) (2026-08-24)
+
+## [0.3.31](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.30...guest-session-prune-v0.3.31) (2026-08-24)
+
+## [0.3.30](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.29...guest-session-prune-v0.3.30) (2026-08-24)
+
+
+### Documentation
+
+* **guest-session-prune:** document open-file Claude selector contract ([#28972](https://github.com/vm0-ai/vm0/issues/28972)) ([e710b9e](https://github.com/vm0-ai/vm0/commit/e710b9e1e42222a0e2d141a05810e51398336626))
+
+## [0.3.29](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.28...guest-session-prune-v0.3.29) (2026-08-24)
+
 ## [0.3.28](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.27...guest-session-prune-v0.3.28) (2026-08-23)
 
 ## [0.3.27](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.26...guest-session-prune-v0.3.27) (2026-08-21)

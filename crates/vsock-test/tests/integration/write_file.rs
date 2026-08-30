@@ -140,6 +140,7 @@ async fn blocked_write_allows_exec_cancel_and_quiesce() {
     let handle = h
         .host()
         .start_supervised_exec(SupervisedExecRequest {
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::None,
             command: "exec sleep 60",
             env: &[],
@@ -461,10 +462,13 @@ async fn test_write_file_large() {
 async fn test_write_file_chunked() {
     let h = Harness::new().await;
 
-    let file_path = h.dir.join("chunked'quote.bin");
+    let file_name = format!("{}'x", "a".repeat(253));
+    assert_eq!(file_name.len(), 255);
+    let file_path = h.dir.join(file_name);
     let file_path_str = file_path.to_string_lossy().to_string();
     // 16 MB content exceeds the 15 MB chunk limit, triggering the staging +
-    // shell rename path. The quote in the file name covers shell escaping.
+    // shell rename path. The maximum-length file name covers NAME_MAX, and
+    // its quote covers shell escaping of the unchanged rename target.
     let content = vec![0xABu8; 16 * 1024 * 1024];
 
     h.host()
@@ -477,12 +481,17 @@ async fn test_write_file_chunked() {
     assert_eq!(written, content);
 
     // Temp file should not remain
-    let temp_prefix = format!("{file_path_str}.vm0tmp-");
     let temp_remains = std::fs::read_dir(file_path.parent().unwrap())
         .expect("failed to read temp dir")
         .flatten()
-        .any(|entry| entry.path().to_string_lossy().starts_with(&temp_prefix));
+        .any(|entry| entry.file_name().to_string_lossy().starts_with(".vm0tmp-"));
     assert!(!temp_remains, "temp file was not cleaned up");
+
+    let result = run_exec(h.host(), "printf reusable", 5000, &[], false)
+        .await
+        .expect("connection should accept exec after chunked write");
+    assert_eq!(exec_exit_code(&result), Some(0));
+    assert_eq!(captured_output_bytes(&result.stdout), b"reusable");
     h.finish();
 }
 
@@ -509,11 +518,10 @@ async fn test_write_file_chunked_directory_target_fails() {
         "temp file must not be moved into target directory"
     );
 
-    let temp_prefix = format!("{target_dir_str}.vm0tmp-");
     let sibling_temp_remains = fs::read_dir(target_dir.parent().unwrap())
         .expect("read parent directory")
         .flatten()
-        .any(|entry| entry.path().to_string_lossy().starts_with(&temp_prefix));
+        .any(|entry| entry.file_name().to_string_lossy().starts_with(".vm0tmp-"));
     assert!(!sibling_temp_remains, "temp file was not cleaned up");
 
     h.finish();

@@ -58,11 +58,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the BentoML model serving connector",
     enabled: false,
   },
-  [FeatureSwitchKey.BoxConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Box file storage connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Canva design connector",
@@ -107,17 +102,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Expensify accounting connector",
     enabled: false,
-  },
-  [FeatureSwitchKey.JoggAiBuiltIn]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed JoggAI talking-avatar video generation",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ManagedSocialKit]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable vm0-managed SocialKit data and analysis operations",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -194,7 +178,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.ZeroDebug]: {
+  [FeatureSwitchKey.OkouDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
@@ -203,7 +187,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Enable the managed Zero Banking gateway and banking:read ZERO_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
+      "Enable the managed banking gateway and banking:read OKOU_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -213,17 +197,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.MorningBrief]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.AuthV2AddAccount]: {
+    maintainer: "linghan@vm0.ai",
     description:
-      "Enable the daily 7:00 local-time Morning Brief email built from GitHub, Gmail, and Google Calendar.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ManualMorningBrief]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show a Send now button in Settings that triggers a Morning Brief immediately for testing.",
+      "Use the custom Auth v2 sign-in flow when adding another account.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -245,6 +222,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable Stripe invoice-paid workflow automations with immutable Live-mode OAuth bindings.",
     enabled: false,
+  },
+  [FeatureSwitchKey.OfficialWorkflows]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Official Workflow catalog discovery and new installations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -293,20 +277,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
-  [FeatureSwitchKey.VideoModelSelection]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Let the chat composer model picker pin the video model a chat thread generates with.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ImageModelSelection]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Let the chat composer model picker choose the default built-in image model for a chat thread.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -319,39 +289,26 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable owner-scoped presentation template imports and catalog APIs.",
     enabled: false,
-  },
-  [FeatureSwitchKey.LatestWebsiteTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use the latest built-in Website template archives, independent registry, and seedream4 default instead of the pre-cutover release.",
-    enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.LatestPresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Use the latest built-in presentation template archives, direct-HTML authoring guidance, and seedream4 image generation instead of the pre-cutover renderer release.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.IntroVideo]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.ChatConversationLocator]: {
     maintainer: "tongx@vm0.ai",
     description:
       "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
     enabled: false,
-  },
-  [FeatureSwitchKey.UsagePackPlans]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Show the new Pro and Team plan UI with required monthly usage packs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SavedBillingCreditPurchase]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Preview purchases with saved billing and confirm them in the app.",
-    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -373,44 +330,33 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ManagedModelProviderFallback]: {
+  [FeatureSwitchKey.BuiltInModelProviderFallback]: {
     maintainer: "liangyou@vm0.ai",
-    description:
-      "Select healthy fallback routes for VM0-managed built-in models.",
+    description: "Select healthy fallback routes for built-in platform models.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SharedChatDatabase]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerSubmitDomReconcile]: {
-    maintainer: "bingjie@vm0.ai",
+  [FeatureSwitchKey.ComposerImageAnnotation]: {
+    maintainer: "tongx@vm0.ai",
     description:
-      "Re-read every composer block from the live contenteditable before serializing a submission, recovering text a broken mobile composition left only in the DOM, and report each recovery.",
+      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a flattened copy alongside the untouched original.",
     enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+    // Scoped to the maintainer rather than the whole staff org while the
+    // flatten and two-file send are still unexercised outside tests.
+    enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the Forward action in the assistant text-selection pill.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatMarkUnread]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Show the Mark unread action in the chat thread sidebar menu.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatQuoteOnlyFeedback]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Allow quoted assistant passages to be sent without an added user comment.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",
@@ -426,26 +372,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.HomeStartCards]: {
+  [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@vm0.ai",
     description:
-      "Replace the chat landing page's suggested prompts with entry cards for each thing the agent can make.",
+      "Apply a palette-derived tint across interface surfaces, borders, states, and workspace ambience.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.HomeGrowthEntry]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show the home growth entry for Slack, Telegram, phone, member invites, and credits.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ConnectorDiscovery]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Browse a bounded featured connector catalog and search it by slug or label.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    // Ming only for the first pass; widen once the system mapping settles.
+    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.ConnectorCatalogCount]: {
     maintainer: "ethan@vm0.ai",
@@ -460,18 +393,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ThreeColumnNav]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Slack-style three-column navigation: a labeled icon rail, a pinned-agents and chat-threads list column, and the conversation pane.",
-    enabled: false,
-    // Ming only for the first pass; widen to staff once it settles.
-    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
-  },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
+      "Show Codex and Claude Code personal subscription usage in the sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

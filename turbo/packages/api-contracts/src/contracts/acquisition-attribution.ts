@@ -64,7 +64,37 @@ const recordSignupAttributionResponseSchema = z.object({
   recorded: z.boolean(),
 });
 
+export const GOOGLE_ADS_CONVERSION_MILESTONE_KINDS = [
+  "free_trial_completed",
+  "first_run_completed",
+  "second_run_completed",
+  "multi_day_run_completed",
+  "one_connector_connected",
+  "two_connectors_connected",
+] as const;
+
+const googleAdsConversionMilestoneSchema = z.object({
+  kind: z.enum(GOOGLE_ADS_CONVERSION_MILESTONE_KINDS),
+  transactionId: z.string().min(1),
+});
+
+const googleAdsConversionMilestonesResponseSchema = z.object({
+  milestones: z.array(googleAdsConversionMilestoneSchema),
+});
+
 export const acquisitionAttributionContract = c.router({
+  googleAdsMilestones: {
+    method: "GET",
+    path: "/api/attribution/google-ads-milestones",
+    headers: authHeadersSchema,
+    responses: {
+      200: googleAdsConversionMilestonesResponseSchema,
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary:
+      "Get server-confirmed Google Ads conversion milestones for the current user",
+  },
   recordSignup: {
     method: "POST",
     path: "/api/attribution/signup",
@@ -86,6 +116,14 @@ export type RecordSignupAttributionRequest = z.infer<
 >;
 export type RecordSignupAttributionResponse = z.infer<
   typeof recordSignupAttributionResponseSchema
+>;
+export type GoogleAdsConversionMilestoneKind =
+  (typeof GOOGLE_ADS_CONVERSION_MILESTONE_KINDS)[number];
+export type GoogleAdsConversionMilestone = z.infer<
+  typeof googleAdsConversionMilestoneSchema
+>;
+export type GoogleAdsConversionMilestonesResponse = z.infer<
+  typeof googleAdsConversionMilestonesResponseSchema
 >;
 export type AcquisitionAttributionContract =
   typeof acquisitionAttributionContract;

@@ -38,6 +38,7 @@ import {
   type OAuthDeviceAuthStartResult,
 } from "./provider-flow-types";
 import { providerEnvFromObject, type ProviderEnv } from "./provider-env";
+import { authorizationScopesFromUrl } from "./oauth/scope";
 import {
   CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS,
   type ConnectorAuthProviderAuthMethodId,
@@ -1173,6 +1174,7 @@ interface RuntimeDeviceAuthorizationPollArgs {
   readonly authClient: ConnectorAuthClient;
   readonly deviceCode: string;
   readonly pollState?: string;
+  readonly scopes: readonly string[];
 }
 
 interface RuntimeRefreshTokenAccessArgs {
@@ -1286,6 +1288,7 @@ export async function buildConnectorOpenIdAuthAuthorizationUrlWithMethod(
 export async function exchangeConnectorAuthCodeWithMethod(
   args: ConnectorAuthProviderMethodSelection & {
     readonly authClient: ConnectorAuthClient;
+    readonly authorizationUrl: string | null;
     readonly code: string;
     readonly redirectUri: string;
     readonly state: string | undefined;
@@ -1308,7 +1311,14 @@ export async function exchangeConnectorAuthCodeWithMethod(
     Promise<ConnectorAuthProviderGrantResult>
   >(provider.exchangeCode, {
     authClient: args.authClient,
-    authCodeGrant: args.method.grant,
+    authCodeGrant: {
+      ...args.method.grant,
+      scopes: [
+        ...((args.authorizationUrl
+          ? authorizationScopesFromUrl(args.authorizationUrl)
+          : undefined) ?? args.method.grant.scopes),
+      ],
+    },
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
@@ -1377,6 +1387,7 @@ export async function startConnectorExternalCodeAuthorizationWithMethod(
 export async function completeConnectorExternalCodeAuthorizationWithMethod(
   args: ConnectorAuthProviderMethodSelection & {
     readonly authClient: ConnectorAuthClient;
+    readonly authorizationScopes: readonly string[];
     readonly code: string;
     readonly providerState: string;
   },
@@ -1399,7 +1410,10 @@ export async function completeConnectorExternalCodeAuthorizationWithMethod(
     provider.completeExternalCodeAuthorization,
     {
       authClient: args.authClient,
-      externalCodeGrant: args.method.grant,
+      externalCodeGrant: {
+        ...args.method.grant,
+        scopes: [...args.authorizationScopes],
+      },
       code: args.code,
       providerState: args.providerState,
     },
@@ -1449,6 +1463,7 @@ export async function pollConnectorDeviceAuthorizationWithMethod(
     readonly authClient: ConnectorAuthClient;
     readonly deviceCode: string;
     readonly pollState?: string;
+    readonly scopes: readonly string[];
   },
 ): Promise<OAuthDeviceAuthPollResultBase> {
   const provider = connectorDeviceAuthGrantProviderFor(args);
@@ -1467,6 +1482,7 @@ export async function pollConnectorDeviceAuthorizationWithMethod(
   >(provider.pollDeviceAuth, {
     authClient: args.authClient,
     deviceCode: args.deviceCode,
+    scopes: args.scopes,
     ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
   });
   if (result.status === "complete") {

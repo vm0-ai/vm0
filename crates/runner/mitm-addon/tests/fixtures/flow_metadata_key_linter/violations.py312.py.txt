@@ -1,7 +1,7 @@
 
-def function_type_param_meta[T: flow.metadata["vm_run_id"]]():
+def function_type_param_meta[T: flow.metadata["sandbox_run_id"]]():
     pass
-def function_type_param_merge_meta[T: flow.metadata | {"vm_run_id": "run-1"}]():
+def function_type_param_merge_meta[T: flow.metadata | {"sandbox_run_id": "run-1"}]():
     pass
 async def async_function_type_param_meta[T: flow.metadata["firewall_action"]]():
     pass
@@ -9,15 +9,15 @@ class ClassTypeParamMeta[T: flow.metadata["firewall_name"]]:
     pass
 class ClassTypeParamMergeMeta[T: flow.metadata | {"firewall_name": "github"}]:
     pass
-class ClassKeywordMergeMeta(Base, option=flow.metadata | {"vm_run_id": "run-1"}):
+class ClassKeywordMergeMeta(Base, option=flow.metadata | {"sandbox_run_id": "run-1"}):
     pass
 type TypeAliasParamMeta[T: flow.metadata["firewall_base"]] = int
 type TypeAliasParamMergeMeta[T: flow.metadata | {"firewall_base": "https://api.example.com"}] = int
-type TypeAliasValueMeta = flow.metadata["vm_run_id"]
+type TypeAliasValueMeta = flow.metadata["sandbox_run_id"]
 type TypeAliasMergeMeta = flow.metadata | {"firewall_action": "ALLOW"}
 default_type_param_shadow_meta = flow.metadata
 def default_type_param_reads_outer[default_type_param_shadow_meta](
-    arg=default_type_param_shadow_meta["vm_run_id"],
+    arg=default_type_param_shadow_meta["sandbox_run_id"],
 ):
     pass
 type_param_restored_meta = flow.metadata

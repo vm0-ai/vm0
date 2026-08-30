@@ -229,12 +229,22 @@ pub(super) async fn handle_stopping_signal(
     lifecycle.hard_stop();
     let handles = cancel_tokens.begin_hard_stop().await;
     let count = handles.len();
-    for (run_id, handle) in handles {
-        info!(run_id = %run_id, "cancelling active job for hard shutdown");
-        handle.request_hard_cancellation().await;
-    }
+    dispatch_hard_cancellations(handles).await;
     info!(active_jobs = count, "dispatched per-job cancellations");
     cancel.cancel();
+}
+
+async fn dispatch_hard_cancellations(
+    handles: Vec<(
+        crate::ids::RunId,
+        crate::run_cancellation::RunCancellationHandle,
+    )>,
+) {
+    futures_util::future::join_all(handles.into_iter().map(|(run_id, handle)| async move {
+        info!(run_id = %run_id, "cancelling active job for hard shutdown");
+        handle.request_hard_cancellation().await;
+    }))
+    .await;
 }
 
 #[cfg(test)]
@@ -248,7 +258,7 @@ mod tests {
         ignored_child_test_env_guard_enabled, run_ignored_child_test,
     };
 
-    const EARLY_SIGNAL_CHILD_ENV: &str = "VM0_RUNNER_EARLY_SIGNAL_TEST";
+    const EARLY_SIGNAL_CHILD_ENV: &str = "OKOU_RUNNER_EARLY_SIGNAL_TEST";
     const EARLY_SIGTERM_CHILD: &str =
         "cmd::start::signals::tests::early_sigterm_buffered_before_spawn_child";
     const EARLY_SIGINT_CHILD: &str =
@@ -257,6 +267,30 @@ mod tests {
         "cmd::start::signals::tests::early_sigusr1_buffered_before_spawn_child";
     const EARLY_SIGUSR2_CHILD: &str =
         "cmd::start::signals::tests::early_sigusr2_buffered_before_spawn_child";
+
+    #[tokio::test]
+    async fn hard_cancellation_dispatch_does_not_serialize_transfer_gate_waits() {
+        let blocked_run_id = RunId::new_v4();
+        let ready_run_id = RunId::new_v4();
+        let blocked = crate::run_cancellation::RunCancellationHandle::new();
+        let ready = crate::run_cancellation::RunCancellationHandle::new();
+        let transfer_guard = blocked.transfer_guard().await;
+        let ready_token = ready.token();
+        let blocked_token = blocked.token();
+        let dispatch = tokio::spawn(dispatch_hard_cancellations(vec![
+            (blocked_run_id, blocked),
+            (ready_run_id, ready),
+        ]));
+
+        tokio::time::timeout(Duration::from_secs(1), ready_token.cancelled())
+            .await
+            .expect("an unrelated transfer gate must not delay hard cancellation");
+        assert!(!blocked_token.is_cancelled());
+
+        drop(transfer_guard);
+        dispatch.await.unwrap();
+        assert!(blocked_token.is_cancelled());
+    }
 
     #[derive(Clone, Copy)]
     enum EarlySignalScenario {

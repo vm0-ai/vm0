@@ -22,7 +22,7 @@ import { rootSignal$ } from "./root-signal.ts";
 /**
  * Type alias for the factory function returned by `get(apiClient$)`.
  * Useful for shared helper functions that accept the client factory
- * as a parameter (e.g. `createZeroAgent`).
+ * as a parameter (e.g. `createAgent`).
  */
 export type ApiClientFactory = <T extends AppRouter>(
   contract: T,

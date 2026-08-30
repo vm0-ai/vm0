@@ -12,7 +12,7 @@ import { downloadFileCommand } from "../download-file";
 import chalk from "chalk";
 
 const DOWNLOAD_URL =
-  "http://localhost:3000/api/okou/integrations/telegram/download-file";
+  "http://localhost:3000/api/integrations/telegram/download-file";
 
 describe("okou telegram download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -27,7 +27,7 @@ describe("okou telegram download-file command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     tmpDir = join(tmpdir(), `telegram-download-file-test-${Date.now()}`);

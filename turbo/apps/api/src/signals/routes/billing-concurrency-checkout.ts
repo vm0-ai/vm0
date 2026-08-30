@@ -26,7 +26,6 @@ import {
 import { previewConcurrencySubscriptionChange$ } from "../services/billing-concurrency-subscription.service";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
-  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
   type BillingPurchasePaymentMethod,
@@ -222,15 +221,7 @@ const concurrencyCheckoutPreviewAuthed$ = command(
       return bodyResult.response;
     }
     const { supportsInAppPreview, returnUrl } = bodyResult.data;
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        requested: supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = supportsInAppPreview === true;
     if (previewEnabled && (!returnUrl || !billingRedirectAllowed(returnUrl))) {
       return badRequestMessage(
         "returnUrl must match the platform origin for in-app billing",

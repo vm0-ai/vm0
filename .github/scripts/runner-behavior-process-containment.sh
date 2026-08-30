@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+AGENT_READY_BENCHMARK_SOURCE="${SCRIPT_DIR}/runner-behavior-agent-ready-benchmark-remote.sh"
 REMOTE="${METAL_USER}@${HOST}"
 SVC="${JOB_REF}-process-containment"
 GROUP="vm0/process-containment-${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
 GROUP_DIR="/var/lib/vm0-runner/groups/vm0/process-containment-${JOB_REF}"
+AGENT_READY_BENCHMARK_WORKER="${RUNNER_DIR}/agent-ready-benchmark.sh"
 
 echo "=== Cleaning stale process-containment runner state ==="
 ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP_DIR}" "${RUNNER_DIR}" <<'REMOTE_SCRIPT'
@@ -32,22 +35,38 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --profile vm0/default \
   --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
   --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-  --name ${SVC} \
+  --hostname ${HOST} \
   --group ${GROUP} \
   --runner-dirname ${SVC} \
   --max-concurrent 1 \
   --api-url https://not-a-real-server.test \
   --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
+echo "=== Staging Agent-ready benchmark worker ==="
+# shellcheck disable=SC2029
+ssh "$REMOTE" "sudo tee '${AGENT_READY_BENCHMARK_WORKER}' >/dev/null \
+  && sudo chmod 0755 '${AGENT_READY_BENCHMARK_WORKER}'" \
+  < "$AGENT_READY_BENCHMARK_SOURCE"
+
 echo "=== Running process-containment test ==="
-ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${SVC}" "${GROUP}" "${RUNNER_DIR}" "${GROUP_DIR}" <<'REMOTE_SCRIPT'
+ssh "$REMOTE" bash -s -- \
+  "${BIN_DIR}" \
+  "${SVC}" \
+  "${GROUP}" \
+  "${RUNNER_DIR}" \
+  "${GROUP_DIR}" \
+  "${AGENT_READY_BENCHMARK_WORKER}" \
+  "${AGENT_READY_BENCHMARK_SAMPLES:-3}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5
+AGENT_READY_BENCHMARK_WORKER=$6; AGENT_READY_BENCHMARK_SAMPLES=$7
 UNIT="vm0-runner-${SVC}.service"
 SESSION_ID="e2e-process-containment-session"
 CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 PRESSURE_SUBMIT_PID=""
 PRESSURE_SUBMIT_OUTPUT=""
+MEMORY_RECLAIM_PID=""
+MEMORY_RECLAIM_OUTPUT=""
 
 fail() { echo "FAIL: $1"; exit 1; }
 
@@ -63,6 +82,13 @@ wait_for_unit_inactive() {
 
 cleanup() {
   echo "--- Cleanup ---"
+  if [ -n "$MEMORY_RECLAIM_PID" ]; then
+    kill "$MEMORY_RECLAIM_PID" 2>/dev/null || true
+    wait "$MEMORY_RECLAIM_PID" 2>/dev/null || true
+  fi
+  if [ -n "$MEMORY_RECLAIM_OUTPUT" ]; then
+    rm -f "$MEMORY_RECLAIM_OUTPUT"
+  fi
   if [ -n "$PRESSURE_SUBMIT_PID" ]; then
     kill "$PRESSURE_SUBMIT_PID" 2>/dev/null || true
     wait "$PRESSURE_SUBMIT_PID" 2>/dev/null || true
@@ -96,7 +122,33 @@ set -eu
 marker=/tmp/vm0-process-containment
 rm -rf "$marker"
 mkdir -p "$marker"
-touch "$marker/vm-reuse-marker"
+touch "$marker/sandbox-reuse-marker"
+
+expected_path="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:$HOME/go/bin:$HOME/.cargo/bin"
+if [ "$PATH" != "$expected_path" ]; then
+  echo "Guest Agent CLI child PATH changed: expected=$expected_path actual=$PATH" >&2
+  exit 1
+fi
+assert_env_value() {
+  key=$1
+  expected=$2
+  actual=$(printenv "$key" || true)
+  if [ "$actual" != "$expected" ]; then
+    echo "Guest Agent CLI child $key changed: expected=$expected actual=$actual" >&2
+    exit 1
+  fi
+}
+assert_env_value SHELL /bin/bash
+assert_env_value LANG C.UTF-8
+assert_env_value NPM_CONFIG_UPDATE_NOTIFIER false
+assert_env_value NODE_EXTRA_CA_CERTS /usr/local/share/ca-certificates/vm0-proxy-ca.crt
+assert_env_value SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt
+assert_env_value REQUESTS_CA_BUNDLE /etc/ssl/certs/ca-certificates.crt
+assert_env_value CARGO_HTTP_CAINFO /etc/ssl/certs/ca-certificates.crt
+if sudo find /run/vm0-exec -mindepth 1 -maxdepth 2 -print -quit | grep -q .; then
+  echo "Guest Agent startup left a generic environment script" >&2
+  exit 1
+fi
 
 base=/sys/fs/cgroup/vm0-exec
 relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
@@ -140,8 +192,11 @@ test "$(cat "$parent/workload/tools/memory.max")" = max
 test "$(cat "$parent/workload/tools/memory.oom.group")" = 0
 grep -qw memory "$parent/workload/tools/cgroup.subtree_control"
 test "$(cat "/sys/fs/cgroup$relative/memory.oom.group")" = 1
-test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT:-}"
-test -n "${VM0_TOOL_CGROUP_PROCS_ENDPOINT:-}"
+test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}"
+test -z "${OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}"
+test -z "${VM0_TOOL_CGROUP_PROCS_ENDPOINT+x}"
+test "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT+x}" = x
+test -n "$OKOU_TOOL_CGROUP_PROCS_ENDPOINT"
 control_member_count=$(wc -l < "$parent/control/cgroup.procs")
 if [ "$control_member_count" -ne 1 ]; then
   echo "control cgroup must contain only Guest Agent; members=$(tr '\n' ' ' < "$parent/control/cgroup.procs")" >&2
@@ -244,8 +299,9 @@ verify_live_identity user 14
 verify_live_identity root 15
 
 # Persist adversarial login profiles for the next reuse turn. Production
-# Guest Agent bootstrap must use a non-login shell and SCM_RIGHTS, so neither
-# profile can run before the trusted binary or retain a placement capability.
+# Guest Agent bootstrap executes the fixed binary directly and uses SCM_RIGHTS,
+# so no profile can run before the trusted binary or retain a placement
+# capability.
 cat > "$HOME/.profile" <<'PROFILE'
 touch /tmp/vm0-process-containment/profile-executed
 for descriptor in /proc/self/fd/*; do
@@ -294,7 +350,7 @@ VERIFY_PROMPT=$(cat <<'PROMPT'
 set -eu
 marker=/tmp/vm0-process-containment
 base=/sys/fs/cgroup/vm0-exec
-test -f "$marker/vm-reuse-marker"
+test -f "$marker/sandbox-reuse-marker"
 if [ -e "$marker/profile-executed" ]; then
   echo "sandbox login profile executed before Guest Agent" >&2
   exit 1
@@ -359,18 +415,18 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt "$VERIFY_PROMPT" \
-  || fail "Turn 2 failed; VM was not safely reused"
+  || fail "Turn 2 failed; sandbox was not safely reused"
 
 echo "--- Turn 3: prove healthy Turn 2 cleanup was also reusable ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt 'test -f /tmp/vm0-process-containment/vm-reuse-marker' \
+  --prompt 'test -f /tmp/vm0-process-containment/sandbox-reuse-marker' \
   || fail "Turn 3 failed; healthy cleanup did not re-enter reuse"
 
 echo "--- Pressure: sustain CPU saturation with live process control ---"
-# Continue the prepared conversation so the pressure turn must reuse the VM
+# Continue the prepared conversation so the pressure turn must reuse the sandbox
 # whose containment state and cleanup were verified above. Keep the provider
 # session independent so active input starts with a fresh stream.
 PRESSURE_CHAT_THREAD_ID="$CHAT_THREAD_ID"
@@ -381,19 +437,21 @@ PRESSURE_SUBMIT_OUTPUT=$(mktemp)
 # Keep the final input after the pressure command so the mock turn cannot
 # finish first.
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-  --timeout 80 \
+  --timeout 200 \
   --chat-thread-id "$PRESSURE_CHAT_THREAD_ID" \
   --session-id "$PRESSURE_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt '@active-input-smoke-ready:8' \
+  --prompt '@active-input-smoke-ready:10' \
   --active-input 'after=1ms,text=cpu-pressure-ready' \
   --active-input 'after=2s,text=cpu-pressure-one' \
   --active-input 'after=4s,text=cpu-pressure-two' \
   --active-input 'after=6s,text=cpu-pressure-three' \
-  --active-input 'after=15s,text=memory-reclaim-one' \
-  --active-input 'after=30s,text=memory-reclaim-two' \
-  --active-input 'after=45s,text=memory-reclaim-three' \
-  --active-input 'after=65s,text=pressure-finish' \
+  --active-input 'after=30s,text=memory-reclaim-one' \
+  --active-input 'after=60s,text=memory-reclaim-two' \
+  --active-input 'after=90s,text=memory-reclaim-three' \
+  --active-input 'after=120s,text=memory-reclaim-four' \
+  --active-input 'after=150s,text=memory-reclaim-five' \
+  --active-input 'after=180s,text=pressure-finish' \
   >"$PRESSURE_SUBMIT_OUTPUT" 2>&1 &
 PRESSURE_SUBMIT_PID=$!
 
@@ -475,12 +533,160 @@ grep -E -q '^cpu-pressure-complete throttled_periods=[1-9][0-9]*$' \
   <<<"$CPU_PRESSURE_RESULT" \
   || fail "CPU pressure did not report throttling"
 
+echo "--- Evidence: return mixed-identity pids.max cleanup through exec result ---"
+PID_EVIDENCE_COMMAND=$(cat <<'PYTHON'
+import errno
+import os
+import pathlib
+import signal
+
+relative = next(
+    line.removeprefix("0::").strip()
+    for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
+    if line.startswith("0::")
+)
+if not relative.startswith("/vm0-exec/exec-") or not relative.endswith("/workload"):
+    raise RuntimeError(f"PID evidence is outside workload cgroup: {relative}")
+workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
+(workload / "pids.max").write_text("64")
+
+ready_read, ready_write = os.pipe()
+children = []
+while True:
+    try:
+        pid = os.fork()
+    except OSError as error:
+        if error.errno != errno.EAGAIN:
+            raise
+        break
+    if pid == 0:
+        os.close(ready_read)
+        os.setsid()
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if len(children) % 2 == 0:
+            os.setgroups([])
+            os.setgid(1000)
+            os.setuid(1000)
+        null = os.open("/dev/null", os.O_RDWR)
+        for descriptor in (0, 1, 2):
+            os.dup2(null, descriptor)
+        if null > 2:
+            os.close(null)
+        os.write(ready_write, b"1")
+        os.close(ready_write)
+        while True:
+            signal.pause()
+    children.append(pid)
+
+os.close(ready_write)
+ready = b""
+while len(ready) < len(children):
+    chunk = os.read(ready_read, len(children) - len(ready))
+    if not chunk:
+        raise RuntimeError("PID-pressure readiness pipe closed early")
+    ready += chunk
+os.close(ready_read)
+events = dict(
+    line.split()
+    for line in (workload / "pids.events").read_text().splitlines()
+)
+if int(events.get("max", "0")) == 0:
+    raise RuntimeError("pids.max did not reject a workload fork")
+print(
+    "pid-evidence-ready "
+    f"children={len(children)} "
+    f"user_children={(len(children) + 1) // 2} "
+    f"root_children={len(children) // 2} "
+    f"max={events['max']}",
+    flush=True,
+)
+PYTHON
+)
+if ! PID_EVIDENCE_RESULT=$(sudo "$BIN_DIR/runner" exec \
+  --timeout 15 \
+  --sandbox "$PRESSURE_SANDBOX_ID" \
+  --sudo \
+  --show-diagnostic \
+  -- python3 -c "$PID_EVIDENCE_COMMAND" 2>&1); then
+  printf '%s\n' "$PID_EVIDENCE_RESULT"
+  fail "PID-pressure cleanup behavior failed before result evidence"
+fi
+printf '%s\n' "$PID_EVIDENCE_RESULT"
+PID_EVIDENCE_CHILDREN=$(sed -n \
+  's/^pid-evidence-ready children=\([0-9][0-9]*\) user_children=[1-9][0-9]* root_children=[1-9][0-9]* max=[1-9][0-9]*$/\1/p' \
+  <<<"$PID_EVIDENCE_RESULT")
+[ -n "$PID_EVIDENCE_CHILDREN" ] \
+  || fail "PID-pressure evidence did not reach the configured pids.max boundary"
+[ "$PID_EVIDENCE_CHILDREN" -ge 50 ] \
+  || fail "PID-pressure evidence created only ${PID_EVIDENCE_CHILDREN} children"
+PID_EVIDENCE_USER_CHILDREN=$(sed -n \
+  's/^pid-evidence-ready children=[0-9][0-9]* user_children=\([1-9][0-9]*\) root_children=[1-9][0-9]* max=[1-9][0-9]*$/\1/p' \
+  <<<"$PID_EVIDENCE_RESULT")
+PID_EVIDENCE_ROOT_CHILDREN=$(sed -n \
+  's/^pid-evidence-ready children=[0-9][0-9]* user_children=[1-9][0-9]* root_children=\([1-9][0-9]*\) max=[1-9][0-9]*$/\1/p' \
+  <<<"$PID_EVIDENCE_RESULT")
+[ -n "$PID_EVIDENCE_USER_CHILDREN" ] \
+  || fail "PID-pressure evidence did not create user-owned descendants"
+[ -n "$PID_EVIDENCE_ROOT_CHILDREN" ] \
+  || fail "PID-pressure evidence did not create root-owned descendants"
+PID_CLEANUP_LINE=$(printf '%s\n' "$PID_EVIDENCE_RESULT" \
+  | grep -F 'exec process containment cleaned' \
+  | grep -F 'descendants_observed=true' \
+  | grep -F 'cgroup_kill_used=true' \
+  | head -1) \
+  || fail "PID-pressure cleanup behavior passed, but its successful exec result produced no populated cgroup.kill cleanup evidence"
+PID_INITIAL_MEMBERS=$(sed -n \
+  's/.*initial_members=\([0-9][0-9]*\).*/\1/p' \
+  <<<"$PID_CLEANUP_LINE")
+[ -n "$PID_INITIAL_MEMBERS" ] \
+  || fail "PID-pressure cleanup result evidence omitted its initial member count"
+[ "$PID_INITIAL_MEMBERS" -ge 50 ] \
+  || fail "PID-pressure cleanup result evidence observed only ${PID_INITIAL_MEMBERS} members"
+PID_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' \
+  <<<"$PID_CLEANUP_LINE")
+[ -n "$PID_CLEANUP_MS" ] \
+  || fail "PID-pressure cleanup result evidence omitted cleanup latency"
+[ "$PID_CLEANUP_MS" -le 5000 ] \
+  || fail "PID-pressure cleanup exceeded 5s: ${PID_CLEANUP_MS}ms"
+LEAK_CLEANUP_MS=$PID_CLEANUP_MS
+[ "$LEAK_CLEANUP_MS" -le 2000 ] \
+  || fail "mixed-identity descendant cleanup exceeded bounded lifecycle: ${LEAK_CLEANUP_MS}ms"
+
 echo "--- Pressure: cross the retired workload memory boundary through Guest reclaim ---"
 PRESSURE_API_SOCK="/run/vm0/sock/$PRESSURE_SANDBOX_ID/api.sock"
-BALLOON_BEFORE=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
-  http://localhost/balloon/statistics \
-  | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
-  || fail "failed to sample balloon before memory reclaim pressure"
+# Match the directly observed production checkpoint before applying pressure.
+BALLOON_MIN_STABLE_MIB=3072
+BALLOON_STABLE_TARGET=""
+BALLOON_STABLE_SAMPLES=0
+BALLOON_BEFORE=""
+for _ in $(seq 1 45); do
+  BALLOON_SAMPLE=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
+    http://localhost/balloon/statistics \
+    | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
+    || fail "failed to sample balloon before memory reclaim pressure"
+  BALLOON_TARGET=$(jq -r '.target_mib' <<<"$BALLOON_SAMPLE")
+  BALLOON_ACTUAL=$(jq -r '.actual_mib' <<<"$BALLOON_SAMPLE")
+  if [ "$BALLOON_TARGET" -ge "$BALLOON_MIN_STABLE_MIB" ] \
+    && [ "$BALLOON_ACTUAL" -eq "$BALLOON_TARGET" ]; then
+    if [ "$BALLOON_TARGET" = "$BALLOON_STABLE_TARGET" ]; then
+      BALLOON_STABLE_SAMPLES=$((BALLOON_STABLE_SAMPLES + 1))
+    else
+      BALLOON_STABLE_TARGET=$BALLOON_TARGET
+      BALLOON_STABLE_SAMPLES=1
+    fi
+    if [ "$BALLOON_STABLE_SAMPLES" -ge 2 ]; then
+      BALLOON_BEFORE=$BALLOON_SAMPLE
+      break
+    fi
+  else
+    BALLOON_STABLE_TARGET=""
+    BALLOON_STABLE_SAMPLES=0
+  fi
+  sleep 2
+done
+[ -n "$BALLOON_BEFORE" ] \
+  || fail "active balloon did not stabilize at or above ${BALLOON_MIN_STABLE_MIB} MiB"
+BALLOON_BEFORE_ACTUAL=$(jq -r '.actual_mib' <<<"$BALLOON_BEFORE")
 MEMORY_RECLAIM_COMMAND=$(cat <<'PYTHON'
 import gc
 import json
@@ -494,6 +700,7 @@ CHUNK_SIZE = 32 * MIB
 CONTROL_MEMORY_MIN = 384 * MIB
 WORKLOAD_MEMORY_RESERVE = 128 * MIB
 RETIRED_BOUNDARY_MARGIN = 64 * MIB
+PRESSURE_AVAILABLE = 192 * MIB
 
 
 def read_int(path):
@@ -553,7 +760,7 @@ workload = pathlib.Path(f"/sys/fs/cgroup{relative}")
 control = guest_agent_control_cgroup()
 marker_dir = pathlib.Path("/tmp/vm0-process-containment")
 if not marker_dir.is_dir():
-    raise RuntimeError("memory pressure did not reuse the prepared VM")
+    raise RuntimeError("memory pressure did not reuse the prepared sandbox")
 guest_memory_bytes = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
 legacy_memory_max = guest_memory_bytes - CONTROL_MEMORY_MIN
 configured_memory_max = read_int(workload / "memory.max")
@@ -574,6 +781,7 @@ if target >= configured_memory_max:
 before = snapshot(workload, control)
 deadline = time.monotonic() + 45
 chunks = []
+pressure_announced = False
 while read_int(workload / "memory.current") < target:
     if time.monotonic() >= deadline:
         current = read_int(workload / "memory.current")
@@ -584,16 +792,30 @@ while read_int(workload / "memory.current") < target:
     chunk = bytearray(CHUNK_SIZE)
     chunk[::PAGE_SIZE] = b"\x01" * (CHUNK_SIZE // PAGE_SIZE)
     chunks.append(chunk)
+    mem_available_bytes = (
+        read_key_values(pathlib.Path("/proc/meminfo"))["MemAvailable:"] * 1024
+    )
+    if not pressure_announced and mem_available_bytes < PRESSURE_AVAILABLE:
+        print(
+            f"memory-reclaim-pressure-ready available_bytes={mem_available_bytes}",
+            flush=True,
+        )
+        pressure_announced = True
     time.sleep(0.01)
 
 peak = snapshot(workload, control)
+if not pressure_announced:
+    raise RuntimeError(
+        "memory pressure did not cross the balloon pressure boundary: "
+        f"available={peak['mem_available_bytes']} boundary={PRESSURE_AVAILABLE}"
+    )
 if peak["workload_current"] <= legacy_memory_max:
     raise RuntimeError(
         "memory pressure did not cross the retired workload boundary: "
         f"current={peak['workload_current']} legacy_max={legacy_memory_max}"
     )
 
-time.sleep(6)
+time.sleep(25)
 chunks.clear()
 gc.collect()
 time.sleep(1)
@@ -601,7 +823,6 @@ after = snapshot(workload, control)
 for event in ("max", "oom", "oom_kill", "oom_group_kill"):
     if after["workload_events"].get(event, 0) != before["workload_events"].get(event, 0):
         raise RuntimeError(f"memory pressure triggered workload-local {event}")
-marker_dir.joinpath("memory-reclaim-vm").write_text("ready\n")
 print(
     json.dumps(
         {
@@ -618,12 +839,76 @@ print(
 )
 PYTHON
 )
-MEMORY_RECLAIM_RESULT=$(sudo "$BIN_DIR/runner" exec \
-  --timeout 60 \
+MEMORY_RECLAIM_OUTPUT=$(mktemp)
+sudo "$BIN_DIR/runner" exec \
+  --timeout 80 \
   --sandbox "$PRESSURE_SANDBOX_ID" \
-  -- python3 -c "$MEMORY_RECLAIM_COMMAND") \
-  || fail "workload could not cross the retired memory boundary"
+  -- python3 -c "$MEMORY_RECLAIM_COMMAND" \
+  >"$MEMORY_RECLAIM_OUTPUT" 2>&1 &
+MEMORY_RECLAIM_PID=$!
+
+MEMORY_PRESSURE_READY_LINE=""
+for _ in $(seq 1 60); do
+  MEMORY_PRESSURE_READY_LINE=$(grep -E \
+    '^memory-reclaim-pressure-ready available_bytes=[0-9]+$' \
+    "$MEMORY_RECLAIM_OUTPUT" | tail -1 || true)
+  [ -n "$MEMORY_PRESSURE_READY_LINE" ] && break
+  if ! kill -0 "$MEMORY_RECLAIM_PID" 2>/dev/null; then
+    if wait "$MEMORY_RECLAIM_PID"; then
+      MEMORY_RECLAIM_STATUS=0
+    else
+      MEMORY_RECLAIM_STATUS=$?
+    fi
+    MEMORY_RECLAIM_PID=""
+    cat "$MEMORY_RECLAIM_OUTPUT"
+    fail "workload exited with status ${MEMORY_RECLAIM_STATUS} before balloon pressure"
+  fi
+  sleep 1
+done
+[ -n "$MEMORY_PRESSURE_READY_LINE" ] \
+  || fail "workload did not reach the balloon pressure boundary"
+MEMORY_PRESSURE_AVAILABLE=$(sed -n \
+  's/^memory-reclaim-pressure-ready available_bytes=\([0-9][0-9]*\)$/\1/p' \
+  <<<"$MEMORY_PRESSURE_READY_LINE")
+[ "$MEMORY_PRESSURE_AVAILABLE" -lt $((192 * 1024 * 1024)) ] \
+  || fail "workload reported an invalid balloon pressure boundary"
+
+BALLOON_PRESSURE_SAMPLE=""
+BALLOON_DURING=""
+BALLOON_RELIEF_TIMEOUT_SECONDS=20
+SECONDS=0
+while [ "$SECONDS" -le "$BALLOON_RELIEF_TIMEOUT_SECONDS" ]; do
+  BALLOON_DURING=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
+    http://localhost/balloon/statistics \
+    | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
+    || fail "failed to sample balloon during memory reclaim pressure"
+  BALLOON_DURING_TARGET=$(jq -r '.target_mib' <<<"$BALLOON_DURING")
+  BALLOON_DURING_ACTUAL=$(jq -r '.actual_mib' <<<"$BALLOON_DURING")
+  if [ "$BALLOON_DURING_TARGET" -eq 0 ] \
+    && [ "$BALLOON_DURING_ACTUAL" -lt "$BALLOON_BEFORE_ACTUAL" ]; then
+    BALLOON_PRESSURE_SAMPLE=$BALLOON_DURING
+    break
+  fi
+  if ! kill -0 "$MEMORY_RECLAIM_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+if [ -z "$BALLOON_PRESSURE_SAMPLE" ]; then
+  cat "$MEMORY_RECLAIM_OUTPUT"
+  fail "active balloon did not release its full target within ${BALLOON_RELIEF_TIMEOUT_SECONDS}s of Guest pressure: before=${BALLOON_BEFORE} during=${BALLOON_DURING}"
+fi
+
+if wait "$MEMORY_RECLAIM_PID"; then
+  MEMORY_RECLAIM_STATUS=0
+else
+  MEMORY_RECLAIM_STATUS=$?
+fi
+MEMORY_RECLAIM_PID=""
+MEMORY_RECLAIM_RESULT=$(<"$MEMORY_RECLAIM_OUTPUT")
 printf '%s\n' "$MEMORY_RECLAIM_RESULT"
+[ "$MEMORY_RECLAIM_STATUS" -eq 0 ] \
+  || fail "workload could not cross the retired memory boundary"
 MEMORY_RECLAIM_JSON=$(awk '/^\{/{line=$0} END{print line}' <<<"$MEMORY_RECLAIM_RESULT")
 [ -n "$MEMORY_RECLAIM_JSON" ] \
   || fail "memory reclaim pressure did not emit a usage snapshot"
@@ -644,7 +929,9 @@ BALLOON_AFTER=$(sudo curl -sf --unix-socket "$PRESSURE_API_SOCK" \
   http://localhost/balloon/statistics \
   | jq -ce '{target_mib, actual_mib, free_memory, available_memory}') \
   || fail "failed to sample balloon after memory reclaim pressure"
-echo "memory-reclaim-balloon before=$BALLOON_BEFORE after=$BALLOON_AFTER"
+echo "memory-reclaim-balloon before=$BALLOON_BEFORE pressure=$BALLOON_PRESSURE_SAMPLE after=$BALLOON_AFTER"
+rm -f "$MEMORY_RECLAIM_OUTPUT"
+MEMORY_RECLAIM_OUTPUT=""
 
 if wait "$PRESSURE_SUBMIT_PID"; then
   PRESSURE_SUBMIT_STATUS=0
@@ -664,7 +951,7 @@ SUBMITTED_PRESSURE_RUN_ID=$(jq -r '.run_id // empty' <<<"$PRESSURE_SUBMIT_JSON")
 PRESSURE_STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${PRESSURE_RUN_ID}.log"
 PRESSURE_METRICS_LOG="/var/lib/vm0-runner/logs/metrics-${PRESSURE_RUN_ID}.jsonl"
 sudo grep -F -q \
-  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+memory-reclaim-one+memory-reclaim-two+memory-reclaim-three+pressure-finish' \
+  'RESULT=cpu-pressure-ready+cpu-pressure-one+cpu-pressure-two+cpu-pressure-three+memory-reclaim-one+memory-reclaim-two+memory-reclaim-three+memory-reclaim-four+memory-reclaim-five+pressure-finish' \
   "$PRESSURE_STREAM_LOG" \
   || fail "CPU-pressure active inputs were not all consumed in order"
 
@@ -700,8 +987,8 @@ echo "--- Pressure: group-kill only the high-memory Bash tool ---"
 # The mock CLI launches two Bash children directly from the managed runtime.
 # The launcher places them in distinct tool cgroups before either shell runs.
 # One tool drives the existing workload limit to OOM while the other remains alive.
-# Use a fresh VM so the preceding extreme balloon-reclaim scenario cannot
-# delay Guest Agent startup and obscure the tool-isolation assertion.
+# Use a fresh sandbox so the tool-isolation assertion has an independent
+# lifecycle after the preceding extreme balloon-reclaim scenario.
 MEMORY_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 MEMORY_SESSION_ID="e2e-process-containment-memory"
 SECONDS=0
@@ -730,13 +1017,13 @@ sudo grep -E -q 'memory_oom_kill=[1-9][0-9]*' "$MEMORY_STREAM_LOG" \
 sudo grep -E -q 'memory_oom_group_kill=[1-9][0-9]*' "$MEMORY_STREAM_LOG" \
   || fail "memory-pressure diagnostics omitted the group OOM event"
 
-echo "--- Pressure: prove tool-group OOM preserved VM reuse ---"
+echo "--- Pressure: prove tool-group OOM preserved sandbox reuse ---"
 MEMORY_REUSE_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$MEMORY_CHAT_THREAD_ID" \
   --session-id "$MEMORY_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt 'true') \
-  || fail "memory-pressure recovery did not preserve safe VM reuse"
+  || fail "memory-pressure recovery did not preserve safe sandbox reuse"
 printf '%s\n' "$MEMORY_REUSE_RESULT"
 MEMORY_REUSE_RESULT_JSON=$(awk '/^\{/{line=$0} END{print line}' <<<"$MEMORY_REUSE_RESULT")
 MEMORY_REUSE_RUN_ID=$(jq -r '.run_id // empty' <<<"$MEMORY_REUSE_RESULT_JSON")
@@ -755,7 +1042,7 @@ import time
 
 marker = pathlib.Path("/tmp/vm0-process-containment")
 marker.mkdir()
-(marker / "pid-pressure-vm").touch()
+(marker / "pid-pressure-sandbox").touch()
 relative = next(
     line.removeprefix("0::").strip()
     for line in pathlib.Path("/proc/self/cgroup").read_text().splitlines()
@@ -818,13 +1105,13 @@ sudo grep -F -q 'pid-pressure-complete children=' "$PID_STREAM_LOG" \
 sudo grep -E -q 'pids_max=[1-9][0-9]*' "$PID_STREAM_LOG" \
   || fail "PID-pressure diagnostics omitted the pids.max event"
 
-echo "--- Pressure: prove PID-exhaustion cleanup preserved VM reuse ---"
+echo "--- Pressure: prove PID-exhaustion cleanup preserved sandbox reuse ---"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$PID_CHAT_THREAD_ID" \
   --session-id "$PID_SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt 'test -f /tmp/vm0-process-containment/pid-pressure-vm' \
-  || fail "PID-pressure cleanup did not preserve safe VM reuse"
+  --prompt 'test -f /tmp/vm0-process-containment/pid-pressure-sandbox' \
+  || fail "PID-pressure cleanup did not preserve safe sandbox reuse"
 
 LOGS=$(sudo journalctl --no-pager "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
   || fail "failed to read runner logs"
@@ -844,39 +1131,19 @@ printf '%s\n' "$LOGS" \
   | grep -F 'reused=true' \
   >/dev/null \
   || fail "tool-group OOM follow-up did not reuse its sandbox"
-LEAK_LINE=$(printf '%s\n' "$LOGS" \
-  | grep -F 'exec process containment cleaned' \
-  | grep -F 'descendants_observed=true' \
-  | grep -F 'cgroup_kill_used=true' \
-  | head -1) \
-  || fail "missing populated cleanup that used cgroup.kill"
-
-LEAK_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$LEAK_LINE")
-[ -n "$LEAK_CLEANUP_MS" ] || fail "missing leaked cleanup latency"
-[ "$LEAK_CLEANUP_MS" -le 2000 ] \
-  || fail "leaked cleanup exceeded bounded lifecycle: ${LEAK_CLEANUP_MS}ms"
-
 if grep -F 'process control latency exceeded calibrated bound' <<<"$LOGS" >/dev/null; then
   fail "process control exceeded the calibrated 750ms bound under pressure"
 fi
-PID_CLEANUP_LINE=$(printf '%s\n' "$LOGS" \
-  | grep -F 'exec process containment cleaned' \
-  | grep -F 'descendants_observed=true' \
-  | grep -F 'cgroup_kill_used=true' \
-  | sed -n 's/.*initial_members=\([0-9][0-9]*\).*/\1 &/p' \
-  | sort -nr \
-  | head -1) \
-  || fail "missing forced PID-pressure cleanup"
-PID_INITIAL_MEMBERS=${PID_CLEANUP_LINE%% *}
-[ "$PID_INITIAL_MEMBERS" -ge 50 ] \
-  || fail "PID-pressure cleanup observed only ${PID_INITIAL_MEMBERS} members"
-PID_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' <<<"$PID_CLEANUP_LINE")
-[ -n "$PID_CLEANUP_MS" ] || fail "PID-pressure cleanup latency was not reported"
-[ "$PID_CLEANUP_MS" -le 5000 ] \
-  || fail "PID-pressure cleanup exceeded 5s: ${PID_CLEANUP_MS}ms"
+
+echo "--- Benchmark: Guest Agent ready boundary ---"
+sudo "$AGENT_READY_BENCHMARK_WORKER" \
+  "$BIN_DIR" \
+  "$GROUP" \
+  "$INVOCATION_ID" \
+  "$AGENT_READY_BENCHMARK_SAMPLES"
 
 echo "PASS: detached user/root descendants were reclaimed"
-echo "PASS: leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"
+echo "PASS: mixed-identity leaked cleanup ${LEAK_CLEANUP_MS}ms; healthy cleanup preserved reuse"
 echo "PASS: compressed CPU pressure kept process control and ${METRICS_COUNT} metric samples live"
 echo "PASS: Bash tool group OOM preserved the CLI, unrelated tool, and reuse in ${MEMORY_ELAPSED}s"
 echo "PASS: pids.max cleanup reclaimed ${PID_INITIAL_MEMBERS} members in ${PID_CLEANUP_MS}ms"

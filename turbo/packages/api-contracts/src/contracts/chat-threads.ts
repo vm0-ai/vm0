@@ -1,9 +1,13 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { chatEventRowSchema } from "./chat-event-rows";
-import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  LEGACY_CHAT_EVENT_PROJECTIONS,
+} from "./chat-event-schema-version";
 import { CHAT_EVENT_TYPES } from "./chat-events";
 import {
+  connectorAccountConnectionSchema,
   connectorAccountSelectionSchema,
   connectorAccountTargetSchema,
 } from "./connector-accounts";
@@ -28,18 +32,152 @@ const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]: z.string(),
 });
+const legacyChatEventProjectionSchema = z.enum(LEGACY_CHAT_EVENT_PROJECTIONS);
+const chatEventCursorSchema = z.union([
+  z
+    .object({
+      lastEventId: z.null(),
+      lastSeqId: z.literal(0),
+    })
+    .strict(),
+  z
+    .object({
+      lastEventId: z.string().uuid(),
+      lastSeqId: z.number().int().positive(),
+      projection: legacyChatEventProjectionSchema,
+    })
+    .strict(),
+]);
+const chatEventSnapshotResponseBaseSchema = z.object({
+  url: z.string().url(),
+  expiresInSeconds: z.number().int().positive(),
+  projection: legacyChatEventProjectionSchema,
+});
+const chatEventSnapshotResponseSchema = z.union([
+  chatEventSnapshotResponseBaseSchema.extend({
+    lastEventId: z.null(),
+    lastSeqId: z.literal(0),
+  }),
+  chatEventSnapshotResponseBaseSchema.extend({
+    lastEventId: z.string().uuid(),
+    lastSeqId: z.number().int().positive(),
+  }),
+]);
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+
+const annotationPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+
+const annotationRectSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
+
+/**
+ * Ink is stored as a literal hex rather than a palette enum: the palette is a
+ * design decision that will move, and an enum would turn every future palette
+ * edit into a read migration for annotations already sitting in the database.
+ * The client picks from `ANNOTATION_INKS`; this boundary only rejects garbage.
+ */
+const annotationInkSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
+
+/**
+ * One mark drawn on an attached image.
+ *
+ * Geometry is normalized to the image's own 0..1 space, never pixels, so a mark
+ * survives every rescale it passes through — the 36px composer chip, the editor
+ * canvas at whatever zoom, and the flatten that renders at the image's native
+ * resolution. `note` is the sentence the user attached to that mark; it is what
+ * reaches the agent as text, separately from the pixels.
+ *
+ * `ordinal` is the number drawn on the mark and quoted back to the agent. It is
+ * stored rather than derived from position because deleting a mark must not
+ * renumber the ones the user has already talked about; the freed number is
+ * handed to the next new mark instead. Absent on marks saved before this.
+ */
+const markOrdinalSchema = z.number().int().positive().optional();
+
+const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
+  z.object({
+    id: z.string(),
+    ordinal: markOrdinalSchema,
+    shape: z.literal("box"),
+    rect: annotationRectSchema,
+    ink: annotationInkSchema,
+    note: z.string().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    ordinal: markOrdinalSchema,
+    shape: z.literal("arrow"),
+    from: annotationPointSchema,
+    to: annotationPointSchema,
+    ink: annotationInkSchema,
+    note: z.string().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    ordinal: markOrdinalSchema,
+    shape: z.literal("pen"),
+    points: z.array(annotationPointSchema),
+    ink: annotationInkSchema,
+    note: z.string().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    ordinal: markOrdinalSchema,
+    shape: z.literal("text"),
+    at: annotationPointSchema,
+    text: z.string(),
+    ink: annotationInkSchema,
+  }),
+  // Highlight and redact carry no ink: a highlight is always the one yellow
+  // wash, and a redaction is an opaque neutral block — colouring either would
+  // make it read as a mark instead of as a state of the image.
+  z.object({
+    id: z.string(),
+    ordinal: markOrdinalSchema,
+    shape: z.literal("highlight"),
+    rect: annotationRectSchema,
+    note: z.string().optional(),
+  }),
+  z.object({
+    id: z.string(),
+    ordinal: markOrdinalSchema,
+    shape: z.literal("redact"),
+    rect: annotationRectSchema,
+  }),
+]);
+
+const imageAnnotationSchema = z.object({
+  marks: z.array(imageAnnotationMarkSchema),
+  /** Normalized crop applied before the marks are drawn. */
+  crop: annotationRectSchema.optional(),
+});
 
 /**
  * File attachment metadata stored alongside user messages.
  * The `id` is the attachment id — URLs are resolved at query time.
+ *
+ * When a user annotates an image, the message carries both files: the flattened
+ * copy (which is what the vision model sees) and the untouched original. The
+ * flattened one points back with `annotatedFromFileId`, which is what lets the
+ * bubble render a single card with a "view original" affordance instead of two
+ * unrelated chips. `annotation` rides along so the marks can be re-opened later
+ * without re-deriving them from pixels.
  */
 const attachFileSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
+  annotatedFromFileId: z.string().optional(),
+  annotation: imageAnnotationSchema.optional(),
 });
 
 const assetMaterializationSchema = z.discriminatedUnion("status", [
@@ -116,6 +254,12 @@ const persistedAttachmentSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
+  /**
+   * Marks the user drew but has not sent yet. They live on the draft rather
+   * than on a rendered copy so the original bytes are never rewritten and the
+   * editor can reopen in a fully editable state after a reload.
+   */
+  annotation: imageAnnotationSchema.optional(),
 });
 
 /**
@@ -131,11 +275,11 @@ const chatThreadUnreadsSchema = z.object({
   ),
 });
 
-export const zeroIndicatorSchema = z.enum(["active", "unread"]);
+export const indicatorSchema = z.enum(["active", "unread"]);
 
-const zeroIndicatorsSchema = z.object({
-  agents: z.record(z.string().uuid(), zeroIndicatorSchema),
-  threads: z.record(z.string().uuid(), zeroIndicatorSchema),
+const indicatorsSchema = z.object({
+  agents: z.record(z.string().uuid(), indicatorSchema),
+  threads: z.record(z.string().uuid(), indicatorSchema),
 });
 
 const chatThreadEventIdSchema = z.string().uuid();
@@ -425,6 +569,9 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      // Phase-A historical-read fallback for stored Chat documents. Phase B
+      // may remove it only after #30264's released zero-traffic gate and a
+      // controller-approved historical readability contraction.
       type: z.literal("morning_brief"),
       briefDate: z.string(),
     })
@@ -593,18 +740,18 @@ export function parseChatFollowupsContent(
 export function resolveChatEventRecommendedFollowups(event: {
   readonly content: string | null;
 }): readonly ChatRecommendedFollowup[] {
-  const document = parseChatFollowupsContent(event.content);
-  return document?.followups ?? [];
+  const content = parseChatFollowupsContent(event.content);
+  return content?.followups ?? [];
 }
 
 export function serializeChatFollowupsContent(
   followups: readonly ChatRecommendedFollowup[],
 ): string {
-  const document: ChatFollowupsContentDocument = {
+  const content: ChatFollowupsContentDocument = {
     version: 1,
     followups: [...followups],
   };
-  return JSON.stringify(chatFollowupsContentDocumentSchema.parse(document));
+  return JSON.stringify(chatFollowupsContentDocumentSchema.parse(content));
 }
 
 const inputPromptEventSchema = chatEventBaseSchema
@@ -845,6 +992,18 @@ const chatThreadMetadataSchema = z.object({
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
+  /**
+   * Rolling new app -> old API compatibility for the metadata shortcut. Keep
+   * these fields optional while the older API is serving or remains a rollback
+   * target; remove the optionality only after that rollback window closes. The
+   * app falls back to the event-sourced projection until then. Follow-up:
+   * #29576.
+   */
+  pinnedAt: z.string().nullable().optional(),
+  computerUseHostId: z.string().uuid().nullable().optional(),
+  cloudBrowserEnabled: z.boolean().optional(),
+  selectedVideoModel: z.string().nullable().optional(),
+  selectedImageModel: z.string().nullable().optional(),
 });
 
 const chatThreadDraftSchema = z
@@ -990,7 +1149,7 @@ export const chatThreadsContract = c.router({
     path: "/api/indicators",
     headers: authHeadersSchema,
     responses: {
-      200: zeroIndicatorsSchema,
+      200: indicatorsSchema,
       401: apiErrorSchema,
     },
     summary:
@@ -1082,6 +1241,7 @@ export const chatThreadsContract = c.router({
     responses: {
       200: chatThreadUnreadsSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary:
       "List the caller's unread chat threads under an agent, each with the timestamp of the message that made it unread.",
@@ -1316,10 +1476,7 @@ export const chatThreadRenameContract = c.router({
   },
 });
 
-/**
- * Narrow metadata endpoint for the current chat thread. This intentionally
- * does not expose messages or detail fields needed by the web UI.
- */
+/** Narrow shell metadata for one chat thread; messages remain separate. */
 export const chatThreadMetadataContract = c.router({
   get: {
     method: "GET",
@@ -1370,6 +1527,7 @@ export const chatThreadConnectorSelectionContract = c.router({
     responses: {
       200: z.object({
         selections: z.array(connectorAccountSelectionSchema),
+        selectedConnections: z.array(connectorAccountConnectionSchema),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -1630,7 +1788,7 @@ export const chatSearchContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "Search chat messages within caller's org (zero proxy)",
+    summary: "Search chat messages within caller's org",
   },
 });
 
@@ -1648,12 +1806,7 @@ export const chatThreadEventsContract = c.router({
     headers: chatEventReadHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     responses: {
-      200: z.object({
-        url: z.string().url(),
-        expiresInSeconds: z.number().int().positive(),
-        lastEventId: z.string().uuid(),
-        lastSeqId: z.number().int().positive(),
-      }),
+      200: chatEventSnapshotResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -1683,12 +1836,16 @@ export const chatThreadEventsContract = c.router({
       z.object({
         sinceSeqId: z.coerce.number().int().positive(),
         sinceEventId: z.string().uuid(),
+        sinceProjection: legacyChatEventProjectionSchema.optional(),
         limit: z.coerce.number().min(1).max(50).default(50),
       }),
     ]),
     responses: {
       200: z.object({
         rows: z.array(chatEventRowSchema),
+        cursor: chatEventCursorSchema,
+        hasMore: z.boolean(),
+        projection: legacyChatEventProjectionSchema,
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -1791,6 +1948,8 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
+  imageAnnotationSchema,
+  imageAnnotationMarkSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
@@ -1860,8 +2019,8 @@ export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
-export type ZeroIndicator = z.infer<typeof zeroIndicatorSchema>;
-export type ZeroIndicators = z.infer<typeof zeroIndicatorsSchema>;
+export type Indicator = z.infer<typeof indicatorSchema>;
+export type Indicators = z.infer<typeof indicatorsSchema>;
 
 export function chatEventResponse(event: ChatEvent): ChatEvent {
   return chatEventSchema.parse(event);
@@ -1897,6 +2056,9 @@ export type ChatUsageEvent = Extract<
 >;
 export type ChatEventUsagePayload = z.infer<typeof chatEventUsagePayloadSchema>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
+export type ImageAnnotation = z.infer<typeof imageAnnotationSchema>;
+export type ImageAnnotationMark = z.infer<typeof imageAnnotationMarkSchema>;
+export type ImageAnnotationMarkShape = ImageAnnotationMark["shape"];
 export type AttachFile = z.infer<typeof attachFileSchema>;
 export type AssetRef = z.infer<typeof assetRefSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;

@@ -31,6 +31,7 @@ const xOAuthStorageVersion = (() => {
 
 export async function seedConnectedXConnector(values: {
   readonly accessToken: string;
+  readonly oauthGrantedScopes: readonly string[] | null;
   readonly orgId: string;
   readonly userId: string;
 }): Promise<void> {
@@ -46,6 +47,10 @@ export async function seedConnectedXConnector(values: {
       externalId: "x-user-id",
       externalUsername: "zero_user",
       oauthScopes: JSON.stringify(["tweet.write", "media.write"]),
+      oauthGrantedScopes:
+        values.oauthGrantedScopes === null
+          ? null
+          : JSON.stringify(values.oauthGrantedScopes),
       tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
     })
     .returning({ id: connectors.id });

@@ -1,3 +1,4 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { chatThreads } from "./chat-thread";
@@ -29,5 +30,7 @@ export const chatAgentphoneContext = pgTable("chat_agentphone_context", {
   toNumber: text("to_number"),
   userLinkId: uuid("user_link_id"),
   agentphoneAgentId: text("agentphone_agent_id"),
+  /** Product brand derived from the webhook hostname; null only for pre-rollout contexts. */
+  publicBrand: text("public_brand").$type<PublicBrand>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

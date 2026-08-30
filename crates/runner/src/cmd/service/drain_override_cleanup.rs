@@ -1,3 +1,32 @@
+//! Reconciles VM0's drain restart override with systemd's effective state.
+//!
+//! Removing `50-vm0-drain.conf` changes the on-disk state, but systemd can keep
+//! the drop-in loaded in `DropInPaths` until a coordinated reload. The cleanup
+//! transaction therefore retains the removal outcome and always asks the
+//! reload coordinator to make the expected absence effective, including when
+//! the override is already absent or removal itself fails. This also repairs a
+//! retry interrupted after disk removal but before the reload, while the
+//! coordinator avoids an unnecessary daemon reload when effective state already
+//! matches.
+//!
+//! Restoration is compensation for a failed absence reload, and is allowed
+//! only after this attempt removed the override file (`OverrideRemoved`). A
+//! `DirectoryRemoved` outcome means that only the empty drop-in directory was
+//! removed, and `AlreadyAbsent` means that neither path was removed; neither
+//! outcome owns restoration. Recreating `Restart=no` for either case could
+//! reintroduce the drain policy that this cleanup is removing.
+//!
+//! The same unbounded or bounded reload policy is used for the forward absence
+//! transition and for compensation back to expected presence. Cleanup-mode
+//! stop supplies the bounded policy with its existing lock and systemd-command
+//! timeouts. Removal, reload, restoration, and combined failures retain their
+//! error context so that a partial transition is diagnosable.
+//!
+//! Transient `service start` and default `service stop` use the unbounded
+//! policy; cleanup-mode `service stop` uses the bounded policy. Install and
+//! uninstall retain their separate service-lifecycle ordering and rollback
+//! contracts and are outside this transaction.
+
 use std::time::Duration;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -335,6 +364,49 @@ mod tests {
                 .unwrap_err();
 
         assert_eq!(error.to_string(), "internal error: reload failed");
+        assert_eq!(
+            ops.events,
+            [
+                Event::Remove,
+                Event::Reload(
+                    policy,
+                    SystemdReloadRequirement::dirty().with_drain_override(false),
+                ),
+                Event::Restore,
+                Event::Reload(
+                    policy,
+                    SystemdReloadRequirement::dirty().with_drain_override(true),
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn cleanup_and_compensation_reload_failures_keep_both_errors_and_order() {
+        let policy = bounded_policy();
+        let mut ops = fake_ops(
+            Ok(DrainRestartOverrideRemoval::OverrideRemoved),
+            [
+                Err(fake_error("cleanup reload failed")),
+                Err(fake_error("compensation reload failed")),
+            ],
+        );
+
+        let error =
+            reconcile_drain_restart_override_removal_with_ops(&service_unit(), policy, &mut ops)
+                .await
+                .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            concat!(
+                "internal error: failed to reload systemd after removing drain restart override ",
+                "for vm0-runner-test: internal error: cleanup reload failed; additionally failed ",
+                "to restore drain restart override: internal error: failed to reload systemd after ",
+                "restoring drain restart override for vm0-runner-test: internal error: ",
+                "compensation reload failed",
+            )
+        );
         assert_eq!(
             ops.events,
             [

@@ -109,6 +109,7 @@ fn test_runtime(
         paths,
         http,
         workload_containment: None,
+        process_control_endpoint: None,
     })
 }
 
@@ -180,7 +181,7 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
             });
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-with-unchanged-artifact"}));
+            .json_body(json!({"checkpointId": "checkpoint-with-unchanged-artifact", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime, &session_metadata).await?;

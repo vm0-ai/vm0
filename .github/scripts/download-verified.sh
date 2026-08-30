@@ -9,19 +9,19 @@ fi
 url="$1"
 expected_sha256="$2"
 destination="$3"
-max_attempts="${VM0_DOWNLOAD_VERIFIED_MAX_ATTEMPTS:-3}"
-retry_delay_seconds="${VM0_DOWNLOAD_VERIFIED_RETRY_DELAY_SECONDS:-2}"
+max_attempts="${OKOU_DOWNLOAD_VERIFIED_MAX_ATTEMPTS:-3}"
+retry_delay_seconds="${OKOU_DOWNLOAD_VERIFIED_RETRY_DELAY_SECONDS:-2}"
 
 if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
   echo "Expected SHA-256 must contain exactly 64 lowercase hexadecimal characters" >&2
   exit 1
 fi
 if [[ ! "$max_attempts" =~ ^[1-9][0-9]*$ ]]; then
-  echo "VM0_DOWNLOAD_VERIFIED_MAX_ATTEMPTS must be a positive integer" >&2
+  echo "OKOU_DOWNLOAD_VERIFIED_MAX_ATTEMPTS must be a positive integer" >&2
   exit 1
 fi
 if [[ ! "$retry_delay_seconds" =~ ^[0-9]+$ ]]; then
-  echo "VM0_DOWNLOAD_VERIFIED_RETRY_DELAY_SECONDS must be a non-negative integer" >&2
+  echo "OKOU_DOWNLOAD_VERIFIED_RETRY_DELAY_SECONDS must be a non-negative integer" >&2
   exit 1
 fi
 

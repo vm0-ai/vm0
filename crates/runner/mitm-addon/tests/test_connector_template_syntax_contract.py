@@ -36,17 +36,27 @@ def _case_name(case: dict[str, object]) -> str:
     return name
 
 
-def _expected_references(case: dict[str, object]) -> list[tuple[str, str]]:
+def _expected_references(case: dict[str, object]) -> list[tuple[str, str, int, int]]:
+    template = case["template"]
+    assert isinstance(template, str)
     raw_references = case["expectedReferences"]
     assert isinstance(raw_references, list)
-    references: list[tuple[str, str]] = []
+    references: list[tuple[str, str, int, int]] = []
+    search_start = 0
     for raw_reference in raw_references:
         assert isinstance(raw_reference, dict)
         namespace = raw_reference["namespace"]
         name = raw_reference["name"]
+        source = raw_reference["source"]
         assert isinstance(namespace, str)
         assert isinstance(name, str)
-        references.append((namespace, name))
+        assert isinstance(source, str)
+        assert source
+        start = template.find(source, search_start)
+        assert start != -1
+        end = start + len(source)
+        references.append((namespace, name, start, end))
+        search_start = end
     return references
 
 
@@ -60,10 +70,7 @@ def test_simple_reference_scanner_matches_connector_contract(case: dict[str, obj
 
     references = tuple(connector_template_syntax.iter_simple_references(template))
 
-    assert [(reference.namespace, reference.name) for reference in references] == (
-        _expected_references(case)
-    )
-    assert all(
-        template[reference.start : reference.end].startswith("${{") for reference in references
-    )
-    assert all(template[reference.start : reference.end].endswith("}}") for reference in references)
+    assert [
+        (reference.namespace, reference.name, reference.start, reference.end)
+        for reference in references
+    ] == _expected_references(case)

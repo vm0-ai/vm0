@@ -25,7 +25,7 @@ import {
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
-import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 
 interface ChatThreadRealtimeHandlers {
   readonly onThreadDetailChanged$: Command<

@@ -169,7 +169,7 @@ describe("okou whoami command", () => {
           exp: 2000,
         }),
       );
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       await runWhoami();
 
@@ -200,7 +200,7 @@ describe("okou whoami command", () => {
           exp: 2000,
         }),
       );
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
       server.use(
         http.get("http://localhost:3000/api/org", () => {
           return HttpResponse.json(
@@ -294,7 +294,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -367,7 +367,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -415,7 +415,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -458,7 +458,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -496,7 +496,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -560,7 +560,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -639,7 +639,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       const serverOnlyDetail = catalogPermissionDetail({
         connectorSlug: "server-only",
@@ -720,7 +720,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -778,7 +778,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -852,7 +852,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -924,7 +924,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -998,7 +998,7 @@ describe("okou whoami command", () => {
       });
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
-      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+      vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {

@@ -6,7 +6,7 @@ import {
   type ConnectorRuntimeTarget,
   type ConnectorRuntimeTargetRegistration,
 } from "@okouai/api-contracts/contracts/runners";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -18,7 +18,10 @@ import {
   loadEffectiveCustomConnectorPermissionBundle,
   type CustomConnectorRuntimeDataRows,
 } from "./agent-run-create.service";
-import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import {
+  loadConnectorRuntimeSelection,
+  loadConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveActiveNetworkPolicyRefreshes } from "./user-permission-grants.service";
 import { loadCustomConnectorRuntimeData } from "./custom-connector.service";
@@ -276,9 +279,11 @@ export async function resolveConnectorRuntimeTargets(args: {
   const customRegistrations = args.targets.flatMap((target) => {
     return target.kind === "custom" ? [target] : [];
   });
-  const builtinCatalogSnapshot =
+  const builtinCatalogSelection =
     builtinConnectorSlugs.length > 0
-      ? await loadConnectorRuntimeSnapshot(args.db)
+      ? await loadConnectorRuntimeSelection(args.db, {
+          requestedConnectorSlugs: builtinConnectorSlugs,
+        })
       : undefined;
   const [builtinRefreshes, builtinAccountResolutions, customSnapshot] =
     await Promise.all([
@@ -286,7 +291,7 @@ export async function resolveConnectorRuntimeTargets(args: {
         args.db,
         args.scope,
         builtinConnectorSlugs,
-        builtinCatalogSnapshot,
+        builtinCatalogSelection,
       ),
       resolveConnectorAccounts(args.db, {
         orgId: args.scope.orgId,
@@ -348,9 +353,9 @@ export async function resolveConnectorRuntimeTargets(args: {
       connectorAccountTargetKey(target),
     );
     const credentialAccess =
-      accountResolution?.kind === "resolved" && builtinCatalogSnapshot
+      accountResolution?.kind === "resolved" && builtinCatalogSelection
         ? resolveConnectorCredentialAccess({
-            snapshot: builtinCatalogSnapshot,
+            snapshot: builtinCatalogSelection,
             stored: {
               authMethodId: accountResolution.account.authMethod,
               connectorId: accountResolution.account.connectorId,

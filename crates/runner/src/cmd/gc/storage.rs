@@ -17,12 +17,14 @@ use super::filesystem::{
 use super::lock_file::{LockProbe, probe_lock};
 use super::report::GcReport;
 
-/// Per-host storage archive cache size cap. Enforced by `gc_storage_cache`
-/// as an LRU by `<version>/` dir mtime.
+/// Per-host storage archive cache byte target for best-effort eviction.
+/// `gc_storage_cache` may leave the cache above this target when protected or
+/// unmeasured entries leave no safe eviction candidate.
 const STORAGE_CACHE_MAX_BYTES: u64 = 1 << 30; // 1 GiB
-/// Per-host storage archive cache entry cap. The byte cap alone does not
-/// bound many tiny storage versions, and each cached version also creates a
-/// lock file.
+/// Per-host storage archive cache entry target for best-effort eviction. The
+/// byte target alone does not bound many tiny storage versions, and each
+/// cached version also creates a lock file. Recent, held-lock, and
+/// lock-probe-error entries can leave this target exceeded after one pass.
 const STORAGE_CACHE_MAX_ENTRIES: u64 = 5_000;
 
 /// Eligible `<version>` directory discovered during the scan phase.
@@ -56,7 +58,7 @@ impl From<&std::fs::Metadata> for StorageDirectoryIdentity {
 struct StorageEvictionResult {
     freed: u64,
     /// Candidate contribution to keep in `total_size` after this attempt.
-    /// `None` removes the scan-time size from the cap calculation.
+    /// `None` removes the scan-time size from this pass's measured accounting.
     remaining_size: Option<u64>,
     /// Candidate contribution to keep in `total_entries` after this attempt.
     /// Dry-runs set this to false to model the real deletion while leaving
@@ -66,14 +68,22 @@ struct StorageEvictionResult {
     evicted: bool,
 }
 
-/// Bound `/var/lib/vm0-runner/storages/` to storage cache size and entry
-/// limits by evicting least-recently-used `<version>` directories.
+/// Best-effort eviction for `/var/lib/vm0-runner/storages/` using storage
+/// cache byte and entry targets, evicting least-recently-used `<version>`
+/// directories first. The targets are not unconditional post-GC caps: a pass
+/// may finish above either target when recent, held-lock, or lock-probe-error
+/// entries cannot be safely evicted.
 ///
 /// Entries younger than [`GC_MIN_AGE`] or whose per-version flock is held
 /// are always protected — the former prevents races with a writer's
 /// atomic rename-in, the latter protects an in-flight cache read. Stale
 /// `<version>.tmp/` staging directories are removed under the final
 /// version's flock so crashed writers do not leak disk indefinitely.
+/// Entries whose locks are held or whose lock probes fail are not safely
+/// measured for byte accounting. Consequently, `remaining_bytes` in the
+/// storage-cache GC log is a lower bound on cache disk usage when such entries
+/// exist. A candidate can also become locked or recent during deletion
+/// revalidation and remain on disk after that pass.
 ///
 /// A missing `storages_dir` is a no-op: a host without a populated storage
 /// cache has nothing to collect.
@@ -121,11 +131,12 @@ async fn gc_storage_cache_with_limits_report(
 
     let now = SystemTime::now();
     let mut candidates: Vec<StorageCandidate> = Vec::new();
-    // Bytes known to be on disk under the cap. Recent (age-protected) entries
-    // count toward this so we shrink observed disk use to within the cap;
-    // locked entries deliberately do NOT count — we cannot safely stat them
-    // without racing the writer, and counting them would evict eligible
-    // entries to make room for unmeasurable ones.
+    // Measured bytes considered for this pass. Recent (age-protected) entries
+    // count toward this total but are not eviction candidates; entries whose
+    // locks are held or whose lock probes fail deliberately do NOT count
+    // because they cannot be safely measured without racing the writer.
+    // Therefore this total is a lower bound on cache disk usage when any
+    // entry is unmeasured.
     let mut total_size: u64 = 0;
     // Entry cardinality is independent from byte accounting: locked or
     // probe-error entries still contribute to filesystem pressure even when
@@ -247,7 +258,9 @@ async fn gc_storage_cache_with_limits_report(
         return Ok(GcReport::cleanup(activity_count, freed));
     }
 
-    // LRU: evict oldest first until within cap.
+    // LRU: evict oldest first while the measured accounting model exceeds a
+    // target. Protected or unmeasured entries can prevent the target from
+    // being reached in this pass.
     candidates.sort_by_key(|c| c.mtime);
 
     for c in candidates {
@@ -271,6 +284,12 @@ async fn gc_storage_cache_with_limits_report(
     }
 
     let eviction_action = if dry_run { "would_evict" } else { "evicted" };
+    // `total_size` is measured accounting, not a complete filesystem
+    // inventory. Entries skipped because their locks were held or their lock
+    // probes failed are absent from it. A candidate that becomes locked or
+    // recent during revalidation remains on disk and contributes according to
+    // what could be safely observed, so `remaining_bytes` can be only a lower
+    // bound when unmeasured entries exist.
     info!(
         "storage cache gc: scanned={scanned_entries}, eligible={eligible_entries}, skipped_recent={skipped_recent}, skipped_locked={skipped_locked}, lock_probe_errors={lock_probe_errors}, eviction_action={eviction_action}, evicted_entries={evicted_entries}, freed={}, remaining_bytes={}, remaining_entries={total_entries}, limits=({}, {max_entries} entries)",
         human_bytes(freed),
@@ -291,10 +310,12 @@ async fn evict_storage_candidate(
     let lock = match probe_lock(&lock_path) {
         LockProbe::Free(lock) => lock,
         LockProbe::Held => {
-            info!(
-                "storages/{}/{}: in use, skipping",
-                candidate.name, candidate.version
-            );
+            if dry_run {
+                info!(
+                    "storages/{}/{}: in use, skipping",
+                    candidate.name, candidate.version
+                );
+            }
             return StorageEvictionResult {
                 freed: 0,
                 remaining_size: None,
@@ -303,7 +324,7 @@ async fn evict_storage_candidate(
             };
         }
         LockProbe::Error(e) => {
-            info!(
+            warn!(
                 "storages/{}/{}: lock probe failed ({e}), skipping",
                 candidate.name, candidate.version
             );
@@ -319,7 +340,7 @@ async fn evict_storage_candidate(
     let metadata = match gc_path_dir_status(&candidate.path).await {
         Ok(GcDirStatus::RealDir(metadata)) => metadata,
         Ok(GcDirStatus::NotDirectory) => {
-            info!(
+            warn!(
                 "storages/{}/{}: no longer a directory, skipping",
                 candidate.name, candidate.version
             );
@@ -362,12 +383,14 @@ async fn evict_storage_candidate(
         };
     let age = now.duration_since(mtime).unwrap_or_default();
     if age < GC_MIN_AGE {
-        info!(
-            "storages/{}/{}: too recent ({}s), keeping",
-            candidate.name,
-            candidate.version,
-            age.as_secs()
-        );
+        if dry_run {
+            info!(
+                "storages/{}/{}: too recent ({}s), keeping",
+                candidate.name,
+                candidate.version,
+                age.as_secs()
+            );
+        }
         return StorageEvictionResult {
             freed: 0,
             remaining_size: Some(size),
@@ -486,11 +509,13 @@ async fn gc_storage_staging_dir(
     let _lock = match probe_lock(&lock_path) {
         LockProbe::Free(l) => l,
         LockProbe::Held => {
-            info!("storages/{name_hash}/{version_hash}.tmp: in use, skipping");
+            if dry_run {
+                info!("storages/{name_hash}/{version_hash}.tmp: in use, skipping");
+            }
             return None;
         }
         LockProbe::Error(e) => {
-            info!("storages/{name_hash}/{version_hash}.tmp: lock probe failed ({e}), skipping");
+            warn!("storages/{name_hash}/{version_hash}.tmp: lock probe failed ({e}), skipping");
             return None;
         }
     };
@@ -507,10 +532,12 @@ async fn gc_storage_staging_dir(
     let (size, mtime) = dir_stats(path).await;
     let age = now.duration_since(mtime).unwrap_or_default();
     if age < GC_MIN_AGE {
-        info!(
-            "storages/{name_hash}/{version_hash}.tmp: too recent ({}s), keeping",
-            age.as_secs()
-        );
+        if dry_run {
+            info!(
+                "storages/{name_hash}/{version_hash}.tmp: too recent ({}s), keeping",
+                age.as_secs()
+            );
+        }
         return None;
     }
 
@@ -524,11 +551,6 @@ async fn gc_storage_staging_dir(
             "failed to remove stale storage staging storages/{name_hash}/{version_hash}.tmp: {e}"
         );
         return None;
-    } else {
-        info!(
-            "removed stale storage staging storages/{name_hash}/{version_hash}.tmp ({})",
-            human_bytes(size)
-        );
     }
 
     Some(size)

@@ -51,7 +51,7 @@ def catalog_flow(
         path=f"/backend-api/codex/models?client_version={version}",
         request_headers=header_map(request_headers),
     )
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-catalog-cache"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-catalog-cache"
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     original_url = f"https://chatgpt.com/backend-api/codex/models?client_version={version}"
@@ -92,7 +92,7 @@ def responses_flow(
         ),
         response_status=status,
     )
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-catalog-cache"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-catalog-cache"
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://chatgpt.com/backend-api/codex/responses"

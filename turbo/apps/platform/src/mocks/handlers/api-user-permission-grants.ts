@@ -1,7 +1,7 @@
 import {
   type UserPermissionGrantResponse,
-  zeroUserPermissionGrantsContract,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+  userPermissionGrantsContract,
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import { nowDate } from "../../lib/time.ts";
 import { userPermissionGrantExpiresAt } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { mockApi } from "../msw-contract.ts";
@@ -62,7 +62,7 @@ export function resetMockUserPermissionGrants(): void {
 }
 
 export const apiUserPermissionGrantsHandlers = [
-  mockApi(zeroUserPermissionGrantsContract.list, ({ query, respond }) => {
+  mockApi(userPermissionGrantsContract.list, ({ query, respond }) => {
     const checkedAt = nowDate();
     return respond(
       200,
@@ -72,7 +72,7 @@ export const apiUserPermissionGrantsHandlers = [
     );
   }),
 
-  mockApi(zeroUserPermissionGrantsContract.apply, ({ body, respond }) => {
+  mockApi(userPermissionGrantsContract.apply, ({ body, respond }) => {
     const now = nowDate();
     const seenPermissions = new Set<string>();
     for (const grant of body.grants) {

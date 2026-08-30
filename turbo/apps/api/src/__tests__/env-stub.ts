@@ -6,6 +6,16 @@ export function stubTestTimezone(
   vi.stubEnv("TZ", timezone);
 }
 
+export function stubTestWebUrlEnvironment(webUrl: string | undefined): void {
+  vi.stubEnv("OKOU_WEB_URL", webUrl);
+}
+
+export function stubRetiredTestWebUrlEnvironment(
+  webUrl: string | undefined,
+): void {
+  vi.stubEnv("VM0_WEB_URL", webUrl);
+}
+
 function stubTestDatabaseUrl(): void {
   const vitestWorkerId = process.env.VITEST_WORKER_ID;
   if (!vitestWorkerId) {
@@ -56,9 +66,12 @@ vi.stubEnv("R2_HOSTED_SITES_SECRET_ACCESS_KEY", "test-hosted-sites-secret-key");
 vi.stubEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
 vi.stubEnv("ZERO_HOST_DOMAIN", "sites.example.com");
 vi.stubEnv("ZERO_HOST_SCHEME", "https");
+vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
+// Retained for the independently owned synthetic test-oauth connector, which
+// still reads this legacy process variable outside the API backend contract.
 vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 vi.stubEnv("FEISHU_CALLBACK_BASE_URL", "http://localhost:3000");
-vi.stubEnv("VM0_WEB_URL", "http://localhost:3001");
+stubTestWebUrlEnvironment("http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
 vi.stubEnv(
   "CLI_PKG_URL",
@@ -74,5 +87,5 @@ vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "xaat-test-telemetry");
 vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");
 vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_dummy_for_unit_tests");
 vi.stubEnv("ATOM_URL", "https://atom.example.test");
-vi.stubEnv("VM0_MACHINE_SECRET_KEY", "msk_test_dummy_for_unit_tests");
+vi.stubEnv("OKOU_MACHINE_SECRET_KEY", "msk_test_dummy_for_unit_tests");
 vi.stubEnv("ABLY_API_KEY", "test-ably-key");

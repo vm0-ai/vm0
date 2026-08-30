@@ -8,10 +8,10 @@ import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
   clearIndexedDbChatEventRows$,
   loadIndexedDbChatEventCursor$,
+  replaceIndexedDbChatEventRows$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
-  CHAT_EVENT_ROWS_PAGE_LIMIT,
   fetchChatEventSnapshotRows$,
   listRowsAfter$,
 } from "./remote-chat-event-row-data-source.ts";
@@ -77,33 +77,29 @@ const coldStartChatThreadRows$ = command(
     readonly events: readonly ChatEvent[];
     readonly cursor: ChatEventCursor;
   }> => {
-    const snapshot = await set(fetchChatEventSnapshotRows$, threadId, signal);
-    if (snapshot === null) {
-      return {
-        events: [],
-        cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
-      };
-    }
+    const result = await set(fetchChatEventSnapshotRows$, threadId, signal);
+    const snapshot = result.snapshot;
+    const cursor: ChatEventCursor =
+      snapshot === null || snapshot.lastEventId === null
+        ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
+        : {
+            lastEventId: snapshot.lastEventId,
+            lastSeqId: snapshot.lastSeqId,
+          };
     await set(
-      writeIndexedDbChatEventRows$,
+      replaceIndexedDbChatEventRows$,
       {
         threadId,
-        rows: snapshot.rows,
-        cursor: {
-          lastEventId: snapshot.lastEventId,
-          lastSeqId: snapshot.lastSeqId,
-        },
+        rows: snapshot?.rows ?? [],
+        cursor,
       },
       signal,
     );
     return {
-      events: snapshot.rows.map((row) => {
+      events: (snapshot?.rows ?? []).map((row) => {
         return chatEventFromRow(row);
       }),
-      cursor: {
-        lastEventId: snapshot.lastEventId,
-        lastSeqId: snapshot.lastSeqId,
-      },
+      cursor,
     };
   },
 );
@@ -172,17 +168,14 @@ const syncChatThreadRowsToIndexedDb$ = command(
         cursorFromServer = true;
         continue;
       }
-      if (page.rows.length === 0) {
-        return syncedEvents;
-      }
-      const lastRow = page.rows.at(-1);
-      if (lastRow === undefined) {
-        return syncedEvents;
-      }
-      cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
+      cursor = page.cursor;
       await set(
         writeIndexedDbChatEventRows$,
-        { threadId, rows: page.rows, cursor },
+        {
+          threadId,
+          rows: page.rows,
+          cursor,
+        },
         signal,
       );
       syncedEvents.push(
@@ -190,7 +183,7 @@ const syncChatThreadRowsToIndexedDb$ = command(
           return chatEventFromRow(row);
         }),
       );
-      shouldLoadNextPage = page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
+      shouldLoadNextPage = page.hasMore;
     }
     return syncedEvents;
   },

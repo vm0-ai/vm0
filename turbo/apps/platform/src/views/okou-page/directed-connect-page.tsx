@@ -1,0 +1,948 @@
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { Button } from "@okouai/ui";
+import {
+  connectorSlugSchema,
+  type ConnectorAuthMethodId,
+  type ConnectorSlug,
+} from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/connector-catalog";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import type {
+  CustomConnectorResponse,
+  CustomConnectorSlug,
+} from "@okouai/api-contracts/contracts/custom-connectors";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
+import { Input } from "@okouai/ui/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@okouai/ui/components/ui/dialog";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  connectConnectorOAuthAuthCode$,
+  connectConnectorNoAuth$,
+  connectFlowConnectorSlug$,
+  getOnlyAvailableStatusBrowserAuthMethodDetail,
+  getOnlyAvailableStatusNoAuthMethod,
+  getConnectorStatusConnectLaunchMode,
+  justConnectedSlugs$,
+  pollingOAuthAuthCodeConnectorSlug$,
+  pollingOAuthDeviceAuthConnectorSlug$,
+  submitManualGrant$,
+  manualGrantFormSubmitting$,
+  setManualGrantFormValue$,
+  clearManualGrantForm$,
+  manualGrantFormValuesFor$,
+  setManualGrantFormSubmitting$,
+  getOnlyManualConnectorStatusAuthMethod,
+  hasConnectorStatusProviderDrivenConnectMethod,
+  manualGrantInputValuesForMethod,
+  type ConnectorConnectionResult,
+} from "../../signals/okou-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
+import { hasTokenInputValue } from "../../signals/okou-page/settings/token-input.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+  withCleanup,
+} from "../../signals/utils.ts";
+import {
+  directedConnectSlug$,
+  directedConnectCustomSlug$,
+  directedConnectAgentId$,
+  directedConnectAgentName$,
+  manualGrantDialogKey$,
+  setManualGrantDialogKey$,
+  directedConnectModalKey$,
+  setDirectedConnectModalKey$,
+  directedConnectCustomDialogKey$,
+  setDirectedConnectCustomDialogKey$,
+} from "../../signals/connectors-page/directed-connect-slug.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { Check, Loader2 } from "lucide-react";
+import { ProductBrandMarkLink } from "./directed-shared.tsx";
+import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import type { FormEvent, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { assistantName$ } from "../../signals/branding.ts";
+import { ConnectorHelpText } from "./components/settings/connector-help-text.tsx";
+import {
+  routeChatActionCallback$,
+  runChatActionCallback$,
+} from "../../signals/chat-page/action-callback.ts";
+import {
+  customConnectors$,
+  resetCustomConnectorConnectInput$,
+} from "../../signals/okou-page/settings/custom-connectors.ts";
+import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
+import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
+import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
+import { customConnectorMcpEnabled$ } from "../../signals/external/feature-switch.ts";
+import {
+  defaultBuiltinConnectorAccountOptions,
+  defaultCustomConnectorAccountOptions,
+  type DefaultConnectorAccountMutationOptions,
+} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
+
+function runDirectedConnect(
+  params: {
+    item: PlatformConnectorCatalogStatusItem;
+    connectorSlug: ConnectorSlug;
+    agentId: string | null;
+    connect: (
+      connectorSlug: ConnectorSlug,
+      method: PublicConnectorCatalogAuthMethodDetail,
+      options: {
+        readonly connectorLabel?: string;
+        readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
+        readonly agentId?: string;
+        readonly account?: ConnectorAccountMutationIntent;
+        readonly useDefaultConnectorProjection?: boolean;
+        readonly authorizeVisibleAgents?: boolean;
+      },
+      signal: AbortSignal,
+    ) => Promise<ConnectorConnectionResult | false>;
+    connectNoAuth: (
+      args: {
+        readonly connectorSlug: ConnectorSlug;
+        readonly authMethod: ConnectorAuthMethodId;
+        readonly options: {
+          readonly connectorLabel?: string;
+          readonly agentId?: string;
+          readonly account?: ConnectorAccountMutationIntent;
+          readonly useDefaultConnectorProjection?: boolean;
+          readonly authorizeVisibleAgents?: boolean;
+        };
+      },
+      signal: AbortSignal,
+    ) => Promise<ConnectorConnectionResult | false>;
+    openConnectModal: () => void;
+    openManualGrantDialog: () => void;
+    onSuccess: () => void | Promise<void>;
+  },
+  signal: AbortSignal,
+): void {
+  const accountOptions = defaultBuiltinConnectorAccountOptions(params.item);
+  if (!accountOptions) {
+    return;
+  }
+  const launchMode = getConnectorStatusConnectLaunchMode(params.item);
+  if (
+    launchMode === "modal" &&
+    hasConnectorStatusProviderDrivenConnectMethod(params.item)
+  ) {
+    params.openConnectModal();
+    return;
+  }
+
+  const manualGrantMethod = getOnlyManualConnectorStatusAuthMethod(params.item);
+
+  if (
+    launchMode === "modal" &&
+    manualGrantMethod &&
+    params.item.authMethods.length === 1
+  ) {
+    params.openManualGrantDialog();
+    return;
+  }
+  if (launchMode === "modal") {
+    params.openConnectModal();
+    return;
+  }
+
+  detach(
+    (async () => {
+      if (launchMode === "browser-auth") {
+        const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(
+          params.item,
+        );
+        if (!authMethod) {
+          params.openConnectModal();
+          return;
+        }
+        const connected = await params.connect(
+          params.connectorSlug,
+          authMethod,
+          {
+            connectorLabel: params.item.label,
+            connectorIcon: params.item.icon,
+            ...(params.agentId
+              ? { agentId: params.agentId }
+              : { authorizeVisibleAgents: true }),
+            ...accountOptions,
+          },
+          signal,
+        );
+        if (connected) {
+          await params.onSuccess();
+        }
+      } else {
+        const authMethod = getOnlyAvailableStatusNoAuthMethod(params.item);
+        if (!authMethod) {
+          params.openConnectModal();
+          return;
+        }
+        const connected = await params.connectNoAuth(
+          {
+            connectorSlug: params.connectorSlug,
+            authMethod,
+            options: {
+              connectorLabel: params.item.label,
+              ...(params.agentId
+                ? { agentId: params.agentId }
+                : { authorizeVisibleAgents: true }),
+              ...accountOptions,
+            },
+          },
+          signal,
+        );
+        if (connected) {
+          await params.onSuccess();
+        }
+      }
+    })(),
+    Reason.DomCallback,
+  );
+}
+
+function ManualGrantForm({
+  connectorSlug,
+  agentId,
+  connectorLabel,
+  manualGrantMethod,
+  accountOptions,
+  onSuccess,
+}: {
+  connectorSlug: ConnectorSlug;
+  agentId: string | null;
+  connectorLabel: string;
+  manualGrantMethod: PublicConnectorCatalogAuthMethodDetail;
+  accountOptions: DefaultConnectorAccountMutationOptions;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const submit = useSet(submitManualGrant$);
+  const setFormValue = useSet(setManualGrantFormValue$);
+  const clearForm = useSet(clearManualGrantForm$);
+  const pageSignal = useGet(pageSignal$);
+  const manualGrantFormValuesFor = useGet(manualGrantFormValuesFor$);
+  const fieldValues = manualGrantFormValuesFor(connectorSlug);
+  const submittingSlug = useGet(manualGrantFormSubmitting$);
+  const setSubmitting = useSet(setManualGrantFormSubmitting$);
+  const submitting = submittingSlug === connectorSlug;
+
+  const allFilled = manualGrantMethod.manualFields.every((field) => {
+    return !field.required || hasTokenInputValue(fieldValues[field.id]);
+  });
+
+  const handleSubmit = onDomEventFn(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!allFilled || submitting) {
+        return;
+      }
+      setSubmitting(connectorSlug);
+      await withCleanup(
+        bestEffort(
+          (async () => {
+            const connected = await submit(
+              {
+                connectorSlug,
+                authMethod: manualGrantMethod.id,
+                inputValues: manualGrantInputValuesForMethod(
+                  manualGrantMethod,
+                  fieldValues,
+                ),
+                options: {
+                  connectorLabel,
+                  ...(agentId ? { agentId } : { authorizeVisibleAgents: true }),
+                  ...accountOptions,
+                },
+              },
+              pageSignal,
+            );
+            if (!connected) {
+              return;
+            }
+            await onSuccess();
+            clearForm(connectorSlug);
+          })(),
+        ),
+        () => {
+          setSubmitting(null);
+        },
+      );
+    },
+  );
+
+  return (
+    <form
+      className="flex w-full flex-col gap-3 text-left"
+      onSubmit={handleSubmit}
+    >
+      {manualGrantMethod.description && (
+        <ConnectorHelpText text={manualGrantMethod.description} />
+      )}
+      {manualGrantMethod.manualFields.map((fieldConfig) => {
+        return (
+          <div key={fieldConfig.id} className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-foreground">
+              {fieldConfig.label}
+            </label>
+            <Input
+              type={fieldConfig.inputType}
+              placeholder={fieldConfig.placeholder ?? undefined}
+              value={fieldValues[fieldConfig.id] ?? ""}
+              onChange={(e) => {
+                return setFormValue(
+                  connectorSlug,
+                  fieldConfig.id,
+                  e.target.value,
+                );
+              }}
+            />
+          </div>
+        );
+      })}
+      <Button
+        type="submit"
+        disabled={!allFilled || submitting}
+        className="w-full px-0 disabled:opacity-60"
+      >
+        {submitting && <Loader2 size={14} className="animate-spin" />}
+        {submitting
+          ? t(($) => {
+              return $.connectors.actions.saving;
+            })
+          : t(($) => {
+              return $.connectors.actions.save;
+            })}
+      </Button>
+    </form>
+  );
+}
+
+function ManualGrantDialog({
+  connectorSlug,
+  agentId,
+  icon,
+  connectorLabel,
+  manualGrantMethod,
+  accountOptions,
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  connectorSlug: ConnectorSlug;
+  agentId: string | null;
+  icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
+  connectorLabel: string;
+  manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
+  accountOptions: DefaultConnectorAccountMutationOptions | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void | Promise<void>;
+}) {
+  if (!manualGrantMethod || !accountOptions) {
+    return null;
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <ConnectorIcon icon={icon} size={20} />
+            <DialogTitle>{connectorLabel}</DialogTitle>
+          </div>
+        </DialogHeader>
+        <ManualGrantForm
+          connectorSlug={connectorSlug}
+          agentId={agentId}
+          connectorLabel={connectorLabel}
+          manualGrantMethod={manualGrantMethod}
+          accountOptions={accountOptions}
+          onSuccess={async () => {
+            await onSuccess();
+            onOpenChange(false);
+          }}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ConnectActions({
+  isConnected,
+  isConnecting,
+  disabled,
+  onConnect,
+}: {
+  isConnected: boolean;
+  isConnecting: boolean;
+  disabled: boolean;
+  onConnect: () => void;
+}) {
+  const { t } = useTranslation();
+  if (isConnected) {
+    return (
+      <>
+        <div className="inline-flex h-9 w-[100px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
+          <Check size={16} />
+          {t(($) => {
+            return $.connectors.card.connected;
+          })}
+        </div>
+        <Button
+          type="button"
+          variant="link"
+          size="xs"
+          disabled={isConnecting || disabled}
+          onClick={onConnect}
+          className="h-auto gap-1.5 px-0 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+        >
+          {isConnecting && <Loader2 size={12} className="animate-spin" />}
+          {isConnecting
+            ? t(($) => {
+                return $.connectors.directed.reconnecting;
+              })
+            : t(($) => {
+                return $.connectors.actions.reconnect;
+              })}
+        </Button>
+      </>
+    );
+  }
+  return (
+    <Button
+      type="button"
+      disabled={isConnecting || disabled}
+      onClick={onConnect}
+      className="w-[100px] px-0 disabled:opacity-60"
+    >
+      {isConnecting && <Loader2 size={14} className="animate-spin" />}
+      {isConnecting
+        ? t(($) => {
+            return $.connectors.actions.connecting;
+          })
+        : t(($) => {
+            return $.connectors.actions.connect;
+          })}
+    </Button>
+  );
+}
+
+function DirectedConnectModal({
+  open,
+  item,
+  agentId,
+  onClose,
+  onSuccess,
+}: {
+  readonly open: boolean;
+  readonly item: PlatformConnectorCatalogStatusItem | undefined;
+  readonly agentId: string | null;
+  readonly onClose: () => void;
+  readonly onSuccess: () => void | Promise<void>;
+}) {
+  if (!open || !item) {
+    return null;
+  }
+  const accountOptions = defaultBuiltinConnectorAccountOptions(item);
+  if (!accountOptions) {
+    return null;
+  }
+  const reconnectAuthMethod =
+    accountOptions.account.intent === "reconnect"
+      ? item.connection?.authMethod
+      : undefined;
+  return (
+    <ConnectModal
+      item={item}
+      {...(agentId ? { agentId } : {})}
+      accountOptions={accountOptions}
+      reconnectAuthMethod={reconnectAuthMethod}
+      authorizeVisibleAgentsOnConnect={!agentId}
+      onClose={onClose}
+      onSuccess={onSuccess}
+    />
+  );
+}
+
+function DirectedConnectDialogs({
+  connectorSlug,
+  item,
+  icon,
+  connectorLabel,
+  manualGrantMethod,
+  manualGrantDialogOpen,
+  setManualGrantDialogOpen,
+  agentId,
+  connectModalOpen,
+  setConnectModalOpen,
+  onSuccess,
+}: {
+  readonly connectorSlug: ConnectorSlug;
+  readonly item: PlatformConnectorCatalogStatusItem | undefined;
+  readonly icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
+  readonly connectorLabel: string;
+  readonly manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
+  readonly manualGrantDialogOpen: boolean;
+  readonly setManualGrantDialogOpen: (open: boolean) => void;
+  readonly agentId: string | null | undefined;
+  readonly connectModalOpen: boolean;
+  readonly setConnectModalOpen: (open: boolean) => void;
+  readonly onSuccess: () => void | Promise<void>;
+}) {
+  const accountOptions = item
+    ? defaultBuiltinConnectorAccountOptions(item)
+    : null;
+  return (
+    <>
+      <ManualGrantDialog
+        connectorSlug={connectorSlug}
+        agentId={agentId ?? null}
+        icon={icon}
+        connectorLabel={connectorLabel}
+        manualGrantMethod={manualGrantMethod}
+        accountOptions={accountOptions}
+        open={manualGrantDialogOpen}
+        onOpenChange={setManualGrantDialogOpen}
+        onSuccess={onSuccess}
+      />
+      <DirectedConnectModal
+        open={connectModalOpen}
+        item={item}
+        agentId={agentId ?? null}
+        onClose={() => {
+          setConnectModalOpen(false);
+        }}
+        onSuccess={onSuccess}
+      />
+    </>
+  );
+}
+
+function useDirectedConnectConnectorSlug(): ConnectorSlug | null {
+  const connectorSlug = useGet(directedConnectSlug$);
+  if (!connectorSlug) {
+    return null;
+  }
+  const parsed = connectorSlugSchema.safeParse(connectorSlug);
+  return parsed.success ? parsed.data : null;
+}
+
+function useDirectedConnectCatalogState(connectorSlug: ConnectorSlug | null): {
+  readonly item: PlatformConnectorCatalogStatusItem | undefined;
+  readonly isConnected: boolean;
+  readonly isLoading: boolean;
+  readonly unavailable: boolean;
+} {
+  const justConnected = useGet(justConnectedSlugs$);
+  const allLoadable = useLastLoadable(connectorCatalogStatus$);
+  const catalogLoaded = allLoadable.state === "hasData";
+  const allData = catalogLoaded ? allLoadable.data.connectors : [];
+  const item = connectorSlug
+    ? allData.find((connector) => {
+        return connector.slug === connectorSlug;
+      })
+    : undefined;
+  const optimisticallyConnected =
+    connectorSlug !== null && justConnected.has(connectorSlug);
+  const isConnected = optimisticallyConnected || (item?.connected ?? false);
+  return {
+    item,
+    isConnected,
+    isLoading:
+      connectorSlug !== null &&
+      !optimisticallyConnected &&
+      allLoadable.state === "loading",
+    unavailable:
+      connectorSlug !== null &&
+      catalogLoaded &&
+      !item &&
+      !optimisticallyConnected,
+  };
+}
+
+function useDirectedConnectDialogOpenState(
+  connectorSlug: ConnectorSlug | null,
+  agentId: string | null,
+  signal: AbortSignal,
+): {
+  readonly manualGrantDialogOpen: boolean;
+  readonly connectModalOpen: boolean;
+} {
+  const manualGrantDialogKey = useGet(manualGrantDialogKey$);
+  const connectModalKey = useGet(directedConnectModalKey$);
+  return {
+    manualGrantDialogOpen:
+      manualGrantDialogKey?.connectorSlug === connectorSlug &&
+      manualGrantDialogKey.agentId === agentId &&
+      manualGrantDialogKey.signal === signal,
+    connectModalOpen:
+      connectModalKey?.connectorSlug === connectorSlug &&
+      connectModalKey.agentId === agentId &&
+      connectModalKey.signal === signal,
+  };
+}
+
+function DirectedConnectCardContent({
+  icon,
+  connectorLabel,
+  connectorDescription,
+  agentName,
+  isLoading,
+  isConnected,
+  isConnecting,
+  canConnect,
+  onConnect,
+}: {
+  readonly icon: ReactNode;
+  readonly connectorLabel: string;
+  readonly connectorDescription: string;
+  readonly agentName: string;
+  readonly isLoading: boolean;
+  readonly isConnected: boolean;
+  readonly isConnecting: boolean;
+  readonly canConnect: boolean;
+  readonly onConnect: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
+        <ProductBrandMarkLink />
+        <div className="flex w-full flex-col gap-4">
+          <div className="flex flex-col items-center gap-2.5">
+            {isLoading ? (
+              <Loader2 size={20} className="animate-spin" />
+            ) : (
+              <>
+                <h1 className="text-lg font-medium text-foreground">
+                  {isConnected
+                    ? t(
+                        ($) => {
+                          return $.connectors.directed.connected;
+                        },
+                        { connector: connectorLabel },
+                      )
+                    : t(
+                        ($) => {
+                          return $.connectors.directed.needsConnector;
+                        },
+                        { agent: agentName, connector: connectorLabel },
+                      )}
+                </h1>
+                <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
+                  {icon}
+                </div>
+                <p className="w-60 text-sm text-muted-foreground">
+                  {connectorDescription}
+                </p>
+              </>
+            )}
+          </div>
+          {!isLoading && (
+            <div className="flex flex-col items-center justify-center gap-2">
+              <ConnectActions
+                isConnected={isConnected}
+                isConnecting={isConnecting}
+                disabled={!canConnect}
+                onConnect={onConnect}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DirectedConnectCard() {
+  const connectorSlug = useDirectedConnectConnectorSlug();
+  const assistantName = useGet(assistantName$);
+  const agentId = useGet(directedConnectAgentId$);
+  const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
+  const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
+  const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
+  const connectFlowSlug = useGet(connectFlowConnectorSlug$);
+  const connect = useSet(connectConnectorOAuthAuthCode$);
+  const connectNoAuth = useSet(connectConnectorNoAuth$);
+  const signal = useGet(pageSignal$);
+  const { item, isConnected, isLoading, unavailable } =
+    useDirectedConnectCatalogState(connectorSlug);
+  const setManualGrantDialogKey = useSet(setManualGrantDialogKey$);
+  const setDirectedConnectModalKey = useSet(setDirectedConnectModalKey$);
+  const actionCallback = useGet(routeChatActionCallback$);
+  const runCallback = useSet(runChatActionCallback$);
+  const { manualGrantDialogOpen, connectModalOpen } =
+    useDirectedConnectDialogOpenState(connectorSlug, agentId, signal);
+
+  if (!connectorSlug) {
+    return null;
+  }
+
+  const agentName =
+    agentNameLoadable.state === "hasData" &&
+    agentNameLoadable.data.agentId === agentId &&
+    agentNameLoadable.data.displayName
+      ? agentNameLoadable.data.displayName
+      : assistantName;
+  const isConnecting =
+    pollingAuthCodeSlug === connectorSlug ||
+    pollingDeviceAuthSlug === connectorSlug ||
+    connectFlowSlug === connectorSlug;
+  if (unavailable) {
+    return null;
+  }
+  const authMethods = item?.authMethods ?? [];
+  const accountOptions = item
+    ? defaultBuiltinConnectorAccountOptions(item)
+    : null;
+  const manualGrantMethod = item
+    ? getOnlyManualConnectorStatusAuthMethod(item)
+    : null;
+  const canConnect = authMethods.length > 0 && accountOptions !== null;
+  const connectorLabel = item?.label ?? connectorSlug;
+  const connectorDescription = item?.description ?? "";
+  const handleConnectSuccess = async () => {
+    if (actionCallback.callbackPrompt && actionCallback.threadId && agentId) {
+      await runCallback(
+        {
+          threadId: actionCallback.threadId,
+          agentId,
+          callbackPrompt: actionCallback.callbackPrompt,
+        },
+        signal,
+      );
+    }
+  };
+
+  const handleConnect = () => {
+    if (!canConnect || !item) {
+      return;
+    }
+    runDirectedConnect(
+      {
+        item,
+        connectorSlug,
+        agentId,
+        connect,
+        connectNoAuth,
+        openManualGrantDialog: () => {
+          return setManualGrantDialogKey({
+            connectorSlug,
+            agentId,
+            signal,
+          });
+        },
+        openConnectModal: () => {
+          setDirectedConnectModalKey({
+            connectorSlug,
+            agentId,
+            signal,
+          });
+        },
+        onSuccess: handleConnectSuccess,
+      },
+      signal,
+    );
+  };
+
+  return (
+    <>
+      <DirectedConnectCardContent
+        icon={<ConnectorIcon icon={item?.icon} size={20} />}
+        connectorLabel={connectorLabel}
+        connectorDescription={connectorDescription}
+        agentName={agentName}
+        isLoading={isLoading}
+        isConnected={isConnected}
+        isConnecting={isConnecting}
+        canConnect={canConnect}
+        onConnect={handleConnect}
+      />
+      <DirectedConnectDialogs
+        connectorSlug={connectorSlug}
+        item={item}
+        icon={item?.icon}
+        connectorLabel={connectorLabel}
+        manualGrantMethod={manualGrantMethod}
+        manualGrantDialogOpen={manualGrantDialogOpen}
+        setManualGrantDialogOpen={(open) => {
+          setManualGrantDialogKey(
+            open ? { connectorSlug, agentId, signal } : null,
+          );
+        }}
+        agentId={agentId}
+        connectModalOpen={connectModalOpen}
+        setConnectModalOpen={(open) => {
+          setDirectedConnectModalKey(
+            open ? { connectorSlug, agentId, signal } : null,
+          );
+        }}
+        onSuccess={handleConnectSuccess}
+      />
+    </>
+  );
+}
+
+function customConnectorForSlug(
+  connectors: readonly CustomConnectorResponse[],
+  connectorSlug: CustomConnectorSlug,
+  mcpEnabled: boolean,
+): CustomConnectorResponse | undefined {
+  return connectors.find((connector) => {
+    return (
+      connector.slug === connectorSlug &&
+      (connector.kind === "http" || mcpEnabled)
+    );
+  });
+}
+
+interface CustomConnectorConnection {
+  readonly connector: CustomConnectorResponse;
+  readonly accountOptions: DefaultConnectorAccountMutationOptions;
+}
+
+function customConnectorConnection(
+  connector: CustomConnectorResponse | undefined,
+): CustomConnectorConnection | null {
+  const accountOptions = defaultCustomConnectorAccountOptions(connector);
+  return connector && accountOptions ? { connector, accountOptions } : null;
+}
+
+function CustomDirectedConnectorDialog({
+  connection,
+  open,
+  agentId,
+  onClose,
+  onSuccess,
+}: {
+  readonly connection: CustomConnectorConnection | null;
+  readonly open: boolean;
+  readonly agentId: string | null;
+  readonly onClose: () => void;
+  readonly onSuccess: () => Promise<void>;
+}) {
+  if (!connection || !open) {
+    return null;
+  }
+  return (
+    <CustomConnectorConnectDialog
+      connector={connection.connector}
+      {...(agentId ? { agentId } : {})}
+      accountOptions={connection.accountOptions}
+      onClose={onClose}
+      onSuccess={onSuccess}
+    />
+  );
+}
+
+function CustomDirectedConnectCard({
+  connectorSlug,
+}: {
+  readonly connectorSlug: CustomConnectorSlug;
+}) {
+  const assistantName = useGet(assistantName$);
+  const agentId = useGet(directedConnectAgentId$);
+  const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
+  const connectorsLoadable = useLastLoadable(customConnectors$);
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  const dialogKey = useGet(directedConnectCustomDialogKey$);
+  const setDialogKey = useSet(setDirectedConnectCustomDialogKey$);
+  const resetConnectInput = useSet(resetCustomConnectorConnectInput$);
+  const actionCallback = useGet(routeChatActionCallback$);
+  const runCallback = useSet(runChatActionCallback$);
+  const signal = useGet(pageSignal$);
+  const connectors =
+    connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
+  const connector = customConnectorForSlug(
+    connectors,
+    connectorSlug,
+    mcpEnabled,
+  );
+  const connection = customConnectorConnection(connector);
+  const dialogOpen =
+    dialogKey?.connectorSlug === connectorSlug &&
+    dialogKey.agentId === agentId &&
+    dialogKey.signal === signal;
+
+  if (connectorsLoadable.state === "hasData" && !connector) {
+    return null;
+  }
+
+  const agentName =
+    agentNameLoadable.state === "hasData" &&
+    agentNameLoadable.data.agentId === agentId &&
+    agentNameLoadable.data.displayName
+      ? agentNameLoadable.data.displayName
+      : assistantName;
+  const handleConnectSuccess = async () => {
+    if (actionCallback.callbackPrompt && actionCallback.threadId && agentId) {
+      await runCallback(
+        {
+          threadId: actionCallback.threadId,
+          agentId,
+          callbackPrompt: actionCallback.callbackPrompt,
+        },
+        signal,
+      );
+    }
+  };
+  const setDialogOpen = (open: boolean) => {
+    setDialogKey(open ? { connectorSlug, agentId, signal } : null);
+  };
+
+  return (
+    <>
+      <DirectedConnectCardContent
+        icon={
+          connector ? (
+            <CustomConnectorIcon
+              id={connector.id}
+              displayName={connector.displayName}
+              size={20}
+            />
+          ) : null
+        }
+        connectorLabel={connector?.displayName ?? connectorSlug}
+        connectorDescription={connector ? customConnectorTarget(connector) : ""}
+        agentName={agentName}
+        isLoading={connectorsLoadable.state === "loading"}
+        isConnected={connector?.connected ?? false}
+        isConnecting={false}
+        canConnect={connection !== null}
+        onConnect={() => {
+          if (!connection) {
+            return;
+          }
+          resetConnectInput();
+          setDialogOpen(true);
+        }}
+      />
+      <CustomDirectedConnectorDialog
+        connection={connection}
+        open={dialogOpen}
+        agentId={agentId}
+        onClose={() => {
+          setDialogOpen(false);
+        }}
+        onSuccess={handleConnectSuccess}
+      />
+    </>
+  );
+}
+
+export function DirectedConnectPage() {
+  const customConnectorSlug = useGet(directedConnectCustomSlug$);
+  return customConnectorSlug ? (
+    <CustomDirectedConnectCard connectorSlug={customConnectorSlug} />
+  ) : (
+    <DirectedConnectCard />
+  );
+}

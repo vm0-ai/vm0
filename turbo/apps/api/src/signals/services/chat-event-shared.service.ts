@@ -79,6 +79,7 @@ export interface InsertAssistantEventsInput {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly items: readonly InsertAssistantEventItem[];
 }
 
@@ -104,17 +105,17 @@ export async function touchChatThreadLastMessageAt(
     .returning({
       id: chatThreads.id,
       userId: chatThreads.userId,
-      agentComposeId: chatThreads.agentId,
+      agentId: chatThreads.agentId,
       lastMessageAt: chatThreads.lastMessageAt,
     });
-  if (!thread?.agentComposeId) {
+  if (!thread?.agentId) {
     return;
   }
   await appendChatThreadEvent(tx, {
     kind: "sort_touched",
     userId: thread.userId,
     chatThreadId: thread.id,
-    agentComposeId: thread.agentComposeId,
+    agentId: thread.agentId,
     eventId,
     createdAt: thread.lastMessageAt,
   });
@@ -221,17 +222,18 @@ export async function insertAssistantEventsInTransaction(
         runEventSequenceNumber: item.runEventSequenceNumber,
         runEventId: item.runEventId,
       };
-      return item.eventType === "output.message"
-        ? {
-            ...eventIdentity,
-            eventType: item.eventType,
-            content: item.content,
-          }
-        : {
-            ...eventIdentity,
-            eventType: item.eventType,
-            thinking: item.thinking,
-          };
+      if (item.eventType === "output.message") {
+        return {
+          ...eventIdentity,
+          eventType: item.eventType,
+          content: item.content,
+        };
+      }
+      return {
+        ...eventIdentity,
+        eventType: item.eventType,
+        thinking: item.thinking,
+      };
     }),
   );
   signal.throwIfAborted();
@@ -261,12 +263,17 @@ export async function insertAssistantEvents(
     if (result.shouldAttemptFirstAssistantEventClaim) {
       await publishFirstAssistantEventCreatedSafely({
         db: writeDb,
+        orgId: args.orgId,
         userId: args.userId,
         threadId: args.threadId,
         runId: args.runId,
       });
     } else {
-      await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
+      await publishChatThreadMessageCreatedSafely({
+        userId: args.userId,
+        orgId: args.orgId,
+        threadId: args.threadId,
+      });
     }
     signal.throwIfAborted();
   }

@@ -24,7 +24,7 @@ async fn agent_log_open_failure_warns_and_keeps_cli_run_successful()
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, &run_id);
         std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             runtime_dir.as_os_str(),
         );
         common::set_run_payload_file_env_for_test(
@@ -34,11 +34,14 @@ async fn agent_log_open_failure_warns_and_keeps_cli_run_successful()
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;
-        std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
-        std::env::set_var("VM0_API_TOKEN", "");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("USE_MOCK_CLAUDE", "true");
-        std::env::set_var("VM0_MOCK_CLAUDE_PATH", &mock);
+        std::env::set_var(guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV, &mock);
         std::env::set_var("HOME", tmp.path());
     }
     common::ensure_canonical_workspace_for_test()?;
@@ -59,7 +62,7 @@ async fn agent_log_open_failure_warns_and_keeps_cli_run_successful()
     assert_eq!(execution.exit_code, common::CLEAN_EXIT);
     assert!(execution.control_error.is_none());
     assert!(execution.cli_termination.is_none());
-    assert!(execution.claude_result.is_some());
+    assert!(execution.jsonl_result.is_some());
     let system_log = std::fs::read_to_string(system_log_path)?;
     assert_eq!(system_log.matches(AGENT_LOG_WARNING).count(), 1);
 

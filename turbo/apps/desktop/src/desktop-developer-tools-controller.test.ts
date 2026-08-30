@@ -10,7 +10,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 
 function createController(
   fetchFeatureSwitches: () => Promise<Response> = async () =>
-    jsonResponse({ effectiveSwitches: { zeroDebug: true } }),
+    jsonResponse({ effectiveSwitches: { okouDebug: true } }),
 ) {
   const onChange = vi.fn();
   const setFilesystemPluginFeatureEnabled = vi.fn();
@@ -48,7 +48,7 @@ describe("DeveloperToolsController", () => {
       createController(async () =>
         jsonResponse({
           effectiveSwitches: {
-            zeroDebug: true,
+            okouDebug: true,
             computerUseDesktopPlugins: true,
           },
         }),
@@ -65,7 +65,7 @@ describe("DeveloperToolsController", () => {
 
   it("reads the legacy switches shape", async () => {
     const { controller } = createController(async () =>
-      jsonResponse({ switches: { zeroDebug: true } }),
+      jsonResponse({ switches: { okouDebug: true } }),
     );
 
     controller.requestRefresh();
@@ -76,7 +76,7 @@ describe("DeveloperToolsController", () => {
 
   it("toggles enabled once available and drops enabled when availability is lost", async () => {
     const responses = [
-      jsonResponse({ effectiveSwitches: { zeroDebug: true } }),
+      jsonResponse({ effectiveSwitches: { okouDebug: true } }),
       new Response(null, { status: 401 }),
     ];
     const { controller, setFilesystemPluginFeatureEnabled } = createController(
@@ -122,7 +122,7 @@ describe("DeveloperToolsController", () => {
           release = resolve;
         });
       }
-      return jsonResponse({ effectiveSwitches: { zeroDebug: true } });
+      return jsonResponse({ effectiveSwitches: { okouDebug: true } });
     });
 
     controller.requestRefresh();

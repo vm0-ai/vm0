@@ -2,10 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -18,16 +15,15 @@ import { connectors } from "@okouai/db/schema/connector";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { bench } from "vitest";
 import {
   chatThreadByIdContract,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
-import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorsMainContract } from "@okouai/api-contracts/contracts/connectors";
 import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
-import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+import { personalModelProvidersMainContract } from "@okouai/api-contracts/contracts/personal-model-providers";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { z } from "zod";
 import { executeRawRows } from "../../../lib/db-raw-rows";
@@ -46,8 +42,8 @@ import {
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
   type ConnectorCatalogArtifactConnector,
-} from "../../services/connector-catalog-artifacts/artifacts";
-import { encodeConnectorCatalogSnapshot } from "../../services/connector-catalog-artifacts/loader";
+} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+import { encodeConnectorCatalogSnapshot } from "@okouai/connector-catalog-validation/artifacts/loader";
 import { connectorCatalogSource } from "../../services/connector-catalog-source";
 import { currentConnectorCatalogValidatorIdentity } from "../../services/connector-catalog-validator-authority";
 import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.service";
@@ -62,7 +58,7 @@ import { meModelProvidersUpsertRoutes } from "../me-model-providers-upsert";
 import { orgReadRoutes } from "../org-read";
 import { userPreferencesRoutes } from "../user-preferences";
 
-const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+const personalModelProvidersMainTestRoutes = Object.freeze([
   ...meModelProvidersListRoutes,
   ...meModelProvidersUpsertRoutes,
 ]);
@@ -104,7 +100,7 @@ const chatThreadClient = setupApp({ context, routes: chatThreadRoutes })(
   chatThreadByIdContract,
 );
 const connectorsClient = setupApp({ context, routes: connectorsRoutes })(
-  zeroConnectorsMainContract,
+  connectorsMainContract,
 );
 const userPreferencesClient = setupApp({
   context,
@@ -117,13 +113,13 @@ const billingStatusClient = setupApp({
 const orgClient = setupApp({ context, routes: orgReadRoutes })(orgContract);
 const personalModelProvidersClient = setupApp({
   context,
-  routes: zeroPersonalModelProvidersMainTestRoutes,
-})(zeroPersonalModelProvidersMainContract);
+  routes: personalModelProvidersMainTestRoutes,
+})(personalModelProvidersMainContract);
 
 interface BenchChatThreadFixture {
   readonly userId: string;
   readonly orgId: string;
-  readonly composeId: string;
+  readonly agentId: string;
   readonly threadId: string;
 }
 
@@ -446,26 +442,13 @@ async function seedBackgroundLoad(): Promise<void> {
   const db = store.set(writeDb$);
   const bgUserId = `bg_user_${randomUUID()}`;
   const bgOrgId = `bg_org_${randomUUID()}`;
-  const bgComposeId = randomUUID();
-  const bgVersionId = randomUUID();
+  const bgAgentId = randomUUID();
 
-  await db.insert(agentComposes).values({
-    id: bgComposeId,
-    userId: bgUserId,
-    orgId: bgOrgId,
-    name: "bench-bg",
-  });
-  await db.insert(zeroAgents).values({
-    id: bgComposeId,
+  await db.insert(agents).values({
+    id: bgAgentId,
     orgId: bgOrgId,
     owner: bgUserId,
     name: "bench-bg",
-  });
-  await db.insert(agentComposeVersions).values({
-    id: bgVersionId,
-    composeId: bgComposeId,
-    content: { version: "1.0", agents: {} },
-    createdBy: bgUserId,
   });
 
   const threadIds: string[] = [];
@@ -480,7 +463,7 @@ async function seedBackgroundLoad(): Promise<void> {
       return {
         id,
         userId: bgUserId,
-        agentComposeId: bgComposeId,
+        agentId: bgAgentId,
         title: "bg",
       };
     }),
@@ -494,7 +477,7 @@ async function seedBackgroundLoad(): Promise<void> {
         id,
         userId: bgUserId,
         orgId: bgOrgId,
-        agentComposeId: bgComposeId,
+        agentId: bgAgentId,
       };
     }),
     (chunk) => {
@@ -514,7 +497,6 @@ async function seedBackgroundLoad(): Promise<void> {
         id: runId,
         userId: bgUserId,
         orgId: bgOrgId,
-        agentComposeVersionId: bgVersionId,
         sessionId: sessionIds[t]!,
         status: STATUSES[r % STATUSES.length]!,
         prompt: "bg",
@@ -531,26 +513,20 @@ async function seedBenchChatThread(): Promise<BenchChatThreadFixture> {
   const db = store.set(writeDb$);
   const userId = `user_${randomUUID()}`;
   const orgId = `org_${randomUUID()}`;
-  const composeId = randomUUID();
+  const agentId = randomUUID();
   const threadId = randomUUID();
   const title = "bench";
 
-  await db.insert(agentComposes).values({
-    id: composeId,
-    userId,
-    orgId,
-    name: `compose-${composeId.slice(0, 8)}`,
-  });
-  await db.insert(zeroAgents).values({
-    id: composeId,
+  await db.insert(agents).values({
+    id: agentId,
     orgId,
     owner: userId,
-    name: `agent-${composeId.slice(0, 8)}`,
+    name: `agent-${agentId.slice(0, 8)}`,
   });
   await db.insert(chatThreads).values({
     id: threadId,
     userId,
-    agentComposeId: composeId,
+    agentId,
     title,
   });
   await db.transaction(async (tx) => {
@@ -559,32 +535,24 @@ async function seedBenchChatThread(): Promise<BenchChatThreadFixture> {
       orgId,
       chatThreadId: threadId,
       kind: "created",
-      agentComposeId: composeId,
+      agentId,
       title,
     });
   });
 
-  return { userId, orgId, composeId, threadId };
+  return { userId, orgId, agentId, threadId };
 }
 
 async function seedTargetThreadRuns(
   fixture: BenchChatThreadFixture,
 ): Promise<void> {
   const db = store.set(writeDb$);
-  const versionId = randomUUID();
-  await db.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId: fixture.composeId,
-    content: { version: "1.0", agents: {} },
-    createdBy: fixture.userId,
-  });
-
   const [session] = await db
     .insert(agentSessions)
     .values({
       userId: fixture.userId,
       orgId: fixture.orgId,
-      agentComposeId: fixture.composeId,
+      agentId: fixture.agentId,
     })
     .returning({ id: agentSessions.id });
   if (!session) {
@@ -613,7 +581,6 @@ async function seedTargetThreadRuns(
       id: runId,
       userId: fixture.userId,
       orgId: fixture.orgId,
-      agentComposeVersionId: versionId,
       sessionId: session.id,
       status: STATUSES[i % STATUSES.length]!,
       prompt: `bench prompt ${String(i)}`,
@@ -694,7 +661,7 @@ async function seedSideEffectFreeGetData(
     orgId: fixture.orgId,
     userId: fixture.userId,
     timezone: "America/Los_Angeles",
-    pinnedAgentIds: [fixture.composeId],
+    pinnedAgentIds: [fixture.agentId],
     sendMode: "cmd-enter",
     captureNetworkBodiesRemaining: 3,
   });

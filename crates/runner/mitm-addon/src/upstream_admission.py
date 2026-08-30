@@ -16,8 +16,8 @@ import upstream_destination_binding
 from host_normalization import normalize_hostname
 from runtime_url_parsing import strip_url_query_and_fragment
 
-TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
-TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
+TLS_ADMISSION_VALID_REGISTRY_SANDBOX: Final = "valid_registry_sandbox"
+TLS_ADMISSION_INVALID_REGISTRY_SANDBOX: Final = "invalid_registry_sandbox"
 TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 
 _TEST_ENDPOINT_PATH_PREFIX: Final = "/api/test/"
@@ -25,8 +25,8 @@ _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
 _UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 
 TlsAdmissionKind = Literal[
-    "valid_registry_vm",
-    "invalid_registry_vm",
+    "valid_registry_sandbox",
+    "invalid_registry_sandbox",
     "registry_unavailable",
 ]
 PlatformRequestPathDecision = Literal["api_allow", "firewall", "deny"]
@@ -46,6 +46,9 @@ class _ApiDestination:
     scheme: Literal["http", "https"]
     host: str
     port: int
+
+
+_api_destination_cache: tuple[str, _ApiDestination | None] | None = None
 
 
 def _client_connection_id(client: object) -> str | None:
@@ -76,6 +79,11 @@ def forget_tls_admission(client: object) -> None:
 
 def reset_tls_admission_state_for_tests() -> None:
     _tls_admissions.clear()
+
+
+def reset_api_destination_cache_for_tests() -> None:
+    global _api_destination_cache
+    _api_destination_cache = None
 
 
 def _connected_verified_tls_destination_endpoint(
@@ -178,6 +186,19 @@ def _scheme_hostname_port_matches_api_destination(
 def _api_destination(
     api_url: str,
 ) -> _ApiDestination | None:
+    global _api_destination_cache
+    cached = _api_destination_cache
+    if cached is not None and cached[0] == api_url:
+        return cached[1]
+
+    api_destination = _derive_api_destination(api_url)
+    _api_destination_cache = (api_url, api_destination)
+    return api_destination
+
+
+def _derive_api_destination(
+    api_url: str,
+) -> _ApiDestination | None:
     if not api_url:
         return None
     parsed_api = urllib.parse.urlparse(api_url)
@@ -240,7 +261,7 @@ def _bind_privileged_upstream_destination(
     tls_admission = tls_admission_for_client(client)
     if tls_admission is not None and (
         tls_admission.client_ip != client_ip
-        or tls_admission.kind != TLS_ADMISSION_VALID_REGISTRY_VM
+        or tls_admission.kind != TLS_ADMISSION_VALID_REGISTRY_SANDBOX
         or (tls_admission.run_id is not None and tls_admission.run_id != run_id)
     ):
         return
@@ -323,14 +344,14 @@ def handle_server_connect(
     The event must expose client and server connections, a client peer IP registered in the
     current available registry, and usable SNI. The hook prefers client SNI and falls back to
     recorded ClientHello SNI. Any TLS admission record must identify the same client IP and a valid
-    registry VM, and its recorded run identity must match the current run. Missing, stale,
+    registry sandbox, and its recorded run identity must match the current run. Missing, stale,
     malformed, or untrusted inputs return without retargeting the server or creating or extending
     a binding.
 
     The normalized SNI host and current server destination port select one binding purpose. The
     configured HTTPS platform API host and its subdomains at the configured port qualify for
     ``api_allow``. Every other exact HTTPS authority qualifies for ``connector_auth`` only when the
-    current VM's compiled firewall set admits ordinary credential mutation there. A matching
+    current sandbox's compiled firewall set admits ordinary credential mutation there. A matching
     direct binding that already has the selected kind may be reused; otherwise the selected purpose
     must currently qualify before a matching binding is extended or a new binding is recorded. A
     nonmatching binding is preserved.
@@ -345,7 +366,8 @@ def handle_server_connect(
     if client is None or server is None:
         return
 
-    client_ip = client.peername[0] if getattr(client, "peername", None) else None
+    client_peername = connection_endpoints.client_peername(client)
+    client_ip = client_peername[0] if client_peername is not None else None
     if not client_ip:
         return
 
@@ -353,11 +375,11 @@ def handle_server_connect(
     if isinstance(registry_state, registry.RegistryUnavailable):
         return
 
-    vm_info = registry_state.vms.get(client_ip)
-    if vm_info is None:
+    sandbox_info = registry_state.sandboxes.get(client_ip)
+    if sandbox_info is None:
         return
 
-    run_id = vm_info.get("runId", "")
+    run_id = sandbox_info.get("runId", "")
     tls_admission = tls_admission_for_client(client)
     raw_sni = getattr(client, "sni", None)
     if not raw_sni and tls_admission is not None:
@@ -381,18 +403,20 @@ def handle_tls_clienthello(
 ) -> None:
     """Apply the MITM admission decision for a TLS ClientHello.
 
-    With no client peer IP, leave the interception decision unchanged. Valid registry VMs stay
-    intercepted and may prebind a privileged upstream. Invalid VM entries and unavailable registry
-    lookups also stay intercepted, preserving the request hook's fail-closed path. When the
-    connection can be keyed, these outcomes record ``valid_registry_vm`` with run and SNI identity,
-    ``invalid_registry_vm``, or ``registry_unavailable`` respectively.
+    With no client peer IP, leave the interception decision unchanged. Valid registry
+    sandboxes stay intercepted and may prebind a privileged upstream. Invalid sandbox
+    entries and unavailable registry lookups also stay intercepted, preserving the
+    request hook's fail-closed path. When the connection can be keyed, these outcomes
+    record ``valid_registry_sandbox`` with run and SNI identity,
+    ``invalid_registry_sandbox``, or ``registry_unavailable`` respectively.
 
     Only a client IP positively absent from a successfully loaded registry clears prior admission
     state and switches to passthrough. TLS admission is connection identity evidence for later
     classification, not cached authorization; current request-time registry state remains
     authoritative for enforcement.
     """
-    client_ip = data.context.client.peername[0] if data.context.client.peername else None
+    client_peername = connection_endpoints.client_peername(data.context.client)
+    client_ip = client_peername[0] if client_peername is not None else None
     if not client_ip:
         return
 
@@ -407,15 +431,15 @@ def handle_tls_clienthello(
         )
         return
 
-    vm_info = registry_state.vms.get(client_ip)
-    if vm_info is not None:
-        run_id = vm_info.get("runId", "")
+    sandbox_info = registry_state.sandboxes.get(client_ip)
+    if sandbox_info is not None:
+        run_id = sandbox_info.get("runId", "")
         raw_sni = data.client_hello.sni
         record_tls_admission(
             data.context.client,
             TlsAdmission(
                 client_ip=client_ip,
-                kind=TLS_ADMISSION_VALID_REGISTRY_VM,
+                kind=TLS_ADMISSION_VALID_REGISTRY_SANDBOX,
                 run_id=run_id,
                 sni=raw_sni if isinstance(raw_sni, str) else None,
             ),
@@ -431,18 +455,18 @@ def handle_tls_clienthello(
         )
         return
 
-    if client_ip in registry_state.invalid_vms:
+    if client_ip in registry_state.invalid_sandboxes:
         record_tls_admission(
             data.context.client,
             TlsAdmission(
                 client_ip=client_ip,
-                kind=TLS_ADMISSION_INVALID_REGISTRY_VM,
+                kind=TLS_ADMISSION_INVALID_REGISTRY_SANDBOX,
             ),
         )
         return
 
-    # Not a registered VM - pass through without MITM interception.
-    # This is critical for CIDR-based rules where all VM traffic is redirected.
+    # Not a registered sandbox - pass through without MITM interception.
+    # This is critical for CIDR-based rules where all sandbox traffic is redirected.
     forget_tls_admission(data.context.client)
     data.ignore_connection = True
 

@@ -22,7 +22,6 @@ use std::time::Duration;
 use nix::sys::socket::{Shutdown, shutdown as shutdown_socket};
 use tokio::io::AsyncReadExt;
 
-#[path = "support/nbd_fixture.rs"]
 mod nbd_fixture;
 
 use nbd_fixture::{NbdTestFixture, default_device_pool};

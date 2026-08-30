@@ -1,18 +1,21 @@
 use std::io;
 use std::sync::Arc;
+use std::time::Instant;
 
-use tokio::sync::mpsc;
 use vsock_proto::{
     BorrowedRawMessage, ExecCapturedOutput, ExecControlStatus, ExecOutputStream, MSG_ERROR,
-    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_STARTED,
+    MSG_EXEC_AGENT_READY, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
+    MSG_EXEC_STARTED,
 };
 
 use crate::{ConnectionState, Shared, normal_operation_transition_error};
 
-use super::state::{ExecCaptureState, ExecOperation, ExecOperationLifecycle};
+use super::state::{
+    ExecCaptureState, ExecOperation, ExecOperationLifecycle, ExecStreamTryReserveError,
+};
 use super::types::{
     ExecControlAck, ExecControlGuestStatus, ExecControlOutcome, ExecOperationResult,
-    ExecOutputEvent, ExecOwnedCapturedOutput,
+    ExecOutputEvent, ExecOwnedCapturedOutput, SupervisedExecStartTiming,
 };
 use super::{exec_operation_guest_error, exec_operation_protocol_error};
 
@@ -116,7 +119,11 @@ fn owned_captured_output(output: ExecCapturedOutput<'_>) -> ExecOwnedCapturedOut
     }
 }
 
-fn owned_output_event(output: vsock_proto::DecodedExecOutput<'_>) -> ExecOutputEvent {
+fn owned_output_event(
+    output: vsock_proto::DecodedExecOutput<'_>,
+    before_copy: impl FnOnce(),
+) -> ExecOutputEvent {
+    before_copy();
     ExecOutputEvent {
         stream: output.stream,
         output_seq: output.output_seq,
@@ -151,6 +158,20 @@ fn owned_result(
     }
 }
 
+fn supervised_start_failure_message(result: &ExecOperationResult) -> String {
+    if !result.diagnostic.is_empty() {
+        return result.diagnostic.clone();
+    }
+    if let ExecOwnedCapturedOutput::Captured { bytes, .. } = &result.stderr {
+        let stderr = String::from_utf8_lossy(bytes);
+        let stderr = stderr.trim();
+        if !stderr.is_empty() {
+            return stderr.to_owned();
+        }
+    }
+    "supervised exec start failed".to_owned()
+}
+
 /// Returns true when exec handling consumed the frame; false lets the normal
 /// pending-response dispatcher handle it.
 pub(crate) fn dispatch_incoming_frame(
@@ -161,6 +182,7 @@ pub(crate) fn dispatch_incoming_frame(
         MSG_ERROR => dispatch_error(shared, msg),
         MSG_EXEC_OUTPUT => dispatch_output(shared, msg).map(|_| true),
         MSG_EXEC_STARTED => dispatch_started(shared, msg).map(|_| true),
+        MSG_EXEC_AGENT_READY => dispatch_agent_ready(shared, msg).map(|_| true),
         MSG_EXEC_RESULT => dispatch_result(shared, msg).map(|_| true),
         MSG_EXEC_CONTROL_RESULT => dispatch_control_result(shared, msg).map(|_| true),
         _ => Ok(false),
@@ -189,12 +211,12 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
             if let Some(tx) = operation.stream_tx.clone() {
                 match tx.try_reserve_owned() {
                     Ok(permit) => Some((permit, decoded)),
-                    Err(mpsc::error::TrySendError::Full(tx)) => {
+                    Err(ExecStreamTryReserveError::Full(tx)) => {
                         operation.stream_overflowed = true;
                         senders_to_drop = Some((operation.stream_tx.take(), tx));
                         None
                     }
-                    Err(mpsc::error::TrySendError::Closed(tx)) => {
+                    Err(ExecStreamTryReserveError::Closed(tx)) => {
                         senders_to_drop = Some((operation.stream_tx.take(), tx));
                         None
                     }
@@ -209,10 +231,11 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
     drop(senders_to_drop);
 
     let returned_sender = if let Some((permit, decoded)) = prepared_output {
-        #[cfg(test)]
-        run_exec_output_before_copy_hook(shared);
+        let event = owned_output_event(decoded, || {
+            #[cfg(test)]
+            run_exec_output_before_copy_hook(shared);
+        });
 
-        let event = owned_output_event(decoded);
         {
             let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
             // Channel identity rejects a replacement operation after sequence
@@ -241,6 +264,8 @@ fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Res
             seq = snapshot.seq,
             label = %snapshot.label_log,
             elapsed_ms = snapshot.elapsed_ms,
+            process_class = snapshot.process_class,
+            operation_kind = snapshot.operation_kind,
             "slow exec operation first output"
         );
     }
@@ -263,14 +288,48 @@ fn dispatch_started(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Re
                 match lifecycle {
                     ExecOperationLifecycle::SupervisedAwaitingStart {
                         mut start_tx,
+                        role,
                         control_nonce,
                     } => {
                         let start_tx = start_tx.take();
-                        operation.lifecycle = ExecOperationLifecycle::SupervisedStarted {
-                            pid: decoded.pid,
-                            control_nonce,
-                        };
-                        start_tx.map(|start_tx| (start_tx, decoded.pid))
+                        let shell_started_at = Instant::now();
+                        match role {
+                            vsock_proto::ExecProcessRole::Workload => {
+                                operation.lifecycle = ExecOperationLifecycle::SupervisedStarted {
+                                    pid: decoded.pid,
+                                    control_nonce,
+                                };
+                                start_tx.map(|start_tx| {
+                                    (
+                                        start_tx,
+                                        decoded.pid,
+                                        SupervisedExecStartTiming {
+                                            shell_started_at,
+                                            agent_ready_at: None,
+                                            agent_ready: None,
+                                        },
+                                    )
+                                })
+                            }
+                            vsock_proto::ExecProcessRole::Agent => {
+                                operation.lifecycle =
+                                    ExecOperationLifecycle::SupervisedAwaitingAgentReady {
+                                        start_tx,
+                                        pid: decoded.pid,
+                                        shell_started_at,
+                                        control_nonce,
+                                    };
+                                None
+                            }
+                        }
+                    }
+                    lifecycle @ ExecOperationLifecycle::SupervisedAwaitingAgentReady {
+                        pid, ..
+                    } => {
+                        operation.lifecycle = lifecycle;
+                        return Err(exec_operation_protocol_error(format!(
+                            "duplicate exec_started for Agent pid {pid}",
+                        )));
                     }
                     lifecycle @ ExecOperationLifecycle::SupervisedStarted { pid, .. } => {
                         operation.lifecycle = lifecycle;
@@ -289,8 +348,73 @@ fn dispatch_started(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Re
         }
     };
 
-    if let Some((start_tx, pid)) = start {
-        let _ = start_tx.send(Ok(pid));
+    if let Some((start_tx, pid, timing)) = start {
+        let _ = start_tx.send(Ok((pid, timing)));
+    }
+
+    Ok(())
+}
+
+fn dispatch_agent_ready(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+    let start = {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Connected { operations, .. } => {
+                let Some(operation) = operations.get_mut_by_seq(msg.seq) else {
+                    return Ok(());
+                };
+                let decoded = vsock_proto::decode_exec_agent_ready(msg.payload)
+                    .map_err(exec_operation_protocol_error)?;
+                let lifecycle =
+                    std::mem::replace(&mut operation.lifecycle, ExecOperationLifecycle::OneShot);
+                match lifecycle {
+                    ExecOperationLifecycle::SupervisedAwaitingAgentReady {
+                        mut start_tx,
+                        pid,
+                        shell_started_at,
+                        control_nonce,
+                    } => {
+                        let start_tx = start_tx.take();
+                        let agent_ready_at = Instant::now();
+                        operation.lifecycle =
+                            ExecOperationLifecycle::SupervisedStarted { pid, control_nonce };
+                        start_tx.map(|start_tx| {
+                            (
+                                start_tx,
+                                pid,
+                                SupervisedExecStartTiming {
+                                    shell_started_at,
+                                    agent_ready_at: Some(agent_ready_at),
+                                    agent_ready: Some(decoded),
+                                },
+                            )
+                        })
+                    }
+                    lifecycle @ ExecOperationLifecycle::SupervisedAwaitingStart { .. } => {
+                        operation.lifecycle = lifecycle;
+                        return Err(exec_operation_protocol_error(
+                            "exec_agent_ready received before exec_started",
+                        ));
+                    }
+                    lifecycle @ ExecOperationLifecycle::SupervisedStarted { pid, .. } => {
+                        operation.lifecycle = lifecycle;
+                        return Err(exec_operation_protocol_error(format!(
+                            "unexpected exec_agent_ready for started pid {pid}",
+                        )));
+                    }
+                    ExecOperationLifecycle::OneShot => {
+                        return Err(exec_operation_protocol_error(
+                            "exec_agent_ready received for one-shot exec operation",
+                        ));
+                    }
+                }
+            }
+            ConnectionState::Closed => None,
+        }
+    };
+
+    if let Some((start_tx, pid, timing)) = start {
+        let _ = start_tx.send(Ok((pid, timing)));
     }
 
     Ok(())
@@ -329,11 +453,7 @@ pub(in crate::exec_operation) fn dispatch_result(
     );
     let result = owned_result(decoded, terminal.stream_overflowed);
     if let Some(start_tx) = terminal.start_tx {
-        let message = if result.diagnostic.is_empty() {
-            "supervised exec start failed".to_owned()
-        } else {
-            result.diagnostic.clone()
-        };
+        let message = supervised_start_failure_message(&result);
         let _ = start_tx.send(Err(io::Error::other(message)));
     }
     let _ = terminal.result_tx.send(Ok(result));

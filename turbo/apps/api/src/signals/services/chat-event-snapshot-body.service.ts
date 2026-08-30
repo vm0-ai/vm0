@@ -9,7 +9,10 @@ export function decodeChatEventSnapshotBody(
   body: Buffer,
 ): readonly ChatEventRow[] {
   const text = body.toString("utf8");
-  if (text.length === 0 || !text.endsWith("\n")) {
+  if (text.length === 0) {
+    return [];
+  }
+  if (!text.endsWith("\n")) {
     throw new Error("Chat Event snapshot must be newline-delimited JSON");
   }
   return text
@@ -25,16 +28,4 @@ export function decodeChatEventSnapshotBody(
     .map((row) => {
       return chatEventRowSchema.parse(row);
     });
-}
-
-export function encodeChatEventSnapshotBody(
-  rows: readonly ChatEventRow[],
-): Buffer {
-  return Buffer.from(
-    rows
-      .map((row) => {
-        return JSON.stringify(row);
-      })
-      .join("\n") + "\n",
-  );
 }

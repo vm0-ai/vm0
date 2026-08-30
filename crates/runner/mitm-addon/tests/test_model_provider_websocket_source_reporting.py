@@ -8,6 +8,7 @@ from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import model_provider_failure
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import (
@@ -38,13 +39,13 @@ def deferred_websocket_trim_scheduler(
 class TestModelProviderWebSocketUsageSourceRelease:
     """Tests for sources that cannot be delivered to the usage webhook."""
 
-    def test_model_websocket_missing_context_releases_positive_source(
+    def test_model_websocket_missing_billing_context_reports_observation_and_releases_source(
         self, tmp_path, real_flow, mitm_ctx
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         with mitm_ctx(api_url="https://api.vm0.ai"):
             feed_websocket_server_message(
@@ -59,10 +60,8 @@ class TestModelProviderWebSocketUsageSourceRelease:
         assert model_provider_usage_sources(flow) == {}
         entries = read_jsonl_entries_after_flush(proxy_log)
         [entry] = [entry for entry in entries if entry.get("type") == "usage_underbilling"]
-        [observation_entry] = [
-            entry for entry in entries if entry.get("type") == "model_usage_observation"
-        ]
-        assert not any(entry.get("type") == "model_usage_source" for entry in entries)
+        [source_entry] = [entry for entry in entries if entry.get("type") == "model_usage_source"]
+        assert not any(entry.get("type") == "model_usage_observation" for entry in entries)
         assert entry["type"] == "usage_underbilling"
         assert entry["reason"] == "missing_reporting_context"
         assert entry["underbilling_class"] == "confirmed"
@@ -70,10 +69,10 @@ class TestModelProviderWebSocketUsageSourceRelease:
         assert entry["firewall_name"] == "model-provider:openai-api-key"
         assert entry["missing_sandbox_token"] is True
         assert entry["missing_api_url"] is False
-        assert observation_entry["level"] == "warn"
-        assert (
-            observation_entry["message"]
-            == "Cannot report model usage observation: missing sandbox_token or api_url"
+        assert all(event["buffer_accepted"] is False for event in source_entry["usage_events"])
+        assert all(
+            observation["buffer_accepted"] is True
+            for observation in source_entry["model_usage_observations"]
         )
 
     def test_model_websocket_missing_api_url_releases_positive_source(
@@ -81,7 +80,7 @@ class TestModelProviderWebSocketUsageSourceRelease:
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         with mitm_ctx(api_url=""):
             feed_websocket_server_message(
@@ -106,8 +105,8 @@ class TestModelProviderWebSocketUsageSourceRelease:
     def test_model_websocket_missing_context_releases_zero_only_source(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         feed_websocket_server_message(
             flow,
@@ -126,7 +125,7 @@ class TestModelProviderWebSocketUsageSourceRelease:
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         with mitm_ctx(api_url=""):
             feed_websocket_server_message(
@@ -156,40 +155,49 @@ class TestModelProviderWebSocketSourceReporting:
             usage.flush_usage_events(trigger="test")
         return webhook
 
-    def test_full_pipeline_model_websocket_reports_usage(self, tmp_path, real_flow):
+    def test_full_pipeline_model_websocket_reports_usage(
+        self,
+        tmp_path,
+        real_flow,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
         """Codex Responses WebSocket frames should bill like SSE events."""
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        model_provider_failure.admit_flow(flow)
         mitm_addon.responseheaders(flow)
+        full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
         assert flow.metadata["model_websocket_usage_enabled"] is True
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
+        terminal_frame = json.dumps(
+            {
+                "type": "response.completed",
+                "response": {
+                    "id": "resp_ws_1",
+                    "model": "gpt-5.5",
+                    "usage": {
+                        "input_tokens": 50,
+                        "output_tokens": 20,
+                        "input_tokens_details": {
+                            "cached_tokens": 10,
+                            "cache_write_tokens": 15,
+                        },
+                    },
+                },
+            }
+        ).encode()
         set_websocket_message(
             flow,
             from_client=False,
-            content=json.dumps(
-                {
-                    "type": "response.completed",
-                    "response": {
-                        "id": "resp_ws_1",
-                        "model": "gpt-5.5",
-                        "usage": {
-                            "input_tokens": 50,
-                            "output_tokens": 20,
-                            "input_tokens_details": {
-                                "cached_tokens": 10,
-                                "cache_write_tokens": 15,
-                            },
-                        },
-                    },
-                }
-            ).encode(),
+            content=terminal_frame,
         )
 
         webhook = self._run_websocket_message_and_end(flow)
 
+        assert full_body_feeds.count(terminal_frame) == 1
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert model_provider_usage_sources(flow) == {}
         assert_usage_event_rows(
@@ -233,8 +241,9 @@ class TestModelProviderWebSocketSourceReporting:
         monkeypatch: pytest.MonkeyPatch,
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        model_provider_failure.admit_flow(flow)
         mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
         over_budget_frame = (
             b'{"type":"response.completed","response":{"id":"resp_partial",'
@@ -276,6 +285,13 @@ class TestModelProviderWebSocketSourceReporting:
             entry for entry in proxy_entries if entry.get("type") == "model_usage_correlation"
         ]
         assert correlation_entry["reason"] == "correlation_cap"
+        [failure_entry] = [
+            entry
+            for entry in proxy_entries
+            if entry.get("type") == "model_provider_failure"
+            and entry.get("disposition") == "suppressed"
+        ]
+        assert failure_entry["reason"] == "invalid_server_event"
         assert model_provider_usage_sources(flow) == {}
         expected_rows = [
             ("gpt-5.5", "tokens.input", 7),
@@ -291,7 +307,7 @@ class TestModelProviderWebSocketSourceReporting:
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
 
         with self._usage_webhook_api() as webhook:
             feed_websocket_server_message(

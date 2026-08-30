@@ -4,30 +4,24 @@ import { createStore } from "ccstate";
 import { onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { readAgentRunVersionFixture } from "../../../test-fixtures/agent-compose-provenance";
 import {
   holdAgentDeletionRowLockFixture,
   holdAgentRunInsertFixture,
   holdAgentRunLocksFixture,
   holdAgentRunPromotionFixture,
   holdAgentSessionInsertFixture,
-  holdAgentVersionInsertFixture,
   holdChatThreadThenSessionFixture,
   holdUsageEventMutationFixture,
   readAgentLifecycleCountsFixture,
   readAgentLifecycleIdsFixture,
   readDatabaseLockTimeoutFixture,
   readUsageEventRunIdFixture,
-  referenceAgentHeadFixture,
-  referenceAgentRunVersionFixture,
-  removeAgentLegacyVersionsFixture,
   setAgentLifecycleOrgFixture,
   setAgentRunStatusFixture,
 } from "../../../test-fixtures/agent-deletion";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   insertUsageEvent$,
@@ -40,7 +34,6 @@ const context = testContext();
 const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
-const storages = createStoragesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 
 interface HeldBoundary {
@@ -82,25 +75,6 @@ async function prepareRunCreation(
   }
 }
 
-async function pointTargetAtSurvivorVersion(args: {
-  readonly targetAgentId: string;
-  readonly targetRunIds: readonly string[];
-  readonly survivorAgentId: string;
-}): Promise<string> {
-  const versionId = await referenceAgentHeadFixture({
-    agentId: args.targetAgentId,
-    versionAgentId: args.survivorAgentId,
-  });
-  for (const runId of args.targetRunIds) {
-    await referenceAgentRunVersionFixture({
-      runId,
-      versionAgentId: args.survivorAgentId,
-    });
-  }
-  await removeAgentLegacyVersionsFixture(args.targetAgentId);
-  return versionId;
-}
-
 function expectRetryConflict(response: {
   readonly status: number;
   readonly body: unknown;
@@ -132,78 +106,47 @@ async function expectCheckpointSucceeds(
 }
 
 describe("DELETE /api/agents/:id bounded deletion interlock", () => {
-  it("vetoes a target-owned legacy version without invalidating a shared Run", async () => {
+  it("deletes the exact canonical lifecycle while retaining billing and unrelated Runs", async () => {
     const actor = bdd.user();
     await prepareRunCreation(actor);
-    const target = await createAgent(actor, "Legacy Version Target");
-    const survivor = await createAgent(actor, "Independent Head Survivor");
-    const targetHistoricalRun = await api.createRun(actor, {
+    const target = await createAgent(actor, "Deletion Target");
+    const survivor = await createAgent(actor, "Independent Survivor");
+    const targetRun = await api.createRun(actor, {
       agentId: target.agentId,
-      prompt: "retain target lifecycle on veto",
+      prompt: "retain target billing history",
       modelProvider: "anthropic-api-key",
     });
-    await api.requestCancelRun(actor, targetHistoricalRun.runId, [200]);
+    await api.requestCancelRun(actor, targetRun.runId, [200]);
     const survivorRun = await api.createRun(actor, {
       agentId: survivor.agentId,
-      prompt: "retain shared provenance",
+      prompt: "retain unrelated lifecycle",
       modelProvider: "anthropic-api-key",
-    });
-    const survivorHistoricalRun = await api.createRun(actor, {
-      agentId: survivor.agentId,
-      prompt: "retain historical shared provenance",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.requestCancelRun(actor, survivorHistoricalRun.runId, [200]);
-    const targetVersionId = await referenceAgentRunVersionFixture({
-      runId: survivorRun.runId,
-      versionAgentId: target.agentId,
-    });
-    await referenceAgentRunVersionFixture({
-      runId: survivorHistoricalRun.runId,
-      versionAgentId: target.agentId,
     });
     const usageEventId = await store.set(
       insertUsageEvent$,
       {
         orgId: orgIdOf(actor),
         userId: actor.userId,
-        runId: targetHistoricalRun.runId,
+        runId: targetRun.runId,
         status: "pending",
         creditsCharged: 2,
       },
       context.signal,
     );
-    const volumesBefore = await storages.listStorages(actor, "organization");
     const lockTimeoutBefore = await readDatabaseLockTimeoutFixture();
-    context.mocks.s3.send.mockClear();
 
-    const response = await bdd.requestDeleteAgent(actor, target.agentId, [409]);
+    const response = await bdd.requestDeleteAgent(actor, target.agentId, [204]);
 
-    expect(response.body).toStrictEqual({
-      error: {
-        message:
-          "Cannot delete agent while its configuration is being migrated",
-        code: "CONFLICT",
-      },
-    });
-    expect(context.mocks.s3.send).not.toHaveBeenCalled();
-    await expect(bdd.readAgent(actor, target.agentId)).resolves.toMatchObject({
-      agentId: target.agentId,
-    });
+    expect(response.body).toBeUndefined();
+    await expect(
+      bdd.requestReadAgent(actor, target.agentId, [404]),
+    ).resolves.toMatchObject({ status: 404 });
     await expect(
       readAgentLifecycleCountsFixture(target.agentId),
-    ).resolves.toStrictEqual({ agents: 1, sessions: 1, runs: 1 });
-    const targetHistoricalRunRead = await api.readRun(
-      actor,
-      targetHistoricalRun.runId,
-    );
-    expect(targetHistoricalRunRead).toMatchObject({
-      runId: targetHistoricalRun.runId,
-    });
-    expect(targetHistoricalRunRead).not.toHaveProperty("agentComposeVersionId");
+    ).resolves.toStrictEqual({ agents: 0, sessions: 0, runs: 0 });
     await expect(
-      readAgentRunVersionFixture(targetHistoricalRun.runId),
-    ).resolves.toBe(targetVersionId);
+      api.requestReadRun(actor, targetRun.runId, [404]),
+    ).resolves.toMatchObject({ status: 404 });
     await expect(bdd.readAgent(actor, survivor.agentId)).resolves.toMatchObject(
       { agentId: survivor.agentId },
     );
@@ -212,52 +155,23 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       runId: survivorRun.runId,
       status: "pending",
     });
-    expect(survivorRunRead).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(survivorRun.runId)).resolves.toBe(
-      targetVersionId,
-    );
-    const survivorHistoricalRunRead = await api.readRun(
-      actor,
-      survivorHistoricalRun.runId,
-    );
-    expect(survivorHistoricalRunRead).toMatchObject({
-      runId: survivorHistoricalRun.runId,
-    });
-    expect(survivorHistoricalRunRead).not.toHaveProperty(
-      "agentComposeVersionId",
-    );
-    await expect(
-      readAgentRunVersionFixture(survivorHistoricalRun.runId),
-    ).resolves.toBe(targetVersionId);
     await expectCheckpointSucceeds(actor, survivorRun.runId);
-    await expect(readUsageEventRunIdFixture(usageEventId)).resolves.toBe(
-      targetHistoricalRun.runId,
-    );
-    await expect(
-      storages.listStorages(actor, "organization"),
-    ).resolves.toStrictEqual(volumesBefore);
+    await expect(readUsageEventRunIdFixture(usageEventId)).resolves.toBeNull();
     await expect(readDatabaseLockTimeoutFixture()).resolves.toBe(
       lockTimeoutBefore,
     );
     await api.requestCancelRun(actor, survivorRun.runId, [200]);
   });
 
-  it("detects an active target Run through its Session instead of its version", async () => {
+  it("detects an active target Run through its canonical Session", async () => {
     const actor = bdd.user();
     await prepareRunCreation(actor);
-    const survivor = await createAgent(actor, "Active Version Survivor");
     const target = await createAgent(actor, "Active Session Target");
     const targetRun = await api.createRun(actor, {
       agentId: target.agentId,
       prompt: "block target deletion",
       modelProvider: "anthropic-api-key",
     });
-    const versionId = await pointTargetAtSurvivorVersion({
-      targetAgentId: target.agentId,
-      targetRunIds: [targetRun.runId],
-      survivorAgentId: survivor.agentId,
-    });
-
     const response = await bdd.requestDeleteAgent(actor, target.agentId, [409]);
 
     expect(response.body).toStrictEqual({
@@ -271,23 +185,19 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       runId: targetRun.runId,
       status: "pending",
     });
-    expect(targetRunRead).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(targetRun.runId)).resolves.toBe(
-      versionId,
-    );
     await expect(bdd.readAgent(actor, target.agentId)).resolves.toMatchObject({
       agentId: target.agentId,
     });
     await api.requestCancelRun(actor, targetRun.runId, [200]);
   });
 
-  it("cascades queued and terminal target Runs while preserving cross-org provenance and billing", async () => {
+  it("cascades queued and terminal target Runs while preserving unrelated cross-org lifecycle and billing", async () => {
     const targetOwner = bdd.user();
     const survivorOwner = bdd.user();
     await prepareRunCreation(targetOwner, survivorOwner);
     const survivor = await createAgent(
       survivorOwner,
-      "Cross Org Version Survivor",
+      "Cross Org Agent Survivor",
     );
     const target = await createAgent(targetOwner, "Terminal Cleanup Target");
     const survivorRun = await api.createRun(survivorOwner, {
@@ -308,11 +218,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
     await api.requestCancelRun(targetOwner, terminalRun.runId, [200]);
     await flushWaitUntilForTest();
     await setAgentRunStatusFixture(queuedRun.runId, "queued");
-    const survivorVersionId = await pointTargetAtSurvivorVersion({
-      targetAgentId: target.agentId,
-      targetRunIds: [terminalRun.runId, queuedRun.runId],
-      survivorAgentId: survivor.agentId,
-    });
     const orgId = orgIdOf(targetOwner);
     const pendingUsageId = await store.set(
       insertUsageEvent$,
@@ -351,7 +256,7 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       ),
     ).resolves.toStrictEqual({ raw: 1, hourly: 1 });
 
-    await bdd.deleteVersionFreeAgent(targetOwner, target.agentId);
+    await bdd.deleteAgent(targetOwner, target.agentId);
 
     await expect(
       bdd.requestReadAgent(targetOwner, target.agentId, [404]),
@@ -373,10 +278,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       runId: survivorRun.runId,
       status: "pending",
     });
-    expect(survivorRunRead).not.toHaveProperty("agentComposeVersionId");
-    await expect(readAgentRunVersionFixture(survivorRun.runId)).resolves.toBe(
-      survivorVersionId,
-    );
     await expectCheckpointSucceeds(survivorOwner, survivorRun.runId);
     await expect(
       readUsageEventRunIdFixture(pendingUsageId),
@@ -396,7 +297,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
     async (kind) => {
       const actor = bdd.user();
       await prepareRunCreation(actor);
-      const survivor = await createAgent(actor, `Org ${kind} Survivor`);
       const target = await createAgent(actor, `Org ${kind} Target`);
       const run = await api.createRun(actor, {
         agentId: target.agentId,
@@ -404,11 +304,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
         modelProvider: "anthropic-api-key",
       });
       await api.requestCancelRun(actor, run.runId, [200]);
-      await pointTargetAtSurvivorVersion({
-        targetAgentId: target.agentId,
-        targetRunIds: [run.runId],
-        survivorAgentId: survivor.agentId,
-      });
       const lifecycle = await readAgentLifecycleIdsFixture(target.agentId);
       const id =
         kind === "session" ? lifecycle.sessionIds[0] : lifecycle.runIds[0];
@@ -450,7 +345,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
     async (kind) => {
       const actor = bdd.user();
       await prepareRunCreation(actor);
-      const survivor = await createAgent(actor, `Lock ${kind} Survivor`);
       const target = await createAgent(actor, `Lock ${kind} Target`);
       const run = await api.createRun(actor, {
         agentId: target.agentId,
@@ -458,11 +352,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
         modelProvider: "anthropic-api-key",
       });
       await api.requestCancelRun(actor, run.runId, [200]);
-      await pointTargetAtSurvivorVersion({
-        targetAgentId: target.agentId,
-        targetRunIds: [run.runId],
-        survivorAgentId: survivor.agentId,
-      });
       const lifecycle = await readAgentLifecycleIdsFixture(target.agentId);
       const id =
         kind === "agent"
@@ -503,22 +392,11 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
 
       held.release();
       await held.done;
-      await bdd.deleteVersionFreeAgent(actor, target.agentId);
+      await bdd.deleteAgent(actor, target.agentId);
     },
   );
 
   it.each([
-    [
-      "version",
-      [409],
-      {
-        error: {
-          message:
-            "Cannot delete agent while its configuration is being migrated",
-          code: "CONFLICT",
-        },
-      },
-    ],
     ["session", [204], undefined],
     [
       "run",
@@ -536,7 +414,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       const actor = bdd.user();
       const orgId = orgIdOf(actor);
       await prepareRunCreation(actor);
-      const survivor = await createAgent(actor, `Insert ${kind} Survivor`);
       const target = await createAgent(actor, `Insert ${kind} Target`);
       const run = await api.createRun(actor, {
         agentId: target.agentId,
@@ -544,36 +421,25 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
         modelProvider: "anthropic-api-key",
       });
       await api.requestCancelRun(actor, run.runId, [200]);
-      await pointTargetAtSurvivorVersion({
-        targetAgentId: target.agentId,
-        targetRunIds: [run.runId],
-        survivorAgentId: survivor.agentId,
-      });
       const lifecycle = await readAgentLifecycleIdsFixture(target.agentId);
       const sessionId = lifecycle.sessionIds[0];
       if (!sessionId) {
         throw new Error("Expected a target Session");
       }
       const held =
-        kind === "version"
-          ? await holdAgentVersionInsertFixture({
+        kind === "session"
+          ? await holdAgentSessionInsertFixture({
               agentId: target.agentId,
+              orgId,
               userId: actor.userId,
               signal: context.signal,
             })
-          : kind === "session"
-            ? await holdAgentSessionInsertFixture({
-                agentId: target.agentId,
-                orgId,
-                userId: actor.userId,
-                signal: context.signal,
-              })
-            : await holdAgentRunInsertFixture({
-                sessionId,
-                orgId,
-                userId: actor.userId,
-                signal: context.signal,
-              });
+          : await holdAgentRunInsertFixture({
+              sessionId,
+              orgId,
+              userId: actor.userId,
+              signal: context.signal,
+            });
       registerHeldBoundary(held);
 
       const response = await bdd.requestDeleteAgent(
@@ -602,7 +468,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
   it("fails fast across reverse Run locks and a queued promotion", async () => {
     const actor = bdd.user();
     await prepareRunCreation(actor);
-    const survivor = await createAgent(actor, "Reverse Lock Survivor");
     const target = await createAgent(actor, "Reverse Lock Target");
     const first = await api.createRun(actor, {
       agentId: target.agentId,
@@ -616,11 +481,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
     });
     await setAgentRunStatusFixture(first.runId, "queued");
     await setAgentRunStatusFixture(second.runId, "queued");
-    await pointTargetAtSurvivorVersion({
-      targetAgentId: target.agentId,
-      targetRunIds: [first.runId, second.runId],
-      survivorAgentId: survivor.agentId,
-    });
     const lifecycle = await readAgentLifecycleIdsFixture(target.agentId);
     const reverseRunIds = [...lifecycle.runIds].reverse();
     const reverseLocks = await holdAgentRunLocksFixture({
@@ -668,7 +528,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
   it("bounds the Session and ChatThread reverse path without a deadlock", async () => {
     const actor = bdd.user();
     await prepareRunCreation(actor);
-    const survivor = await createAgent(actor, "ChatThread Cycle Survivor");
     const target = await createAgent(actor, "ChatThread Cycle Target");
     const run = await api.createRun(actor, {
       agentId: target.agentId,
@@ -676,11 +535,6 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, run.runId, [200]);
-    await pointTargetAtSurvivorVersion({
-      targetAgentId: target.agentId,
-      targetRunIds: [run.runId],
-      survivorAgentId: survivor.agentId,
-    });
     const lifecycle = await readAgentLifecycleIdsFixture(target.agentId);
     const sessionId = lifecycle.sessionIds[0];
     if (!sessionId) {
@@ -719,14 +573,13 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
     );
     held.release();
     await held.done;
-    await bdd.deleteVersionFreeAgent(actor, target.agentId);
+    await bdd.deleteAgent(actor, target.agentId);
   });
 
   it("rolls back a cascade-child timeout and retains billing on retry", async () => {
     const actor = bdd.user();
     const orgId = orgIdOf(actor);
     await prepareRunCreation(actor);
-    const survivor = await createAgent(actor, "Cascade Child Survivor");
     const target = await createAgent(actor, "Cascade Child Target");
     const run = await api.createRun(actor, {
       agentId: target.agentId,
@@ -734,11 +587,7 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, run.runId, [200]);
-    await pointTargetAtSurvivorVersion({
-      targetAgentId: target.agentId,
-      targetRunIds: [run.runId],
-      survivorAgentId: survivor.agentId,
-    });
+    await flushWaitUntilForTest();
     const usageEventId = await store.set(
       insertUsageEvent$,
       {
@@ -779,7 +628,7 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
     held.release();
     await held.done;
 
-    await bdd.deleteVersionFreeAgent(actor, target.agentId);
+    await bdd.deleteAgent(actor, target.agentId);
 
     await expect(readUsageEventRunIdFixture(usageEventId)).resolves.toBeNull();
     await expect(

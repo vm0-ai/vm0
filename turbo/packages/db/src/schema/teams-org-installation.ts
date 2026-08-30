@@ -32,7 +32,7 @@ export const teamsOrgInstallations = pgTable(
     installedByUserId: text("installed_by_user_id"),
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
-      .default("vm0")
+      .default("okou")
       .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

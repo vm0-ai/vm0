@@ -92,22 +92,6 @@ describe("RUN-01: run creation admission and validation", () => {
       "Missing agentId or sessionId",
     );
 
-    for (const legacyIdentity of [
-      { agentComposeId: randomUUID() },
-      { agentComposeVersionId: randomUUID() },
-    ]) {
-      const rejectedLegacyIdentity = await api.requestCreateRunUnchecked(
-        actor,
-        {
-          ...legacyIdentity,
-          prompt: "reject caller-selected compose identity",
-        },
-        [400],
-      );
-      expectApiError(rejectedLegacyIdentity.body);
-      expect(rejectedLegacyIdentity.body.error.code).toBe("BAD_REQUEST");
-    }
-
     const invalidTools = await api.requestCreateRun(
       actor,
       {

@@ -150,6 +150,56 @@ async function seedAgentRun(
   );
 }
 
+async function seedCanonicalAgentRun(
+  client: Client,
+  fixture: {
+    readonly agentId: string;
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly suffix: string;
+  },
+): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO "agents" ("id", "org_id", "owner", "name")
+      VALUES ($1, $2, $3, $4)
+    `,
+    [
+      fixture.agentId,
+      `launch-snapshot-${fixture.suffix}-org`,
+      `launch-snapshot-${fixture.suffix}-user`,
+      `launch snapshot ${fixture.suffix}`,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id", "user_id", "org_id", "agent_id"
+      ) VALUES ($1, $2, $3, $4)
+    `,
+    [
+      fixture.sessionId,
+      `launch-snapshot-${fixture.suffix}-user`,
+      `launch-snapshot-${fixture.suffix}-org`,
+      fixture.agentId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "org_id", "session_id", "status", "prompt"
+      ) VALUES ($1, $2, $3, $4, 'pending', $5)
+    `,
+    [
+      fixture.runId,
+      `launch-snapshot-${fixture.suffix}-user`,
+      `launch-snapshot-${fixture.suffix}-org`,
+      fixture.sessionId,
+      `launch snapshot ${fixture.suffix}`,
+    ],
+  );
+}
+
 async function readAgentRunsRelationFileNode(client: Client): Promise<string> {
   const result = await client.query<{ fileNode: string }>(`
     SELECT "relfilenode"::text AS "fileNode"
@@ -310,14 +360,13 @@ function validateCallerIsolation(): void {
     "turbo/apps/api/src/signals/routes/__tests__/computer-use.bdd.test.ts",
     "turbo/apps/api/src/signals/routes/__tests__/helpers/runtime-state.ts",
     "turbo/apps/api/src/signals/routes/__tests__/run-lifecycle.bdd.test.ts",
-    "turbo/apps/api/src/signals/routes/__tests__/run-reads.bdd.test.ts",
     "turbo/apps/api/src/signals/routes/test-runtime-state.ts",
     "turbo/apps/api/src/signals/services/agent-run-create.service.ts",
     "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts",
     "turbo/apps/api/src/signals/services/agent-webhook-complete.service.ts",
     "turbo/apps/api/src/signals/services/log-detail-run-selection.ts",
     "turbo/apps/api/src/signals/services/logs.service.ts",
-    "turbo/apps/api/src/test-fixtures/agent-compose-provenance.ts",
+    "turbo/apps/api/src/test-fixtures/agent-runs.ts",
     "turbo/packages/api-contracts/src/contracts/test-runtime-state.ts",
   ]);
 
@@ -569,9 +618,7 @@ export async function validateAgentRunLaunchSnapshotMigration(): Promise<void> {
     );
     console.log("   ✅ ordinary DML remains healthy under validation lock");
     console.log("   ✅ migration retries are exact and idempotent");
-    console.log(
-      "   ✅ runtime callers contain no launch-snapshot dependency\n",
-    );
+    console.log("   ✅ runtime launch-snapshot caller inventory is exact\n");
   } finally {
     await blocker.query("ROLLBACK");
     await migrator.query("ROLLBACK");
@@ -607,7 +654,7 @@ export async function validateAgentRunLaunchSnapshotSchema(
       hasMissing: false,
     });
     assert.equal((await readConstraintCatalog(client)).validated, true);
-    await seedAgentRun(client, fixture);
+    await seedCanonicalAgentRun(client, fixture);
     await validateConstraintValues(client, fixture.runId);
     console.log("   ✅ fresh schema matches the nullable strict v1 contract\n");
   } finally {

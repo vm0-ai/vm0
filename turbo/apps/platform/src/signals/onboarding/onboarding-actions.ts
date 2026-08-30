@@ -1,21 +1,17 @@
 import { command } from "ccstate";
 import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 import {
-  billingCheckoutContract,
   billingRedeemCodeContract,
   billingUsagePackCheckoutContract,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
-import { IN_VITEST } from "../../env.ts";
+import { clearLastUsedAgentId$ } from "../agent.ts";
 import { apiClient$ } from "../api-client.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
-import { setLoop } from "../utils.ts";
-import { billingStatusAsync$ } from "../zero-page/billing.ts";
+import { billingStatusAsync$ } from "../okou-page/billing.ts";
 import { readStoredAdAttributionMetadata$ } from "../bootstrap/ad-attribution.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { reloadOnboardingStatus$ } from "../okou-page/onboarding.ts";
 import {
   ONBOARDING_CHECKOUT_STATE_PARAM,
   onboardingDraft$,
@@ -27,6 +23,7 @@ import {
   capturePaidOnboardingRedirectToStripe$,
   capturePaidOnboardingRoleConfirmed$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
+import { completeGoogleAdsPaidCheckout$ } from "../bootstrap/google-ads-paid-conversion.ts";
 
 export const completeOnboarding$ = command(
   async (
@@ -61,6 +58,7 @@ export const completeOnboarding$ = command(
     if (role) {
       set(capturePaidOnboardingRoleConfirmed$, role);
     }
+    set(clearLastUsedAgentId$);
     set(reloadOnboardingStatus$);
     set(resetOnboardingDraft$);
   },
@@ -120,49 +118,27 @@ export const prepareOnboardingVideoRun$ = command(
     const adAttribution = set(readStoredAdAttributionMetadata$);
     const successUrl = checkoutReturnUrl(input, "pro", checkoutState);
     const cancelUrl = checkoutReturnUrl(input, "canceled", checkoutState);
-    let checkoutUrl: string;
-    if (get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
-      const { userId } = await get(authenticatedIdentity$);
-      signal.throwIfAborted();
-      const client = get(apiClient$)(billingUsagePackCheckoutContract);
-      const result = await accept(
-        client.create({
-          body: {
-            tier: "pro",
-            memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
-            successUrl,
-            cancelUrl,
-            ...(adAttribution === undefined ? {} : { adAttribution }),
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      if (!("url" in result.body)) {
-        throw new Error("Onboarding checkout unexpectedly returned a preview");
-      }
-      checkoutUrl = result.body.url;
-    } else {
-      const client = get(apiClient$)(billingCheckoutContract);
-      const result = await accept(
-        client.create({
-          body: {
-            tier: "pro",
-            successUrl,
-            cancelUrl,
-            ...(adAttribution === undefined ? {} : { adAttribution }),
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      if (!("url" in result.body)) {
-        throw new Error("Onboarding checkout unexpectedly returned a preview");
-      }
-      checkoutUrl = result.body.url;
+    const { userId } = await get(authenticatedIdentity$);
+    signal.throwIfAborted();
+    const client = get(apiClient$)(billingUsagePackCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+          successUrl,
+          cancelUrl,
+          ...(adAttribution === undefined ? {} : { adAttribution }),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (!("url" in result.body)) {
+      throw new Error("Onboarding checkout unexpectedly returned a preview");
     }
+    const checkoutUrl = result.body.url;
     set(capturePaidOnboardingCheckoutCreated$, "onboarding_video");
     set(capturePaidOnboardingRedirectToStripe$, "onboarding_video");
     window.location.href = checkoutUrl;
@@ -170,35 +146,12 @@ export const prepareOnboardingVideoRun$ = command(
   },
 );
 
-const CHECKOUT_POLL_LIMIT = IN_VITEST ? 2 : 90;
-const CHECKOUT_POLL_INTERVAL_MS = 1000;
-
 export const completeOnboardingCheckoutReturn$ = command(
-  async ({ get }, sessionId: string, signal: AbortSignal): Promise<void> => {
-    const client = get(apiClient$)(billingCheckoutContract);
-    let attempts = 0;
-    await setLoop(
-      async (loopSignal) => {
-        attempts += 1;
-        const result = await accept(
-          client.complete({
-            body: { sessionId },
-            fetchOptions: { signal: loopSignal },
-          }),
-          [200],
-        );
-        loopSignal.throwIfAborted();
-        if (result.body.completed) {
-          return true;
-        }
-        if (attempts >= CHECKOUT_POLL_LIMIT) {
-          throw new Error("Checkout completion timed out");
-        }
-        return false;
-      },
-      CHECKOUT_POLL_INTERVAL_MS,
+  async ({ set }, sessionId: string, signal: AbortSignal): Promise<void> => {
+    await set(
+      completeGoogleAdsPaidCheckout$,
+      { sessionId, kind: "paid_in_onboarding" },
       signal,
-      { retryTransientErrors: false },
     );
   },
 );

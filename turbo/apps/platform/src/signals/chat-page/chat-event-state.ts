@@ -126,6 +126,31 @@ export interface SemanticChatGroups<
   readonly allGroups: SemanticChatEventGroup<T>[];
 }
 
+function isHiddenSemanticChatEvent(
+  event: ChatEvent,
+  context: {
+    readonly interruptedRunIds: ReadonlySet<string>;
+    readonly automationInputIds: ReadonlySet<string>;
+    readonly recalledIds: ReadonlySet<string>;
+    readonly replacedIds: ReadonlySet<string>;
+  },
+): boolean {
+  return (
+    isRecallControlEvent(event) ||
+    isQueueMarkerEvent(event) ||
+    isGoalQueueEvent(event) ||
+    event.eventType === "input.budget" ||
+    isGoalMarkerEvent(event) ||
+    isBrowserLifecycleEventType(event.eventType) ||
+    isInterruptedAssistantCancellation(event, context.interruptedRunIds) ||
+    (event.eventType === "input.rejected" &&
+      event.revokesEventId !== undefined &&
+      context.automationInputIds.has(event.revokesEventId)) ||
+    context.recalledIds.has(event.id) ||
+    context.replacedIds.has(event.id)
+  );
+}
+
 export function semanticChatEventsFromChatEvents(
   events: readonly ChatEvent[],
 ): SemanticChatEventState[] {
@@ -158,18 +183,12 @@ export function semanticChatEventsFromChatEvents(
 
   return events.flatMap((event): SemanticChatEventState[] => {
     if (
-      isRecallControlEvent(event) ||
-      isQueueMarkerEvent(event) ||
-      isGoalQueueEvent(event) ||
-      event.eventType === "input.budget" ||
-      isGoalMarkerEvent(event) ||
-      isBrowserLifecycleEventType(event.eventType) ||
-      isInterruptedAssistantCancellation(event, interruptedRunIds) ||
-      (event.eventType === "input.rejected" &&
-        event.revokesEventId !== undefined &&
-        automationInputIds.has(event.revokesEventId)) ||
-      recalledIds.has(event.id) ||
-      replacedIds.has(event.id)
+      isHiddenSemanticChatEvent(event, {
+        interruptedRunIds,
+        automationInputIds,
+        recalledIds,
+        replacedIds,
+      })
     ) {
       return [];
     }

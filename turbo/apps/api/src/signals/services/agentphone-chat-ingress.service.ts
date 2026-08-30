@@ -24,7 +24,7 @@ interface AgentPhoneChatThreadBinding {
 interface LoadedAgentPhoneChatThreadRoute extends AgentPhoneChatThreadBinding {
   readonly id: string;
   readonly conversationId: string | null;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly selectedModel: string | null;
   readonly codexServiceTier: "fast" | null;
   readonly computerUseHostId: string | null;
@@ -33,7 +33,7 @@ interface LoadedAgentPhoneChatThreadRoute extends AgentPhoneChatThreadBinding {
 interface AgentPhoneChatThreadCreateArgs {
   readonly userId: string;
   readonly orgId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly selectedModel: string | null;
   readonly serviceTier: ChatThreadServiceTier | null;
   readonly conversationId: string | null;
@@ -61,7 +61,7 @@ async function loadRoute(
       id: agentphoneChatThreadRoutes.id,
       conversationId: agentphoneChatThreadRoutes.conversationId,
       chatThreadId: agentphoneChatThreadRoutes.chatThreadId,
-      agentComposeId: agents.id,
+      agentId: agents.id,
       selectedModel: chatThreads.selectedModel,
       codexServiceTier: chatThreads.codexServiceTier,
       computerUseHostId: chatThreads.computerUseHostId,
@@ -97,7 +97,7 @@ async function createCanonicalAgentPhoneChatThread(
     .insert(chatThreads)
     .values({
       userId: args.userId,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       computerUseHostId,
       selectedModel: args.selectedModel,
       codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
@@ -106,7 +106,8 @@ async function createCanonicalAgentPhoneChatThread(
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-      ...mediaModels,
+      selectedVideoModel: mediaModels.selectedVideoModel,
+      selectedImageModel: mediaModels.selectedImageModel,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
@@ -126,7 +127,7 @@ async function appendCanonicalAgentPhoneChatThreadCreatedEvent(
     userId: args.userId,
     orgId: args.orgId,
     chatThreadId: thread.id,
-    agentComposeId: args.agentComposeId,
+    agentId: args.agentId,
     title: null,
     selectedModel: args.selectedModel,
     serviceTier: args.serviceTier,
@@ -155,7 +156,7 @@ async function reconcileExistingRoute(
   args: AgentPhoneChatThreadRouteKey & AgentPhoneChatThreadCreateArgs,
   existing: LoadedAgentPhoneChatThreadRoute,
 ): Promise<AgentPhoneChatThreadBinding> {
-  if (existing.agentComposeId !== args.agentComposeId) {
+  if (existing.agentId !== args.agentId) {
     const thread = await createCanonicalAgentPhoneChatThread(
       tx,
       args,
@@ -216,7 +217,7 @@ async function reconcileExistingRoute(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: existing.chatThreadId,
-        agentComposeId: existing.agentComposeId,
+        agentId: existing.agentId,
         selectedModel: args.selectedModel,
         createdAt: args.currentTime,
       });
@@ -227,7 +228,7 @@ async function reconcileExistingRoute(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: existing.chatThreadId,
-        agentComposeId: existing.agentComposeId,
+        agentId: existing.agentId,
         serviceTier: args.serviceTier,
         createdAt: args.currentTime,
       });

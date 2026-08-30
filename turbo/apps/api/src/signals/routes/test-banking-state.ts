@@ -13,6 +13,7 @@ import {
 } from "@okouai/db/schema/banking";
 import { and, asc, eq } from "drizzle-orm";
 
+import { nowDate } from "../../lib/time";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -86,6 +87,7 @@ async function seedFixtureForAction(
     accountProviderIds: body.account_provider_ids,
     operationScopes: body.operation_scopes as BankingOperationScope[],
     allowAutomationRuns: body.allow_automation_runs,
+    expiresAt: new Date(nowDate().getTime() + 7 * 24 * 60 * 60 * 1000),
   });
   signal.throwIfAborted();
 

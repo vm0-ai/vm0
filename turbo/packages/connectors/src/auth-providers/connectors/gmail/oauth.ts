@@ -4,6 +4,7 @@ import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-
 import { requireConnectorGrantUserId } from "../../grant-result";
 import { buildGoogleAuthorizationUrl } from "../../oauth/google";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
@@ -103,7 +104,7 @@ export async function exchangeGmailCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }

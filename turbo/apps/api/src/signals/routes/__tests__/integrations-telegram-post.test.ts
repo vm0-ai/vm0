@@ -22,6 +22,7 @@ import { server } from "../../../mocks/server";
 import {
   findPendingChatEventByPromptFixture,
   findTelegramChatEventByPromptFixture,
+  clearTelegramPublicBrandFixture,
   readChatEventContextFixture,
   setTelegramThinkingMessageIdFixture,
 } from "../../../test-fixtures/chat-events";
@@ -294,36 +295,49 @@ function telegramClient() {
   );
 }
 
-async function postRegisterRaw(body: unknown): Promise<Response> {
+async function postRegisterRaw(
+  body: unknown,
+  apiOrigin?: string,
+): Promise<Response> {
   return await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request("/api/telegram/register", {
-    method: "POST",
-    headers: {
-      authorization: "Bearer clerk-session",
-      "content-type": "application/json",
+  }).request(
+    apiOrigin
+      ? `${apiOrigin.replace(/\/$/u, "")}/api/telegram/register`
+      : "/api/telegram/register",
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+  );
 }
 
 async function postWebhook(args: {
   readonly telegramBotId: string;
   readonly secret: string;
   readonly body: unknown;
+  readonly apiOrigin?: string;
 }): Promise<Response> {
   return await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request(`/api/telegram/webhook/${args.telegramBotId}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-telegram-bot-api-secret-token": args.secret,
+  }).request(
+    `${args.apiOrigin?.replace(/\/$/u, "") ?? ""}/api/telegram/webhook/${args.telegramBotId}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-telegram-bot-api-secret-token": args.secret,
+      },
+      body:
+        typeof args.body === "string" ? args.body : JSON.stringify(args.body),
     },
-    body: typeof args.body === "string" ? args.body : JSON.stringify(args.body),
-  });
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -772,20 +786,26 @@ describe("POST /api/telegram/setup-status", () => {
       username: "setup_bot",
       privacyDisabled: true,
     });
-    server.use(telegramOauthHead("2048", "https://example.test"));
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    server.use(telegramOauthHead("2048", "https://app.okou.ai"));
 
-    const response = await accept(
-      telegramClient().setupStatus({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          botToken: TEST_BOT_TOKEN,
-          origin: "https://example.test/settings/telegram",
-        },
+    const response = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request("https://api.okou.ai/api/telegram/setup-status", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        botToken: TEST_BOT_TOKEN,
+        origin: "https://app.vm0.ai/settings/telegram",
       }),
-      [200],
-    );
+    });
 
-    expect(response.body).toStrictEqual({
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
       id: botId,
       username: "setup_bot",
       domainConfigured: true,
@@ -858,8 +878,8 @@ describe("POST /api/telegram/register", () => {
       seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-    mockEnv("VM0_WEB_URL", "https://www.example.test");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.example.test");
+    mockEnv("OKOU_WEB_URL", "https://www.example.test");
     mockEnv("APP_URL", "https://app.example.test");
     mockTelegramGetMe({ botId: telegramBotId, username: "registered_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
@@ -898,8 +918,50 @@ describe("POST /api/telegram/register", () => {
 
     const state = await readTelegramState(telegramBotId);
     const installation = stateRecord(state.installation);
-    expect(installation?.defaultComposeId).toBe(fixture.composeId);
+    expect(installation?.defaultAgentId).toBe(fixture.composeId);
     expect(installation?.botUsername).toBe("registered_bot");
+  });
+
+  it("uses the registration Host for the custom bot webhook brand", async () => {
+    const telegramBotId = newTelegramBotId();
+    const fixture = await trackFixture(
+      seedTelegramPostFixture({ telegramBotId, installBot: false }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockTelegramGetMe({ botId: telegramBotId, username: "owner_named_bot" });
+    context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
+    context.mocks.telegram.setMyCommands.mockResolvedValue(undefined);
+    server.use(telegramOauthHead(telegramBotId, "https://app.okou.ai"));
+
+    const response = await postRegisterRaw(
+      {
+        botToken: TEST_BOT_TOKEN,
+        defaultAgentId: fixture.composeId,
+      },
+      "https://api.okou.ai",
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      id: telegramBotId,
+      username: "owner_named_bot",
+      domainConfigured: true,
+    });
+    expect(context.mocks.telegram.setWebhook).toHaveBeenCalledWith(
+      TEST_BOT_TOKEN,
+      `https://api.okou.ai/api/telegram/webhook/${telegramBotId}`,
+      expect.stringMatching(/^[0-9a-f]{64}$/u),
+    );
+    const installation = stateRecord(
+      (await readTelegramState(telegramBotId)).installation,
+    );
+    expect(installation).toMatchObject({
+      telegramBotId,
+      botUsername: "owner_named_bot",
+      publicBrand: "okou",
+    });
   });
 
   it("uses the active org default agent when defaultAgentId is omitted", async () => {
@@ -1157,15 +1219,20 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await expect(badJson.text()).resolves.toBe("Bad Request");
   });
 
-  it("creates a Zero run for a linked custom-bot private message", async () => {
+  it("creates an agent run for a linked custom-bot private message", async () => {
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const telegramMocks = telegramApiMocks();
+    expect(
+      stateRecord((await readTelegramState(fixture.telegramBotId)).installation)
+        ?.publicBrand,
+    ).toBe("vm0");
 
     const response = await postWebhook({
       telegramBotId: fixture.telegramBotId,
       secret: fixture.webhookSecret,
+      apiOrigin: "https://api.okou.ai",
       body: {
         update_id: 1,
         message: {
@@ -1224,6 +1291,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       telegramThreadContext: "",
       telegramRootMessageId: "dm",
       telegramThinkingMessageId: null,
+      telegramPublicBrand: "okou",
       telegramUserLinkId: expect.any(String),
       telegramUserLinkKind: "custom",
       telegramChatType: "private",
@@ -1250,6 +1318,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(runState.callbacks[0]).toMatchObject({
       url: null,
       internalKind: "chat",
+      payload: expect.objectContaining({ publicBrand: "okou" }),
     });
     expect(runState.jobExists).toBeTruthy();
     const timingEvents = sandboxOperationEventsForRun(run!.id).filter(
@@ -1475,6 +1544,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       telegramRootMessageId: "dm",
       telegramUserLinkKind: "custom",
     });
+    // The current production API cannot create the old persisted shape after
+    // this schema ships. Clear only the additive field to emulate queued work
+    // admitted by an old API and prove it still launches during rollout.
+    await clearTelegramPublicBrandFixture(queuedParams.eventId);
     await setTelegramThinkingMessageIdFixture(queuedParams.eventId, "701");
     await completeCanonicalChatRun({
       runId: firstRunId,
@@ -1695,6 +1768,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         await postWebhook({
           telegramBotId: fixture.telegramBotId,
           secret: fixture.webhookSecret,
+          apiOrigin: "https://api.okou.ai",
           body: {
             update_id: 201,
             message: {
@@ -1736,6 +1810,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       telegramMessageText: firstPrompt,
       telegramThreadContext: "",
       telegramRootMessageId: null,
+      telegramPublicBrand: "okou",
       telegramUserLinkKind: "custom",
       telegramChatType: "supergroup",
     });
@@ -1759,6 +1834,18 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const cliAgentSessionId = await completeCanonicalChatRun({
       runId: firstState.run!.id,
       sandboxToken: firstClaim.sandboxToken,
+    });
+
+    const completedFirstState = await telegramPostRunState(
+      fixture,
+      firstPrompt,
+    );
+    expect(
+      completedFirstState.callbacks.find((callback) => {
+        return callback.internalKind === "telegram:chat";
+      }),
+    ).toMatchObject({
+      payload: expect.objectContaining({ publicBrand: "okou" }),
     });
 
     expect(telegramMocks.sentMessages).toHaveLength(1);
@@ -1806,7 +1893,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
           from: {
             id: Number(fixture.telegramBotId),
             is_bot: true,
-            username: botUsername,
+            username: "provider_renamed_bot",
           },
           text: "Task completed successfully.",
         },
@@ -1824,7 +1911,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
 
     const followUpAgentPrompt = [
-      `[Replying to @${botUsername}]`,
+      "[Replying to @provider_renamed_bot]",
       "> Task completed successfully.",
       "",
       followUpPrompt,
@@ -1943,9 +2030,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     ).toHaveLength(1);
   });
 
-  it("keeps Telegram callbacks typed when VM0_API_BACKEND_URL is set", async () => {
-    mockEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
-    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  it("keeps Telegram callbacks typed when OKOU_API_BACKEND_URL is set", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
@@ -2043,7 +2130,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(messages[0]?.text).toBe("following up");
   });
 
-  it("creates a Zero run for a linked custom-bot supergroup mention", async () => {
+  it("creates an agent run for a linked custom-bot supergroup mention", async () => {
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
@@ -2111,7 +2198,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
   });
 
-  it("creates a Zero run for a linked official-bot private message", async () => {
+  it("creates an agent run for a linked official-bot private message", async () => {
     configureOfficialBotEnv();
     const fixture = await trackFixture(
       seedTelegramPostFixture({ installBot: false, seedOfficialLink: true }),
@@ -2121,6 +2208,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const response = await postWebhook({
       telegramBotId: "official",
       secret: OFFICIAL_WEBHOOK_SECRET,
+      apiOrigin: "https://api.okou.ai",
       body: {
         update_id: 4,
         message: {
@@ -2150,7 +2238,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       [
         "# Current Integration",
         "You are currently running inside: Telegram",
-        `Bot ID: ${OFFICIAL_TELEGRAM_BOT_ID}`,
+        "Bot ID: 987654",
         `Bot username: @${OFFICIAL_BOT_USERNAME}`,
         "Chat ID: 88002",
         "Chat type: private",
@@ -2172,6 +2260,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       contextType: "telegram",
       telegramMessageText: "run through official bot",
       telegramRootMessageId: "dm",
+      telegramPublicBrand: "okou",
       telegramUserLinkId: expect.any(String),
       telegramUserLinkKind: "official",
       telegramChatType: "private",
@@ -2183,9 +2272,13 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await expect(latestAgentRunForFixture(fixture)).resolves.toMatchObject({
       triggerSource: "telegram",
     });
+    expect((await telegramPostRunState(fixture)).callbacks[0]).toMatchObject({
+      internalKind: "chat",
+      payload: expect.objectContaining({ publicBrand: "okou" }),
+    });
   });
 
-  it("creates a Zero run for a linked official-bot group mention", async () => {
+  it("creates an agent run for a linked official-bot group mention", async () => {
     configureOfficialBotEnv();
     const fixture = await trackFixture(
       seedTelegramPostFixture({ installBot: false, seedOfficialLink: true }),
@@ -2320,6 +2413,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         ?.url ?? "";
     expect(buttonUrl).toContain("http://localhost:3002/telegram/connect?bot=");
     expect(buttonUrl).toContain("tgUser=91612");
+    // The branded app Host carries presentation identity; keep the signed
+    // query compatible with pre-brand Telegram connect consumers.
+    expect(new URL(buttonUrl).searchParams.has("brand")).toBeFalsy();
 
     const help = await postWebhook({
       telegramBotId: fixture.telegramBotId,
@@ -2341,7 +2437,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(help.status).toBe(200);
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[2]?.text).toContain(
-      "Telegram Agent Telegram Bot Help",
+      `@bot_${fixture.telegramBotId} Telegram Bot Help`,
     );
     expect(telegramMocks.sentMessages[2]?.text).toContain("/new_session");
     expect(telegramMocks.sentMessages[2]?.text).not.toContain("admin");
@@ -2664,7 +2760,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
   });
 
-  it("does not prompt unlinked official group replies to another bot but prompts replies to Zero", async () => {
+  it("does not prompt unlinked official group replies to another bot but prompts replies to the official bot", async () => {
     configureOfficialBotEnv();
     const telegramMocks = telegramApiMocks(OFFICIAL_BOT_TOKEN);
 
@@ -2691,9 +2787,11 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
-    const zeroReply = await postWebhook({
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const officialReply = await postWebhook({
       telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
       secret: OFFICIAL_WEBHOOK_SECRET,
+      apiOrigin: "https://api.okou.ai",
       body: {
         update_id: 122,
         message: {
@@ -2705,24 +2803,32 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
             message_id: 45,
             chat: { id: -10_099_121, type: "group" },
             from: {
-              id: 987_654_321,
+              id: 987_654,
               is_bot: true,
-              username: OFFICIAL_BOT_USERNAME,
+              username: "provider_renamed_bot",
             },
             text: "message from zero",
           },
         },
       },
     });
-    expect(zeroReply.status).toBe(200);
+    expect(officialReply.status).toBe(200);
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(1);
     expect(telegramMocks.sentMessages[0]?.text).toContain(
       "connect your account",
     );
+    expect(telegramMocks.sentMessages[0]?.text).toContain("Okou");
     expect(telegramMocks.sentMessages[0]?.reply_parameters).toStrictEqual({
       message_id: 1212,
     });
+    const connectUrl = new URL(
+      telegramMocks.sentMessages[0]?.reply_markup?.inline_keyboard[0]?.[0]
+        ?.url ?? "",
+    );
+    expect(connectUrl.origin).toBe("https://t.me");
+    expect(connectUrl.pathname).toBe(`/${OFFICIAL_BOT_USERNAME}`);
+    expect(connectUrl.searchParams.get("start")).toBe("connect");
   });
 
   it("starts a new official DM session when the selected model changed", async () => {
@@ -2838,7 +2944,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.sessionId).not.toBe(previousSessionId);
     await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
-        modelProvider: "vm0",
+        modelProvider: "built-in",
         selectedModel: "claude-sonnet-5",
       }),
     );
@@ -2891,7 +2997,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.sessionId).not.toBe(previousSessionId);
     await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
-        modelProvider: "vm0",
+        modelProvider: "built-in",
         selectedModel: "claude-sonnet-5",
       }),
     );

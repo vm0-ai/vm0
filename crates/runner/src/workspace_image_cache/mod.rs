@@ -7,6 +7,34 @@
 //! follows the canonical-workspace semantics in `paths.rs`. A cache entry
 //! contains a `metadata.json` file and a `current.ext4` image file.
 //!
+//! ## Guest path and fingerprint scope
+//!
+//! A cache-safe guest working directory is an absolute, non-root path string: it
+//! starts with `/`, contains no NUL byte, and contains no component equal to
+//! `.` or `..`. Repeated and trailing `/` separators are normalized away. The
+//! normalizer only performs these string checks; it does not resolve host
+//! filesystem paths or symlinks. Root, relative, NUL-containing, and
+//! dot-component paths are unsafe.
+//!
+//! A mount path is in the workspace scope when its normalized form is exactly
+//! the normalized working directory or is a component-boundary descendant of
+//! it. This is deliberately stricter than a raw string-prefix check, so a path
+//! such as `/workspace2` is not inside `/workspace`. An invalid working or
+//! mount path fails closed and cannot make an entry eligible for cache reuse.
+//!
+//! Promotion filters both the storage and artifact fingerprint maps against
+//! this scope. Normalized paths are used only to decide membership; retained
+//! entries keep their original map keys and fingerprint values. Only
+//! fingerprints for state represented by the workspace image are persisted in
+//! cache metadata. On a cache hit, those persisted fingerprints become the
+//! previous storage state for the next storage plan.
+//!
+//! Unsafe paths have lifecycle effects at several boundaries. Active checkout
+//! and preparation use the fresh-workspace fallback, promotion identity
+//! rejects the path, and an unsafe lease cannot produce a promotion target.
+//! Metadata with an unsafe working directory is not reusable for metadata or
+//! held-state publication, and GC classifies the entry as unusable.
+//!
 //! ## Invariants
 //!
 //! - Within this module, entry paths are always derived from the same cache key
@@ -126,6 +154,10 @@ struct WorkspaceImageCacheInner {
     #[cfg(test)]
     gc_root_scan_count: AtomicUsize,
     #[cfg(test)]
+    held_state_root_scan_count: AtomicUsize,
+    #[cfg(test)]
+    held_state_root_scan_notify: tokio::sync::Notify,
+    #[cfg(test)]
     fail_next_session_history_sidecar_metadata_commit: AtomicBool,
 }
 
@@ -208,6 +240,8 @@ impl WorkspaceImageCache {
                 cache_scope: cache_scope.to_owned(),
                 fs_stats_override: fs_stats,
                 gc_root_scan_count: AtomicUsize::new(0),
+                held_state_root_scan_count: AtomicUsize::new(0),
+                held_state_root_scan_notify: tokio::sync::Notify::new(),
                 fail_next_session_history_sidecar_metadata_commit: AtomicBool::new(false),
             }),
             prepare_lock_test_gate: None,

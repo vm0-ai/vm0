@@ -1,12 +1,13 @@
 """Connection-scoped TLS admission request hook integration tests."""
 
 import json
+from typing import cast
 
 import pytest
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
 
 def _bind_tls_admission_flow(
@@ -24,7 +25,7 @@ def _bind_tls_admission_flow(
 
 
 def _write_empty_registry(reg_path) -> None:
-    reg_path.write_text(json.dumps({"vms": {}, "updatedAt": 1}))
+    reg_path.write_text(json.dumps({"sandboxes": {}, "updatedAt": 1}))
 
 
 def _assert_stale_tls_admission_block(flow, *, reason: str) -> None:
@@ -33,14 +34,14 @@ def _assert_stale_tls_admission_block(flow, *, reason: str) -> None:
     assert json.loads(flow.response.content) == {
         "error": "stale_tls_admission",
         "message": (
-            "Request blocked: TLS admission is no longer backed by a valid proxy registry VM"
+            "Request blocked: TLS admission is no longer backed by a valid proxy registry sandbox"
         ),
         "reason": reason,
     }
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "stale_tls_admission"
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
-    assert metadata_keys.VM_NETWORK_LOG_PATH not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_NETWORK_LOG_PATH not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
@@ -55,7 +56,7 @@ async def test_valid_tls_admission_blocks_when_registry_entry_disappears(
     reg_path = _write_registry(
         tmp_path,
         client_ip=client_ip,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -103,7 +104,7 @@ async def test_valid_tls_admission_blocks_when_run_id_changes(
     reg_path = _write_registry(
         tmp_path,
         client_ip=client_ip,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             run_id="run-before",
             api_entry=api_entry,
@@ -117,7 +118,7 @@ async def test_valid_tls_admission_blocks_when_run_id_changes(
         _write_registry(
             tmp_path,
             client_ip=client_ip,
-            vm_info=_single_firewall_vm(
+            sandbox_info=_single_firewall_sandbox(
                 tmp_path,
                 run_id="run-after",
                 api_entry=api_entry,
@@ -131,17 +132,28 @@ async def test_valid_tls_admission_blocks_when_run_id_changes(
     _assert_stale_tls_admission_block(flow, reason="run_id_mismatch")
 
 
-async def test_valid_tls_admission_blocks_when_request_client_ip_is_missing(
+@pytest.mark.parametrize(
+    "request_peername",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param(
+            cast(tuple[str, int], ("10.200.0.5",)),
+            id="one-element-tuple",
+        ),
+    ],
+)
+async def test_valid_tls_admission_blocks_when_request_client_ip_is_unavailable(
     tmp_path,
     real_flow,
     make_tls_data,
     mitm_ctx,
+    request_peername: tuple[str, int] | None,
 ):
     client_ip = "10.200.0.5"
     reg_path = _write_registry(
         tmp_path,
         client_ip=client_ip,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -160,7 +172,7 @@ async def test_valid_tls_admission_blocks_when_request_client_ip_is_missing(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.tls_clienthello(tls_data)
-        flow.client_conn.peername = None
+        flow.client_conn.peername = request_peername
 
         await mitm_addon.request(flow)
 
@@ -190,7 +202,7 @@ async def test_valid_tls_admission_blocks_when_request_client_ip_changes(
     reg_path = _write_registry(
         tmp_path,
         client_ip=tls_client_ip,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry=api_entry,
             network_policy=network_policy,
@@ -208,7 +220,7 @@ async def test_valid_tls_admission_blocks_when_request_client_ip_changes(
         _write_registry(
             tmp_path,
             client_ip=request_client_ip,
-            vm_info=_single_firewall_vm(
+            sandbox_info=_single_firewall_sandbox(
                 tmp_path,
                 api_entry=api_entry,
                 network_policy=network_policy,
@@ -229,7 +241,7 @@ async def test_invalid_tls_admission_blocks_when_registry_entry_disappears(
 ):
     client_ip = "10.200.0.5"
     reg_path = tmp_path / "registry.json"
-    reg_path.write_text(json.dumps({"vms": {client_ip: "broken"}, "updatedAt": 0}))
+    reg_path.write_text(json.dumps({"sandboxes": {client_ip: "broken"}, "updatedAt": 0}))
     flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
@@ -264,8 +276,8 @@ async def test_registry_unavailable_tls_admission_blocks_when_registry_lacks_ip(
 
 @pytest.mark.parametrize(
     "initial_registry_state",
-    ["registry_unavailable", "invalid_registry_vm"],
-    ids=["registry-unavailable", "invalid-registry-vm"],
+    ["registry_unavailable", "invalid_registry_sandbox"],
+    ids=["registry-unavailable", "invalid-registry-sandbox"],
 )
 async def test_tls_admission_uses_repaired_registry_at_request_time(
     tmp_path,
@@ -277,10 +289,10 @@ async def test_tls_admission_uses_repaired_registry_at_request_time(
     client_ip = "10.200.0.5"
     repaired_run_id = "run-repaired"
     reg_path = tmp_path / "registry.json"
-    if initial_registry_state == "invalid_registry_vm":
-        reg_path.write_text(json.dumps({"vms": {client_ip: "broken"}, "updatedAt": 0}))
+    if initial_registry_state == "invalid_registry_sandbox":
+        reg_path.write_text(json.dumps({"sandboxes": {client_ip: "broken"}, "updatedAt": 0}))
     flow, tls_data = _bind_tls_admission_flow(real_flow, make_tls_data, client_ip=client_ip)
-    repaired_vm = _single_firewall_vm(
+    repaired_sandbox = _single_firewall_sandbox(
         tmp_path,
         run_id=repaired_run_id,
         api_entry={
@@ -298,13 +310,13 @@ async def test_tls_admission_uses_repaired_registry_at_request_time(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.tls_clienthello(tls_data)
-        _write_registry(tmp_path, client_ip=client_ip, vm_info=repaired_vm)
+        _write_registry(tmp_path, client_ip=client_ip, sandbox_info=repaired_sandbox)
 
         await mitm_addon.request(flow)
 
     assert tls_data.ignore_connection is False
     assert flow.response is None
-    assert flow.metadata[metadata_keys.VM_RUN_ID] == repaired_run_id
+    assert flow.metadata[metadata_keys.SANDBOX_RUN_ID] == repaired_run_id
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
 
@@ -335,7 +347,7 @@ async def test_tls_admission_keeps_guarding_multiple_requests(
     reg_path = _write_registry(
         tmp_path,
         client_ip=client_ip,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -380,7 +392,7 @@ async def test_client_disconnected_removes_tls_admission(
     reg_path = _write_registry(
         tmp_path,
         client_ip=client_ip,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",

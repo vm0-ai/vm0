@@ -20,7 +20,7 @@
 //! normalization. Unknown completed types use a bounded, shallow, and lossy
 //! projection: names become snake case, scalar values and scalar members of
 //! shallow collections are retained, deeper collections are dropped, and
-//! collections beyond fixed limits are omitted.
+//! top-level fields and collections beyond fixed limits are omitted.
 //!
 //! Statuses, file-change patch kinds, and error fields are normalized into the
 //! legacy JSONL and failure-diagnostic shapes rather than preserving their raw
@@ -55,6 +55,7 @@ pub(super) const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
 
 const MAX_GENERIC_COLLECTION_ITEMS: usize = 16;
 const MAX_GENERIC_OBJECT_FIELDS: usize = 24;
+const MAX_GENERIC_OPTIONAL_FIELDS: usize = 24;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CodexOutputItemKind {
@@ -452,6 +453,9 @@ fn normalize_item(
         ("item/completed", "agentMessage") => normalize_agent_message(item, method).map(Some),
         ("item/completed", "plan") => normalize_plan(item, method).map(Some),
         ("item/completed", "reasoning") => normalize_reasoning(item, method).map(Some),
+        ("item/completed", "functionCallOutput") => {
+            normalize_function_call_output(item, method).map(Some)
+        }
         ("item/completed", "commandExecution") => {
             normalize_command_execution(item, method).map(Some)
         }
@@ -536,6 +540,22 @@ fn normalize_command_execution(
     Ok(Value::Object(normalized))
 }
 
+fn normalize_function_call_output(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "function_call_output")?;
+    let name = required_string_key(item, method, "name", "item.name")?;
+    normalized.insert("name".to_string(), Value::String(name.to_string()));
+    copy_optional_field(&mut normalized, "namespace", item, "namespace");
+    let output = item
+        .get("output")
+        .filter(|output| matches!(output, Value::String(_) | Value::Array(_)))
+        .ok_or_else(|| invalid_field_for_method(method, "item.output"))?;
+    normalized.insert("output".to_string(), output.clone());
+    Ok(Value::Object(normalized))
+}
+
 fn normalize_file_change(
     item: &Map<String, Value>,
     method: &str,
@@ -595,13 +615,23 @@ fn normalize_generic_completed_item(
         );
     }
 
+    let mut projected_fields = 0;
     for (key, value) in item {
+        if projected_fields == MAX_GENERIC_OPTIONAL_FIELDS {
+            break;
+        }
         if key == "id" || key == "type" || key == "status" {
             continue;
         }
-        if let Some(value) = shallow_generic_value(value) {
-            normalized.insert(camel_to_snake(key), value);
+        let Some(value) = shallow_generic_value(value) else {
+            continue;
+        };
+        let normalized_key = camel_to_snake(key);
+        if normalized_key == "id" || normalized_key == "type" || normalized_key == "status" {
+            continue;
         }
+        normalized.insert(normalized_key, value);
+        projected_fields += 1;
     }
 
     Ok(Value::Object(normalized))
@@ -646,6 +676,35 @@ fn normalize_error_object(error: &Map<String, Value>) -> Value {
     );
     copy_optional_field(&mut normalized, "connectors", error, "connectors");
     copy_optional_field(&mut normalized, "failureReason", error, "failureReason");
+    if let Some(misalignment) = error.get("misalignment") {
+        normalized.insert(
+            "misalignment".to_string(),
+            normalize_optional_misalignment(misalignment),
+        );
+    }
+    Value::Object(normalized)
+}
+
+fn normalize_optional_misalignment(misalignment: &Value) -> Value {
+    let Value::Object(misalignment) = misalignment else {
+        return misalignment.clone();
+    };
+    let mut normalized = Map::new();
+    copy_first_optional_field(
+        &mut normalized,
+        "error_type",
+        misalignment,
+        &["error_type", "errorType"],
+    );
+    copy_first_optional_field(
+        &mut normalized,
+        "detailed_explanation",
+        misalignment,
+        &["detailed_explanation", "detailedExplanation"],
+    );
+    if let Some(steer) = misalignment.get("steer") {
+        normalized.insert("steer".to_string(), steer.clone());
+    }
     Value::Object(normalized)
 }
 
@@ -1234,6 +1293,33 @@ mod tests {
     }
 
     #[test]
+    fn failed_turn_completed_classifies_rate_limit_for_diagnostics() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "error": {
+                        "message": "Rate limit exceeded.",
+                        "codexErrorInfo": "rateLimitExceeded"
+                    }
+                }
+            }),
+        );
+
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(events::CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: "Rate limit exceeded.".to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
     fn failed_turn_completed_preserves_cyber_policy_reason_for_diagnostics() {
         let event = mapped_event(
             "turn/completed",
@@ -1276,7 +1362,12 @@ mod tests {
                     "status": "failed",
                     "error": {
                         "message": "This request violates the provider's alignment policy.",
-                        "codexErrorInfo": "misalignmentPolicyViolation"
+                        "codexErrorInfo": "misalignmentPolicyViolation",
+                        "misalignment": {
+                            "errorType": "policy_violation",
+                            "detailedExplanation": "Try a safer direction.",
+                            "steer": {"message": "Continue with a safe alternative."}
+                        }
                     },
                     "startedAt": 10,
                     "completedAt": 20,
@@ -1288,6 +1379,14 @@ mod tests {
         assert_eq!(
             event["turn"]["error"]["codex_error_info"],
             "misalignmentPolicyViolation"
+        );
+        assert_eq!(
+            event["turn"]["error"]["misalignment"],
+            json!({
+                "error_type": "policy_violation",
+                "detailed_explanation": "Try a safer direction.",
+                "steer": {"message": "Continue with a safe alternative."}
+            })
         );
         assert_eq!(
             events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
@@ -1688,6 +1787,42 @@ mod tests {
     }
 
     #[test]
+    fn function_call_output_preserves_structured_output() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "functionCallOutput",
+                    "id": "function-output-1",
+                    "name": "lookup",
+                    "namespace": "tools",
+                    "output": [
+                        {"type": "input_text", "text": "result"},
+                        {"type": "input_image", "image_url": "data:image/png;base64,AA=="}
+                    ]
+                }
+            }),
+        );
+
+        assert_eq!(
+            event["item"],
+            json!({
+                "type": "function_call_output",
+                "id": "function-output-1",
+                "name": "lookup",
+                "namespace": "tools",
+                "output": [
+                    {"type": "input_text", "text": "result"},
+                    {"type": "input_image", "image_url": "data:image/png;base64,AA=="}
+                ]
+            })
+        );
+    }
+
+    #[test]
     fn generic_completed_item_keeps_only_bounded_shallow_values() {
         let event = mapped_event(
             "item/completed",
@@ -1730,6 +1865,53 @@ mod tests {
         assert_eq!(event["item"]["arguments"], json!({"query": "kept"}));
         assert!(event["item"].get("too_many_items").is_none());
         assert!(event["item"].get("too_many_fields").is_none());
+    }
+
+    #[test]
+    fn generic_completed_item_limits_top_level_fields_deterministically() {
+        let mut item = Map::new();
+        item.insert("id".to_string(), json!("tool-1"));
+        item.insert("type".to_string(), json!("dynamicToolCall"));
+        item.insert("status".to_string(), json!("completed"));
+        item.insert("Id".to_string(), json!("shadow-id"));
+        item.insert("Type".to_string(), json!("shadowType"));
+        item.insert("Status".to_string(), json!("failed"));
+
+        let unsupported_fields = (0..=MAX_GENERIC_OBJECT_FIELDS)
+            .map(|index| (format!("nested{index:02}"), json!(index)))
+            .collect();
+        item.insert(
+            "aaaUnsupported".to_string(),
+            Value::Object(unsupported_fields),
+        );
+        for index in 0..MAX_GENERIC_OPTIONAL_FIELDS + 2 {
+            item.insert(format!("field{index:02}"), json!(index));
+        }
+
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": item
+            }),
+        );
+        let normalized = event["item"]
+            .as_object()
+            .expect("mapped item should be an object");
+
+        assert_eq!(normalized.len(), MAX_GENERIC_OPTIONAL_FIELDS + 3);
+        assert_eq!(normalized["id"], "tool-1");
+        assert_eq!(normalized["type"], "dynamic_tool_call");
+        assert_eq!(normalized["status"], "completed");
+        for index in 0..MAX_GENERIC_OPTIONAL_FIELDS {
+            assert_eq!(normalized[&format!("field{index:02}")], index);
+        }
+        for index in MAX_GENERIC_OPTIONAL_FIELDS..MAX_GENERIC_OPTIONAL_FIELDS + 2 {
+            assert!(!normalized.contains_key(&format!("field{index:02}")));
+        }
+        assert!(!normalized.contains_key("aaa_unsupported"));
     }
 
     #[test]

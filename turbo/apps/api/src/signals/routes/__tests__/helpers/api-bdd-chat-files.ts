@@ -30,13 +30,14 @@ import {
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessageInputDocument,
-  type ZeroIndicators,
+  type Indicators,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
@@ -560,7 +561,7 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async listIndicators(actor: ApiTestUser): Promise<ZeroIndicators> {
+    async listIndicators(actor: ApiTestUser): Promise<Indicators> {
       const response = await accept(
         threadsClient().indicators({
           headers: authenticate(context, actor),
@@ -965,6 +966,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
       selectedImageModel?: ImageModelId | null,
+      selectedVideoModel?: VideoModelId | null,
     ): Promise<void> {
       await accept(
         userModelPreferenceClient().update({
@@ -973,6 +975,7 @@ export function createChatFilesBddApi(context: TestContext) {
             selectedModel,
             serviceTier: null,
             ...(selectedImageModel === undefined ? {} : { selectedImageModel }),
+            ...(selectedVideoModel === undefined ? {} : { selectedVideoModel }),
           },
         }),
         [200],
@@ -1101,6 +1104,7 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: query.sinceSeqId,
                   sinceEventId: query.sinceEventId,
+                  sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
                   ...(query.limit === undefined ? {} : { limit: query.limit }),
                 },
         }),
@@ -1130,6 +1134,7 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: cursor.lastSeqId,
                   sinceEventId: cursor.lastEventId,
+                  sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
                 },
         }),
         [200],
@@ -1172,6 +1177,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly cursor?: string;
         readonly kind?: ArtifactCatalogKind;
         readonly chatThreadId?: string;
+        readonly keyword?: string;
       } = {},
     ): Promise<{
       readonly artifacts: readonly ArtifactSummary[];

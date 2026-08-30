@@ -4,6 +4,8 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
@@ -14,6 +16,7 @@ import type { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
@@ -38,14 +41,15 @@ import {
 } from "../services/telegram-link.service";
 import type { AuthContext } from "../../types/auth";
 import type { RouteEntry } from "../route-entry";
-import { publicBrand$ } from "../context/hono";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
 
 const log = logger("api:telegram:link");
 
 type TelegramLinkBody = z.infer<typeof integrationsTelegramContract.link.body>;
 type OrganizationAuth = AuthContext & { readonly orgId: string };
+type AddressableTelegramInstallation = Omit<
+  TelegramInstallationForLink,
+  "botUsername"
+> & { readonly botUsername: string };
 type ErrorStatus = 400 | 403 | 404 | 409;
 type LinkTelegramUserConflictReason = Extract<
   LinkTelegramUserResult,
@@ -101,6 +105,16 @@ function missingOfficialAgentResponse() {
   );
 }
 
+function missingBotUsernameResponse(official: boolean) {
+  return errorResult(
+    official ? 404 : 409,
+    official
+      ? "Official Telegram bot username is not configured"
+      : "Telegram bot username is unavailable. Reinstall the bot to refresh its Telegram metadata.",
+    official ? "NOT_FOUND" : "CONFLICT",
+  );
+}
+
 function linkConflictResponse(
   reason: LinkTelegramUserConflictReason,
   publicBrand: PublicBrand,
@@ -119,13 +133,15 @@ function linkConflictResponse(
 function officialLinkConflictResponse(
   reason: LinkOfficialTelegramUserConflictReason,
   publicBrand: PublicBrand,
+  botUsername: string,
 ) {
   const brandName = publicBrandPresentation(publicBrand).brandName;
+  const botLabel = `official Telegram bot @${botUsername}`;
   const message =
     reason === "telegram-user-linked"
-      ? `This Telegram account is already connected to another ${brandName} organization through the official Zero bot. Disconnect it before connecting a different account.`
+      ? `This Telegram account is already connected to another ${brandName} organization through the ${botLabel}. Disconnect it before connecting a different account.`
       : reason === "vm0-org-linked"
-        ? `Your ${brandName} account is already connected to another Telegram account for the official Zero bot in this organization. Disconnect it before connecting a different Telegram account.`
+        ? `Your ${brandName} account is already connected to another Telegram account for the ${botLabel} in this organization. Disconnect it before connecting a different Telegram account.`
         : "This official Telegram account link already exists. Disconnect it first and try again.";
 
   return errorResult(409, message, "CONFLICT");
@@ -311,7 +327,7 @@ const linkOfficialInner$ = command(
     signal: AbortSignal,
   ) => {
     const publicBrand =
-      args.auth.tokenType === "zero"
+      args.auth.tokenType === "agent"
         ? args.auth.publicBrand
         : get(publicBrand$);
     const config = getOfficialTelegramBotConfig();
@@ -321,6 +337,9 @@ const linkOfficialInner$ = command(
         "Official Telegram bot is not configured",
         "NOT_FOUND",
       );
+    }
+    if (!config.botUsername) {
+      return missingBotUsernameResponse(true);
     }
 
     const telegramAuth = args.body.telegramAuth;
@@ -352,10 +371,14 @@ const linkOfficialInner$ = command(
       signal.throwIfAborted();
 
       if (!result.ok) {
-        return officialLinkConflictResponse(result.reason, publicBrand);
+        return officialLinkConflictResponse(
+          result.reason,
+          publicBrand,
+          config.botUsername,
+        );
       }
 
-      return linkSuccessResponse(config.botUsername ?? "Zero", telegramUserId);
+      return linkSuccessResponse(config.botUsername, telegramUserId);
     }
 
     const connectSignature = args.body.connectSignature;
@@ -373,7 +396,6 @@ const linkOfficialInner$ = command(
       ) {
         return invalidConnectSignatureResponse();
       }
-
       const db = set(writeDb$);
       const composeId = await resolveOfficialConnectComposeId(db, args.auth);
       signal.throwIfAborted();
@@ -396,7 +418,11 @@ const linkOfficialInner$ = command(
       signal.throwIfAborted();
 
       if (!result.ok) {
-        return officialLinkConflictResponse(result.reason, publicBrand);
+        return officialLinkConflictResponse(
+          result.reason,
+          publicBrand,
+          config.botUsername,
+        );
       }
 
       sendConnectSuccessMessage({
@@ -407,7 +433,7 @@ const linkOfficialInner$ = command(
       });
 
       return linkSuccessResponse(
-        config.botUsername ?? "Zero",
+        config.botUsername,
         connectSignature.telegramUserId,
       );
     }
@@ -422,12 +448,12 @@ const linkCustomWithTelegramAuth$ = command(
     args: {
       readonly auth: OrganizationAuth;
       readonly body: TelegramLinkBody;
-      readonly installation: TelegramInstallationForLink;
+      readonly installation: AddressableTelegramInstallation;
     },
     signal: AbortSignal,
   ) => {
     const publicBrand =
-      args.auth.tokenType === "zero"
+      args.auth.tokenType === "agent"
         ? args.auth.publicBrand
         : get(publicBrand$);
     const telegramAuth = args.body.telegramAuth;
@@ -457,10 +483,7 @@ const linkCustomWithTelegramAuth$ = command(
       return linkConflictResponse(result.reason, publicBrand);
     }
 
-    return linkSuccessResponse(
-      args.installation.botUsername ?? "Telegram bot",
-      telegramUserId,
-    );
+    return linkSuccessResponse(args.installation.botUsername, telegramUserId);
   },
 );
 
@@ -470,12 +493,12 @@ const linkCustomWithConnectSignature$ = command(
     args: {
       readonly auth: OrganizationAuth;
       readonly body: TelegramLinkBody;
-      readonly installation: TelegramInstallationForLink;
+      readonly installation: AddressableTelegramInstallation;
     },
     signal: AbortSignal,
   ) => {
     const publicBrand =
-      args.auth.tokenType === "zero"
+      args.auth.tokenType === "agent"
         ? args.auth.publicBrand
         : get(publicBrand$);
     const connectSignature = args.body.connectSignature;
@@ -496,7 +519,6 @@ const linkCustomWithConnectSignature$ = command(
     ) {
       return invalidConnectSignatureResponse();
     }
-
     const result = await set(
       linkTelegramUser$,
       {
@@ -518,11 +540,11 @@ const linkCustomWithConnectSignature$ = command(
       botToken: args.installation.botToken,
       telegramUserId: connectSignature.telegramUserId,
       official: false,
-      publicBrand: args.installation.publicBrand,
+      publicBrand,
     });
 
     return linkSuccessResponse(
-      args.installation.botUsername ?? "Telegram bot",
+      args.installation.botUsername,
       connectSignature.telegramUserId,
     );
   },
@@ -545,11 +567,22 @@ const linkCustomInner$ = command(
     if (installation.orgId !== args.auth.orgId) {
       return orgMismatchResponse();
     }
+    if (!installation.botUsername) {
+      return missingBotUsernameResponse(false);
+    }
+    const addressableInstallation: AddressableTelegramInstallation = {
+      ...installation,
+      botUsername: installation.botUsername,
+    };
 
     if (args.body.telegramAuth) {
       return set(
         linkCustomWithTelegramAuth$,
-        { auth: args.auth, body: args.body, installation },
+        {
+          auth: args.auth,
+          body: args.body,
+          installation: addressableInstallation,
+        },
         signal,
       );
     }
@@ -557,7 +590,11 @@ const linkCustomInner$ = command(
     if (args.body.connectSignature) {
       return set(
         linkCustomWithConnectSignature$,
-        { auth: args.auth, body: args.body, installation },
+        {
+          auth: args.auth,
+          body: args.body,
+          installation: addressableInstallation,
+        },
         signal,
       );
     }

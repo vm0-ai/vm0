@@ -14,8 +14,13 @@ import mitm_addon
 import request_classification
 import upstream_destination_binding
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.buffered_auth_body_framing_cases import (
+    BufferedAuthBodyFramingRejectionCase,
+    buffered_auth_body_framing_case_id,
+    buffered_auth_body_framing_rejection_cases,
+)
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -27,12 +32,12 @@ def _write_auth_base_firewall_registry(
     tmp_path,
     *,
     auth_config: dict[str, object] | None = None,
-    vm_fields: dict[str, object] | None = None,
+    sandbox_fields: dict[str, object] | None = None,
 ):
     auth_config = auth_config or {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"}
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="webhook",
             api_entry={
@@ -46,7 +51,7 @@ def _write_auth_base_firewall_registry(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -57,7 +62,7 @@ async def test_oversized_auth_base_request_does_not_capture_request_body(
     request_body = b'{"secret":"super-secret-body"}'
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="webhook",
             api_entry={
@@ -71,7 +76,7 @@ async def test_oversized_auth_base_request_does_not_capture_request_body(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -122,7 +127,7 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
             "headers": {"Authorization": "Bearer ${{ secrets.WEBHOOK_TOKEN }}"},
             "base": "${{ secrets.WEBHOOK_URL }}",
         },
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -170,7 +175,7 @@ async def test_auth_base_requestheaders_rejects_saturated_admission_before_auth(
 ):
     reg_path = _write_auth_base_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
     flow = real_flow(
@@ -254,23 +259,11 @@ def test_auth_base_requestheaders_releases_new_admission_after_attach_failure(
 
 
 @pytest.mark.parametrize(
-    ("method", "request_header_pairs"),
-    [
-        ("GET", []),
-        ("HEAD", []),
-        ("POST", []),
-        ("PUT", []),
-        ("PATCH", []),
-        ("OPTIONS", []),
-        ("TRACE", []),
-        ("POST", [("Transfer-Encoding", "chunked")]),
-        ("POST", [("Content-Length", "not-a-number")]),
-        ("POST", [("Content-Length", "-1")]),
-        ("POST", [("Content-Length", "4"), ("Content-Length", "5")]),
-    ],
+    "method",
+    ["GET", "HEAD", "POST", "PUT", "PATCH", "OPTIONS", "TRACE"],
 )
-async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
-    tmp_path, real_flow, mitm_ctx, headers, method, request_header_pairs
+async def test_auth_base_requestheaders_rejects_missing_content_length(
+    tmp_path, real_flow, mitm_ctx, headers, method
 ):
     reg_path = _write_auth_base_firewall_registry(tmp_path)
     flow = real_flow(
@@ -281,7 +274,6 @@ async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
         path="/",
         request_headers=headers(
             ("Host", "placeholder.example.com"),
-            *request_header_pairs,
         ),
     )
     get_headers = AsyncMock()
@@ -299,6 +291,54 @@ async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
     assert flow.error.msg == Error.KILLED_MESSAGE
     assert flow.live is False
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == ("auth_base_request_body_length_required")
+
+
+@pytest.mark.parametrize(
+    "framing_case",
+    buffered_auth_body_framing_rejection_cases(
+        max_body_bytes=auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES
+    ),
+    ids=buffered_auth_body_framing_case_id,
+)
+async def test_auth_base_requestheaders_rejects_shared_body_framing(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    headers,
+    framing_case: BufferedAuthBodyFramingRejectionCase,
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            *framing_case.header_pairs,
+        ),
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    expected_error = (
+        "auth_base_request_body_too_large"
+        if framing_case.kind == "too_large"
+        else "auth_base_request_body_length_required"
+    )
+    get_headers.assert_not_called()
+    assert flow.response is None
+    assert flow.error is not None
+    assert flow.error.msg == Error.KILLED_MESSAGE
+    assert flow.live is False
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_error
 
 
 async def test_browser_auth_base_requestheaders_skips_body_framing_rejection(
@@ -415,7 +455,7 @@ async def test_requestheaders_skips_registry_for_bounded_body_headers(real_flow,
     mitm_addon.requestheaders(flow)
 
     assert flow.response is None
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 
@@ -442,6 +482,7 @@ async def test_auth_base_requestheaders_accepts_body_at_limit(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
     mock_forward = AsyncMock(return_value=(200, b"ok", {}))
 
@@ -490,6 +531,7 @@ async def test_auth_base_requestheaders_admission_released_after_success(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
 
     with (
@@ -622,6 +664,7 @@ async def test_auth_base_requestheaders_admission_released_when_resolved_base_mi
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
     }
 
     with (

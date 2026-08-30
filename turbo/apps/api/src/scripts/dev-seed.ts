@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
-import { getVm0ManagedRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
+import { getVm0BuiltInModelRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
 import { MANAGED_SOCIALKIT_BILLING_CATEGORY } from "@okouai/api-contracts/contracts/social";
 import { resolveSkillRef } from "@okouai/core/github-url";
 import {
@@ -456,16 +456,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.15), 1_000_000],
     ["tokens.output", usd(9), 1_000_000],
   ]),
-  // OpenRouter Qwen2.5 7B pricing retrieved 2026-08-06 from:
-  // https://openrouter.ai/qwen/qwen-2.5-7b-instruct
-  // Current providers do not discount cached input, so cache reads use the
-  // regular input-token rate.
-  ...usageGroup("translation", "qwen/qwen-2.5-7b-instruct", [
-    ["tokens.input", usd(0.1), 1_000_000],
-    ["tokens.cache_read", usd(0.1), 1_000_000],
-    ["tokens.output", usd(0.2), 1_000_000],
-  ]),
-
   // X connector — https://docs.x.com/x-api/getting-started/pricing
   ...usageGroup("connector", "x", [
     // Reads — $/resource
@@ -707,7 +697,7 @@ type LineWriter = (message: string) => void;
 
 /**
  * Build vm0_api_keys entries from environment variables.
- * Vendors are derived from all VM0 managed candidates so new providers are
+ * Vendors are derived from all VM0 built-in candidates so new providers are
  * automatically picked up.
  */
 export function buildVm0ApiKeys(
@@ -715,7 +705,7 @@ export function buildVm0ApiKeys(
   logLine: LineWriter = writeLine,
 ): (typeof builtInModelKeys.$inferInsert)[] {
   const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
-  for (const vendor of getVm0ManagedRouteVendors()) {
+  for (const vendor of getVm0BuiltInModelRouteVendors()) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {

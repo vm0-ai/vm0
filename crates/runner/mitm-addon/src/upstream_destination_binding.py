@@ -76,6 +76,13 @@ class UpstreamDestinationBinding:
     original_address: tuple[str, int] | None
 
 
+@dataclass(frozen=True, slots=True)
+class _DestinationBindingMatch:
+    """Selected binding evidence projected by the public matching helpers."""
+
+    endpoint: tuple[str, int] | None
+
+
 _bindings_by_server_id: dict[str, UpstreamDestinationBinding] = {}
 _server_ids_by_client_id: dict[str, set[str]] = {}
 _client_id_by_server_id: dict[str, str] = {}
@@ -404,6 +411,49 @@ def _client_binding_connected_endpoint(
     return connected_endpoint.address
 
 
+def _resolve_destination_binding(
+    flow: http.HTTPFlow,
+    *,
+    destination: NormalizedUpstreamDestination,
+    allowed_kinds: frozenset[BindingKind],
+) -> _DestinationBindingMatch | None:
+    server = flow.server_conn
+    server_id = _connection_id(server)
+    binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
+    if binding is not None:
+        if not _binding_matches(
+            binding,
+            host=destination.host,
+            port=destination.port,
+            allowed_kinds=allowed_kinds,
+        ) or not _server_binding_matches_current_destination(server, binding):
+            return None
+        return _DestinationBindingMatch(endpoint=binding.original_address)
+
+    if bool(getattr(server, "connected", False)):
+        matching_client_bindings = _matching_client_bindings(
+            flow.client_conn,
+            host=destination.host,
+            port=destination.port,
+            allowed_kinds=allowed_kinds,
+        )
+        endpoint = _client_binding_connected_endpoint(
+            client=flow.client_conn,
+            server=server,
+            port=destination.port,
+            bindings=matching_client_bindings,
+        )
+        return _DestinationBindingMatch(endpoint=endpoint) if endpoint is not None else None
+
+    if _address_matches(
+        destination.host,
+        destination.port,
+        getattr(server, "address", None),
+    ):
+        return _DestinationBindingMatch(endpoint=None)
+    return None
+
+
 def diagnostic_snapshot_for_flow(
     flow: http.HTTPFlow,
     *,
@@ -537,38 +587,13 @@ def flow_matches_normalized_destination(
     Callers that need durable admission must additionally require
     ``has_server_binding`` or go through the privileged binding path.
     """
-    server = flow.server_conn
-    server_id = _connection_id(server)
-    binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
-    if binding is not None:
-        return _binding_matches(
-            binding,
-            host=destination.host,
-            port=destination.port,
-            allowed_kinds=allowed_kinds,
-        ) and _server_binding_matches_current_destination(server, binding)
-
-    if bool(getattr(server, "connected", False)):
-        matching_client_bindings = _matching_client_bindings(
-            flow.client_conn,
-            host=destination.host,
-            port=destination.port,
+    return (
+        _resolve_destination_binding(
+            flow,
+            destination=destination,
             allowed_kinds=allowed_kinds,
         )
-        return (
-            _client_binding_connected_endpoint(
-                client=flow.client_conn,
-                server=server,
-                port=destination.port,
-                bindings=matching_client_bindings,
-            )
-            is not None
-        )
-
-    return _address_matches(
-        destination.host,
-        destination.port,
-        getattr(server, "address", None),
+        is not None
     )
 
 
@@ -614,47 +639,28 @@ def bound_destination_endpoint_for_flow(
 ) -> tuple[str, int] | None:
     """Return the concrete endpoint proven by a matching binding, if any.
 
-    Host-policy checks use this endpoint as connection evidence. A connected
-    fallback match returns the live authoritative endpoint, not a DNS result.
+    Host-policy checks use this endpoint as connection evidence. Direct server
+    bindings are decisive. Without a direct binding, a connected fallback
+    match returns the live authoritative endpoint, not a DNS result, while an
+    unconnected address-only match returns no concrete endpoint.
     """
     trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
     if not trusted_host:
         return None
     try:
-        normalized_host = normalize_hostname(trusted_host)
+        destination = normalize_upstream_destination(
+            host=trusted_host,
+            port=flow.request.port,
+        )
     except (UnicodeError, ValueError):
         return None
 
-    port = flow.request.port
-    server = flow.server_conn
-    server_id = _connection_id(server)
-    binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
-    if (
-        binding is not None
-        and _binding_matches(
-            binding,
-            host=normalized_host,
-            port=port,
-            allowed_kinds=allowed_kinds,
-        )
-        and _server_binding_matches_current_destination(server, binding)
-    ):
-        return binding.original_address
-
-    matching_client_bindings = _matching_client_bindings(
-        flow.client_conn,
-        host=normalized_host,
-        port=port,
+    match = _resolve_destination_binding(
+        flow,
+        destination=destination,
         allowed_kinds=allowed_kinds,
     )
-    if bool(getattr(server, "connected", False)):
-        return _client_binding_connected_endpoint(
-            client=flow.client_conn,
-            server=server,
-            port=port,
-            bindings=matching_client_bindings,
-        )
-    return None
+    return match.endpoint if match is not None else None
 
 
 def binding_snapshot_for_tests() -> dict[str, UpstreamDestinationBinding]:

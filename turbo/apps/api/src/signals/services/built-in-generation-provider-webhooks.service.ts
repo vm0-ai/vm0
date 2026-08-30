@@ -1,7 +1,9 @@
 import { Buffer } from "node:buffer";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env } from "../../lib/env";
+import { webUrl } from "../../lib/web-url";
 
 type BuiltInGenerationProviderWebhookProvider = "fal" | "byteplus" | "minimax";
 
@@ -66,7 +68,7 @@ export function falBuiltInGenerationWebhookUrl(args: {
 }): string {
   const baseUrl = new URL(
     `/api/webhooks/built-in-generations/fal/${args.generationId}`,
-    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    apiBackendUrl() ?? webUrl(),
   );
   baseUrl.searchParams.set(
     "token",
@@ -88,7 +90,7 @@ export function bytePlusBuiltInGenerationWebhookUrl(args: {
 }): string {
   const baseUrl = new URL(
     `/api/webhooks/built-in-generations/byteplus/${args.generationId}`,
-    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    apiBackendUrl() ?? webUrl(),
   );
   baseUrl.searchParams.set(
     "token",
@@ -110,7 +112,7 @@ export function miniMaxBuiltInGenerationWebhookUrl(args: {
 }): string {
   const baseUrl = new URL(
     `/api/webhooks/built-in-generations/minimax/${args.generationId}`,
-    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    apiBackendUrl() ?? webUrl(),
   );
   baseUrl.searchParams.set(
     "token",

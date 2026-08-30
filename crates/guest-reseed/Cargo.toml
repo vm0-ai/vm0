@@ -1,11 +1,14 @@
 [package]
 name = "guest-reseed"
-version = "0.3.4"
+version = "0.3.7"
 edition.workspace = true
 description = "Inject entropy and force CRNG reseed after Firecracker snapshot restore"
 
 [dependencies]
 libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

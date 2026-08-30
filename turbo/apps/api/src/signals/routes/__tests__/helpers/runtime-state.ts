@@ -9,6 +9,7 @@ import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import { testRuntimeStateRoutes } from "../../test-runtime-state";
 
 const RUNTIME_STATE_ROUTE = "/api/test/runtime-state";
@@ -17,10 +18,12 @@ function requestRuntimeState(
   context: TestContext,
   path: string,
   init?: RequestInit,
+  usagePricingResolution?: UsagePricingResolution,
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
     routes: testRuntimeStateRoutes,
+    usagePricingResolution,
   });
   return Promise.resolve(app.request(path, init));
 }
@@ -39,6 +42,7 @@ function expectOk(response: Response, operation: string): void {
 async function postAction(
   context: TestContext,
   body: TestRuntimeStateActionBody,
+  usagePricingResolution?: UsagePricingResolution,
 ): Promise<TestRuntimeStateActionResponse> {
   const response = await requestRuntimeState(
     context,
@@ -48,28 +52,48 @@ async function postAction(
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     },
+    usagePricingResolution,
   );
   await expectOk(response, `runtime state action ${body.action}`);
   return await readJson<TestRuntimeStateActionResponse>(response);
 }
 
-interface Vm0ManagedModelKeyFixture {
+export async function reconcileSocialKitDownloadsForTest(
+  context: TestContext,
+  downloadIds: readonly string[],
+  usagePricingResolution: UsagePricingResolution,
+): Promise<number> {
+  const response = await postAction(
+    context,
+    {
+      action: "reconcile-socialkit-downloads",
+      download_ids: [...downloadIds],
+    },
+    usagePricingResolution,
+  );
+  if (response.processed === undefined) {
+    throw new Error("SocialKit reconciliation fixture returned no count");
+  }
+  return response.processed;
+}
+
+interface Vm0BuiltInModelKeyFixture {
   readonly selectedModel: string;
   release(): Promise<void>;
 }
 
-function vm0ManagedModelKeyFixture(
+function vm0BuiltInModelKeyFixture(
   context: TestContext,
   fixtureId: string,
   selectedModel: string,
-): Vm0ManagedModelKeyFixture {
+): Vm0BuiltInModelKeyFixture {
   let released = false;
   const release = async (): Promise<void> => {
     if (released) {
       return;
     }
     await postAction(context, {
-      action: "delete-vm0-managed-model-key",
+      action: "delete-vm0-built-in-model-key",
       fixture_id: fixtureId,
     });
     released = true;
@@ -78,97 +102,109 @@ function vm0ManagedModelKeyFixture(
   return { selectedModel, release };
 }
 
-export async function seedVm0ManagedDefaultModelKey(
+export async function seedVm0BuiltInDefaultModelKey(
   context: TestContext,
-): Promise<Vm0ManagedModelKeyFixture> {
+): Promise<Vm0BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-managed-default-model-key",
+    action: "seed-vm0-built-in-default-model-key",
     fixture_id: fixtureId,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0ManagedDefaultModelKey missing selected_model");
+    throw new Error("seedVm0BuiltInDefaultModelKey missing selected_model");
   }
-  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-export async function seedVm0ManagedModelKey(
+export async function seedVm0BuiltInModelKey(
   context: TestContext,
   selectedModel: string,
-): Promise<Vm0ManagedModelKeyFixture> {
+): Promise<Vm0BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-managed-model-key",
+    action: "seed-vm0-built-in-model-key",
     fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0ManagedModelKey missing selected_model");
+    throw new Error("seedVm0BuiltInModelKey missing selected_model");
   }
-  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-export async function seedVm0ManagedModelCandidateKeys(
+export async function seedVm0BuiltInModelCandidateKeys(
   context: TestContext,
   selectedModel: string,
-): Promise<Vm0ManagedModelKeyFixture> {
+): Promise<Vm0BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-managed-model-candidate-keys",
+    action: "seed-vm0-built-in-model-candidate-keys",
     fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0ManagedModelCandidateKeys missing selected_model");
+    throw new Error("seedVm0BuiltInModelCandidateKeys missing selected_model");
   }
-  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-type ManagedModelRuntimeRouteFixture = NonNullable<
-  TestRuntimeStateActionResponse["managed_model_route"]
+type BuiltInModelRuntimeRouteFixture = NonNullable<
+  TestRuntimeStateActionResponse["built_in_model_route"]
 >;
 
-export async function resolveVm0ManagedModelRouteFixture(
+export async function resolveVm0BuiltInModelRouteFixture(
   context: TestContext,
   selectedModel: string,
   fallbackEnabled: boolean,
-): Promise<ManagedModelRuntimeRouteFixture | null> {
+): Promise<BuiltInModelRuntimeRouteFixture | null> {
   const response = await postAction(context, {
-    action: "resolve-vm0-managed-model-route",
+    action: "resolve-vm0-built-in-model-route",
     selected_model: selectedModel,
     fallback_enabled: fallbackEnabled,
   });
-  return response.managed_model_route ?? null;
+  return response.built_in_model_route ?? null;
 }
 
-export async function setVm0ManagedCandidateCooldownFixture(
+export async function setVm0BuiltInCandidateCooldownFixture(
   context: TestContext,
   selectedModel: string,
-  route: ManagedModelRuntimeRouteFixture,
+  route: BuiltInModelRuntimeRouteFixture,
   unavailableUntil: Date,
 ): Promise<void> {
   await postAction(context, {
-    action: "set-vm0-managed-candidate-cooldown",
+    action: "set-vm0-built-in-candidate-cooldown",
     selected_model: selectedModel,
     provider_type: route.provider_type,
     upstream_model: route.upstream_model,
     unavailable_until: unavailableUntil.toISOString(),
   });
-  registerVm0ManagedCandidateCooldownCleanup(context, selectedModel, route);
+  registerVm0BuiltInCandidateCooldownCleanup(context, selectedModel, route);
 }
 
-export function registerVm0ManagedCandidateCooldownCleanup(
+export async function deleteVm0BuiltInCandidateCooldownFixture(
   context: TestContext,
   selectedModel: string,
-  route: ManagedModelRuntimeRouteFixture,
+  route: BuiltInModelRuntimeRouteFixture,
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-vm0-built-in-candidate-cooldown",
+    selected_model: selectedModel,
+    provider_type: route.provider_type,
+    upstream_model: route.upstream_model,
+  });
+}
+
+export function registerVm0BuiltInCandidateCooldownCleanup(
+  context: TestContext,
+  selectedModel: string,
+  route: BuiltInModelRuntimeRouteFixture,
 ): void {
   onTestFinished(async () => {
-    await postAction(context, {
-      action: "delete-vm0-managed-candidate-cooldown",
-      selected_model: selectedModel,
-      provider_type: route.provider_type,
-      upstream_model: route.upstream_model,
-    });
+    await deleteVm0BuiltInCandidateCooldownFixture(
+      context,
+      selectedModel,
+      route,
+    );
   });
 }
 
@@ -198,22 +234,6 @@ export async function readUsagePackInvitationSchemaAvailable(
     );
   }
   return response.usage_pack_invitation_schema_available;
-}
-
-export async function readConnectorCatalogRuntimeProjectionSchemaAvailable(
-  context: TestContext,
-): Promise<boolean> {
-  const response = await postAction(context, {
-    action: "read-connector-catalog-runtime-projection-schema-state",
-  });
-  if (
-    response.connector_catalog_runtime_projection_schema_available === undefined
-  ) {
-    throw new Error(
-      "readConnectorCatalogRuntimeProjectionSchemaAvailable missing schema availability",
-    );
-  }
-  return response.connector_catalog_runtime_projection_schema_available;
 }
 
 export async function readUsagePackPurchaseSerializationSchemaAvailable(
@@ -298,6 +318,8 @@ export async function readWorkflowAutomationAutonomyFixture(
   readonly autonomyBudget: number;
   readonly enabled: boolean;
   readonly lastRunId: string | null;
+  readonly officialBlueprintKey: string | null;
+  readonly officialResultEmailEnabled: boolean | null;
 } | null> {
   const response = await postAction(context, {
     action: "read-workflow-automation-autonomy-state",
@@ -314,6 +336,8 @@ export async function readWorkflowAutomationAutonomyFixture(
         autonomyBudget: state.autonomy_budget,
         enabled: state.enabled,
         lastRunId: state.last_run_id,
+        officialBlueprintKey: state.official_blueprint_key,
+        officialResultEmailEnabled: state.official_result_email_enabled,
       }
     : null;
 }
@@ -352,6 +376,198 @@ export async function readLatestWorkflowAutomationRunFixture(
     : null;
 }
 
+export async function readOfficialWorkflowRunStateFixture(
+  context: TestContext,
+  runId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["official_workflow_run_state"]>
+> {
+  const response = await postAction(context, {
+    action: "read-official-workflow-run-state",
+    run_id: runId,
+  });
+  if (!("official_workflow_run_state" in response)) {
+    throw new Error(
+      "readOfficialWorkflowRunStateFixture missing official_workflow_run_state",
+    );
+  }
+  if (!response.official_workflow_run_state) {
+    throw new Error("Official Workflow Run is unavailable");
+  }
+  return response.official_workflow_run_state;
+}
+
+export async function readAgentRunFamilyCountsFixture(
+  context: TestContext,
+  agentId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["agent_run_family_counts"]>
+> {
+  const response = await postAction(context, {
+    action: "read-agent-run-family-counts",
+    agent_id: agentId,
+  });
+  if (!("agent_run_family_counts" in response)) {
+    throw new Error(
+      "readAgentRunFamilyCountsFixture missing agent_run_family_counts",
+    );
+  }
+  if (!response.agent_run_family_counts) {
+    throw new Error("Agent Run-family count is unavailable");
+  }
+  return response.agent_run_family_counts;
+}
+
+export async function readChatEventRowsAsPreviousApiFixture(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["previous_api_chat_event_rows"]>
+> {
+  const response = await postAction(context, {
+    action: "read-chat-event-rows-as-previous-api",
+    thread_id: threadId,
+  });
+  if (!("previous_api_chat_event_rows" in response)) {
+    throw new Error(
+      "readChatEventRowsAsPreviousApiFixture missing previous_api_chat_event_rows",
+    );
+  }
+  return response.previous_api_chat_event_rows ?? [];
+}
+
+export async function corruptOfficialWorkflowRevisionPayloadFixture(
+  context: TestContext,
+  definitionName: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "corrupt-official-workflow-revision-payload",
+    definition_name: definitionName,
+  });
+}
+
+export async function setOfficialWorkflowAutomationAdmissionStateFixture(
+  context: TestContext,
+  automationId: string,
+  reconciliationStatus:
+    | "current"
+    | "reconciling"
+    | "needs_reconfiguration"
+    | "failed",
+  appliedFingerprint?: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-official-workflow-automation-admission-state",
+    automation_id: automationId,
+    reconciliation_status: reconciliationStatus,
+    ...(appliedFingerprint === undefined
+      ? {}
+      : { applied_fingerprint: appliedFingerprint }),
+  });
+}
+
+export async function retargetWorkflowAutomationFixture(
+  context: TestContext,
+  automationId: string,
+  workflowId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "retarget-workflow-automation",
+    automation_id: automationId,
+    workflow_id: workflowId,
+  });
+}
+
+export async function assertOfficialWorkflowAutomationFinalAdmissionRejectedFixture(
+  context: TestContext,
+  automationId: string,
+  officialWorkflowId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "assert-official-workflow-automation-final-admission-rejected",
+    automation_id: automationId,
+    official_workflow_id: officialWorkflowId,
+  });
+}
+
+type OfficialWorkflowRunGateKind =
+  | "observation"
+  | "final-admission"
+  | "bootstrap-requirement";
+
+type OfficialWorkflowRunGateState = NonNullable<
+  TestRuntimeStateActionResponse["official_workflow_run_gate_state"]
+>;
+
+interface OfficialWorkflowRunGateFixture {
+  read(): Promise<OfficialWorkflowRunGateState>;
+  release(): Promise<void>;
+}
+
+async function readOfficialWorkflowRunGateStateFixture(
+  context: TestContext,
+): Promise<OfficialWorkflowRunGateState | null> {
+  const response = await postAction(context, {
+    action: "read-official-workflow-run-gate-state",
+  });
+  if (!("official_workflow_run_gate_state" in response)) {
+    throw new Error(
+      "readOfficialWorkflowRunGateStateFixture missing gate state",
+    );
+  }
+  return response.official_workflow_run_gate_state ?? null;
+}
+
+export async function installOfficialWorkflowRunGateFixture(
+  context: TestContext,
+  gate: OfficialWorkflowRunGateKind,
+): Promise<OfficialWorkflowRunGateFixture> {
+  const held = postAction(context, {
+    action: "hold-official-workflow-run-gate",
+    gate,
+  }).then(
+    () => {
+      return { ok: true as const };
+    },
+    (error: unknown) => {
+      return { ok: false as const, error };
+    },
+  );
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (released) {
+      return;
+    }
+    released = true;
+    await postAction(context, {
+      action: "release-official-workflow-run-gate",
+    });
+    const outcome = await held;
+    if (!outcome.ok && !context.signal.aborted) {
+      throw outcome.error;
+    }
+  };
+  onTestFinished(release);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const state = await readOfficialWorkflowRunGateStateFixture(context);
+    if (state?.gate === gate) {
+      return {
+        async read(): Promise<OfficialWorkflowRunGateState> {
+          const current =
+            await readOfficialWorkflowRunGateStateFixture(context);
+          if (!current || current.gate !== gate) {
+            throw new Error("Official Workflow Run gate is unavailable");
+          }
+          return current;
+        },
+        release,
+      };
+    }
+  }
+  await release();
+  throw new Error("Official Workflow Run gate did not become active");
+}
+
 export async function readThreadGoalAutonomyBudgetFixture(
   context: TestContext,
   threadId: string,
@@ -370,20 +586,6 @@ export async function readThreadGoalAutonomyBudgetFixture(
 
 export async function resetDatabasePool(context: TestContext): Promise<void> {
   await postAction(context, { action: "reset-database-pool" });
-}
-
-/**
- * Versionless Agent composes are partial historical state that current public
- * APIs cannot create. Keep this test-only mutation scoped to the owned Agent.
- */
-export async function setAgentComposeVersionlessFixture(
-  context: TestContext,
-  agentId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-agent-compose-versionless",
-    agent_id: agentId,
-  });
 }
 
 export async function mutateRunnerJobSecretValueEnvironmentKeys(
@@ -548,19 +750,21 @@ export async function readRunUploadedFileSources(
   return response.uploaded_file_sources ?? [];
 }
 
-export async function setChatEventSnapshotHeadVersion(
+export async function updateChatEventSnapshotHead(
   context: TestContext,
   threadId: string,
-  archiveSchemaVersion: number,
-  objectKey?: string,
-  lastSeqId?: number,
+  ...[objectKey, lastSeqId, lastEventId]: [
+    objectKey?: string,
+    lastSeqId?: number,
+    lastEventId?: string,
+  ]
 ): Promise<void> {
   await postAction(context, {
-    action: "set-chat-event-snapshot-head-version",
+    action: "update-chat-event-snapshot-head",
     thread_id: threadId,
-    archive_schema_version: archiveSchemaVersion,
     ...(objectKey === undefined ? {} : { object_key: objectKey }),
     ...(lastSeqId === undefined ? {} : { last_seq_id: lastSeqId }),
+    ...(lastEventId === undefined ? {} : { last_event_id: lastEventId }),
   });
 }
 

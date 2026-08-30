@@ -178,7 +178,7 @@ async function createScrapePricingFixture(): Promise<UsagePricingFixture> {
 }
 
 describe("okou scrape route", () => {
-  it("rejects zero tokens without scrape:read capability", async () => {
+  it("rejects agent tokens without scrape:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Scrape test actor must belong to an organization");

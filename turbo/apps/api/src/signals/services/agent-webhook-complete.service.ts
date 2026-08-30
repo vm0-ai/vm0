@@ -61,6 +61,7 @@ export interface TerminalSideEffectsInput {
 export interface CancellationRecoverySideEffectsInput {
   readonly kind: "cancellation-recovery";
   readonly runId: string;
+  readonly orgId: string;
   readonly userId: string;
   readonly chatThreadId: string | null;
   readonly chatEventsAppended: boolean;
@@ -69,6 +70,7 @@ export interface CancellationRecoverySideEffectsInput {
 export interface DeliveryFinalizationSideEffectsInput {
   readonly kind: "delivery-finalization";
   readonly runId: string;
+  readonly orgId: string;
   readonly userId: string;
   readonly chatThreadId: string;
   readonly chatEventsAppended: boolean;
@@ -468,6 +470,7 @@ function completionResponse(
     sideEffects = {
       kind: "cancellation-recovery",
       runId,
+      orgId: commit.run.orgId,
       userId: commit.run.userId,
       chatThreadId: commit.run.chatThreadId,
       chatEventsAppended: commit.finalization.chatEventsAppended,
@@ -480,6 +483,7 @@ function completionResponse(
     sideEffects = {
       kind: "delivery-finalization",
       runId,
+      orgId: commit.run.orgId,
       userId: commit.run.userId,
       chatThreadId: commit.run.chatThreadId,
       chatEventsAppended: commit.finalization.chatEventsAppended,
@@ -545,6 +549,7 @@ const dispatchTerminalCompleteSideEffects$ = command(
             runId: input.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
             apiStartTime: input.apiStartTime,
+            goalSchedulerOrigin: "terminal_callback_fallback",
           },
           signal,
         ),
@@ -590,10 +595,11 @@ export const dispatchCompleteSideEffectsCore$ = command(
         );
         signal.throwIfAborted();
         if (input.chatEventsAppended) {
-          await publishChatThreadMessageCreatedSafely(
-            input.userId,
-            input.chatThreadId,
-          );
+          await publishChatThreadMessageCreatedSafely({
+            userId: input.userId,
+            orgId: input.orgId,
+            threadId: input.chatThreadId,
+          });
           signal.throwIfAborted();
         }
       }
@@ -619,10 +625,11 @@ export const dispatchCompleteSideEffectsCore$ = command(
     }
     if (input.kind === "delivery-finalization") {
       if (input.chatEventsAppended) {
-        await publishChatThreadMessageCreatedSafely(
-          input.userId,
-          input.chatThreadId,
-        );
+        await publishChatThreadMessageCreatedSafely({
+          userId: input.userId,
+          orgId: input.orgId,
+          threadId: input.chatThreadId,
+        });
         signal.throwIfAborted();
       }
       await tapError(

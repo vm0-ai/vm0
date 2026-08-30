@@ -6,7 +6,7 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { agents } from "@okouai/db/schema/agent";
 import { userConnectors } from "@okouai/db/schema/user-connector";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
@@ -16,10 +16,6 @@ import { and, asc, desc, eq, or } from "drizzle-orm";
 import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
 
 import { db$ } from "../external/db";
-import {
-  buildZeroAgentComposeContent,
-  computeComposeVersionId,
-} from "./agent-compose-content";
 
 export function agentResponse(
   row: {
@@ -255,9 +251,6 @@ export function teamComposeList(
         sound: row.sound,
         avatarUrl: row.avatarUrl,
         visibility: row.visibility,
-        headVersionId: computeComposeVersionId(
-          buildZeroAgentComposeContent(row.name),
-        ),
         updatedAt: row.updatedAt.toISOString(),
       };
     });

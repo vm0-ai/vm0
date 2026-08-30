@@ -1,15 +1,19 @@
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import {
   and,
+  asc,
   eq,
   inArray,
   isNotNull,
   isNull,
+  lt,
   notExists,
   sql,
 } from "drizzle-orm";
@@ -17,10 +21,9 @@ import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
 import {
-  hasPendingUserChatQueueEvent,
-  listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
+  pendingChatQueueEventCondition,
   staleChatEventQueueThreadIds,
 } from "./chat-event-queue.service";
 import { insertChatEvent, replaceChatEvent } from "./chat-event.service";
@@ -49,25 +52,6 @@ async function chatEventQueueAdmissionLock(
   // Serialize every admission and claim transaction for the same chat thread.
   const lockKey = `chat_event_queue:${chatThreadId}`;
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
-}
-
-/** Any active thread-bound run preserves strict per-thread serialization. */
-async function activeRunExistsForWorkflowThread(
-  db: Pick<Db, "select">,
-  threadId: string,
-): Promise<boolean> {
-  const [run] = await db
-    .select({ id: agentRuns.id })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.chatThreadId, threadId),
-        inArray(agentRuns.status, ["queued", "pending", "running"]),
-        isNotNull(agentRuns.triggerSource),
-      ),
-    )
-    .limit(1);
-  return run !== undefined;
 }
 
 async function pendingTickExistsForAutomation(
@@ -117,6 +101,7 @@ interface WorkflowQueueAdmissionArgs {
   readonly workflowAutomationEventType?: WorkflowAutomationEventType;
   readonly workflowAutomationEventPayload?: WorkflowAutomationEventPayload;
   readonly connectorSourceId?: string;
+  readonly publicBrand?: PublicBrand;
   readonly chatThreadId: string;
   readonly triggerSource: TriggerSource;
   readonly triggerBrief: string | undefined;
@@ -169,6 +154,7 @@ async function attemptWorkflowQueueAdmission(
       workflowAutomationEventType: args.workflowAutomationEventType,
       workflowAutomationEventPayload: args.workflowAutomationEventPayload,
       connectorSourceId: args.connectorSourceId,
+      publicBrand: args.publicBrand,
       triggerBrief: args.triggerBrief ?? null,
     });
     if (!inserted) {
@@ -193,6 +179,7 @@ export async function admitWorkflowAutomationEvent(
 
 export interface PendingWorkflowQueueEvent {
   readonly id: string;
+  readonly orgId: string;
   readonly userId: string;
   readonly automationId: string | null;
   readonly chatThreadId: string;
@@ -202,6 +189,7 @@ export interface PendingWorkflowQueueEvent {
   readonly workflowAutomationEventType: string | null;
   readonly workflowAutomationEventPayload: WorkflowAutomationEventPayload | null;
   readonly connectorSourceId: string | undefined;
+  readonly publicBrand: PublicBrand | null;
 }
 
 /**
@@ -220,25 +208,10 @@ export async function loadNextWorkflowQueueEvent(
 ): Promise<PendingWorkflowQueueEvent | null> {
   return await db.transaction(async (tx) => {
     await chatEventQueueAdmissionLock(tx, chatThreadId);
-    if (await hasPendingUserChatQueueEvent(tx, chatThreadId)) {
-      return null;
-    }
-    if (await activeRunExistsForWorkflowThread(tx, chatThreadId)) {
-      return null;
-    }
-
-    const pending = await listPendingChatQueueEvents(
-      tx,
-      chatThreadId,
-      queueItemCreatedBefore,
-    );
-    const head = pending[0];
-    if (!head || head.eventType !== "input.automation") {
-      return null;
-    }
     const [event] = await tx
       .select({
         id: chatEvents.id,
+        orgId: agents.orgId,
         userId: chatThreads.userId,
         automationId: chatAutomationContext.automationId,
         automationKind: workflowAutomations.kind,
@@ -248,9 +221,11 @@ export async function loadNextWorkflowQueueEvent(
         workflowAutomationEventType: chatAutomationContext.eventType,
         workflowAutomationEventPayload: chatAutomationContext.eventPayload,
         connectorSourceId: chatAutomationContext.connectorSourceId,
+        publicBrand: chatAutomationContext.publicBrand,
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .leftJoin(
         chatAutomationContext,
         and(
@@ -262,7 +237,41 @@ export async function loadNextWorkflowQueueEvent(
         workflowAutomations,
         eq(workflowAutomations.id, chatAutomationContext.automationId),
       )
-      .where(eq(chatEvents.id, head.id))
+      .where(
+        and(
+          eq(chatEvents.chatThreadId, chatThreadId),
+          pendingChatQueueEventCondition(tx),
+          chatEventTypeIn(["input.automation"]),
+          queueItemCreatedBefore
+            ? lt(chatEvents.createdAt, queueItemCreatedBefore)
+            : undefined,
+          notExists(
+            tx
+              .select({ id: chatEvents.id })
+              .from(chatEvents)
+              .where(
+                and(
+                  eq(chatEvents.chatThreadId, chatThreadId),
+                  pendingChatQueueEventCondition(tx),
+                  chatEventTypeIn(["input.prompt"]),
+                ),
+              ),
+          ),
+          notExists(
+            tx
+              .select({ id: agentRuns.id })
+              .from(agentRuns)
+              .where(
+                and(
+                  eq(agentRuns.chatThreadId, chatThreadId),
+                  inArray(agentRuns.status, ["queued", "pending", "running"]),
+                  isNotNull(agentRuns.triggerSource),
+                ),
+              ),
+          ),
+        ),
+      )
+      .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id))
       .limit(1);
     if (!event) {
       return null;
@@ -270,6 +279,7 @@ export async function loadNextWorkflowQueueEvent(
     return {
       ...event,
       connectorSourceId: event.connectorSourceId ?? undefined,
+      publicBrand: event.publicBrand,
       triggerSource:
         event.automationKind === null
           ? null

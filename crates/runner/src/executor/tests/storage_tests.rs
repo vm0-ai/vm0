@@ -1,11 +1,9 @@
-use std::collections::HashSet;
-
 use guest_contracts::storage_manifest::{Manifest, StorageEntry};
-use sandbox::{EXEC_OUTPUT_LIMIT_1_MIB, ExecResult, ExecTermination};
+use sandbox::{ExecResult, ExecTermination};
 use sandbox_mock::MockSandbox;
 
 use super::super::storage::{
-    download_storages, guest_download_command, guest_download_env, guest_download_stdin_command,
+    download_storages, guest_download_command, guest_download_env,
     guest_storage_manifest_cleanup_command,
 };
 use super::super::{DEFAULT_EXEC_TIMEOUT, guest_runtime_dir};
@@ -49,7 +47,7 @@ fn manifest_with_serialized_len(len: usize) -> Manifest {
 }
 
 #[tokio::test]
-async fn download_storages_sends_manifest_over_stdin() {
+async fn download_storages_uses_fixed_manifest_operation() {
     let sandbox = MockSandbox::new("test");
     let context = minimal_context();
     let manifest = storage_manifest();
@@ -60,27 +58,16 @@ async fn download_storages_sends_manifest_over_stdin() {
         .unwrap();
 
     assert!(sandbox.write_file_calls().is_empty());
-    let calls = sandbox.exec_calls();
+    assert!(sandbox.exec_calls().is_empty());
+    let calls = sandbox.storage_manifest_calls();
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].cmd, guest_download_stdin_command());
+    assert_eq!(calls[0].manifest_json, manifest_json);
+    assert_eq!(calls[0].run_id, context.run_id.to_string());
     assert_eq!(
-        calls[0]
-            .env_keys
-            .iter()
-            .map(String::as_str)
-            .collect::<HashSet<_>>(),
-        HashSet::from([
-            guest_contracts::env::RUN_ID_ENV,
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-        ])
+        calls[0].runtime_dir,
+        guest_runtime_dir(context.run_id).unwrap()
     );
     assert_eq!(calls[0].timeout, DEFAULT_EXEC_TIMEOUT);
-    assert_eq!(calls[0].output_limits, EXEC_OUTPUT_LIMIT_1_MIB);
-    assert!(!calls[0].sudo);
-    assert_eq!(
-        calls[0].stdin_bytes.as_deref(),
-        Some(manifest_json.as_slice())
-    );
 }
 
 #[test]
@@ -88,21 +75,26 @@ fn guest_download_env_contains_run_identity_values() {
     let context = minimal_context();
     let run_id = context.run_id.to_string();
     let runtime_dir = guest_runtime_dir(context.run_id).unwrap();
+    let env = guest_download_env(&run_id, &runtime_dir);
 
     assert_eq!(
-        guest_download_env(&run_id, &runtime_dir),
+        env,
         [
             (guest_contracts::env::RUN_ID_ENV, run_id.as_str()),
             (
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 runtime_dir.as_str(),
             ),
         ]
     );
+    assert!(
+        !env.iter()
+            .any(|(key, _)| { *key == "VM0_GUEST_RUNTIME_DIR" })
+    );
 }
 
 #[tokio::test]
-async fn exact_stdin_limit_uses_stdin_transport() {
+async fn exact_manifest_limit_uses_dedicated_transport() {
     let sandbox = MockSandbox::new("test");
     let context = minimal_context();
     let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES);
@@ -112,7 +104,8 @@ async fn exact_stdin_limit_uses_stdin_transport() {
         .unwrap();
 
     assert!(sandbox.write_file_calls().is_empty());
-    assert_eq!(sandbox.exec_calls()[0].cmd, guest_download_stdin_command());
+    assert!(sandbox.exec_calls().is_empty());
+    assert_eq!(sandbox.storage_manifest_calls().len(), 1);
 }
 
 #[tokio::test]
@@ -162,6 +155,7 @@ async fn stale_fallback_cleanup_failure_prevents_write() {
     );
     assert!(sandbox.write_file_calls().is_empty());
     assert_eq!(sandbox.exec_calls().len(), 1);
+    assert!(sandbox.storage_manifest_calls().is_empty());
 }
 
 #[tokio::test]
@@ -185,7 +179,7 @@ async fn fallback_exec_error_triggers_cleanup() {
 }
 
 #[tokio::test]
-async fn stdin_exec_error_does_not_run_fallback_cleanup() {
+async fn dedicated_operation_error_does_not_run_fallback_cleanup() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Err(sandbox_exec_error("vsock exec failed")));
     let context = minimal_context();
@@ -196,7 +190,8 @@ async fn stdin_exec_error_does_not_run_fallback_cleanup() {
         .unwrap_err();
 
     assert!(error.to_string().contains("vsock exec failed"));
-    assert_eq!(sandbox.exec_calls().len(), 1);
+    assert!(sandbox.exec_calls().is_empty());
+    assert_eq!(sandbox.storage_manifest_calls().len(), 1);
 }
 
 #[tokio::test]

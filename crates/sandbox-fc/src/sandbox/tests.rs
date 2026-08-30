@@ -322,6 +322,7 @@ async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
     let start_task = tokio::spawn(async move {
         start_host
             .start_supervised_exec(SupervisedExecRequest {
+                role: vsock_proto::ExecProcessRole::Agent,
                 timeout: ExecTimeoutPolicy::Duration { timeout_ms: 60_000 },
                 command: "sleep 60",
                 env: &[],
@@ -350,10 +351,7 @@ async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
         vsock_proto::ExecControlPolicy::Enabled { sink: true, .. }
     ));
 
-    let pid = 73;
-    let payload = vsock_proto::encode_exec_started(pid).unwrap();
-    let response = vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, start.seq, &payload).unwrap();
-    guest.write_all(&response).await.unwrap();
+    send_agent_started_and_ready(&mut guest, start.seq, 73).await;
     let handle = start_task.await.unwrap();
 
     ExecProcessControlFixture {
@@ -516,6 +514,21 @@ async fn send_exec_exit(stream: &mut UnixStream, exec_seq: u32) {
     .unwrap();
     let response = vsock_proto::encode(vsock_proto::MSG_EXEC_RESULT, exec_seq, &payload).unwrap();
     stream.write_all(&response).await.unwrap();
+}
+
+async fn send_agent_started_and_ready(stream: &mut UnixStream, exec_seq: u32, pid: u32) {
+    let started = vsock_proto::encode_exec_started(pid).unwrap();
+    let started = vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, exec_seq, &started).unwrap();
+    stream.write_all(&started).await.unwrap();
+
+    let ready = vsock_proto::encode_exec_agent_ready(vsock_proto::ExecAgentReadyTiming {
+        containment_create_us: 11,
+        placement_broker_setup_us: 12,
+        shell_spawn_us: 13,
+        bootstrap_ready_wait_us: 14,
+    });
+    let ready = vsock_proto::encode(vsock_proto::MSG_EXEC_AGENT_READY, exec_seq, &ready).unwrap();
+    stream.write_all(&ready).await.unwrap();
 }
 
 fn monitored_cat_process() -> tokio::process::Child {
@@ -2181,6 +2194,35 @@ fn operation_error_classifies_io_timeout() {
 }
 
 #[test]
+fn operation_error_preserves_typed_request_timeout_stage() {
+    let timeout = vsock_host::RequestTimeoutError::new(
+        vsock_host::RequestTimeoutStage::AwaitingTerminalResponse,
+        Duration::from_secs(60),
+    );
+    let err = FirecrackerSandbox::operation_error(
+        SandboxOperation::WriteFile,
+        io::Error::new(io::ErrorKind::TimedOut, timeout),
+        false,
+    );
+
+    match err {
+        SandboxError::OperationTimeout {
+            operation,
+            stage,
+            timeout_ms,
+        } => {
+            assert_eq!(operation, SandboxOperation::WriteFile);
+            assert_eq!(
+                stage,
+                sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse
+            );
+            assert_eq!(timeout_ms, 60_000);
+        }
+        other => panic!("expected typed operation timeout, got {other:?}"),
+    }
+}
+
+#[test]
 fn operation_error_classifies_non_timeout_as_guest() {
     let err = FirecrackerSandbox::operation_error(
         SandboxOperation::Exec,
@@ -2274,7 +2316,6 @@ async fn start_process_output_rejects_invalid_stream_configuration() {
                 env: &[],
                 sudo: false,
                 output,
-                control: ProcessControlMode::None,
             })
             .await
         {
@@ -2312,7 +2353,6 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
         env: &[],
         sudo: false,
         output,
-        control: ProcessControlMode::None,
     };
 
     let start_process = sandbox.start_process(&request);
@@ -2320,6 +2360,8 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
         let start = read_vsock_message(&mut guest).await;
         assert_eq!(start.msg_type, vsock_proto::MSG_EXEC_START);
         let decoded = vsock_proto::decode_exec_start(&start.payload).unwrap();
+        assert_eq!(decoded.role, vsock_proto::ExecProcessRole::Workload);
+        assert_eq!(decoded.control, vsock_proto::ExecControlPolicy::Disabled);
         assert_eq!(
             decoded.stdout,
             ExecOutputPolicy::Stream {
@@ -2341,6 +2383,67 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
     send_exec_exit(&mut guest, exec_seq).await;
     let exit = sandbox
         .wait_process(handle, Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(
+        exit.termination,
+        sandbox::ExecTermination::Exited { exit_code: 0 }
+    );
+}
+
+#[tokio::test]
+async fn start_agent_process_maps_to_agent_role_and_control_sink() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let request = StartAgentProcessRequest {
+        timeout: Duration::from_secs(5),
+        env: &[],
+        output: ProcessOutputMode::buffered(sandbox::EXEC_OUTPUT_LIMIT_1_MIB),
+    };
+
+    let start_agent = sandbox.start_agent_process(&request);
+    let acknowledge_start = async {
+        let start = read_vsock_message(&mut guest).await;
+        let decoded = vsock_proto::decode_exec_start(&start.payload).unwrap();
+        assert_eq!(decoded.role, vsock_proto::ExecProcessRole::Agent);
+        assert!(decoded.command.is_empty());
+        assert!(!decoded.sudo);
+        assert!(matches!(
+            decoded.control,
+            vsock_proto::ExecControlPolicy::Enabled { sink: true, .. }
+        ));
+
+        send_agent_started_and_ready(&mut guest, start.seq, 73).await;
+        start.seq
+    };
+    let (handle, exec_seq) = tokio::join!(start_agent, acknowledge_start);
+    let handle = handle.unwrap();
+    let timing = handle.start_timing();
+    assert_eq!(timing.containment_create, Duration::from_micros(11));
+    assert_eq!(timing.placement_broker_setup, Duration::from_micros(12));
+    assert_eq!(timing.shell_spawn, Duration::from_micros(13));
+    assert_eq!(timing.bootstrap_ready_wait, Duration::from_micros(14));
+    assert!(timing.ready_at >= timing.shell_started_at);
+    let (process, _control) = handle.into_parts();
+
+    let payload = vsock_proto::encode_exec_result(
+        vsock_proto::ExecTermination::Exited { exit_code: 0 },
+        1,
+        vsock_proto::ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        vsock_proto::ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        "",
+    )
+    .unwrap();
+    let response = vsock_proto::encode(vsock_proto::MSG_EXEC_RESULT, exec_seq, &payload).unwrap();
+    guest.write_all(&response).await.unwrap();
+    let exit = sandbox
+        .wait_process(process, Duration::from_secs(5))
         .await
         .unwrap();
     assert_eq!(
@@ -2458,6 +2561,118 @@ fn exec_result_from_operation_result_preserves_terminal_metadata() {
     assert_eq!(result.diagnostic, "ignored on ordinary exit");
     assert!(result.stdout_truncated);
     assert!(!result.stderr_truncated);
+}
+
+#[tokio::test]
+async fn apply_storage_manifest_preserves_terminal_metadata() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let request = StorageManifestRequest {
+        manifest_json: b"{\"storages\":[]}",
+        run_id: "run-1",
+        runtime_dir: "/run/vm0/runs/run-1",
+        timeout: Duration::from_secs(5),
+    };
+
+    let apply = sandbox.apply_storage_manifest(&request);
+    let respond = async {
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, vsock_proto::MSG_GUEST_STORAGE_MANIFEST);
+        let decoded = vsock_proto::decode_guest_storage_manifest_request(&request.payload).unwrap();
+        assert_eq!(decoded.timeout_ms, 5_000);
+        assert_eq!(decoded.run_id, "run-1");
+        assert_eq!(decoded.runtime_dir, "/run/vm0/runs/run-1");
+        assert_eq!(decoded.manifest_json, b"{\"storages\":[]}");
+
+        let payload = vsock_proto::encode_guest_storage_manifest_result(
+            vsock_proto::ExecTermination::WaitFailed,
+            19,
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"out",
+                truncated: true,
+            },
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"err",
+                truncated: false,
+            },
+            "containment cleanup failed",
+        )
+        .unwrap();
+        let response = vsock_proto::encode(
+            vsock_proto::MSG_GUEST_STORAGE_MANIFEST_RESULT,
+            request.seq,
+            &payload,
+        )
+        .unwrap();
+        guest.write_all(&response).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(apply, respond);
+    let result = result.unwrap();
+
+    assert_eq!(result.termination, ExecTermination::WaitFailed);
+    assert_eq!(result.guest_duration_ms, Some(19));
+    assert_eq!(result.stdout, b"out");
+    assert_eq!(result.stderr, b"err");
+    assert!(result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+    assert_eq!(result.diagnostic, "containment cleanup failed");
+}
+
+#[tokio::test]
+async fn restore_guest_state_preserves_fixed_request_and_terminal_metadata() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let entropy = [0xA5; 256];
+    let request = GuestStateRestoreRequest {
+        unix_seconds: 1_778_000_000,
+        unix_nanoseconds: 123_000_000,
+        entropy: &entropy,
+        timezone: GuestStateRestoreTimezone::Required("Asia/Shanghai"),
+        timeout: Duration::from_secs(5),
+    };
+
+    let restore = sandbox.restore_guest_state(&request);
+    let respond = async {
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, vsock_proto::MSG_GUEST_STATE_RESTORE);
+        let decoded = vsock_proto::decode_guest_state_restore_request(&request.payload).unwrap();
+        assert_eq!(decoded.timeout_ms, 5_000);
+        assert_eq!(decoded.unix_seconds, 1_778_000_000);
+        assert_eq!(decoded.unix_nanoseconds, 123_000_000);
+        assert_eq!(decoded.entropy, entropy);
+        assert_eq!(
+            decoded.timezone,
+            vsock_proto::GuestStateRestoreTimezone::Required("Asia/Shanghai")
+        );
+
+        let payload = vsock_proto::encode_guest_state_restore_result(
+            vsock_proto::ExecTermination::WaitFailed,
+            19,
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"err",
+                truncated: true,
+            },
+            "containment cleanup failed",
+        )
+        .unwrap();
+        let response = vsock_proto::encode(
+            vsock_proto::MSG_GUEST_STATE_RESTORE_RESULT,
+            request.seq,
+            &payload,
+        )
+        .unwrap();
+        guest.write_all(&response).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(restore, respond);
+    let result = result.unwrap();
+
+    assert_eq!(result.termination, ExecTermination::WaitFailed);
+    assert_eq!(result.guest_duration_ms, Some(19));
+    assert!(result.stdout.is_empty());
+    assert_eq!(result.stderr, b"err");
+    assert!(!result.stdout_truncated);
+    assert!(result.stderr_truncated);
+    assert_eq!(result.diagnostic, "containment cleanup failed");
 }
 
 #[test]
@@ -2644,162 +2859,6 @@ fn supervised_exec_result_to_process_exit_maps_terminal_edge_states() {
         assert_eq!(exit.stderr, Vec::<u8>::new());
         assert_eq!(exit.diagnostic, diagnostic);
     }
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_forwards_only_stdout_output() {
-    let (stream_tx, stream_rx) = mpsc::channel(4);
-    let (mut stdout_rx, _close) = supervised_stdout_receiver(stream_rx, 2);
-
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stderr,
-            output_seq: 1,
-            chunk: b"stderr".to_vec(),
-            truncated: false,
-        })
-        .await
-        .unwrap();
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 2,
-            chunk: b"stdout".to_vec(),
-            truncated: true,
-        })
-        .await
-        .unwrap();
-    drop(stream_tx);
-
-    let chunk = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("stdout chunk was not forwarded")
-        .expect("stdout stream closed before forwarded chunk");
-    assert_eq!(chunk.bytes, b"stdout");
-    assert!(chunk.truncated);
-    assert!(stdout_rx.recv().await.is_none());
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_cleanup_closes_unclaimed_adapter() {
-    let (_stream_tx, stream_rx) = mpsc::channel(1);
-    let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
-
-    close();
-
-    let received = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("stdout adapter did not close");
-    assert!(received.is_none());
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_cleanup_interrupts_blocked_forwarder() {
-    let (stream_tx, stream_rx) = mpsc::channel(1);
-    let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
-
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 1,
-            chunk: b"first".to_vec(),
-            truncated: false,
-        })
-        .await
-        .unwrap();
-
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        stream_tx.send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 2,
-            chunk: b"second".to_vec(),
-            truncated: false,
-        }),
-    )
-    .await
-    .expect("second stdout event was not accepted")
-    .unwrap();
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        stream_tx.send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 3,
-            chunk: b"third".to_vec(),
-            truncated: false,
-        }),
-    )
-    .await
-    .expect("third stdout event was not accepted")
-    .unwrap();
-
-    close();
-
-    let first = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("first stdout chunk was not received")
-        .expect("stdout stream closed before first chunk");
-    assert_eq!(first.bytes, b"first");
-
-    let closed = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("stdout adapter did not close after cleanup");
-    assert!(closed.is_none());
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_dropping_cleanup_handle_does_not_close_claimed_stream() {
-    let (stream_tx, stream_rx) = mpsc::channel(4);
-    let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 2);
-
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 1,
-            chunk: b"before".to_vec(),
-            truncated: false,
-        })
-        .await
-        .unwrap();
-
-    drop(close);
-
-    stream_tx
-        .send(ExecOutputEvent {
-            stream: ExecOutputStream::Stdout,
-            output_seq: 2,
-            chunk: b"after".to_vec(),
-            truncated: false,
-        })
-        .await
-        .unwrap();
-    drop(stream_tx);
-
-    let first = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("first stdout chunk was not forwarded")
-        .expect("stdout stream closed before first chunk");
-    let second = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
-        .await
-        .expect("second stdout chunk was not forwarded")
-        .expect("stdout stream closed before second chunk");
-
-    assert_eq!(first.bytes, b"before");
-    assert_eq!(second.bytes, b"after");
-    assert!(stdout_rx.recv().await.is_none());
-}
-
-#[tokio::test]
-async fn supervised_stdout_receiver_dropping_output_receiver_stops_adapter() {
-    let (stream_tx, stream_rx) = mpsc::channel(1);
-    let (stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
-
-    drop(close);
-    drop(stdout_rx);
-
-    tokio::time::timeout(Duration::from_secs(1), stream_tx.closed())
-        .await
-        .expect("stdout adapter kept the supervised stream receiver alive");
 }
 
 #[test]
@@ -5692,6 +5751,90 @@ async fn unpark_resumes_and_deflates() {
 
     if let Some(h) = controller.take() {
         h.abort();
+    }
+}
+
+#[tokio::test]
+async fn unpark_returns_while_controller_guards_pending_deflation() {
+    let lagging_stats_entered = Arc::new(Notify::new());
+    let release_lagging_stats = Arc::new(Notify::new());
+    let converged_stats_entered = Arc::new(Notify::new());
+    let release_converged_stats = Arc::new(Notify::new());
+    let active_stats_entered = Arc::new(Notify::new());
+    let release_active_stats = Arc::new(Notify::new());
+    let lagging_stats = MockBalloonStats::new(0, 3581).with_memory(
+        3431 * BYTES_PER_MIB,
+        3506 * BYTES_PER_MIB,
+        3934 * BYTES_PER_MIB,
+    );
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&lagging_stats_entered),
+                release: Arc::clone(&release_lagging_stats),
+                stats: lagging_stats,
+            },
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&converged_stats_entered),
+                release: Arc::clone(&release_converged_stats),
+                stats: MockBalloonStats::new(0, 0),
+            },
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&active_stats_entered),
+                release: Arc::clone(&release_active_stats),
+                stats: MockBalloonStats::new(0, 0),
+            },
+        ]),
+    );
+    let api_socket = api.socket_path().to_path_buf();
+    let mut is_parked = true;
+    let mut controller: Option<balloon::ControllerHandle> = None;
+    let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+
+    unpark_inner(
+        &mut is_parked,
+        4096,
+        &mut controller,
+        &api_socket,
+        state_rx,
+        "test-unpark-lagging-actual",
+    )
+    .await
+    .unwrap();
+    assert!(!is_parked);
+    assert!(
+        controller.is_some(),
+        "protected controller should be installed without waiting for deflation"
+    );
+
+    lagging_stats_entered.notified().await;
+    let unpark_requests = api.drain_requests();
+    let unpark_patches = patches(&unpark_requests);
+    assert_eq!(unpark_patches.len(), 2);
+    assert_eq!(unpark_patches[0].path, "/vm");
+    assert_eq!(unpark_patches[1].path, "/balloon");
+    assert_eq!(mock_request_body_json(unpark_patches[1])["amount_mib"], 0);
+
+    release_lagging_stats.notify_one();
+    converged_stats_entered.notified().await;
+    let guarded_requests = api.drain_requests();
+    assert!(
+        patches(&guarded_requests).is_empty(),
+        "the contradictory high-free sample must not reverse target-zero deflation"
+    );
+
+    release_converged_stats.notify_one();
+    active_stats_entered.notified().await;
+    assert!(
+        patches(&api.drain_requests()).is_empty(),
+        "normal policy must not start before exact deflation"
+    );
+
+    release_active_stats.notify_one();
+    state_tx.send(SandboxState::Stopped).unwrap();
+    if let Some(handle) = controller.take() {
+        handle.abort_and_join().await;
     }
 }
 

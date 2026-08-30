@@ -3,22 +3,24 @@
 import json
 import os
 import stat
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NamedTuple
 
 from mitmproxy import ctx
 
+import addon_process_logging
 import builtin_base_url_template
 import builtin_host_policy
 import matching
 import state_file
+from generated.builtin_firewall_cache import (
+    BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
+    BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
+)
 from path_security import has_unsafe_url_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
-MAX_BUILTIN_FIREWALL_CATALOG_BYTES = 16 * 1024 * 1024
-_CACHE_SCHEMA_VERSION = 1
 _SHA256_HEX_LENGTH = 64
 _UNTRUSTED_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
 # Use the shortest valid witness for each URL component so materialization does
@@ -231,7 +233,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
             )
         try:
             catalog = _read_catalog(
-                opened_file.read_bytes(MAX_BUILTIN_FIREWALL_CATALOG_BYTES),
+                opened_file.read_bytes(BUILTIN_FIREWALL_CATALOG_MAX_BYTES),
                 key,
             )
         except (BuiltinFirewallCatalogCacheError, OSError, ValueError, RecursionError) as exc:
@@ -239,7 +241,10 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
             state.failed_reason = "cache_invalid"
             state.loaded_key = None
             state.catalog = None
-            _warn(f"Failed to read builtin firewall catalog cache: {exc}")
+            addon_process_logging.emit_addon_process_event(
+                "warn",
+                f"Failed to read builtin firewall catalog cache: {exc}",
+            )
             return BuiltinFirewallCatalogSnapshot(
                 key,
                 None,
@@ -293,7 +298,7 @@ def _read_catalog(
     schema_version = raw.get("schemaVersion")
     if not isinstance(schema_version, int) or isinstance(schema_version, bool):
         raise BuiltinFirewallCatalogCacheError("catalog cache schemaVersion must be an integer")
-    if schema_version != _CACHE_SCHEMA_VERSION:
+    if schema_version != BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION:
         raise BuiltinFirewallCatalogCacheError(
             f"unsupported catalog cache schemaVersion {schema_version}"
         )
@@ -470,8 +475,3 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
         last_index = reference.end
     result.append(raw_base[last_index:])
     return "".join(result)
-
-
-def _warn(message: str) -> None:
-    with suppress(Exception):
-        ctx.log.warn(message)

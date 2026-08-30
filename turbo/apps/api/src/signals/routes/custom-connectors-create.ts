@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -26,9 +26,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return adminRequired;
   }
 
-  const bodyResult = await get(
-    bodyResultOf(zeroCustomConnectorsContract.create),
-  );
+  const bodyResult = await get(bodyResultOf(customConnectorsContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -48,14 +46,14 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     body: serialiseCustomConnector({
       row: result,
       valueMarkers: [],
-      connectedConnection: false,
+      connectedAccountId: null,
     }),
   };
 });
 
 export const customConnectorsCreateRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorsContract.create,
+    route: customConnectorsContract.create,
     handler: authRoute(
       {
         requireOrganization: true,

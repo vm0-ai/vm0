@@ -30,7 +30,7 @@ const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runId: bodyResult.data.runId,
       fileId: bodyResult.data.fileId,
       publicBrand:
-        auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+        auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
     },
     signal,
   );
@@ -53,7 +53,7 @@ export const chatThreadsArtifactsSyncRoutes: readonly RouteEntry[] = [
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "file:write",
-        accept: ["session", "pat", "zero"],
+        accept: ["session", "pat", "agent"],
       },
       syncInner$,
     ),

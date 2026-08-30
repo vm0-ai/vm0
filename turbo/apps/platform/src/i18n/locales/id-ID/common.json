@@ -37,13 +37,18 @@
       "environmentMapping": "Pemetaan Lingkungan",
       "featureFlags": "Flag Fitur",
       "firewalls": "Firewall",
+      "modelProvider": "Penyedia Model",
+      "modelRoute": "Rute Model",
       "mountPath": "Jalur mount",
       "name": "Nama",
       "networkPolicies": "Kebijakan Jaringan",
       "none": "Tidak ada",
       "prompt": "Prompt",
       "runId": "ID Run",
+      "runtimeModel": "Model Runtime",
+      "runtimeProvider": "Penyedia Runtime",
       "secrets": "Rahasia",
+      "selectedModel": "Model Terpilih",
       "session": "Sesi",
       "storageName": "Nama Penyimpanan",
       "systemPrompt": "Prompt sistem",
@@ -116,7 +121,10 @@
         "cacheMiss": "Tidak ada workspace dalam cache yang cocok dengan kunci penggunaan ulang.",
         "deviceLimitMismatch": "Entri pool idle ada, tetapi status rate limiter perangkatnya tidak cocok.",
         "diskPressure": "Penggunaan ulang workspace dilewati karena runner mengalami tekanan disk.",
+        "environment": "Lingkungan",
         "featureDisabled": "Penggunaan ulang sandbox dinonaktifkan untuk run ini.",
+        "generation": "Generasi",
+        "hostname": "Nama host",
         "invalidMetadata": "Metadata workspace dalam cache tidak valid.",
         "invalidWorkingDir": "Direktori kerja yang diminta tidak dapat digunakan ulang.",
         "lockBusy": "Run lain sedang menyiapkan workspace yang sama.",
@@ -124,21 +132,28 @@
         "noSessionId": "Hasil lama: alasan pasti sandbox tidak digunakan ulang tidak tersedia.",
         "notConfigured": "Penggunaan ulang workspace tidak dikonfigurasi untuk run ini.",
         "notReused": "Tidak digunakan ulang",
+        "outcomeUnavailableDescription": "Detail tambahan tidak tersedia.",
         "poolMiss": "Tidak ada sandbox yang cocok ditemukan di pool idle.",
         "profileMismatch": "Entri pool idle ada, tetapi profilnya tidak cocok.",
         "provisioning": "Menyiapkan",
         "reused": "Digunakan ulang",
         "reusedDescription": "Sandbox dibuka kembali dari pool idle.",
+        "runnerId": "ID runner",
         "sandbox": "Sandbox",
         "sandboxPrepareFallback": "Workspace dalam cache ditemukan, tetapi tidak dapat digunakan setelah persiapan sandbox.",
         "sandboxReusedDescription": "Workspace tetap tersedia di dalam sandbox yang digunakan ulang.",
         "startup": "Startup",
         "startupCold": "Cold start",
+        "startupColdDescription": "Sandbox dan workspace baru disiapkan.",
         "startupSandbox": "Penggunaan ulang sandbox",
+        "startupSandboxDescription": "Sandbox dan workspace-nya digunakan kembali.",
         "startupUnknown": "Tidak diketahui",
+        "startupUnknownDescription": "Detail penggunaan kembali saat startup tidak tersedia.",
         "startupWorkspace": "Penggunaan ulang workspace",
+        "startupWorkspaceDescription": "Sandbox baru memulihkan workspace yang di-cache.",
         "unavailable": "Tidak tersedia",
         "unparkFailed": "Percobaan membuka kembali gagal; sandbox baru disediakan.",
+        "version": "Versi",
         "workspace": "Workspace",
         "workspaceNoReuseKey": "Tidak ada kunci penggunaan ulang workspace yang tersedia.",
         "workspaceReusedDescription": "Workspace dipulihkan dari cache runner."
@@ -426,7 +441,7 @@
       "ariaLabel": "Bilah samping",
       "chat": "Chat",
       "collapse": "Ciutkan sidebar",
-      "expand": "Perluas sidebar",
+      "hideChatList": "Sembunyikan daftar chat",
       "manage": "Kelola",
       "mobile": {
         "invite": "Undang",
@@ -449,7 +464,8 @@
         "workflows": "Alur kerja",
         "works": "Bekerja"
       },
-      "searchConversations": "Cari percakapan",
+      "searchWorkspace": "Cari ruang kerja",
+      "showChatList": "Tampilkan daftar chat",
       "workspaceSwitcher": {
         "create": "Buat ruang kerja",
         "creating": "Membuat…",
@@ -483,6 +499,24 @@
       "shareArtifact": "Bagikan artefak",
       "zoomIn": "Perbesar",
       "zoomOut": "Perkecil"
+    },
+    "annotation": {
+      "attach": "Lampirkan tanda",
+      "draftOnly": "Tanda tersimpan di draf — Anda bisa mengubahnya sampai dikirim",
+      "inkLabel": "Warna {{color}}",
+      "notePlaceholder": "Tulis apa yang harus diubah di sini",
+      "open": "Anotasi",
+      "redo": "Ulangi",
+      "removeMark": "Hapus tanda",
+      "subtitle_other": "{{count}} tanda",
+      "textPlaceholder": "Ketik labelnya",
+      "tools": {
+        "arrow": "Panah",
+        "box": "Kotak",
+        "pen": "Gambar",
+        "text": "Teks"
+      },
+      "undo": "Urungkan"
     },
     "attachments": {
       "cancelUpload": "Batalkan unggahan {{filename}}",
@@ -616,7 +650,7 @@
       "illustration": "Ilustrasi",
       "illustrationPreview": "pratinjau ilustrasi {{title}}",
       "importDeck": "Impor dek Anda sendiri",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slide",
       "multiAccent": "Multi-aksen",
@@ -672,6 +706,12 @@
       "tryDifferentSearch": "Coba pencarian lain.",
       "use": "Gunakan",
       "useThisTemplate": "Gunakan template ini",
+      "visibility": {
+        "change": "Ubah",
+        "changeLabel": "Ubah visibilitas templat",
+        "privateState": "Hanya Anda yang dapat melihat dan menggunakannya",
+        "workspaceState": "Siapa pun di ruang kerja ini dapat menggunakannya"
+      },
       "website": "Website",
       "websitePreview": "pratinjau template website {{title}}",
       "workflow": "Alur kerja",
@@ -1010,8 +1050,152 @@
       "signIn": "Masuk",
       "signUp": "Daftar"
     },
+    "homeLink": "Buka beranda {{brandName}}",
     "loading": "Memuat autentikasi",
-    "toggleTheme": "Beralih tema"
+    "theme": {
+      "darkEnabled": "Tema gelap diaktifkan",
+      "lightEnabled": "Tema terang diaktifkan"
+    },
+    "toggleTheme": "Beralih tema",
+    "v2": {
+      "continuation": {
+        "activationErrorDescription": "Kami tidak dapat menyelesaikan proses masuk. Mulai lagi dan coba kembali.",
+        "activationErrorTitle": "Proses masuk tidak dapat diselesaikan",
+        "chooseOrganizationDescription": "Pilih organisasi untuk melanjutkan ke {{brandName}}.",
+        "chooseOrganizationTitle": "Pilih organisasi",
+        "completeDescription": "Mengarahkan Anda ke {{brandName}}.",
+        "completeTitle": "Proses masuk selesai",
+        "loadingDescription": "Memeriksa langkah berikutnya yang diperlukan akun Anda.",
+        "loadingTitle": "Menyelesaikan proses masuk",
+        "noOrganizationsDescription": "Akun ini tidak memiliki organisasi yang tersedia. Minta akses kepada administrator organisasi, lalu mulai lagi.",
+        "noOrganizationsTitle": "Tidak ada organisasi yang tersedia",
+        "recoveryAction": "Mulai lagi",
+        "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
+        "secondFactorTitle": "Verifikasi tambahan diperlukan",
+        "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "signedInAs": "Masuk sebagai {{identifier}}",
+        "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
+        "unsupportedTitle": "Langkah masuk tidak tersedia"
+      },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
+      "signIn": {
+        "addAccount": "Tambah akun",
+        "appleMethod": "Lanjutkan dengan Apple",
+        "back": "Kembali",
+        "chooseAccountSubtitle": "Pilih akun yang ingin Anda gunakan untuk melanjutkan.",
+        "chooseAccountTitle": "Pilih akun",
+        "chooseMethodSubtitle": "Mengalami masalah? Anda dapat menggunakan salah satu metode ini untuk masuk.",
+        "chooseMethodTitle": "Gunakan metode lain",
+        "clientTrustNotice": "Anda masuk dari perangkat baru. Kami meminta verifikasi untuk menjaga keamanan akun Anda.",
+        "codeExpired": "Kode verifikasi ini telah kedaluwarsa. Minta kode baru.",
+        "codeLabel": "Kode verifikasi",
+        "completeSubtitle": "Anda akan segera dialihkan",
+        "completeTitle": "Sedang masuk...",
+        "confirmPasswordLabel": "Konfirmasi kata sandi",
+        "continue": "Lanjutkan",
+        "editIdentifier": "Edit alamat email atau nama pengguna",
+        "emailAddressLabel": "Alamat email",
+        "emailAddressPlaceholder": "Masukkan alamat email Anda",
+        "emailCodeMethod": "Kirim kode ke {{identifier}}",
+        "emailCodeSubtitle": "untuk melanjutkan ke {{brandName}}",
+        "emailCodeTitle": "Periksa email Anda",
+        "emailSupport": "Kirim email ke dukungan",
+        "forgotPassword": "Lupa kata sandi?",
+        "getHelp": "Dapatkan bantuan",
+        "googleMethod": "Lanjutkan dengan Google",
+        "helpDescription": "Jika Anda mengalami masalah saat masuk ke akun, kirim email kepada kami dan kami akan membantu memulihkan akses secepat mungkin.",
+        "helpTitle": "Dapatkan bantuan",
+        "hidePassword": "Sembunyikan kata sandi",
+        "identifierLabel": "Alamat email atau nama pengguna",
+        "identifierPlaceholder": "Masukkan alamat email atau nama pengguna Anda",
+        "lastUsed": "Terakhir digunakan",
+        "methodsHelpPrompt": "Tidak memiliki salah satu opsi ini?",
+        "newPasswordLabel": "Kata sandi baru",
+        "newPasswordSubtitle": "Untuk alasan keamanan, Anda harus mereset kata sandi.",
+        "newPasswordTitle": "Atur kata sandi baru",
+        "noAccount": "Belum punya akun?",
+        "noMethodsMessage": "Tidak dapat melanjutkan masuk. Tidak ada faktor autentikasi yang tersedia.",
+        "noMethodsTitle": "Tidak dapat masuk",
+        "passkeyCancelled": "Verifikasi passkey dibatalkan atau waktu habis.",
+        "passkeyMethod": "Masuk dengan passkey Anda",
+        "passkeyUnavailable": "Passkey tidak didukung di perangkat ini.",
+        "passwordLabel": "Kata sandi",
+        "passwordMethod": "Masuk dengan kata sandi",
+        "passwordMismatch": "Kata sandi tidak cocok.",
+        "passwordPlaceholder": "Masukkan kata sandi Anda",
+        "passwordResetMethod": "Reset kata sandi Anda",
+        "passwordSubtitle": "Masukkan kata sandi yang terkait dengan akun Anda",
+        "passwordTitle": "Masukkan kata sandi Anda",
+        "recoveryMethodsDivider": "Atau, masuk dengan metode lain",
+        "recoveryTitle": "Lupa kata sandi?",
+        "resendCode": "Tidak menerima kode? Kirim ulang",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "resetPassword": "Reset Kata Sandi",
+        "resetPasswordCodeSubtitle": "Pertama, masukkan kode yang dikirim ke alamat email Anda",
+        "resetPasswordCodeTitle": "Reset kata sandi",
+        "separator": "atau",
+        "showPassword": "Tampilkan kata sandi",
+        "signOutOfOtherSessions": "Keluar dari semua perangkat lain",
+        "signUp": "Daftar",
+        "startSubtitle": "Selamat datang kembali! Silakan masuk untuk melanjutkan",
+        "title": "Masuk ke {{brandName}}",
+        "unknownError": "Tindakan ini tidak dapat diselesaikan. Coba lagi nanti atau hubungi dukungan jika masalah terus berlanjut.",
+        "useAnotherMethod": "Gunakan metode lain",
+        "usernameLabel": "Nama pengguna",
+        "usernamePlaceholder": "Masukkan nama pengguna Anda",
+        "verify": "Verifikasi"
+      },
+      "signUp": {
+        "alreadyHaveAccount": "Sudah punya akun?",
+        "appleMethod": "Lanjutkan dengan Apple",
+        "back": "Kembali",
+        "captchaError": "Pendaftaran gagal karena validasi bot gagal. Silakan muat ulang halaman untuk mencoba lagi atau hubungi dukungan untuk bantuan lebih lanjut.",
+        "captchaExpired": "Verifikasi bot telah kedaluwarsa. Coba lagi.",
+        "captchaLoading": "Memuat…",
+        "captchaSubtitle": "Harap tunggu sementara kami memverifikasi permintaan Anda.",
+        "captchaTitle": "Memverifikasi permintaan Anda",
+        "codeExpired": "Kode verifikasi ini telah kedaluwarsa. Minta kode baru.",
+        "codeLabel": "Kode verifikasi",
+        "completeSubtitle": "Sedang mendaftar...",
+        "completeTitle": "Berhasil mendaftar",
+        "continue": "Lanjutkan",
+        "description": "Selamat datang! Silakan isi detail untuk memulai.",
+        "editEmailAddress": "Edit alamat email",
+        "emailAddressLabel": "Alamat email",
+        "emailAddressPlaceholder": "Masukkan alamat email Anda",
+        "emailCodeSubtitle": "Masukkan kode verifikasi yang dikirim ke email Anda",
+        "emailCodeTitle": "Verifikasi email Anda",
+        "firstNameLabel": "Nama depan",
+        "firstNamePlaceholder": "Masukkan nama depan Anda",
+        "googleMethod": "Lanjutkan dengan Google",
+        "hidePassword": "Sembunyikan kata sandi",
+        "lastNameLabel": "Nama belakang",
+        "lastNamePlaceholder": "Masukkan nama belakang Anda",
+        "legalPrivacyOnly": "Saya menyetujui <privacy>Kebijakan Privasi</privacy>",
+        "legalRequired": "Silakan baca dan setujui ketentuan untuk melanjutkan",
+        "legalTermsAndPrivacy": "Saya menyetujui <terms>Ketentuan Layanan</terms> dan <privacy>Kebijakan Privasi</privacy>",
+        "legalTermsOnly": "Saya menyetujui <terms>Ketentuan Layanan</terms>",
+        "optional": "Opsional",
+        "passwordInvalid": "Kata sandi Anda tidak cukup kuat.",
+        "passwordLabel": "Kata sandi",
+        "passwordPlaceholder": "Buat kata sandi",
+        "resendCode": "Tidak menerima kode? Kirim ulang",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "restart": "Gunakan metode lain",
+        "retry": "Coba lagi",
+        "separator": "atau",
+        "showPassword": "Tampilkan kata sandi",
+        "signIn": "Masuk",
+        "title": "Buat akun Anda",
+        "unknownError": "Tindakan ini tidak dapat diselesaikan. Coba lagi nanti atau hubungi dukungan jika masalah terus berlanjut.",
+        "unknownMessage": "Pendaftaran saat ini dinonaktifkan. Jika Anda yakin seharusnya memiliki akses, silakan hubungi dukungan.",
+        "unknownTitle": "Akses dibatasi",
+        "verify": "Verifikasi"
+      }
+    }
   },
   "authorization": {
     "browser": {
@@ -1088,7 +1272,6 @@
         "updatedTitle": "Izin diperbarui"
       },
       "saving": "Menyimpan...",
-      "unknownEndpoints": "Endpoint tidak dikenal",
       "userFallback": "di sana",
       "wouldLike": "Ingin"
     }
@@ -1515,7 +1698,6 @@
         "inviteMember": "Undang manusia 🤝",
         "otherChannels": "Telegram dan telepon"
       },
-      "invitePeople": "Undang orang",
       "taglines": {
         "anonymous": {
           "buildSomething": "Siap membangun sesuatu?",
@@ -1553,6 +1735,8 @@
       "loadingFile": "Memuat {{filename}}",
       "previewFile": "Pratinjau {{filename}}",
       "title": "Lampiran",
+      "unavailable": "{{filename}} tidak lagi tersedia. Unggah ulang untuk mengirimnya.",
+      "unavailableCount_other": "{{count}} lampiran tidak lagi tersedia. Unggah ulang untuk mengirimnya.",
       "uploadFailed": "Gagal mengunggah {{filename}}",
       "uploadFailedRetry": "Gagal mengunggah {{filename}}. Coba lagi.",
       "uploadsFailed": "Beberapa lampiran gagal diunggah. Coba lagi."
@@ -1654,6 +1838,36 @@
       "weeklyAt": "Setiap minggu pukul {{time}}",
       "weeklyOnAt": "Setiap minggu pada {{days}} pukul {{time}}"
     },
+    "banking": {
+      "accountFallback": "Rekening bank",
+      "actionFailed": "Tindakan perbankan gagal",
+      "active_other": "Akses aktif untuk {{count}} rekening",
+      "automationOff": "Akses hanya-baca tidak tersedia untuk proses otomatisasi.",
+      "cancel": "Batal",
+      "change": "Ubah",
+      "connect": "Hubungkan bank",
+      "continue": "Lanjutkan",
+      "duration": "Durasi akses",
+      "expiresAt": "Berakhir {{time}}",
+      "grant": "Berikan akses",
+      "institutionFallback": "Institusi keuangan",
+      "loadFailed": "Tidak dapat memuat akses perbankan",
+      "noAccounts": "Tidak ada rekening aktif yang tersedia. Hubungkan kembali atau perbaiki institusi terlebih dahulu.",
+      "oneDay": "24 jam",
+      "oneHour": "1 jam",
+      "popupBlocked": "Izinkan pop-up untuk Zero, lalu coba lagi.",
+      "readOnly": "Rekening, saldo, dan transaksi · hanya baca",
+      "repair": "Perbaiki",
+      "repairRequired": "{{institution}} perlu diperbaiki",
+      "retry": "Coba lagi",
+      "revoke": "Cabut",
+      "revokeConfirm": "Cabut akses perbankan Agen ini?",
+      "selectAccounts": "Pilih rekening",
+      "sevenDays": "7 hari",
+      "thirtyDays": "30 hari",
+      "title": "Permintaan akses perbankan",
+      "waiting": "Menunggu Mastercard Data Connect. Selesaikan proses di sana, lalu kembali ke Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Tambahkan kredit untuk terus mengobrol dengan {{assistantName}}.",
       "askAdminCredits": "Minta admin ruang kerja untuk menambahkan kredit agar Anda bisa terus mengobrol dengan {{assistantName}}.",
@@ -1678,18 +1892,17 @@
       "agentSuggestions": "Agen",
       "configureModel": "Konfigurasikan model",
       "createWorkflow": "Buat alur kerja",
+      "imageModelForThisChat": "Model gambar untuk chat ini",
       "message": "Pesan",
+      "modelForThisChat": "Model untuk chat ini",
       "placeholder": "Minta saya mengotomatiskan alur kerja, mengelola tugas...",
       "selectedModelUnavailable": "Model yang dipilih tidak tersedia. Konfigurasikan sebelum mengirim.",
       "selectedModelUnavailableToast": "Model yang dipilih tidak tersedia",
       "selectModel": "Pilih model",
-      "setAsDefault": "Jadikan default",
-      "temporaryFastModeDisabledNotice": "Mode Cepat dinonaktifkan sementara untuk proses ini",
-      "temporaryFastModeEnabledNotice": "Mode Cepat diaktifkan sementara untuk proses ini",
-      "temporaryImageModelNotice": "Sementara beralih ke {{model}} untuk gambar",
-      "temporaryModelNotice": "Sementara beralih ke {{model}}",
-      "temporaryVideoModelNotice": "Sementara beralih ke {{model}} untuk video",
+      "temporarilySwitchTo": "Beralih sementara ke",
       "threadSuggestions": "Thread chat",
+      "useForFutureChats": "Gunakan ini untuk chat berikutnya",
+      "videoModelForThisChat": "Model video untuk chat ini",
       "visualAttachmentsUnsupported": "{{modelName}} tidak dapat mengenali gambar atau video. Ganti ke model yang mendukung visi untuk melampirkannya.",
       "workflows": {
         "empty": "Tidak ada alur kerja yang cocok",
@@ -1719,17 +1932,24 @@
       "yourComputer": "Komputer Anda"
     },
     "connectors": {
+      "accountForThread": "Akun untuk utas ini",
       "add": "Tambahkan {{connectorName}}",
       "addConnectors": "Tambahkan konektor",
       "authorizationFailed": "{{connectorName}} terhubung tetapi tidak dapat diotorisasi untuk {{agentName}}",
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
+      "back": "Kembali",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
+      "defaultAccountFor": "{{connector}} · Menggunakan akun default: {{account}}",
+      "fallsBackTo": "Beralih kembali ke {{account}}",
       "find": "Cari konektor...",
+      "noUsableAccount": "Tidak ada akun yang dapat digunakan",
       "remove": "Hapus {{connectorName}}",
-      "title": "Konektor"
+      "selectedAccountFor": "{{connector}} · Akun terpilih: {{account}}",
+      "title": "Konektor",
+      "useDefault": "Gunakan default"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -1775,12 +1995,102 @@
       "agents": "Agen",
       "back": "Kembali",
       "content": "Konten",
-      "description": "Teruskan konten yang dipilih ke agen atau chat.",
+      "description": "Kirim konten yang dipilih ke agen atau chat untuk melanjutkan pengerjaannya.",
       "noResults": "Agen atau chat tidak ditemukan",
       "search": "Cari agen dan chat...",
       "sent": "Berhasil diteruskan",
       "threads": "Chat",
       "title": "Teruskan ke"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "Pilih avatar",
+        "help": "Pilih presenter atau lanjutkan tanpa avatar",
+        "none": "Tanpa avatar"
+      },
+      "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
+      "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
+      "errors": {
+        "recordingEmpty": "Rekaman kosong. Silakan coba lagi.",
+        "recordingFailed": "Perekaman layar tidak dapat dimulai. Coba lagi di Chrome versi terbaru.",
+        "recordingPermission": "Tidak ada yang dibagikan. Pilih tab, jendela, atau layar saat Anda siap.",
+        "recordingShareEnded": "Berbagi layar berakhir sebelum perekaman dimulai.",
+        "recordingUnsupported": "Perekaman layar tidak didukung di browser ini.",
+        "sendFailed": "Utas chat tidak dapat dibuat. Sumber Anda tetap tersimpan secara lokal dan telah diunduh sebagai cadangan.",
+        "uploadFailed": "Sumber tidak dapat diunggah. Sumber tetap tersimpan secara lokal dan telah diunduh sebagai cadangan."
+      },
+      "footer": {
+        "back": "Kembali",
+        "createInChat": "Buat di chat",
+        "download": "Unduh sumber",
+        "next": "Berikutnya",
+        "startRecording": "Pilih layar dan mulai",
+        "stopRecording": "Hentikan perekaman"
+      },
+      "recording": {
+        "chooseSurface": "Pilih tab, jendela, atau layar",
+        "countdown": "Perekaman dimulai setelah hitung mundur",
+        "description": "Chrome akan menanyakan apa yang ingin dibagikan. Perekaman baru dimulai setelah hitung mundur tiga detik selesai.",
+        "heading": "Rekam layar Anda",
+        "localNote": "Anda dapat berhenti dari bilah berbagi Chrome atau kembali ke sini. Rekaman tetap lokal sampai utas chat dibuat.",
+        "microphone": "Mikrofon",
+        "microphoneHelp": "Tambahkan narasi saat melakukan demonstrasi",
+        "recordingLocally": "Merekam secara lokal",
+        "systemAudio": "Audio sistem",
+        "systemAudioHelp": "Sumber yang tersedia bergantung pada Chrome dan sistem Anda"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Tinjau video intro Anda",
+        "help": "Konfirmasikan pilihan yang akan diterima Zero di utas chat baru",
+        "instructions": "Petunjuk pengeditan",
+        "source": "Sumber",
+        "voice": "Suara"
+      },
+      "source": {
+        "chatDescription": "Buka utas sekarang dan bentuk video bersama Zero",
+        "chatDetail": "Tambahkan sumber, avatar, atau suara nanti di chat",
+        "chatTitle": "Mulai di chat",
+        "documentDescription": "Ubah konten Anda menjadi video intro bernarasi",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Unggah slide atau dokumen",
+        "dropDescription": "Slide, dokumen, atau rekaman",
+        "dropTitle": "Letakkan sumber di sini",
+        "heading": "Bagaimana Anda ingin memulai?",
+        "help": "Tambahkan materi yang sudah ada, rekam layar, atau jelaskan video dengan kata-kata Anda sendiri",
+        "recordDescription": "Pilih tab, jendela, atau seluruh layar",
+        "recordDetail": "Dimulai setelah hitung mundur tiga detik",
+        "recordTitle": "Rekam layar Anda",
+        "videoDescription": "Biarkan AI merapikan tempo, framing, dan narasi",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Unggah rekaman"
+      },
+      "sourceReview": {
+        "format": "Format",
+        "heading": "Sumber Anda sudah siap",
+        "help": "Periksa file sebelum melanjutkan",
+        "inBrowser": "Di browser ini",
+        "inTab": "Sampai tab ini ditutup",
+        "replace": "Ganti sumber",
+        "saved": "Tersimpan",
+        "source": "Sumber"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Langkah video intro",
+        "review": "Tinjau",
+        "source": "Sumber",
+        "voice": "Suara"
+      },
+      "title": "Buat video intro",
+      "voice": {
+        "heading": "Pilih suara",
+        "help": "Dengarkan sampel sebelum melanjutkan",
+        "none": "Tanpa narasi",
+        "noneDescription": "Buat video berbasis teks tanpa narasi",
+        "original": "Audio asli",
+        "originalDescription": "Pertahankan audio dari video atau rekaman yang diunggah"
+      }
     },
     "mail": {
       "bcc": "bcc",
@@ -1851,6 +2161,7 @@
       "expiresInHours_one": "Kedaluwarsa dalam {{count}} jam",
       "expiresInHours_other": "Kedaluwarsa dalam {{count}} jam",
       "loadFailed": "Tidak dapat memuat status izin",
+      "otherEndpoints": "endpoint lainnya",
       "unknown": "Izin tidak dikenal",
       "updated": "Izin diperbarui",
       "updateFailed": "Tidak dapat memperbarui izin"
@@ -1877,6 +2188,7 @@
       "loadingGoal": "Memuat tujuan...",
       "message_one": "{{count}} pesan",
       "message_other": "{{count}} pesan",
+      "morningBrief": "Brief Pagi",
       "openGoalDetails": "Buka detail tujuan",
       "pendingAutomationEvent": "Peristiwa otomatisasi tertunda",
       "queuedMessage": "Pesan dalam antrean",
@@ -2123,6 +2435,39 @@
       "title": "Kelola akses {{connector}}",
       "unnamedAgent": "Tanpa nama"
     },
+    "accounts": {
+      "accountName": "Nama akun",
+      "accountsUnavailable": "Akun tidak tersedia untuk konektor ini.",
+      "actions": "Tindakan akun",
+      "addAccount": "Tambah akun",
+      "connected": "Terhubung",
+      "default": "Default",
+      "deleteAccount": "Hapus akun",
+      "deleteDescription": "Thread yang menggunakan akun ini akan kembali ke pewarisan default.",
+      "deleteDescriptionWithCount": "{{value}} thread akan kembali ke pewarisan default.",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "Hapus {{account}}?",
+      "fallbackName": "Akun #{{id}}",
+      "find": "Cari akun",
+      "loading": "Memuat akun…",
+      "loadingMore": "Memuat…",
+      "loadMore": "Muat lebih banyak",
+      "makeDefault": "Jadikan default",
+      "managerTitle": "Kelola akun {{connector}}",
+      "namePromptDescription": "Anda dapat melewati langkah ini dan memberi nama akun nanti.",
+      "namePromptTitle": "Beri nama akun {{connector}} Anda",
+      "noAccounts": "Tidak ada akun",
+      "noAccountsFound": "Akun tidak ditemukan",
+      "reconnectRequired": "Perlu dihubungkan kembali",
+      "rename": "Ganti nama",
+      "skipName": "Lewati",
+      "summaryMany": "{{value}} akun",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} akun",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{value}}/{{total}} memerlukan perhatian",
+      "summaryWithAttention_other": ""
+    },
     "actions": {
       "apply": "Terapkan",
       "authorize": "Otorisasi",
@@ -2185,6 +2530,8 @@
       "access": {
         "add": "Tambah akses",
         "manage": "Kelola akses {{connector}}",
+        "summaryMany": "{{value}} agen",
+        "unavailable": "Akses tidak tersedia",
         "usedBy": "Digunakan oleh "
       },
       "categories": {
@@ -2520,8 +2867,8 @@
         "connectTitle": "Hubungkan ke Slack",
         "invalidDescription": "Halaman ini dimaksudkan untuk dibuka dari tautan koneksi Slack.",
         "open": "Buka Slack",
-        "successDescription": "Sebut @Zero di channel mana pun atau kirim DM untuk mulai mengobrol.",
-        "successDescriptionWorkspace": "Anda tersambung ke {{workspace}}. Sebut @Zero di channel mana pun atau kirim DM untuk mulai mengobrol.",
+        "successDescription": "Sebut bot yang terinstal di channel mana pun atau kirim DM untuk mulai mengobrol.",
+        "successDescriptionWorkspace": "Anda tersambung ke {{workspace}}. Sebut bot yang terinstal di channel mana pun atau kirim DM untuk mulai mengobrol.",
         "successTitle": "Berhasil tersambung ke Slack!"
       },
       "teams": {
@@ -2531,7 +2878,7 @@
         "invalidDescription": "Halaman ini dimaksudkan untuk dibuka dari tautan koneksi Microsoft Teams.",
         "open": "Buka Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Anda tersambung ke {{team}}. Sebut @Zero di Teams untuk mulai mengobrol.",
+        "successDescription": "Anda tersambung ke {{team}}. Sebut @{{botName}} di Teams untuk mulai mengobrol.",
         "successTitle": "Berhasil tersambung ke Microsoft Teams"
       },
       "telegram": {
@@ -2675,12 +3022,12 @@
         "copied": "{{label}} disalin",
         "copy": "Salin",
         "create": {
-          "descriptionAfter": ", buat aplikasi kustom enterprise bernama {{brandName}}, unggah ikon {{brandName}}, lalu tambahkan kemampuan Bot.",
+          "descriptionAfter": ", buat aplikasi kustom enterprise dengan nama dan ikon yang Anda pilih, lalu tambahkan kemampuan Bot.",
           "descriptionBefore": "Di ",
-          "downloadIcon": "Unduh ikon {{brandName}}",
-          "iconAlt": "Ikon aplikasi {{brandName}}",
+          "downloadIcon": "Unduh ikon {{brandName}} opsional",
+          "iconAlt": "Ikon aplikasi {{brandName}} opsional",
           "iconHint": ", atau gunakan ikon apa pun yang Anda suka.",
-          "iconTitle": "Ikon aplikasi {{brandName}}",
+          "iconTitle": "Ikon aplikasi {{brandName}} opsional",
           "imageAlt": "Formulir pembuatan aplikasi Feishu dengan nama aplikasi, ikon, dan tombol Create disorot",
           "title": "Buat aplikasi kustom enterprise"
         },
@@ -2820,7 +3167,7 @@
           "testReceived": "Webhook tes Strapi diterima"
         },
         "webhookUrl": "Webhook URL",
-        "whereZeroWorks": "Tempat {{assistantName}} bekerja"
+        "whereAssistantWorks": "Tempat {{assistantName}} bekerja"
       },
       "telegram": {
         "addBot": "Tambahkan bot",
@@ -2859,7 +3206,7 @@
         "moreOptions": "Opsi lainnya untuk {{bot}}",
         "newBotToken": "Token bot baru",
         "notConnected": "Tidak terhubung",
-        "officialBot": "Bot resmi {{assistantName}}",
+        "officialBot": "Bot Telegram resmi",
         "officialDescription": "Bot resmi yang disediakan oleh {{brandName}}.",
         "officialMissing": "Konfigurasi bot resmi tidak ada.",
         "pageDescription": "Kelola perutean bot untuk ruang kerja ini",
@@ -2975,15 +3322,6 @@
       "doneTitle": "Berhenti berlangganan",
       "errorBody": "Tautan berhenti berlangganan ini tidak valid atau kedaluwarsa. Anda dapat mengelola notifikasi email di Setelan.",
       "errorTitle": "Terjadi kesalahan"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "Anda tidak akan lagi menerima email harian Morning Brief. Anda bisa mengaktifkannya kembali kapan saja di Setelan.",
-      "doneTitle": "Morning Brief dimatikan",
-      "errorBody": "Tautan berhenti berlangganan tidak valid atau tidak lengkap. Buka email Morning Brief terbaru dan gunakan tautan berhenti berlangganannya, atau kelola preferensi di Setelan.",
-      "errorTitle": "Tautan ini tidak valid",
-      "loadingLabel": "Memuat status berhenti berlangganan",
-      "managePreferences": "Kelola preferensi"
     },
     "pwaInstall": {
       "banner": "Instal {{assistantName}} untuk pengalaman yang lebih baik",
@@ -3116,9 +3454,17 @@
           "description": "Hasilkan slide dan narasi",
           "title": "Buat presentasi"
         },
+        "slack": {
+          "description": "Chat dengan rekan tim AI Anda di ruang kerja",
+          "title": "Chat dengan Okou di Slack"
+        },
         "video": {
           "description": "Ubah ide Anda menjadi video",
           "title": "Produksi video"
+        },
+        "website": {
+          "description": "Buat halaman yang bisa dibagikan",
+          "title": "Buat situs web"
         },
         "workflow": {
           "description": "Jelajahi dari template prasetel",
@@ -3260,7 +3606,7 @@
       "whatItDoes": "Yang dilakukan"
     },
     "workflowRun": {
-      "continueWithZero": "Lanjutkan dengan {{assistantName}}",
+      "continueWithAssistant": "Lanjutkan dengan {{assistantName}}",
       "createWorkflow": "Buat alur kerja",
       "customNoteLabel": "Jelaskan alur kerja Anda",
       "customNotePlaceholder": "Jelaskan apa yang ingin Anda bangun dengan {{assistantName}}",
@@ -4425,7 +4771,6 @@
         "usage": {
           "balanceDescription": "Sisa yang bisa dibelanjakan tim Anda.",
           "balanceTitle": "Saldo kredit",
-          "balanceUsageDescription": "Saldo kredit dan penggunaan tim Anda.",
           "usageDescription": "Penggunaan kredit Anda di seluruh chat, otomatisasi, dan channel.",
           "usageTitle": "Penggunaan kredit"
         }
@@ -4439,7 +4784,7 @@
         "start": "Ekspor data saya",
         "starting": "Memulai ekspor"
       },
-      "backToZero": "Kembali ke {{assistantName}}",
+      "backToAssistant": "Kembali ke {{assistantName}}",
       "description": "Unduh file dan catatan teks yang Anda buat di {{assistantName}}.",
       "documentTitle": "Ekspor data",
       "duration": {
@@ -4726,6 +5071,20 @@
         "sectionTitle": "Akun & Keamanan"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Terapkan palet yang cerah dan lembut ke setiap lapisan antarmuka.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema warna"
+        },
         "description": "Pilih tampilan antarmuka.",
         "sectionTitle": "Tampilan",
         "theme": {
@@ -4737,6 +5096,30 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "cancelAction": "Batalkan cooldown",
+          "cancelDescription": "Membatalkan cooldown global ini membuat rute langsung tersedia untuk setiap workspace yang mengaktifkan fallback model bawaan.",
+          "cancelling": "Membatalkan...",
+          "cancelTitle": "Batalkan cooldown global?",
+          "cancelWarning": "Kegagalan berikutnya yang memenuhi syarat dapat menempatkan rute ini kembali dalam cooldown.",
+          "description": "Periksa rute model bawaan yang sementara dikecualikan dari pemilihan fallback.",
+          "disabled": "dinonaktifkan",
+          "disabledExplanation": "Fallback model bawaan dinonaktifkan untuk workspace ini, sehingga cooldown global ini sedang diabaikan di sini.",
+          "empty": "Saat ini tidak ada rute model bawaan dalam cooldown global.",
+          "enabled": "diaktifkan",
+          "globalActive": "cooldown global aktif",
+          "globalExplanation": "Cooldown adalah status operasional global. Status ini hanya dapat memengaruhi workspace ini saat fallback model bawaan diaktifkan di sini.",
+          "keepCooldown": "Pertahankan cooldown",
+          "loading": "Memuat diagnostik cooldown model bawaan...",
+          "providerType": "Jenis penyedia",
+          "refresh": "Segarkan",
+          "selectedModel": "Model terpilih",
+          "title": "Fallback model bawaan",
+          "unavailable": "Diagnostik cooldown model bawaan tidak tersedia.",
+          "unavailableUntil": "Tidak tersedia hingga",
+          "upstreamModel": "Model upstream",
+          "workspaceFallback": "fallback workspace"
+        },
         "capture": {
           "description": "Tangkap nama header HTTP, nilai header aman yang dipilih, dan body dalam log jaringan untuk debugging.",
           "disabled": "Dinonaktifkan",
@@ -4762,24 +5145,6 @@
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia"
         },
-        "managedModelCooldown": {
-          "description": "Periksa rute model terkelola yang sementara dikecualikan dari pemilihan fallback.",
-          "disabled": "dinonaktifkan",
-          "disabledExplanation": "Fallback model terkelola dinonaktifkan untuk workspace ini, sehingga cooldown global ini sedang diabaikan di sini.",
-          "empty": "Saat ini tidak ada rute model terkelola dalam cooldown global.",
-          "enabled": "diaktifkan",
-          "globalActive": "cooldown global aktif",
-          "globalExplanation": "Cooldown adalah status operasional global. Status ini hanya dapat memengaruhi workspace ini saat fallback model terkelola diaktifkan di sini.",
-          "loading": "Memuat diagnostik cooldown model terkelola...",
-          "providerType": "Jenis penyedia",
-          "refresh": "Segarkan",
-          "selectedModel": "Model terpilih",
-          "title": "Fallback model terkelola",
-          "unavailable": "Diagnostik cooldown model terkelola tidak tersedia.",
-          "unavailableUntil": "Tidak tersedia hingga",
-          "upstreamModel": "Model upstream",
-          "workspaceFallback": "fallback workspace"
-        },
         "tab": "Debug"
       },
       "documentTitle": "Preferensi",
@@ -4799,16 +5164,6 @@
           "spanish": "Español"
         },
         "title": "Bahasa"
-      },
-      "morningBrief": {
-        "description": "Email harian pukul 07.00 berisi jadwal, item tindakan, dan pembaruan dari GitHub, Gmail, dan Google Calendar yang terhubung",
-        "nextEmail": "Email berikutnya: {{date}}",
-        "nextEmailInTimezone": "Email berikutnya: {{date}} ({{timezone}})",
-        "notScheduled": "Email berikutnya: belum dijadwalkan — matikan lalu nyalakan kembali untuk menjadwalkan ulang",
-        "sending": "Mengirim...",
-        "sendNow": "Kirim sekarang",
-        "title": "Brief Pagi",
-        "triggeredToast": "Brief Pagi dipicu, email akan segera tiba"
       },
       "pageDescription": "Kelola tampilan dan preferensi runtime agen Anda",
       "pageTitle": "Preferensi",
@@ -5020,15 +5375,20 @@
       "viewSource": "Sumber diagram"
     },
     "notFound": {
+      "action": "Kembali ke beranda",
       "description": "Halaman yang Anda cari tidak ada.",
       "title": "Halaman tidak ditemukan"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Percakapan yang dibagikan ini tidak ada.",
+    "handoffDescription": "{{assistantName}} membawa konteks ke percakapan baru",
+    "handoffPrompt": "Lanjutkan percakapan yang dibagikan ini dengan saya: {{url}}",
+    "makeConversationYours": "Jadikan percakapan ini milik Anda",
     "notFoundTitle": "Percakapan yang dibagikan tidak ditemukan",
-    "tryOkou": "Coba {{assistantName}}"
+    "share": "Bagikan",
+    "signIn": "Masuk",
+    "signUp": "Daftar",
+    "tryItYourself": "Coba sendiri"
   },
   "usage": {
     "displayNames": {
@@ -5773,6 +6133,67 @@
       },
       "title": "Alur kerja",
       "viewAutomations": "Lihat otomatisasi"
+    },
+    "official": {
+      "activeInstallationDescription": "Workflow Resmi ini tetap beroperasi dan konten terkelolanya tetap hanya-baca.",
+      "activeInstallationTitle": "Workflow Resmi",
+      "agent": "Agen",
+      "automationCount_one": "{{count}} automasi",
+      "automationCount_other": "{{count}} automasi",
+      "badge": "Resmi",
+      "browse": "Jelajahi yang Resmi",
+      "chooseValue": "Pilih nilai",
+      "copySucceededUninstallFailed": "Salinan sudah siap, tetapi Workflow Resmi asli tidak dapat dihapus instalasinya.",
+      "description": "Instal workflow terkelola yang dipelihara oleh vm0.",
+      "empty": "Tidak ada Workflow Resmi yang tersedia.",
+      "includedAutomations": "Automasi yang disertakan",
+      "install": "Instal",
+      "installDescription": "Pilih Agen dan lengkapi setiap parameter wajib. Semua automasi yang disertakan akan diinstal.",
+      "installed": "Workflow Resmi telah diinstal",
+      "installErrorDescription": "Periksa Agen dan nilai parameter, lalu coba lagi.",
+      "installErrorTitle": "Workflow Resmi tidak dapat diinstal",
+      "installTitle": "Instal {{name}}",
+      "intendedOff": "seharusnya nonaktif",
+      "intendedOn": "seharusnya aktif",
+      "loadErrorDescription": "Katalog ini mungkin tidak tersedia atau belum diaktifkan untuk akun Anda.",
+      "loadErrorTitle": "Workflow Resmi tidak dapat dimuat",
+      "no": "Tidak",
+      "noParameters": "Tidak ada parameter yang diperlukan.",
+      "noResults": "Tidak ada Workflow Resmi yang cocok dengan pencarian Anda.",
+      "notFound": "Workflow Resmi ini tidak ditemukan.",
+      "parameterCount_one": "{{count}} parameter",
+      "parameterCount_other": "{{count}} parameter",
+      "parameterRequired": "{{key}} (wajib)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Konfigurasi ulang",
+      "reconfigured": "Workflow Resmi dikonfigurasi ulang",
+      "reconfigureDescription": "Perbarui parameter bertipe tanpa mengganti Workflow ini atau automasinya.",
+      "reconfigureDialogDescription": "Tinjau setiap automasi terkelola dan perbarui parameternya.",
+      "reconfigureErrorDescription": "Tinjau nilai yang wajib, lalu coba lagi.",
+      "reconfigureErrorTitle": "Workflow Resmi tidak dapat dikonfigurasi ulang",
+      "reconfigureTitle": "Parameter instalasi",
+      "reconfigureUnavailable": "Metadata parameter otoritatif untuk sementara tidak tersedia.",
+      "retiredBadge": "Resmi · Dipensiunkan",
+      "retiredDefinitionDescription": "Definisi yang dipertahankan ini dapat dilihat, tetapi tidak dapat diinstal lagi.",
+      "retiredInstallationDescription": "Definisi ini telah dipensiunkan. Instalasi Anda yang ada tetap beroperasi dan hanya-baca hingga Anda menghapus instalasinya.",
+      "retiredInstallationTitle": "Workflow Resmi dipensiunkan",
+      "retiredTitle": "Definisi dipensiunkan",
+      "retry": "Coba lagi",
+      "search": "Cari Workflow Resmi",
+      "selectAgent": "Pilih Agen",
+      "statusCurrent": "Terkini",
+      "statusFailed": "Gagal",
+      "statusNeedsReconfiguration": "Perlu konfigurasi ulang",
+      "statusReconciling": "Menyelaraskan",
+      "title": "Workflow Resmi",
+      "unavailableInstallationDescription": "Definisi yang diterima untuk sementara tidak tersedia. Kontrol operasional yang ada tetap tersedia.",
+      "unavailableInstallationTitle": "Definisi Resmi tidak tersedia",
+      "uninstall": "Hapus instalasi",
+      "uninstallConfirm": "Tindakan ini menghapus instalasi Resmi dan semua automasinya. Tindakan ini tidak dapat dibatalkan.",
+      "uninstallDescription": "Hapus instalasi Workflow Resmi ini melalui siklus hidup terkelolanya.",
+      "uninstallTitle": "Hapus instalasi Workflow Resmi",
+      "viewAndInstall": "Lihat dan instal",
+      "yes": "Ya"
     }
   },
   "works": {

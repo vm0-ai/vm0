@@ -126,11 +126,11 @@ async fn budget_exhausted_buffers_discovery_until_budget_frees() {
 }
 
 // -----------------------------------------------------------------------
-// Test 15: Idle VMs remain reusable until capacity is needed
+// Test 15: Idle sandboxes remain reusable until capacity is needed
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn idle_vm_remains_reusable_until_capacity_is_needed() {
+async fn idle_sandbox_remains_reusable_until_capacity_is_needed() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
@@ -161,7 +161,7 @@ async fn idle_vm_remains_reusable_until_capacity_is_needed() {
 
     tokio::time::advance(Duration::from_secs(3600)).await;
     assert_eq!(idle_pool.lock().await.len(), 1, "idle age must not evict");
-    assert_eq!(budget.allocated().2, 1, "aged idle VM keeps its lease");
+    assert_eq!(budget.allocated().2, 1, "aged idle sandbox keeps its lease");
 
     let run_id = RunId::new_v4();
     push_job(
@@ -174,7 +174,7 @@ async fn idle_vm_remains_reusable_until_capacity_is_needed() {
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await
-        .expect("aged idle VM should remain reusable");
+        .expect("aged idle sandbox should remain reusable");
     assert_eq!(
         completion.reuse_result,
         Some(crate::types::SandboxReuseResult::Reused)
@@ -184,11 +184,11 @@ async fn idle_vm_remains_reusable_until_capacity_is_needed() {
 }
 
 // -----------------------------------------------------------------------
-// Test 16: Budget exhausted → evict idle VM → admit new job
+// Test 16: Budget exhausted → evict idle sandbox → admit new job
 // -----------------------------------------------------------------------
 
 #[tokio::test(flavor = "current_thread")]
-async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
+async fn budget_pressure_starts_fresh_sandbox_before_idle_destroy_finishes() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -201,7 +201,7 @@ async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
 
-    // Pre-seed: idle VM fills the entire budget.
+    // Pre-seed: idle sandbox fills the entire budget.
     seed_idle_pool_with_overrides(
         &idle_pool,
         &budget,
@@ -226,11 +226,11 @@ async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
     destroy_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
-        .expect("idle VM should enter tracked destroy");
+        .expect("idle sandbox should enter tracked destroy");
     wait_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
-        .expect("fresh VM should activate while idle destroy is blocked");
+        .expect("fresh sandbox should activate while idle destroy is blocked");
     assert_eq!(
         budget.allocated(),
         (2, 4096, 1),
@@ -348,11 +348,11 @@ async fn smaller_fresh_profile_releases_only_net_idle_capacity() {
     destroy_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
-        .expect("large idle VM should enter tracked destroy");
+        .expect("large idle sandbox should enter tracked destroy");
     wait_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
-        .expect("smaller fresh VM should activate before destroy completes");
+        .expect("smaller fresh sandbox should activate before destroy completes");
     assert_eq!(budget.allocated(), (2, 4096, 1));
     assert!(
         budget.can_afford(2, 4096),
@@ -364,7 +364,7 @@ async fn smaller_fresh_profile_releases_only_net_idle_capacity() {
     destroy_gate
         .wait_entered(2, Duration::from_secs(5))
         .await
-        .expect("fresh VM should enter normal active cleanup");
+        .expect("fresh sandbox should enter normal active cleanup");
     destroy_gate.release_one();
     let completion = env
         .handle
@@ -441,7 +441,7 @@ async fn budget_pressure_evicts_oldest_idle_regardless_of_age() {
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
         vec!["sess-newer-large".to_string()],
-        "status.json should reflect the remaining idle VM"
+        "status.json should reflect the remaining idle sandbox"
     );
 
     shutdown(&env, run_handle).await;
@@ -525,14 +525,14 @@ async fn larger_profile_retires_only_the_required_oldest_idle_entries() {
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
         vec!["sess-newest".to_string()],
-        "status.json should reflect only the remaining idle VM"
+        "status.json should reflect only the remaining idle sandbox"
     );
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn idle_vm_is_reclaimed_only_after_candidate_discovery() {
+async fn idle_sandbox_is_reclaimed_only_after_candidate_discovery() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
@@ -553,13 +553,13 @@ async fn idle_vm_is_reclaimed_only_after_candidate_discovery() {
     assert!(completion.is_some(), "job should complete and park");
     assert_eq!(completion.unwrap().exit_code, 0);
 
-    // The single parked VM fills the whole budget. It must remain reusable
+    // The single parked sandbox fills the whole budget. It must remain reusable
     // until a concrete candidate proves that generic capacity is needed.
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
     assert_eq!(
         idle_pool.lock().await.len(),
         1,
-        "idle VM should be retained"
+        "idle sandbox should be retained"
     );
     wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
@@ -589,7 +589,7 @@ async fn idle_vm_is_reclaimed_only_after_candidate_discovery() {
     assert_eq!(idle_pool.lock().await.len(), 0, "idle pool should be empty");
     assert!(
         status_idle_reuse_keys(&status_path).await.is_empty(),
-        "status.json should clear the candidate-reclaimed idle VM"
+        "status.json should clear the candidate-reclaimed idle sandbox"
     );
 
     shutdown(&env, run_handle).await;

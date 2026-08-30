@@ -20,17 +20,11 @@ require_runner_api_credentials() {
     runner_api_token >/dev/null && runner_api_url >/dev/null
 }
 
-runner_api_curl() {
-    local path="$1"
-    shift
+_runner_api_vercel_logs_url_prefix() {
+    local base="$1"
+    local path="$2"
+    local request_host request_path request_host_search request_path_search
 
-    local token base request_url diagnostic_url request_host request_path
-    local request_host_search request_path_search vercel_logs_url_prefix
-    local vercel_logs_url_prefix_write_out vercel_log_write_out
-    token="$(runner_api_token)" || return 1
-    base="$(runner_api_url)" || return 1
-    request_url="$base$path"
-    diagnostic_url="${request_url%%\?*}"
     request_host="${base#*://}"
     request_host="${request_host%%/*}"
     request_path="${path%%\?*}"
@@ -39,7 +33,22 @@ runner_api_curl() {
     request_path_search="${request_path//%/%25}"
     request_path_search="${request_path_search//\//%2F}"
     request_path_search="${request_path_search//:/%3A}"
-    vercel_logs_url_prefix="https://vercel.com/vm0/vm0-api/logs?search=requestHost%3A${request_host_search}+requestPath%3A${request_path_search}+status%3A"
+    printf 'https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3A%s+requestPath%%3A%s+status%%3A' \
+        "$request_host_search" "$request_path_search"
+}
+
+runner_api_curl() {
+    local path="$1"
+    shift
+
+    local token base request_url diagnostic_url vercel_logs_url_prefix
+    local vercel_logs_url_prefix_write_out vercel_log_write_out
+    token="$(runner_api_token)" || return 1
+    base="$(runner_api_url)" || return 1
+    request_url="$base$path"
+    diagnostic_url="${request_url%%\?*}"
+    vercel_logs_url_prefix="$(_runner_api_vercel_logs_url_prefix \
+        "$base" "$path")"
     vercel_logs_url_prefix_write_out="${vercel_logs_url_prefix//%/%%}"
     vercel_log_write_out="%{onerror}%{stderr}Vercel logs: ${vercel_logs_url_prefix_write_out}%{http_code}&timeline=past12Hours\n"
 
@@ -78,13 +87,13 @@ runner_chat_event_rows() {
     local page_number
 
     for ((page_number = 1; page_number <= 100; page_number += 1)); do
-        request_path="/api/okou/chat-threads/${thread_id}/event-rows?sinceSeqId=${since_seq_id}&limit=50"
+        request_path="/api/chat-threads/${thread_id}/event-rows?sinceSeqId=${since_seq_id}&limit=50"
         if ((since_seq_id > 0)); then
             request_path+="&sinceEventId=${since_event_id}"
         fi
         response="$(runner_api_curl \
             "$request_path" \
-            -H "X-Chat-Event-Schema-Version: 5")" || return
+            -H "X-Chat-Event-Schema-Version: 7")" || return
         rows="$(jq -ce \
             '.rows | if type == "array" then . else error("invalid rows") end' \
             <<<"$response")" || {
@@ -157,45 +166,67 @@ delete_runner_agent() {
 # the production legacy-version deletion veto.
 delete_runner_agent_for_stage0_teardown() {
     local agent_id="$1"
-    local response http_status response_body
+    local request_path response http_status response_body attempt
+    local base vercel_logs_url_prefix
 
-    response="$(runner_api_curl \
-        "/api/agents/$agent_id" \
-        -X DELETE \
-        --no-fail-with-body \
-        --write-out $'\n%{http_code}')" || return
-    http_status="${response##*$'\n'}"
-    response_body="${response%$'\n'*}"
+    request_path="/api/agents/$agent_id"
 
-    if [[ "$http_status" == "204" && -z "$response_body" ]]; then
-        return 0
-    fi
+    for ((attempt = 1; attempt <= 5; attempt += 1)); do
+        response="$(runner_api_curl \
+            "$request_path" \
+            -X DELETE \
+            --no-fail-with-body \
+            --write-out $'\n%{http_code}')" || return
+        http_status="${response##*$'\n'}"
+        response_body="${response%$'\n'*}"
 
-    if [[ "$http_status" == "404" ]] && jq -e --arg agent_id "$agent_id" '
-        . == {
-            error: {
-                message: ("Agent not found: " + $agent_id),
-                code: "NOT_FOUND"
+        if [[ "$http_status" == "204" && -z "$response_body" ]]; then
+            return 0
+        fi
+
+        if [[ "$http_status" == "404" ]] && jq -e --arg agent_id "$agent_id" '
+            . == {
+                error: {
+                    message: ("Agent not found: " + $agent_id),
+                    code: "NOT_FOUND"
+                }
             }
-        }
-    ' <<<"$response_body" >/dev/null 2>&1; then
-        return 0
-    fi
+        ' <<<"$response_body" >/dev/null 2>&1; then
+            return 0
+        fi
 
-    if [[ "$http_status" == "409" ]] && jq -e '
-        . == {
-            error: {
-                message: "Cannot delete agent while its configuration is being migrated",
-                code: "CONFLICT"
+        if [[ "$http_status" == "409" ]] && jq -e '
+            . == {
+                error: {
+                    message: "Cannot delete agent while its configuration is being migrated",
+                    code: "CONFLICT"
+                }
             }
-        }
-    ' <<<"$response_body" >/dev/null 2>&1; then
-        return 0
-    fi
+        ' <<<"$response_body" >/dev/null 2>&1; then
+            return 0
+        fi
 
-    printf 'Stage 0 Runner E2E agent teardown failed with HTTP %s: %s\n' \
-        "$http_status" "$response_body" >&2
-    return 1
+        if [[ "$http_status" == "409" ]] && jq -e '
+            . == {
+                error: {
+                    message: "Cannot delete agent right now; retry shortly",
+                    code: "CONFLICT"
+                }
+            }
+        ' <<<"$response_body" >/dev/null 2>&1 && ((attempt < 5)); then
+            sleep 0.25
+            continue
+        fi
+
+        printf 'Stage 0 Runner E2E agent teardown failed with HTTP %s: %s\n' \
+            "$http_status" "$response_body" >&2
+        base="$(runner_api_url)" || return 1
+        vercel_logs_url_prefix="$(_runner_api_vercel_logs_url_prefix \
+            "$base" "$request_path")"
+        printf 'Vercel logs: %s%s&timeline=past12Hours\n' \
+            "$vercel_logs_url_prefix" "$http_status" >&2
+        return 1
+    done
 }
 
 _runner_uuid() {
@@ -269,7 +300,7 @@ runner_chat_send_parts() {
             } + if $captureNetworkBodies then {captureNetworkBodies: true} else {} end')"
     fi
 
-    runner_api_curl "/api/okou/chat/events" -X POST -d "$payload"
+    runner_api_curl "/api/chat/events" -X POST -d "$payload"
 }
 
 runner_wait_for_run() {

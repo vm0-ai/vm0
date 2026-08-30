@@ -7,7 +7,7 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { teamContract } from "@okouai/api-contracts/contracts/team";
+import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -17,7 +17,7 @@ import {
   currentChatThreadListIds$,
   setChatAgentId$,
 } from "../../agent-chat.ts";
-import { renameDialogInput$ } from "../../zero-page/zero-sidebar-state.ts";
+import { renameDialogInput$ } from "../../okou-page/sidebar-state.ts";
 import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
 import { openRenameChatThreadDialogFromThreadMeta$ } from "../chat-thread-rename.ts";
@@ -185,7 +185,7 @@ describe("chat thread event sourcing local-first list", () => {
         return respond(200, { events: [], hasMore: false });
       },
     );
-    context.mocks.api(teamContract.list, ({ never }) => {
+    context.mocks.api(agentsMainContract.list, ({ never }) => {
       teamRequests += 1;
       return never();
     });

@@ -11,7 +11,8 @@
  * whose execution context pinned a `CLI_PKG_URL` from before this change
  * carries a CLI whose bundled registry only knows the pre-cutover digest, and
  * it keeps asking for that digest for the queue lifetime plus a claimed run —
- * bounded by `JOB_TIMEOUT = Duration::from_secs(7200)` in
+ * bounded by the shared `AGENT_EXECUTION_TIMEOUT_SECONDS` contract in
+ * `turbo/packages/api-contracts/src/contracts/runners.ts`, enforced by
  * `crates/runner/src/executor/mod.rs`. See the "Commit-addressed CLI artifacts"
  * section of `docs/deployment-compatibility.md`.
  *
@@ -23,51 +24,51 @@
 
 const CURRENT_PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS = {
   "template:html-ppt-bloom-pitch-runbook":
-    "f01d1c6e93e5bd2a2f4fe083a3cf6278fecda8c854913fae68a971e9ba5b268a",
+    "ec842f388ab90b98e0dadb3ffeb560bbd4b0a0aaaa93b84725732d98bf225710",
   "template:html-ppt-blueprint-academy-runbook":
-    "60808948227925dc149183bffd0109c16dd7e1d6bc02f72bb6b9c6621b6652dc",
+    "7dca9890d2c2416b84cdb953d3c5be4a614f2913599a5e6dd990229e266b12a5",
   "template:html-ppt-botane-organic-runbook":
-    "c8bb87195fbbd69d70d34628d179a0ef05de0c1a7f8e5b69fe0e47e439a6a7e0",
+    "861c2b0e4d1e819e73498bbfd139ba0b95ee40dabc1d2b8189d63eae557e62e7",
   "template:html-ppt-business-data-runbook":
-    "a1a5487c108b8ec482ec8d9ba29de453af255df606c1e1273f71f60180bc867f",
+    "cbe95f8e00c38c5cfdce0b72e5a09f5e4d464f8d7dac3151387027957c55d80f",
   "template:html-ppt-crayon-runbook":
-    "caf52d4fa167ea1d7cda2bb3a395b34622d5cf1ec8e8429750d569f617409527",
+    "16dc23497a7f6b8e4e0ced506bef7f5f126d0b069315cab319543a646e89a988",
   "template:html-ppt-creative-agency-runbook":
-    "dc77ef0b4108244c07dbf7b876cde7a492d6bab66b8f964b976d18c8a255e9d7",
+    "68c2d284c9bb93ace0e10f3f4c508549eaebecc2cc0638510ad38349e2324a55",
   "template:html-ppt-data-report-runbook":
-    "db16b7278a92abe5e337c77ce2c37e2d6e341b657bcb2244ecc637f63eed42c5",
+    "64cca3c4fde4a49ee4cd215ed02ed85f4a198a6f5938e844c18b172ba68c9db7",
   "template:html-ppt-editorial-magazine-runbook":
-    "12b418d52c94b3d6d9d6bac0e29e6a1c06324fcda3608b043eb6f19b11fc9ce1",
+    "8ab0a2a68c7a5020a3d142e75af739144542a7ff41c5a3d2e590881acc6178b3",
   "template:html-ppt-landing-consulting-runbook":
-    "878d90db4b73b46b1b5401ca4be4db08ac60dce2a5818fb03b541a262cc2e98a",
+    "e79f61d0053d69bcc413963fcb56b3677bc6a84616afe90be20374dfef55174a",
   "template:html-ppt-lumina-runbook":
-    "1fc90d062e5ffad07f534703afe914bd3139cf7ec823a911d7b1a294ac3a3a37",
+    "9d589fee85ed6094bb064049ae24692e104ccbeb7bcda89e707991e7039abf4e",
   "template:html-ppt-meridian-runbook":
-    "7c32f0af1ed4ab08a6f9f0ad574750ea82b36c2203b26e1bdf9c6374820eb9bf",
+    "f15524e2361922bf0e6eed507c937c642261863a78aa856483238ce954547ba3",
   "template:html-ppt-mosaic-geometric-runbook":
-    "1091979fa03bfe273b8e0623d30ec757af0c4fed68fef4b2e0d9157375082899",
+    "03be08ea6767942ee6d9d2fd2eced72ec0dfaecd2bc7d473c01a0093c39d48eb",
   "template:html-ppt-neo-brutalism-runbook":
-    "236eeb0fd0b64ca39fa93110802bd6584dcfbd7d29ed6325c4ca7284985aa642",
+    "df9fe0cb53d1afd611b47bece0ebd81fb8fb036d84910cd20b302b80706f8a41",
   "template:html-ppt-nocturne-runbook":
-    "23b175b13a44d17f4c1fa43b968c48f985870332352d16e8fc31f19f7b80e719",
+    "1b684cfa4128f95aeee027e41324050005cfb528fcc26f099d7eb54e37661e0b",
   "template:html-ppt-pixel-glitch-runbook":
-    "c5541e04883a4687a586a363dbc41dc46501d498ea03579ef4655970bca8abf8",
+    "c2e9d8b90f00a6df09d3a4ad33357fc32baab03196b68d52d66b1a2ec1e3c0a0",
   "template:html-ppt-playful-launch-runbook":
-    "14b7e7fdfbc3401004039cf0a2e43ac235e605b014a3beb69df3883b74b5eda1",
+    "4135191a92b54a3babde10edf9f972cf83f3aeae582165bd6eabec274fde8b9d",
   "template:html-ppt-playful-pop-runbook":
-    "17e0d91f0b7c7b5354c60850a90d5f9ca8627f9aee064f10fe7b87bd8650ff50",
+    "72bbfc0132f41cc130f5efcbd5f692233375847c46c67e646ac890cbe9bfce97",
   "template:html-ppt-prospectus-runbook":
-    "7ccba0e3a58bd5db6151d6365d8c439bd8192c6ded10f4d1e441ae60bb7af55a",
+    "74ee81efc7b5f6794ddf077357e1e845c773b3d77ae9e02948911b19f8220919",
   "template:html-ppt-schoolhouse-runbook":
-    "336fc7d044a97b970d741c6782fcd2742d63bd6475ef8b1db232d84f6b9b5227",
+    "81e7f95dd13cec5f08f54ac965c51b62f87d9c7f8d29370c027aeeed3758571c",
   "template:html-ppt-sticker-scrapbook-runbook":
-    "afb984e327543adb769810a7961e65973033363982d2a729b8967181166bd826",
+    "899be9feba1fbc6eba3515b6e06c97e800956b399d025269bd2daaa6fc1a9653",
   "template:html-ppt-strata-runbook":
-    "3c1051437748a41d3907e15f366467b8d6b1457115783e8152bcf9739d63324b",
+    "518f9b636a8cbf091d9147da200822fbc297a343a3cea95d9546f43a8000d458",
   "template:html-ppt-taped-consulting-runbook":
-    "279efb09bdaa7598747932f39eca1043023f4364834df819958b19536386385d",
+    "16c64fa119f5aa68607c831b2fa79330f597e10fa01501b8a063443bd7561639",
   "template:html-ppt-vantage-runbook":
-    "e1640374607ff6f8b3cacd67c29f105d3c52abf2cebf2b4945ebf334a2a429ea",
+    "7b0b0f91b885c67147dc800191edd4b80a62f9bfe0dd6dbe7fcfb49b8e4f8027",
 } as const satisfies Record<string, string>;
 
 // Pre-cutover CLI contexts and the disabled side of LatestPresentationTemplates

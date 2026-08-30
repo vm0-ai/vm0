@@ -1,17 +1,24 @@
+import { randomUUID } from "node:crypto";
+
 import { command } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
 import { agents } from "@okouai/db/schema/agent";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq, sql } from "drizzle-orm";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
+import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { nowDate } from "../../lib/time";
-import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
+import {
+  ensureAgentInstructionsStorage$,
+  writeAgentInstructionsStorageInTransaction$,
+} from "./agent-instructions-storage.service";
+import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
+import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 import {
   grantOnboardingCredits,
   LIMITED_FREE_ONBOARDING_CREDITS,
@@ -29,6 +36,7 @@ import {
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
 import type { Tx } from "../../lib/db-types";
+import { onRejection } from "../utils";
 
 const L = logger("org-limited-free-bootstrap.service");
 
@@ -46,7 +54,7 @@ type BootstrapReservation =
     }
   | {
       readonly status: "reserved";
-      readonly composeId: string;
+      readonly agentId: string;
     };
 
 interface EnsureOrgLimitedFreeBootstrapResult {
@@ -115,49 +123,13 @@ async function upsertBootstrapOwnerMembership(
     .onConflictDoNothing();
 }
 
-async function ensureBootstrapComposeRow(
-  tx: DbTransaction,
-  args: EnsureOrgLimitedFreeBootstrapArgs,
-): Promise<string> {
-  const [created] = await tx
-    .insert(agentComposes)
-    .values({
-      userId: args.ownerUserId,
-      orgId: args.orgId,
-      name: DEFAULT_AGENT_NAME,
-    })
-    .onConflictDoNothing()
-    .returning({ id: agentComposes.id });
-
-  if (created) {
-    return created.id;
-  }
-
-  const [existing] = await tx
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, args.orgId),
-        eq(agentComposes.name, DEFAULT_AGENT_NAME),
-      ),
-    )
-    .limit(1);
-
-  if (!existing) {
-    throw new Error("Expected default bootstrap compose after insert conflict");
-  }
-
-  return existing.id;
-}
-
 function isPaidTier(tier: string): boolean {
   return tier === "pro" || tier === "team" || tier === "custom";
 }
 
-async function reserveBootstrapCompose(
+async function reserveBootstrapAgent(
   tx: DbTransaction,
-  args: EnsureOrgLimitedFreeBootstrapArgs,
+  args: EnsureOrgLimitedFreeBootstrapArgs & { readonly agentId: string },
 ): Promise<BootstrapReservation> {
   await lockOrgBootstrap(tx, args.orgId);
   await upsertBootstrapOwnerMembership(tx, args);
@@ -167,8 +139,7 @@ async function reserveBootstrapCompose(
     return { status: "skipped", agentId: existingAgentId };
   }
 
-  const composeId = await ensureBootstrapComposeRow(tx, args);
-  return { status: "reserved", composeId };
+  return { status: "reserved", agentId: args.agentId };
 }
 
 async function finalizeBootstrap(
@@ -177,7 +148,6 @@ async function finalizeBootstrap(
     readonly orgId: string;
     readonly ownerUserId: string;
     readonly agentId: string;
-    readonly agentName: string;
   },
 ): Promise<EnsureOrgLimitedFreeBootstrapResult> {
   await lockOrgBootstrap(tx, args.orgId);
@@ -187,32 +157,34 @@ async function finalizeBootstrap(
     return { bootstrapped: false, agentId: existingAgentId };
   }
 
+  await lockCanonicalAgentMutation(tx, args.agentId);
+  const createdAt = nowDate();
   await tx
-    .insert(zeroAgents)
+    .insert(agents)
     .values({
       id: args.agentId,
       orgId: args.orgId,
-      name: args.agentName,
+      name: DEFAULT_AGENT_NAME,
       owner: args.ownerUserId,
+      visibility: "public",
       displayName: DEFAULT_AGENT_DISPLAY_NAME,
       description: null,
       sound: DEFAULT_AGENT_SOUND,
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+      createdAt,
+      updatedAt: createdAt,
     })
-    .onConflictDoUpdate({
-      target: [zeroAgents.orgId, zeroAgents.name],
-      set: {
-        displayName: DEFAULT_AGENT_DISPLAY_NAME,
-        sound: DEFAULT_AGENT_SOUND,
-        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
-        updatedAt: nowDate(),
-      },
-    });
+    .onConflictDoNothing();
 
   const [agentRow] = await tx
     .select({ id: agents.id })
     .from(agents)
-    .where(and(eq(agents.orgId, args.orgId), eq(agents.name, args.agentName)))
+    .where(
+      and(eq(agents.orgId, args.orgId), eq(agents.name, DEFAULT_AGENT_NAME)),
+    )
     .limit(1);
   if (!agentRow) {
     throw new Error("Expected canonical Agent after bootstrap upsert");
@@ -279,13 +251,14 @@ async function finalizeBootstrap(
 
 export const ensureOrgLimitedFreeBootstrap$ = command(
   async (
-    { set },
+    { get, set },
     args: EnsureOrgLimitedFreeBootstrapArgs,
     signal: AbortSignal,
   ): Promise<EnsureOrgLimitedFreeBootstrapResult> => {
     const writeDb = set(writeDb$);
+    const agentId = randomUUID();
     const reservation = await writeDb.transaction(async (tx) => {
-      return await reserveBootstrapCompose(tx, args);
+      return await reserveBootstrapAgent(tx, { ...args, agentId });
     });
     signal.throwIfAborted();
 
@@ -297,34 +270,76 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
       upsertOrgNoSecretModelProvider$,
       {
         orgId: args.orgId,
-        type: "vm0",
+        type: "built-in",
         selectedModel: LIMITED_FREE1_DEFAULT_RUN_MODEL,
       },
       signal,
     );
     signal.throwIfAborted();
 
-    const composeResult = await set(
-      serverSideZeroAgentCompose$,
-      {
-        userId: args.ownerUserId,
-        orgId: args.orgId,
-        agentComposeId: reservation.composeId,
-        agentName: DEFAULT_AGENT_NAME,
-        instructions: SEED_INSTRUCTIONS,
-      },
+    await set(
+      ensureAgentInstructionsStorage$,
+      { orgId: args.orgId, agentName: DEFAULT_AGENT_NAME },
       signal,
     );
     signal.throwIfAborted();
 
-    const result = await writeDb.transaction(async (tx) => {
+    const cleanupUnclaimedInstructions = async (): Promise<void> => {
+      const s3Prefix = await writeDb.transaction(async (tx) => {
+        await lockOrgBootstrap(tx, args.orgId);
+        if (await existingDefaultAgentId(tx, args.orgId)) {
+          return null;
+        }
+        return await removeAgentInstructionsStorageInTransaction(tx, {
+          orgId: args.orgId,
+          agentName: DEFAULT_AGENT_NAME,
+        });
+      });
+
+      if (!s3Prefix) {
+        return;
+      }
+      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+      const objects = await get(listS3ObjectsUnderPrefix(bucket, s3Prefix));
+      await get(
+        deleteS3Objects(
+          bucket,
+          objects.map((object) => {
+            return object.key;
+          }),
+        ),
+      );
+    };
+
+    const bootstrap = writeDb.transaction(async (tx) => {
+      // Keep the fixed-name storage write and canonical publication under the
+      // same org lock. A failed attempt's compensation then runs either before
+      // the next writer starts or after that writer has published its Agent.
+      await lockOrgBootstrap(tx, args.orgId);
+      const existingAgentId = await existingDefaultAgentId(tx, args.orgId);
+      if (existingAgentId) {
+        return { bootstrapped: false, agentId: existingAgentId };
+      }
+
+      await set(
+        writeAgentInstructionsStorageInTransaction$,
+        {
+          tx,
+          orgId: args.orgId,
+          agentName: DEFAULT_AGENT_NAME,
+          instructions: SEED_INSTRUCTIONS,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+
       return await finalizeBootstrap(tx, {
         orgId: args.orgId,
         ownerUserId: args.ownerUserId,
-        agentId: composeResult.composeId,
-        agentName: composeResult.composeName,
+        agentId: reservation.agentId,
       });
     });
+    const result = await onRejection(bootstrap, cleanupUnclaimedInstructions);
     signal.throwIfAborted();
 
     if (result.bootstrapped) {

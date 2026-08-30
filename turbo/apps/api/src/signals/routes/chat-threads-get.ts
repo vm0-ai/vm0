@@ -24,6 +24,11 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
       title: chatThreads.title,
       selectedModel: chatThreads.selectedModel,
       codexServiceTier: chatThreads.codexServiceTier,
+      pinnedAt: chatThreads.pinnedAt,
+      computerUseHostId: chatThreads.computerUseHostId,
+      cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
+      selectedVideoModel: chatThreads.selectedVideoModel,
+      selectedImageModel: chatThreads.selectedImageModel,
     })
     .from(chatThreads)
     .where(
@@ -44,6 +49,11 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
       title: thread.title,
       selectedModel: thread.selectedModel,
       serviceTier: chatThreadServiceTierFromCodex(thread.codexServiceTier),
+      pinnedAt: thread.pinnedAt?.toISOString() ?? null,
+      computerUseHostId: thread.computerUseHostId,
+      cloudBrowserEnabled: thread.cloudBrowserEnabled,
+      selectedVideoModel: thread.selectedVideoModel,
+      selectedImageModel: thread.selectedImageModel,
     },
   };
 });

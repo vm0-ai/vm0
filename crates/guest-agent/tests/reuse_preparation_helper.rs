@@ -1,12 +1,14 @@
 #![cfg(target_os = "linux")]
 
+mod common;
+
 use std::fs::File;
-use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::Output;
+use std::time::Duration;
 
 use guest_contracts::process_containment::{
     CONTROL_MEMORY_MIN_BYTES, WORKLOAD_MEMORY_RESERVE_BYTES, WorkloadResourcePolicy,
@@ -15,11 +17,14 @@ use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
     REUSE_PREPARATION_EXIT_INVALID_REQUEST, ReusePreparationReport, ReusePreparationRequest,
 };
+use tokio::process::Command;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-#[test]
-fn prepare_for_reuse_removes_managed_codex_auth() -> TestResult {
+const REUSE_PREPARATION_HELPER_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[tokio::test]
+async fn prepare_for_reuse_removes_managed_codex_auth() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let home = tempfile::tempdir()?;
     let codex_home = home.path().join(".codex");
@@ -30,7 +35,7 @@ fn prepare_for_reuse_removes_managed_codex_auth() -> TestResult {
         r#"{"auth_mode":"apikey","OPENAI_API_KEY":"sk-managed"}"#,
     )?;
 
-    let output = run_helper_with_codex_home(&request, &codex_home)?;
+    let output = run_helper_with_codex_home(&request, &codex_home).await?;
 
     assert!(
         output.status.success(),
@@ -42,8 +47,8 @@ fn prepare_for_reuse_removes_managed_codex_auth() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_symlinked_managed_codex_auth() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_symlinked_managed_codex_auth() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let home = tempfile::tempdir()?;
     let codex_home = home.path().join(".codex");
@@ -53,7 +58,7 @@ fn prepare_for_reuse_rejects_symlinked_managed_codex_auth() -> TestResult {
     std::fs::write(&target, b"keep")?;
     symlink(&target, &auth_path)?;
 
-    let output = run_helper_with_codex_home(&request, &codex_home)?;
+    let output = run_helper_with_codex_home(&request, &codex_home).await?;
 
     assert_eq!(
         output.status.code(),
@@ -64,8 +69,8 @@ fn prepare_for_reuse_rejects_symlinked_managed_codex_auth() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_symlinked_managed_codex_home() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_symlinked_managed_codex_home() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let home = tempfile::tempdir()?;
     let target = home.path().join("target-codex-home");
@@ -75,7 +80,7 @@ fn prepare_for_reuse_rejects_symlinked_managed_codex_home() -> TestResult {
     std::fs::write(&target_auth, b"keep")?;
     symlink(&target, &codex_home)?;
 
-    let output = run_helper_with_codex_home(&request, &codex_home)?;
+    let output = run_helper_with_codex_home(&request, &codex_home).await?;
 
     assert_eq!(
         output.status.code(),
@@ -86,15 +91,15 @@ fn prepare_for_reuse_rejects_symlinked_managed_codex_home() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_non_regular_managed_codex_auth() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_non_regular_managed_codex_auth() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let home = tempfile::tempdir()?;
     let codex_home = home.path().join(".codex");
     let auth_path = codex_home.join("auth.json");
     std::fs::create_dir_all(&auth_path)?;
 
-    let output = run_helper_with_codex_home(&request, &codex_home)?;
+    let output = run_helper_with_codex_home(&request, &codex_home).await?;
 
     assert_eq!(
         output.status.code(),
@@ -104,8 +109,8 @@ fn prepare_for_reuse_rejects_non_regular_managed_codex_auth() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_preserves_generation_when_candidate_runtime_is_absent() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_preserves_generation_when_candidate_runtime_is_absent() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");
     let current = runs.join("generation");
@@ -134,7 +139,8 @@ fn prepare_for_reuse_preserves_generation_when_candidate_runtime_is_absent() -> 
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
         retained_runtime_dir: Some(path_string(&retained)),
-    })?;
+    })
+    .await?;
 
     assert!(
         output.status.success(),
@@ -162,8 +168,8 @@ fn prepare_for_reuse_preserves_generation_when_candidate_runtime_is_absent() -> 
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_removes_multiple_wide_parent_chunks() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_removes_multiple_wide_parent_chunks() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");
     let current = runs.join("current");
@@ -177,7 +183,8 @@ fn prepare_for_reuse_removes_multiple_wide_parent_chunks() -> TestResult {
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
         retained_runtime_dir: Some(path_string(&retained)),
-    })?;
+    })
+    .await?;
 
     assert!(
         output.status.success(),
@@ -193,8 +200,8 @@ fn prepare_for_reuse_removes_multiple_wide_parent_chunks() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_removes_nested_wide_chunks() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_removes_nested_wide_chunks() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");
     let current = runs.join("current");
@@ -210,7 +217,8 @@ fn prepare_for_reuse_removes_nested_wide_chunks() -> TestResult {
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
         retained_runtime_dir: None,
-    })?;
+    })
+    .await?;
 
     assert!(
         output.status.success(),
@@ -225,8 +233,8 @@ fn prepare_for_reuse_removes_nested_wide_chunks() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_removes_tree_at_cleanup_depth_limit() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_removes_tree_at_cleanup_depth_limit() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");
     let current = runs.join("current");
@@ -243,7 +251,8 @@ fn prepare_for_reuse_removes_tree_at_cleanup_depth_limit() -> TestResult {
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
         retained_runtime_dir: None,
-    })?;
+    })
+    .await?;
 
     assert!(
         output.status.success(),
@@ -258,8 +267,8 @@ fn prepare_for_reuse_removes_tree_at_cleanup_depth_limit() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_tree_beyond_cleanup_depth_limit() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_tree_beyond_cleanup_depth_limit() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");
     let current = runs.join("current");
@@ -276,7 +285,8 @@ fn prepare_for_reuse_rejects_tree_beyond_cleanup_depth_limit() -> TestResult {
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
         retained_runtime_dir: None,
-    })?;
+    })
+    .await?;
 
     assert_eq!(
         output.status.code(),
@@ -291,8 +301,8 @@ fn prepare_for_reuse_rejects_tree_beyond_cleanup_depth_limit() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_missing_protected_generation_before_cleanup() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_missing_protected_generation_before_cleanup() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");
     let missing_generation = runs.join("missing-generation");
@@ -303,7 +313,8 @@ fn prepare_for_reuse_rejects_missing_protected_generation_before_cleanup() -> Te
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&missing_generation),
         retained_runtime_dir: None,
-    })?;
+    })
+    .await?;
 
     assert_eq!(
         output.status.code(),
@@ -314,8 +325,9 @@ fn prepare_for_reuse_rejects_missing_protected_generation_before_cleanup() -> Te
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_symlinked_runtime_parent_without_touching_target() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_symlinked_runtime_parent_without_touching_target() -> TestResult
+{
     let dir = tempfile::tempdir()?;
     let real_parent = dir.path().join("real/runs");
     let current = real_parent.join("current");
@@ -328,7 +340,8 @@ fn prepare_for_reuse_rejects_symlinked_runtime_parent_without_touching_target() 
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&dir.path().join("linked/runs/current")),
         retained_runtime_dir: None,
-    })?;
+    })
+    .await?;
 
     assert_eq!(
         output.status.code(),
@@ -339,8 +352,8 @@ fn prepare_for_reuse_rejects_symlinked_runtime_parent_without_touching_target() 
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_retained_runtime_from_another_parent() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_retained_runtime_from_another_parent() -> TestResult {
     let dir = tempfile::tempdir()?;
     let current = dir.path().join("runs/current");
     let retained = dir.path().join("other/retained");
@@ -352,7 +365,8 @@ fn prepare_for_reuse_rejects_retained_runtime_from_another_parent() -> TestResul
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
         retained_runtime_dir: Some(path_string(&retained)),
-    })?;
+    })
+    .await?;
 
     assert_eq!(
         output.status.code(),
@@ -364,8 +378,8 @@ fn prepare_for_reuse_rejects_retained_runtime_from_another_parent() -> TestResul
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_fails_closed_when_runtime_parent_is_not_a_directory() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_fails_closed_when_runtime_parent_is_not_a_directory() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runs");
     let current = runs.join("current");
@@ -377,7 +391,8 @@ fn prepare_for_reuse_fails_closed_when_runtime_parent_is_not_a_directory() -> Te
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
         retained_runtime_dir: None,
-    })?;
+    })
+    .await?;
 
     assert_eq!(
         output.status.code(),
@@ -388,15 +403,16 @@ fn prepare_for_reuse_fails_closed_when_runtime_parent_is_not_a_directory() -> Te
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_nested_filesystem_without_touching_it() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_nested_filesystem_without_touching_it() -> TestResult {
     let mounted_data = tempfile::tempdir_in("/dev/shm")?;
     std::fs::write(mounted_data.path().join("keep"), b"mounted-data")?;
 
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: "/dev/shm".into(),
         retained_runtime_dir: None,
-    })?;
+    })
+    .await?;
 
     assert_mount_boundary_failure(&output);
     assert_eq!(
@@ -406,13 +422,14 @@ fn prepare_for_reuse_rejects_nested_filesystem_without_touching_it() -> TestResu
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_same_filesystem_bind_mount() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_same_filesystem_bind_mount() -> TestResult {
     if let Some(mount_path) = find_existing_same_filesystem_nested_mount()? {
         let output = run_helper(&ReusePreparationRequest {
             current_runtime_dir: path_string(&mount_path),
             retained_runtime_dir: None,
-        })?;
+        })
+        .await?;
 
         assert_mount_boundary_failure(&output);
         assert!(mount_path.exists());
@@ -433,7 +450,7 @@ fn prepare_for_reuse_rejects_same_filesystem_bind_mount() -> TestResult {
         retained_runtime_dir: None,
     };
 
-    let output = run_helper_with_bind_mount(&request, &mounted_source, &stale_mount)?;
+    let output = run_helper_with_bind_mount(&request, &mounted_source, &stale_mount).await?;
 
     assert_mount_boundary_failure(&output);
     assert!(current.exists());
@@ -442,13 +459,13 @@ fn prepare_for_reuse_rejects_same_filesystem_bind_mount() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_missing_containment_capability() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_missing_containment_capability() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::remove_file(containment.base.join("cgroup.kill"))?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -457,13 +474,13 @@ fn prepare_for_reuse_rejects_missing_containment_capability() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_stale_operation_cgroup() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_stale_operation_cgroup() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::create_dir(containment.base.join("exec-stale"))?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -472,13 +489,13 @@ fn prepare_for_reuse_rejects_stale_operation_cgroup() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_missing_current_operation_cgroup() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_missing_current_operation_cgroup() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::remove_dir_all(containment.base.join("exec-current"))?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -487,13 +504,13 @@ fn prepare_for_reuse_rejects_missing_current_operation_cgroup() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_unpopulated_exec_cgroup() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_unpopulated_exec_cgroup() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(containment.base.join("cgroup.events"), b"populated 0\n")?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -502,13 +519,13 @@ fn prepare_for_reuse_rejects_unpopulated_exec_cgroup() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_direct_processes_in_exec_base() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_direct_processes_in_exec_base() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(containment.base.join("cgroup.procs"), b"42\n")?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -517,13 +534,14 @@ fn prepare_for_reuse_rejects_direct_processes_in_exec_base() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_current_process_outside_exec_base() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_current_process_outside_exec_base() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
 
     let output =
-        run_helper_with_current_group(&request, &containment, "/outside/exec-current/workload")?;
+        run_helper_with_current_group(&request, &containment, "/outside/exec-current/workload")
+            .await?;
 
     assert_eq!(
         output.status.code(),
@@ -532,8 +550,8 @@ fn prepare_for_reuse_rejects_current_process_outside_exec_base() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_missing_controller() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_missing_controller() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(
@@ -541,7 +559,7 @@ fn prepare_for_reuse_rejects_missing_controller() -> TestResult {
         b"cpu memory\n",
     )?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -550,13 +568,13 @@ fn prepare_for_reuse_rejects_missing_controller() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_missing_ancestor_memory_protection() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_missing_ancestor_memory_protection() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(containment.base.join("memory.min"), b"0\n")?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -565,13 +583,13 @@ fn prepare_for_reuse_rejects_missing_ancestor_memory_protection() -> TestResult 
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_direct_processes_in_operation_parent() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_direct_processes_in_operation_parent() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(containment.base.join("exec-current/cgroup.procs"), b"42\n")?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -580,8 +598,8 @@ fn prepare_for_reuse_rejects_direct_processes_in_operation_parent() -> TestResul
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_populated_control_leaf() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_populated_control_leaf() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(
@@ -589,7 +607,7 @@ fn prepare_for_reuse_rejects_populated_control_leaf() -> TestResult {
         b"populated 1\n",
     )?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -598,13 +616,13 @@ fn prepare_for_reuse_rejects_populated_control_leaf() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_nested_workload_cgroup() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_nested_workload_cgroup() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::create_dir(containment.base.join("exec-current/workload/unexpected"))?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -613,8 +631,8 @@ fn prepare_for_reuse_rejects_nested_workload_cgroup() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_stale_workload_pid_limit() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_stale_workload_pid_limit() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(
@@ -622,7 +640,7 @@ fn prepare_for_reuse_rejects_stale_workload_pid_limit() -> TestResult {
         b"2048\n",
     )?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -631,8 +649,8 @@ fn prepare_for_reuse_rejects_stale_workload_pid_limit() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_stale_workload_memory_high() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_stale_workload_memory_high() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     let policy =
@@ -648,7 +666,7 @@ fn prepare_for_reuse_rejects_stale_workload_memory_high() -> TestResult {
         legacy_memory_high.to_string(),
     )?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -657,8 +675,8 @@ fn prepare_for_reuse_rejects_stale_workload_memory_high() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_stale_workload_memory_max() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_stale_workload_memory_max() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     let policy =
@@ -675,7 +693,7 @@ fn prepare_for_reuse_rejects_stale_workload_memory_max() -> TestResult {
         legacy_memory_max.to_string(),
     )?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -684,8 +702,8 @@ fn prepare_for_reuse_rejects_stale_workload_memory_max() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_stale_workload_oom_group() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_stale_workload_oom_group() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(
@@ -695,7 +713,7 @@ fn prepare_for_reuse_rejects_stale_workload_oom_group() -> TestResult {
         b"1\n",
     )?;
 
-    let output = run_helper_with_containment(&request, &containment)?;
+    let output = run_helper_with_containment(&request, &containment).await?;
 
     assert_eq!(
         output.status.code(),
@@ -704,13 +722,14 @@ fn prepare_for_reuse_rejects_stale_workload_oom_group() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn prepare_for_reuse_rejects_helper_in_control_leaf() -> TestResult {
+#[tokio::test]
+async fn prepare_for_reuse_rejects_helper_in_control_leaf() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
 
     let output =
-        run_helper_with_current_group(&request, &containment, "/vm0-exec/exec-current/control")?;
+        run_helper_with_current_group(&request, &containment, "/vm0-exec/exec-current/control")
+            .await?;
 
     assert_eq!(
         output.status.code(),
@@ -810,19 +829,21 @@ fn reusable_request() -> TestResult<(ReusePreparationRequest, tempfile::TempDir)
     ))
 }
 
-fn run_helper(request: &ReusePreparationRequest) -> Result<Output, Box<dyn std::error::Error>> {
+async fn run_helper(
+    request: &ReusePreparationRequest,
+) -> Result<Output, Box<dyn std::error::Error>> {
     let containment = ContainmentFixture::new()?;
-    run_helper_with_containment(request, &containment)
+    run_helper_with_containment(request, &containment).await
 }
 
-fn run_helper_with_containment(
+async fn run_helper_with_containment(
     request: &ReusePreparationRequest,
     containment: &ContainmentFixture,
 ) -> Result<Output, Box<dyn std::error::Error>> {
-    run_helper_with_current_group(request, containment, "/vm0-exec/exec-current/workload")
+    run_helper_with_current_group(request, containment, "/vm0-exec/exec-current/workload").await
 }
 
-fn run_helper_with_current_group(
+async fn run_helper_with_current_group(
     request: &ReusePreparationRequest,
     containment: &ContainmentFixture,
     current_group: &str,
@@ -834,9 +855,10 @@ fn run_helper_with_current_group(
         current_group,
         &home.path().join(".codex"),
     )
+    .await
 }
 
-fn run_helper_with_codex_home(
+async fn run_helper_with_codex_home(
     request: &ReusePreparationRequest,
     codex_home: &Path,
 ) -> Result<Output, Box<dyn std::error::Error>> {
@@ -847,68 +869,67 @@ fn run_helper_with_codex_home(
         "/vm0-exec/exec-current/workload",
         codex_home,
     )
+    .await
 }
 
-fn run_helper_with_current_group_and_codex_home(
+async fn run_helper_with_current_group_and_codex_home(
     request: &ReusePreparationRequest,
     containment: &ContainmentFixture,
     current_group: &str,
     codex_home: &Path,
 ) -> Result<Output, Box<dyn std::error::Error>> {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    command
         .env_clear()
-        .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
-        .env("VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP", current_group)
-        .env("VM0_TEST_CODEX_HOME_DIR", codex_home)
-        .arg("prepare-for-reuse")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    child
-        .stdin
-        .take()
-        .ok_or_else(|| std::io::Error::other("helper stdin was not piped"))?
-        .write_all(&serde_json::to_vec(request)?)?;
-    Ok(child.wait_with_output()?)
+        .env("OKOU_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
+        .env("OKOU_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP", current_group)
+        .env("OKOU_TEST_CODEX_HOME_DIR", codex_home)
+        .arg("prepare-for-reuse");
+    let request = serde_json::to_vec(request)?;
+    Ok(common::command_output_with_stdin_timeout(
+        &mut command,
+        &request,
+        REUSE_PREPARATION_HELPER_TIMEOUT,
+        "guest-agent prepare-for-reuse exceeded its test budget",
+    )
+    .await?)
 }
 
-fn run_helper_with_bind_mount(
+async fn run_helper_with_bind_mount(
     request: &ReusePreparationRequest,
     mount_source: &Path,
     mount_target: &Path,
 ) -> Result<Output, Box<dyn std::error::Error>> {
     let containment = ContainmentFixture::new()?;
     let home = tempfile::tempdir()?;
-    let mut child = Command::new("/usr/bin/unshare")
+    let mut command = Command::new("/usr/bin/unshare");
+    command
         .env_clear()
-        .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
+        .env("OKOU_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
         .env(
-            "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP",
+            "OKOU_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP",
             "/vm0-exec/exec-current/workload",
         )
-        .env("VM0_TEST_CODEX_HOME_DIR", home.path().join(".codex"))
-        .env("VM0_MOUNT_SOURCE", mount_source)
-        .env("VM0_MOUNT_TARGET", mount_target)
-        .env("VM0_HELPER", env!("CARGO_BIN_EXE_guest-agent"))
+        .env("OKOU_TEST_CODEX_HOME_DIR", home.path().join(".codex"))
+        .env("OKOU_MOUNT_SOURCE", mount_source)
+        .env("OKOU_MOUNT_TARGET", mount_target)
+        .env("OKOU_HELPER", env!("CARGO_BIN_EXE_guest-agent"))
         .args([
             "--user",
             "--map-root-user",
             "--mount",
             "/bin/sh",
             "-c",
-            "/usr/bin/mount --bind \"$VM0_MOUNT_SOURCE\" \"$VM0_MOUNT_TARGET\" && exec \"$VM0_HELPER\" prepare-for-reuse",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    child
-        .stdin
-        .take()
-        .ok_or_else(|| std::io::Error::other("helper stdin was not piped"))?
-        .write_all(&serde_json::to_vec(request)?)?;
-    Ok(child.wait_with_output()?)
+            "/usr/bin/mount --bind \"$OKOU_MOUNT_SOURCE\" \"$OKOU_MOUNT_TARGET\" && exec \"$OKOU_HELPER\" prepare-for-reuse",
+        ]);
+    let request = serde_json::to_vec(request)?;
+    Ok(common::command_output_with_stdin_timeout(
+        &mut command,
+        &request,
+        REUSE_PREPARATION_HELPER_TIMEOUT,
+        "bind-mounted guest-agent prepare-for-reuse exceeded its test budget",
+    )
+    .await?)
 }
 
 fn find_existing_same_filesystem_nested_mount() -> TestResult<Option<PathBuf>> {

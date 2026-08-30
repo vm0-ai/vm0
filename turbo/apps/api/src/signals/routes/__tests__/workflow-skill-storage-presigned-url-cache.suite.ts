@@ -351,7 +351,7 @@ describe("workflow skill storage presigned URL cache", () => {
       versionId: prepared.versionId,
       files: [file],
     });
-    const compose = await api.createHistoricalCompose(actor, {
+    const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         cache: {
@@ -374,7 +374,7 @@ describe("workflow skill storage presigned URL cache", () => {
         mockUniquePresignedUrls();
         const createAndClaim = async (prompt: string) => {
           const run = await api.createDirectRun(actor, {
-            agentId: compose.composeId,
+            agentId: compose.agentId,
             prompt,
           });
           await api.heartbeatRunner(runnerGroup);
@@ -671,6 +671,11 @@ describe("workflow skill storage presigned URL cache", () => {
           pruned: 2,
         },
         readOnly: expect.objectContaining({
+          due: expect.any(Number),
+          refreshed: expect.any(Number),
+          pruned: expect.any(Number),
+        }),
+        presentationTemplatePreview: expect.objectContaining({
           due: expect.any(Number),
           refreshed: expect.any(Number),
           pruned: expect.any(Number),

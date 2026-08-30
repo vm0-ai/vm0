@@ -5,7 +5,7 @@ use sandbox::{DeviceRateLimits, SandboxId};
 use tokio::sync::watch;
 
 use crate::ids::RunId;
-use crate::status::IdleVm;
+use crate::status::IdleSandbox;
 use crate::types::{HeldSandboxState, ReusableSandboxState};
 
 mod entry;
@@ -35,7 +35,7 @@ pub(crate) mod test_support;
 /// Configuration for the idle sandbox pool.
 #[derive(Debug, Clone, Default)]
 pub struct IdlePoolConfig {
-    /// Maximum number of idle VMs (0 = unlimited).
+    /// Maximum number of idle sandboxes (0 = unlimited).
     pub max_idle: usize,
 }
 
@@ -43,18 +43,18 @@ pub struct IdlePoolConfig {
 ///
 /// Status writes happen after dropping the pool lock, so an older snapshot can
 /// otherwise complete after a newer drain/evict write and reintroduce stale
-/// `idle_vms` in status.json.
+/// `idle_sandboxes` in status.json.
 #[derive(Clone, Debug)]
 pub struct IdlePoolSnapshot {
     pub revision: u64,
-    pub idle_vms: Vec<IdleVm>,
+    pub idle_sandboxes: Vec<IdleSandbox>,
 }
 
 /// Pool of idle sandboxes keyed by reuse key.
 ///
 /// After a job reaches a terminal state that is proven reusable, its sandbox
 /// can be parked here instead of being destroyed. A subsequent job for the same
-/// reuse key can reuse the parked sandbox, skipping VM creation and startup.
+/// reuse key can reuse the parked sandbox, skipping sandbox creation and startup.
 pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
     config: IdlePoolConfig,
@@ -125,6 +125,11 @@ impl IdlePool {
             self.bump_revision();
         }
         entry
+    }
+
+    pub(crate) fn take_reserved(&mut self, reuse_key: &str) -> Option<ReservedIdleSandbox> {
+        self.take(reuse_key)
+            .map(|entry| ReservedIdleSandbox { entry })
     }
 
     pub fn has_reusable(
@@ -248,11 +253,12 @@ impl IdlePool {
     /// Produced in a single iteration so `reuse_key` and `sandbox_id` can never
     /// drift out of pairing.
     pub fn status_snapshot(&self) -> IdlePoolSnapshot {
-        let mut vms: Vec<IdleVm> = self.entries.values().map(idle_vm_for_entry).collect();
-        vms.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
+        let mut sandboxes: Vec<IdleSandbox> =
+            self.entries.values().map(idle_sandbox_for_entry).collect();
+        sandboxes.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
         IdlePoolSnapshot {
             revision: self.revision,
-            idle_vms: vms,
+            idle_sandboxes: sandboxes,
         }
     }
 
@@ -267,8 +273,8 @@ impl IdlePool {
     /// for status.json. Produced in a single iteration so `reuse_key` and
     /// `sandbox_id` can never drift out of pairing.
     #[cfg(test)]
-    pub fn held_snapshot(&self) -> Vec<IdleVm> {
-        self.status_snapshot().idle_vms
+    pub fn held_snapshot(&self) -> Vec<IdleSandbox> {
+        self.status_snapshot().idle_sandboxes
     }
 
     /// Return every reusable sandbox currently held in the pool, sorted by
@@ -306,7 +312,7 @@ impl IdlePool {
         reuse_keys
     }
 
-    /// Number of idle VMs in the pool.
+    /// Number of idle sandboxes in the pool.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -351,8 +357,8 @@ impl IdlePool {
     }
 }
 
-fn idle_vm_for_entry(entry: &IdleEntry) -> IdleVm {
-    IdleVm {
+fn idle_sandbox_for_entry(entry: &IdleEntry) -> IdleSandbox {
+    IdleSandbox {
         reuse_key: entry.reuse_key().to_owned(),
         sandbox_id: entry.metadata.sandbox_id,
     }
@@ -363,7 +369,7 @@ fn idle_vm_for_entry(entry: &IdleEntry) -> IdleVm {
 pub enum ParkResult {
     /// Successfully parked; no previous entry for this reuse key.
     Parked,
-    /// Successfully parked; the returned job destroys the replaced idle VM.
+    /// Successfully parked; the returned job destroys the replaced idle sandbox.
     Replaced(IdleDestroyJob),
     /// Parking is closed/soft-draining or at capacity; the entry could not be parked.
     Rejected(RejectedParkedIdleCandidate),

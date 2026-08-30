@@ -19,7 +19,7 @@ from tests.connector_diagnostic_helpers import (
     write_connector_diagnostic_catalog_cache,
 )
 from tests.flow_helpers import header_map, response_stream
-from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
+from tests.request_handler_helpers import _sandbox_without_firewalls, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
 
 _CONNECTOR_DIAGNOSTIC_PRIVATE_PREFIX = "_connector_diagnostic_"
@@ -61,9 +61,9 @@ def _catalog(name: str, token_name: str) -> dict[str, dict]:
 def _capture_registry(tmp_path):
     return _write_registry(
         tmp_path,
-        vm_info=_vm_without_firewalls(
+        sandbox_info=_sandbox_without_firewalls(
             tmp_path,
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
 
@@ -230,7 +230,7 @@ async def test_later_flow_observes_atomic_catalog_replacement(
         firewalls=_catalog("catalog-a", "CATALOG_A_TOKEN"),
         version="catalog-a",
     )
-    registry_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    registry_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     first_flow = _flow(real_flow)
     second_flow = _flow(real_flow)
 
@@ -282,7 +282,7 @@ def _shared_catalog(inactive_name: str, inactive_token: str) -> dict[str, dict]:
 def _builtin_shared_registry(tmp_path, *, capture_network_bodies: bool = False):
     return _write_registry(
         tmp_path,
-        vm_info={
+        sandbox_info={
             "runId": "run-shared",
             "billableFirewalls": [],
             "cliAgentType": "claude-code",
@@ -477,7 +477,7 @@ async def test_unavailable_flow_stays_unavailable_after_cache_recovers(
     real_flow,
     mitm_ctx,
 ):
-    registry_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    registry_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     unavailable_flow = _flow(real_flow)
     recovered_flow = _flow(real_flow)
 
@@ -552,7 +552,7 @@ async def test_untrusted_or_invalid_cache_has_no_generated_diagnostic_fallback(
     cache_state,
 ):
     _prepare_unavailable_cache(tmp_path, cache_state)
-    registry_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    registry_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
     flow = _flow(real_flow)
 
     with mitm_ctx(registry_path=str(registry_path)):

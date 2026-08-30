@@ -111,6 +111,7 @@ export async function storeOutboundAgentPhoneMessage(
     readonly agentphoneMessageId: string;
     readonly conversationId: string | null;
     readonly agentphoneAgentId: string;
+    readonly publicBrand: PublicBrand;
     readonly userLinkId: string;
     readonly phoneHandle: string;
     readonly fromNumber: string;
@@ -127,6 +128,7 @@ export async function storeOutboundAgentPhoneMessage(
       agentphoneMessageId: params.agentphoneMessageId,
       conversationId: params.conversationId,
       agentphoneAgentId: params.agentphoneAgentId,
+      publicBrand: params.publicBrand,
       agentphoneUserLinkId: params.userLinkId,
       phoneHandle: normalizeAgentPhoneHandle(
         params.phoneHandle,
@@ -263,7 +265,7 @@ export async function resolveAgentPhoneAuditLogsUrl(
 ): Promise<string | undefined> {
   const overrides = await args.getFeatureOverrides(args.orgId, args.userId);
   signal.throwIfAborted();
-  const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.OkouDebug, {
     userId: args.userId,
     orgId: args.orgId,
     overrides,

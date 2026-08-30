@@ -51,6 +51,7 @@ from aws_sigv4 import (
 from aws_sigv4_body_admission import MAX_AWS_SIGV4_REQUEST_BODY_BYTES
 from firewall_auth_cache import (
     FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE,
+    FirewallAuthCacheEntryIdentity,
     FirewallAuthCacheKey,
     FirewallAuthFetchSaturatedError,
     InvalidBillableAuthExpiryError,
@@ -125,7 +126,7 @@ _MISSING_AWS_SIGV4_ORIGINAL_URL = object()
 
 @dataclass(frozen=True)
 class _FirewallAuthIdentityCacheEntry:
-    """One resolved API identity retained for its VM snapshot lifetime."""
+    """One resolved API identity retained for its sandbox snapshot lifetime."""
 
     api_entry: dict = field(repr=False)
     auth_identity: str
@@ -141,7 +142,7 @@ class _ResolvedFirewallAuthIdentity:
 
 @dataclass
 class _FirewallAuthIdentityCache:
-    """Lazy auth identities owned by one published VM registry snapshot."""
+    """Lazy auth identities owned by one published sandbox registry snapshot."""
 
     entries: dict[tuple[int, str, str], _FirewallAuthIdentityCacheEntry] = field(
         default_factory=dict
@@ -219,23 +220,24 @@ class _ResolvedFirewallAuth:
     query: dict | None
     base: str | None
     aws_sigv4: AwsSigV4Credentials | None
+    cache_entry_identity: FirewallAuthCacheEntryIdentity | None
 
 
-def is_billable_firewall(firewall_name: str, vm_info: dict) -> bool:
+def is_billable_firewall(firewall_name: str, sandbox_info: dict) -> bool:
     """Return whether this firewall should emit connector/model usage."""
-    return firewall_name in vm_info["billableFirewalls"]
+    return firewall_name in sandbox_info["billableFirewalls"]
 
 
 def _prepare_firewall_metadata(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
 ) -> None:
     """Store firewall match metadata once before auth resolution starts."""
     api_entry = allow.api_entry
     firewall_base = api_entry["base"]
     api_id = api_entry.get("id", firewall_base)
-    firewall_billable = is_billable_firewall(allow.name, vm_info)
+    firewall_billable = is_billable_firewall(allow.name, sandbox_info)
 
     flow.metadata[metadata_keys.FIREWALL_BASE] = firewall_base
     flow.metadata[metadata_keys.FIREWALL_API_ID] = api_id
@@ -244,22 +246,22 @@ def _prepare_firewall_metadata(
     flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = allow.rule or ""
     flow.metadata[metadata_keys.FIREWALL_PARAMS] = allow.params
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
-    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = vm_info.get("modelUsageProvider")
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = sandbox_info.get("modelUsageProvider")
 
 
 def prepare_firewall_metadata(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
 ) -> None:
     """Store matched-firewall metadata for callers outside this module."""
-    _prepare_firewall_metadata(flow, allow, vm_info)
+    _prepare_firewall_metadata(flow, allow, sandbox_info)
 
 
 def _build_firewall_auth_context(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
 ) -> _FirewallAuthContext:
     """Capture request-local auth inputs after matched-firewall metadata exists."""
     api_entry = allow.api_entry
@@ -269,7 +271,7 @@ def _build_firewall_auth_context(
     run_id = flow_metadata.run_id(flow.metadata)
     custom_connector_id = api_entry.get("customConnectorId")
     source_id = api_entry.get("sourceId")
-    connector_routing_variables = vm_info.get("connectorRoutingVariables", {})
+    connector_routing_variables = sandbox_info.get("connectorRoutingVariables", {})
     matched_firewall: dict | None = None
     if isinstance(custom_connector_id, str):
         routing_variables = connector_routing_variables.get(f"custom:{custom_connector_id}")
@@ -293,20 +295,20 @@ def _build_firewall_auth_context(
                 **({"sourceId": source_id} if isinstance(source_id, str) else {}),
             }
     auth_request = FirewallAuthRequest(
-        sandbox_token=vm_info.get("sandboxToken", ""),
-        encrypted_secrets=vm_info.get("encryptedSecrets") or "",
+        sandbox_token=sandbox_info.get("sandboxToken", ""),
+        encrypted_secrets=sandbox_info.get("encryptedSecrets") or "",
         auth_headers=auth_config.get("headers", {}),
         auth_base=auth_config.get("base"),
         auth_query=auth_config.get("query"),
         auth_aws_sigv4=auth_config.get("awsSigv4"),
-        secret_connector_map=vm_info.get("secretConnectorMap"),
-        secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
-        vars_map=vm_info.get("vars"),
+        secret_connector_map=sandbox_info.get("secretConnectorMap"),
+        secret_connector_metadata_map=sandbox_info.get("secretConnectorMetadataMap"),
+        vars_map=sandbox_info.get("vars"),
         firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
         matched_firewall=matched_firewall,
     )
     resolved_identity = _cached_firewall_auth_identity(
-        vm_info=vm_info,
+        sandbox_info=sandbox_info,
         api_entry=api_entry,
         firewall_name=allow.name,
         firewall_base=firewall_base,
@@ -316,7 +318,7 @@ def _build_firewall_auth_context(
         run_id=run_id,
         api_id=api_id,
         auth_identity=resolved_identity.auth_identity,
-        registry_generation=_firewall_auth_registry_generation(vm_info),
+        registry_generation=_firewall_auth_registry_generation(sandbox_info),
     )
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = auth_cache_key
     return _FirewallAuthContext(
@@ -328,8 +330,8 @@ def _build_firewall_auth_context(
     )
 
 
-def _firewall_auth_registry_generation(vm_info: dict) -> int | None:
-    generation = getattr(vm_info, FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE, None)
+def _firewall_auth_registry_generation(sandbox_info: dict) -> int | None:
+    generation = getattr(sandbox_info, FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE, None)
     if isinstance(generation, bool) or not isinstance(generation, int):
         return None
     return generation
@@ -358,16 +360,16 @@ def _build_firewall_auth_identity(
 
 def _cached_firewall_auth_identity(
     *,
-    vm_info: dict,
+    sandbox_info: dict,
     api_entry: dict,
     firewall_name: str,
     firewall_base: str,
     auth_request: FirewallAuthRequest,
 ) -> _ResolvedFirewallAuthIdentity:
-    cache = vm_info.get(_FIREWALL_AUTH_IDENTITY_CACHE_KEY)
+    cache = sandbox_info.get(_FIREWALL_AUTH_IDENTITY_CACHE_KEY)
     if not isinstance(cache, _FirewallAuthIdentityCache):
         cache = _FirewallAuthIdentityCache()
-        vm_info[_FIREWALL_AUTH_IDENTITY_CACHE_KEY] = cache
+        sandbox_info[_FIREWALL_AUTH_IDENTITY_CACHE_KEY] = cache
 
     key = (id(api_entry), firewall_name, firewall_base)
     entry = cache.entries.get(key)
@@ -456,7 +458,11 @@ def _merge_auth_headers(
     ] + auth_pairs
 
 
-def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
+def _record_firewall_auth_success_metadata(
+    flow: http.HTTPFlow,
+    resolved_auth: _ResolvedFirewallAuth,
+) -> None:
+    token_meta = resolved_auth.token_meta
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] = token_meta.get("resolved_secrets", [])
     flow.metadata[metadata_keys.AUTH_REFRESHED_CONNECTORS] = token_meta.get(
@@ -464,6 +470,10 @@ def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict
     )
     flow.metadata[metadata_keys.AUTH_REFRESHED_SECRETS] = token_meta.get("refreshed_secrets", [])
     flow.metadata[metadata_keys.AUTH_CACHE_HIT] = token_meta.get("cache_hit", False)
+    if resolved_auth.cache_entry_identity is not None:
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] = (
+            resolved_auth.cache_entry_identity
+        )
 
 
 def _empty_firewall_auth_metadata() -> dict:
@@ -496,7 +506,7 @@ def _auth_config_uses_body_dependent_auth(
 def _build_firewall_auth_plan(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
 ) -> _FirewallAuthPlan:
     """Derive shared firewall-auth policy without mutating request state."""
     auth_config = allow.api_entry.get("auth", {})
@@ -511,14 +521,14 @@ def _build_firewall_auth_plan(
         and bool(auth_config["awsSigv4"])
     )
     injects_credentials = auth_config_injects_credentials(auth_config)
-    needs_resolution = injects_credentials or is_billable_firewall(allow.name, vm_info)
+    needs_resolution = injects_credentials or is_billable_firewall(allow.name, sandbox_info)
 
     failure = None
     if injects_credentials and _request_method_forbids_managed_credentials(flow.request.method):
         failure = _FirewallAuthPlanFailure.UNSAFE_METHOD
     elif injects_credentials and flow.request.scheme.lower() != "https":
         failure = _FirewallAuthPlanFailure.INSECURE_TRANSPORT
-    elif needs_resolution and not vm_info.get("encryptedSecrets"):
+    elif needs_resolution and not sandbox_info.get("encryptedSecrets"):
         failure = _FirewallAuthPlanFailure.AUTH_UNAVAILABLE
 
     return _FirewallAuthPlan(
@@ -577,12 +587,23 @@ def _validate_resolved_firewall_auth(
             raise ValueError("resolved AWS SigV4 credentials are unexpected")
         aws_sigv4 = None
 
+    cache_entry_identity_value = token_meta.get("cache_entry_identity")
+    if plan.needs_resolution:
+        if not isinstance(cache_entry_identity_value, FirewallAuthCacheEntryIdentity):
+            raise TypeError("resolved auth cache entry identity is missing")
+        cache_entry_identity = cache_entry_identity_value
+    else:
+        if cache_entry_identity_value is not None:
+            raise ValueError("resolved auth cache entry identity is unexpected")
+        cache_entry_identity = None
+
     return _ResolvedFirewallAuth(
         token_meta=token_meta,
         headers=headers,
         query=query,
         base=base,
         aws_sigv4=aws_sigv4,
+        cache_entry_identity=cache_entry_identity,
     )
 
 
@@ -605,8 +626,34 @@ def _apply_header_query_injection(
     headers: dict[str, str],
     resolved_query: dict | None,
 ) -> None:
-    for header_name, header_value in resolved_auth_header_pairs(headers):
-        flow.request.headers[header_name] = header_value
+    auth_pairs = resolved_auth_header_pairs(headers)
+    if auth_pairs:
+        resolved_fields_by_name: dict[bytes, tuple[bytes, bytes]] = {}
+        for header_name, header_value in auth_pairs:
+            encoded_name = header_name.encode()
+            encoded_value = header_value.encode()
+            normalized_name = encoded_name.lower()
+            existing_field = resolved_fields_by_name.get(normalized_name)
+            if existing_field is None:
+                resolved_fields_by_name[normalized_name] = (encoded_name, encoded_value)
+            else:
+                # Match Headers.set_all(): keep the first spelling and let the last value win.
+                resolved_fields_by_name[normalized_name] = (
+                    existing_field[0],
+                    encoded_value,
+                )
+
+        remaining_fields = resolved_fields_by_name.copy()
+        merged_fields: list[tuple[bytes, bytes]] = []
+        for header_name, header_value in flow.request.headers.fields:
+            normalized_name = header_name.lower()
+            if normalized_name in remaining_fields:
+                _resolved_name, resolved_value = remaining_fields.pop(normalized_name)
+                merged_fields.append((header_name, resolved_value))
+            elif normalized_name not in resolved_fields_by_name:
+                merged_fields.append((header_name, header_value))
+        merged_fields.extend(remaining_fields.values())
+        flow.request.headers.fields = tuple(merged_fields)
     if resolved_query:
         remaining_query = resolved_query.copy()
         merged_query: list[tuple[str, str]] = []
@@ -1577,10 +1624,10 @@ async def _apply_resolved_firewall_auth(
 def _finalize_firewall_auth_success(
     flow: http.HTTPFlow,
     context: _FirewallAuthContext,
-    token_meta: dict,
+    resolved_auth: _ResolvedFirewallAuth,
 ) -> None:
     """Record successful auth metadata and proxy log after auth application."""
-    _record_firewall_auth_success_metadata(flow, token_meta)
+    _record_firewall_auth_success_metadata(flow, resolved_auth)
 
     trusted_host = flow_metadata.trusted_authority_host(flow.metadata) or flow.request.pretty_host
     log_proxy_entry(
@@ -1605,7 +1652,7 @@ def _finish_firewall_auth_result(
 async def handle_firewall_request(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
     *,
     revalidate_current_firewall_authorization: CurrentFirewallAuthorizationGuard,
 ) -> FirewallAuthHandlingResult:
@@ -1616,9 +1663,9 @@ async def handle_firewall_request(
     function then returns ``LOCAL_RESPONSE`` without applying resolved data.
     """
     try:
-        plan = _build_firewall_auth_plan(flow, allow, vm_info)
-        _prepare_firewall_metadata(flow, allow, vm_info)
-        context = _build_firewall_auth_context(flow, allow, vm_info)
+        plan = _build_firewall_auth_plan(flow, allow, sandbox_info)
+        _prepare_firewall_metadata(flow, allow, sandbox_info)
+        context = _build_firewall_auth_context(flow, allow, sandbox_info)
 
         preflight_result = _preflight_firewall_auth(flow, context, plan)
         if preflight_result is not None:
@@ -1690,7 +1737,7 @@ async def handle_firewall_request(
         if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
             return _finish_firewall_auth_result(flow, auth_result)
 
-        _finalize_firewall_auth_success(flow, context, resolved_auth.token_meta)
+        _finalize_firewall_auth_success(flow, context, resolved_auth)
         return auth_result
     except BaseException:
         release_forward_request_admission_from_flow(flow)
@@ -1700,7 +1747,7 @@ async def handle_firewall_request(
 async def try_apply_stream_safe_firewall_auth_for_requestheaders(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
-    vm_info: dict,
+    sandbox_info: dict,
     *,
     revalidate_current_firewall_authorization: CurrentFirewallAuthorizationGuard,
 ) -> FirewallHeaderPhaseAuthResult:
@@ -1716,7 +1763,7 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
     request_headers_snapshot = http.Headers(flow.request.headers.fields)
     request_url_snapshot = flow.request.url
 
-    plan = _build_firewall_auth_plan(flow, allow, vm_info)
+    plan = _build_firewall_auth_plan(flow, allow, sandbox_info)
     if plan.body_dependent or plan.failure is not None:
         _restore_header_phase_probe_state(
             flow,
@@ -1726,8 +1773,8 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    _prepare_firewall_metadata(flow, allow, vm_info)
-    context = _build_firewall_auth_context(flow, allow, vm_info)
+    _prepare_firewall_metadata(flow, allow, sandbox_info)
+    context = _build_firewall_auth_context(flow, allow, sandbox_info)
 
     try:
         token_meta = await _resolve_firewall_auth(plan, context)
@@ -1786,5 +1833,5 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         )
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    _finalize_firewall_auth_success(flow, context, resolved_auth.token_meta)
+    _finalize_firewall_auth_success(flow, context, resolved_auth)
     return FirewallHeaderPhaseAuthResult.APPLIED

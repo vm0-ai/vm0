@@ -1,12 +1,12 @@
 """Tests for registry compiled context state and reload behavior."""
 
 import json
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 import matching
 import registry
+from tests.process_log_helpers import capture_addon_process_events
 from tests.registry_helpers import pin_mtime, write_firewall_registry
 
 
@@ -14,17 +14,17 @@ class TestRegistryContextState:
     def test_compiled_context_updates_after_successful_registry_change(self, tmp_path):
         path = tmp_path / "registry.json"
         write_firewall_registry(path, rule="/items")
-        first_context = registry.get_vm_context("10.200.0.1", str(path))
+        first_context = registry.get_sandbox_context("10.200.0.1", str(path))
         assert first_context is not None
-        first_vm_info, first_compiled, first_compiled_policies = first_context
+        first_sandbox_info, first_compiled, first_compiled_policies = first_context
         assert first_compiled is not None
 
         write_firewall_registry(path, rule="/other-resource")
-        second_context = registry.get_vm_context("10.200.0.1", str(path))
+        second_context = registry.get_sandbox_context("10.200.0.1", str(path))
         assert second_context is not None
-        second_vm_info, second_compiled, second_compiled_policies = second_context
+        second_sandbox_info, second_compiled, second_compiled_policies = second_context
 
-        assert second_vm_info is not first_vm_info
+        assert second_sandbox_info is not first_sandbox_info
         assert second_compiled is not None
         assert second_compiled is not first_compiled
         assert second_compiled_policies is not first_compiled_policies
@@ -50,7 +50,7 @@ class TestRegistryContextState:
     def test_successful_registry_change_without_firewalls_clears_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"
         write_firewall_registry(path)
-        first_context = registry.get_vm_context("10.200.0.1", str(path))
+        first_context = registry.get_sandbox_context("10.200.0.1", str(path))
         assert first_context is not None
         _, first_compiled, first_compiled_policies = first_context
         assert first_compiled is not None
@@ -58,7 +58,7 @@ class TestRegistryContextState:
         path.write_text(
             json.dumps(
                 {
-                    "vms": {
+                    "sandboxes": {
                         "10.200.0.1": {
                             "runId": "run-abc-123",
                             "billableFirewalls": [],
@@ -77,7 +77,7 @@ class TestRegistryContextState:
             )
         )
 
-        second_context = registry.get_vm_context("10.200.0.1", str(path))
+        second_context = registry.get_sandbox_context("10.200.0.1", str(path))
         assert second_context is not None
         _, second_compiled, second_compiled_policies = second_context
         assert second_compiled is None
@@ -92,14 +92,14 @@ class TestRegistryContextState:
         pin_mtime(path_b)
         assert path_a.stat().st_size == path_b.stat().st_size
 
-        first_context = registry.get_vm_context("10.200.0.1", str(path_a))
-        second_context = registry.get_vm_context("10.200.0.1", str(path_b))
+        first_context = registry.get_sandbox_context("10.200.0.1", str(path_a))
+        second_context = registry.get_sandbox_context("10.200.0.1", str(path_b))
 
         assert first_context is not None
         assert second_context is not None
-        first_vm_info, first_compiled, _ = first_context
-        second_vm_info, second_compiled, second_compiled_policies = second_context
-        assert first_vm_info is not second_vm_info
+        first_sandbox_info, first_compiled, _ = first_context
+        second_sandbox_info, second_compiled, second_compiled_policies = second_context
+        assert first_sandbox_info is not second_sandbox_info
         assert second_compiled is not None
         assert second_compiled is not first_compiled
         assert isinstance(
@@ -124,14 +124,14 @@ class TestRegistryContextState:
     def test_parse_failure_returns_no_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"
         write_firewall_registry(path)
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
         assert context is not None
         _, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
 
         path.write_text("{ broken")
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            unavailable_context = registry.get_vm_context("10.200.0.1", str(path))
+        with capture_addon_process_events():
+            unavailable_context = registry.get_sandbox_context("10.200.0.1", str(path))
             state = registry.load_registry_state(str(path))
 
         assert unavailable_context is None
@@ -144,14 +144,14 @@ class TestRegistryContextState:
     def test_missing_file_returns_no_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"
         write_firewall_registry(path)
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
         assert context is not None
         _, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
 
         path.unlink()
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            unavailable_context = registry.get_vm_context("10.200.0.1", str(path))
+        with capture_addon_process_events():
+            unavailable_context = registry.get_sandbox_context("10.200.0.1", str(path))
             state = registry.load_registry_state(str(path))
 
         assert unavailable_context is None
@@ -165,10 +165,10 @@ class TestRegistryContextState:
         path = tmp_path / "registry.json"
         write_firewall_registry(path)
         data = json.loads(path.read_text())
-        data["vms"]["10.200.0.1"]["networkPolicies"] = {"example": "denied"}
+        data["sandboxes"]["10.200.0.1"]["networkPolicies"] = {"example": "denied"}
         path.write_text(json.dumps(data))
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
         _, compiled_firewalls, compiled_network_policies = context
@@ -186,11 +186,11 @@ class TestRegistryContextState:
         path = tmp_path / "registry.json"
         write_firewall_registry(path)
         data = json.loads(path.read_text())
-        firewall = data["vms"]["10.200.0.1"]["firewalls"][0]["firewall"]
+        firewall = data["sandboxes"]["10.200.0.1"]["firewalls"][0]["firewall"]
         firewall["apis"][0]["permissions"][0]["rules"] = ["GET /items/{a}literal{b}"]
         path.write_text(json.dumps(data))
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
         _, compiled_firewalls, compiled_network_policies = context
@@ -208,21 +208,21 @@ class TestRegistryContextState:
         "firewalls",
         [0, 1, False, True, "", {}, {"name": "example"}, "broken"],
     )
-    def test_malformed_top_level_firewalls_shape_rejects_vm(self, tmp_path, firewalls):
+    def test_malformed_top_level_firewalls_shape_rejects_sandbox(self, tmp_path, firewalls):
         path = tmp_path / "registry.json"
         write_firewall_registry(path)
         data = json.loads(path.read_text())
-        data["vms"]["10.200.0.1"]["firewalls"] = firewalls
+        data["sandboxes"]["10.200.0.1"]["firewalls"] = firewalls
         path.write_text(json.dumps(data))
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            context = registry.get_vm_context("10.200.0.1", str(path))
+        with capture_addon_process_events():
+            context = registry.get_sandbox_context("10.200.0.1", str(path))
             state = registry.load_registry_state(str(path))
 
         assert context is None
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert "10.200.0.1" not in state.vms
-        assert state.invalid_vms["10.200.0.1"].reason == "invalid_firewalls"
+        assert "10.200.0.1" not in state.sandboxes
+        assert state.invalid_sandboxes["10.200.0.1"].reason == "invalid_firewalls"
 
     @pytest.mark.parametrize(
         "firewalls",
@@ -235,30 +235,30 @@ class TestRegistryContextState:
             [{"kind": "unknown", "name": "github", "apis": []}],
         ],
     )
-    def test_malformed_firewall_entries_reject_vm(self, tmp_path, firewalls):
+    def test_malformed_firewall_entries_reject_sandbox(self, tmp_path, firewalls):
         path = tmp_path / "registry.json"
         write_firewall_registry(path)
         data = json.loads(path.read_text())
-        data["vms"]["10.200.0.1"]["firewalls"] = firewalls
+        data["sandboxes"]["10.200.0.1"]["firewalls"] = firewalls
         path.write_text(json.dumps(data))
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            context = registry.get_vm_context("10.200.0.1", str(path))
+        with capture_addon_process_events():
+            context = registry.get_sandbox_context("10.200.0.1", str(path))
             state = registry.load_registry_state(str(path))
 
         assert context is None
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert "10.200.0.1" not in state.vms
-        assert state.invalid_vms["10.200.0.1"].reason == "invalid_firewalls"
+        assert "10.200.0.1" not in state.sandboxes
+        assert state.invalid_sandboxes["10.200.0.1"].reason == "invalid_firewalls"
 
     def test_null_top_level_firewalls_shape_is_no_firewall_context(self, tmp_path):
         path = tmp_path / "registry.json"
         write_firewall_registry(path)
         data = json.loads(path.read_text())
-        data["vms"]["10.200.0.1"]["firewalls"] = None
+        data["sandboxes"]["10.200.0.1"]["firewalls"] = None
         path.write_text(json.dumps(data))
 
-        context = registry.get_vm_context("10.200.0.1", str(path))
+        context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert context is not None
         _, compiled_firewalls, compiled_network_policies = context

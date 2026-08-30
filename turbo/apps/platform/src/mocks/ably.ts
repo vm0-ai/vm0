@@ -85,11 +85,15 @@ const subscribeErrors = new Map<
   }
 >();
 
-function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
-  const deferred = createDeferredPromise<AuthCallbackToken>(
-    AbortSignal.any([]),
-  );
+function invokeAuthCallback(
+  cb: AuthCallback,
+  signal: AbortSignal = AbortSignal.any([]),
+): Promise<AuthCallbackToken> {
+  const deferred = createDeferredPromise<AuthCallbackToken>(signal);
   cb({}, (error, token) => {
+    if (deferred.settled()) {
+      return;
+    }
     if (error) {
       const message =
         typeof error === "string" ? error : (error.message ?? "auth error");
@@ -242,6 +246,9 @@ export class Realtime {
   };
   readonly channels: { get: (_name: string) => FakeChannel };
 
+  private readonly channelsByName = new Map<string, FakeChannel>();
+  private readonly authController = new AbortController();
+
   private readonly connectedOnceListeners = new Set<ConnectionEventListener>();
   private readonly failedOnceListeners = new Set<ConnectionEventListener>();
   private readonly connectedListeners = new Set<ConnectionEventListener>();
@@ -302,19 +309,17 @@ export class Realtime {
       on,
       off,
     };
-    this.channel = new FakeChannel(() => {
-      return this.connection.state;
-    });
+    this.channel = this.getChannel("user:test-user-123");
     this.channels = {
-      get: (_name) => {
-        return this.channel;
+      get: (name) => {
+        return this.getChannel(name);
       },
     };
     realtimeInstances.add(this);
 
     if (config?.authCallback) {
       capturedAuthCallback = config.authCallback;
-      invokeAuthCallback(config.authCallback)
+      invokeAuthCallback(config.authCallback, this.authController.signal)
         .then(() => {
           this.connect();
         })
@@ -334,8 +339,13 @@ export class Realtime {
     if (this.connection.state === "closed") {
       return;
     }
+    this.authController.abort(
+      new DOMException("Ably client closed", "AbortError"),
+    );
     this.transition("closing");
-    this.channel.clear();
+    for (const channel of this.channelsByName.values()) {
+      channel.clear();
+    }
     this.transition("closed");
     this.connectedOnceListeners.clear();
     this.failedOnceListeners.clear();
@@ -349,7 +359,9 @@ export class Realtime {
       return;
     }
     const reason = { message };
-    this.channel.fail(reason);
+    for (const channel of this.channelsByName.values()) {
+      channel.fail(reason);
+    }
     this.transition("failed", reason);
   }
 
@@ -357,7 +369,9 @@ export class Realtime {
     if (this.connection.state === "closed") {
       return;
     }
-    this.channel.reconnect();
+    for (const channel of this.channelsByName.values()) {
+      channel.reconnect();
+    }
     this.transition("connected");
   }
 
@@ -370,9 +384,13 @@ export class Realtime {
       return;
     }
     if (state === "suspended") {
-      this.channel.suspend(reason);
+      for (const channel of this.channelsByName.values()) {
+        channel.suspend(reason);
+      }
     } else if (state === "connected") {
-      this.channel.reconnect();
+      for (const channel of this.channelsByName.values()) {
+        channel.reconnect();
+      }
     }
     this.transition(state, reason, retryIn);
   }
@@ -382,6 +400,30 @@ export class Realtime {
       return;
     }
     this.transition("connected");
+  }
+
+  getExistingChannel(name: string): FakeChannel | undefined {
+    return this.channelsByName.get(name);
+  }
+
+  allChannels(): Iterable<FakeChannel> {
+    return this.channelsByName.values();
+  }
+
+  namedChannels(): Iterable<readonly [string, FakeChannel]> {
+    return this.channelsByName.entries();
+  }
+
+  private getChannel(name: string): FakeChannel {
+    const existing = this.channelsByName.get(name);
+    if (existing) {
+      return existing;
+    }
+    const channel = new FakeChannel(() => {
+      return this.connection.state;
+    });
+    this.channelsByName.set(name, channel);
+    return channel;
   }
 
   private transition(
@@ -413,11 +455,33 @@ export class Realtime {
   }
 }
 
+export { Realtime as BaseRealtime };
+export const FetchRequest = Symbol("FetchRequest");
+export const WebSocketTransport = Symbol("WebSocketTransport");
+export const XHRPolling = Symbol("XHRPolling");
+
 /** Fire a server-side publish on every connected Realtime instance. */
 export function triggerAblyEvent(topic: string, data?: unknown): void {
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
-      realtime.channel.trigger(topic, data);
+      for (const [channelName, channel] of realtime.namedChannels()) {
+        if (channelName.startsWith("user:")) {
+          channel.trigger(topic, data);
+        }
+      }
+    }
+  }
+}
+
+/** Fire a server-side publish on one named channel. */
+export function triggerAblyChannelEvent(
+  channelName: string,
+  topic: string,
+  data?: unknown,
+): void {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "connected") {
+      realtime.getExistingChannel(channelName)?.trigger(topic, data);
     }
   }
 }
@@ -521,7 +585,21 @@ export function rejectAblySubscribe(
 /** Debug: check if a topic has an active subscription. */
 export function hasSubscription(topic: string): boolean {
   for (const realtime of realtimeInstances) {
-    if (realtime.channel.hasSubscription(topic)) {
+    for (const channel of realtime.allChannels()) {
+      if (channel.hasSubscription(topic)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function hasSubscriptionOnChannel(
+  channelName: string,
+  topic: string,
+): boolean {
+  for (const realtime of realtimeInstances) {
+    if (realtime.getExistingChannel(channelName)?.hasSubscription(topic)) {
       return true;
     }
   }
@@ -531,7 +609,22 @@ export function hasSubscription(topic: string): boolean {
 /** Debug: check if a user channel has an active catch-all subscription. */
 export function hasChannelSubscription(): boolean {
   for (const realtime of realtimeInstances) {
-    if (realtime.channel.hasChannelSubscription()) {
+    for (const channel of realtime.allChannels()) {
+      if (channel.hasChannelSubscription()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function hasChannelSubscriptionOnChannel(channelName: string): boolean {
+  for (const realtime of realtimeInstances) {
+    if (
+      realtime.connection.state === "connected" &&
+      realtime.getExistingChannel(channelName)?.hasChannelSubscription() ===
+        true
+    ) {
       return true;
     }
   }

@@ -39,7 +39,7 @@ pub(super) struct IdleSandboxMetadata {
     pub(super) guest_timezone_intent: GuestTimezoneIntent,
     /// Local terminal timestamp for this parked sandbox.
     ///
-    /// `None` is reserved for synthetic test entries and means the VM is not
+    /// `None` is reserved for synthetic test entries and means the sandbox is not
     /// advertised as reusable.
     pub(super) last_completed_at: Option<String>,
 }
@@ -93,7 +93,7 @@ pub(super) enum WorkspacePromotionPolicy {
 /// ownership is accepted.
 ///
 /// This state proves only same-reuse-key idle park. It does not imply clean
-/// cross-run reuse, snapshot readiness, or any broader VM correctness.
+/// cross-run reuse, snapshot readiness, or any broader sandbox correctness.
 #[must_use = "parked idle candidates must be accepted by the idle pool or explicitly destroyed"]
 pub struct ParkedIdleCandidate {
     pub(super) resources: IdleSandboxResources,
@@ -373,9 +373,39 @@ impl ReusableIdleSandbox {
             guest_state_prepared,
         }
     }
+
+    pub(crate) fn into_destroy_job(
+        self,
+        factory: Arc<Box<dyn SandboxFactory>>,
+        budget_lease: BudgetLease,
+        reason: &'static str,
+    ) -> IdleDestroyJob {
+        let Self {
+            sandbox,
+            metadata,
+            workspace_promotion,
+            guest_state_prepared: _,
+        } = self;
+        let IdleSandboxMetadata {
+            reuse_key,
+            profile_name,
+            ..
+        } = metadata;
+        IdleDestroyJob {
+            payload: IdleSandboxResources {
+                sandbox,
+                factory,
+                workspace_promotion,
+            }
+            .into_destroy_payload(WorkspacePromotionPolicy::AbandonUnpublished(reason)),
+            budget_lease,
+            reuse_key,
+            profile_name,
+        }
+    }
 }
 
-/// Physical resources needed to destroy an idle VM, without its budget lease.
+/// Physical resources needed to destroy an idle sandbox, without its budget lease.
 pub(crate) struct IdleDestroyPayload {
     pub(super) resources: IdleSandboxResources,
     pub(super) workspace_promotion_policy: WorkspacePromotionPolicy,
@@ -720,6 +750,10 @@ impl IdleEntry {
 }
 
 impl ReservedIdleSandbox {
+    pub(crate) fn sandbox_id(&self) -> SandboxId {
+        self.entry.metadata.sandbox_id
+    }
+
     pub fn reuse_key(&self) -> &str {
         self.entry.reuse_key()
     }

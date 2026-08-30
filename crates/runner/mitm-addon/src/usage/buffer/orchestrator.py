@@ -10,7 +10,12 @@ from typing import Protocol
 
 from ..counters import set_buffered_usage_events
 from ..webhook import WebhookDeliveryOutcome, enqueue_webhook_delivery
-from .logging import _elapsed_ms, _log_dropped_batches, _log_flush_summaries
+from .logging import (
+    _elapsed_ms,
+    _log_dropped_batches,
+    _log_flush_summaries,
+    _log_permanent_delivery_failure,
+)
 from .models import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
     DEFAULT_FLUSH_JITTER_RATIO,
@@ -45,6 +50,7 @@ class _TimerHandle(Protocol):
 _TimerFactory = Callable[[float, Callable[[], None]], _TimerHandle]
 _DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
 _EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
+_SetBufferedCount = Callable[[int], None]
 
 
 def _log_shutdown_retained_batches(
@@ -81,6 +87,7 @@ class UsageEventBuffer:
         timer_enabled: bool = True,
         timer_factory: _TimerFactory | None = None,
         enqueue_webhook: _EnqueueWebhook | None = None,
+        set_buffered_count: _SetBufferedCount = set_buffered_usage_events,
         flush_owner_lock: _FlushOwnerLock | None = None,
         max_retained_batch_retries: int = MAX_RETAINED_USAGE_BATCH_RETRIES,
     ) -> None:
@@ -92,6 +99,7 @@ class UsageEventBuffer:
             flush_owner_lock if flush_owner_lock is not None else threading.Lock()
         )
         self._enqueue_webhook = enqueue_webhook
+        self._set_buffered_count = set_buffered_count
         self._state = _UsageBufferState(max_retained_batch_retries=max_retained_batch_retries)
         self._flush_interval_seconds = max(1.0, flush_interval_seconds)
         self._jitter_ratio = max(0.0, jitter_ratio)
@@ -154,7 +162,7 @@ class UsageEventBuffer:
     def buffer_model_usage_observations(
         self,
         url: str,
-        sandbox_token: str,
+        runner_token: str,
         run_id: str,
         observations: Iterable[ModelUsageObservation],
         proxy_log_path: str,
@@ -168,7 +176,7 @@ class UsageEventBuffer:
         with self._lock:
             accepted_count = self._state.add_model_usage_observations(
                 url,
-                sandbox_token,
+                runner_token,
                 run_id,
                 observations,
                 proxy_log_path,
@@ -430,7 +438,9 @@ class UsageEventBuffer:
                 else enqueue_webhook_delivery
             ),
             lambda pending_batch: self._make_delivery_outcome_callback(
-                pending_flush, pending_batch
+                pending_flush,
+                pending_batch,
+                trigger,
             ),
         )
         _apply_retained_batch_counts(pending_flush.summaries, admission_result.retained_batches)
@@ -447,9 +457,15 @@ class UsageEventBuffer:
         self,
         pending_flush: _PendingFlush,
         pending_batch: _PendingBatch,
+        trigger: UsageFlushTrigger,
     ) -> _DeliveryOutcomeCallback:
         def callback(outcome: WebhookDeliveryOutcome) -> None:
-            self._record_delivery_outcome(pending_flush, pending_batch, outcome)
+            self._record_delivery_outcome(
+                pending_flush,
+                pending_batch,
+                outcome,
+                trigger,
+            )
 
         return callback
 
@@ -458,6 +474,7 @@ class UsageEventBuffer:
         pending_flush: _PendingFlush,
         pending_batch: _PendingBatch,
         outcome: WebhookDeliveryOutcome,
+        trigger: UsageFlushTrigger,
     ) -> None:
         timer_to_start: _TimerHandle | None = None
         completion: _DeliveryCompletion | None = None
@@ -471,6 +488,12 @@ class UsageEventBuffer:
                 timer_to_start = self._schedule_timer_if_buffered_locked()
             self._sync_buffered_counter_locked()
 
+        if outcome == "permanent_failure":
+            _log_permanent_delivery_failure(
+                trigger,
+                pending_flush.flush_sequence,
+                pending_batch,
+            )
         if completion is not None and completion.retained_batches:
             _log_flush_summaries(
                 "retained",
@@ -499,7 +522,7 @@ class UsageEventBuffer:
             raise
 
     def _sync_buffered_counter_locked(self) -> None:
-        set_buffered_usage_events(self._state.buffered_source_event_count())
+        self._set_buffered_count(self._state.buffered_source_event_count())
 
     def _schedule_timer_locked(self) -> _TimerHandle | None:
         if not self._timer_enabled or self._timer is not None:
@@ -567,7 +590,7 @@ def _enqueue_batches(
         try:
             admitted = enqueue_webhook(
                 batch.url,
-                batch.sandbox_token,
+                batch.bearer_credential,
                 batch.payload,
                 batch.proxy_log_path,
                 batch.log_type,

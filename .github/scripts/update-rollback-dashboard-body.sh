@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 3 ]; then
-  echo "usage: update-rollback-dashboard-body.sh BODY_FILE TARGET_COMMIT ROLLBACK_URL" >&2
+if [ "$#" -ne 4 ]; then
+  echo "usage: update-rollback-dashboard-body.sh BODY_FILE TARGET_COMMIT ROLLBACK_URL RELEASE_TAGS_JSON" >&2
   exit 2
 fi
 
 body_file=$1
 target_commit=$2
 rollback_url=$3
+release_tags=$4
 
 if [[ ! "$target_commit" =~ ^[0-9a-f]{40}$ ]]; then
   echo "target commit must be a full lowercase SHA-1: $target_commit" >&2
@@ -16,6 +17,16 @@ if [[ ! "$target_commit" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+
+jq -e '
+  type == "array" and
+  length > 0 and
+  all(.[]; type == "string" and test("^.+-v[0-9]")) and
+  length == (unique | length)
+' <<<"$release_tags" >/dev/null || {
+  echo "release tags must be a non-empty JSON array of unique version tags" >&2
+  exit 2
+}
 
 work_dir=$(mktemp -d)
 entries_dir="${work_dir}/entries"
@@ -26,29 +37,37 @@ rendered_body_file="${work_dir}/body.md"
 mkdir -p "$entries_dir"
 trap 'rm -rf "$work_dir"' EXIT
 
-gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" >"$releases_file"
+while IFS= read -r release_tag; do
+  gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${release_tag}"
+done < <(jq -r '.[]' <<<"$release_tags") | jq -s . >"$releases_file"
 
-jq -ce --arg target "$target_commit" '
-  [
-    .[]
-    | select(.target_commitish == $target)
-    | select(.tag_name | test("^.+-v[0-9]"))
-    | (.tag_name | capture("^(?<artifact>.+)-v(?<version>[0-9].*)$")) as $tag
-    | {
-        artifact: $tag.artifact,
-        version: $tag.version,
-        url: .html_url,
-        published_at: .published_at,
-        body: (.body // ""),
-        priority: (
-          if $tag.artifact == "app" then 0
-          elif $tag.artifact == "api" then 1
-          elif $tag.artifact == "runner-rs" then 2
-          else 3
-          end
-        )
-      }
-  ]
+jq -ce \
+  --arg target "$target_commit" \
+  --argjson expected_tags "$release_tags" '
+  if ([.[].tag_name] | sort) != ($expected_tags | sort) then
+    error("Release artifacts do not match the requested release tags")
+  elif any(.[]; .target_commitish != $target) then
+    error("Release artifacts do not all target " + $target)
+  else
+    [
+      .[]
+      | (.tag_name | capture("^(?<artifact>.+)-v(?<version>[0-9].*)$")) as $tag
+      | {
+          artifact: $tag.artifact,
+          version: $tag.version,
+          url: .html_url,
+          published_at: .published_at,
+          body: (.body // ""),
+          priority: (
+            if $tag.artifact == "app" then 0
+            elif $tag.artifact == "api" then 1
+            elif $tag.artifact == "runner-rs" then 2
+            else 3
+            end
+          )
+        }
+    ]
+  end
   | if length == 0 then
       error("No release artifacts found for target " + $target)
     else

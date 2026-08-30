@@ -198,7 +198,7 @@ const completeDirectUpload$ = command(
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand =
-    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   const runId =
     "runId" in auth && typeof auth.runId === "string" ? auth.runId : undefined;
 

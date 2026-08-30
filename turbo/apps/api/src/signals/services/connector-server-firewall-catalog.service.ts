@@ -6,11 +6,7 @@ import {
   type ConnectorRuntimeBindingEntry,
 } from "@okouai/connectors/connector-auth-method";
 import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
-import {
-  createFirewallMetadataPolicyResolver,
-  type FirewallMetadataPolicyResolver,
-  type FirewallPermissionPolicyDefaultMetadata,
-} from "@okouai/connectors/firewall-metadata/policy";
+import type { FirewallPermissionPolicyDefaultMetadata } from "@okouai/connectors/firewall-metadata/policy";
 import {
   extractSecretNamesFromApis,
   normalizeFirewallFixedHost,
@@ -23,13 +19,13 @@ import {
 import type {
   ConnectorCatalogArtifact,
   ConnectorCatalogArtifactConnector,
-} from "./connector-catalog-artifacts/artifacts";
+} from "@okouai/connector-catalog-validation/artifacts/artifacts";
 import {
   connectorCatalogFirewallConfig,
   deriveConnectorCatalogFirewallPermissions,
   deriveConnectorCatalogFirewallRouting,
   type ConnectorCatalogFirewallRouting,
-} from "./connector-catalog-artifacts/relationships";
+} from "@okouai/connector-catalog-validation/artifacts/relationships";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
@@ -57,9 +53,10 @@ export interface ConnectorServerFirewallPermissionIndex {
   readonly label: string;
   readonly permissionNames: ReadonlySet<string>;
   readonly permissionDescriptions: ReadonlyMap<string, string>;
+  readonly defaultPermissionPolicies: Readonly<
+    Record<string, FirewallPolicyValue>
+  >;
   readonly defaultPolicy: FirewallPermissionPolicyDefaultMetadata;
-  readonly unknownPolicy: FirewallPolicyValue;
-  readonly policyResolver: FirewallMetadataPolicyResolver;
   hasPermission(name: string): boolean;
   permissionDescription(name: string): string | null;
 }
@@ -179,22 +176,10 @@ function choosePermissionDefault(
 }
 
 function compactDefaultPolicy(args: {
-  readonly permissionNames: readonly string[];
-  readonly defaultAllowed: readonly string[] | null;
+  readonly policies: Readonly<Record<string, FirewallPolicyValue>>;
   readonly defaultUnknownPolicy: FirewallPolicyValue;
 }): FirewallPermissionPolicyDefaultMetadata {
-  const allowed = args.defaultAllowed
-    ? new Set<string>(args.defaultAllowed)
-    : null;
-  const policies = Object.fromEntries(
-    args.permissionNames.map((permission): [string, FirewallPolicyValue] => {
-      return [
-        permission,
-        allowed === null || allowed.has(permission) ? "allow" : "deny",
-      ];
-    }),
-  );
-  const permissionDefault = choosePermissionDefault(policies);
+  const permissionDefault = choosePermissionDefault(args.policies);
   const permissionOverrides: Partial<
     Record<FirewallPolicyValue, readonly string[]>
   > = {};
@@ -202,7 +187,7 @@ function compactDefaultPolicy(args: {
     if (value === permissionDefault) {
       continue;
     }
-    const permissions = Object.entries(policies)
+    const permissions = Object.entries(args.policies)
       .filter(([, policy]) => {
         return policy === value;
       })
@@ -233,31 +218,37 @@ function acceptedPermissionIndex(
       },
     ),
   );
-  const defaultPolicy = compactDefaultPolicy({
-    permissionNames: [...permissions.keys()].sort(compareStrings),
-    defaultAllowed: firewall.defaultAllowed,
-    defaultUnknownPolicy: firewall.defaultUnknownPolicy,
-  });
   permissions.delete(UNKNOWN_PERMISSION_GRANT);
   const permissionNames = [...permissions.keys()].sort(compareStrings);
+  const allowed = firewall.defaultAllowed
+    ? new Set<string>(firewall.defaultAllowed)
+    : null;
+  const defaultPermissionPolicies = Object.fromEntries(
+    permissionNames.map((permission): [string, FirewallPolicyValue] => {
+      return [
+        permission,
+        allowed === null || allowed.has(permission) ? "allow" : "deny",
+      ];
+    }),
+  );
+  const defaultPolicy = compactDefaultPolicy({
+    policies: defaultPermissionPolicies,
+    defaultUnknownPolicy: firewall.defaultUnknownPolicy,
+  });
   const permissionDescriptions = new Map<string, string>();
   for (const [name, description] of permissions) {
     if (description !== undefined) {
       permissionDescriptions.set(name, description);
     }
   }
-  const policyResolver = createFirewallMetadataPolicyResolver({
-    defaultPolicy,
-  });
   const permissionNameSet = new Set(permissionNames);
   return {
     connectorSlug: firewall.connectorSlug,
     label: firewall.label,
     permissionNames: permissionNameSet,
     permissionDescriptions,
+    defaultPermissionPolicies,
     defaultPolicy,
-    unknownPolicy: defaultPolicy.unknownPolicy,
-    policyResolver,
     hasPermission: (name) => {
       return permissionNameSet.has(name);
     },
@@ -681,26 +672,22 @@ export async function expandConnectorServerFirewallPolicies(args: {
       return args.catalog.loadPermissionIndex(connectorSlug);
     }),
   );
-  let resolved = args.stored;
+  let resolved: FirewallPolicies | null = null;
   for (const index of indexes) {
     if (!index) {
       continue;
     }
-    const policies = Object.fromEntries(
-      [...index.permissionNames].map((permission) => {
-        return [permission, index.policyResolver.permission(permission)];
-      }),
-    );
-    const existing = resolved?.[index.connectorSlug];
-    resolved = {
-      ...resolved,
-      [index.connectorSlug]: {
-        policies: { ...policies, ...existing?.policies },
-        ...(existing?.unknownPolicy !== undefined
-          ? { unknownPolicy: existing.unknownPolicy }
-          : { unknownPolicy: index.policyResolver.unknown() }),
+    resolved ??= { ...args.stored };
+    const existing = resolved[index.connectorSlug];
+    resolved[index.connectorSlug] = {
+      policies: {
+        ...index.defaultPermissionPolicies,
+        ...existing?.policies,
       },
+      ...(existing?.unknownPolicy !== undefined
+        ? { unknownPolicy: existing.unknownPolicy }
+        : { unknownPolicy: index.defaultPolicy.unknownPolicy }),
     };
   }
-  return resolved;
+  return resolved ?? args.stored;
 }

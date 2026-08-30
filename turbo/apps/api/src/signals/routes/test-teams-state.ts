@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
+
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -8,10 +9,7 @@ import {
   testTeamsStateContract,
   type TestTeamsStatePostBody,
 } from "@okouai/api-contracts/contracts/test-teams-state";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
@@ -21,17 +19,7 @@ import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import {
-  and,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
@@ -56,8 +44,6 @@ const DEFAULT_BOT_NAME = "Zero";
 const DEFAULT_AGENT_NAME = "e2e-teams-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
-const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
-const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 
 type StarterGrantTx = Tx;
 
@@ -67,13 +53,6 @@ function isoString(value: Date): string {
 
 function nullableIsoString(value: Date | null): string | null {
   return value ? isoString(value) : null;
-}
-
-function contentKeys(value: unknown): string[] {
-  if (value && typeof value === "object") {
-    return Object.keys(value);
-  }
-  return [];
 }
 
 interface UpsertTeamsInstallationInput {
@@ -225,49 +204,41 @@ async function seedDefaultAgent(
   db: Db,
   input: SeedDefaultAgentInput,
   signal: AbortSignal,
-): Promise<{ composeId: string; versionId: string; agentId: string }> {
-  const compose = await getOrInsertCompose(db, input);
-  const composeId = compose.id;
-  const versionId = await ensureComposeVersion(
-    db,
-    composeId,
-    input.userId,
-    input.name,
-    compose.headVersionId,
-  );
-
-  await db
-    .insert(zeroAgents)
+): Promise<{ agentId: string }> {
+  const [agent] = await db
+    .insert(agents)
     .values({
-      id: composeId,
+      id: randomUUID(),
       orgId: input.orgId,
       owner: input.userId,
       name: input.name,
       displayName: input.displayName ?? null,
     })
     .onConflictDoUpdate({
-      target: zeroAgents.id,
+      target: [agents.orgId, agents.name],
       set: {
-        orgId: input.orgId,
         owner: input.userId,
-        name: input.name,
         displayName: input.displayName ?? null,
         updatedAt: nowDate(),
       },
-    });
+    })
+    .returning({ id: agents.id });
+  if (!agent) {
+    throw new Error("Failed to resolve seeded default Agent");
+  }
 
   await db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, input.orgId);
     await tx
       .insert(orgMetadata)
-      .values({ orgId: input.orgId, defaultAgentId: composeId })
+      .values({ orgId: input.orgId, defaultAgentId: agent.id })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
-        set: { defaultAgentId: composeId, updatedAt: nowDate() },
+        set: { defaultAgentId: agent.id, updatedAt: nowDate() },
       });
   });
 
-  await seedVm0ManagedKeys(db, composeId);
+  await seedVm0BuiltInModelKeys(db, agent.id);
   signal.throwIfAborted();
   await ensureAgentInstructionsStorageFixture(
     db,
@@ -278,173 +249,61 @@ async function seedDefaultAgent(
     },
     signal,
   );
-  return { composeId, versionId, agentId: composeId };
+  return { agentId: agent.id };
 }
 
-async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
-  await db
-    .delete(builtInModelKeys)
-    .where(eq(builtInModelKeys.label, composeId));
+async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
+  await db.delete(builtInModelKeys).where(eq(builtInModelKeys.label, agentId));
   await db
     .insert(builtInModelKeys)
-    .values(vm0ManagedKeyRows(composeId))
+    .values(vm0BuiltInModelKeyRows(agentId))
     .onConflictDoNothing({ target: builtInModelKeys.vendor });
 }
 
-function vm0ManagedKeyRows(composeId: string) {
+function vm0BuiltInModelKeyRows(agentId: string) {
   return [
     {
       vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      apiKey: `vm0-key-default-${composeId}`,
-      label: composeId,
+      apiKey: `vm0-key-default-${agentId}`,
+      label: agentId,
     },
     {
       vendor: "anthropic",
-      apiKey: `vm0-key-anthropic-${composeId}`,
-      label: composeId,
+      apiKey: `vm0-key-anthropic-${agentId}`,
+      label: agentId,
     },
     {
       vendor: "moonshot",
-      apiKey: `vm0-key-moonshot-${composeId}`,
-      label: composeId,
+      apiKey: `vm0-key-moonshot-${agentId}`,
+      label: agentId,
     },
   ];
 }
 
-async function deleteVm0ManagedKeysForSeededDefaultAgent(
+async function deleteVm0BuiltInModelKeysForSeededDefaultAgent(
   db: Db,
   orgId: string,
 ): Promise<void> {
-  const [compose] = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, orgId),
-        eq(agentComposes.name, DEFAULT_AGENT_NAME),
-      ),
-    )
+  const [agent] = await db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(and(eq(agents.orgId, orgId), eq(agents.name, DEFAULT_AGENT_NAME)))
     .limit(1);
-  if (!compose) {
+  if (!agent) {
     return;
   }
 
-  const apiKeys = vm0ManagedKeyRows(compose.id).map((row) => {
+  const apiKeys = vm0BuiltInModelKeyRows(agent.id).map((row) => {
     return row.apiKey;
   });
   await db
     .delete(builtInModelKeys)
     .where(
       and(
-        eq(builtInModelKeys.label, compose.id),
+        eq(builtInModelKeys.label, agent.id),
         inArray(builtInModelKeys.apiKey, apiKeys),
       ),
     );
-}
-
-async function getOrInsertCompose(
-  db: Db,
-  input: SeedDefaultAgentInput,
-): Promise<{ id: string; headVersionId: string | null }> {
-  const [inserted] = await db
-    .insert(agentComposes)
-    .values({
-      userId: input.userId,
-      orgId: input.orgId,
-      name: input.name,
-    })
-    .onConflictDoNothing({
-      target: [agentComposes.orgId, agentComposes.name],
-    })
-    .returning({
-      id: agentComposes.id,
-      headVersionId: agentComposes.headVersionId,
-    });
-  if (inserted) {
-    return inserted;
-  }
-
-  const [existing] = await db
-    .select({
-      id: agentComposes.id,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, input.orgId),
-        eq(agentComposes.name, input.name),
-      ),
-    )
-    .limit(1);
-  if (!existing) {
-    throw new Error("Failed to resolve agent compose after conflict");
-  }
-  return existing;
-}
-
-async function ensureComposeVersion(
-  db: Db,
-  composeId: string,
-  userId: string,
-  name: string,
-  headVersionId: string | null,
-): Promise<string> {
-  if (headVersionId) {
-    return headVersionId;
-  }
-
-  const content = defaultAgentContent(name);
-  const versionId = createHash("sha256")
-    .update(JSON.stringify(content) + composeId)
-    .digest("hex");
-  await db
-    .insert(agentComposeVersions)
-    .values({
-      id: versionId,
-      composeId,
-      content,
-      createdBy: userId,
-    })
-    .onConflictDoNothing();
-
-  const [updated] = await db
-    .update(agentComposes)
-    .set({ headVersionId: versionId, updatedAt: nowDate() })
-    .where(
-      and(eq(agentComposes.id, composeId), isNull(agentComposes.headVersionId)),
-    )
-    .returning({ headVersionId: agentComposes.headVersionId });
-  if (updated?.headVersionId) {
-    return updated.headVersionId;
-  }
-
-  const [compose] = await db
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  if (compose?.headVersionId) {
-    return compose.headVersionId;
-  }
-
-  throw new Error("Failed to resolve agent compose head version");
-}
-
-function defaultAgentContent(name: string) {
-  return {
-    version: "1.0",
-    agents: {
-      [name]: {
-        framework: "claude-code",
-        environment: {
-          ANTHROPIC_API_KEY: "",
-          ZERO_AGENT_ID: ZERO_AGENT_ID_TEMPLATE,
-          ZERO_TOKEN: ZERO_TOKEN_TEMPLATE,
-        },
-      },
-    },
-  };
 }
 
 async function ensureStarterCreditGrant(
@@ -639,49 +498,12 @@ async function defaultAgentFor(
   }
   const [row] = await db
     .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      orgId: zeroAgents.orgId,
+      id: agents.id,
+      name: agents.name,
+      orgId: agents.orgId,
     })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, defaultAgentId))
-    .limit(1);
-  return row ?? null;
-}
-
-async function defaultComposeFor(
-  db: ReadonlyDb,
-  defaultAgentId: string | null | undefined,
-) {
-  if (!defaultAgentId) {
-    return null;
-  }
-  const [row] = await db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, defaultAgentId))
-    .limit(1);
-  return row ?? null;
-}
-
-async function defaultComposeVersionFor(
-  db: ReadonlyDb,
-  headVersionId: string | null | undefined,
-) {
-  if (!headVersionId) {
-    return null;
-  }
-  const [row] = await db
-    .select({
-      id: agentComposeVersions.id,
-      content: agentComposeVersions.content,
-    })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, headVersionId))
+    .from(agents)
+    .where(eq(agents.id, defaultAgentId))
     .limit(1);
   return row ?? null;
 }
@@ -717,11 +539,6 @@ const getTeamsState$ = computed(async (get) => {
   const recentRuns = await recentTeamsRuns(db, stateOrgId);
   const orgMeta = await orgMetaFor(db, stateOrgId);
   const defaultAgent = await defaultAgentFor(db, orgMeta?.defaultAgentId);
-  const compose = await defaultComposeFor(db, orgMeta?.defaultAgentId);
-  const composeVersion = await defaultComposeVersionFor(
-    db,
-    compose?.headVersionId,
-  );
   const callbacks = await recentTeamsCallbacks(db, stateOrgId);
 
   return {
@@ -752,13 +569,6 @@ const getTeamsState$ = computed(async (get) => {
       }),
       org_metadata: orgMeta,
       default_agent: defaultAgent,
-      default_compose: compose,
-      default_compose_version: composeVersion
-        ? {
-            id: composeVersion.id,
-            content_keys: contentKeys(composeVersion.content),
-          }
-        : null,
     },
   };
 });
@@ -850,7 +660,7 @@ async function maybeSeedDefaultAgentForPost(
   body: TestTeamsStatePostBody,
   actor: { readonly orgId: string; readonly userId: string },
   signal: AbortSignal,
-): Promise<{ readonly composeId: string } | undefined> {
+): Promise<{ readonly agentId: string } | undefined> {
   if (!body.seed_default_agent) {
     return undefined;
   }
@@ -934,7 +744,7 @@ const postTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
       org_id: actor.orgId,
       user_id: actor.userId,
       connection_id: connectionId ?? null,
-      default_agent_id: defaultAgent?.composeId ?? null,
+      default_agent_id: defaultAgent?.agentId ?? null,
     },
   };
 });
@@ -1043,25 +853,23 @@ async function deleteTeamsRunsForOrg(
   signal.throwIfAborted();
 }
 
-async function deleteTeamsComposesForOrg(
+async function deleteTeamsAgentsForOrg(
   db: Db,
   orgId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const composeRows = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(eq(agentComposes.orgId, orgId));
+  const agentRows = await db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(eq(agents.orgId, orgId));
   signal.throwIfAborted();
-  const composeIds = composeRows.map((row) => {
+  const agentIds = agentRows.map((row) => {
     return row.id;
   });
-  if (composeIds.length === 0) {
+  if (agentIds.length === 0) {
     return;
   }
-  await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-  signal.throwIfAborted();
-  await db.delete(agentComposes).where(inArray(agentComposes.id, composeIds));
+  await db.delete(agents).where(inArray(agents.id, agentIds));
   signal.throwIfAborted();
 }
 
@@ -1074,7 +882,7 @@ async function deleteTeamsOrgState(
     .delete(teamsUserAgentPreferences)
     .where(eq(teamsUserAgentPreferences.orgId, orgId));
   signal.throwIfAborted();
-  await deleteTeamsComposesForOrg(db, orgId, signal);
+  await deleteTeamsAgentsForOrg(db, orgId, signal);
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
   signal.throwIfAborted();
 }
@@ -1098,7 +906,7 @@ const deleteTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   const orgIds = orgIdsForTeamsStateDelete(installationRows, query.org_id);
   for (const orgId of orgIds) {
-    await deleteVm0ManagedKeysForSeededDefaultAgent(db, orgId);
+    await deleteVm0BuiltInModelKeysForSeededDefaultAgent(db, orgId);
     signal.throwIfAborted();
   }
 

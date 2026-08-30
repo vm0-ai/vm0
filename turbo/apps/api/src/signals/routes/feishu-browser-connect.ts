@@ -21,6 +21,7 @@ import { startCustomConnectorOAuth2$ } from "../services/custom-connector-oauth2
 import {
   ensureFeishuCustomConnector$,
   hasFeishuCustomConnectorOAuthConnection,
+  resolveFeishuConnectorAccountMutation,
 } from "../services/feishu-custom-connector.service";
 import {
   feishuBotOpenUrl,
@@ -120,6 +121,11 @@ const startFeishuAccountOAuth$ = command(
     if (!connectorId) {
       return { kind: "installation_not_found" };
     }
+    const account = await resolveFeishuConnectorAccountMutation(db, {
+      installationId: args.installationId,
+      userId: args.userId,
+    });
+    signal.throwIfAborted();
     const oauth = await set(
       startCustomConnectorOAuth2$,
       {
@@ -128,7 +134,7 @@ const startFeishuAccountOAuth$ = command(
         connectorId,
         redirectUri: feishuOAuthAppCallbackUrl(),
         publicBrand: args.publicBrand,
-        account: { intent: "single-account" },
+        account,
         feishuContext: {
           installationId: args.installationId,
           expectedOpenId: args.openId,

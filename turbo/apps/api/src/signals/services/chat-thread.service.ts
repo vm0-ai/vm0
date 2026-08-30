@@ -6,15 +6,16 @@ import {
   type CodexServiceTier,
   type PersistedAttachment,
   type UserMessageInputDocument,
-  type ZeroIndicator,
-  type ZeroIndicators,
+  type Indicator,
+  type Indicators,
   persistedAttachmentSchema,
-  zeroIndicatorSchema,
+  indicatorSchema,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
+  normalizeModelProviderWriteType,
   type ModelProviderCredentialScope,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -58,6 +59,7 @@ import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "./chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "./chat-thread-organization.service";
 import { cancelRun$, type CancelRunResult } from "./run-cancel.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./chat-active-run.service";
@@ -72,7 +74,7 @@ import {
 type ChatThreadRow = {
   readonly id: string;
   readonly title: string | null;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly draftUserMessage: UserMessageInputDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
@@ -155,7 +157,7 @@ function ownedChatThread(
       .select({
         id: chatThreads.id,
         title: chatThreads.title,
-        agentComposeId: agents.id,
+        agentId: agents.id,
         draftUserMessage: chatThreads.draftUserMessage,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
@@ -177,14 +179,14 @@ function ownedChatThread(
       .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
       .limit(1);
 
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return null;
     }
 
     return {
       id: thread.id,
       title: thread.title,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       draftUserMessage: thread.draftUserMessage ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
@@ -193,9 +195,12 @@ function ownedChatThread(
       computerUseHostId: thread.computerUseHostId,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
       modelProviderId: thread.modelProviderId,
-      modelProviderType: modelProviderTypeSchema
-        .nullable()
-        .parse(thread.modelProviderType),
+      modelProviderType:
+        thread.modelProviderType === null
+          ? null
+          : normalizeModelProviderWriteType(
+              modelProviderTypeSchema.parse(thread.modelProviderType),
+            ),
       modelProviderCredentialScope: modelProviderCredentialScopeSchema
         .nullable()
         .parse(thread.modelProviderCredentialScope),
@@ -237,7 +242,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 const INDICATOR_UNREAD_LIMIT = 50;
 const INDICATOR_UNREAD_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
-const indicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
+const indicatorDecoder = zodEnumDriverValueDecoder(indicatorSchema);
 
 function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
   return notExists(
@@ -319,7 +324,8 @@ export function chatThreadDetail(args: {
  */
 export function chatThreadUnreads(args: {
   readonly userId: string;
-  readonly agentComposeId: string;
+  readonly orgId: string;
+  readonly agentId: string;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -330,11 +336,13 @@ export function chatThreadUnreads(args: {
         unreadAt: lastRunFinish.createdAt,
       })
       .from(chatThreads)
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .crossJoinLateral(lastRunFinish)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          eq(chatThreads.agentId, args.agentComposeId),
+          eq(agents.orgId, args.orgId),
+          eq(chatThreads.agentId, args.agentId),
           or(
             isNull(chatThreads.lastReadAt),
             gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
@@ -360,8 +368,8 @@ export function chatThreadUnreads(args: {
 export function chatIndicators(args: {
   readonly userId: string;
   readonly orgId: string;
-}): Computed<Promise<ZeroIndicators>> {
-  return computed(async (get): Promise<ZeroIndicators> => {
+}): Computed<Promise<Indicators>> {
+  return computed(async (get): Promise<Indicators> => {
     const db = get(db$);
     const unreadCutoff = new Date(now() - INDICATOR_UNREAD_LOOKBACK_MS);
     const activeThreads = db.$with("active_threads").as(
@@ -437,8 +445,8 @@ export function chatIndicators(args: {
       .select()
       .from(indicatorRows);
 
-    const agentIndicators: Record<string, ZeroIndicator> = {};
-    const threads: Record<string, ZeroIndicator> = {};
+    const agentIndicators: Record<string, Indicator> = {};
+    const threads: Record<string, Indicator> = {};
     for (const row of rows) {
       threads[row.threadId] = row.indicator;
       if (
@@ -635,7 +643,7 @@ export const createChatThread$ = command(
     args: {
       readonly userId: string;
       readonly orgId: string;
-      readonly agentComposeId: string;
+      readonly agentId: string;
       readonly title: string | undefined;
       readonly clientThreadId: string | undefined;
       readonly eventId: string | undefined;
@@ -666,8 +674,9 @@ export const createChatThread$ = command(
         await prepareChatThreadConnectorSelections(tx, {
           orgId: args.orgId,
           userId: args.userId,
-          agentId: args.agentComposeId,
+          agentId: args.agentId,
           selections: args.connectorSelections ?? [],
+          missingAccountPolicy: "omit",
         });
       if (preparedConnectorSelections.kind === "invalid") {
         return {
@@ -682,11 +691,16 @@ export const createChatThread$ = command(
             ? { id: args.clientThreadId }
             : {}),
           userId: args.userId,
-          agentComposeId: args.agentComposeId,
+          agentId: args.agentId,
           title: args.title ?? null,
           lastReadAt: sql`NOW()`,
           modelProviderId: args.modelProviderId,
-          modelProviderType: args.modelProviderType,
+          modelProviderType:
+            args.modelProviderType === null
+              ? null
+              : normalizeModelProviderWriteType(
+                  modelProviderTypeSchema.parse(args.modelProviderType),
+                ),
           modelProviderCredentialScope: args.modelProviderCredentialScope,
           selectedModel: args.selectedModel,
           codexServiceTier: args.codexServiceTier,
@@ -706,7 +720,7 @@ export const createChatThread$ = command(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: createdThread.id,
-        agentComposeId: args.agentComposeId,
+        agentId: args.agentId,
         eventId: args.eventId,
         title: args.title ?? null,
         selectedModel: args.selectedModel,
@@ -732,11 +746,16 @@ export const createChatThread$ = command(
 export async function chatThreadForRunFromDb(
   db: Pick<Db, "select">,
   runId: string,
-): Promise<{ readonly chatThreadId: string; readonly userId: string } | null> {
+): Promise<{
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+} | null> {
   const [row] = await db
     .select({
       chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
+      orgId: agentRuns.orgId,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
@@ -746,7 +765,11 @@ export async function chatThreadForRunFromDb(
   if (!row?.chatThreadId) {
     return null;
   }
-  return { chatThreadId: row.chatThreadId, userId: row.userId };
+  return {
+    chatThreadId: row.chatThreadId,
+    userId: row.userId,
+    orgId: row.orgId,
+  };
 }
 
 interface ThreadRunToCancel {
@@ -778,7 +801,7 @@ export const deleteChatThread$ = command(
     args: {
       readonly threadId: string;
       readonly userId: string;
-      readonly orgId?: string | null;
+      readonly orgId: string;
       readonly eventId?: string;
     },
     signal: AbortSignal,
@@ -792,17 +815,18 @@ export const deleteChatThread$ = command(
       const [ownedThread] = await tx
         .select({
           id: chatThreads.id,
-          agentComposeId: chatThreads.agentId,
+          agentId: chatThreads.agentId,
         })
         .from(chatThreads)
         .where(
           and(
             eq(chatThreads.id, args.threadId),
             eq(chatThreads.userId, args.userId),
+            chatThreadOrganizationCondition(tx, args.orgId),
           ),
         )
         .for("update");
-      if (!ownedThread?.agentComposeId) {
+      if (!ownedThread?.agentId) {
         return {
           deleted: false,
           activeRuns: [] as readonly ThreadRunToCancel[],
@@ -815,7 +839,7 @@ export const deleteChatThread$ = command(
         userId: args.userId,
         orgId: args.orgId,
         chatThreadId: ownedThread.id,
-        agentComposeId: ownedThread.agentComposeId,
+        agentId: ownedThread.agentId,
         eventId: args.eventId,
       });
 

@@ -8,20 +8,21 @@ import type {
   ChatThreadDraft,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
+import type { ChatClipboardPayload } from "../okou-page/clipboard.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
+import type { ChatEvent } from "./chat-event-types.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
-import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
+import type { EditorDocumentSnapshot } from "../okou-page/user-message-document-codec.ts";
 import type {
   createChatThreadScrollSignals,
   ReadyScrollAfterRenderRequest,
   ThreadScrollPosition,
 } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
-import type { ComposerSignals } from "../zero-page/composer-signals.ts";
+import type { ComposerSignals } from "../okou-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import type { ChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
@@ -93,6 +94,10 @@ export interface MessageListSignals {
     [AbortSignal]
   >;
   readonly resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
+  readonly retryRichEventTree$: Command<
+    Promise<void>,
+    [ChatEvent, AbortSignal]
+  >;
   readonly artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   readonly reloadArtifacts$: Command<void, []>;
 }
@@ -207,6 +212,10 @@ export interface ChatPanelSignals {
     [AbortSignal]
   >;
   readonly resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
+  readonly retryRichEventTree$: Command<
+    Promise<void>,
+    [ChatEvent, AbortSignal]
+  >;
   readonly subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   readonly blockColors$: Computed<[string, string, string]>;

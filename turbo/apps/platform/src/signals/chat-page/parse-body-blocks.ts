@@ -9,6 +9,11 @@ import {
   type PermissionActionDescriptor,
 } from "./permission-action-block.ts";
 import {
+  bankingActionResourceKey,
+  parseBankingActionUrl,
+  type BankingActionDescriptor,
+} from "./banking-action-block.ts";
+import {
   parseComputerUseAuthorizationUrl,
   type ComputerUseAuthorizationDescriptor,
 } from "./computer-use-authorization-block.ts";
@@ -60,6 +65,11 @@ export type ParsedBodyBlock =
       type: "permission-action";
       resourceKey: string;
       descriptor: PermissionActionDescriptor;
+    }
+  | {
+      type: "banking-action";
+      resourceKey: string;
+      descriptor: BankingActionDescriptor;
     }
   | {
       type: "unavailable-action";
@@ -795,6 +805,7 @@ function createActionBlockFromLine(
     type:
       | "connector-action"
       | "permission-action"
+      | "banking-action"
       | "unavailable-action"
       | "computer-use-authorization"
       | "plan-upgrade"
@@ -836,6 +847,22 @@ function createActionBlockFromLine(
       type: "unavailable-action",
       resourceKey: permissionAction.originalUrl,
       descriptor: { originalUrl: permissionAction.originalUrl },
+    };
+  }
+
+  const bankingAction = parseBankingActionUrl(url, chatActionContext);
+  if (bankingAction.status === "valid") {
+    return {
+      type: "banking-action",
+      resourceKey: bankingActionResourceKey(bankingAction.descriptor),
+      descriptor: bankingAction.descriptor,
+    };
+  }
+  if (bankingAction.status === "invalid") {
+    return {
+      type: "unavailable-action",
+      resourceKey: bankingAction.originalUrl,
+      descriptor: { originalUrl: bankingAction.originalUrl },
     };
   }
 
@@ -1130,6 +1157,9 @@ export function cardSlotUrl(block: CardDescriptorBlock): string {
       return block.descriptor.originalUrl;
     }
     case "permission-action": {
+      return block.descriptor.originalUrl;
+    }
+    case "banking-action": {
       return block.descriptor.originalUrl;
     }
     case "unavailable-action": {

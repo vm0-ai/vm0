@@ -32,6 +32,7 @@ import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
 } from "../../lib/oauth-origin";
+import { OFFICIAL_SLACK_PUBLIC_BRAND } from "../../lib/slack-official-app";
 
 const L = logger("SlackOAuth");
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
@@ -103,38 +104,26 @@ function optionalBoolean(value: unknown): boolean {
 
 function parseOAuthState(state: string | undefined): OAuthState | null {
   if (!state) {
-    return {
-      orgId: null,
-      userId: null,
-      flow: "install",
-      reinstall: false,
-      prompt: null,
-      publicBrand: "vm0",
-    };
+    return null;
   }
 
   const parsed = safeJsonParse(state);
   if (typeof parsed !== "object" || parsed === null) {
-    return {
-      orgId: null,
-      userId: null,
-      flow: "install",
-      reinstall: false,
-      prompt: null,
-      publicBrand: "vm0",
-    };
+    return null;
   }
 
   const record = parsed as Record<string, unknown>;
+  const publicBrand = record.publicBrand;
+  if (publicBrand !== "vm0" && publicBrand !== "okou") {
+    return null;
+  }
   return {
     orgId: optionalString(record.orgId),
     userId: optionalString(record.userId),
     flow: record.flow === "connect" ? "connect" : "install",
     reinstall: optionalBoolean(record.reinstall),
     prompt: optionalString(record.prompt),
-    // Old web/app OAuth state can omit publicBrand for about two days.
-    // Remove this VM0 default in #27660 after legacy states have drained.
-    publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
+    publicBrand,
   };
 }
 
@@ -161,7 +150,6 @@ function slackCredentials(): {
 
 const installOauth$ = computed((get) => {
   const request = get(request$).raw;
-  const publicBrand = get(publicBrand$);
   const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
   if (canonicalRedirectUrl) {
     return noStoreRedirect(canonicalRedirectUrl);
@@ -173,6 +161,7 @@ const installOauth$ = computed((get) => {
   }
 
   const query = get(queryOf(slackOauthContract.install));
+  const publicBrand = query.publicBrand ?? get(publicBrand$);
   const userId = query.userId;
   const stateObj: {
     orgId?: string;
@@ -209,7 +198,6 @@ const installOauth$ = computed((get) => {
 
 const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
   const request = get(request$).raw;
-  const publicBrand = get(publicBrand$);
   const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
   if (canonicalRedirectUrl) {
     return noStoreRedirect(canonicalRedirectUrl);
@@ -221,6 +209,7 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const query = get(queryOf(slackOauthContract.connect));
+  const publicBrand = query.publicBrand ?? get(publicBrand$);
   const userId = query.userId;
   if (!query.orgId || !userId) {
     return jsonErrorResponse("Missing orgId or userId", 400);
@@ -276,6 +265,7 @@ const notifyAfterConnect$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly pendingPrompt: string | null;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): void => {
@@ -289,6 +279,7 @@ const notifyAfterConnect$ = command(
               slackUserId: args.slackUserId,
               orgId: args.orgId,
               userId: args.userId,
+              publicBrand: args.publicBrand,
               ...(args.pendingPrompt
                 ? { pendingPrompt: args.pendingPrompt }
                 : {}),
@@ -363,6 +354,7 @@ const handlePlatformInstall$ = command(
         orgId: args.state.orgId,
         userId: args.state.userId,
         pendingPrompt: args.state.prompt,
+        publicBrand: args.state.publicBrand,
       },
       signal,
     );
@@ -466,7 +458,7 @@ const handleInstallCallback$ = command(
           botUserId: oauthResult.botUserId,
           slackWorkspaceName: oauthResult.teamName,
           botScopes,
-          publicBrand: args.state.publicBrand,
+          publicBrand: OFFICIAL_SLACK_PUBLIC_BRAND,
           updatedAt: nowDate(),
         })
         .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId));
@@ -481,7 +473,7 @@ const handleInstallCallback$ = command(
         botUserId: oauthResult.botUserId,
         installedByUserId: isPlatformFlow ? args.state.userId : null,
         botScopes,
-        publicBrand: args.state.publicBrand,
+        publicBrand: OFFICIAL_SLACK_PUBLIC_BRAND,
       });
       signal.throwIfAborted();
     }
@@ -615,21 +607,6 @@ const handleConnectCallback$ = command(
       );
     }
 
-    await writeDb
-      .update(slackOrgInstallations)
-      .set({ publicBrand: args.state.publicBrand, updatedAt: nowDate() })
-      .where(
-        eq(
-          slackOrgInstallations.slackWorkspaceId,
-          installation.slackWorkspaceId,
-        ),
-      );
-    signal.throwIfAborted();
-    const brandedInstallation: SlackInstallation = {
-      ...installation,
-      publicBrand: args.state.publicBrand,
-    };
-
     await set(
       publishSlackAdminSignal$,
       { orgId: args.state.orgId, topic: "slack:changed" },
@@ -640,11 +617,12 @@ const handleConnectCallback$ = command(
     set(
       notifyAfterConnect$,
       {
-        installation: brandedInstallation,
+        installation: connectionResult.installation,
         slackUserId: oauthResult.authedUserId,
         orgId: args.state.orgId,
         userId: args.state.userId,
         pendingPrompt: args.state.prompt,
+        publicBrand: args.state.publicBrand,
       },
       signal,
     );

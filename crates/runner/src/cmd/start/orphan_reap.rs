@@ -26,7 +26,7 @@ struct OrphanedActiveRunState {
     absent_scans: u8,
 }
 
-/// Claimed runs whose outer task is gone but whose VM ownership is uncertain.
+/// Claimed runs whose outer task is gone but whose sandbox ownership is uncertain.
 #[derive(Clone)]
 pub(super) struct OrphanedActiveRuns {
     inner: Arc<Mutex<BTreeMap<RunId, OrphanedActiveRunState>>>,
@@ -352,7 +352,7 @@ mod tests {
         }
 
         async fn add_active_orphan(&self, run_id: RunId, sandbox_id: SandboxId) {
-            self.status.add_run(run_id, sandbox_id).await;
+            self.status.add_run(run_id, sandbox_id).await.unwrap();
             self.orphans.insert(run_id, sandbox_id);
         }
 
@@ -466,22 +466,22 @@ mod tests {
 
         async fn assert_status(
             &self,
-            expected_idle_vms: &[(&str, SandboxId)],
+            expected_idle_sandboxes: &[(&str, SandboxId)],
             expected_active_runs: &[(RunId, SandboxId)],
         ) {
-            let (idle_vms, active_runs) = self.status_idle_vms_and_active_runs().await;
-            let mut expected_idle_vms = expected_idle_vms
+            let (idle_sandboxes, active_runs) = self.status_idle_sandboxes_and_active_runs().await;
+            let mut expected_idle_sandboxes = expected_idle_sandboxes
                 .iter()
                 .map(|(reuse_key, sandbox_id)| ((*reuse_key).to_string(), sandbox_id.to_string()))
                 .collect::<Vec<_>>();
-            expected_idle_vms.sort_unstable();
+            expected_idle_sandboxes.sort_unstable();
             let mut expected_active_runs = expected_active_runs
                 .iter()
                 .map(|(run_id, sandbox_id)| (run_id.to_string(), sandbox_id.to_string()))
                 .collect::<Vec<_>>();
             expected_active_runs.sort_unstable();
 
-            assert_eq!(idle_vms, expected_idle_vms);
+            assert_eq!(idle_sandboxes, expected_idle_sandboxes);
             assert_eq!(active_runs, expected_active_runs);
         }
 
@@ -505,32 +505,32 @@ mod tests {
             assert_eq!(self.orphans.is_empty(), expected == 0);
         }
 
-        async fn status_idle_vms_and_active_runs(
+        async fn status_idle_sandboxes_and_active_runs(
             &self,
         ) -> (Vec<(String, String)>, Vec<(String, String)>) {
             let raw = tokio::fs::read_to_string(&self.status_path).await.unwrap();
             let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
-            let mut idle_vms: Vec<(String, String)> = status
-                .get("idle_vms")
+            let mut idle_sandboxes: Vec<(String, String)> = status
+                .get("idle_sandboxes")
                 .and_then(|v| v.as_array())
-                .map(|idle_vms| {
-                    idle_vms
+                .map(|idle_sandboxes| {
+                    idle_sandboxes
                         .iter()
-                        .map(|vm| {
-                            let reuse_key = vm
+                        .map(|sandbox| {
+                            let reuse_key = sandbox
                                 .get("reuse_key")
                                 .and_then(|reuse_key| reuse_key.as_str())
-                                .expect("idle VM must include reuse_key");
-                            let sandbox_id = vm
+                                .expect("idle sandbox must include reuse_key");
+                            let sandbox_id = sandbox
                                 .get("sandbox_id")
                                 .and_then(|sandbox| sandbox.as_str())
-                                .expect("idle VM must include sandbox_id");
+                                .expect("idle sandbox must include sandbox_id");
                             (reuse_key.to_string(), sandbox_id.to_string())
                         })
                         .collect()
                 })
                 .unwrap_or_default();
-            idle_vms.sort_unstable();
+            idle_sandboxes.sort_unstable();
             let mut active_runs: Vec<(String, String)> = status["active_runs"]
                 .as_array()
                 .unwrap()
@@ -548,7 +548,7 @@ mod tests {
                 })
                 .collect();
             active_runs.sort_unstable();
-            (idle_vms, active_runs)
+            (idle_sandboxes, active_runs)
         }
     }
 
@@ -912,7 +912,7 @@ mod tests {
                 ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE,
             )
             .await;
-        let (_idle_vms, active_runs) = fixture.status_idle_vms_and_active_runs().await;
+        let (_idle_sandboxes, active_runs) = fixture.status_idle_sandboxes_and_active_runs().await;
         assert!(
             active_runs.is_empty(),
             "incomplete discovery should not count as absent, but should not globally reset prior conclusive absence"

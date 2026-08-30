@@ -36,7 +36,6 @@ test("billing settings reflects limited free onboarding", async ({ page }) => {
 test("credit balance bars render with matching outer corner radii", async ({
   page,
 }) => {
-  await enableUsagePackPlans(page);
   await mockCreditBalance(page);
   await openCreditBalanceSettings(page);
 
@@ -68,26 +67,6 @@ test("credit balance bars render with matching outer corner radii", async ({
     lastOrgCreditRadii.bottomLeft,
   ]).toEqual(["0px", "0px", "0px", "0px"]);
 });
-
-async function enableUsagePackPlans(page: Page): Promise<void> {
-  await page.route("**/api/feature-switches", async (route) => {
-    const response = await route.fetch();
-    const body: unknown = await response.json();
-    if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
-      throw new Error("Feature switches returned an unexpected response");
-    }
-    await route.fulfill({
-      response,
-      json: {
-        ...body,
-        effectiveSwitches: {
-          ...body.effectiveSwitches,
-          usagePackPlans: true,
-        },
-      },
-    });
-  });
-}
 
 async function mockCreditBalance(page: Page): Promise<void> {
   await page.route("**/api/billing/status", async (route) => {

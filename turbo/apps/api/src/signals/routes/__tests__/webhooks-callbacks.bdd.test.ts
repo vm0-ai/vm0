@@ -4,7 +4,7 @@ import { createStore } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@okouai/api-contracts/contracts/storages";
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -681,7 +681,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const limitedFreeProviders = await runs.listOrgModelProviders(admin);
     expect(
       limitedFreeProviders.find((provider) => {
-        return provider.type === "vm0";
+        return provider.type === "built-in";
       })?.selectedModel,
     ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
 
@@ -1534,44 +1534,18 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     );
     expect(resultDeliveredBytes).toBeLessThanOrEqual(900_000);
 
-    const reductionLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
-      ([message]) => {
-        return message === "Reduced oversized agent event for Axiom";
-      },
-    );
-    expect(reductionLogs).toHaveLength(2);
-    const assistantFields = reductionLogs[0]?.[1];
-    expect(assistantFields).toStrictEqual(
-      expect.objectContaining({
-        context: "agent-event-consumer:axiom",
-        runId,
-        sequenceNumber: assistantEvent.sequenceNumber,
-        eventType: assistantEvent.type,
-        originalBytes: assistantOriginalBytes,
-        deliveredBytes: assistantDeliveredBytes,
-        budgetBytes: 900_000,
-      }),
-    );
-    const resultFields = reductionLogs[1]?.[1];
-    expect(resultFields).toStrictEqual(
-      expect.objectContaining({
-        context: "agent-event-consumer:axiom",
-        runId,
-        sequenceNumber: resultEvent.sequenceNumber,
-        eventType: resultEvent.type,
-        originalBytes: resultOriginalBytes,
-        deliveredBytes: resultDeliveredBytes,
-        budgetBytes: 900_000,
-      }),
-    );
-    for (const fields of [assistantFields, resultFields]) {
-      expect(fields).not.toHaveProperty("eventData");
-      expect(JSON.stringify(fields)).not.toContain(
-        oversizedAssistantContent.slice(0, 64),
-      );
-      expect(JSON.stringify(fields)).not.toContain(
-        oversizedResultContent.slice(0, 64),
-      );
+    const reductionMessage = "Reduced oversized agent event for Axiom";
+    for (const calls of [
+      context.mocks.axiomLogging.debug.mock.calls,
+      context.mocks.axiomLogging.info.mock.calls,
+      context.mocks.axiomLogging.warn.mock.calls,
+      context.mocks.axiomLogging.error.mock.calls,
+    ]) {
+      expect(
+        calls.some(([message]) => {
+          return message === reductionMessage;
+        }),
+      ).toBeFalsy();
     }
   });
 
@@ -2103,22 +2077,25 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     ).toBeFalsy();
   });
 
-  it("attributes sandbox operation telemetry to the optional runner name", async () => {
+  it("attributes sandbox operations to canonical runner dimensions across overlap", async () => {
     const { runId, headers } = await createEventWebhookRun(
       `runner-name telemetry ${randomUUID()}`,
     );
 
     context.mocks.axiom.sdkIngest.mockClear();
-    await api.requestAgentTelemetry(
+    await api.requestAgentTelemetryUnchecked(
       {
         runId,
         runnerName: "v0.168.14",
+        runnerHostname: "prod-1.aws.vm3.ai",
+        runnerVersion: "0.168.14",
         sandboxOperations: [
           {
             ts: nowDate().toISOString(),
-            action_type: "runner_name_attribution",
+            action_type: "runner_attribution_overlap",
             duration_ms: 12,
             success: true,
+            runner_pre_spawn_concurrency_bucket: "3_4",
           },
         ],
       },
@@ -2132,20 +2109,30 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
       [
         expect.objectContaining({
           run_id: runId,
-          op_type: "runner_name_attribution",
-          runner_name: "v0.168.14",
+          op_type: "runner_attribution_overlap",
+          runner_hostname: "prod-1.aws.vm3.ai",
+          runner_version: "0.168.14",
+          runner_pre_spawn_concurrency_bucket: "3_4",
         }),
       ],
     );
+    const overlapEvents: unknown =
+      context.mocks.axiom.sdkIngest.mock.calls[0]?.[1];
+    if (!Array.isArray(overlapEvents) || !isUnknownRecord(overlapEvents[0])) {
+      throw new Error("Expected one overlap runner telemetry event");
+    }
+    expect(overlapEvents[0]).not.toHaveProperty("runner_name");
 
     context.mocks.axiom.sdkIngest.mockClear();
     await api.requestAgentTelemetry(
       {
         runId,
+        runnerHostname: "prod-2.aws.vm3.ai",
+        runnerVersion: "0.168.15",
         sandboxOperations: [
           {
             ts: nowDate().toISOString(),
-            action_type: "legacy_runner_name_attribution",
+            action_type: "canonical_runner_attribution",
             duration_ms: 8,
             success: true,
           },
@@ -2159,11 +2146,23 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
       "vm0-sandbox-op-log-dev",
       [
-        expect.not.objectContaining({
-          runner_name: expect.anything(),
+        expect.objectContaining({
+          op_type: "canonical_runner_attribution",
+          runner_hostname: "prod-2.aws.vm3.ai",
+          runner_version: "0.168.15",
         }),
       ],
     );
+    const canonicalEvents: unknown =
+      context.mocks.axiom.sdkIngest.mock.calls[0]?.[1];
+    if (
+      !Array.isArray(canonicalEvents) ||
+      !isUnknownRecord(canonicalEvents[0])
+    ) {
+      throw new Error("Expected one canonical runner telemetry event");
+    }
+    const canonicalEvent = canonicalEvents[0];
+    expect(canonicalEvent).not.toHaveProperty("runner_name");
   });
 
   it("rejects malformed, unauthenticated, mismatched, and missing-run sandbox reports", async () => {
@@ -2247,27 +2246,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
-    const mismatchedCompactModelUsage =
-      await api.requestAgentModelUsageObservationV2(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 1,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        mismatchedHeaders,
-        [401],
-      );
-    expectApiError(mismatchedCompactModelUsage.body);
-    expect(mismatchedCompactModelUsage.body.error.code).toBe("UNAUTHORIZED");
-
     const malformedTelemetryBody = await api.requestAgentTelemetryUnchecked(
       {},
       headers,
@@ -2306,48 +2284,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(missingUsageRun.body);
     expect(missingUsageRun.body.error.code).toBe("NOT_FOUND");
 
-    const malformedCompactModelUsage =
-      await api.requestAgentModelUsageObservationV2Unchecked(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 0,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        headers,
-        [400],
-      );
-    expectApiError(malformedCompactModelUsage.body);
-    expect(malformedCompactModelUsage.body.error.code).toBe("BAD_REQUEST");
-
-    const missingCompactModelUsageRun =
-      await api.requestAgentModelUsageObservationV2(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 1,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        headers,
-        [404],
-      );
-    expectApiError(missingCompactModelUsageRun.body);
-    expect(missingCompactModelUsageRun.body.error.code).toBe("NOT_FOUND");
-
     const malformedTelemetryBucket = await api.requestAgentTelemetryUnchecked(
       {
         runId,
@@ -2366,6 +2302,22 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     );
     expectApiError(malformedTelemetryBucket.body);
     expect(malformedTelemetryBucket.body.error.code).toBe("BAD_REQUEST");
+
+    for (const invalidRunnerDimension of [
+      { runnerHostname: "x".repeat(256) },
+      { runnerVersion: "x".repeat(129) },
+    ]) {
+      const malformedRunnerDimension = await api.requestAgentTelemetryUnchecked(
+        {
+          runId,
+          ...invalidRunnerDimension,
+        },
+        headers,
+        [400],
+      );
+      expectApiError(malformedRunnerDimension.body);
+      expect(malformedRunnerDimension.body.error.code).toBe("BAD_REQUEST");
+    }
 
     const malformedTelemetryProbe = await api.requestAgentTelemetryUnchecked(
       {

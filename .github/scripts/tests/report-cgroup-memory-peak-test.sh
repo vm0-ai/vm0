@@ -21,9 +21,9 @@ run_reporter() {
   local fixture=$1
   env -i \
     PATH="$PATH" \
-    VM0_CGROUP_ROOT="${fixture}/cgroup" \
-    VM0_PROC_CGROUP="${fixture}/proc-self-cgroup" \
-    VM0_MEMORY_REPORT_LABEL="test-job" \
+    OKOU_CGROUP_ROOT="${fixture}/cgroup" \
+    OKOU_PROC_CGROUP="${fixture}/proc-self-cgroup" \
+    OKOU_MEMORY_REPORT_LABEL="test-job" \
     GITHUB_STEP_SUMMARY="${fixture}/summary.md" \
     bash "$REPORTER" 2>&1
 }

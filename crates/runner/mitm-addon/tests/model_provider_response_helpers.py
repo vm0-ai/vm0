@@ -10,10 +10,9 @@ from pathlib import Path
 import brotli
 import zstandard
 
-import flow_metadata_keys as metadata_keys
-import http_network_log
 import mitm_addon
 import usage
+from tests.model_provider_flow_helpers import set_model_provider_flow_metadata
 
 
 @dataclass(frozen=True)
@@ -324,54 +323,6 @@ def run_response(flow, usage_webhook_api):
     return webhook
 
 
-def set_common_model_metadata(
-    flow,
-    tmp_path: Path,
-    *,
-    billable: bool = True,
-    proxy_log_path: Path | None = None,
-    run_id: str = "run-abc-123",
-) -> None:
-    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
-    if proxy_log_path is not None:
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = billable
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
-
-
-def set_model_provider_metadata(
-    flow,
-    tmp_path: Path,
-    provider_case: ModelProviderJsonCase,
-    *,
-    billable: bool = True,
-    observable: bool = True,
-    proxy_log_path: Path | None = None,
-    run_id: str = "run-abc-123",
-) -> None:
-    set_common_model_metadata(
-        flow,
-        tmp_path,
-        billable=billable,
-        proxy_log_path=proxy_log_path,
-        run_id=run_id,
-    )
-    flow.metadata[metadata_keys.ORIGINAL_URL] = provider_case.original_url
-    http_network_log.set_target(
-        flow,
-        url=provider_case.original_url,
-        host=provider_case.host,
-        port=flow.request.port,
-    )
-    flow.metadata[metadata_keys.FIREWALL_NAME] = provider_case.firewall_name
-    if observable:
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = provider_case.model
-    if provider_case.cli_agent_type is not None:
-        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = provider_case.cli_agent_type
-
-
 def model_provider_flow(
     real_flow,
     tmp_path: Path,
@@ -383,13 +334,16 @@ def model_provider_flow(
     run_id: str = "run-abc-123",
 ):
     flow = real_flow(with_response=False, host=provider_case.host)
-    set_model_provider_metadata(
+    set_model_provider_flow_metadata(
         flow,
         tmp_path,
-        provider_case,
-        billable=billable,
-        observable=observable,
+        host=provider_case.host,
+        original_url=provider_case.original_url,
+        firewall_name=provider_case.firewall_name,
         proxy_log_path=proxy_log_path,
         run_id=run_id,
+        firewall_billable=billable,
+        cli_agent_type=provider_case.cli_agent_type,
+        model_usage_provider=provider_case.model if observable else None,
     )
     return flow

@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { and, desc, eq, inArray, lte, max } from "drizzle-orm";
 import {
   activeInputDeliveries,
   activeInputDeliveryItems,
 } from "@okouai/db/schema/active-input-delivery";
-import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -209,14 +210,11 @@ export const seedRetentionRun$ = command(
     const [owner] = await database
       .select({
         userId: chatThreads.userId,
-        orgId: agentComposes.orgId,
-        agentComposeId: chatThreads.agentComposeId,
+        orgId: agents.orgId,
+        agentId: chatThreads.agentId,
       })
       .from(chatThreads)
-      .innerJoin(
-        agentComposes,
-        eq(agentComposes.id, chatThreads.agentComposeId),
-      )
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .where(eq(chatThreads.id, args.chatThreadId))
       .limit(1);
     signal.throwIfAborted();
@@ -228,7 +226,7 @@ export const seedRetentionRun$ = command(
       .values({
         userId: owner.userId,
         orgId: owner.orgId,
-        agentComposeId: owner.agentComposeId,
+        agentId: owner.agentId,
       })
       .returning({ id: agentSessions.id });
     signal.throwIfAborted();
@@ -325,7 +323,6 @@ export const coverRetentionThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
-      readonly archiveSchemaVersion?: number;
       readonly snapshotLastSeqId?: number;
       readonly indexedSeqId?: number;
     },
@@ -342,7 +339,7 @@ export const coverRetentionThread$ = command(
       throw new Error("Expected retention fixture chat events");
     }
     const [terminal] = await database
-      .select({ id: chatEvents.id })
+      .select({ id: chatEvents.id, seqId: chatEvents.seqId })
       .from(chatEvents)
       .where(
         and(
@@ -356,10 +353,9 @@ export const coverRetentionThread$ = command(
     if (terminal === undefined) {
       throw new Error("Expected retention fixture snapshot terminal event");
     }
-    const archiveSchemaVersion = args.archiveSchemaVersion ?? 5;
     const digest = createHash("sha256")
       .update(
-        `${args.chatThreadId}:${lastSeqId.toString()}:${archiveSchemaVersion.toString()}`,
+        `${args.chatThreadId}:${lastSeqId.toString()}:${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}`,
       )
       .digest("hex");
     const objectKey = `chat-events/${args.chatThreadId}/${lastSeqId.toString()}-${digest}.ndjson.gz`;
@@ -369,17 +365,25 @@ export const coverRetentionThread$ = command(
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, args.chatThreadId),
-          eq(chatEventSnapshots.archiveSchemaVersion, archiveSchemaVersion),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+          ),
         ),
       )
       .limit(1);
     signal.throwIfAborted();
+    const terminalCursor = {
+      terminalEventId: terminal.id,
+      terminalSeqId: terminal.seqId,
+    };
     if (head === undefined) {
       await database.insert(chatEventSnapshots).values({
         chatThreadId: args.chatThreadId,
         lastSeqId,
         lastEventId: terminal.id,
-        archiveSchemaVersion,
+        ...terminalCursor,
+        archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         objectKey,
       });
     } else {
@@ -388,7 +392,7 @@ export const coverRetentionThread$ = command(
         .set({
           lastSeqId,
           lastEventId: terminal.id,
-          archiveSchemaVersion,
+          ...terminalCursor,
           objectKey,
         })
         .where(eq(chatEventSnapshots.id, head.id));
@@ -417,7 +421,9 @@ export const readRetentionEvents$ = command(
     readonly {
       readonly id: string;
       readonly createdAt: Date;
+      readonly eventType: string;
       readonly revokesEventId: string | null;
+      readonly seqId: number;
     }[]
   > => {
     if (eventIds.length === 0) {
@@ -427,7 +433,9 @@ export const readRetentionEvents$ = command(
       .select({
         id: chatEvents.id,
         createdAt: chatEvents.createdAt,
+        eventType: chatEvents.eventType,
         revokesEventId: chatEvents.revokesEventId,
+        seqId: chatEvents.seqId,
       })
       .from(chatEvents)
       .where(inArray(chatEvents.id, [...eventIds]));

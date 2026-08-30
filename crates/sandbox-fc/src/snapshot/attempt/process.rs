@@ -150,7 +150,7 @@ impl SnapshotProcess {
 
     pub(super) fn signal_for_drop(&self) {
         if let Some(child) = self.child.as_ref() {
-            kill_process_group(child);
+            let _ = kill_process_group(child);
         }
     }
 
@@ -281,7 +281,7 @@ async fn drain_stderr_forwarder_after_spawn_exit(
 }
 
 async fn kill_and_reap_firecracker(child: &mut tokio::process::Child) {
-    kill_process_group(child);
+    let _ = kill_process_group(child);
     let _ = child.wait().await;
 }
 
@@ -289,7 +289,7 @@ async fn kill_and_reap_firecracker_bounded(
     child: &mut tokio::process::Child,
     timeout: Duration,
 ) -> bool {
-    kill_process_group(child);
+    let _ = kill_process_group(child);
     match tokio::time::timeout(timeout, child.wait()).await {
         Ok(Ok(_)) => true,
         Ok(Err(e)) => {

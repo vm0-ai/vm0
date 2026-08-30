@@ -8,6 +8,8 @@ export interface ConnectorCatalogSource {
   readonly sourceId: string;
 }
 
+const CONNECTOR_CATALOG_PERSISTED_SNAPSHOT_GENERATION = 2;
+
 export function connectorCatalogSource(): ConnectorCatalogSource {
   const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
   const endpoint =
@@ -21,10 +23,15 @@ export function connectorCatalogSource(): ConnectorCatalogSource {
     throw new Error("Connector catalog source endpoint is invalid");
   }
   const authority = endpointUrl.origin;
+  // Generation 2 isolates snapshots accepted under the 32 MiB ceiling from
+  // rollback APIs whose generation-1 persisted decoder is capped at 16 MiB.
+  // A persisted decoder ceiling change must use a new stable generation.
   const sourceId = createHash("sha256")
     .update(authority)
     .update("\0")
     .update(bucket)
+    .update("\0connector-catalog-persisted-snapshot-generation:")
+    .update(String(CONNECTOR_CATALOG_PERSISTED_SNAPSHOT_GENERATION))
     .digest("hex");
   return { bucket, sourceId };
 }

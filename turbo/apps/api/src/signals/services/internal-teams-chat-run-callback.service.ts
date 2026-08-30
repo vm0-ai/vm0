@@ -151,7 +151,6 @@ async function loadTeamsChatDeliveryContext(
   const [binding] = await args.db
     .select({
       serviceUrl: teamsOrgInstallations.serviceUrl,
-      publicBrand: teamsOrgInstallations.publicBrand,
     })
     .from(teamsChatThreadRoutes)
     .innerJoin(
@@ -298,7 +297,7 @@ async function deliverClaimedTeamsChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
-      publicBrand: binding.publicBrand,
+      publicBrand: payload.publicBrand,
       replyToMention:
         payload.conversationType !== "personal" && mentionerCount > 1
           ? replyTo
@@ -412,7 +411,6 @@ interface TeamsChatAdmissionFailureArgs {
 interface TeamsAdmissionFailureContext {
   readonly messageContent: string;
   readonly installationServiceUrl: string | null;
-  readonly publicBrand: PublicBrand;
 }
 
 async function loadTeamsAdmissionFailureContext(
@@ -435,7 +433,6 @@ async function loadTeamsAdmissionFailureContext(
     args.db
       .select({
         serviceUrl: teamsOrgInstallations.serviceUrl,
-        publicBrand: teamsOrgInstallations.publicBrand,
       })
       .from(teamsChatThreadRoutes)
       .innerJoin(
@@ -471,7 +468,6 @@ async function loadTeamsAdmissionFailureContext(
   return {
     messageContent: event.content,
     installationServiceUrl: binding.serviceUrl,
-    publicBrand: binding.publicBrand,
   };
 }
 
@@ -521,7 +517,7 @@ async function resolveTeamsAdmissionFailurePresentation(
       }`,
     );
   }
-  const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
     ? `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/activities`
     : undefined;
   return {
@@ -570,7 +566,7 @@ export async function deliverTeamsChatAdmissionFailure(
   }
   const presentation = await resolveTeamsAdmissionFailurePresentation(
     args,
-    context.publicBrand,
+    args.target.publicBrand,
     signal,
   );
   const serviceUrl =

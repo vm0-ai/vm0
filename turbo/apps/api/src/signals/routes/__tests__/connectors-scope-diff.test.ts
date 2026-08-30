@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorScopeDiffContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorScopeDiffContract } from "@okouai/api-contracts/contracts/connectors";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -88,7 +88,7 @@ describe("GET /api/connectors/:connectorSlug/scope-diff", () => {
       exp: seconds + 60,
     });
     const client = setupApp({ context, routes: connectorsRoutes })(
-      zeroConnectorScopeDiffContract,
+      connectorScopeDiffContract,
     );
     const response = await accept(
       client.getScopeDiff({

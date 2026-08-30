@@ -22,7 +22,7 @@ import {
   type CustomConnectorResponse,
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   canonicalizeFirewallBaseUrl,
@@ -60,7 +60,7 @@ import {
 import { deleteConnectorSelectionsForCustomConnectorDefinition } from "./connector-credential-storage-write.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
-  customConnectorDefinitionHasConnectedConnection,
+  customConnectorDefinitionConnectedAccount,
   loadCurrentCustomConnectorStoredValues,
   loadCurrentCustomConnectorValueMarkers,
   loadConnectedCustomConnectorConnections,
@@ -731,7 +731,8 @@ function effectivePermissionBundleRef(
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
   readonly valueMarkers: readonly CustomConnectorCredentialValueMarker[];
-  readonly connectedConnection: boolean;
+  readonly connectedAccountId: string | null;
+  readonly connectedAccountUpdatedAt?: Date | null;
 }): CustomConnectorResponse {
   const connectorMarkers = args.valueMarkers.filter((marker) => {
     return (
@@ -752,12 +753,12 @@ export function serialiseCustomConnector(args: {
     args.row.authMode !== "manual" ||
     customConnectorManualAuthReferencesMemberField(args.row);
   const connected =
-    args.connectedConnection &&
+    args.connectedAccountId !== null &&
     validManualAuth &&
     missingRequiredFields.length === 0;
   const responseMissingRequiredFields = [
     ...missingRequiredFields,
-    ...(args.row.authMode === "oauth" && !args.connectedConnection
+    ...(args.row.authMode === "oauth" && args.connectedAccountId === null
       ? ["oauth"]
       : []),
   ];
@@ -775,6 +776,17 @@ export function serialiseCustomConnector(args: {
     skillMarkdown: args.row.skillMarkdown,
     storageVersion: args.row.storageVersion,
     connected,
+    ...(connected && args.connectedAccountId
+      ? {
+          connectedAccountId: args.connectedAccountId,
+          ...(args.connectedAccountUpdatedAt
+            ? {
+                connectedAccountUpdatedAt:
+                  args.connectedAccountUpdatedAt.toISOString(),
+              }
+            : {}),
+        }
+      : {}),
     missingRequiredFields: [...responseMissingRequiredFields],
     configuredFieldKeys: [...configured],
     createdAt: args.row.createdAt.toISOString(),
@@ -2489,13 +2501,15 @@ export function getCustomConnectorResponse(args: {
         userId: args.userId,
       }),
     ]);
+    const connectedAccount = customConnectorDefinitionConnectedAccount({
+      connectedConnections,
+      definition: connector,
+    });
     return serialiseCustomConnector({
       row: connector,
       valueMarkers: markers,
-      connectedConnection: customConnectorDefinitionHasConnectedConnection({
-        connectedConnections,
-        definition: connector,
-      }),
+      connectedAccountId: connectedAccount?.id ?? null,
+      connectedAccountUpdatedAt: connectedAccount?.updatedAt,
     });
   });
 }
@@ -2787,6 +2801,7 @@ async function persistCustomConnectorValues(
       readonly connector: CustomConnectorRow;
       readonly runtimeRecovered: boolean;
       readonly connectedConnection: boolean;
+      readonly connectedAccountId: string;
     }
   | BadRequestResponse
   | NotFoundResponse
@@ -2822,17 +2837,20 @@ async function persistCustomConnectorValues(
     target: {
       kind: "custom",
       customConnectorId: args.request.connectorId,
+      oauthScopes: null,
     },
   };
+  let connectedAccountId: string;
   if (state.preservesStoredValues) {
     const connection = await writeConnectorConnectionMetadata(args.tx, {
       ...connectionArgs,
       resolution: state.resolution,
     });
+    connectedAccountId = connection.id;
     signal.throwIfAborted();
     await writeValues(args.tx, connection.id, signal);
   } else {
-    await replaceConnectorConnection(
+    const connection = await replaceConnectorConnection(
       args.tx,
       {
         ...connectionArgs,
@@ -2843,11 +2861,13 @@ async function persistCustomConnectorValues(
       },
       signal,
     );
+    connectedAccountId = connection.id;
   }
   return {
     connector: state.connector,
     runtimeRecovered: state.runtimeRecovered,
     connectedConnection: true,
+    connectedAccountId,
   };
 }
 
@@ -2863,7 +2883,7 @@ export const setCustomConnectorValues$ = command(
     },
     signal: AbortSignal,
   ): Promise<
-    | CustomConnectorResponse
+    | (CustomConnectorResponse & { readonly connectedAccountId: string })
     | BadRequestResponse
     | NotFoundResponse
     | ForbiddenResponse
@@ -2885,14 +2905,6 @@ export const setCustomConnectorValues$ = command(
     if (connector.authMode !== "manual") {
       return badRequestMessage(
         "OAuth custom connectors must be connected through OAuth",
-      );
-    }
-    if (
-      args.account?.intent === "add" &&
-      args.account.displayName === undefined
-    ) {
-      return badRequestMessage(
-        "Account display name is required when adding a custom connector account",
       );
     }
     const featureSwitchContext = await get(
@@ -2962,11 +2974,14 @@ export const setCustomConnectorValues$ = command(
       userId: args.userId,
     });
     signal.throwIfAborted();
-    return serialiseCustomConnector({
-      row: writeResult.connector,
-      valueMarkers: markers,
-      connectedConnection: writeResult.connectedConnection,
-    });
+    return {
+      ...serialiseCustomConnector({
+        row: writeResult.connector,
+        valueMarkers: markers,
+        connectedAccountId: writeResult.connectedAccountId,
+      }),
+      connectedAccountId: writeResult.connectedAccountId,
+    };
   },
 );
 

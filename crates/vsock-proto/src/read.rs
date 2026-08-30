@@ -20,6 +20,13 @@ pub(crate) fn read_u32_at(data: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_be_bytes(bytes))
 }
 
+/// Read a `u64` from `data` at `offset`. Returns `None` if out of bounds.
+pub(crate) fn read_u64_at(data: &[u8], offset: usize) -> Option<u64> {
+    let end = offset.checked_add(8)?;
+    let bytes: [u8; 8] = data.get(offset..end)?.try_into().ok()?;
+    Some(u64::from_be_bytes(bytes))
+}
+
 /// Read an `i32` from `data` at `offset`. Returns `None` if out of bounds.
 pub(crate) fn read_i32_at(data: &[u8], offset: usize) -> Option<i32> {
     let end = offset.checked_add(4)?;
@@ -57,6 +64,20 @@ pub(crate) fn ensure_u32_len(field: &'static str, len: usize) -> Result<u32, Pro
     Ok(len as u32)
 }
 
+pub(crate) fn ensure_u16_count(field: &'static str, count: usize) -> Result<u16, ProtocolError> {
+    if count > u16::MAX as usize {
+        return Err(ProtocolError::PayloadCountTooLarge(field, count));
+    }
+    Ok(count as u16)
+}
+
+pub(crate) fn ensure_u32_count(field: &'static str, count: usize) -> Result<u32, ProtocolError> {
+    if count > u32::MAX as usize {
+        return Err(ProtocolError::PayloadCountTooLarge(field, count));
+    }
+    Ok(count as u32)
+}
+
 pub(crate) fn read_u8(
     payload: &[u8],
     offset: &mut usize,
@@ -84,6 +105,16 @@ pub(crate) fn read_u32(
 ) -> Result<u32, ProtocolError> {
     let value = read_u32_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
     *offset += 4;
+    Ok(value)
+}
+
+pub(crate) fn read_u64(
+    payload: &[u8],
+    offset: &mut usize,
+    err: &'static str,
+) -> Result<u64, ProtocolError> {
+    let value = read_u64_at(payload, *offset).ok_or(ProtocolError::InvalidPayload(err))?;
+    *offset += 8;
     Ok(value)
 }
 
@@ -133,4 +164,22 @@ pub(crate) fn expect_consumed(
         return Err(ProtocolError::InvalidPayload(err));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_u32_count;
+    use crate::error::ProtocolError;
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn ensure_u32_count_rejects_overflow() {
+        let count = usize::MAX;
+
+        assert!(matches!(
+            ensure_u32_count("env_count", count),
+            Err(ProtocolError::PayloadCountTooLarge("env_count", value))
+                if value == count
+        ));
+    }
 }

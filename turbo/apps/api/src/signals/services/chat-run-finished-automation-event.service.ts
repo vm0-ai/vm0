@@ -229,10 +229,11 @@ export const dispatchChatRunFinishedAutomationEvents$ = command(
         });
         signal.throwIfAborted();
         if (inserted) {
-          await publishChatThreadMessageCreatedSafely(
-            row.automation.ownerUserId,
-            chatThreadId,
-          );
+          await publishChatThreadMessageCreatedSafely({
+            userId: row.automation.ownerUserId,
+            orgId: row.automation.orgId,
+            threadId: chatThreadId,
+          });
           signal.throwIfAborted();
         }
         continue;

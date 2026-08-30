@@ -4,6 +4,7 @@ import {
   findColorSystem,
   findDesignSystem,
   findImageStyle,
+  findPresentationReverseTemplateResource,
   findPresentationRunbookResource,
   findSkill,
   findTemplate,
@@ -49,6 +50,9 @@ function storageServiceNotConfigured() {
 }
 
 const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
+  // Presentation reverse-template guide from vm0-ai/Template-artifact@7daba24.
+  "skill:presentation-reverse-template":
+    "ec707d2338ddec36a4b413ba7fe58c35987b2b85b2a8ecd441add68dcc1472e7",
   "color-system:bauhaus-primary":
     "26c34a2a33a5c7b751b6741da5e4013020d5dbe138e60f5b3a444f4a5d3a351b",
   "color-system:berry-pop":
@@ -154,6 +158,31 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "820d2e2ce81805d935e4098d5b6f2899967c2ad5c0af4586f794010c6db66966",
 } as const satisfies Record<string, string>;
 
+/**
+ * Superseded digests that still have to resolve to their own immutable R2
+ * version.
+ *
+ * Rollout fallback. Surface: existing runner/sandbox, up to 2 hours. A run
+ * whose execution context pinned a `CLI_PKG_URL` from before a republication
+ * carries a CLI whose bundled registry only knows the previous digest, and it
+ * keeps asking for that digest for the queue lifetime plus a claimed run —
+ * bounded by the shared `AGENT_EXECUTION_TIMEOUT_SECONDS` contract in
+ * `turbo/packages/api-contracts/src/contracts/runners.ts`, enforced by
+ * `crates/runner/src/executor/mod.rs`. See the "Commit-addressed CLI artifacts"
+ * section of `docs/deployment-compatibility.md`.
+ *
+ * Each entry is removable 2 hours after every new execution context carries a
+ * CLI built past the republication that added it.
+ */
+const PREVIOUS_PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS_BY_SHA256 = {
+  // Pre-refactor guide from vm0-ai/Template-artifact@fc829f4, replaced when the
+  // extractor pipeline was removed.
+  "skill:presentation-reverse-template": {
+    "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5":
+      "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
+  },
+} as const satisfies Readonly<Record<string, Readonly<Record<string, string>>>>;
+
 export function resolvePrivateRegistryResourceArchive(
   id: string,
   expectedSha256: string,
@@ -189,13 +218,25 @@ export function resolvePrivateRegistryResourceArchive(
     PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS[
       id as keyof typeof PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS
     ];
-  if (!defaultVersionId || expectedSha256 !== defaultSha256) {
+  if (!defaultVersionId) {
+    return undefined;
+  }
+
+  const versionId =
+    expectedSha256 === defaultSha256
+      ? defaultVersionId
+      : (
+          PREVIOUS_PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS_BY_SHA256 as Readonly<
+            Record<string, Readonly<Record<string, string>>>
+          >
+        )[id]?.[expectedSha256];
+  if (!versionId) {
     return undefined;
   }
 
   return {
     storageName: `registry-resource@${id}`,
-    versionId: defaultVersionId,
+    versionId,
     sha256: expectedSha256,
   };
 }
@@ -209,6 +250,7 @@ function findRegistryResource(id: string): PullableRegistryEntry | undefined {
     findColorSystem(id) ??
     findImageStyle(id) ??
     findVideoTemplate(id) ??
+    findPresentationReverseTemplateResource(id) ??
     findPresentationRunbookResource(id) ??
     findWebsiteTemplateResource(id)
   );

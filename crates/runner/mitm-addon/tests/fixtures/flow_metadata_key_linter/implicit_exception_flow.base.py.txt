@@ -3,7 +3,7 @@ def division_under_with(flow, manager):
     with manager:
         1 / 0
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def call_under_with(flow, manager):
@@ -35,7 +35,7 @@ def assertion_under_with(flow, manager, condition):
     with manager:
         assert condition
         metadata = {}
-    return metadata["vm_proxy_log_path"]
+    return metadata["sandbox_proxy_log_path"]
 
 
 async def await_under_async_with(flow, manager):
@@ -62,7 +62,7 @@ def rebind_before_failure_is_external(flow, manager):
     with manager:
         metadata = {}
         operation()
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def deterministic_rebind_is_external(flow, manager):
@@ -118,7 +118,7 @@ def call_failure_after_argument_rebind_is_external(flow, manager):
     metadata = flow.metadata
     with manager:
         operation((metadata := {}))
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def argument_alias_before_call_failure(flow, manager):
@@ -207,7 +207,7 @@ def deferred_scopes_do_not_leak(flow, manager):
         callback = lambda: operation()
         values = (operation() for _item in ())
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def finally_preserves_implicit_failure(flow, manager):
@@ -243,7 +243,7 @@ def assertion_message_rebinds_before_failure(flow, manager):
     metadata = flow.metadata
     with manager:
         assert False, (metadata := {})
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def static_short_circuit_skips_failure(flow, manager):
@@ -300,7 +300,7 @@ def static_if_skips_failure(flow, manager):
         if False:
             operation()
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def static_while_skips_failure(flow, manager):
@@ -334,7 +334,7 @@ def true_assert_skips_message(flow, manager):
     with manager:
         assert True, operation()
         metadata = {}
-    return metadata["vm_proxy_log_path"]
+    return metadata["sandbox_proxy_log_path"]
 
 
 def identity_comparison_is_not_fallible(flow, manager):
@@ -342,7 +342,7 @@ def identity_comparison_is_not_fallible(flow, manager):
     with manager:
         metadata is None
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def false_comprehension_guard_skips_body(flow, manager):
@@ -360,7 +360,7 @@ def continue_reaches_later_iteration(flow, manager, rows):
             metadata = flow.metadata
             continue
         metadata = {}
-    return metadata["vm_network_log_path"]
+    return metadata["sandbox_network_log_path"]
 
 
 def continue_reaches_later_while_test(flow, manager, condition):
@@ -394,7 +394,7 @@ def assignment_does_not_bind_before_earlier_target_failure(flow, manager, target
     with manager:
         target.attribute = metadata = flow.metadata
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def with_target_rebinds_before_later_target_failure(flow, manager, target):
@@ -414,7 +414,7 @@ def continue_finally_rebinds_before_later_test(flow, manager, condition):
             finally:
                 metadata = {}
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def continue_finally_aliases_before_later_test(flow, manager, condition):
@@ -434,7 +434,7 @@ def static_not_is_not_fallible(flow, manager):
     with manager:
         not True
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def safe_tuple_iteration_after_continue_is_not_fallible(flow, manager):
@@ -527,7 +527,7 @@ def false_match_guard_skips_case_body(flow, manager, value):
             case _ if False:
                 operation()
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def true_exhaustive_match_guard_skips_later_cases(flow, manager, value):
@@ -547,7 +547,7 @@ def formatted_value_failure_before_rebind(flow, manager, value):
     with manager:
         f"{value}"
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def conversion_failure_precedes_format_spec_rebind(flow, manager, value):
@@ -583,7 +583,7 @@ def function_decorator_application_preserves_prebinding_alias(flow):
 
     except Exception:
         pass
-    return decorated["vm_run_id"]
+    return decorated["sandbox_run_id"]
 
 
 def class_decorator_application_is_suppressible(flow, manager):
@@ -630,7 +630,7 @@ def nested_generator_construction_stays_deferred(flow, manager):
     with manager:
         values = (item for item in (operation() for _item in (None,)))
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 
 def later_generator_advance_preserves_body_alias(flow, manager):
@@ -639,4 +639,4 @@ def later_generator_advance_preserves_body_alias(flow, manager):
         for _item in (1 / divisor for divisor in (1, 0)):
             metadata = flow.metadata
         metadata = {}
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]

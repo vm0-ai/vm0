@@ -39,7 +39,7 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
+import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -382,7 +382,7 @@ function expectResponseStatus(
 async function configureWorkspaceModelProvider(
   actor: ApiTestUser,
 ): Promise<void> {
-  await configureVm0ManagedModelKey();
+  await configureVm0BuiltInModelKey();
   const policies = await miscApi.listModelPolicies(actor);
   const workspacePolicy = policies.policies.find((policy) => {
     return policy.model === GMAIL_WORKSPACE_MODEL;
@@ -411,13 +411,13 @@ async function configureWorkspaceModelProvider(
       return policy.model === GMAIL_WORKSPACE_MODEL;
     }),
   ).toMatchObject({
-    defaultProviderType: "vm0",
+    defaultProviderType: "built-in",
     modelProviderId: null,
   });
 }
 
-async function configureVm0ManagedModelKey(): Promise<void> {
-  await seedVm0ManagedModelKey(context, GMAIL_WORKSPACE_MODEL);
+async function configureVm0BuiltInModelKey(): Promise<void> {
+  await seedVm0BuiltInModelKey(context, GMAIL_WORKSPACE_MODEL);
 }
 
 async function configureAutomationThreadModel(

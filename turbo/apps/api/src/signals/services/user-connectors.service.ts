@@ -1,6 +1,6 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { agents } from "@okouai/db/schema/agent";
 import {
   orgCustomConnectors,

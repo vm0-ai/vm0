@@ -20,8 +20,8 @@ import {
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
+import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
@@ -40,6 +40,7 @@ import {
   getSecretsForAuthMethod,
   getVm0ConcreteProviderType,
   hasAuthMethods,
+  isBuiltInModelProviderType,
   isSupportedRunModel,
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
@@ -108,18 +109,22 @@ import {
   expandVariablesInString,
   extractAndGroupVariables,
 } from "@okouai/core/variable-expander";
-import { expandMountPath } from "@okouai/api-contracts/contracts/composes";
+import { expandMountPath } from "@okouai/api-contracts/contracts/agents";
+import type {
+  AgentExecutionArtifact,
+  AgentExecutionConfig,
+  AgentExecutionDefinition,
+} from "./agent-execution-config";
 import { agents } from "@okouai/db/schema/agent";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
 import { connectors } from "@okouai/db/schema/connector";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import type { AgentRunLaunchSnapshot } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
+import type {
+  AgentRunLaunchSnapshot,
+  AgentRunOfficialWorkflowProvenance,
+} from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { conversations } from "@okouai/db/schema/conversation";
 import { blobs } from "@okouai/db/schema/blob";
@@ -164,6 +169,7 @@ import {
 } from "../../lib/db-structured-result";
 import {
   badRequestMessage,
+  conflict,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -211,10 +217,20 @@ import {
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
   prepareAgentRunStorage,
+  OfficialWorkflowArtifactResolutionError,
   type PreparedAgentRunStorage,
   StorageManifestBuildStats,
   type StorageManifestSource,
 } from "./agent-run-storage.service";
+import type { RunWorkflowRef } from "./workflow-data.service";
+import {
+  acquireOfficialWorkflowRunCatalogAdmissionLock,
+  OFFICIAL_WORKFLOW_RUN_ADMISSION_MESSAGE,
+  OfficialWorkflowRunAdmissionError,
+  resolveOfficialWorkflowRunObservation,
+  validateOfficialWorkflowRunForInsert,
+  type OfficialWorkflowRunObservation,
+} from "./official-workflow-run.service";
 import { projectLegacyWritebackArtifacts } from "./storage-legacy-projection.service";
 import {
   encryptQueuedRunnerJobPayload,
@@ -224,9 +240,7 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV,
-  WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV,
   type PresentationRunbookArchiveVersion,
-  type WebsiteTemplateArchiveVersion,
 } from "@okouai/core/resource-registry";
 import {
   resolvePiSandboxModelConfig,
@@ -285,8 +299,6 @@ import type {
 import {
   claimQueueFirstRunAssociation,
   lockGoalQueueFirstRunSource,
-  recordQueueFirstClaimedRun,
-  recordQueueFirstFailedRun,
   resolveQueueFirstRunAdmission,
   type QueueFirstRunAdmission,
   type QueueFirstRunAssociation,
@@ -295,8 +307,7 @@ import {
 } from "./chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
-import { resolveImageModelForRun } from "./image-model.service";
-import { resolveVideoModelForRun } from "./video-model.service";
+import { resolveMediaModelsForRun } from "./run-media-model.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -463,15 +474,15 @@ function defaultImageModelPrompt(model: ImageModel): string {
   ].join("\n");
 }
 
-function withDefaultImageModelEnvironment(
-  environment: Record<string, string> | undefined,
+function withDefaultImageModelPlatformEnvironment(
+  platformEnvironment: Record<string, string> | undefined,
   model: ImageModel | null,
 ): Record<string, string> | undefined {
   if (model === null) {
-    return environment;
+    return platformEnvironment;
   }
   return {
-    ...environment,
+    ...platformEnvironment,
     [DEFAULT_IMAGE_MODEL_ENV]: IMAGE_MODEL_CONFIGS[model].alias,
   };
 }
@@ -483,10 +494,10 @@ function withFinalRunAppendSystemPrompt(args: {
   readonly imageRecognitionAvailable: boolean;
   readonly mcpConnectorSlugs: readonly string[];
   readonly selectedImageModel: ImageModel | null;
-  readonly zeroCliAvailable: boolean;
+  readonly cliAvailable: boolean;
 }): CreateRunBody {
   const appendedParts: string[] = [];
-  if (args.zeroCliAvailable) {
+  if (args.cliAvailable) {
     const mcpConnectorPrompt = buildMcpConnectorPrompt(args.mcpConnectorSlugs);
     if (mcpConnectorPrompt) {
       appendedParts.push(mcpConnectorPrompt);
@@ -529,17 +540,13 @@ interface RunArtifacts {
   readonly artifacts: readonly ContextArtifact[];
 }
 
-interface ComposeArtifact {
-  readonly name: string;
-  readonly version?: string;
-  readonly mount_path?: string;
-}
-
 interface AdditionalVolume {
   readonly name: string;
   readonly version?: string;
   readonly mountPath: string;
   readonly system?: boolean;
+  readonly baselineCandidate?: true;
+  readonly expectedStorageId?: string;
 }
 
 type AdditionalVolumeSources = readonly StorageManifestSource[] | undefined;
@@ -564,26 +571,12 @@ interface AgentRunMetadata {
   readonly codexServiceTier?: CodexServiceTier;
 }
 
-interface AgentConfig {
-  readonly framework?: string;
-  readonly environment?: Record<string, string>;
-  readonly experimental_runner?: { readonly group?: string };
-  readonly experimental_profile?: string;
-}
-
-interface AgentComposeContent {
-  readonly agent?: AgentConfig;
-  readonly agents?: Record<string, AgentConfig | undefined>;
-  readonly artifacts?: readonly ComposeArtifact[];
-}
-
-interface ResolvedCompose {
-  readonly agentComposeVersionId: string | null;
-  readonly composeId: string;
-  readonly composeUserId: string;
+interface ResolvedAgentExecution {
+  readonly agentId: string;
+  readonly ownerUserId: string;
   readonly orgId: string;
   readonly agentName?: string;
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly artifacts: readonly ContextArtifact[];
   readonly vars?: Record<string, string>;
   readonly volumeVersions?: Record<string, string>;
@@ -596,7 +589,7 @@ interface ResolvedCompose {
 }
 
 interface ProductAgentExecutionPlan {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
 }
 
 interface ProductResolutionOptions {
@@ -604,19 +597,19 @@ interface ProductResolutionOptions {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-interface ResolveComposeOptions {
+interface ResolveAgentExecutionOptions {
   readonly productAgentExecutionPlan?: ProductAgentExecutionPlan;
-  readonly testOnlyResolveLegacyDirectRunCompose?: TestOnlyLegacyDirectRunComposeResolver;
+  readonly testOnlyResolveDirectRun?: TestOnlyDirectRunResolver;
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-type TestOnlyLegacyDirectRunComposeResolver = (args: {
+type TestOnlyDirectRunResolver = (args: {
   readonly db: Db;
   readonly body: CreateRunBody;
   readonly userId: string;
   readonly orgId: string;
   readonly timing?: ApiDispatchTimingCollector;
-}) => Promise<ResolvedCompose | CreateRunErrorResult>;
+}) => Promise<ResolvedAgentExecution | CreateRunErrorResult>;
 
 type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
 
@@ -803,7 +796,8 @@ type FailedLaunchCommitResult =
       readonly createdAt: Date;
       readonly queueFirstClaim: QueueFirstRunClaimed | undefined;
     }
-  | QueueFirstRunClaimLost;
+  | QueueFirstRunClaimLost
+  | CreateRunErrorResult;
 
 export interface AgentRunModelPin {
   readonly modelProvider: string | null;
@@ -950,6 +944,7 @@ type CreateRunRouteResult =
   | ApiErrorResponse<400, "BAD_REQUEST">
   | ApiErrorResponse<403, "FORBIDDEN">
   | ApiErrorResponse<404, "NOT_FOUND">
+  | ApiErrorResponse<409, "CONFLICT">
   | ApiErrorResponse<402, "INSUFFICIENT_CREDITS">
   | ApiErrorResponse<429, "CONCURRENT_RUN_LIMIT">
   | ApiErrorResponse<503, "PROVIDER_UNAVAILABLE">;
@@ -988,21 +983,19 @@ export interface CreateAgentRunArgs {
    * productAgentExecutionPlan; keeping legacy reads in the test fixture
    * preserves historical runner coverage without restoring a runtime dual-read.
    */
-  readonly testOnlyResolveLegacyDirectRunCompose?: TestOnlyLegacyDirectRunComposeResolver;
+  readonly testOnlyResolveDirectRun?: TestOnlyDirectRunResolver;
   readonly okouTokenPublicBrand?: PublicBrand;
   readonly okouTokenComputerUseHostId?: string;
   readonly okouTokenCloudBrowserEnabled?: boolean;
-  readonly extraEnvironment?: Record<string, string>;
+  readonly platformEnvironment?: Record<string, string>;
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
   readonly injectSkillVolumes?: {
     // Each workflow's volume is keyed by its id (storage name), while the skill
     // mounts at its slug. Slugs are not unique, so the id is required.
-    readonly workflows: readonly {
-      readonly name: string;
-      readonly workflowId: string;
-    }[];
+    readonly workflows: readonly RunWorkflowRef[];
   };
+  readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly connectorScope: ExplicitConnectorScope;
   readonly validateEnvironmentReferences?: boolean;
   readonly agentRunMetadata?: AgentRunMetadata;
@@ -1232,21 +1225,93 @@ function buildConnectorSkillVolumes(
   });
 }
 
-function buildWorkflowSkillVolumes(
-  workflows: readonly { readonly name: string; readonly workflowId: string }[],
+function mountedWorkflowRefs(
+  workflows: readonly RunWorkflowRef[],
+): readonly RunWorkflowRef[] {
+  return workflows.filter((workflow) => {
+    return !SEED_SKILLS.includes(workflow.name);
+  });
+}
+
+function officialWorkflowRunCandidates(
+  workflows: readonly RunWorkflowRef[],
   skillsRoot: string,
-): readonly AdditionalVolume[] {
-  return workflows
-    .filter((workflow) => {
-      return !SEED_SKILLS.includes(workflow.name);
+  requiredWorkflowIds: readonly string[],
+): readonly {
+  readonly workflowId: string;
+  readonly workflowName: string;
+  readonly definitionName: string;
+  readonly mountPath: string;
+}[] {
+  for (const workflow of workflows) {
+    if (
+      workflow.officialDefinitionName !== null &&
+      SEED_SKILLS.includes(workflow.name)
+    ) {
+      throw new OfficialWorkflowRunAdmissionError();
+    }
+  }
+  const candidates = mountedWorkflowRefs(workflows).flatMap((workflow) => {
+    return workflow.officialDefinitionName === null
+      ? []
+      : [
+          {
+            workflowId: workflow.workflowId,
+            workflowName: workflow.name,
+            definitionName: workflow.officialDefinitionName,
+            mountPath: skillMountPath(skillsRoot, workflow.name),
+          },
+        ];
+  });
+  const candidateWorkflowIds = new Set(
+    candidates.map((candidate) => {
+      return candidate.workflowId;
+    }),
+  );
+  if (
+    new Set(requiredWorkflowIds).size !== requiredWorkflowIds.length ||
+    requiredWorkflowIds.some((workflowId) => {
+      return !candidateWorkflowIds.has(workflowId);
     })
-    .map((workflow) => {
+  ) {
+    throw new OfficialWorkflowRunAdmissionError();
+  }
+  return candidates;
+}
+
+function buildWorkflowSkillVolumes(
+  workflows: readonly RunWorkflowRef[],
+  skillsRoot: string,
+  officialWorkflowRun: OfficialWorkflowRunObservation | undefined,
+): readonly PreparedAdditionalVolume[] {
+  return mountedWorkflowRefs(workflows).map((workflow) => {
+    if (workflow.officialDefinitionName !== null) {
+      const definition = officialWorkflowRun?.definitions.find((candidate) => {
+        return candidate.workflowId === workflow.workflowId;
+      });
+      if (!definition) {
+        throw new OfficialWorkflowRunAdmissionError();
+      }
       return {
+        volume: {
+          name: definition.artifact.storageName,
+          version: definition.artifact.storageVersion,
+          mountPath: definition.mountPath,
+          system: true,
+          expectedStorageId: definition.artifact.storageId,
+        },
+        source: "official_workflow" as const,
+      };
+    }
+    return {
+      volume: {
         // The volume is keyed by the workflow id; it mounts at the slug.
         name: getCustomSkillStorageName(workflow.workflowId),
         mountPath: skillMountPath(skillsRoot, workflow.name),
-      };
-    });
+      },
+      source: "workflow_skill" as const,
+    };
+  });
 }
 
 function buildCustomConnectorSkillVolumes(
@@ -1271,18 +1336,24 @@ function buildInjectedSkillVolumes(
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSelection: RunConnectorCatalogSelection;
+    readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
   },
   skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
-  const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
   // Connector rollout switches govern discovery only. Once a connector slug is
   // part of a run, its accepted catalog skill remains executable and mountable.
   const systemSkillVolumes = [
     ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes(seedSkillNames, skillsRoot),
+      buildLegacySystemSkillVolumes(SEED_SKILLS, skillsRoot).map((volume) => {
+        return { ...volume, baselineCandidate: true };
+      }),
+      "system_skill",
+    ) ?? []),
+    ...(prepareAdditionalVolumesWithSource(
+      buildLegacySystemSkillVolumes([GOAL_SKILL_NAME], skillsRoot),
       "system_skill",
     ) ?? []),
     ...(args.connectorCatalogSelection.kind === "scoped"
@@ -1295,10 +1366,11 @@ function buildInjectedSkillVolumes(
   ];
   return [
     ...systemSkillVolumes,
-    ...(prepareAdditionalVolumesWithSource(
-      buildWorkflowSkillVolumes(args.injectSkillVolumes.workflows, skillsRoot),
-      "workflow_skill",
-    ) ?? []),
+    ...buildWorkflowSkillVolumes(
+      args.injectSkillVolumes.workflows,
+      skillsRoot,
+      args.officialWorkflowRun,
+    ),
   ];
 }
 
@@ -1323,7 +1395,9 @@ function isReturnableRouteError(
   return true;
 }
 
-function firstAgent(content: AgentComposeContent): AgentConfig | undefined {
+function firstAgent(
+  content: AgentExecutionConfig,
+): AgentExecutionDefinition | undefined {
   if (content.agent) {
     return content.agent;
   }
@@ -1335,7 +1409,7 @@ function firstAgent(content: AgentComposeContent): AgentConfig | undefined {
 }
 
 function resolveFramework(
-  content: AgentComposeContent,
+  content: AgentExecutionConfig,
 ): SupportedFramework | null {
   const framework = firstAgent(content)?.framework;
   if (!isSupportedFramework(framework)) {
@@ -1354,10 +1428,11 @@ function frameworkForProviderSelection(
   providerType: ModelProviderType,
   selectedModel: string | null | undefined,
 ): SupportedFramework | null {
-  if (providerType !== "vm0") {
+  if (!isBuiltInModelProviderType(providerType)) {
     return getFrameworkForType(providerType);
   }
-  const vm0Model = selectedModel ?? MODEL_PROVIDER_TYPES.vm0.defaultModel;
+  const vm0Model =
+    selectedModel ?? MODEL_PROVIDER_TYPES["built-in"].defaultModel;
   if (!vm0Model) {
     return null;
   }
@@ -1518,24 +1593,26 @@ function withoutSupersededAutoMemoryArtifacts(
   });
 }
 
-function resolveComposeArtifactMountPath(artifact: ComposeArtifact): string {
+function resolveAgentExecutionArtifactMountPath(
+  artifact: AgentExecutionArtifact,
+): string {
   return expandMountPath(artifact.mount_path);
 }
 
 function composeArtifacts(
-  content: AgentComposeContent,
+  content: AgentExecutionConfig,
 ): readonly ContextArtifact[] {
   return (content.artifacts ?? []).map((artifact) => {
     return {
       name: artifact.name,
       version: artifact.version,
-      mountPath: resolveComposeArtifactMountPath(artifact),
+      mountPath: resolveAgentExecutionArtifactMountPath(artifact),
     };
   });
 }
 
 function artifactsForRun(args: {
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
   readonly framework: SupportedFramework;
   readonly usePiMemoryPath: boolean;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
@@ -1597,11 +1674,11 @@ function artifactsForRun(args: {
   };
 }
 
-function runnerGroup(content: AgentComposeContent): string | null {
+function runnerGroup(content: AgentExecutionConfig): string | null {
   return firstAgent(content)?.experimental_runner?.group ?? null;
 }
 
-function runnerProfile(content: AgentComposeContent): string {
+function runnerProfile(content: AgentExecutionConfig): string {
   return firstAgent(content)?.experimental_profile ?? DEFAULT_PROFILE;
 }
 
@@ -1634,7 +1711,7 @@ function addConnectorEnvironmentTemplate(
 }
 
 function environmentTemplates(args: {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly additionalEnvironment: Record<string, string> | undefined;
 }): Record<string, string> | undefined {
   const environment = firstAgent(args.content)?.environment;
@@ -1642,7 +1719,7 @@ function environmentTemplates(args: {
 }
 
 function expandEnvironment(args: {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly vars: Record<string, string> | undefined;
   readonly secrets: Record<string, string> | undefined;
   readonly additionalEnvironment: Record<string, string> | undefined;
@@ -1681,7 +1758,7 @@ function expandEnvironment(args: {
 }
 
 function effectiveStoredConnectorEnvironment(args: {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly additionalEnvironment: Record<string, string> | undefined;
   readonly storedConnectorEnvironment: Record<string, string> | undefined;
 }): Record<string, string> | undefined {
@@ -1771,7 +1848,7 @@ function firewallSecretPlaceholdersFromFirewalls(
 }
 
 function missingEnvironmentReferences(args: {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly vars: Record<string, string> | undefined;
   readonly secrets: Record<string, string> | undefined;
   readonly environmentSecretPlaceholders:
@@ -1853,7 +1930,7 @@ function assertStoredConnectorEnvironmentReferences(args: {
 }
 
 function hasExplicitFrameworkApiKey(
-  content: AgentComposeContent,
+  content: AgentExecutionConfig,
   framework: SupportedFramework,
 ): boolean {
   return (
@@ -2341,7 +2418,7 @@ async function vm0ModelProviderEnvironment(
 
   return {
     id: null,
-    type: "vm0",
+    type: "built-in",
     concreteType: route.providerType,
     environment,
     secrets: { [secretName]: key.apiKey },
@@ -2649,11 +2726,11 @@ async function resolveCandidateModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
   row: ResolvableModelProviderEnvironmentRow,
 ): Promise<ResolvedModelProviderEnvironment | null> {
-  if (row.type === "vm0") {
+  if (isBuiltInModelProviderType(row.type)) {
     const selectedModel =
       args.selectedModelOverride ??
       row.selectedModel ??
-      MODEL_PROVIDER_TYPES.vm0.defaultModel;
+      MODEL_PROVIDER_TYPES["built-in"].defaultModel;
     const provider = await vm0ModelProviderEnvironment(
       db,
       selectedModel,
@@ -2724,10 +2801,11 @@ async function resolveModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
-  if (args.modelProviderType === "vm0") {
+  if (isBuiltInModelProviderType(args.modelProviderType)) {
     const provider = await vm0ModelProviderEnvironment(
       db,
-      args.selectedModelOverride ?? MODEL_PROVIDER_TYPES.vm0.defaultModel,
+      args.selectedModelOverride ??
+        MODEL_PROVIDER_TYPES["built-in"].defaultModel,
       args.builtInModelRuntimeRoute,
     );
     return provider?.concreteType &&
@@ -2804,7 +2882,7 @@ async function loadPersistedRunEnvironmentSnapshot(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly content: AgentComposeContent;
+    readonly content: AgentExecutionConfig;
   },
 ): Promise<PersistedRunEnvironmentSnapshot> {
   const environment = firstAgent(args.content)?.environment;
@@ -2901,7 +2979,7 @@ function buildMergedVariables(args: {
 }
 
 async function buildReferencedSecrets(args: {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly runSecrets: Record<string, string> | undefined;
   readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -2962,6 +3040,21 @@ function withoutLegacyZeroEntries<T>(
     }
   }
   return compactRecord(canonical);
+}
+
+function withoutOkouNamespaceEntries<T>(
+  values: Readonly<Record<string, T>> | null,
+): Record<string, T> | null {
+  if (!values) {
+    return null;
+  }
+  const untrusted: Record<string, T> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!key.startsWith("OKOU_")) {
+      untrusted[key] = value;
+    }
+  }
+  return compactRecord(untrusted) ?? null;
 }
 
 function filterSecretConnectorMap(args: {
@@ -3706,7 +3799,7 @@ async function materializeEagerStoredConnectorSecrets(
 }
 
 function eagerStoredConnectorSecretInputs(args: {
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
 }): {
@@ -5248,7 +5341,7 @@ function buildConnectorPermissionBaseline(
     version: 1,
     catalogIdentity: snapshot.catalogIdentity,
     validationAuthority: {
-      backendVersion: validationAuthority.backendVersion,
+      backendVersion: validationAuthority.validatorVersion,
       buildCommitSha: validationAuthority.buildCommitSha,
     },
     connectors: Object.fromEntries(
@@ -5614,34 +5707,14 @@ async function checkOrgRunPlanStatus(
   return capabilities.status === "active" ? null : insufficientCredits();
 }
 
-async function readLegacyRunVersionProvenanceForWrite(
-  db: Db,
-  agentId: string,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ versionId: agentComposeVersions.id })
-    .from(agentComposes)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentComposes.headVersionId),
-    )
-    .where(eq(agentComposes.id, agentId))
-    .limit(1);
-
-  // Stage 4 retained this nullable physical value solely as rollback material.
-  // It never supplies Agent identity or configuration, and Stage 6 must keep
-  // the legacy dependent writer unchanged until the column is removed.
-  return row?.versionId ?? null;
-}
-
 async function resolveByAgentId(
   db: Db,
   agentId: string,
   options: ProductResolutionOptions,
-): Promise<ResolvedCompose | CreateRunErrorResult> {
+): Promise<ResolvedAgentExecution | CreateRunErrorResult> {
   const [row] = await measureApiDispatchTiming(
     options.timing,
-    "api_dispatch_resolve_compose_lookup_agent",
+    "api_dispatch_resolve_agent_execution_lookup_agent",
     "nested",
     async () => {
       return await db
@@ -5661,15 +5734,9 @@ async function resolveByAgentId(
     return notFound("Agent not found");
   }
 
-  const agentComposeVersionId = await readLegacyRunVersionProvenanceForWrite(
-    db,
-    row.agentId,
-  );
-
   return {
-    agentComposeVersionId,
-    composeId: row.agentId,
-    composeUserId: row.agentOwner,
+    agentId: row.agentId,
+    ownerUserId: row.agentOwner,
     agentName: row.agentName || undefined,
     orgId: row.agentOrgId,
     content: options.executionPlan.content,
@@ -5754,7 +5821,7 @@ async function resolveLatestPiResumeSession(
 function resolvedSessionStorage(session: {
   readonly id: string;
   readonly storageMounts: readonly PersistedStorageMount[] | null;
-}): Pick<ResolvedCompose, "artifacts" | "persistedStorageMounts"> {
+}): Pick<ResolvedAgentExecution, "artifacts" | "persistedStorageMounts"> {
   if (session.storageMounts === null) {
     throw new Error(
       `Agent session "${session.id}" is missing canonical Storage mounts`,
@@ -5768,7 +5835,7 @@ function resolvedSessionStorage(session: {
 
 function resolvedSessionModelRoute(
   previousRun: ModelRuntimeSessionRoute | null,
-): Pick<ResolvedCompose, "resumeSessionModelRoute"> {
+): Pick<ResolvedAgentExecution, "resumeSessionModelRoute"> {
   return previousRun ? { resumeSessionModelRoute: previousRun } : {};
 }
 
@@ -5778,124 +5845,120 @@ function resolveBySessionId(
   userId: string,
   orgId: string,
   options: ProductResolutionOptions,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
-  return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
-    const [snapshot] = await measureApiDispatchTiming(
-      options.timing,
-      "api_dispatch_resolve_compose_lookup_session_snapshot",
-      "nested",
-      async () => {
-        return await db
-          .select({
-            session: {
-              id: agentSessions.id,
-              storageMounts: agentSessions.storageMounts,
+): Computed<Promise<ResolvedAgentExecution | CreateRunErrorResult>> {
+  return computed(
+    async (): Promise<ResolvedAgentExecution | CreateRunErrorResult> => {
+      const [snapshot] = await measureApiDispatchTiming(
+        options.timing,
+        "api_dispatch_resolve_agent_execution_lookup_session_snapshot",
+        "nested",
+        async () => {
+          return await db
+            .select({
+              session: {
+                id: agentSessions.id,
+                storageMounts: agentSessions.storageMounts,
+              },
+              agent: {
+                id: agents.id,
+                name: agents.name,
+                orgId: agents.orgId,
+                owner: agents.owner,
+              },
+              conversation: {
+                id: conversations.id,
+                runId: conversations.runId,
+                cliAgentSessionId: conversations.cliAgentSessionId,
+                cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+                cliAgentSessionHistoryHash:
+                  conversations.cliAgentSessionHistoryHash,
+              },
+              historyBlob: {
+                hash: blobs.hash,
+                encoding: blobs.encoding,
+              },
+              previousRun: {
+                id: agentRuns.id,
+                vars: agentRuns.vars,
+                modelProvider: agentRuns.modelProvider,
+                modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+                modelRuntimeModel: agentRuns.modelRuntimeModel,
+              },
+            })
+            .from(agentSessions)
+            .leftJoin(agents, eq(agentSessions.agentId, agents.id))
+            .leftJoin(
+              conversations,
+              eq(agentSessions.conversationId, conversations.id),
+            )
+            .leftJoin(
+              blobs,
+              eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+            )
+            .leftJoin(agentRuns, eq(conversations.runId, agentRuns.id))
+            .where(
+              and(
+                eq(agentSessions.id, agentSessionId),
+                eq(agentSessions.userId, userId),
+                eq(agentSessions.orgId, orgId),
+              ),
+            )
+            .limit(1);
+        },
+      );
+
+      if (!snapshot) {
+        return notFound("Agent session not found");
+      }
+      if (!snapshot.agent) {
+        return notFound("Agent not found");
+      }
+
+      const conversation = snapshot.conversation;
+      const resumeSession = conversation
+        ? await measureApiDispatchTiming(
+            options.timing,
+            "api_dispatch_resolve_agent_execution_resolve_session_history",
+            "nested",
+            (): StoredExecutionContext["resumeSession"] | undefined => {
+              return resumeSessionFromSnapshot({
+                ...conversation,
+                sessionHistoryBlobEncoding:
+                  snapshot.historyBlob?.encoding ?? null,
+              });
             },
-            agent: {
-              id: agents.id,
-              name: agents.name,
-              orgId: agents.orgId,
-              owner: agents.owner,
-            },
-            conversation: {
-              id: conversations.id,
-              runId: conversations.runId,
-              cliAgentSessionId: conversations.cliAgentSessionId,
-              cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-              cliAgentSessionHistoryHash:
-                conversations.cliAgentSessionHistoryHash,
-            },
-            historyBlob: {
-              hash: blobs.hash,
-              encoding: blobs.encoding,
-            },
-            previousRun: {
-              id: agentRuns.id,
-              vars: agentRuns.vars,
-              modelProvider: agentRuns.modelProvider,
-              modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-              modelRuntimeModel: agentRuns.modelRuntimeModel,
-            },
-          })
-          .from(agentSessions)
-          .leftJoin(agents, eq(agentSessions.agentId, agents.id))
-          .leftJoin(
-            conversations,
-            eq(agentSessions.conversationId, conversations.id),
           )
-          .leftJoin(
-            blobs,
-            eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
-          )
-          .leftJoin(agentRuns, eq(conversations.runId, agentRuns.id))
-          .where(
-            and(
-              eq(agentSessions.id, agentSessionId),
-              eq(agentSessions.userId, userId),
-              eq(agentSessions.orgId, orgId),
-            ),
-          )
-          .limit(1);
-      },
-    );
+        : undefined;
 
-    if (!snapshot) {
-      return notFound("Agent session not found");
-    }
-    if (!snapshot.agent) {
-      return notFound("Agent not found");
-    }
-
-    const agentComposeVersionId = await readLegacyRunVersionProvenanceForWrite(
-      db,
-      snapshot.agent.id,
-    );
-
-    const conversation = snapshot.conversation;
-    const resumeSession = conversation
-      ? await measureApiDispatchTiming(
-          options.timing,
-          "api_dispatch_resolve_compose_resolve_session_history",
-          "nested",
-          (): StoredExecutionContext["resumeSession"] | undefined => {
-            return resumeSessionFromSnapshot({
-              ...conversation,
-              sessionHistoryBlobEncoding:
-                snapshot.historyBlob?.encoding ?? null,
-            });
-          },
-        )
-      : undefined;
-
-    return {
-      agentComposeVersionId,
-      composeId: snapshot.agent.id,
-      composeUserId: snapshot.agent.owner,
-      agentName: snapshot.agent.name || undefined,
-      orgId: snapshot.agent.orgId,
-      content: options.executionPlan.content,
-      ...resolvedSessionStorage(snapshot.session),
-      vars:
-        (snapshot.previousRun?.vars as Record<string, string> | null) ??
-        undefined,
-      agentSessionId: snapshot.session.id,
-      continuedFromAgentSessionId: snapshot.session.id,
-      resumeSession,
-      ...resolvedSessionModelRoute(snapshot.previousRun),
-    };
-  });
+      return {
+        agentId: snapshot.agent.id,
+        ownerUserId: snapshot.agent.owner,
+        agentName: snapshot.agent.name || undefined,
+        orgId: snapshot.agent.orgId,
+        content: options.executionPlan.content,
+        ...resolvedSessionStorage(snapshot.session),
+        vars:
+          (snapshot.previousRun?.vars as Record<string, string> | null) ??
+          undefined,
+        agentSessionId: snapshot.session.id,
+        continuedFromAgentSessionId: snapshot.session.id,
+        resumeSession,
+        ...resolvedSessionModelRoute(snapshot.previousRun),
+      };
+    },
+  );
 }
 
-function resolveCompose(
+function resolveAgentExecution(
   db: Db,
   body: CreateRunBody,
   userId: string,
   orgId: string,
-  options: ResolveComposeOptions,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
+  options: ResolveAgentExecutionOptions,
+): Computed<Promise<ResolvedAgentExecution | CreateRunErrorResult>> {
   return computed(
-    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const testOnlyResolver = options.testOnlyResolveLegacyDirectRunCompose;
+    async (get): Promise<ResolvedAgentExecution | CreateRunErrorResult> => {
+      const testOnlyResolver = options.testOnlyResolveDirectRun;
       if (testOnlyResolver) {
         if (!body.sessionId && !body.agentId) {
           return badRequestMessage("Missing agentId or sessionId");
@@ -5903,8 +5966,8 @@ function resolveCompose(
         const resolved = await measureApiDispatchTiming(
           options.timing,
           body.sessionId
-            ? "api_dispatch_resolve_compose_by_session_id"
-            : "api_dispatch_resolve_compose_by_agent_id",
+            ? "api_dispatch_resolve_agent_execution_by_session_id"
+            : "api_dispatch_resolve_agent_execution_by_agent_id",
           "nested",
           async () => {
             return await testOnlyResolver({
@@ -5919,7 +5982,7 @@ function resolveCompose(
         if (
           !isRouteError(resolved) &&
           body.agentId !== undefined &&
-          resolved.composeId !== body.agentId
+          resolved.agentId !== body.agentId
         ) {
           return badRequestMessage("agentId does not match sessionId");
         }
@@ -5936,7 +5999,7 @@ function resolveCompose(
         const sessionId = body.sessionId;
         const resolved = await measureApiDispatchTiming(
           options.timing,
-          "api_dispatch_resolve_compose_by_session_id",
+          "api_dispatch_resolve_agent_execution_by_session_id",
           "nested",
           async () => {
             return await get(
@@ -5950,7 +6013,7 @@ function resolveCompose(
         if (
           !isRouteError(resolved) &&
           body.agentId !== undefined &&
-          resolved.composeId !== body.agentId
+          resolved.agentId !== body.agentId
         ) {
           return badRequestMessage("agentId does not match sessionId");
         }
@@ -5962,7 +6025,7 @@ function resolveCompose(
       const agentId = body.agentId;
       return await measureApiDispatchTiming(
         options.timing,
-        "api_dispatch_resolve_compose_by_agent_id",
+        "api_dispatch_resolve_agent_execution_by_agent_id",
         "nested",
         async () => {
           return await resolveByAgentId(db, agentId, {
@@ -5997,7 +6060,7 @@ async function enforceCaptureNetworkBodiesGate(
 }
 
 function validateCompose(
-  content: AgentComposeContent,
+  content: AgentExecutionConfig,
   vars: Record<string, string> | undefined,
   secrets: Record<string, string> | undefined,
   options?: {
@@ -6036,7 +6099,7 @@ function validateCompose(
 }
 
 function validateRunFramework(
-  content: AgentComposeContent,
+  content: AgentExecutionConfig,
   body: CreateRunBody,
 ): { readonly framework: SupportedFramework } | CreateRunErrorResult {
   return validateCompose(content, body.vars, body.secrets, {
@@ -6076,7 +6139,7 @@ function agentRunModelProviderValues(
 }
 
 function prepareLaunchRunIdentity(args: {
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
 }): LaunchRunIdentity {
   return {
     runId: randomUUID(),
@@ -6155,7 +6218,7 @@ interface LaunchRunRowsArgs {
   readonly orgId: string;
   readonly identity: LaunchRunIdentity;
   readonly status: LaunchRunStatus;
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
   readonly body: CreateRunBody;
   readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
   readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
@@ -6169,17 +6232,27 @@ interface LaunchRunRowsArgs {
   readonly apiStartTime: number;
   readonly runnerGroup: string | undefined;
   readonly launchSnapshot: AgentRunLaunchSnapshot;
+  readonly officialWorkflowProvenance:
+    | AgentRunOfficialWorkflowProvenance
+    | undefined;
   readonly error: string | undefined;
 }
 
-function launchSessionValues(
-  args: LaunchRunRowsArgs,
-): typeof agentSessions.$inferInsert {
+interface LaunchSessionValues {
+  readonly id: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly storageMounts: PersistedStorageMount[] | null;
+  readonly conversationId: null;
+}
+
+function launchSessionValues(args: LaunchRunRowsArgs): LaunchSessionValues {
   return {
     id: args.identity.sessionId,
     userId: args.userId,
     orgId: args.orgId,
-    agentComposeId: args.resolved.composeId,
+    agentId: args.resolved.agentId,
     storageMounts: args.sessionStorageMounts
       ? [...args.sessionStorageMounts]
       : null,
@@ -6197,7 +6270,6 @@ function launchRunValues(
     createdAt,
     userId: args.userId,
     orgId: args.orgId,
-    agentComposeVersionId: args.resolved.agentComposeVersionId,
     status: args.status,
     prompt: args.body.prompt,
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
@@ -6209,32 +6281,33 @@ function launchRunValues(
     lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
     launchSnapshot: args.launchSnapshot,
+    officialWorkflowProvenance: args.officialWorkflowProvenance ?? null,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
     ...metadata,
   };
 }
 
-type Vm0LaunchMetadataValues = Pick<
+type BuiltInModelLaunchMetadataValues = Pick<
   RunMetadataValues,
-  "modelRuntimeProvider" | "modelRuntimeModel" | "vm0ModelKeyId"
+  "modelRuntimeProvider" | "modelRuntimeModel" | "builtInModelKeyId"
 >;
 
-function vm0LaunchMetadataValues(
+function builtInModelLaunchMetadataValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
-): Vm0LaunchMetadataValues {
+): BuiltInModelLaunchMetadataValues {
   const runtimeRoute = modelProvider?.builtInModelRuntimeRoute;
   if (!runtimeRoute) {
     return {
       modelRuntimeProvider: null,
       modelRuntimeModel: null,
-      vm0ModelKeyId: null,
+      builtInModelKeyId: null,
     };
   }
   return {
     modelRuntimeProvider: runtimeRoute.providerType,
     modelRuntimeModel: runtimeRoute.upstreamModel,
-    vm0ModelKeyId: runtimeRoute.modelKeyId,
+    builtInModelKeyId: runtimeRoute.modelKeyId,
   };
 }
 
@@ -6265,7 +6338,7 @@ function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
     modelProviderId: modelPin.modelProviderId,
     modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
     selectedModel: modelPin.selectedModel,
-    ...vm0LaunchMetadataValues(args.modelProvider),
+    ...builtInModelLaunchMetadataValues(args.modelProvider),
     selectedVideoModel: args.selectedVideoModel,
     selectedImageModel: args.selectedImageModel,
     chatThreadId: args.chatThreadId ?? null,
@@ -6304,17 +6377,6 @@ function storedConnectorRuntimeTargets(args: {
   ];
 }
 
-function websiteTemplateArchiveVersionForRun(
-  featureSwitchContext: FeatureSwitchContext,
-): WebsiteTemplateArchiveVersion {
-  return isFeatureEnabled(
-    FeatureSwitchKey.LatestWebsiteTemplates,
-    featureSwitchContext,
-  )
-    ? "latest"
-    : "previous";
-}
-
 function presentationRunbookArchiveVersionForRun(
   featureSwitchContext: FeatureSwitchContext,
 ): PresentationRunbookArchiveVersion {
@@ -6326,12 +6388,29 @@ function presentationRunbookArchiveVersionForRun(
     : "previous";
 }
 
+function buildStoredPlatformEnvironment(args: {
+  readonly platformEnvironment: Record<string, string> | undefined;
+  readonly okouTokenPublicBrand: PublicBrand | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly canonicalOkouRuntime: boolean;
+}): Record<string, string> {
+  const platformEnvironment = {
+    ...args.platformEnvironment,
+    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
+    [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
+      presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
+  };
+  return args.canonicalOkouRuntime
+    ? (withoutLegacyZeroEntries(platformEnvironment) ?? {})
+    : platformEnvironment;
+}
+
 async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
   readonly chatThreadId: string | undefined;
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
   readonly body: CreateRunBody;
   readonly framework: SupportedFramework;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -6342,7 +6421,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly apiStartTime: number;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-  readonly extraEnvironment: Record<string, string> | undefined;
+  readonly platformEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly includeOkouTokenSecret: boolean | undefined;
@@ -6365,8 +6444,10 @@ async function buildStoredExecutionContextDraft(args: {
     permissionManifest: permissions,
     customTargets: args.customConnectorContext.targets,
   });
-  const expandedEnvironment = {
-    ...expandEnvironment({
+  // Newly constructed API context: remove the reserved namespace from the
+  // fully expanded untrusted/content environment before the trusted overlay.
+  const expandedEnvironment = withoutOkouNamespaceEntries(
+    expandEnvironment({
       content: args.resolved.content,
       vars: args.body.vars,
       secrets: executionSecrets.secrets,
@@ -6375,17 +6456,22 @@ async function buildStoredExecutionContextDraft(args: {
       storedConnectorEnvironment: args.connectorContext.storedEnvironment,
       connectorVars: args.connectorContext.vars,
     }),
-    ...args.extraEnvironment,
-    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
-    [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
-      args.featureSwitchContext,
-    ),
-    [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
-      presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
+  );
+  const platformEnvironment = buildStoredPlatformEnvironment({
+    platformEnvironment: args.platformEnvironment,
+    okouTokenPublicBrand: args.okouTokenPublicBrand,
+    featureSwitchContext: args.featureSwitchContext,
+    canonicalOkouRuntime: args.includeOkouTokenSecret === true,
+  });
+  // New API -> old runner: keep trusted entries in legacy environment until
+  // prior API rollback targets retire and old runners/sandboxes finish their
+  // up-to-two-hour drain. #28914 tracks removal after both gates are proven.
+  const environment = {
+    ...(args.includeOkouTokenSecret
+      ? withoutLegacyZeroEntries(expandedEnvironment ?? undefined)
+      : expandedEnvironment),
+    ...platformEnvironment,
   };
-  const environment = args.includeOkouTokenSecret
-    ? (withoutLegacyZeroEntries(expandedEnvironment) ?? {})
-    : expandedEnvironment;
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
     if (!environmentKeyByValue.has(value)) {
@@ -6401,6 +6487,7 @@ async function buildStoredExecutionContextDraft(args: {
   return {
     context: {
       environment,
+      platformEnvironment,
       secretValueEnvironmentKeys,
       vars: args.connectorContext.vars ?? null,
       resumeSession: args.resolved.resumeSession ?? null,
@@ -6662,10 +6749,9 @@ function billableFirewallsForPermissions(args: {
   const firewallNames = firewalls.map((firewall) => {
     return firewall.kind === "builtin" ? firewall.name : firewall.firewall.name;
   });
-  const modelFirewalls =
-    args.modelProvider?.type === "vm0"
-      ? firewallNames.filter(isModelProviderFirewallName)
-      : [];
+  const modelFirewalls = isBuiltInModelProviderType(args.modelProvider?.type)
+    ? firewallNames.filter(isModelProviderFirewallName)
+    : [];
   const connectorFirewalls = args.permissions?.billableFirewalls ?? [];
 
   return [...modelFirewalls, ...connectorFirewalls];
@@ -6717,7 +6803,7 @@ function validateModelUsageProviderInvariant(args: {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: SupportedRunModel | undefined;
 }): CreateRunErrorResult | null {
-  if (args.modelProvider?.type !== "vm0") {
+  if (!isBuiltInModelProviderType(args.modelProvider?.type)) {
     return null;
   }
   if (!args.billableFirewalls.some(isModelProviderFirewallName)) {
@@ -6801,7 +6887,7 @@ interface BuildRunnerJobPayloadInput {
   readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
   readonly userId: string;
   readonly orgId: string;
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
   readonly body: CreateRunBody;
   readonly artifacts: readonly ContextArtifact[];
   readonly framework: SupportedFramework;
@@ -6822,7 +6908,7 @@ interface BuildRunnerJobPayloadInput {
   readonly okouTokenCloudBrowserEnabled: boolean | undefined;
   readonly imageRecognitionAvailable: boolean;
   readonly chatThreadId: string | undefined;
-  readonly extraEnvironment: Record<string, string> | undefined;
+  readonly platformEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly timing: ApiDispatchTimingCollector;
@@ -6952,7 +7038,7 @@ function preparePiLaunchResources(args: {
   });
 }
 
-function preparedRunnerGroup(content: AgentComposeContent): string {
+function preparedRunnerGroup(content: AgentExecutionConfig): string {
   const group = runnerGroup(content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
   if (!group) {
     throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
@@ -7001,9 +7087,9 @@ function buildRunnerJobPayload(
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
     const group = preparedRunnerGroup(args.resolved.content);
     const body = preparedRunnerJobBody(args);
-    const extraEnvironment = args.includeOkouTokenSecret
-      ? { ...args.extraEnvironment, ...okouTokenEnvironment(body) }
-      : args.extraEnvironment;
+    const platformEnvironment = args.includeOkouTokenSecret
+      ? { ...args.platformEnvironment, ...okouTokenEnvironment(body) }
+      : args.platformEnvironment;
     const storageManifestStats = new StorageManifestBuildStats();
     const preparedStoragePromise = measureApiDispatchTiming(
       args.timing,
@@ -7041,7 +7127,7 @@ function buildRunnerJobPayload(
         return await buildStoredExecutionContextDraft({
           ...args,
           body,
-          extraEnvironment,
+          platformEnvironment,
           runId: args.run.id,
         });
       },
@@ -7119,6 +7205,8 @@ function preparedLaunchRowsArgs(args: {
     apiStartTime: args.commit.createArgs.apiStartTime,
     runnerGroup: args.runnerGroup,
     launchSnapshot: args.commit.context.launchSnapshot,
+    officialWorkflowProvenance:
+      args.commit.context.officialWorkflowRun?.provenance,
     error: undefined,
   };
 }
@@ -7512,73 +7600,108 @@ async function claimQueueFirstAssociationForLaunch(args: {
   });
 }
 
-async function commitFailedLaunch(args: {
+interface CommitFailedLaunchArgs {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
   readonly context: FinalizedPreparedRunContext;
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
+  readonly launch?: PreparedRunnerLaunch;
   readonly error: unknown;
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<CreateRunSuccessResult | QueueFirstRunClaimLost> {
-  const message = runFailureMessage(args.error);
-  const committed = await args.db.transaction(
-    async (tx): Promise<FailedLaunchCommitResult> => {
-      await lockQueueFirstRunSourceForLaunch({
-        tx,
-        createArgs: args.createArgs,
-      });
-      const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
-        tx,
-        createArgs: args.createArgs,
-        sessionSnapshotState: "unvalidated",
-        timing: args.timing,
-      });
-      const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
-        tx,
-        admission: queueFirstAdmission,
-        createArgs: args.createArgs,
-        identity: args.identity,
-        timing: args.timing,
-      });
-      if (queueFirstClaim?.kind === "lost") {
-        return { kind: "queue-first-claim-lost" };
-      }
-      const { createdAt } = await insertLaunchRunRows(tx, {
-        userId: args.createArgs.userId,
-        orgId: args.createArgs.orgId,
-        identity: args.identity,
-        status: "failed",
-        resolved: args.context.resolved,
-        body: args.context.body,
-        runStorageMounts: undefined,
-        sessionStorageMounts: undefined,
-        modelProvider: args.context.modelProvider,
-        agentRunModelPin: args.createArgs.agentRunModelPin,
-        selectedVideoModel: args.context.selectedVideoModel,
-        selectedImageModel: args.context.selectedImageModel,
-        callbackRows: args.callbackRows,
-        chatThreadId: args.createArgs.chatThreadId,
-        agentRunMetadata: args.createArgs.agentRunMetadata,
-        apiStartTime: args.createArgs.apiStartTime,
-        runnerGroup: undefined,
-        launchSnapshot: args.context.launchSnapshot,
-        error: message,
-      });
-      if (queueFirstClaim) {
-        await recordQueueFirstFailedRun(tx, {
-          claim: queueFirstClaim,
-          runId: args.identity.runId,
-        });
-      }
-      return {
-        kind: "failed",
-        createdAt,
-        queueFirstClaim,
-      };
+}
+
+async function persistFailedLaunch(
+  tx: DbTransaction,
+  args: CommitFailedLaunchArgs,
+  message: string,
+): Promise<FailedLaunchCommitResult> {
+  await acquireOfficialWorkflowRunCatalogAdmissionLock(
+    tx,
+    args.context.officialWorkflowRun,
+  );
+  if (args.context.officialWorkflowRun) {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${args.createArgs.orgId}))`,
+    );
+  }
+  await lockQueueFirstRunSourceForLaunch({
+    tx,
+    createArgs: args.createArgs,
+  });
+  const officialAdmissionFailure = await validateOfficialWorkflowRunForInsert(
+    tx,
+    {
+      observation: args.context.officialWorkflowRun,
+      orgId: args.createArgs.orgId,
+      userId: args.createArgs.userId,
+      agentId: args.context.resolved.agentId,
+      automationId: args.createArgs.agentRunMetadata?.workflowAutomationId,
+      runStorageMounts: args.launch?.runStorageMounts,
+      allowMissingMountsForFailedRun: true,
     },
   );
+  if (officialAdmissionFailure) {
+    return conflict(officialAdmissionFailure.message);
+  }
+  const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
+    tx,
+    createArgs: args.createArgs,
+    sessionSnapshotState: "unvalidated",
+    timing: args.timing,
+  });
+  const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+    tx,
+    admission: queueFirstAdmission,
+    createArgs: args.createArgs,
+    identity: args.identity,
+    timing: args.timing,
+  });
+  if (queueFirstClaim?.kind === "lost") {
+    return { kind: "queue-first-claim-lost" };
+  }
+  const { createdAt } = await insertLaunchRunRows(tx, {
+    userId: args.createArgs.userId,
+    orgId: args.createArgs.orgId,
+    identity: args.identity,
+    status: "failed",
+    resolved: args.context.resolved,
+    body: args.context.body,
+    runStorageMounts: args.launch?.runStorageMounts,
+    sessionStorageMounts: args.launch?.sessionStorageMounts,
+    modelProvider: args.context.modelProvider,
+    agentRunModelPin: args.createArgs.agentRunModelPin,
+    selectedVideoModel: args.context.selectedVideoModel,
+    selectedImageModel: args.context.selectedImageModel,
+    callbackRows: args.callbackRows,
+    chatThreadId: args.createArgs.chatThreadId,
+    agentRunMetadata: args.createArgs.agentRunMetadata,
+    apiStartTime: args.createArgs.apiStartTime,
+    runnerGroup: undefined,
+    launchSnapshot: args.context.launchSnapshot,
+    officialWorkflowProvenance: args.context.officialWorkflowRun?.provenance,
+    error: message,
+  });
+  return {
+    kind: "failed",
+    createdAt,
+    queueFirstClaim,
+  };
+}
 
+async function commitFailedLaunch(
+  args: CommitFailedLaunchArgs,
+): Promise<
+  CreateRunSuccessResult | CreateRunErrorResult | QueueFirstRunClaimLost
+> {
+  const message = runFailureMessage(args.error);
+  const committed = await args.db.transaction(async (tx) => {
+    return await persistFailedLaunch(tx, args, message);
+  });
+
+  if (isRouteError(committed)) {
+    return committed;
+  }
   if (committed.kind === "queue-first-claim-lost") {
     return committed;
   }
@@ -7619,7 +7742,7 @@ async function activatePreparedLaunchUsageAllowance(args: {
   readonly commit: CommitPreparedLaunchArgs;
   readonly run: RunRecord;
 }): Promise<void> {
-  if (args.commit.context.modelProvider?.type === "vm0") {
+  if (isBuiltInModelProviderType(args.commit.context.modelProvider?.type)) {
     await args.commit.timing.measure(
       "api_dispatch_activate_usage_allowance_windows",
       "nested",
@@ -7834,12 +7957,6 @@ async function commitQueuedPreparedLaunch(
     commit: args,
     run: persisted.run,
   });
-  if (queueFirstClaim) {
-    await recordQueueFirstClaimedRun(tx, {
-      claim: queueFirstClaim,
-      runId: persisted.run.id,
-    });
-  }
   return {
     ...persisted,
     runnerJobPayload: payload,
@@ -7870,12 +7987,6 @@ async function commitPendingPreparedLaunch(
     commit: args,
     run: persisted.run,
   });
-  if (queueFirstClaim) {
-    await recordQueueFirstClaimedRun(tx, {
-      claim: queueFirstClaim,
-      runId: persisted.run.id,
-    });
-  }
   return {
     ...persisted,
     runnerJobPayload: payload,
@@ -7889,6 +8000,21 @@ async function commitPreparedLaunchUnderLock(
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
 ): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
+  const officialAdmissionFailure = await validateOfficialWorkflowRunForInsert(
+    tx,
+    {
+      observation: args.context.officialWorkflowRun,
+      orgId: args.createArgs.orgId,
+      userId: args.createArgs.userId,
+      agentId: args.context.resolved.agentId,
+      automationId: args.createArgs.agentRunMetadata?.workflowAutomationId,
+      runStorageMounts: args.launch.runStorageMounts,
+      allowMissingMountsForFailedRun: false,
+    },
+  );
+  if (officialAdmissionFailure) {
+    return conflict(officialAdmissionFailure.message);
+  }
   const threadSessionValidation = await validateThreadSessionSnapshot(tx, {
     createArgs: args.createArgs,
     identity: args.identity,
@@ -7993,6 +8119,10 @@ async function commitPreparedLaunch(
       ...args.launch.runnerJobPayload,
       reuseKey: runnerReuseKey(args.createArgs.chatThreadId),
     });
+    await acquireOfficialWorkflowRunCatalogAdmissionLock(
+      tx,
+      args.context.officialWorkflowRun,
+    );
     await args.timing.measure(
       "api_dispatch_admission_lock_wait",
       "nested",
@@ -8058,8 +8188,8 @@ function buildAtomicLaunchPayload(
     okouTokenCloudBrowserEnabled: args.createArgs.okouTokenCloudBrowserEnabled,
     imageRecognitionAvailable: args.context.imageRecognitionAvailable,
     chatThreadId: args.createArgs.chatThreadId,
-    extraEnvironment: withDefaultImageModelEnvironment(
-      args.createArgs.extraEnvironment,
+    platformEnvironment: withDefaultImageModelPlatformEnvironment(
+      args.createArgs.platformEnvironment,
       args.context.selectedImageModel,
     ),
     userTimezone: args.context.userTimezone,
@@ -8106,7 +8236,7 @@ export const BEFORE_DISPATCH_CANCELLED_ERROR =
 
 interface PreparedRunContext {
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
   readonly framework: SupportedFramework;
   readonly piSandbox: PiModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -8118,10 +8248,11 @@ interface PreparedRunContext {
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
+  readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly imageRecognitionAvailable: boolean;
-  /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
+  /** Snapshotted onto the run row; see `resolveMediaModelsForRun`. */
   readonly selectedVideoModel: string;
   /** Resolved once at run start and used as the run's built-in image default. */
   readonly selectedImageModel: ImageModel | null;
@@ -8164,7 +8295,7 @@ async function resolveRunModelProvider(
   db: Db,
   args: CreateAgentRunArgs,
   options: {
-    readonly content: AgentComposeContent;
+    readonly content: AgentExecutionConfig;
     readonly framework: SupportedFramework;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
@@ -8178,7 +8309,9 @@ async function resolveRunModelProvider(
     args.modelProviderId !== undefined ||
     args.modelProviderCredentialScope !== undefined;
   const shouldResolveModelProvider =
-    hasProviderOverride || !hasFrameworkKey || args.modelProviderType === "vm0";
+    hasProviderOverride ||
+    !hasFrameworkKey ||
+    isBuiltInModelProviderType(args.modelProviderType);
   const modelProvider = shouldResolveModelProvider
     ? await resolveModelProviderEnvironment(db, {
         orgId: args.orgId,
@@ -8198,13 +8331,16 @@ async function resolveRunModelProvider(
     return modelProvider;
   }
 
-  if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
+  if (
+    args.enforceVm0Credits &&
+    isBuiltInModelProviderType(args.modelProviderType)
+  ) {
     const creditGate =
       (await checkOrgCreditsForRunAdmission({
         db,
         orgId: args.orgId,
         userId: args.userId,
-        modelProviderType: "vm0",
+        modelProviderType: "built-in",
         selectedModel: args.selectedModelOverride,
       })) ?? null;
     signal.throwIfAborted();
@@ -8357,7 +8493,7 @@ async function loadRunConnectorContexts(
 async function buildResolvedRunBody(
   args: {
     readonly initialBody: CreateRunBody;
-    readonly resolved: ResolvedCompose;
+    readonly resolved: ResolvedAgentExecution;
     readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly canonicalOkouRuntime: boolean;
@@ -8402,7 +8538,7 @@ async function buildResolvedRunBody(
 }
 
 function validateRunEnvironmentReferences(args: {
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
   readonly body: CreateRunBody;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
@@ -8478,7 +8614,8 @@ function preparedRunAdditionalVolumes(args: {
   readonly skillsRoot: string;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
+  readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
 }): PreparedAdditionalVolumes {
   const bodyAdditionalVolumes = args.body.additionalVolumes;
   const injectedSkillVolumes = buildInjectedSkillVolumes(
@@ -8486,6 +8623,7 @@ function preparedRunAdditionalVolumes(args: {
       injectSkillVolumes: args.createArgs.injectSkillVolumes,
       allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
       connectorCatalogSelection: args.connectorCatalogSelection,
+      officialWorkflowRun: args.officialWorkflowRun,
     },
     args.skillsRoot,
   );
@@ -8506,7 +8644,7 @@ function preparedRunAdditionalVolumes(args: {
 
 interface PreparedRunBodyContext {
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
   readonly connectorScope: EffectiveConnectorScope;
   readonly requestedFramework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -8593,15 +8731,14 @@ function loadPreparedRunFeatureSwitchContext(
 function agentRunResolutionOptions(
   args: CreateAgentRunArgs,
 ): Pick<
-  ResolveComposeOptions,
-  "productAgentExecutionPlan" | "testOnlyResolveLegacyDirectRunCompose"
+  ResolveAgentExecutionOptions,
+  "productAgentExecutionPlan" | "testOnlyResolveDirectRun"
 > {
   const productAgentExecutionPlan = args.productAgentExecutionPlan;
-  const testOnlyResolveLegacyDirectRunCompose =
-    args.testOnlyResolveLegacyDirectRunCompose;
+  const testOnlyResolveDirectRun = args.testOnlyResolveDirectRun;
   if (
     productAgentExecutionPlan === undefined &&
-    testOnlyResolveLegacyDirectRunCompose === undefined
+    testOnlyResolveDirectRun === undefined
   ) {
     throw new Error(
       "Product Agent execution plan is required for Agent run preparation",
@@ -8609,7 +8746,7 @@ function agentRunResolutionOptions(
   }
   if (
     productAgentExecutionPlan !== undefined &&
-    testOnlyResolveLegacyDirectRunCompose !== undefined
+    testOnlyResolveDirectRun !== undefined
   ) {
     throw new Error(
       "Agent run preparation cannot mix product and direct-run resolution",
@@ -8617,7 +8754,7 @@ function agentRunResolutionOptions(
   }
   return {
     productAgentExecutionPlan,
-    testOnlyResolveLegacyDirectRunCompose,
+    testOnlyResolveDirectRun,
   };
 }
 
@@ -8646,11 +8783,11 @@ function prepareRunBodyContext(
       ),
     );
     const persistedResolved = await args.timing.measure(
-      "api_dispatch_prepare_context_resolve_compose",
+      "api_dispatch_prepare_context_resolve_agent_execution",
       "nested",
       async () => {
         return await get(
-          resolveCompose(
+          resolveAgentExecution(
             args.db,
             args.initialBody,
             args.createArgs.userId,
@@ -8891,10 +9028,18 @@ async function prepareRunRuntimeContext(
 ): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const connectorCatalogSelection = await connectorCatalogSelectionForRun({
-    ...args,
-    orgId: args.createArgs.orgId,
-  });
+  const [connectorCatalogSelectionResult, modelProviderResult] =
+    await Promise.allSettled([
+      connectorCatalogSelectionForRun({
+        ...args,
+        orgId: args.createArgs.orgId,
+      }),
+      resolvePreparedRunModelProvider(args, signal),
+    ]);
+  if (connectorCatalogSelectionResult.status === "rejected") {
+    throw connectorCatalogSelectionResult.reason;
+  }
+  const connectorCatalogSelection = connectorCatalogSelectionResult.value;
   signal.throwIfAborted();
   const threadConnectorSelectionIds =
     await resolvePreparedThreadConnectorSelections(
@@ -8916,7 +9061,10 @@ async function prepareRunRuntimeContext(
           connectorCatalogSelection.selection,
         )
       : args.connectorScope;
-  const modelProvider = await resolvePreparedRunModelProvider(args, signal);
+  if (modelProviderResult.status === "rejected") {
+    throw modelProviderResult.reason;
+  }
+  const modelProvider = modelProviderResult.value;
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }
@@ -8985,7 +9133,7 @@ async function materializePreparedConnectorContext(args: {
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly body: CreateRunBody;
-  readonly content: AgentComposeContent;
+  readonly content: AgentExecutionConfig;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly storedConnectorSnapshot: StoredConnectorMaterializationSnapshot | null;
   readonly storedConnectorMetadataContext: ConnectorRuntimeContext;
@@ -9088,7 +9236,8 @@ function prepareRunOutputMetadata(args: {
   readonly piSandbox: PiModelConfig | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
+  readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
 }): {
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
@@ -9099,13 +9248,11 @@ function prepareRunOutputMetadata(args: {
     connectorScope: args.connectorScope,
     connectorCatalogSelection: args.connectorCatalogSelection,
     customConnectorContext: args.customConnectorContext,
-    skillsRoot:
-      args.piSandbox === undefined
-        ? frameworkSkillsMountPath(args.framework)
-        : PI_SKILLS_ROOT,
+    skillsRoot: skillsRootForRun(args.framework, args.piSandbox),
     featureSwitchContext: args.featureSwitchContext,
     body: args.body,
     resolved: args.resolved,
+    officialWorkflowRun: args.officialWorkflowRun,
   });
   const artifacts = artifactsForRun({
     resolved: args.resolved,
@@ -9118,6 +9265,15 @@ function prepareRunOutputMetadata(args: {
     additionalVolumeSources: additionalVolumes.sources,
     artifacts,
   };
+}
+
+function skillsRootForRun(
+  framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
+): string {
+  return piSandbox === undefined
+    ? frameworkSkillsMountPath(framework)
+    : PI_SKILLS_ROOT;
 }
 
 function isImageRecognitionAvailableForRun(args: {
@@ -9190,9 +9346,9 @@ function prepareRunContexts(
 }
 
 function resolveCompatibleDirectResumeSession(args: {
-  readonly resolved: ResolvedCompose;
+  readonly resolved: ResolvedAgentExecution;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
-}): ResolvedCompose {
+}): ResolvedAgentExecution {
   if (!args.resolved.resumeSessionModelRoute) {
     return args.resolved;
   }
@@ -9208,6 +9364,56 @@ function resolveCompatibleDirectResumeSession(args: {
   return incompatible
     ? { ...args.resolved, resumeSession: undefined }
     : args.resolved;
+}
+
+async function resolvePreparedOfficialWorkflowRun(
+  db: Db,
+  args: CreateAgentRunArgs,
+  framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
+  signal: AbortSignal,
+): Promise<OfficialWorkflowRunObservation | CreateRunErrorResult | undefined> {
+  const candidates = safeSync(() => {
+    return officialWorkflowRunCandidates(
+      args.injectSkillVolumes?.workflows ?? [],
+      skillsRootForRun(framework, piSandbox),
+      args.requiredOfficialWorkflowIds ?? [],
+    );
+  });
+  if ("error" in candidates) {
+    signal.throwIfAborted();
+    if (candidates.error instanceof OfficialWorkflowRunAdmissionError) {
+      return conflict(candidates.error.message);
+    }
+    throw candidates.error;
+  }
+  const resolved = await settle(
+    resolveOfficialWorkflowRunObservation(db, candidates.ok, signal),
+    signal,
+  );
+  if (resolved.ok) {
+    return resolved.value;
+  }
+  signal.throwIfAborted();
+  if (resolved.error instanceof OfficialWorkflowRunAdmissionError) {
+    return conflict(resolved.error.message);
+  }
+  throw resolved.error;
+}
+
+async function resolvePreparedMediaModels(
+  db: Db,
+  args: CreateAgentRunArgs,
+  signal: AbortSignal,
+) {
+  const models = await resolveMediaModelsForRun({
+    db,
+    orgId: args.orgId,
+    userId: args.userId,
+    chatThreadId: args.chatThreadId,
+  });
+  signal.throwIfAborted();
+  return models;
 }
 
 function prepareRunContext(
@@ -9270,22 +9476,20 @@ function prepareRunContext(
       const userTimezone = await resolvePreparedUserTimezone(input);
       signal.throwIfAborted();
 
-      const selectedVideoModel = await resolveVideoModelForRun({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        chatThreadId: args.chatThreadId,
-      });
-      signal.throwIfAborted();
+      const { selectedVideoModel, selectedImageModel } =
+        await resolvePreparedMediaModels(db, args, signal);
 
-      const selectedImageModel = await resolveImageModelForRun({
+      const officialWorkflowRun = await resolvePreparedOfficialWorkflowRun(
         db,
-        orgId: args.orgId,
-        userId: args.userId,
-        chatThreadId: args.chatThreadId,
-        featureSwitchContext: bodyContext.featureSwitchContext,
-      });
+        args,
+        runtimeContext.framework,
+        piSandbox,
+        signal,
+      );
       signal.throwIfAborted();
+      if (isRouteError(officialWorkflowRun)) {
+        return officialWorkflowRun;
+      }
 
       const outputMetadata = await timing.measure(
         "api_dispatch_prepare_context_prepare_output_metadata",
@@ -9303,6 +9507,7 @@ function prepareRunContext(
               featureSwitchContext: bodyContext.featureSwitchContext,
               body,
               resolved,
+              officialWorkflowRun,
             }),
           );
         },
@@ -9322,6 +9527,7 @@ function prepareRunContext(
         artifacts: outputMetadata.artifacts,
         additionalVolumes: outputMetadata.additionalVolumes,
         additionalVolumeSources: outputMetadata.additionalVolumeSources,
+        officialWorkflowRun,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
         selectedVideoModel,
@@ -9564,6 +9770,7 @@ async function completeQueuePayloadLaunch(
       context: args.input.context,
       identity: args.identity,
       callbackRows: args.callbackRows,
+      launch: args.launch,
       error: encryptedQueuedParams.error,
       timing: args.input.timing,
     });
@@ -9640,6 +9847,11 @@ function createAtomicLaunchRun(
     );
     signal.throwIfAborted();
     if (!launchResult.ok) {
+      if (
+        launchResult.error instanceof OfficialWorkflowArtifactResolutionError
+      ) {
+        return conflict(OFFICIAL_WORKFLOW_RUN_ADMISSION_MESSAGE);
+      }
       return await commitFailedLaunch({
         db: input.db,
         createArgs: input.args,
@@ -9749,7 +9961,7 @@ function finalizePreparedRunContext(
       mcpConnectorSlugs:
         prepared.context.customConnectorContext.mcpConnectorSlugs,
       selectedImageModel: prepared.context.selectedImageModel,
-      zeroCliAvailable: prepared.args.includeOkouTokenSecret === true,
+      cliAvailable: prepared.args.includeOkouTokenSecret === true,
     }),
   };
 }
@@ -9761,14 +9973,14 @@ export const prepareAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
     assertThreadBoundRunHasQueueAssociation(input.args);
-    // A preview request that passed the protection guard gives its sandbox CLI
-    // the same bypass through the existing user-environment channel.
+    // A preview request that passed the protection guard carries the bypass as
+    // API-authored environment while the runner preserves its existing filter.
     const previewAutomationBypass = get(previewAutomationBypass$);
     const args = previewAutomationBypass
       ? {
           ...input.args,
-          extraEnvironment: {
-            ...input.args.extraEnvironment,
+          platformEnvironment: {
+            ...input.args.platformEnvironment,
             [VERCEL_AUTOMATION_BYPASS_ENV]: previewAutomationBypass,
           },
         }
@@ -9852,7 +10064,7 @@ export const completeAgentRun$ = command(
             selectedModel,
             enforceVm0Credits:
               args.enforceVm0Credits === true &&
-              context.modelProvider?.type === "vm0",
+              isBuiltInModelProviderType(context.modelProvider?.type),
             timing,
           },
           signal,

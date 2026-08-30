@@ -1,7 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  colorThemeSchema,
+  type ColorTheme,
   SUPPORTED_USER_LOCALES,
   type SendMode,
+  themePreferenceSchema,
+  type ThemePreference,
   type UserLocale,
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
@@ -20,15 +24,13 @@ import type {
   SecretType,
 } from "@okouai/api-contracts/contracts/secrets";
 import type { VariableListResponse } from "@okouai/api-contracts/contracts/variables";
-import { morningBriefSchedules } from "@okouai/db/schema/morning-brief";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { secrets } from "@okouai/db/schema/secret";
 import { variables } from "@okouai/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
-import { db$, writeDb$, type ReadonlyDb } from "../external/db";
-import { syncMorningBriefSchedule } from "./morning-brief-schedule.service";
+import { db$, writeDb$ } from "../external/db";
 import { isValidTimeZone } from "../utils";
 
 interface UserScopedQuery {
@@ -52,6 +54,20 @@ function normalizePinnedAgentIds(ids: readonly string[]): string[] {
 
 function parseSendMode(value: unknown): SendMode {
   return value === "cmd-enter" ? "cmd-enter" : "enter";
+}
+
+function parseThemePreference(value: unknown): ThemePreference | null {
+  if (value === null) {
+    return null;
+  }
+  return themePreferenceSchema.parse(value);
+}
+
+function parseColorTheme(value: unknown): ColorTheme | null {
+  if (value === null) {
+    return null;
+  }
+  return colorThemeSchema.parse(value);
 }
 
 function parseUserLocale(value: unknown): UserLocale | null {
@@ -80,24 +96,6 @@ function parseSecretType(value: string): SecretType {
   throw new Error(`Unexpected secret type: ${value}`);
 }
 
-async function loadMorningBriefNextRunAt(
-  db: ReadonlyDb,
-  orgId: string,
-  userId: string,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ nextRunAt: morningBriefSchedules.nextRunAt })
-    .from(morningBriefSchedules)
-    .where(
-      and(
-        eq(morningBriefSchedules.orgId, orgId),
-        eq(morningBriefSchedules.userId, userId),
-      ),
-    )
-    .limit(1);
-  return row?.nextRunAt?.toISOString() ?? null;
-}
-
 export function userPreferences({
   orgId,
   userId,
@@ -110,7 +108,8 @@ export function userPreferences({
         locale: orgMembersMetadata.locale,
         pinnedAgentIds: orgMembersMetadata.pinnedAgentIds,
         sendMode: orgMembersMetadata.sendMode,
-        morningBriefEnabled: orgMembersMetadata.morningBriefEnabled,
+        theme: orgMembersMetadata.theme,
+        colorTheme: orgMembersMetadata.colorTheme,
         captureNetworkBodiesRemaining:
           orgMembersMetadata.captureNetworkBodiesRemaining,
       })
@@ -130,6 +129,8 @@ export function userPreferences({
         supportedLocales: [...SUPPORTED_USER_LOCALES],
         pinnedAgentIds: [],
         sendMode: "enter",
+        theme: null,
+        colorTheme: null,
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
@@ -144,8 +145,13 @@ export function userPreferences({
         toStringArray(row.pinnedAgentIds),
       ),
       sendMode: parseSendMode(row.sendMode),
-      morningBriefEnabled: row.morningBriefEnabled,
-      morningBriefNextRunAt: await loadMorningBriefNextRunAt(db, orgId, userId),
+      theme: parseThemePreference(row.theme),
+      colorTheme: parseColorTheme(row.colorTheme),
+      // Deployment fallback for old App bundles: keep the deprecated response
+      // shape terminal until phase B, after the replacement App version floor
+      // and the released legacy zero-traffic gate tracked by #30264.
+      morningBriefEnabled: false,
+      morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
   });
@@ -209,6 +215,62 @@ type UpdateUserPreferencesResult =
   | { readonly ok: true; readonly data: UserPreferencesResponse }
   | { readonly ok: false; readonly message: string };
 
+type StoredUserPreferences = Omit<
+  UserPreferencesResponse,
+  "morningBriefNextRunAt" | "theme" | "colorTheme"
+> & {
+  readonly theme: ThemePreference | null;
+  readonly colorTheme: ColorTheme | null;
+};
+
+function mergeUserPreferences(
+  existing: UserPreferencesResponse,
+  preferences: UpdateUserPreferencesRequest,
+): StoredUserPreferences {
+  return {
+    timezone: preferences.timezone ?? existing.timezone,
+    locale: preferences.locale ?? existing.locale,
+    supportedLocales: [...SUPPORTED_USER_LOCALES],
+    pinnedAgentIds:
+      preferences.pinnedAgentIds === undefined
+        ? existing.pinnedAgentIds
+        : normalizePinnedAgentIds(preferences.pinnedAgentIds),
+    sendMode: preferences.sendMode ?? existing.sendMode,
+    theme: preferences.theme ?? existing.theme ?? null,
+    colorTheme: preferences.colorTheme ?? existing.colorTheme ?? null,
+    // Old App bundles may still send this deprecated field. Accept it as a
+    // no-op until phase B; no request may reactivate the legacy runtime.
+    morningBriefEnabled: false,
+    captureNetworkBodiesRemaining:
+      preferences.captureNetworkBodiesRemaining ??
+      existing.captureNetworkBodiesRemaining,
+  };
+}
+
+function userPreferenceUpdateColumns(
+  preferences: UpdateUserPreferencesRequest,
+): Partial<typeof orgMembersMetadata.$inferInsert> {
+  return {
+    ...(preferences.timezone !== undefined && {
+      timezone: preferences.timezone,
+    }),
+    ...(preferences.locale !== undefined && { locale: preferences.locale }),
+    ...(preferences.pinnedAgentIds !== undefined && {
+      pinnedAgentIds: normalizePinnedAgentIds(preferences.pinnedAgentIds),
+    }),
+    ...(preferences.sendMode !== undefined && {
+      sendMode: preferences.sendMode,
+    }),
+    ...(preferences.theme !== undefined && { theme: preferences.theme }),
+    ...(preferences.colorTheme !== undefined && {
+      colorTheme: preferences.colorTheme,
+    }),
+    ...(preferences.captureNetworkBodiesRemaining !== undefined && {
+      captureNetworkBodiesRemaining: preferences.captureNetworkBodiesRemaining,
+    }),
+  };
+}
+
 export const updateUserPreferences$ = command(
   async (
     { get, set },
@@ -231,35 +293,7 @@ export const updateUserPreferences$ = command(
     );
     signal.throwIfAborted();
 
-    const merged: Omit<UserPreferencesResponse, "morningBriefNextRunAt"> & {
-      readonly locale: UserLocale | null;
-    } = {
-      timezone:
-        preferences.timezone !== undefined
-          ? preferences.timezone
-          : existing.timezone,
-      locale:
-        preferences.locale !== undefined
-          ? preferences.locale
-          : (existing.locale ?? null),
-      supportedLocales: [...SUPPORTED_USER_LOCALES],
-      pinnedAgentIds:
-        preferences.pinnedAgentIds !== undefined
-          ? normalizePinnedAgentIds(preferences.pinnedAgentIds)
-          : existing.pinnedAgentIds,
-      sendMode:
-        preferences.sendMode !== undefined
-          ? preferences.sendMode
-          : existing.sendMode,
-      morningBriefEnabled:
-        preferences.morningBriefEnabled !== undefined
-          ? preferences.morningBriefEnabled
-          : existing.morningBriefEnabled,
-      captureNetworkBodiesRemaining:
-        preferences.captureNetworkBodiesRemaining !== undefined
-          ? preferences.captureNetworkBodiesRemaining
-          : existing.captureNetworkBodiesRemaining,
-    };
+    const merged = mergeUserPreferences(existing, preferences);
 
     const updatedAt = nowDate();
     const writeDb = set(writeDb$);
@@ -272,7 +306,9 @@ export const updateUserPreferences$ = command(
         locale: merged.locale,
         pinnedAgentIds: merged.pinnedAgentIds,
         sendMode: merged.sendMode,
-        morningBriefEnabled: merged.morningBriefEnabled,
+        theme: merged.theme,
+        colorTheme: merged.colorTheme,
+        morningBriefEnabled: false,
         captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
         createdAt: updatedAt,
         updatedAt,
@@ -280,54 +316,17 @@ export const updateUserPreferences$ = command(
       .onConflictDoUpdate({
         target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
         set: {
-          ...(preferences.timezone !== undefined && {
-            timezone: preferences.timezone,
-          }),
-          ...(preferences.locale !== undefined && {
-            locale: preferences.locale,
-          }),
-          ...(preferences.pinnedAgentIds !== undefined && {
-            pinnedAgentIds: normalizePinnedAgentIds(preferences.pinnedAgentIds),
-          }),
-          ...(preferences.sendMode !== undefined && {
-            sendMode: preferences.sendMode,
-          }),
-          ...(preferences.morningBriefEnabled !== undefined && {
-            morningBriefEnabled: preferences.morningBriefEnabled,
-          }),
-          ...(preferences.captureNetworkBodiesRemaining !== undefined && {
-            captureNetworkBodiesRemaining:
-              preferences.captureNetworkBodiesRemaining,
-          }),
+          ...userPreferenceUpdateColumns(preferences),
           updatedAt,
         },
       });
     signal.throwIfAborted();
 
-    if (
-      preferences.timezone !== undefined ||
-      preferences.morningBriefEnabled !== undefined
-    ) {
-      await syncMorningBriefSchedule(writeDb, {
-        orgId: args.orgId,
-        userId: args.userId,
-        timezone: merged.timezone,
-        enabled: merged.morningBriefEnabled,
-        currentTime: updatedAt,
-        publicBrand: args.publicBrand,
-      });
-      signal.throwIfAborted();
-    }
-
     return {
       ok: true,
       data: {
         ...merged,
-        morningBriefNextRunAt: await loadMorningBriefNextRunAt(
-          writeDb,
-          args.orgId,
-          args.userId,
-        ),
+        morningBriefNextRunAt: null,
       },
     };
   },

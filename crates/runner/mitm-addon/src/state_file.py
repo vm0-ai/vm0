@@ -13,7 +13,13 @@ type StatValidator = Callable[[Path, os.stat_result], None]
 
 
 class StateFileIdentity(NamedTuple):
-    """Identity of the descriptor opened for a state-file read."""
+    """Identity captured for the descriptor opened for a state-file read.
+
+    The device, inode, modification time, and size fields come from ``fstat()``
+    on the descriptor before the read. ``absolute_path`` records the path passed
+    to the open operation. Together, these fields identify the opened file for
+    caller cache decisions; they do not perform a later path lookup.
+    """
 
     absolute_path: str
     st_dev: int
@@ -28,7 +34,18 @@ class StateFileNotRegularError(OSError):
 
 @dataclass(frozen=True)
 class OpenedStateFile:
-    """Validated state-file descriptor owned by a context manager."""
+    """State-file descriptor that passed the helper's baseline checks.
+
+    The descriptor was opened read-only with each available ``O_CLOEXEC``,
+    ``O_NOFOLLOW``, and ``O_NONBLOCK`` flag. The helper inspected the opened
+    descriptor with ``fstat()`` and accepted it only when it is regular. These
+    checks do not establish owner, mode, or other caller-specific trust. Supply
+    ``validate_stat`` to ``open_state_file()`` when such a policy is required.
+
+    Use this object as a context manager. Exiting the context closes the
+    descriptor. ``identity`` records metadata captured from this descriptor
+    before reading.
+    """
 
     _fd: int
     path: Path
@@ -42,7 +59,14 @@ class OpenedStateFile:
         os.close(self._fd)
 
     def read_bytes(self, max_bytes: int) -> bytes:
-        """Read at most `max_bytes`, probing one extra byte for size drift."""
+        """Read at most ``max_bytes`` from the opened descriptor.
+
+        If the identity's captured ``st_size`` exceeds ``max_bytes``, the read
+        is rejected before any bytes are consumed. The method then probes one
+        byte beyond the limit, so underreported or growing content is also
+        rejected. Success returns at most ``max_bytes`` bytes; excess content
+        raises ``OSError``.
+        """
         if self.identity.st_size > max_bytes:
             raise OSError(f"{self.description} {self.path} exceeds {max_bytes} bytes")
 
@@ -67,7 +91,19 @@ def open_state_file(
     description: str,
     validate_stat: StatValidator | None = None,
 ) -> OpenedStateFile:
-    """Open and validate a state file, closing it if setup fails."""
+    """Open and baseline-validate a state file, closing setup failures.
+
+    The path is opened read-only with each available ``O_CLOEXEC``,
+    ``O_NOFOLLOW``, and ``O_NONBLOCK`` flag. The resulting descriptor is checked
+    with ``fstat()`` and must identify a regular file. These checks do not
+    establish owner, mode, or other caller-specific trust. When supplied,
+    ``validate_stat`` receives the ``Path`` and ``os.stat_result`` from that
+    already-open descriptor, allowing the caller to apply an additional policy.
+
+    The returned object owns the descriptor through its context manager. Setup
+    failures close the descriptor before re-raising; callers must exit the
+    context to close a successful open.
+    """
     flags = os.O_RDONLY
     for flag_name in ("O_CLOEXEC", "O_NOFOLLOW", "O_NONBLOCK"):
         flags |= getattr(os, flag_name, 0)

@@ -28,9 +28,38 @@ jobs:
       - name: Test devcontainer scripts
         run: bash .devcontainer/test.sh
 
+  detect-toolchain-changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      toolchain-changed: ${{ steps.detect.outputs.toolchain-changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Detect toolchain image changes
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CHECKOUT_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          BASE_REF=$(.github/scripts/changed-base-ref.sh)
+          if git diff --quiet "$BASE_REF" HEAD -- docker/toolchain/; then
+            echo "toolchain-changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "toolchain-changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
   toolchain:
     # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    if: >-
+      ${{
+        needs.detect-toolchain-changes.outputs.toolchain-changed == 'true' &&
+        !startsWith(github.head_ref || '', 'release-please--branches--')
+      }}
+    needs: [detect-toolchain-changes]
     timeout-minutes: 30
     strategy:
       fail-fast: false

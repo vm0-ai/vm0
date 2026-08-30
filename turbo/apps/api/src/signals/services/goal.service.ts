@@ -238,18 +238,23 @@ async function createGoalThread(
     orgId: args.orgId,
     userId: args.userId,
   });
+  const pinColumns = chatThreadModelPinColumns(pin);
   const [thread] = await tx
     .insert(chatThreads)
     .values({
       userId: args.userId,
-      agentComposeId: args.agentId,
+      agentId: args.agentId,
       title: args.objective,
-      ...chatThreadModelPinColumns(pin),
+      modelProviderId: pinColumns.modelProviderId,
+      modelProviderType: pinColumns.modelProviderType,
+      modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+      selectedModel: pinColumns.selectedModel,
       codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
       lastMessageAt: args.createdAt,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
-      ...mediaModels,
+      selectedVideoModel: mediaModels.selectedVideoModel,
+      selectedImageModel: mediaModels.selectedImageModel,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
@@ -260,7 +265,7 @@ async function createGoalThread(
     userId: args.userId,
     orgId: args.orgId,
     chatThreadId: thread.id,
-    agentComposeId: args.agentId,
+    agentId: args.agentId,
     title: args.objective,
     selectedModel: pin.selectedModel,
     serviceTier: pin.serviceTier,
@@ -337,10 +342,11 @@ async function loadLockedOwnedGoal(
 }
 
 async function publishGoalMarker(
+  orgId: string,
   userId: string,
   threadId: string,
 ): Promise<void> {
-  await publishChatThreadMessageCreatedSafely(userId, threadId);
+  await publishChatThreadMessageCreatedSafely({ orgId, userId, threadId });
 }
 
 export async function createGoalForCurrentThread(
@@ -414,7 +420,7 @@ export async function createGoalForCurrentThread(
     };
   }
 
-  await publishGoalMarker(args.userId, created.threadId);
+  await publishGoalMarker(args.orgId, args.userId, created.threadId);
 
   return {
     kind: "ok",
@@ -533,7 +539,7 @@ async function setCurrentGoalTerminalState(
     };
   }
 
-  await publishGoalMarker(args.userId, goal.threadId);
+  await publishGoalMarker(args.orgId, args.userId, goal.threadId);
   return { kind: "ok", goal: goalResponse(updated) };
 }
 
@@ -620,7 +626,7 @@ async function pauseGoalRow(
       message: "Completed goals cannot be paused",
     };
   }
-  await publishGoalMarker(args.userId, args.threadId);
+  await publishGoalMarker(args.orgId, args.userId, args.threadId);
   return { kind: "ok", goal: goalResponse(updated) };
 }
 
@@ -683,7 +689,7 @@ export async function resumeCurrentGoal(
       message: "Completed goals cannot be resumed",
     };
   }
-  await publishGoalMarker(args.userId, goal.threadId);
+  await publishGoalMarker(args.orgId, args.userId, goal.threadId);
   return { kind: "ok", goal: goalResponse(updated) };
 }
 
@@ -751,7 +757,7 @@ export async function editCurrentGoal(
   if (!updated) {
     return { kind: "not-found" };
   }
-  await publishGoalMarker(args.userId, goal.threadId);
+  await publishGoalMarker(args.orgId, args.userId, goal.threadId);
   return { kind: "ok", goal: goalResponse(updated) };
 }
 
@@ -785,7 +791,7 @@ export async function clearCurrentGoal(
   if (!cleared) {
     return { kind: "not-found" };
   }
-  await publishGoalMarker(args.userId, goal.threadId);
+  await publishGoalMarker(args.orgId, args.userId, goal.threadId);
   return { kind: "ok", cleared: true };
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Real VM0-managed Claude and Pi smoke tests through supported model, agent, and chat APIs.
+# Real VM0 built-in Claude and Pi smoke tests through supported model, agent, and chat APIs.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
@@ -126,13 +126,13 @@ run_real_claude_steer() {
     printf '%s\n%s\n' "$steer_output" "$successor_output"
 }
 
-@test "vm0-managed real claude returns a successful answer" {
+@test "vm0 built-in real claude returns a successful answer" {
     run runner_api_curl "/api/model-policies"
     assert_success
     run jq -e --arg model "$REAL_CLAUDE_MODEL" '
         any(.policies[]?;
             .model == $model and
-            .defaultProviderType == "vm0" and
+            .defaultProviderType == "built-in" and
             .credentialScope == "org" and
             .modelProviderId == null
         )
@@ -152,13 +152,13 @@ run_real_claude_steer() {
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]
 }
 
-@test "vm0-managed real pi loop returns a successful answer" {
+@test "vm0 built-in real pi loop returns a successful answer" {
     run runner_api_curl "/api/model-policies"
     assert_success
     run jq -e '
         any(.policies[]?;
             .model == "deepseek-v4-flash" and
-            .defaultProviderType == "vm0" and
+            .defaultProviderType == "built-in" and
             .credentialScope == "org" and
             .modelProviderId == null
         )
@@ -195,7 +195,7 @@ run_real_claude_steer() {
     assert_success
 }
 
-@test "vm0-managed real claude steers an active run then starts a successor" {
+@test "vm0 built-in real claude steers an active run then starts a successor" {
     local steer_nonce steer_prompt after_complete_nonce after_complete_prompt
     steer_nonce="$(_runner_uuid)"
     steer_prompt="claude-steer-${steer_nonce%%-*}"

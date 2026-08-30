@@ -9,7 +9,6 @@ import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -30,7 +29,6 @@ import { setRunVideoModelFixture } from "../../../test-fixtures/run-video-model"
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 import { createRouteMocks } from "./helpers/route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
@@ -38,7 +36,7 @@ const store = createStore();
 const mocks = createRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
-const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
+const VIDEO_IO_MODEL = "dreamina-seedance-2-0-260128";
 const SEEDANCE_2_5_MODEL = "dreamina-seedance-2-5-260628";
 const SEEDANCE_2_0_MINI_MODEL = "dreamina-seedance-2-0-mini-260615";
 const BYTEPLUS_VIDEO_TASKS_URL =
@@ -473,8 +471,8 @@ async function orgCredits(fixture: VideoFixture): Promise<number> {
 
 describe("POST /api/video-io/generate", () => {
   beforeEach(() => {
-    mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_API_BACKEND_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     server.use(
       http.get(CLOUDFLARE_MEDIA_FRAME_URL, () => {
         return new HttpResponse("video poster unavailable in route fixture", {
@@ -532,8 +530,7 @@ describe("POST /api/video-io/generate", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message:
-          "Unsupported video duration for dreamina-seedance-2.0-fast: 3s",
+        message: "Unsupported video duration for dreamina-seedance-2.0: 3s",
         code: "BAD_REQUEST",
       },
     });
@@ -712,9 +709,6 @@ describe("POST /api/video-io/generate", () => {
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
     });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let observedRequestUrl: string | null = null;
     let calledKling = false;
@@ -812,9 +806,6 @@ describe("POST /api/video-io/generate", () => {
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
     });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let calledFal = false;
     server.use(
@@ -879,9 +870,6 @@ describe("POST /api/video-io/generate", () => {
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
     });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let calledKling = false;
     let calledBytePlus = false;
@@ -940,9 +928,6 @@ describe("POST /api/video-io/generate", () => {
     await setRunVideoModelFixture({
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
-    });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
     });
 
     let observedRequestUrl: string | null = null;
@@ -1033,9 +1018,6 @@ describe("POST /api/video-io/generate", () => {
       runId,
       selectedVideoModel: KLING_V3_4K_MODEL,
     });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let observedRequestUrl: string | null = null;
     server.use(
@@ -1096,75 +1078,6 @@ describe("POST /api/video-io/generate", () => {
     });
   });
 
-  it("keeps the request model when video model selection is disabled", async () => {
-    const fixture = await seedVideoFixture();
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-      },
-      context.signal,
-    );
-    await setRunVideoModelFixture({
-      runId,
-      selectedVideoModel: KLING_V3_4K_MODEL,
-    });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: false,
-    });
-
-    let calledVeo = false;
-    let calledKling = false;
-    server.use(
-      http.post(FAL_VEO_FAST_QUEUE_URL, () => {
-        calledVeo = true;
-        return HttpResponse.json({
-          request_id: "switch-off-veo-request",
-          status_url: FAL_STATUS_URL,
-          response_url: FAL_RESPONSE_URL,
-        });
-      }),
-      http.post(KLING_V3_4K_QUEUE_URL, () => {
-        calledKling = true;
-        return HttpResponse.json({
-          request_id: "unexpected-kling-request",
-          status_url: KLING_STATUS_URL,
-          response_url: KLING_RESPONSE_URL,
-        });
-      }),
-    );
-
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      runId,
-    });
-    const app = createVideoIoTestApp(fixture.pricingResolution);
-    const response = await app.request("/api/video-io/generate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        prompt: "a city at night",
-        model: "veo3.1-fast",
-        duration: "8s",
-        resolution: "1080p",
-        aspectRatio: "16:9",
-      }),
-    });
-
-    expect(response.status).toBe(202);
-    expect(calledVeo).toBeTruthy();
-    expect(calledKling).toBeFalsy();
-  });
-
   it("keeps the request model when the run video model snapshot is null", async () => {
     const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
@@ -1183,9 +1096,6 @@ describe("POST /api/video-io/generate", () => {
       context.signal,
     );
     await setRunVideoModelFixture({ runId, selectedVideoModel: null });
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
 
     let calledFal = false;
     server.use(
@@ -1223,9 +1133,6 @@ describe("POST /api/video-io/generate", () => {
 
   it("keeps the request model for callers without a run ID", async () => {
     const fixture = await seedVideoFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.VideoModelSelection]: true,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledMiniMax = false;
     server.use(
@@ -1387,7 +1294,7 @@ describe("POST /api/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 865,
+      creditsCharged: 1081,
       model: VIDEO_IO_MODEL,
       aspectRatio: "16:9",
       duration: "8s",
@@ -1450,7 +1357,7 @@ describe("POST /api/video-io/generate", () => {
     // The callback-token charge (123,456 tokens at the no-video 720p rate) is
     // asserted through the result body above and the exact org balance drop,
     // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 865);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1081);
   });
 
   it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {

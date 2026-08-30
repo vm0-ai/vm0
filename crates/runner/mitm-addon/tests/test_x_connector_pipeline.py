@@ -29,11 +29,6 @@ from tests.x_flow_helpers import (
     make_x_stream_pipeline_flow,
 )
 
-_STREAM_DECODE_SKIP_REASONS = {
-    "br": "brotli streaming output cannot be bounded",
-    "zstd": "zstd streaming output cannot be hard-bounded",
-}
-
 
 def _compress_body(encoding: str, payload: bytes) -> bytes:
     if encoding == "gzip":
@@ -106,7 +101,7 @@ class TestXConnectorResponsePipeline:
         flow = make_x_pipeline_flow(real_flow, tmp_path, content_encoding=encoding_case)
         payload = b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}'
 
-        with mitm_ctx() as log:
+        with mitm_ctx():
             mitm_addon.responseheaders(flow)
         response_stream(flow)(_compress_body(encoding_case, payload))
         assert metadata_keys.STREAM_BUFFER in flow.metadata
@@ -119,11 +114,6 @@ class TestXConnectorResponsePipeline:
         assert by_category == {"posts.read": 1, "user.read": 1}
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
-        assert log.debug.call_count == 1
-        assert (
-            f"Streaming decompression skipped: {_STREAM_DECODE_SKIP_REASONS[encoding_case]}"
-            in log.debug.call_args[0][0]
-        )
 
     @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
     def test_full_response_pipeline_bounds_buffered_x_json_fallback_work(
@@ -151,7 +141,7 @@ class TestXConnectorResponsePipeline:
 
         assert webhook.request_count == 0
         entries = read_jsonl_entries_after_flush(
-            Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         )
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -193,7 +183,7 @@ class TestXConnectorResponsePipeline:
 
         assert webhook.request_count == 0
         entries = read_jsonl_entries_after_flush(
-            Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+            Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         )
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -211,16 +201,11 @@ class TestXConnectorResponsePipeline:
         assert flow.response is not None
         flow.response.headers["content-encoding"] = encoding_case
 
-        with mitm_ctx() as log:
+        with mitm_ctx():
             mitm_addon.responseheaders(flow)
 
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
-        assert log.debug.call_count == 1
-        assert (
-            f"Streaming decompression skipped: {_STREAM_DECODE_SKIP_REASONS[encoding_case]}"
-            in log.debug.call_args[0][0]
-        )
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate", "br", "zstd"])
     def test_full_response_pipeline_truncated_compressed_x_json_does_not_bill(
@@ -246,7 +231,7 @@ class TestXConnectorResponsePipeline:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -404,7 +389,7 @@ class TestXConnectorResponsePipeline:
 
         assert webhook.request_count == 0
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -567,7 +552,7 @@ class TestXConnectorResponsePipeline:
             mitm_addon.response(flow)
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -602,7 +587,7 @@ class TestXConnectorResponsePipeline:
             mitm_addon.response(flow)
 
         assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
@@ -637,7 +622,7 @@ class TestXConnectorResponsePipeline:
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         assert all(entry["level"] != "error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
@@ -700,7 +685,7 @@ class TestXConnectorErrorPipeline:
         assert len(payloads) == len(by_cat)
         assert by_cat == {"posts.read": 2, "user.read": 1}
 
-        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         entries = read_jsonl_entries_after_flush(proxy_log)
         assert any(entry["type"] == "connection_error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
@@ -720,7 +705,7 @@ class TestXConnectorErrorPipeline:
         incremental parser must have accumulated counts from the chunks.
         """
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
         flow.metadata.pop(metadata_keys.NETWORK_LOG_TARGET)
 
         # 1. Register parser

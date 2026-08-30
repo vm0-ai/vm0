@@ -7,6 +7,11 @@ import {
   PRESENTATION_IMAGE_BATCH_INSTRUCTION,
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "./presentation-generation-instructions";
+import {
+  PRESENTATION_REVERSE_TEMPLATE_ARCHIVE_SHA256,
+  PRESENTATION_REVERSE_TEMPLATE_RESOURCE_ID,
+  PRESENTATION_REVERSE_TEMPLATE_RESOURCE_PATH,
+} from "./presentation-reverse-template-resource";
 
 export type GenerationTarget =
   | "image"
@@ -3041,7 +3046,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     kind: "image-style",
     name: "Notion Illustration",
     description:
-      "Zero-native illustration style for hand-drawn product spot illustrations with simple ink contours and soft backgrounds.",
+      "Hand-drawn product spot illustration style with simple ink contours and soft backgrounds.",
     desc: 'Notion-editorial-style hand-drawn spot illustration. Black brush-pen ink on white, tapered confident strokes, solid-black curly hair, solid-black pants/shoes, 3/4 face turned toward viewer with closed-eye smile and soft nose hint, open breathing body outlines, and 1-3 supporting scene props + ambient marks that frame the moment. Trigger when user says /notion-illustration, asks for a "Notion-style illustration", "Notion spot illustration", or a new piece in this hand-drawn brush-pen Notion editorial style.',
     source: vm0ImageStyleSource("notion-illustration"),
   },
@@ -3176,8 +3181,8 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     kind: "image-style",
     name: "Flat Poster",
     description:
-      "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, wordmark pinned bottom-right.",
-    desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; a short wordmark (default VM0) pinned bottom-right; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
+      "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, and an optional user-supplied wordmark pinned bottom-right.",
+    desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; an optional short wordmark supplied by the user pinned bottom-right and omitted when none is supplied; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
     source: vm0ImageStyleSource("flat-poster"),
   },
   {
@@ -3326,6 +3331,32 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   },
 ];
 
+// ── Presentation reverse-template guide ─────────────────────────────────────
+// This is a pull-only authoring resource. Keep it out of RESOURCE_REGISTRY so
+// it does not appear as a presentation-generation skill candidate: it is used
+// only when an uploaded deck is being reverse-engineered into a new template.
+
+const PRESENTATION_REVERSE_TEMPLATE_RESOURCE: RegistryEntry = {
+  id: PRESENTATION_REVERSE_TEMPLATE_RESOURCE_ID,
+  kind: "skill",
+  name: "Presentation Reverse Template",
+  description:
+    "Extract reusable presentation identity guidance and high-fidelity visual assets from an uploaded deck.",
+  source: privateR2ArchiveSource(
+    PRESENTATION_REVERSE_TEMPLATE_RESOURCE_PATH,
+    PRESENTATION_REVERSE_TEMPLATE_ARCHIVE_SHA256,
+  ),
+  targets: ["presentation"],
+};
+
+export function findPresentationReverseTemplateResource(
+  resourceId: string,
+): RegistryEntry | undefined {
+  return resourceId === PRESENTATION_REVERSE_TEMPLATE_RESOURCE_ID
+    ? PRESENTATION_REVERSE_TEMPLATE_RESOURCE
+    : undefined;
+}
+
 // ── Presentation runbook packages ────────────────────────────────────────────
 // Self-contained per-template presentation packages (agent runbook + renderer)
 // uploaded to private R2 as one archive each. When a selected template ships one
@@ -3361,45 +3392,45 @@ export const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV =
 // Archive digests for uploaded private R2 presentation runbook packages. Keep
 // these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
-  bloom: "db1cad7968de508939aacb1d1863c1edc65d212c030f15ba07017be23a7f4b76",
+  bloom: "b9003d1545000987eac1868220b4ea1379ec1cdd79e884bc08d13539c1cc5f88",
   "blueprint-academy":
-    "5ef9dd33430d3c45ce35340894d20eec65ac0953197f60149c7927133b7a8554",
+    "3ba06b6767eb7fb59c7e4e1599acb908f1684c18bfed2f8d29231e6f057e065e",
   "botane-organic":
-    "09cce166d735be6444c1ba2bffb67b8a869a6dc911cb58332f8969a3486dd262",
+    "f422972f28f470b894e46739aa0cdec8604b7bda7b0738a9ebca3541e553f2ec",
   "business-data":
-    "aafe5ccb07d14a48ffb6f5a870a88b96bc494f00c5ca39599bddcda23da26b14",
-  crayon: "a3bc98e3a22d5a36df60cb597dbcda408c25d1878d787f68e96020cad5c8d43a",
+    "cf039ee1f7a989af9935658f7920b7862ce029b57763f71c8562abdb6e9061d8",
+  crayon: "2f67f694ead043195e8ec3cbf3e0843e09df6d93dc49f57a261f0f7bd503ae2a",
   "creative-agency":
-    "b57ca925022b39c56b14521593ef3780a2f9f9dee2396778f9ae31b05c0698cd",
+    "14ee0f1e2e3dcfd36fc571bb747681a063dfb43eb62a70f67d0fd06aa79ef977",
   "data-report":
-    "f1ac2126154139f5b9d433c7bec5b239d0173fa1049a86821b4eb4bf3ab4628b",
+    "199bc3e337e66069ade2d15c3f71488e7d15b1cb2d25da8baffd943e13aceefa",
   "editorial-magazine":
-    "31d28b4ca15818583ead5cb30c393e912b8625bd0f86aec2d74be44ed4b1947d",
+    "0068cfa0a3d91a9cbaeed98685f99afa6355dda8a4cab1d5e3cf7bb0e3d232f3",
   "landing-consulting":
-    "a1206787ac402bd92903257a88cac8b0a5542aac9762159591f2c9d0b0732237",
-  lumina: "479811a0e8705d05bae893067936155e0a6bb1f297d5d3b63aa17c5b1b227696",
-  meridian: "556c31e9a88c532d975fbe3b060ecd5a9216c0e1deb0c0a981dd14112417b405",
+    "622fa1cca454f057d4b5eaaa412033276ed6ad014ac7a79bc5b82cd1aaba0725",
+  lumina: "470aa7096ac3c676d644cdf74369ddcb8d120231e1981d7e7c27844d48142ab1",
+  meridian: "16ceb52885a5a93dd6ff909cbc95d2a8a27d6d8ac79ce4e6b906e57b17d69fde",
   "mosaic-geometric":
-    "846afc579bd21355482ecd91adb299a42aba81bf84aae6101a5f6dc16bc5082f",
+    "722f6ea996166bdce3a6ab5f0292d1ead73488f03c6ad1138883e47506971cfe",
   "neo-brutalism":
-    "7a516aaa4a9a7c19bc3ce0f524d0c33b878a6213c5dfea32a8d27b1adbfabfaa",
-  nocturne: "793b1317af6b8f5770a47bff99d5e811d733b13733644f8de06aeee91eddf933",
+    "488508a363064e08774ba3fc10eff15f72d0bc0df4ff19df841a8772869bd7a5",
+  nocturne: "22db828e89979fdbc6e388568f600098f781b03cff28a99419b4101057394227",
   "pixel-glitch":
-    "62355fd6c42d3414609be44ebd35b742db9d2a3f593977a974734d34215b0d79",
+    "085c7f8276e7ff9f2c26d19da7bffcd436dcdbd895b741b24134e11c685e9d91",
   "playful-launch":
-    "4a9e29fb00a5bc9cfc323940b155fd041f4fa2a27d316bafb918198a2a50fd40",
+    "b336b934a2f18904f2af959bf1da999f17bb71d5b727b30c94c89766dc8adcfb",
   "playful-pop":
-    "784f04cafee53a00d6e170bfc53cea9297796b238f8b28d19302ef2d077ffba7",
+    "6f07a5183e71c5f1ab51fabb606433bf2bce40675c5612e47c0040aa21ca8358",
   prospectus:
-    "92353d7918b0ee09679785308ac0254961688a24f65cf08b45a2661a3b0f8da5",
+    "fe2905801b1f8beff802640b717e421c7882da2b015254bba160a92f036f190f",
   schoolhouse:
-    "d61844dc5030cd14a94b047b5cf4193dfcf470f5e389614eaacbf31f3943993e",
+    "e37fd617e744c2e89765ec0b24a30977ad89a876a30176e0bacf8e32209f5394",
   "sticker-scrapbook":
-    "82dee1479d9b778529674faf096a74eeba19f19bf750a5c4911e4de66b86500f",
-  strata: "8d62c3275d01acbc251ebd95a197e6f00ef501531ebbc157e09c0f9ecdb62547",
+    "8bfb271c21004703cc7151358080b5c622c7ec18eb4a5492643f35c5825aadcf",
+  strata: "78aea76e0a6aceb8fbe77a771781cbd276255f2728fc31fb5617d19550432617",
   "taped-consulting":
-    "da2be65f75283b5d161178b303f9c1d2cea44a07f161388176bd4fed8db5aa97",
-  vantage: "73b46709be8278e76e26e6146c0cc1a2292acec75cfc0591ec9aafc82d60b22f",
+    "bbf846cbf4c6591375d9b668f6e0fdf380d387fddb5c2eb173d935b03486b83f",
+  vantage: "a6290319d2b8065ce105949a5f02ba37ed1738cf9c354cd74e4742826b7ee753",
 };
 
 // The disabled side of LatestPresentationTemplates deliberately keeps the
@@ -3756,36 +3787,31 @@ export interface WebsiteTemplatePackage {
   };
 }
 
-export type WebsiteTemplateArchiveVersion = "latest" | "previous";
-
-export const WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV =
-  "OKOU_WEBSITE_TEMPLATE_ARCHIVE_VERSION";
-
 // Archive digests for uploaded private R2 website template packages. Keep these
 // in sync with the private R2 version ids served by the API download route.
 const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
   "black-slabs":
-    "38b2f826a86901e113b6e96b52563a839b729fc025fa793b1816d6149221bcf9",
+    "a2ba4a18fe6be58a05a99fcf755f696629c7cbfe295ec9e4f7685bef1eebff79",
   "blueprint-grid":
-    "b5f058f3ec7881e642e31e44e7de1f94465bae783de7fc2d42727bbfd109fad2",
+    "b0312334dd8ad42f2e8b219cc0522bd11b0de1d246d133b34d9b832352286468",
   "coastal-hotel":
-    "6bba8c10b85a248a475624767616280fa5d29b757ce230fb4115d746b8b61386",
+    "4df5f2099cee35c286af6af9e3413f496a6b45b9423d7308336ad8372468efa3",
   "dot-matrix":
-    "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+    "5d9f69b7f9625681b5b6183623cbece78c4f40dc6fe585ca799212d05e589623",
   "frame-stack":
-    "642db1ff8e1c98e4c390245cb0fcda5ce29503721bc2a513c38448b9d4e2d01c",
+    "b00cbbe2a39486545d695986b6d2be2def28916d4d21fc80591c64d326ddaa5a",
   "frosted-scatter":
-    "548a1faf423baa1c7c11befe41a54ae398cfb5c94df7f957eff108e2afcd613a",
+    "3aa13240db1b905b8222c3eb7eccacfeec44f93aba30e3f495e0e2f1dc395e58",
   "gallery-wall":
-    "b477b2f05c266eccbd2ab3b822744873dd8a31db03981283688549f2936bd5c6",
+    "41941dd3c92814efc30a36ec8c4929aecda48335619c8684c2e0d3c3d0cbd1fa",
   "glass-bloom":
-    "8707cce50c5477d43912fd18aa5ab6973aae4fd2287a092967fa25bf4ea38e7c",
+    "455acd8f36c55a30b3a58654f3f2d5d20b58fcef379b99a28c52aac54246eaf6",
   "serif-stack":
-    "718d617efd92033a68c476e85bb9231b1e0ff580c08a1f6bedf1b86058e97f13",
+    "f6eb7b64155f25e9361fbe4f6ea3eb5e7ed626445472e38d15af52b99204036a",
   "sticker-pop":
-    "8145c78f932ae942108fba00c5de367958f12b4c492d61bc1310892abe51ca66",
+    "3f7fb7f11dcf6524eec1aa2f94fb3df145ae78fc21b7797c23fdfd2ec5ec481a",
   "warm-cards":
-    "a795ef022e672d364c7a966eb042d38e460d4dcb996d5eecb0647aac5dd259df",
+    "52f5f9670b3d0fba697635d35784bc021a2150f1c84cc73af87c6fd049ed8234",
 };
 
 function websiteTemplateArchiveSha256(slug: string): string {
@@ -3807,60 +3833,6 @@ const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
       source: privateR2ArchiveSource(
         item.sourcePath,
         websiteTemplateArchiveSha256(item.slug),
-      ),
-    };
-  });
-
-// The disabled side of LatestWebsiteTemplates deliberately keeps the stable
-// Website package ids on their pre-cutover immutable R2 versions. Remove this
-// map with the switch only after the rollout and run-context drain in #26672;
-// historical R2 objects remain immutable and must not be deleted.
-const PREVIOUS_WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
-  "black-slabs":
-    "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
-  "blueprint-grid":
-    "97c2edd94467bc414f0d9fc27cafa048cb2a7aaba3df5159df519a2bb2b97a4e",
-  "coastal-hotel":
-    "9633475124da5728cbf99a7333b494f74842232faaf675bc7878a3ebcdf59bcb",
-  "dot-matrix":
-    "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
-  "frame-stack":
-    "4587e93da51652c0c16c2d0706e8437001305214e4e6b8b1c18a6538b3daa127",
-  "frosted-scatter":
-    "00e343ace0673ece5903a2b6abbad6bb960c17796e0cfa5cce0bcab7e6bcdd7b",
-  "gallery-wall":
-    "c90332053b24572feadecb3994925ed317957e1cb17b0080cfebc6f4d9e93bd1",
-  "glass-bloom":
-    "0c61488baa294fb13c58aa129e3ae99f0cd4ff9125459761a1b2c1390b860f93",
-  "serif-stack":
-    "cf5137a7b6788f4d7cb24bda358a8e1971c0e7ed026d50e6cf292f6bf0cd0c14",
-  "sticker-pop":
-    "2086113018279f28e23489cf7a0f3663c37a23210fb106c4ed48d8c19923f78f",
-  "warm-cards":
-    "2721c013f76e1b2eea09282269b33d7f143b7e83ee3e701e83a0fcf7773852dd",
-};
-
-function previousWebsiteTemplateArchiveSha256(slug: string): string {
-  const sha256 = PREVIOUS_WEBSITE_TEMPLATE_ARCHIVE_SHA256[slug];
-  if (!sha256) {
-    throw new Error(
-      `Missing previous website template archive sha256 for ${slug}`,
-    );
-  }
-  return sha256;
-}
-
-const PREVIOUS_WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
-  WEBSITE_TEMPLATE_ITEMS.map((item) => {
-    return {
-      templateId: item.templateId,
-      resourceId: item.resourceId,
-      slug: item.sourcePath,
-      name: item.title,
-      description: item.description,
-      source: privateR2ArchiveSource(
-        item.sourcePath,
-        previousWebsiteTemplateArchiveSha256(item.slug),
       ),
     };
   });
@@ -3935,7 +3907,6 @@ export function listWebsiteTemplatePackages(): readonly WebsiteTemplatePackage[]
 
 export function findWebsiteTemplatePackage(
   templateId: string,
-  archiveVersion: WebsiteTemplateArchiveVersion = "latest",
 ): WebsiteTemplatePackage | undefined {
   const v2Package = WEBSITE_TEMPLATE_V2_PACKAGES.find((pkg) => {
     return pkg.templateId === templateId || pkg.resourceId === templateId;
@@ -3943,11 +3914,7 @@ export function findWebsiteTemplatePackage(
   if (v2Package) {
     return v2Package;
   }
-  const packages =
-    archiveVersion === "latest"
-      ? WEBSITE_TEMPLATE_PACKAGES
-      : PREVIOUS_WEBSITE_TEMPLATE_PACKAGES;
-  const directPackage = packages.find((pkg) => {
+  const directPackage = WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
     return pkg.templateId === templateId || pkg.resourceId === templateId;
   });
   if (directPackage) {
@@ -3955,14 +3922,13 @@ export function findWebsiteTemplatePackage(
   }
   const normalizedTemplateId =
     findWebsiteTemplateItem(templateId)?.templateId ?? templateId;
-  return packages.find((pkg) => {
+  return WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
     return pkg.templateId === normalizedTemplateId;
   });
 }
 
 export function findWebsiteTemplateResource(
   resourceId: string,
-  archiveVersion: WebsiteTemplateArchiveVersion = "latest",
 ): RegistryEntry | undefined {
   const directPackage = WEBSITE_TEMPLATE_V2_PACKAGES.find((pkg) => {
     return pkg.resourceId === resourceId;
@@ -3972,11 +3938,7 @@ export function findWebsiteTemplateResource(
   }
   const normalizedResourceId =
     findWebsiteTemplateItem(resourceId)?.resourceId ?? resourceId;
-  const packages =
-    archiveVersion === "latest"
-      ? WEBSITE_TEMPLATE_PACKAGES
-      : PREVIOUS_WEBSITE_TEMPLATE_PACKAGES;
-  const pkg = packages.find((entry) => {
+  const pkg = WEBSITE_TEMPLATE_PACKAGES.find((entry) => {
     return entry.resourceId === normalizedResourceId;
   });
   if (!pkg) {

@@ -87,7 +87,7 @@ async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
       return;
     }
     case "agent": {
-      await bdd.deleteVersionFreeAgent(fixture.actor, fixture.agentId);
+      await bdd.deleteAgent(fixture.actor, fixture.agentId);
       return;
     }
   }
@@ -1467,6 +1467,12 @@ describe("workflows", () => {
       automation.body.id,
       4,
     );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, automation.body.id),
+    ).resolves.toMatchObject({
+      officialBlueprintKey: null,
+      officialResultEmailEnabled: null,
+    });
     const webhookAutomation = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
@@ -1519,7 +1525,11 @@ describe("workflows", () => {
     }
     await expect(
       readWorkflowAutomationAutonomyFixture(context, copiedSchedule.id),
-    ).resolves.toMatchObject({ autonomyBudget: 4 });
+    ).resolves.toMatchObject({
+      autonomyBudget: 4,
+      officialBlueprintKey: null,
+      officialResultEmailEnabled: null,
+    });
     expect(
       copiedAutomations.body.some((copiedAutomation) => {
         return (
@@ -1530,7 +1540,7 @@ describe("workflows", () => {
     ).toBeTruthy();
   });
 
-  it("inherits copied automation budgets from Zero callers and rejects exhausted runs", async () => {
+  it("inherits copied automation budgets from agent callers and rejects exhausted runs", async () => {
     const actor = user({ orgRole: "org:admin" });
     await enableWorkflowRuns(actor);
     const sourceAgent = await createAgent(actor, {

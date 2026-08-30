@@ -4,21 +4,24 @@ import {
   agentsByIdContract,
   agentsMainContract,
 } from "@okouai/api-contracts/contracts/agents";
+import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { removeAgentLegacyVersionsFixture } from "../../../test-fixtures/agent-deletion";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { createDeferredPromise } from "../../utils";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
 
 const context = testContext();
 const authOrgApi = createAuthOrgAgentsBddApi(context);
+const storageApi = createStoragesBddApi(context);
 const mocks = createRouteMocks(context);
 
 type AgentsFixture = ApiTestUser & { readonly orgId: string };
@@ -53,6 +56,15 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
+async function instructionStorageCount(
+  fixture: AgentsFixture,
+): Promise<number> {
+  const storages = await storageApi.listStorages(fixture, "organization");
+  return storages.filter((storage) => {
+    return storage.name.startsWith("agent-instructions@");
+  }).length;
+}
+
 describe("POST /api/agents", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
@@ -65,7 +77,7 @@ describe("POST /api/agents", () => {
     });
   });
 
-  it("returns 403 for a zero token without agent:write capability", async () => {
+  it("returns 403 for an agent token without agent:write capability", async () => {
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
       scope: "okou",
@@ -243,7 +255,6 @@ describe("POST /api/agents", () => {
     if (!deletedAgentId) {
       throw new Error("Expected a created agent");
     }
-    await removeAgentLegacyVersionsFixture(deletedAgentId);
     const deleteResponse = await accept(
       agentsByIdClient().delete({
         params: { id: deletedAgentId },
@@ -261,5 +272,80 @@ describe("POST /api/agents", () => {
       [201],
     );
     expect(response.body.displayName).toBe("After Delete");
+  });
+
+  it("serializes concurrent public create slots", async () => {
+    const fixture = agentsFixture("concurrent-limit");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    for (let index = 0; index < 6; index += 1) {
+      await accept(
+        agentsClient().create({
+          headers: authHeaders(),
+          body: { displayName: `Concurrent Limit ${index + 1}` },
+        }),
+        [201],
+      );
+    }
+    const baselineStorageCount = await instructionStorageCount(fixture);
+    expect(baselineStorageCount).toBe(6);
+
+    const uploadsReady = createDeferredPromise<void>(context.signal);
+    const releaseUploads = createDeferredPromise<void>(context.signal);
+    let putObjectCalls = 0;
+    context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+      if (command?.constructor.name === "PutObjectCommand") {
+        putObjectCalls += 1;
+        if (putObjectCalls === 4) {
+          uploadsReady.resolve(undefined);
+        }
+        await releaseUploads.promise;
+      }
+      return {};
+    });
+    onTestFinished(() => {
+      if (!releaseUploads.settled()) {
+        releaseUploads.resolve(undefined);
+      }
+    });
+
+    const requests = ["First contender", "Second contender"].map(
+      async (displayName) => {
+        return await accept(
+          agentsClient().create({
+            headers: authHeaders(),
+            body: { displayName },
+          }),
+          [201, 409],
+        );
+      },
+    );
+
+    await uploadsReady.promise;
+    releaseUploads.resolve(undefined);
+    const responses = await Promise.all(requests);
+
+    expect(
+      responses
+        .map((response) => {
+          return response.status;
+        })
+        .sort(),
+    ).toStrictEqual([201, 409]);
+
+    const listResponse = await accept(
+      agentsClient().list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(
+      listResponse.body.filter((agent) => {
+        return agent.visibility === "public";
+      }),
+    ).toHaveLength(7);
+    await expect(instructionStorageCount(fixture)).resolves.toBe(
+      baselineStorageCount + 1,
+    );
   });
 });

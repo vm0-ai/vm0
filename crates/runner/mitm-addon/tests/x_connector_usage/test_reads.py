@@ -462,27 +462,39 @@ def test_tweet_counts_path_matching_requires_exact_endpoint(x_usage, tmp_path, r
     assert p["quantity"] == 3
 
 
-def test_tweet_counts_missing_total_skips_billing_and_logs_underbilling(
-    x_usage, tmp_path, real_flow
+@pytest.mark.parametrize(
+    ("meta", "query"),
+    [
+        pytest.param({}, "query=missing_total", id="missing"),
+        pytest.param(
+            {"total_tweet_count": -1},
+            "query=negative_total",
+            id="negative",
+        ),
+    ],
+)
+def test_tweet_counts_invalid_total_skips_billing_and_logs_underbilling(
+    x_usage, tmp_path, real_flow, meta, query
 ):
-    """Parsed count endpoint responses without total_tweet_count should not bill buckets."""
+    """Parsed count endpoints without a valid total should not bill buckets."""
     body = json.dumps(
         {
             "data": [
                 {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 2},
                 {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 3},
             ],
-            "meta": {},
+            "meta": meta,
         }
     ).encode()
     flow = x_usage.make_flow(
         real_flow,
         tmp_path,
         path="/2/tweets/counts/recent",
-        query="query=missing_total",
+        query=query,
         body=body,
         rule="GET /2/tweets/counts/recent",
     )
+    assert metadata_keys.X_JSON_STATE not in flow.metadata
 
     assert x_usage.call_and_get_billing(flow) == []
 

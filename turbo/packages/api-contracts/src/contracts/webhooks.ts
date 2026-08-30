@@ -5,6 +5,8 @@ import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  runnerHostnameSchema,
+  runnerVersionSchema,
   sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
   sessionHistorySizeBucketSchema,
@@ -440,7 +442,7 @@ const webhookCompleteBodySchema = z
     error: z.string().optional(),
     lastEventSequence: eventSequenceNumberSchema.optional(),
     // Sandbox id the run executed against. Optional because a run that fails
-    // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
+    // before sandbox creation has no sandbox. Persisted to agent_runs.sandbox_id;
     // the 255-char cap matches the DB column (defense in depth).
     sandboxId: z.string().max(255).optional(),
     sandboxReuseResult: sandboxReuseResultSchema.optional(),
@@ -847,6 +849,18 @@ export const runnerStartupPathSchema = z.enum(["sandbox", "workspace", "cold"]);
 
 export type RunnerStartupPath = z.infer<typeof runnerStartupPathSchema>;
 
+const runnerPreSpawnConcurrencyBucketSchema = z.enum([
+  "1",
+  "2",
+  "3_4",
+  "5_8",
+  "9_plus",
+]);
+
+export type RunnerPreSpawnConcurrencyBucket = z.infer<
+  typeof runnerPreSpawnConcurrencyBucketSchema
+>;
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -860,6 +874,8 @@ const sandboxOperationSchema = z.object({
   reason: z.string().max(64).optional(),
   runner_startup_path: runnerStartupPathSchema.optional(),
   sandbox_reuse_result: sandboxReuseResultSchema.optional(),
+  runner_pre_spawn_concurrency_bucket:
+    runnerPreSpawnConcurrencyBucketSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
   session_history_raw_size_bucket: sessionHistorySizeBucketSchema.optional(),
   session_history_encoded_size_bucket:
@@ -877,8 +893,6 @@ const sandboxOperationSchema = z.object({
   session_history_download_source: sandboxOperationDownloadSourceSchema,
 });
 
-const telemetryRunnerNameSchema = z.string().min(1).max(128);
-
 /**
  * Webhook telemetry contract for /api/webhooks/agent/telemetry
  */
@@ -893,7 +907,8 @@ export const webhookTelemetryContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
-      runnerName: telemetryRunnerNameSchema.optional(),
+      runnerHostname: runnerHostnameSchema.optional(),
+      runnerVersion: runnerVersionSchema.optional(),
       systemLog: z.string().optional(),
       metrics: z.array(metricDataSchema).optional(),
       networkLogs: z.array(networkLogEntrySchema).optional(),
@@ -1080,77 +1095,4 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-const webhookModelUsageObservationItemSchema = z
-  .object({
-    idempotencyKey: z.uuid(),
-    model: z.string().min(1).max(255),
-    inputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    outputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    cacheReadInputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    cacheCreationInputTokens: z
-      .number()
-      .int()
-      .min(0)
-      .max(Number.MAX_SAFE_INTEGER),
-  })
-  .strict()
-  .refine(
-    (event) => {
-      return (
-        event.inputTokens > 0 ||
-        event.outputTokens > 0 ||
-        event.cacheReadInputTokens > 0 ||
-        event.cacheCreationInputTokens > 0
-      );
-    },
-    { message: "At least one token counter must be positive" },
-  );
-
-const webhookModelUsageObservationBodySchema = z
-  .object({
-    runId: z.string().min(1, "runId is required"),
-    events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
-  })
-  .strict()
-  .superRefine((body, ctx) => {
-    const idempotencyKeys = new Set<string>();
-    body.events.forEach((event, index) => {
-      if (idempotencyKeys.has(event.idempotencyKey)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["events", index, "idempotencyKey"],
-          message: "Idempotency keys must be unique within a request",
-        });
-      }
-      idempotencyKeys.add(event.idempotencyKey);
-    });
-  });
-
-/**
- * Compact model usage observation contract for
- * /api/webhooks/agent/model-usage-observation
- *
- * Each immutable event carries the four counters consumed by model rankings.
- */
-export const webhookModelUsageObservationContract = c.router({
-  send: {
-    method: "POST",
-    path: "/api/webhooks/agent/model-usage-observation",
-    headers: authHeadersSchema,
-    body: webhookModelUsageObservationBodySchema,
-    responses: {
-      200: z.object({
-        success: z.boolean(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Receive compact model usage observation data from sandbox",
-  },
-});
-
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
-export type WebhookModelUsageObservationContract =
-  typeof webhookModelUsageObservationContract;

@@ -18,13 +18,26 @@ import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
-vi.mock("@clerk/clerk-js", () => {
+vi.mock("@clerk/shared/loadClerkJsScript", () => {
   return {
-    Clerk: function MockClerk(
-      ...args: [string, { readonly domain?: string }?]
-    ) {
-      mockedClerk.initialize(...args);
-      return mockedClerk;
+    loadClerkJSScript: (options: {
+      readonly domain?: string;
+      readonly publishableKey: string;
+    }) => {
+      if (options.domain) {
+        mockedClerk.initialize(options.publishableKey, {
+          domain: options.domain,
+        });
+      } else {
+        mockedClerk.initialize(options.publishableKey);
+      }
+      Reflect.set(globalThis, "Clerk", mockedClerk);
+      return Promise.resolve(null);
+    },
+    loadClerkUIScript: () => {
+      function MockClerkUI() {}
+      Reflect.set(globalThis, "__internal_ClerkUICtor", MockClerkUI);
+      return Promise.resolve(null);
     },
   };
 });
@@ -32,8 +45,6 @@ vi.mock("@clerk/clerk-js", () => {
 vi.hoisted(() => {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", "test_preview_key");
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
-  vi.stubEnv("VITE_GIT_COMMIT_SHA", "0123456789abcdef0123456789abcdef01234567");
-  vi.stubEnv("VITE_APP_VERSION", "0.540.0");
 });
 
 globalThis.indexedDB = indexedDB;

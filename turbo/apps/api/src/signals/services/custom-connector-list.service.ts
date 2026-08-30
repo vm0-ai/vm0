@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
 import { and, eq } from "drizzle-orm";
@@ -11,7 +11,7 @@ import {
 } from "./custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
-  customConnectorDefinitionHasConnectedConnection,
+  customConnectorDefinitionConnectedAccount,
   loadCurrentCustomConnectorValueMarkers,
   loadConnectedCustomConnectorConnections,
 } from "./custom-connector-credential-access.service";
@@ -45,13 +45,15 @@ export function customConnectorList(args: {
       loadConnectedCustomConnectorConnections(db, args),
     ]);
     return connectorRows.map((row) => {
+      const connectedAccount = customConnectorDefinitionConnectedAccount({
+        connectedConnections,
+        definition: row.connector,
+      });
       return serialiseCustomConnector({
         row: normaliseCustomConnectorRow(row.connector, row.oauthConfig),
         valueMarkers: markers,
-        connectedConnection: customConnectorDefinitionHasConnectedConnection({
-          connectedConnections,
-          definition: row.connector,
-        }),
+        connectedAccountId: connectedAccount?.id ?? null,
+        connectedAccountUpdatedAt: connectedAccount?.updatedAt,
       });
     });
   });

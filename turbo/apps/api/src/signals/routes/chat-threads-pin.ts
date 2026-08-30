@@ -3,7 +3,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { chatThreadPinContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
-import { authContext$ } from "../auth/auth-context";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
@@ -11,10 +11,11 @@ import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { appendChatThreadEvent } from "../services/chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
 import type { RouteEntry } from "../route-entry";
 
 const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(authContext$);
+  const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(chatThreadPinContract.pin));
   const query = get(queryOf(chatThreadPinContract.pin));
   signal.throwIfAborted();
@@ -28,14 +29,15 @@ const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         and(
           eq(chatThreads.id, params.id),
           eq(chatThreads.userId, auth.userId),
+          chatThreadOrganizationCondition(tx, auth.orgId),
           isNotNull(chatThreads.agentId),
         ),
       )
       .returning({
         id: chatThreads.id,
-        agentComposeId: chatThreads.agentId,
+        agentId: chatThreads.agentId,
       });
-    if (!thread?.agentComposeId) {
+    if (!thread?.agentId) {
       return false;
     }
     await appendChatThreadEvent(tx, {
@@ -43,7 +45,7 @@ const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       orgId: auth.orgId,
       chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
+      agentId: thread.agentId,
       eventId: query?.eventId,
     });
     return true;
@@ -54,7 +56,7 @@ const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Chat thread not found");
   }
 
-  await publishThreadListChanged(auth.userId);
+  await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
   signal.throwIfAborted();
 
   return { status: 204 as const, body: undefined };
@@ -63,6 +65,9 @@ const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 export const chatThreadPinRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadPinContract.pin,
-    handler: authRoute({}, pinInner$),
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      pinInner$,
+    ),
   },
 ];

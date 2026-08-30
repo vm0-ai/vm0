@@ -102,6 +102,7 @@ beforeEach(() => {
   mockEnv("RESEND_API_KEY", "test-resend-key");
   mockEnv("RESEND_WEBHOOK_SECRET", INBOUND_SECRET);
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   // Resend pacing is not part of these transactional delivery assertions.
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
 });
@@ -136,7 +137,7 @@ describe("low-credit email delivery", () => {
     ]);
 
     const agentName = `bdd-low-credit-${randomUUID().slice(0, 8)}`;
-    const compose = await runs.createHistoricalCompose(actor, {
+    const compose = await runs.createDirectAgent(actor, {
       version: "1.0",
       agents: {
         [agentName]: {
@@ -146,7 +147,7 @@ describe("low-credit email delivery", () => {
       },
     });
     const run = await runs.createDirectRun(actor, {
-      agentId: compose.composeId,
+      agentId: compose.agentId,
       prompt: "cross the low-credit alert threshold",
       triggerSource: "web",
     });
@@ -228,6 +229,27 @@ describe("POST /api/email/inbound", () => {
     expect(resendMocks.send).toHaveBeenCalledWith(
       expect.objectContaining({ to: controlActor.email }),
     );
+    const sent = resendMocks.send.mock.calls[0]?.[0];
+    if (!sent) {
+      throw new Error("Expected a data-export email");
+    }
+    if (
+      typeof sent !== "object" ||
+      sent === null ||
+      !("headers" in sent) ||
+      typeof sent.headers !== "object" ||
+      sent.headers === null
+    ) {
+      throw new Error("Expected a one-click unsubscribe header");
+    }
+    const oneClickHeader = Reflect.get(sent.headers, "List-Unsubscribe");
+    if (typeof oneClickHeader !== "string") {
+      throw new Error("Expected a one-click unsubscribe header");
+    }
+    const oneClickUrl = new URL(oneClickHeader.slice(1, -1));
+    expect(oneClickUrl.origin).toBe("https://api.vm0.ai");
+    expect(oneClickUrl.pathname).toBe("/api/email/unsubscribe");
+    expect(oneClickUrl.searchParams.get("token")).toBeTruthy();
   });
 
   it("keeps bounced recipients out of transactional sends", async () => {

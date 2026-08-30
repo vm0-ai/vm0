@@ -228,7 +228,7 @@ async fn rejects_invalid_env_entries_before_submit() {
         (
             vec!["OKOU_RUN_ID=user-controlled".to_string()],
             Vec::new(),
-            "runner-owned environment variables",
+            "platform-reserved",
         ),
         (
             Vec::new(),
@@ -262,5 +262,69 @@ async fn rejects_invalid_env_entries_before_submit() {
         let err = run_submit_with_home(args, home).await.unwrap_err();
 
         assert!(err.to_string().contains(expected), "got: {err}");
+    }
+}
+
+#[tokio::test]
+async fn rejects_reserved_okou_env_keys_without_exposing_values() {
+    let mut cases = vec![
+        (
+            vec!["OKOU_TOKEN=ordinary-boundary-secret".to_string()],
+            Vec::new(),
+            "--env",
+            "OKOU_TOKEN",
+            "ordinary-boundary-secret",
+        ),
+        (
+            Vec::new(),
+            vec!["OKOU_UNRELATED=secret-boundary-secret".to_string()],
+            "--secret-env",
+            "OKOU_UNRELATED",
+            "secret-boundary-secret",
+        ),
+    ];
+
+    const RESERVED_TUNING_VALUE: &str = "reserved-tuning-value-must-not-leak";
+    for key in [
+        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    ] {
+        cases.push((
+            vec![format!("{key}={RESERVED_TUNING_VALUE}")],
+            Vec::new(),
+            "--env",
+            key,
+            RESERVED_TUNING_VALUE,
+        ));
+        cases.push((
+            Vec::new(),
+            vec![format!("{key}={RESERVED_TUNING_VALUE}")],
+            "--secret-env",
+            key,
+            RESERVED_TUNING_VALUE,
+        ));
+    }
+
+    for (env, secret_env, flag, key, value) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let mut args = submit_args_for_test();
+        args.env = env;
+        args.secret_env = secret_env;
+
+        let err = run_submit_with_home(args, home).await.unwrap_err();
+        let diagnostic = err.to_string();
+
+        assert!(
+            diagnostic.contains(&format!("invalid {flag} key '{key}'")),
+            "got: {diagnostic}"
+        );
+        assert!(
+            diagnostic.contains("OKOU_ environment variable namespace is platform-reserved"),
+            "got: {diagnostic}"
+        );
+        assert!(!diagnostic.contains(value), "got: {diagnostic}");
     }
 }

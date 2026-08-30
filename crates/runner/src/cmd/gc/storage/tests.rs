@@ -868,7 +868,7 @@ async fn gc_storage_cache_delete_recheck_keeps_candidate_that_became_recent() {
     );
 }
 
-const LOW_FD_STORAGE_GC_CHILD_ENV: &str = "VM0_RUNNER_LOW_FD_STORAGE_GC_CHILD";
+const LOW_FD_STORAGE_GC_CHILD_ENV: &str = "OKOU_RUNNER_LOW_FD_STORAGE_GC_CHILD";
 
 #[tokio::test]
 async fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {

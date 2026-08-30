@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
   type TestCronCleanupSandboxesStateActionBody,
@@ -6,11 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import { MIN_EPOCH_MS_TIMESTAMP } from "@okouai/api-contracts/contracts/runners";
-import {
-  agentComposeVersions,
-  agentComposes,
-} from "@okouai/db/schema/agent-compose";
-import { zeroAgents } from "@okouai/db/schema/zero-agent";
+import { agents } from "@okouai/db/schema/agent";
 import { artifacts } from "@okouai/db/schema/artifact";
 import { browserSessions } from "@okouai/db/schema/browser-session";
 import { builtInGenerationJobs } from "@okouai/db/schema/built-in-generation-job";
@@ -117,10 +113,6 @@ function readOptionalBoolean(
   return typeof value === "boolean" ? value : undefined;
 }
 
-function versionId(): string {
-  return createHash("sha256").update(randomUUID()).digest("hex");
-}
-
 async function seedRunForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -135,42 +127,22 @@ async function seedRunForAction(
 
   const userId = readOptionalString(body, "user_id") ?? `user-${randomUUID()}`;
   const orgId = readOptionalString(body, "org_id") ?? `org-${randomUUID()}`;
-  const composeName =
+  const agentName =
     readOptionalString(body, "compose_name") ?? `cleanup-${randomUUID()}`;
-  const [compose] = await db
-    .insert(agentComposes)
-    .values({ userId, orgId, name: composeName })
-    .returning({ id: agentComposes.id });
+  const [agent] = await db
+    .insert(agents)
+    .values({
+      id: randomUUID(),
+      owner: userId,
+      orgId,
+      name: agentName,
+      visibility: "private",
+    })
+    .returning({ id: agents.id });
   signal.throwIfAborted();
-  if (!compose) {
-    return actionBadRequest("failed to seed compose");
+  if (!agent) {
+    return actionBadRequest("failed to seed Agent");
   }
-
-  // This route seeds product Run state, so mirror the current legacy writer's
-  // second half and let the one-way bridge supply canonical Agent identity.
-  // Protected compose-only fixtures intentionally omit this row elsewhere.
-  await db.insert(zeroAgents).values({
-    id: compose.id,
-    orgId,
-    owner: userId,
-    name: composeName,
-    visibility: "private",
-  });
-  signal.throwIfAborted();
-
-  const agentComposeVersionId = versionId();
-  await db.insert(agentComposeVersions).values({
-    id: agentComposeVersionId,
-    composeId: compose.id,
-    createdBy: userId,
-    content: { agents: {} },
-  });
-  signal.throwIfAborted();
-  await db
-    .update(agentComposes)
-    .set({ headVersionId: agentComposeVersionId })
-    .where(eq(agentComposes.id, compose.id));
-  signal.throwIfAborted();
 
   await db
     .insert(orgMetadata)
@@ -184,7 +156,7 @@ async function seedRunForAction(
 
   const [session] = await db
     .insert(agentSessions)
-    .values({ userId, orgId, agentComposeId: compose.id })
+    .values({ userId, orgId, agentId: agent.id })
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
   if (!session) {
@@ -204,7 +176,6 @@ async function seedRunForAction(
     .values({
       userId,
       orgId,
-      agentComposeVersionId,
       sessionId: session.id,
       status,
       prompt: readOptionalString(body, "prompt") ?? "cleanup sandboxes test",
@@ -229,8 +200,7 @@ async function seedRunForAction(
     run_id: run.id,
     sandbox_id: run.sandboxId,
     session_id: session.id,
-    compose_id: compose.id,
-    version_id: agentComposeVersionId,
+    compose_id: agent.id,
     org_id: orgId,
     user_id: userId,
   });
@@ -256,7 +226,7 @@ async function deleteRunForAction(
   signal.throwIfAborted();
   const [session] = run
     ? await db
-        .select({ composeId: agentSessions.agentComposeId })
+        .select({ agentId: agentSessions.agentId })
         .from(agentSessions)
         .where(eq(agentSessions.id, run.sessionId))
         .limit(1)
@@ -296,12 +266,12 @@ async function deleteRunForAction(
   signal.throwIfAborted();
   const sessionId = run?.sessionId ?? readString(body, "session_id");
   const owningOrgId = run?.orgId ?? readString(body, "org_id");
-  const composeId = session?.composeId ?? readString(body, "compose_id");
+  const agentId = session?.agentId ?? readString(body, "compose_id");
   if (sessionId) {
     await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
     signal.throwIfAborted();
-    if (composeId) {
-      await db.delete(agentComposes).where(eq(agentComposes.id, composeId));
+    if (agentId) {
+      await db.delete(agents).where(eq(agents.id, agentId));
       signal.throwIfAborted();
     }
   }
@@ -722,7 +692,7 @@ async function seedQueueMarkerForAction(
     return actionBadRequest("run not found");
   }
   const [session] = await db
-    .select({ composeId: agentSessions.agentComposeId })
+    .select({ agentId: agentSessions.agentId })
     .from(agentSessions)
     .where(eq(agentSessions.id, run.sessionId))
     .limit(1);
@@ -734,7 +704,7 @@ async function seedQueueMarkerForAction(
     .insert(chatThreads)
     .values({
       userId: run.userId,
-      agentComposeId: session.composeId,
+      agentId: session.agentId,
       title: "cron cleanup marker test",
     })
     .returning({ id: chatThreads.id });
@@ -775,7 +745,7 @@ async function attachRunThreadForAction(
     return actionBadRequest("run not found");
   }
   const [session] = await db
-    .select({ composeId: agentSessions.agentComposeId })
+    .select({ agentId: agentSessions.agentId })
     .from(agentSessions)
     .where(eq(agentSessions.id, run.sessionId));
   if (!session) {
@@ -785,7 +755,7 @@ async function attachRunThreadForAction(
     .insert(chatThreads)
     .values({
       userId: run.userId,
-      agentComposeId: session.composeId,
+      agentId: session.agentId,
       title: "concurrent cleanup recheck",
     })
     .returning({ id: chatThreads.id });

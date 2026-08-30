@@ -27,7 +27,7 @@ from tests.auth_state_helpers import (
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
+    _single_firewall_sandbox,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -48,7 +48,7 @@ async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={
+        sandbox_fields={
             "_firewallAuthIdentityCache": {
                 "entries": {"forged": {"authIdentity": "caller-controlled"}}
             },
@@ -130,8 +130,10 @@ async def test_initial_firewall_fetch_reuses_identity_request_bytes(tmp_path, re
 
         await mitm_addon.request(flows[1])
 
-        auth_cache.clear_cached_firewall_headers(cache_key)
-        auth_cache.request_force_refresh(cache_key)
+        auth_cache.invalidate_cached_firewall_headers(
+            cache_key,
+            flows[1].metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY],
+        )
         await mitm_addon.request(flows[2])
 
     assert serialized_force_refresh == [False, True]
@@ -152,10 +154,62 @@ async def test_initial_firewall_fetch_reuses_identity_request_bytes(tmp_path, re
     assert refreshed_body == normal_body | {"forceRefresh": True}
 
 
+async def test_late_401_does_not_invalidate_refreshed_auth_entry(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(firewall_auth_success_response({"Authorization": "Bearer v1"}))
+    endpoint.queue_json_response(firewall_auth_success_response({"Authorization": "Bearer v2"}))
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos",
+        )
+        for _ in range(4)
+    ]
+    request_a, request_b, request_c, request_d = flows
+
+    with endpoint.run(), mitm_ctx(registry_path=str(reg_path), api_url=endpoint.api_url):
+        await mitm_addon.request(request_a)
+        await mitm_addon.request(request_b)
+
+        cache_key = request_a.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+        v1_identity = request_a.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY]
+        assert request_a.request.headers["Authorization"] == "Bearer v1"
+        assert request_b.request.headers["Authorization"] == "Bearer v1"
+        assert request_b.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] is v1_identity
+
+        request_a.response = tutils.tresp(status_code=401)
+        mitm_addon.response(request_a)
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
+        await mitm_addon.request(request_c)
+        v2_identity = request_c.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY]
+        assert v2_identity is not v1_identity
+        assert request_c.request.headers["Authorization"] == "Bearer v2"
+        assert not force_refresh_pending(cache_key)
+
+        request_b.response = tutils.tresp(status_code=401)
+        mitm_addon.response(request_b)
+        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer v2"}
+        assert not force_refresh_pending(cache_key)
+
+        await mitm_addon.request(request_d)
+
+    assert endpoint.request_count == 2
+    assert "forceRefresh" not in endpoint.requests[0].json_body()
+    assert endpoint.requests[1].json_body()["forceRefresh"] is True
+    assert request_d.metadata[metadata_keys.AUTH_CACHE_HIT] is True
+    assert request_d.request.headers["Authorization"] == "Bearer v2"
+    assert request_d.metadata[metadata_keys.FIREWALL_AUTH_CACHE_ENTRY_IDENTITY] is v2_identity
+
+
 async def test_head_firewall_auth_failure_is_bodyless(tmp_path, real_flow, mitm_ctx, headers):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -216,7 +270,7 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
     api_id = f"{firewall_name}:0"
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name=firewall_name,
             custom_connector_id=custom_connector_id,
@@ -232,7 +286,7 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
                 "ask": [],
                 "unknownPolicy": "allow",
             },
-            vm_fields={
+            sandbox_fields={
                 "connectorRoutingVariables": {
                     f"custom:{custom_connector_id}": {"subdomain": "münich"}
                 }
@@ -275,8 +329,8 @@ async def test_connector_sources_partition_firewall_auth_cache_identity(
     firewall_name = "custom_connector_550e8400e29b41d4a716446655440000"
     api_id = f"{firewall_name}:0"
 
-    def vm(source_id: str) -> dict[str, object]:
-        return _single_firewall_vm(
+    def sandbox(source_id: str) -> dict[str, object]:
+        return _single_firewall_sandbox(
             tmp_path,
             run_id="run-source-cache",
             firewall_name=firewall_name,
@@ -299,9 +353,9 @@ async def test_connector_sources_partition_firewall_auth_cache_identity(
     reg_path.write_text(
         json.dumps(
             {
-                "vms": {
-                    "10.200.0.5": vm("550e8400-e29b-41d4-a716-446655440001"),
-                    "10.200.0.6": vm("550e8400-e29b-41d4-a716-446655440002"),
+                "sandboxes": {
+                    "10.200.0.5": sandbox("550e8400-e29b-41d4-a716-446655440001"),
+                    "10.200.0.6": sandbox("550e8400-e29b-41d4-a716-446655440002"),
                 }
             }
         )
@@ -342,7 +396,7 @@ async def test_builtin_connector_routing_variables_are_forwarded_with_matched_fi
     reg_path = _write_github_firewall_registry(
         tmp_path,
         source_id=source_id,
-        vm_fields={
+        sandbox_fields={
             "connectorRoutingVariables": {"builtin:github": {"GITHUB_HOST": "münich.example.test"}}
         },
     )
@@ -382,7 +436,7 @@ async def test_custom_firewall_change_during_auth_discards_stale_credentials(
     def write_firewall(auth_scheme: str):
         return _write_registry(
             tmp_path,
-            vm_info=_single_firewall_vm(
+            sandbox_info=_single_firewall_sandbox(
                 tmp_path,
                 firewall_name=firewall_name,
                 custom_connector_id=custom_connector_id,
@@ -424,6 +478,7 @@ async def test_custom_firewall_change_during_auth_discards_stale_credentials(
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
         }
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)
@@ -454,7 +509,7 @@ async def test_requestheaders_and_request_share_snapshot_auth_identity(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     streamed_flow = real_flow(
         with_response=False,
@@ -527,7 +582,7 @@ async def test_registry_reload_replaces_firewall_auth_identity(tmp_path, real_fl
             if index:
                 _write_github_firewall_registry(
                     tmp_path,
-                    vm_fields={"encryptedSecrets": f"iv:tag:data-updated-{index}"},
+                    sandbox_fields={"encryptedSecrets": f"iv:tag:data-updated-{index}"},
                 )
             with state_file.open_state_file(
                 reg_path,
@@ -577,7 +632,7 @@ async def test_registry_reload_reuses_unchanged_firewall_auth_identity(
         await mitm_addon.request(flows[0])
         _write_github_firewall_registry(
             tmp_path,
-            vm_fields={"captureNetworkBodies": False},
+            sandbox_fields={"captureNetworkBodies": False},
         )
         await mitm_addon.request(flows[1])
 
@@ -627,7 +682,7 @@ async def test_registry_reload_coalesces_unchanged_in_flight_firewall_auth(
             await asyncio.wait_for(auth_fetch_started.wait(), timeout=1)
             _write_github_firewall_registry(
                 tmp_path,
-                vm_fields={"captureNetworkBodies": False},
+                sandbox_fields={"captureNetworkBodies": False},
             )
             requests[1] = asyncio.create_task(mitm_addon.request(flows[1]))
             release_auth_fetch.set()
@@ -691,7 +746,7 @@ async def test_superseded_fetch_completion_does_not_repopulate_auth_state(
             await asyncio.wait_for(old_fetch_started.wait(), timeout=1)
             _write_github_firewall_registry(
                 tmp_path,
-                vm_fields={"encryptedSecrets": "iv:tag:data-updated"},
+                sandbox_fields={"encryptedSecrets": "iv:tag:data-updated"},
             )
             await mitm_addon.request(new_flow)
 
@@ -742,7 +797,7 @@ async def test_superseded_401_does_not_mutate_current_auth_state(tmp_path, real_
         await mitm_addon.request(flows[0])
         _write_github_firewall_registry(
             tmp_path,
-            vm_fields={"encryptedSecrets": "iv:tag:data-updated"},
+            sandbox_fields={"encryptedSecrets": "iv:tag:data-updated"},
         )
         await mitm_addon.request(flows[1])
         old_key = flows[0].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
@@ -760,7 +815,7 @@ async def test_local_response_preserves_shared_binding_for_concurrent_auth(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -815,6 +870,7 @@ async def test_local_response_preserves_shared_binding_for_concurrent_auth(
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
         }
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)
@@ -875,7 +931,7 @@ async def test_http_firewall_with_managed_credentials_blocks_before_auth(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "http://api.github.com",
@@ -934,7 +990,7 @@ async def test_http_firewall_without_managed_credentials_still_matches(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "http://api.github.com",
@@ -998,7 +1054,7 @@ async def test_reflection_method_firewall_with_managed_credentials_blocks_before
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -1073,7 +1129,7 @@ async def test_reflection_method_firewall_without_managed_credentials_still_matc
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -1162,7 +1218,7 @@ async def test_https_firewall_with_ordinary_credentials_blocks_when_upstream_is_
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -1210,7 +1266,7 @@ async def test_firewall_auth_cancellation_preserves_upstream_binding(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",

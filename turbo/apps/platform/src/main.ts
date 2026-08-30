@@ -12,47 +12,54 @@ import { setupRouter } from "./views/main.tsx";
 
 // (no-op Platform release marker refreshed again on 2026-07-31)
 
-const resetRootSignal$ = resetSignal();
-const resetViewportSettleSignal$ = resetSignal();
+function startApplication(): void {
+  window.__appBootstrapModuleReady = performance.now();
+  const resetRootSignal$ = resetSignal();
+  const resetViewportSettleSignal$ = resetSignal();
 
-// Initialize Sentry before bootstrap so errors during startup are captured
-initSentry();
-initPostHog();
+  // Initialize Sentry before bootstrap so errors during startup are captured
+  initSentry();
+  initPostHog();
 
-async function main() {
-  const store = createStore();
-  const rootSignal = store.set(resetRootSignal$);
-  window.addEventListener(
-    "pagehide",
-    (event) => {
-      if (!event.persisted) {
-        store.set(resetRootSignal$);
-      }
-    },
-    { signal: rootSignal },
-  );
-  detach(initPlausible(rootSignal), Reason.Entrance, "initPlausible");
-  setupVisualViewportKeyboardState(rootSignal, () => {
-    return store.set(resetViewportSettleSignal$, rootSignal);
-  });
-
-  await store.set(
-    bootstrap$,
-    () => {
-      setupRouter(store, (el) => {
-        const rootEl = document.getElementById("root");
-        if (!rootEl) {
-          throw new Error("can't find root el to load whole app");
+  async function main() {
+    const store = createStore();
+    const rootSignal = store.set(resetRootSignal$);
+    window.addEventListener(
+      "pagehide",
+      (event) => {
+        if (!event.persisted) {
+          store.set(resetRootSignal$);
         }
-        const root = createRoot(rootEl);
-        root.render(el);
-        rootSignal.addEventListener("abort", () => {
-          root.unmount();
+      },
+      { signal: rootSignal },
+    );
+    detach(initPlausible(rootSignal), Reason.Entrance, "initPlausible");
+    setupVisualViewportKeyboardState(rootSignal, () => {
+      return store.set(resetViewportSettleSignal$, rootSignal);
+    });
+
+    await store.set(
+      bootstrap$,
+      () => {
+        setupRouter(store, (el) => {
+          const rootEl = document.getElementById("root");
+          if (!rootEl) {
+            throw new Error("can't find root el to load whole app");
+          }
+          const root = createRoot(rootEl);
+          root.render(el);
+          rootSignal.addEventListener("abort", () => {
+            root.unmount();
+          });
         });
-      });
-    },
-    rootSignal,
-  );
+      },
+      rootSignal,
+    );
+  }
+
+  detach(main(), Reason.Entrance, "main");
 }
 
-detach(main(), Reason.Entrance, "main");
+if (window.__vm0BrowserSupported === true) {
+  startApplication();
+}

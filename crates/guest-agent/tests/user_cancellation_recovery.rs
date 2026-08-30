@@ -3,9 +3,9 @@
 
 mod common;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use guest_contracts::diagnostics::{CliTerminationReason, FailureDiagnostic};
 use httpmock::prelude::*;
@@ -15,6 +15,7 @@ use process_control_ipc::{
 };
 use serde_json::json;
 use tokio::process::Command;
+use tokio::sync::oneshot;
 
 const SUCCESS_RUN_ID: &str = "user-cancellation-recovery-success";
 const SUCCESS_THREAD_ID: &str = "019fac13-2355-74d3-8414-b467fbb80c61";
@@ -60,8 +61,9 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     let server = MockServer::start();
     let tmp = tempfile::tempdir()?;
     let home = tmp.path().join("home");
+    let codex_home = home.join(".codex");
     let runtime_dir = tmp.path().join("runtime");
-    std::fs::create_dir_all(&home)?;
+    std::fs::create_dir_all(&codex_home)?;
     let mock_codex = common::build_and_locate_mock_codex()?;
     let run_payload_file = common::write_run_payload_file_for_test(
         &runtime_dir,
@@ -125,7 +127,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             HttpMockResponse::builder()
                 .status(scenario.checkpoint_status)
                 .header("Content-Type", "application/json")
-                .body(r#"{"checkpointId":"user-cancellation-recovery-checkpoint"}"#)
+                .body(r#"{"checkpointId":"user-cancellation-recovery-checkpoint","agentSessionId":"test-agent-session","conversationId":"test-conversation"}"#)
                 .build()
         });
     });
@@ -152,11 +154,15 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     let listener = bind_abstract_listener(&endpoint)?;
     let control_paths = guest_agent::paths::GuestPaths::from_runtime_dir(runtime_dir.clone());
     let session_id_file = PathBuf::from(control_paths.session_id_file());
+    let session_history_ready_file = codex_home.join(common::MOCK_CODEX_SESSION_HISTORY_READY_FILE);
+    let (cancel_tx, cancel_rx) = oneshot::channel();
     let control = tokio::task::spawn_blocking(move || {
         let mut stream = accept_with_timeout(&listener, Duration::from_secs(5))?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         read_hello(&mut stream)?;
-        wait_for_file(&session_id_file, Duration::from_secs(5))?;
+        cancel_rx.blocking_recv().map_err(|_| {
+            std::io::Error::other("cancellation readiness task ended before signaling control")
+        })?;
         write_request(
             &mut stream,
             &ControlRequest {
@@ -167,8 +173,9 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
         read_response(&mut stream)
     });
 
-    let output = common::command_output_with_timeout(
-        Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+    let mut guest_agent_command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+    let guest_agent = common::command_output_with_timeout(
+        guest_agent_command
             .env_clear()
             .env(
                 "PATH",
@@ -177,20 +184,29 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             )
             .env("SHELL", "/bin/sh")
             .env("HOME", &home)
-            .env(guest_contracts::env::API_URL_ENV, server.base_url())
-            .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+            .env(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            )
+            .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
             .env(guest_contracts::env::RUN_ID_ENV, scenario.run_id)
             .env(
-                guest_contracts::env::SANDBOX_ID_ENV,
+                guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
                 "00000000-0000-4000-8000-000000000abc",
             )
-            .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
-            .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
-            .env("VM0_TEST_CODEX_HOME_DIR", home.join(".codex"))
-            .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
-            .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
             .env(
-                guest_contracts::env::RESUME_SESSION_ID_ENV,
+                guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+                "reused",
+            )
+            .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
+            .env("OKOU_TEST_CODEX_HOME_DIR", &codex_home)
+            .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
+            .env(
+                guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+                &mock_codex,
+            )
+            .env(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
                 scenario.thread_id,
             )
             .env(
@@ -198,27 +214,46 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
                 "runtime-turn-started-before-steer",
             )
             .env(
-                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
                 "1",
             )
             .env(
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
                 "1",
             )
             .env(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 &run_payload_file,
             )
             .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
             )
-            .env(process_control_ipc::BOOTSTRAP_ENV, &endpoint)
-            .env("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
+            .env(process_control_ipc::CANONICAL_BOOTSTRAP_ENV, &endpoint)
+            .env("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL", "true"),
         Duration::from_secs(20),
         "guest-agent did not finish within its finalization budget",
-    )
-    .await?;
+    );
+    let cancellation_ready = async {
+        tokio::try_join!(
+            common::wait_for_file_contains(
+                &session_id_file,
+                scenario.thread_id,
+                Duration::from_secs(5),
+            ),
+            common::wait_for_file_contains(
+                &session_history_ready_file,
+                common::MOCK_CODEX_SESSION_HISTORY_READY_EVENT,
+                Duration::from_secs(5),
+            ),
+        )?;
+        cancel_tx
+            .send(())
+            .map_err(|()| std::io::Error::other("process control task ended before cancellation"))
+    };
+    let (output, cancellation_ready) = tokio::join!(guest_agent, cancellation_ready);
+    cancellation_ready?;
+    let output = output?;
     let response = control.await??;
 
     assert_eq!(response.message_id, "cancel-running-cli");
@@ -269,19 +304,5 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
         std::fs::read_to_string(paths.session_id_file())?.trim(),
         scenario.thread_id
     );
-    Ok(())
-}
-
-fn wait_for_file(path: &Path, timeout: Duration) -> std::io::Result<()> {
-    let deadline = Instant::now() + timeout;
-    while !path.exists() {
-        if Instant::now() >= deadline {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                format!("timed out waiting for {}", path.display()),
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
     Ok(())
 }

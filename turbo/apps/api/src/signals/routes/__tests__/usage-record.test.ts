@@ -173,7 +173,7 @@ async function createUnthreadedRun(
   },
 ): Promise<{ readonly runId: string }> {
   const name = `bdd-usage-record-${randomUUID().slice(0, 8)}`;
-  const compose = await api.createHistoricalCompose(actor, {
+  const compose = await api.createDirectAgent(actor, {
     version: "1.0",
     agents: {
       [name]: {
@@ -186,7 +186,7 @@ async function createUnthreadedRun(
     mockNow(args.createdAt);
   }
   const run = await api.createDirectRun(actor, {
-    agentId: compose.composeId,
+    agentId: compose.agentId,
     prompt: args.prompt,
     triggerSource: args.triggerSource,
   });

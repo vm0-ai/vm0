@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProvidersMainContract,
-} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+  personalModelProvidersByTypeContract,
+  personalModelProvidersMainContract,
+} from "@okouai/api-contracts/contracts/personal-model-providers";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -14,12 +14,12 @@ import { meModelProvidersListRoutes } from "../me-model-providers-list";
 import { meModelProvidersResetSubscriptionRoutes } from "../me-model-providers-reset-subscription";
 import { meModelProvidersUpsertRoutes } from "../me-model-providers-upsert";
 
-const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+const personalModelProvidersMainTestRoutes = Object.freeze([
   ...meModelProvidersListRoutes,
   ...meModelProvidersUpsertRoutes,
 ]);
 
-const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
+const personalModelProvidersByTypeTestRoutes = Object.freeze([
   ...meModelProvidersDeleteRoutes,
   ...meModelProvidersResetSubscriptionRoutes,
 ]);
@@ -46,8 +46,8 @@ describe("DELETE /api/me/model-providers/:type", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersMainTestRoutes,
-    })(zeroPersonalModelProvidersMainContract);
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
     await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
@@ -60,8 +60,8 @@ describe("DELETE /api/me/model-providers/:type", () => {
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersByTypeTestRoutes,
-    })(zeroPersonalModelProvidersByTypeContract);
+      routes: personalModelProvidersByTypeTestRoutes,
+    })(personalModelProvidersByTypeContract);
     const response = await accept(
       client.delete({ params: { type: "anthropic-api-key" }, headers: {} }),
       [401],
@@ -75,8 +75,8 @@ describe("DELETE /api/me/model-providers/:type", () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersByTypeTestRoutes,
-    })(zeroPersonalModelProvidersByTypeContract);
+      routes: personalModelProvidersByTypeTestRoutes,
+    })(personalModelProvidersByTypeContract);
     const response = await accept(
       client.delete({
         params: { type: "anthropic-api-key" },
@@ -95,8 +95,8 @@ describe("DELETE /api/me/model-providers/:type", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersByTypeTestRoutes,
-    })(zeroPersonalModelProvidersByTypeContract);
+      routes: personalModelProvidersByTypeTestRoutes,
+    })(personalModelProvidersByTypeContract);
     const response = await client.delete({
       params: { type: "claude-code-oauth-token" },
       headers: { authorization: "Bearer clerk-session" },
@@ -121,8 +121,8 @@ describe("DELETE /api/me/model-providers/:type", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersByTypeTestRoutes,
-    })(zeroPersonalModelProvidersByTypeContract);
+      routes: personalModelProvidersByTypeTestRoutes,
+    })(personalModelProvidersByTypeContract);
     const response = await accept(
       client.delete({
         params: { type: "claude-code-oauth-token" },
@@ -150,8 +150,8 @@ describe("DELETE /api/me/model-providers/:type", () => {
 
     const client = setupApp({
       context,
-      routes: zeroPersonalModelProvidersByTypeTestRoutes,
-    })(zeroPersonalModelProvidersByTypeContract);
+      routes: personalModelProvidersByTypeTestRoutes,
+    })(personalModelProvidersByTypeContract);
     const response = await accept(
       client.delete({
         params: { type: "claude-code-oauth-token" },

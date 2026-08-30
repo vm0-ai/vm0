@@ -14,6 +14,13 @@ from .json_selective import (
     Path,
     ScalarField,
 )
+from .model_http import (
+    ModelHttpFailureEvidence,
+    ModelHttpFailureObserver,
+    combined_scalar_fields,
+    combined_value_presence_paths,
+    failure_evidence_from_result,
+)
 from .model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
@@ -68,11 +75,23 @@ _USAGE_VALUE_PRESENCE_PATHS = {
 }
 
 
-def _new_extractor() -> JsonSelectiveExtractor:
+def _new_extractor(
+    *,
+    include_usage: bool = True,
+    include_failure: bool = False,
+) -> JsonSelectiveExtractor:
     return JsonSelectiveExtractor(
-        scalar_fields=_CHAT_COMPLETIONS_SCALAR_FIELDS,
-        object_presence_paths=set(_USAGE_PATHS),
-        value_presence_paths=_USAGE_VALUE_PRESENCE_PATHS,
+        scalar_fields=combined_scalar_fields(
+            _CHAT_COMPLETIONS_SCALAR_FIELDS,
+            include_usage=include_usage,
+            include_failure=include_failure,
+        ),
+        object_presence_paths=set(_USAGE_PATHS) if include_usage else set(),
+        value_presence_paths=combined_value_presence_paths(
+            tuple(_USAGE_VALUE_PRESENCE_PATHS),
+            include_usage=include_usage,
+            include_failure=include_failure,
+        ),
         max_work_units=_CHAT_COMPLETIONS_MAX_WORK_UNITS,
     )
 
@@ -144,10 +163,17 @@ class _OpenAIChatCompletionsSseUsageHandler:
         usage: dict,
         *,
         on_parse_error: _SseUsageParseErrorCallback | None = None,
+        include_usage: bool = True,
+        failure_observer: ModelHttpFailureObserver | None = None,
     ) -> None:
         self._usage = usage
         self._on_parse_error = on_parse_error
-        self._extractor = _new_extractor()
+        self._include_usage = include_usage
+        self._failure_observer = failure_observer
+        self._extractor = _new_extractor(
+            include_usage=include_usage,
+            include_failure=failure_observer is not None,
+        )
         self._data_prefix = bytearray()
         self._data_prefix_complete = True
 
@@ -180,10 +206,34 @@ class _OpenAIChatCompletionsSseUsageHandler:
         self._extractor.reset()
         if not result.complete:
             if data_prefix_complete and data_prefix.strip() == _DONE_SENTINEL:
+                if self._failure_observer is not None:
+                    self._failure_observer.observe(
+                        ModelHttpFailureEvidence(
+                            event_name=event_name,
+                            is_done=True,
+                            is_valid=True,
+                        )
+                    )
                 return
-            self._usage.clear()
-            if result.error is not None and self._on_parse_error is not None:
+            if self._failure_observer is not None:
+                self._failure_observer.observe(
+                    failure_evidence_from_result(result, event_name=event_name)
+                )
+            if self._include_usage:
+                self._usage.clear()
+            if (
+                self._include_usage
+                and result.error is not None
+                and self._on_parse_error is not None
+            ):
                 self._on_parse_error(event_name or "eventless", result.error)
+            return
+
+        if self._failure_observer is not None:
+            self._failure_observer.observe(
+                failure_evidence_from_result(result, event_name=event_name)
+            )
+        if not self._include_usage:
             return
 
         snapshot = _usage_snapshot(result)
@@ -196,10 +246,15 @@ class _OpenAIChatCompletionsSseUsageHandler:
         self._extractor.reset()
         self._data_prefix.clear()
         self._data_prefix_complete = True
+        if self._failure_observer is not None:
+            self._failure_observer.observe(ModelHttpFailureEvidence(event_name=event_name))
 
 
 def create_openai_chat_completions_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
+    *,
+    include_usage: bool = True,
+    failure_observer: ModelHttpFailureObserver | None = None,
 ) -> tuple[SseUsageScanner, dict]:
     """Create an incremental usage parser for Chat Completions SSE bytes."""
     usage: dict = {}
@@ -207,6 +262,8 @@ def create_openai_chat_completions_sse_usage_extractor(
         _OpenAIChatCompletionsSseUsageHandler(
             usage,
             on_parse_error=on_parse_error,
+            include_usage=include_usage,
+            failure_observer=failure_observer,
         ),
         capture_data_without_event=True,
     )
@@ -227,12 +284,7 @@ class OpenAIChatCompletionsJsonUsageExtractor:
 
     def finish(self) -> tuple[dict | None, str | None]:
         result = self._extractor.finish()
-        if not result.complete:
-            return None, result.error
-        usage = _usage_snapshot(result)
-        if usage is None or not any(category in usage for category in MODEL_USAGE_CATEGORIES):
-            return None, None
-        return usage, None
+        return model_json_usage_from_result(result)
 
 
 def create_openai_chat_completions_json_usage_extractor() -> (
@@ -240,6 +292,33 @@ def create_openai_chat_completions_json_usage_extractor() -> (
 ):
     """Create an incremental parser for a Chat Completions JSON response."""
     return OpenAIChatCompletionsJsonUsageExtractor()
+
+
+def model_json_scalar_fields() -> dict:
+    """Return Chat Completions JSON fields selected for usage inspection."""
+
+    return dict(_CHAT_COMPLETIONS_SCALAR_FIELDS)
+
+
+def model_json_object_presence_paths() -> set[Path]:
+    return set(_USAGE_PATHS)
+
+
+def model_json_value_presence_paths() -> set[Path]:
+    return set(_USAGE_VALUE_PRESENCE_PATHS)
+
+
+def model_json_usage_from_result(
+    result: JsonExtractionResult,
+) -> tuple[dict | None, str | None]:
+    """Map one complete shared JSON extraction into Chat Completions usage."""
+
+    if not result.complete:
+        return None, result.error
+    usage = _usage_snapshot(result)
+    if usage is None or not any(category in usage for category in MODEL_USAGE_CATEGORIES):
+        return None, None
+    return usage, None
 
 
 def extract_openai_chat_completions_usage_with_error_from_json(

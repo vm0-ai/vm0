@@ -1,5 +1,396 @@
 # Changelog
 
+## [0.82.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.20...guest-agent-v0.82.21) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api url root legacy reader ([#30293](https://github.com/vm0-ai/vm0/issues/30293)) ([acf0976](https://github.com/vm0-ai/vm0/commit/acf09762659b1c0c112e51948b2dda9670fe5240))
+* **guest:** retire timing tuning legacy readers ([#30303](https://github.com/vm0-ai/vm0/issues/30303)) ([27477c4](https://github.com/vm0-ai/vm0/commit/27477c4cea651fc86fbea0194bd438946e6581ad))
+
+## [0.82.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.19...guest-agent-v0.82.20) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api token legacy reader ([#30292](https://github.com/vm0-ai/vm0/issues/30292)) ([7d0c3ad](https://github.com/vm0-ai/vm0/commit/7d0c3ad45d1361c0ee6463f8cc46feb00780e8f4))
+* **guest:** retire execution timeout legacy reader ([#30301](https://github.com/vm0-ai/vm0/issues/30301)) ([e5fba4b](https://github.com/vm0-ai/vm0/commit/e5fba4b8fa0ed5c1a769e71ac40053798c08abd7)), closes [#30289](https://github.com/vm0-ai/vm0/issues/30289) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest:** retire private payload legacy readers ([#30307](https://github.com/vm0-ai/vm0/issues/30307)) ([1059893](https://github.com/vm0-ai/vm0/commit/10598930135c5e6def894ae799064a5ef794d2c1))
+
+## [0.82.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.18...guest-agent-v0.82.19) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document Pi RPC lifecycle and event projection ([#30258](https://github.com/vm0-ai/vm0/issues/30258)) ([e8c2fc8](https://github.com/vm0-ai/vm0/commit/e8c2fc85f241138a17cf021108ad5e8163928464))
+
+
+### Refactoring
+
+* **guest:** cut managed CLI API URL writer to canonical alias ([#30285](https://github.com/vm0-ai/vm0/issues/30285)) ([a9a071e](https://github.com/vm0-ai/vm0/commit/a9a071e78fb317292b8c712f2b5543949dcb5982)), closes [#30277](https://github.com/vm0-ai/vm0/issues/30277) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
+## [0.82.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.17...guest-agent-v0.82.18) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat tool activity ([#30215](https://github.com/vm0-ai/vm0/issues/30215)) ([c475f9e](https://github.com/vm0-ai/vm0/commit/c475f9e59935ec292acd8b35ceb66e1f59708866))
+
+## [0.82.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.16...guest-agent-v0.82.17) (2026-08-29)
+
+## [0.82.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.15...guest-agent-v0.82.16) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
+## [0.82.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.14...guest-agent-v0.82.15) (2026-08-28)
+
+
+### Refactoring
+
+* **rust:** forbid path attributes ([#30129](https://github.com/vm0-ai/vm0/issues/30129)) ([c46da3e](https://github.com/vm0-ai/vm0/commit/c46da3ea8fb48b7595bc582036a1f28a0d676f5f))
+
+## [0.82.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.13...guest-agent-v0.82.14) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** centralize codex startup policy fixture ([#30089](https://github.com/vm0-ai/vm0/issues/30089)) ([b656e9a](https://github.com/vm0-ai/vm0/commit/b656e9a4dc3d450b9c7bec511c79edd5c020b99e))
+* **guest-agent:** remove legacy process-control endpoint reader ([#30130](https://github.com/vm0-ai/vm0/issues/30130)) ([57157de](https://github.com/vm0-ai/vm0/commit/57157de35208c779837373ce8cca6baf601d605b))
+* **guest-agent:** remove legacy root cgroup readers ([#30112](https://github.com/vm0-ai/vm0/issues/30112)) ([8d594fa](https://github.com/vm0-ai/vm0/commit/8d594fa8ce223e5040a0c0edcfae2aacf1a03307)), closes [#30103](https://github.com/vm0-ai/vm0/issues/30103) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest-agent:** reuse file-size limit guard ([#30135](https://github.com/vm0-ai/vm0/issues/30135)) ([1986eea](https://github.com/vm0-ai/vm0/commit/1986eea95d66a5e65a1f1022dee6b2f89502e099))
+* **runner:** cut guest API URL writer to canonical alias ([#30105](https://github.com/vm0-ai/vm0/issues/30105)) ([f3bb3c5](https://github.com/vm0-ai/vm0/commit/f3bb3c589879d6782f7942afff00b8e9af242706))
+
+## [0.82.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.12...guest-agent-v0.82.13) (2026-08-28)
+
+## [0.82.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.11...guest-agent-v0.82.12) (2026-08-28)
+
+
+### Performance Improvements
+
+* **guest-agent:** reuse metrics log handle ([#30067](https://github.com/vm0-ai/vm0/issues/30067)) ([59c6902](https://github.com/vm0-ai/vm0/commit/59c6902e5185016fd49b51bc6609ea372380e501))
+
+## [0.82.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.10...guest-agent-v0.82.11) (2026-08-28)
+
+## [0.82.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.9...guest-agent-v0.82.10) (2026-08-28)
+
+## [0.82.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.8...guest-agent-v0.82.9) (2026-08-28)
+
+
+### Refactoring
+
+* **guest:** cut managed tool placement writer to canonical alias ([#30001](https://github.com/vm0-ai/vm0/issues/30001)) ([e8e1294](https://github.com/vm0-ai/vm0/commit/e8e129417a3e77e507f2892854f8291d71d97d8e)), closes [#29995](https://github.com/vm0-ai/vm0/issues/29995) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **test:** cut guest runtime directory writers to canonical alias ([#30000](https://github.com/vm0-ai/vm0/issues/30000)) ([89c3cdc](https://github.com/vm0-ai/vm0/commit/89c3cdc8c5c7abd4cade63cc0debe62cbd909ca4))
+* **test:** cut process-control prerequisites to canonical alias ([#29997](https://github.com/vm0-ai/vm0/issues/29997)) ([366cc0b](https://github.com/vm0-ai/vm0/commit/366cc0b28080d9c67c5ba029f9686a362c8493e0))
+
+## [0.82.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.7...guest-agent-v0.82.8) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy codex service-tier reader ([#29983](https://github.com/vm0-ai/vm0/issues/29983)) ([bdd382b](https://github.com/vm0-ai/vm0/commit/bdd382b86cef7a73142e4fe14732aa9d1c5dd33b))
+* **guest:** remove legacy mock binary path readers ([#29977](https://github.com/vm0-ai/vm0/issues/29977)) ([95df1fc](https://github.com/vm0-ai/vm0/commit/95df1fce63080ef61656f9d5e76b2c763fd2afdc)), closes [#29973](https://github.com/vm0-ai/vm0/issues/29973) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **runtime:** cut process-control writer to canonical alias ([#29915](https://github.com/vm0-ai/vm0/issues/29915)) ([d24888e](https://github.com/vm0-ai/vm0/commit/d24888e360664ac892d1be16788f5b75abd2a26a))
+* **test:** cut API start-time writers to canonical alias ([#29957](https://github.com/vm0-ai/vm0/issues/29957)) ([6b1f6b3](https://github.com/vm0-ai/vm0/commit/6b1f6b328efc2a747fbac17abafae66c70379d19))
+* **test:** cut API token writers to canonical alias ([#29969](https://github.com/vm0-ai/vm0/issues/29969)) ([e39f845](https://github.com/vm0-ai/vm0/commit/e39f845c8d6fa3932be90019dc6599c388a820d3))
+* **test:** cut api url writers to canonical alias ([#29972](https://github.com/vm0-ai/vm0/issues/29972)) ([53c81cd](https://github.com/vm0-ai/vm0/commit/53c81cdc6b75067d88c6682ea6f1c65681631862))
+* **test:** cut codex fast-mode writers to canonical alias ([#29971](https://github.com/vm0-ai/vm0/issues/29971)) ([1f8d334](https://github.com/vm0-ai/vm0/commit/1f8d3349a3c274c79495f1c8402da2de1fabc2dd))
+* **test:** cut mock path writers to canonical aliases ([#29949](https://github.com/vm0-ai/vm0/issues/29949)) ([3941a98](https://github.com/vm0-ai/vm0/commit/3941a9832964c22b647213509376be0fccb70683))
+* **test:** cut post-result timing writers to canonical aliases ([#29966](https://github.com/vm0-ai/vm0/issues/29966)) ([ca0592e](https://github.com/vm0-ai/vm0/commit/ca0592e4ddb23f7ddcc15a8f9a52f5bfb99444e3))
+* **test:** cut private payload writers to canonical aliases ([#29975](https://github.com/vm0-ai/vm0/issues/29975)) ([d3aadd7](https://github.com/vm0-ai/vm0/commit/d3aadd74c482a682a198db736b331baf680730fc))
+* **test:** cut resume-session writers to canonical alias ([#29955](https://github.com/vm0-ai/vm0/issues/29955)) ([086f2e1](https://github.com/vm0-ai/vm0/commit/086f2e1376400ef3feb818b896e751497bac0147)), closes [#29952](https://github.com/vm0-ai/vm0/issues/29952) [#29065](https://github.com/vm0-ai/vm0/issues/29065) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **test:** cut sandbox metadata writers to canonical aliases ([#29962](https://github.com/vm0-ai/vm0/issues/29962)) ([6762647](https://github.com/vm0-ai/vm0/commit/67626477d495d55587405b39964a88acf1793f37)), closes [#29956](https://github.com/vm0-ai/vm0/issues/29956) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **test:** cut stuck-tool timeout writers to canonical alias ([#29963](https://github.com/vm0-ai/vm0/issues/29963)) ([2bf4da0](https://github.com/vm0-ai/vm0/commit/2bf4da08395d98bc1538dcfcb95e355ff0a7d049))
+* **test:** cut timeout writers to canonical alias ([#29959](https://github.com/vm0-ai/vm0/issues/29959)) ([38b93ad](https://github.com/vm0-ai/vm0/commit/38b93ad6b0be1c85e20a4d1ce3d69edd38772ea3))
+
+## [0.82.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.6...guest-agent-v0.82.7) (2026-08-27)
+
+## [0.82.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.5...guest-agent-v0.82.6) (2026-08-27)
+
+
+### Refactoring
+
+* **rust:** make shared jsonl cli state backend-neutral ([#29895](https://github.com/vm0-ai/vm0/issues/29895)) ([0e0bc69](https://github.com/vm0-ai/vm0/commit/0e0bc69214f2717f37aa27064c1a1f5a1c8ae311))
+
+## [0.82.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.4...guest-agent-v0.82.5) (2026-08-27)
+
+## [0.82.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.3...guest-agent-v0.82.4) (2026-08-27)
+
+## [0.82.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.2...guest-agent-v0.82.3) (2026-08-27)
+
+## [0.82.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.1...guest-agent-v0.82.2) (2026-08-27)
+
+## [0.82.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.0...guest-agent-v0.82.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound pi rpc writes on cancellation ([#29783](https://github.com/vm0-ai/vm0/issues/29783)) ([083255a](https://github.com/vm0-ai/vm0/commit/083255ab967c28674b3b103575444a9732074403))
+
+
+### Documentation
+
+* **guest-agent:** document ignored masker inputs ([#29761](https://github.com/vm0-ai/vm0/issues/29761)) ([9dda9e8](https://github.com/vm0-ai/vm0/commit/9dda9e80a019ffbd1d2fea575cf84385b4e318d1))
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
+## [0.82.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.81.0...guest-agent-v0.82.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** materialize chat tool activity ([#29665](https://github.com/vm0-ai/vm0/issues/29665)) ([8467582](https://github.com/vm0-ai/vm0/commit/8467582c87e631932861b04cc519278527e482e3))
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
+## [0.81.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.80.0...guest-agent-v0.81.0) (2026-08-26)
+
+
+### Features
+
+* **pi:** accept dynamic handoff sequence boundaries ([#29636](https://github.com/vm0-ai/vm0/issues/29636)) ([d52059f](https://github.com/vm0-ai/vm0/commit/d52059fb35108354d70078edd84404eae7008647))
+
+## [0.80.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.7...guest-agent-v0.80.0) (2026-08-26)
+
+
+### Features
+
+* **guest-agent:** normalize pi message blocks before sequencing ([#29624](https://github.com/vm0-ai/vm0/issues/29624)) ([80ef970](https://github.com/vm0-ai/vm0/commit/80ef97097b7a0fffaf34cf25ffc44af31b80ea37))
+
+## [0.79.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.6...guest-agent-v0.79.7) (2026-08-26)
+
+## [0.79.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.5...guest-agent-v0.79.6) (2026-08-26)
+
+## [0.79.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.4...guest-agent-v0.79.5) (2026-08-26)
+
+
+### Documentation
+
+* **guest-agent:** clarify has_api capability semantics ([#29498](https://github.com/vm0-ai/vm0/issues/29498)) ([db74bdb](https://github.com/vm0-ai/vm0/commit/db74bdb81d8716f016bd9050c3aec39852a24c93))
+
+
+### Performance Improvements
+
+* **guest-agent:** reject oversized plain histories before reading ([#29494](https://github.com/vm0-ai/vm0/issues/29494)) ([207cc95](https://github.com/vm0-ai/vm0/commit/207cc95ad45f5216667264d8998ed48e0f8969e4))
+
+## [0.79.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.3...guest-agent-v0.79.4) (2026-08-26)
+
+
+### Bug Fixes
+
+* **agent:** preserve original shell commands in tool events ([#29475](https://github.com/vm0-ai/vm0/issues/29475)) ([238051b](https://github.com/vm0-ai/vm0/commit/238051b2011fbd6d790c34b81e4f476d9a107830))
+
+## [0.79.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.2...guest-agent-v0.79.3) (2026-08-26)
+
+## [0.79.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.1...guest-agent-v0.79.2) (2026-08-25)
+
+
+### Refactoring
+
+* **guest:** rename unmanaged process-control test environment key ([#29394](https://github.com/vm0-ai/vm0/issues/29394)) ([22867f9](https://github.com/vm0-ai/vm0/commit/22867f948f207d267e16e47e98c86591500f6536))
+
+## [0.79.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.79.0...guest-agent-v0.79.1) (2026-08-25)
+
+
+### Refactoring
+
+* **guest-agent:** rename debug http retry-delay key ([#29390](https://github.com/vm0-ai/vm0/issues/29390)) ([688fb07](https://github.com/vm0-ai/vm0/commit/688fb07a5429bdac8c4ddbd5c8f121ebc72c31a5))
+* **guest:** dual-read mock binary path aliases ([#29385](https://github.com/vm0-ai/vm0/issues/29385)) ([15e79f4](https://github.com/vm0-ai/vm0/commit/15e79f42c3522856c4debe98c19af6b47bf54a30))
+
+## [0.79.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.78.0...guest-agent-v0.79.0) (2026-08-25)
+
+
+### Features
+
+* materialize provider tool activity ([#29372](https://github.com/vm0-ai/vm0/issues/29372)) ([0383cb8](https://github.com/vm0-ai/vm0/commit/0383cb83c9d370a730c97dade61994165ab69023))
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api backend url aliases ([#29369](https://github.com/vm0-ai/vm0/issues/29369)) ([84295ac](https://github.com/vm0-ai/vm0/commit/84295ac0c3d66185b90d59fc6afa3f79903aac9a))
+
+## [0.78.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.77.2...guest-agent-v0.78.0) (2026-08-25)
+
+
+### Features
+
+* **guest-agent:** normalize provider events before sequencing ([#29353](https://github.com/vm0-ai/vm0/issues/29353)) ([3462eda](https://github.com/vm0-ai/vm0/commit/3462eda85bc1b4a384a5562a0e9de84d93341ee9))
+
+
+### Refactoring
+
+* **api-contracts:** centralize checkpoint webhook types ([#29332](https://github.com/vm0-ai/vm0/issues/29332)) ([d33aadd](https://github.com/vm0-ai/vm0/commit/d33aadde98ab495df30b32e81e51f9467b921b21))
+* **guest-agent:** dual-read tuning environment aliases ([#29329](https://github.com/vm0-ai/vm0/issues/29329)) ([d5dbae8](https://github.com/vm0-ai/vm0/commit/d5dbae8abbb4141eb10bb22ab3a8d588628b1e7c))
+
+## [0.77.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.77.1...guest-agent-v0.77.2) (2026-08-25)
+
+## [0.77.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.77.0...guest-agent-v0.77.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound api response bodies ([#29239](https://github.com/vm0-ai/vm0/issues/29239)) ([95cb00a](https://github.com/vm0-ai/vm0/commit/95cb00a74ad072ae78f975634050c3a068834eff))
+
+## [0.77.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.76.0...guest-agent-v0.77.0) (2026-08-25)
+
+
+### Features
+
+* **api:** add strict pi api first-turn handoff ([#28664](https://github.com/vm0-ai/vm0/issues/28664)) ([4bc9ef0](https://github.com/vm0-ai/vm0/commit/4bc9ef063e244a3f3af8dbc9ab94fd173208b93c))
+
+
+### Bug Fixes
+
+* **events:** preserve timeout and connect observations ([#28397](https://github.com/vm0-ai/vm0/issues/28397)) ([c3d536e](https://github.com/vm0-ai/vm0/commit/c3d536eab61fca8e2006a7664a982b993537db00))
+* **guest-agent:** classify mid-response failures ([#28393](https://github.com/vm0-ai/vm0/issues/28393)) ([4ca21bd](https://github.com/vm0-ai/vm0/commit/4ca21bdbe47a2ce99f34c343b074f83c45775483))
+* **guest-agent:** ignore task notification results ([#28534](https://github.com/vm0-ai/vm0/issues/28534)) ([db3e953](https://github.com/vm0-ai/vm0/commit/db3e95327b14181d74456de8f00120bd1e186be0))
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+* **guest-agent:** mask sandbox operation telemetry ([#28512](https://github.com/vm0-ai/vm0/issues/28512)) ([d81bf2d](https://github.com/vm0-ai/vm0/commit/d81bf2d0505e96a7e76efc5365c2275e271dca2f))
+* **guest-agent:** redact multiline secrets in telemetry ([#28514](https://github.com/vm0-ai/vm0/issues/28514)) ([484c288](https://github.com/vm0-ai/vm0/commit/484c28853522c09be3eca6e9aa21726169dc0665))
+* **guest-agent:** reject artifact roots with linked ancestors ([#28899](https://github.com/vm0-ai/vm0/issues/28899)) ([8923a95](https://github.com/vm0-ai/vm0/commit/8923a95def24f40702c333043b48b7c3cd83600d))
+* **guest:** isolate managed claude config from user home ([#28324](https://github.com/vm0-ai/vm0/issues/28324)) ([c6a20ba](https://github.com/vm0-ai/vm0/commit/c6a20babf5f75ffac7ac97f69c570ba1ddb2ef23))
+* handle revoked claude code oauth tokens ([#29181](https://github.com/vm0-ai/vm0/issues/29181)) ([fefb3c9](https://github.com/vm0-ai/vm0/commit/fefb3c9a1a46d6239f9646b2280054e1ee133687))
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+
+
+### Documentation
+
+* **rust:** document guest event preparation and posting boundaries ([#28918](https://github.com/vm0-ai/vm0/issues/28918)) ([4aaa4ee](https://github.com/vm0-ai/vm0/commit/4aaa4ee66ba3a54473ee1d34c3ef12e861894234))
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api token environment aliases ([#29062](https://github.com/vm0-ai/vm0/issues/29062)) ([1f21af7](https://github.com/vm0-ai/vm0/commit/1f21af778ef9513a49ee40de8e6176aba08e80ac))
+* **guest-agent:** dual-read codex service-tier environment aliases ([#29038](https://github.com/vm0-ai/vm0/issues/29038)) ([dc84c21](https://github.com/vm0-ai/vm0/commit/dc84c21c569fc9919321c27ee2af32209d319ee7))
+* **runtime:** dual-read cgroup placement environment aliases ([#29081](https://github.com/vm0-ai/vm0/issues/29081)) ([7beb4d5](https://github.com/vm0-ai/vm0/commit/7beb4d545bef801b7dd0bd2c107829869cd022ed))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read private payload file env aliases ([#29082](https://github.com/vm0-ai/vm0/issues/29082)) ([e400e00](https://github.com/vm0-ai/vm0/commit/e400e0058cd63cc18b478ad807da42f9b5bb5e74))
+* **runtime:** dual-read process-control environment aliases ([#29071](https://github.com/vm0-ai/vm0/issues/29071)) ([c9cde49](https://github.com/vm0-ai/vm0/commit/c9cde495a4ba6f43c409476a68733bdade8cb99c))
+* **runtime:** dual-read resume session environment aliases ([#29069](https://github.com/vm0-ai/vm0/issues/29069)) ([6dd54e9](https://github.com/vm0-ai/vm0/commit/6dd54e909a8607421344e758adcb887f72f8f0de))
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound reuse cleanup memory ([#28593](https://github.com/vm0-ai/vm0/issues/28593)) ([23ac7ce](https://github.com/vm0-ai/vm0/commit/23ac7ce52340901becc277fa521dd649b8d23d59))
+* **guest-agent:** buffer transcript writes ([#28881](https://github.com/vm0-ai/vm0/issues/28881)) ([a401186](https://github.com/vm0-ai/vm0/commit/a401186650c98a904bf4d4f435868f91239d20d1))
+* **guest-agent:** retain compact pi terminal state ([#29179](https://github.com/vm0-ai/vm0/issues/29179)) ([6e5f64e](https://github.com/vm0-ai/vm0/commit/6e5f64ecdc9d0c0024ecd62fab55b9baccdf1fda))
+* **rust:** bound generic codex completed-item fields ([#28876](https://github.com/vm0-ai/vm0/issues/28876)) ([b13d3d2](https://github.com/vm0-ai/vm0/commit/b13d3d21e2630ac4472083988f4ca2766fa1b3e1))
+
+## [0.76.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.10...guest-agent-v0.76.0) (2026-08-25)
+
+
+### Features
+
+* **api:** add strict pi api first-turn handoff ([#28664](https://github.com/vm0-ai/vm0/issues/28664)) ([4bc9ef0](https://github.com/vm0-ai/vm0/commit/4bc9ef063e244a3f3af8dbc9ab94fd173208b93c))
+
+
+### Bug Fixes
+
+* **events:** preserve timeout and connect observations ([#28397](https://github.com/vm0-ai/vm0/issues/28397)) ([c3d536e](https://github.com/vm0-ai/vm0/commit/c3d536eab61fca8e2006a7664a982b993537db00))
+* **guest-agent:** classify mid-response failures ([#28393](https://github.com/vm0-ai/vm0/issues/28393)) ([4ca21bd](https://github.com/vm0-ai/vm0/commit/4ca21bdbe47a2ce99f34c343b074f83c45775483))
+* **guest-agent:** ignore task notification results ([#28534](https://github.com/vm0-ai/vm0/issues/28534)) ([db3e953](https://github.com/vm0-ai/vm0/commit/db3e95327b14181d74456de8f00120bd1e186be0))
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+* **guest-agent:** mask sandbox operation telemetry ([#28512](https://github.com/vm0-ai/vm0/issues/28512)) ([d81bf2d](https://github.com/vm0-ai/vm0/commit/d81bf2d0505e96a7e76efc5365c2275e271dca2f))
+* **guest-agent:** redact multiline secrets in telemetry ([#28514](https://github.com/vm0-ai/vm0/issues/28514)) ([484c288](https://github.com/vm0-ai/vm0/commit/484c28853522c09be3eca6e9aa21726169dc0665))
+* **guest-agent:** reject artifact roots with linked ancestors ([#28899](https://github.com/vm0-ai/vm0/issues/28899)) ([8923a95](https://github.com/vm0-ai/vm0/commit/8923a95def24f40702c333043b48b7c3cd83600d))
+* **guest:** isolate managed claude config from user home ([#28324](https://github.com/vm0-ai/vm0/issues/28324)) ([c6a20ba](https://github.com/vm0-ai/vm0/commit/c6a20babf5f75ffac7ac97f69c570ba1ddb2ef23))
+* handle revoked claude code oauth tokens ([#29181](https://github.com/vm0-ai/vm0/issues/29181)) ([fefb3c9](https://github.com/vm0-ai/vm0/commit/fefb3c9a1a46d6239f9646b2280054e1ee133687))
+* **runner:** isolate shell tool oom cleanup ([#28391](https://github.com/vm0-ai/vm0/issues/28391)) ([ffb0332](https://github.com/vm0-ai/vm0/commit/ffb03327e60854d4e5e541b34a2f3423cfcee6f2))
+* surface claude terms acceptance failures ([#28314](https://github.com/vm0-ai/vm0/issues/28314)) ([dc0674c](https://github.com/vm0-ai/vm0/commit/dc0674cd33b9b5ec44e592814c4f7b0c3d952575))
+
+
+### Documentation
+
+* **rust:** document guest event preparation and posting boundaries ([#28918](https://github.com/vm0-ai/vm0/issues/28918)) ([4aaa4ee](https://github.com/vm0-ai/vm0/commit/4aaa4ee66ba3a54473ee1d34c3ef12e861894234))
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api token environment aliases ([#29062](https://github.com/vm0-ai/vm0/issues/29062)) ([1f21af7](https://github.com/vm0-ai/vm0/commit/1f21af778ef9513a49ee40de8e6176aba08e80ac))
+* **guest-agent:** dual-read codex service-tier environment aliases ([#29038](https://github.com/vm0-ai/vm0/issues/29038)) ([dc84c21](https://github.com/vm0-ai/vm0/commit/dc84c21c569fc9919321c27ee2af32209d319ee7))
+* **runtime:** dual-read cgroup placement environment aliases ([#29081](https://github.com/vm0-ai/vm0/issues/29081)) ([7beb4d5](https://github.com/vm0-ai/vm0/commit/7beb4d545bef801b7dd0bd2c107829869cd022ed))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read private payload file env aliases ([#29082](https://github.com/vm0-ai/vm0/issues/29082)) ([e400e00](https://github.com/vm0-ai/vm0/commit/e400e0058cd63cc18b478ad807da42f9b5bb5e74))
+* **runtime:** dual-read process-control environment aliases ([#29071](https://github.com/vm0-ai/vm0/issues/29071)) ([c9cde49](https://github.com/vm0-ai/vm0/commit/c9cde495a4ba6f43c409476a68733bdade8cb99c))
+* **runtime:** dual-read resume session environment aliases ([#29069](https://github.com/vm0-ai/vm0/issues/29069)) ([6dd54e9](https://github.com/vm0-ai/vm0/commit/6dd54e909a8607421344e758adcb887f72f8f0de))
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound reuse cleanup memory ([#28593](https://github.com/vm0-ai/vm0/issues/28593)) ([23ac7ce](https://github.com/vm0-ai/vm0/commit/23ac7ce52340901becc277fa521dd649b8d23d59))
+* **guest-agent:** buffer transcript writes ([#28881](https://github.com/vm0-ai/vm0/issues/28881)) ([a401186](https://github.com/vm0-ai/vm0/commit/a401186650c98a904bf4d4f435868f91239d20d1))
+* **guest-agent:** retain compact pi terminal state ([#29179](https://github.com/vm0-ai/vm0/issues/29179)) ([6e5f64e](https://github.com/vm0-ai/vm0/commit/6e5f64ecdc9d0c0024ecd62fab55b9baccdf1fda))
+* **rust:** bound generic codex completed-item fields ([#28876](https://github.com/vm0-ai/vm0/issues/28876)) ([b13d3d2](https://github.com/vm0-ai/vm0/commit/b13d3d21e2630ac4472083988f4ca2766fa1b3e1))
+
+## [0.75.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.9...guest-agent-v0.75.10) (2026-08-25)
+
+## [0.75.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.8...guest-agent-v0.75.9) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read cgroup placement environment aliases ([#29081](https://github.com/vm0-ai/vm0/issues/29081)) ([7beb4d5](https://github.com/vm0-ai/vm0/commit/7beb4d545bef801b7dd0bd2c107829869cd022ed))
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+* **runtime:** dual-read private payload file env aliases ([#29082](https://github.com/vm0-ai/vm0/issues/29082)) ([e400e00](https://github.com/vm0-ai/vm0/commit/e400e0058cd63cc18b478ad807da42f9b5bb5e74))
+* **runtime:** dual-read process-control environment aliases ([#29071](https://github.com/vm0-ai/vm0/issues/29071)) ([c9cde49](https://github.com/vm0-ai/vm0/commit/c9cde495a4ba6f43c409476a68733bdade8cb99c))
+* **runtime:** dual-read resume session environment aliases ([#29069](https://github.com/vm0-ai/vm0/issues/29069)) ([6dd54e9](https://github.com/vm0-ai/vm0/commit/6dd54e909a8607421344e758adcb887f72f8f0de))
+
+## [0.75.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.7...guest-agent-v0.75.8) (2026-08-24)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read api token environment aliases ([#29062](https://github.com/vm0-ai/vm0/issues/29062)) ([1f21af7](https://github.com/vm0-ai/vm0/commit/1f21af778ef9513a49ee40de8e6176aba08e80ac))
+
+## [0.75.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.6...guest-agent-v0.75.7) (2026-08-24)
+
+
+### Refactoring
+
+* **guest-agent:** dual-read codex service-tier environment aliases ([#29038](https://github.com/vm0-ai/vm0/issues/29038)) ([dc84c21](https://github.com/vm0-ai/vm0/commit/dc84c21c569fc9919321c27ee2af32209d319ee7))
+* **runtime:** dual-read run metadata env aliases ([#29022](https://github.com/vm0-ai/vm0/issues/29022)) ([928d53b](https://github.com/vm0-ai/vm0/commit/928d53b17819c1c82f76da3aa8e4e672c69431d1))
+
+## [0.75.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.5...guest-agent-v0.75.6) (2026-08-24)
+
+## [0.75.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.4...guest-agent-v0.75.5) (2026-08-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** reject artifact roots with linked ancestors ([#28899](https://github.com/vm0-ai/vm0/issues/28899)) ([8923a95](https://github.com/vm0-ai/vm0/commit/8923a95def24f40702c333043b48b7c3cd83600d))
+
+
+### Documentation
+
+* **rust:** document guest event preparation and posting boundaries ([#28918](https://github.com/vm0-ai/vm0/issues/28918)) ([4aaa4ee](https://github.com/vm0-ai/vm0/commit/4aaa4ee66ba3a54473ee1d34c3ef12e861894234))
+
+## [0.75.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.3...guest-agent-v0.75.4) (2026-08-24)
+
+
+### Performance Improvements
+
+* **guest-agent:** buffer transcript writes ([#28881](https://github.com/vm0-ai/vm0/issues/28881)) ([a401186](https://github.com/vm0-ai/vm0/commit/a401186650c98a904bf4d4f435868f91239d20d1))
+* **rust:** bound generic codex completed-item fields ([#28876](https://github.com/vm0-ai/vm0/issues/28876)) ([b13d3d2](https://github.com/vm0-ai/vm0/commit/b13d3d21e2630ac4472083988f4ca2766fa1b3e1))
+
+## [0.75.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.2...guest-agent-v0.75.3) (2026-08-24)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep claude appended prompts out of argv ([#28838](https://github.com/vm0-ai/vm0/issues/28838)) ([0bd96d6](https://github.com/vm0-ai/vm0/commit/0bd96d69d6b9121e37232080a35111550f709424))
+
+## [0.75.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.1...guest-agent-v0.75.2) (2026-08-24)
+
 ## [0.75.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.75.0...guest-agent-v0.75.1) (2026-08-23)
 
 ## [0.75.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.22...guest-agent-v0.75.0) (2026-08-23)

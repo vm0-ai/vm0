@@ -38,21 +38,21 @@ const goalReadAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "goal:read",
-  accept: ["zero"],
+  accept: ["agent"],
 } as const;
 
 const goalAgentResultWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "goal:agent-result:write",
-  accept: ["zero"],
+  accept: ["agent"],
 } as const;
 
 const goalUserControlWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "goal:user-control:write",
-  accept: ["zero"],
+  accept: ["agent"],
 } as const;
 
 const sessionGoalUserControlWriteAuth = {
@@ -82,8 +82,8 @@ interface SessionGoalAuth {
 }
 
 function goalAuth(auth: AuthContext & { readonly orgId: string }): GoalAuth {
-  if (auth.tokenType !== "zero") {
-    throw new Error("Goal routes require zero token auth");
+  if (auth.tokenType !== "agent") {
+    throw new Error("Goal routes require agent token auth");
   }
   return {
     orgId: auth.orgId,

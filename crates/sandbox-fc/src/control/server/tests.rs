@@ -4,14 +4,14 @@ use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
 use std::pin::Pin;
 
-use sandbox::ExecTermination;
+use sandbox::{EXEC_OUTPUT_LIMIT_7_MIB, ExecTermination};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 use vsock_host::{ExecOwnedCapturedOutput, NormalOperationFenceRejection, VsockHost};
 use vsock_proto::{
-    Decoder, ExecCapturedOutput, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY,
-    RawMessage,
+    Decoder, ExecCapturedOutput, ExecOutputPolicy, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG,
+    MSG_READY, RawMessage,
 };
 
 use crate::control::client::send_exec;
@@ -860,9 +860,10 @@ async fn control_server_shutdown_cancels_pending_connection() {
 
 #[tokio::test]
 async fn control_exec_streams_both_capture_limits() {
-    const CAPTURE_LIMIT: usize = 7 * 1024 * 1024;
-    let stdout = vec![0xa5; CAPTURE_LIMIT];
-    let stderr = vec![0x5a; CAPTURE_LIMIT];
+    let stdout_limit = EXEC_OUTPUT_LIMIT_7_MIB.stdout_limit_bytes as usize;
+    let stderr_limit = EXEC_OUTPUT_LIMIT_7_MIB.stderr_limit_bytes as usize;
+    let stdout = vec![0xa5; stdout_limit];
+    let stderr = vec![0x5a; stderr_limit];
     let fixture = VsockExecFixture::connect(move |vsock_base| {
         mock_guest_returns_exec(
             vsock_base,
@@ -896,9 +897,9 @@ async fn control_exec_streams_both_capture_limits() {
         panic!("server should return a raw success response");
     };
     assert_eq!(termination, ExecTermination::Exited { exit_code: 23 });
-    assert_eq!(stdout.len(), CAPTURE_LIMIT);
+    assert_eq!(stdout.len(), stdout_limit);
     assert!(stdout.iter().all(|byte| *byte == 0xa5));
-    assert_eq!(stderr.len(), CAPTURE_LIMIT);
+    assert_eq!(stderr.len(), stderr_limit);
     assert!(stderr.iter().all(|byte| *byte == 0x5a));
     assert!(stdout_truncated);
     assert!(!stderr_truncated);
@@ -1371,6 +1372,19 @@ async fn mock_guest_returns_exec(
     loop {
         let message = read_vsock_message(&mut stream, &mut decoder).await;
         if message.msg_type == MSG_EXEC_START {
+            let request = vsock_proto::decode_exec_start(&message.payload).unwrap();
+            assert_eq!(
+                request.stdout,
+                ExecOutputPolicy::Capture {
+                    limit_bytes: EXEC_OUTPUT_LIMIT_7_MIB.stdout_limit_bytes,
+                }
+            );
+            assert_eq!(
+                request.stderr,
+                ExecOutputPolicy::Capture {
+                    limit_bytes: EXEC_OUTPUT_LIMIT_7_MIB.stderr_limit_bytes,
+                }
+            );
             let mut frame = Vec::new();
             vsock_proto::encode_exec_result_frame_into(
                 &mut frame,

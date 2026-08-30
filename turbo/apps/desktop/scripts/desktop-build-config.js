@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const desktopIdentities = require("../src/desktop-identities.json");
+const { readDesktopEnvironment } = require("./desktop-environment");
 
 const PRODUCTION_PLATFORM_HOSTNAMES = new Set(["app.vm0.ai", "app.okou.ai"]);
 const RUNTIME_CONFIG_PATH = path.resolve(
@@ -32,13 +33,13 @@ function resolveDesktopBuildConfig(options = {}) {
   const fileConfig = readRuntimeConfig();
   const product = desktopProduct(
     options.product?.trim() ||
-      process.env.VM0_DESKTOP_PRODUCT?.trim() ||
+      readDesktopEnvironment("OKOU_DESKTOP_PRODUCT") ||
       fileConfig?.product ||
       "zero",
   );
   const platformUrl = new URL(
     options.platformUrl?.trim() ||
-      process.env.VM0_DESKTOP_PLATFORM_URL?.trim() ||
+      readDesktopEnvironment("OKOU_DESKTOP_PLATFORM_URL") ||
       fileConfig?.platformUrl ||
       desktopIdentities[product].defaultPlatformUrl,
   );

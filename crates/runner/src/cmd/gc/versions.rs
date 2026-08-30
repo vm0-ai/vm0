@@ -149,12 +149,12 @@ enum VersionRetentionReason {
 }
 
 impl VersionRetentionReason {
-    fn log_skip(&self, name: &str) {
+    fn log_skip(&self, name: &str, dry_run: bool) {
         match self {
-            Self::ProtectVersion => {
+            Self::ProtectVersion if dry_run => {
                 info!("version {name}: protected (--protect-version), skipping");
             }
-            Self::KeepLatest => {
+            Self::KeepLatest if dry_run => {
                 info!("version {name}: within --keep-latest, skipping");
             }
             Self::IncompleteBinaryScan => {
@@ -163,21 +163,26 @@ impl VersionRetentionReason {
             Self::UnexpectedArtifactType => {
                 warn!("version {name}: managed version path is not a directory, skipping");
             }
-            Self::Recent(age) => {
+            Self::Recent(age) if dry_run => {
                 info!("version {name}: too recent ({}s), skipping", age.as_secs());
             }
             Self::InvalidServiceSuffix(error) => {
                 warn!("version {name}: invalid service unit suffix ({error}), skipping");
             }
-            Self::ServiceLockHeld => {
+            Self::ServiceLockHeld if dry_run => {
                 info!("version {name}: service lock held, skipping");
             }
             Self::ServiceLockProbeError(error) => {
                 warn!("version {name}: cannot probe service lock ({error}), skipping");
             }
-            Self::Active => {
+            Self::Active if dry_run => {
                 info!("version {name}: active, skipping");
             }
+            Self::ProtectVersion
+            | Self::KeepLatest
+            | Self::Recent(_)
+            | Self::ServiceLockHeld
+            | Self::Active => {}
         }
     }
 }
@@ -430,7 +435,7 @@ async fn version_retention_reason(
         Ok(unit) => unit,
         Err(e) => return Some(VersionRetentionReason::InvalidServiceSuffix(e.to_string())),
     };
-    let service_lock_path = home.service_lock(unit.unit_name());
+    let service_lock_path = unit.lock_path(home);
     let service_lock_parent = host_file::file_parent(&service_lock_path);
     match tokio::fs::symlink_metadata(service_lock_parent).await {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -609,7 +614,7 @@ async fn gc_versions_with_analysis_and_operations(
     for entry in &analysis.entries {
         let name = &entry.name;
         if let Some(reason) = &entry.retained {
-            reason.log_skip(name);
+            reason.log_skip(name, dry_run);
             continue;
         }
 
@@ -617,7 +622,9 @@ async fn gc_versions_with_analysis_and_operations(
         let version_config = home.runners_dir().join(name);
         let age = version_gc_age(home, name).await;
         if age < GC_MIN_AGE {
-            info!("version {name}: too recent ({}s), skipping", age.as_secs());
+            if dry_run {
+                info!("version {name}: too recent ({}s), skipping", age.as_secs());
+            }
             continue;
         }
 
@@ -625,7 +632,7 @@ async fn gc_versions_with_analysis_and_operations(
             Ok(u) => u,
             Err(_) => continue,
         };
-        let service_lock_path = home.service_lock(unit.unit_name());
+        let service_lock_path = unit.lock_path(home);
         let service_lock_name = service_lock_path
             .file_name()
             .and_then(|name| name.to_str())
@@ -658,10 +665,7 @@ async fn gc_versions_with_analysis_and_operations(
         } else {
             match lock::try_acquire_or_busy(service_lock_path.clone()).await {
                 Ok(lock::TryLock::Acquired(lock)) => Some(lock),
-                Ok(lock::TryLock::Busy) => {
-                    info!("version {name}: service lock held, skipping");
-                    continue;
-                }
+                Ok(lock::TryLock::Busy) => continue,
                 Err(e) => {
                     warn!("version {name}: cannot acquire service lock ({e}), skipping");
                     continue;
@@ -675,10 +679,12 @@ async fn gc_versions_with_analysis_and_operations(
 
         let age = version_gc_age(home, name).await;
         if age < GC_MIN_AGE {
-            info!(
-                "version {name}: became too recent before delete ({}s), skipping",
-                age.as_secs()
-            );
+            if dry_run {
+                info!(
+                    "version {name}: became too recent before delete ({}s), skipping",
+                    age.as_secs()
+                );
+            }
             continue;
         }
 
@@ -686,7 +692,9 @@ async fn gc_versions_with_analysis_and_operations(
         // race between the active probe and the remove path.
         match service::is_unit_active(&unit).await {
             Ok(true) => {
-                info!("version {name}: active, skipping");
+                if dry_run {
+                    info!("version {name}: active, skipping");
+                }
                 continue;
             }
             Ok(false) => {}
@@ -724,7 +732,6 @@ async fn gc_versions_with_analysis_and_operations(
                 continue;
             }
 
-            info!("removed version {name}");
             remove_unused_lock_after_probe(
                 &service_lock_path,
                 service_lock,

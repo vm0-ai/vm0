@@ -18,8 +18,28 @@ type AbortSignalTimeoutMock = Mock<
 >;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
+
+function resolveDefaultStripePrice(priceId: unknown): Promise<unknown> {
+  return Promise.resolve({
+    id: priceId,
+    active: true,
+    currency: "usd",
+    type: "recurring",
+    unit_amount: 4200,
+    recurring: { interval: "month", interval_count: 1 },
+    product: "prod_test_concurrency",
+  });
+}
+
 interface AxiomClientOptions {
   readonly onError?: (error: Error) => void;
+  readonly token?: string;
+}
+interface AxiomSdkClientMock {
+  readonly options: AxiomClientOptions;
+  readonly flush: AsyncMock;
+  readonly ingest: UnknownMock;
+  readonly query: AsyncMock;
 }
 interface BrowserUseCdpCommand {
   readonly id: number;
@@ -51,6 +71,7 @@ export interface ApiTestMocks {
   };
   readonly axiom: {
     readonly clientError: Mock<(error: Error) => void>;
+    readonly clients: AxiomSdkClientMock[];
     readonly flush: AsyncMock;
     readonly ingest: BooleanMock;
     readonly query: AsyncMock;
@@ -274,6 +295,7 @@ export interface ApiTestMocks {
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const axiom = {
     clientError: vi.fn<(error: Error) => void>(),
+    clients: [],
     flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     ingest: vi.fn<(...args: unknown[]) => boolean>(),
     query: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -442,7 +464,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     prices: {
-      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(
+        resolveDefaultStripePrice,
+      ),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
   };
@@ -1121,11 +1145,20 @@ vi.mock("@axiomhq/js", () => {
       apiTestMocks.axiom.clientError.mockImplementation((error: Error) => {
         options.onError?.(error);
       });
-      return {
-        flush: apiTestMocks.axiom.flush,
-        ingest: apiTestMocks.axiom.sdkIngest,
-        query: apiTestMocks.axiom.query,
+      const client: AxiomSdkClientMock = {
+        options,
+        flush: vi.fn((...args: unknown[]) => {
+          return apiTestMocks.axiom.flush(...args);
+        }),
+        ingest: vi.fn((...args: unknown[]) => {
+          return apiTestMocks.axiom.sdkIngest(...args);
+        }),
+        query: vi.fn((...args: unknown[]) => {
+          return apiTestMocks.axiom.query(...args);
+        }),
       };
+      apiTestMocks.axiom.clients.push(client);
+      return client;
     }),
   };
 });
@@ -1152,6 +1185,25 @@ export function getApiTestMocks(): ApiTestMocks {
   return apiTestMocks;
 }
 
+export function apiTestS3PresignedUrl(command: unknown): string {
+  const candidate = command as {
+    readonly constructor?: { readonly name?: string };
+    readonly input?: { readonly Bucket?: unknown; readonly Key?: unknown };
+  };
+  if (candidate.constructor?.name !== "GetObjectCommand") {
+    return "https://r2.example.com/upload?sig=test";
+  }
+  const bucket = candidate.input?.Bucket;
+  const key = candidate.input?.Key;
+  if (typeof bucket !== "string" || typeof key !== "string") {
+    throw new Error("Expected S3 GET presign request to identify an object");
+  }
+  const url = new URL("https://r2.example.com/storage/archive.tar.gz");
+  url.searchParams.set("sig", "bdd");
+  url.searchParams.set("object", `${bucket}/${key}`);
+  return url.toString();
+}
+
 export function resetApiTestMocks(): void {
   apiTestMocks.abortSignal.timeout.mockReset();
   apiTestMocks.ably.channelGet.mockReset();
@@ -1163,6 +1215,7 @@ export function resetApiTestMocks(): void {
     token: "test-ably-token",
   });
   apiTestMocks.axiom.clientError.mockReset();
+  apiTestMocks.axiom.clients.splice(0);
   apiTestMocks.axiom.flush.mockReset();
   apiTestMocks.axiom.ingest.mockReset();
   apiTestMocks.axiom.ingest.mockReturnValue(true);
@@ -1198,8 +1251,10 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.m2m.createToken.mockReset();
   apiTestMocks.s3.send.mockReset();
   apiTestMocks.s3.getSignedUrl.mockReset();
-  apiTestMocks.s3.getSignedUrl.mockResolvedValue(
-    "https://r2.example.com/upload?sig=test",
+  apiTestMocks.s3.getSignedUrl.mockImplementation(
+    (_client: unknown, command: unknown) => {
+      return Promise.resolve(apiTestS3PresignedUrl(command));
+    },
   );
   apiTestMocks.s3.clientConfig.mockReset();
   apiTestMocks.dns.lookupOverrides.clear();
@@ -1280,6 +1335,9 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.billingPortal.sessions.create.mockReset();
   apiTestMocks.stripe.coupons.retrieve.mockReset();
   apiTestMocks.stripe.prices.retrieve.mockReset();
+  apiTestMocks.stripe.prices.retrieve.mockImplementation(
+    resolveDefaultStripePrice,
+  );
   apiTestMocks.stripe.prices.create.mockReset();
   apiTestMocks.webpush.sendNotification.mockReset();
   apiTestMocks.webpush.sendNotification.mockResolvedValue(undefined);

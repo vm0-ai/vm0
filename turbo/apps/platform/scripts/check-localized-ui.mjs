@@ -103,11 +103,11 @@ function isUserVisibleFunctionName(value) {
 function getInternalAllowedLiterals() {
   return [
     [
-      "src/signals/zero-page/chat-feedback.ts\u0000a sent email (mail ID: {…}{…})",
+      "src/signals/okou-page/chat-feedback.ts\u0000a sent email (mail ID: {…}{…})",
       "locale-neutral serialized agent prompt metadata",
     ],
     [
-      "src/signals/zero-page/chat-feedback.ts\u0000an email draft (mail draft ID: {…})",
+      "src/signals/okou-page/chat-feedback.ts\u0000an email draft (mail draft ID: {…})",
       "locale-neutral serialized agent prompt metadata",
     ],
     [
@@ -123,20 +123,16 @@ function getInternalAllowedLiterals() {
       "SharedWorker browser identifier, not user-visible UI copy",
     ],
     [
-      "src/signals/zero-page/tiptap-workflow-composer.ts\u0000paragraph+",
+      "src/signals/okou-page/tiptap-workflow-composer.ts\u0000paragraph+",
       "Tiptap document schema expression",
     ],
     [
-      "src/signals/zero-page/tiptap-workflow-composer.ts\u0000workflowHighlight",
+      "src/signals/okou-page/tiptap-workflow-composer.ts\u0000workflowHighlight",
       "Tiptap extension identifier",
     ],
     [
-      "src/views/zero-page/tiptap-instructions-editor.tsx\u0000baselineMarkdown",
+      "src/views/okou-page/tiptap-instructions-editor.tsx\u0000baselineMarkdown",
       "Tiptap storage plugin identifier",
-    ],
-    [
-      "src/views/zero-page/tiptap-instructions-editor.tsx\u0000lowlightHighlight",
-      "Tiptap extension identifier",
     ],
   ];
 }
@@ -144,83 +140,83 @@ function getInternalAllowedLiterals() {
 function getConnectorAllowedLiterals() {
   return [
     [
-      "src/views/zero-page/components/model-provider-picker.tsx\u0000BYOK",
+      "src/views/okou-page/components/model-provider-picker.tsx\u0000BYOK",
       "bring-your-own-key product acronym",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000Acme API",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000Acme API",
       "example connector name",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000Authorization",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000Authorization",
       "example HTTP header name",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000Bearer {{secret}}",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000Bearer {{secret}}",
       "example HTTP authorization value",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000{{secret}}",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000{{secret}}",
       "header-template interpolation token",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000API credential",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000API credential",
       "locale-neutral persisted field metadata",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000OAuth 2.0",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000OAuth 2.0",
       "OAuth protocol name",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000PKCE",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000PKCE",
       "OAuth protocol extension name",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000S256",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000S256",
       "OAuth PKCE method identifier",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000Secret",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000Secret",
       "locale-neutral persisted field metadata",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000consent",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000consent",
       "example OAuth prompt value",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000https://api.acme.com/v1/",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000https://api.acme.com/v1/",
       "example API URL",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000https://api.provider.example",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000https://api.provider.example",
       "example OAuth audience",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000https://provider.example.com/oauth/authorize",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000https://provider.example.com/oauth/authorize",
       "example OAuth authorization URL",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000https://provider.example.com/oauth/token",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000https://provider.example.com/oauth/token",
       "example OAuth token URL",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000offline",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000offline",
       "example OAuth access type",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000read\nwrite",
+      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000read\nwrite",
       "example OAuth scopes",
     ],
     [
-      "src/views/zero-page/feishu-card.tsx\u0000cli_...",
+      "src/views/okou-page/feishu-card.tsx\u0000cli_...",
       "example Feishu application identifier",
     ],
     [
-      "src/views/zero-page/feishu-card.tsx\u0000im.message.receive_v1",
+      "src/views/okou-page/feishu-card.tsx\u0000im.message.receive_v1",
       "Feishu event identifier",
     ],
     [
-      "src/views/zero-page/strapi-settings-page.tsx\u0000https://cms.example.com",
+      "src/views/okou-page/strapi-settings-page.tsx\u0000https://cms.example.com",
       "example Strapi URL",
     ],
   ];
@@ -229,43 +225,43 @@ function getConnectorAllowedLiterals() {
 function getFileAllowedLiterals() {
   return [
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000DB",
+      "src/views/okou-page/file-preview-icon.tsx\u0000DB",
       "database file format abbreviation",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000DOC",
+      "src/views/okou-page/file-preview-icon.tsx\u0000DOC",
       "document file format abbreviation",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000HTML",
+      "src/views/okou-page/file-preview-icon.tsx\u0000HTML",
       "HTML file format abbreviation",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000JSON",
+      "src/views/okou-page/file-preview-icon.tsx\u0000JSON",
       "JSON file format abbreviation",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000MD",
+      "src/views/okou-page/file-preview-icon.tsx\u0000MD",
       "Markdown file extension",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000PDF",
+      "src/views/okou-page/file-preview-icon.tsx\u0000PDF",
       "PDF file format abbreviation",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000PPT",
+      "src/views/okou-page/file-preview-icon.tsx\u0000PPT",
       "presentation file format abbreviation",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000TXT",
+      "src/views/okou-page/file-preview-icon.tsx\u0000TXT",
       "plain-text file extension",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000XLS",
+      "src/views/okou-page/file-preview-icon.tsx\u0000XLS",
       "spreadsheet file format abbreviation",
     ],
     [
-      "src/views/zero-page/zero-file-preview-icon.tsx\u0000ZIP",
+      "src/views/okou-page/file-preview-icon.tsx\u0000ZIP",
       "archive file format abbreviation",
     ],
   ];

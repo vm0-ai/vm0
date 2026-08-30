@@ -1,10 +1,11 @@
 [package]
 name = "vsock-host"
-version = "0.17.88"
+version = "0.17.114"
 edition.workspace = true
 description = "Vsock host client for Firecracker VM communication"
 
 [dependencies]
+guest-contracts.workspace = true
 nix = { workspace = true, features = ["net"] }
 sandbox.workspace = true
 shell-quote.workspace = true

@@ -74,8 +74,13 @@ impl MemorySnapshot {
             self.swap_free_bytes,
         ];
         let mut payload = [0; MEMORY_SNAPSHOT_PAYLOAD_SIZE];
-        for (chunk, counter) in payload.chunks_exact_mut(COUNTER_SIZE).zip(counters) {
-            chunk.copy_from_slice(&counter.to_be_bytes());
+        for (chunk, counter) in payload
+            .as_chunks_mut::<COUNTER_SIZE>()
+            .0
+            .iter_mut()
+            .zip(counters)
+        {
+            *chunk = counter.to_be_bytes();
         }
         payload
     }
@@ -89,11 +94,11 @@ pub fn decode_memory_snapshot(payload: &[u8]) -> Result<MemorySnapshot, Protocol
         ));
     }
     let mut counters = [0_u64; COUNTER_COUNT];
-    for (counter, chunk) in counters.iter_mut().zip(payload.chunks_exact(COUNTER_SIZE)) {
-        let bytes: [u8; COUNTER_SIZE] = chunk.try_into().map_err(|_| {
-            ProtocolError::InvalidPayload("memory snapshot counter has invalid width")
-        })?;
-        *counter = u64::from_be_bytes(bytes);
+    for (counter, chunk) in counters
+        .iter_mut()
+        .zip(payload.as_chunks::<COUNTER_SIZE>().0)
+    {
+        *counter = u64::from_be_bytes(*chunk);
     }
     Ok(MemorySnapshot {
         mem_total_bytes: counters[0],
@@ -115,55 +120,4 @@ pub fn decode_memory_snapshot(payload: &[u8]) -> Result<MemorySnapshot, Protocol
         swap_total_bytes: counters[16],
         swap_free_bytes: counters[17],
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn snapshot() -> MemorySnapshot {
-        MemorySnapshot {
-            mem_total_bytes: 1,
-            mem_free_bytes: 2,
-            mem_available_bytes: 3,
-            buffers_bytes: 4,
-            cached_bytes: 5,
-            anon_pages_bytes: 6,
-            mapped_bytes: 7,
-            dirty_bytes: 8,
-            writeback_bytes: 9,
-            shmem_bytes: 10,
-            slab_bytes: 11,
-            slab_reclaimable_bytes: 12,
-            slab_unreclaimable_bytes: 13,
-            unevictable_bytes: 14,
-            kernel_stack_bytes: 15,
-            page_tables_bytes: 16,
-            swap_total_bytes: 17,
-            swap_free_bytes: 18,
-        }
-    }
-
-    #[test]
-    fn memory_snapshot_roundtrips_fixed_big_endian_payload() {
-        let snapshot = snapshot();
-        let payload = snapshot.encode_payload();
-
-        assert_eq!(payload.len(), 144);
-        assert_eq!(&payload[..8], &1_u64.to_be_bytes());
-        assert_eq!(&payload[136..], &18_u64.to_be_bytes());
-        assert_eq!(decode_memory_snapshot(&payload).unwrap(), snapshot);
-    }
-
-    #[test]
-    fn memory_snapshot_rejects_truncated_and_trailing_payloads() {
-        let payload = snapshot().encode_payload();
-        for malformed in [payload[..143].to_vec(), [&payload[..], &[0]].concat()] {
-            let error = decode_memory_snapshot(&malformed).unwrap_err();
-            assert_eq!(
-                error.to_string(),
-                "invalid payload: memory snapshot payload must be exactly 144 bytes"
-            );
-        }
-    }
 }

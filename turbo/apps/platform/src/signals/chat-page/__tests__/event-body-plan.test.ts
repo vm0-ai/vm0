@@ -76,7 +76,6 @@ describe("card slots in the tree", () => {
     ]);
 
     const tree = parseMarkdownTree(plan.treeSource, {
-      mathEnabled: true,
       mermaid: true,
       cards,
     });
@@ -99,7 +98,6 @@ describe("card slots in the tree", () => {
     const plan = planBody(CONNECTOR_URL);
 
     const tree = parseMarkdownTree(plan.treeSource, {
-      mathEnabled: true,
       mermaid: true,
       cards: new Map(),
     });
@@ -117,7 +115,6 @@ describe("card slots in the tree", () => {
     const tree = parseMarkdownTree(
       `see [${CONNECTOR_URL}](<${CONNECTOR_URL}>) inline`,
       {
-        mathEnabled: true,
         mermaid: true,
         cards: new Map([
           [

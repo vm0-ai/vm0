@@ -7,6 +7,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { chatThreads } from "./chat-thread";
 
@@ -37,6 +38,10 @@ export const chatGithubContext = pgTable(
     messageText: text("message_text"),
     triggerReactionId: text("trigger_reaction_id"),
     triggerCommentBody: text("trigger_comment_body"),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

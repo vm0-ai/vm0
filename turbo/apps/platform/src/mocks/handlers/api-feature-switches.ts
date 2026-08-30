@@ -9,27 +9,27 @@
  * default handlers stay free of test override side effects.
  */
 
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_SWITCH_OVERRIDES = {};
 
 export const apiFeatureSwitchesHandlers = [
-  mockApi(zeroFeatureSwitchesContract.get, ({ respond }) => {
+  mockApi(featureSwitchesContract.get, ({ respond }) => {
     return respond(200, {
       switches: DEFAULT_SWITCH_OVERRIDES,
       effectiveSwitches: DEFAULT_SWITCH_OVERRIDES,
     });
   }),
 
-  mockApi(zeroFeatureSwitchesContract.update, ({ body, respond }) => {
+  mockApi(featureSwitchesContract.update, ({ body, respond }) => {
     return respond(200, {
       switches: body.switches,
       effectiveSwitches: body.switches,
     });
   }),
 
-  mockApi(zeroFeatureSwitchesContract.delete, ({ respond }) => {
+  mockApi(featureSwitchesContract.delete, ({ respond }) => {
     return respond(200, { deleted: true as const });
   }),
 ];

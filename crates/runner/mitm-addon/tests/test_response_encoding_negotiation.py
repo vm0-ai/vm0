@@ -10,7 +10,7 @@ import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_encoding_negotiation
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
 
 _MODEL_PROVIDER_FIREWALL_NAME = "model-provider:anthropic-api-key"
@@ -284,15 +284,15 @@ def _model_provider_registry(
     capture_network_bodies: bool = False,
     rule_method: str = "POST",
 ) -> Path:
-    vm_fields: dict[str, object] = {}
+    sandbox_fields: dict[str, object] = {}
     if model_usage_provider is not None:
-        vm_fields["modelUsageProvider"] = model_usage_provider
+        sandbox_fields["modelUsageProvider"] = model_usage_provider
     if capture_network_bodies:
-        vm_fields["captureNetworkBodies"] = True
+        sandbox_fields["captureNetworkBodies"] = True
 
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name=_MODEL_PROVIDER_FIREWALL_NAME,
             api_entry={
@@ -308,7 +308,7 @@ def _model_provider_registry(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -322,13 +322,13 @@ def _connector_registry(
     billable: bool,
     capture_network_bodies: bool = False,
 ) -> Path:
-    vm_fields: dict[str, object] = {}
+    sandbox_fields: dict[str, object] = {}
     if capture_network_bodies:
-        vm_fields["captureNetworkBodies"] = True
+        sandbox_fields["captureNetworkBodies"] = True
 
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name=firewall_name,
             api_entry={
@@ -343,7 +343,7 @@ def _connector_registry(
                 "unknownPolicy": "deny",
             },
             billable_firewalls=[firewall_name] if billable else None,
-            vm_fields=vm_fields,
+            sandbox_fields=sandbox_fields,
         ),
     )
 
@@ -564,7 +564,7 @@ async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
 ) -> None:
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name=_X_FIREWALL_NAME,
             api_entry={
@@ -580,7 +580,7 @@ async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
             },
             billable_firewalls=[_X_FIREWALL_NAME],
             include_encrypted_secrets=False,
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = _request_flow(
@@ -660,7 +660,7 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
     path = "/v1/responses"
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name=firewall_name,
             api_entry={
@@ -674,7 +674,7 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
                 "ask": [],
                 "unknownPolicy": "allow",
             },
-            vm_fields={"modelUsageProvider": "gpt-5.5"},
+            sandbox_fields={"modelUsageProvider": "gpt-5.5"},
         ),
     )
     flow = _request_flow(

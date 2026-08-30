@@ -19,9 +19,9 @@ function normalizeBuildVersion(value: unknown): string | null {
 }
 
 export function getBuildCommitSha(): string | null {
-  return normalizeBuildCommitSha(import.meta.env.VITE_GIT_COMMIT_SHA);
+  return normalizeBuildCommitSha(__OKOU_APP_GIT_COMMIT_SHA__);
 }
 
 export function getBuildVersion(): string | null {
-  return normalizeBuildVersion(import.meta.env.VITE_APP_VERSION);
+  return normalizeBuildVersion(__OKOU_APP_VERSION__);
 }

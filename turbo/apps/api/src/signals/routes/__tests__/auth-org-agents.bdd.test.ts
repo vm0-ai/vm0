@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -37,6 +38,13 @@ function shortId(): string {
 
 function slug(prefix: string): string {
   return `${prefix}-${shortId()}`;
+}
+
+function requiredOrgId(actor: ApiTestUser): string {
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped actor");
+  }
+  return actor.orgId;
 }
 
 async function onboardAdmin(
@@ -180,7 +188,7 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       visibility: "private",
     });
 
-    await api.deleteVersionFreeAgent(admin, created.agentId);
+    await api.deleteAgent(admin, created.agentId);
     const deleted = await api.requestReadAgent(admin, created.agentId, [404]);
     expectApiError(deleted.body);
     expect(deleted.body.error.code).toBe("NOT_FOUND");
@@ -233,6 +241,11 @@ describe("ORG-01 and ORG-02", () => {
   it("projects direct invitation redirects by request brand", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const admin = api.user();
+    await upsertOrgPlanEntitlementFixture({
+      orgId: requiredOrgId(admin),
+      memberInvitationAllowed: true,
+      memberInviteUsagePackRequired: false,
+    });
 
     const vm0Email = `vm0-invite-${shortId()}@example.test`;
     context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
@@ -283,6 +296,11 @@ describe("ORG-01 and ORG-02", () => {
     const requestId = `req_${shortId()}`;
 
     await onboardAdmin(admin, { slug: baseSlug, name: "BDD Org" });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: requiredOrgId(admin),
+      memberInvitationAllowed: true,
+      memberInviteUsagePackRequired: false,
+    });
     api.mockClerkOrg(admin, {
       slug: baseSlug,
       name: "BDD Org",
@@ -668,7 +686,7 @@ describe("ORG-03 onboarding status mapping", () => {
       },
     });
 
-    await api.deleteVersionFreeAgent(admin, agentId);
+    await api.deleteAgent(admin, agentId);
     const orphaned = await api.readOnboardingStatus(admin);
     expect(orphaned).toMatchObject({
       needsOnboarding: false,

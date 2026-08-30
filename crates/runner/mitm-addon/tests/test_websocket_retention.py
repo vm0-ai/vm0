@@ -1,7 +1,5 @@
 """Tests for registered WebSocket message retention and cleanup."""
 
-import uuid
-
 import pytest
 from mitmproxy.flow import Error
 
@@ -17,9 +15,11 @@ from tests.model_provider_websocket_helpers import (
     ScheduledWebSocketTrim,
     append_websocket_message,
     capture_deferred_websocket_trims,
+    capture_openai_responses_extractor_feeds,
     openai_websocket_usage_frame,
     run_deferred_websocket_trims,
 )
+from tests.usage_helpers import assert_usage_event_rows
 
 
 @pytest.fixture
@@ -27,19 +27,6 @@ def deferred_websocket_trim_scheduler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[ScheduledWebSocketTrim]:
     return capture_deferred_websocket_trims(monkeypatch)
-
-
-def _assert_billing_event_rows(
-    events: list[dict], expected_rows: list[tuple[str, str, int]]
-) -> None:
-    actual_rows = [(event["provider"], event["category"], event["quantity"]) for event in events]
-    assert len(events) == len(expected_rows)
-    assert sorted(actual_rows) == sorted(expected_rows)
-
-    idempotency_keys = [event["idempotencyKey"] for event in events]
-    assert len(set(idempotency_keys)) == len(idempotency_keys)
-    for key in idempotency_keys:
-        uuid.UUID(key)
 
 
 class TestModelProviderWebSocketRetentionWithUsageDelivery:
@@ -73,8 +60,9 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
 
         assert messages == [old_client, old_server, latest_server]
         assert model_provider_usage_sources(flow) == {}
-        _assert_billing_event_rows(
+        assert_usage_event_rows(
             webhook.usage_events(),
+            "provider",
             [
                 ("gpt-5.5", "tokens.input", 10),
                 ("gpt-5.5", "tokens.output", 4),
@@ -125,8 +113,9 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
 
         assert flow.websocket.messages == [latest_server]
         assert model_provider_usage_sources(flow) == {}
-        _assert_billing_event_rows(
+        assert_usage_event_rows(
             webhook.usage_events(),
+            "provider",
             [
                 ("gpt-5.5", "tokens.input", 1),
                 ("gpt-5.5", "tokens.output", 1),
@@ -155,8 +144,9 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
 
-        _assert_billing_event_rows(
+        assert_usage_event_rows(
             webhook.usage_events(),
+            "provider",
             [
                 ("gpt-5.5", "tokens.input", 10),
                 ("gpt-5.5", "tokens.output", 4),
@@ -189,8 +179,9 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
 
-        _assert_billing_event_rows(
+        assert_usage_event_rows(
             webhook.usage_events(),
+            "provider",
             [
                 ("gpt-5.5", "tokens.input", 10),
                 ("gpt-5.5", "tokens.output", 4),
@@ -267,10 +258,12 @@ class TestRegisteredWebSocketRetention:
         self,
         real_flow,
         deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
+        monkeypatch: pytest.MonkeyPatch,
         from_client: bool,
     ):
         flow = real_flow(with_response=False, host="example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
         message_count = 32
         message_size = 4096
         total_bytes = 0
@@ -291,6 +284,7 @@ class TestRegisteredWebSocketRetention:
 
             assert flow.websocket.messages == messages_before_trim
             assert len(deferred_websocket_trim_scheduler) == 1
+            assert full_body_feeds == []
 
             run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
 
@@ -344,7 +338,7 @@ class TestRegisteredWebSocketRetention:
         deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
     ):
         flow = real_flow(with_response=False, host="example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
         append_websocket_message(flow, from_client=False, content=b"server")
 
         mitm_addon.websocket_message(flow)
@@ -364,8 +358,8 @@ class TestRegisteredWebSocketRetention:
         deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
     ):
         flow = real_flow(with_response=False, host="example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://example.com/"
         flow.error = Error("connection reset by peer")
         append_websocket_message(flow, from_client=True, content=b"client")

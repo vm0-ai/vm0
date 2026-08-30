@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -232,7 +232,7 @@ describe("GET /api/mcp-connectors", () => {
     expect(response.body).toStrictEqual({ connectors: [] });
   });
 
-  it("requires Zero authentication with connector read capability", async () => {
+  it("requires agent authentication with connector read capability", async () => {
     const actor = bdd.user();
     mockClerkMembership(context, actor, "org:admin");
     const runId = randomUUID();

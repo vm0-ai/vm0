@@ -12,9 +12,9 @@ import {
   webhookCheckpointsPrepareHistoryContract,
 } from "@okouai/api-contracts/contracts/webhooks";
 import {
-  MemoryPiSession,
+  inspectPiSessionJsonl,
   UnsupportedPiSessionVersionError,
-} from "@okouai/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/api";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
@@ -81,6 +81,9 @@ interface PreparedSessionHistoryBlob {
   readonly blob: SessionHistoryBlobMetadata;
   readonly insertedNewBlob: boolean;
 }
+
+type SessionHistoryBlobReadDb = Pick<Db, "select">;
+type SessionHistoryBlobWriteDb = Pick<Db, "insert" | "select" | "update">;
 
 const L = logger("webhooks:agent:checkpoints");
 
@@ -354,7 +357,7 @@ function validatePiCheckpointSession(
   }
   const parsed = safeSync(() => {
     const jsonl = new TextDecoder("utf-8", { fatal: true }).decode(raw);
-    return MemoryPiSession.fromJsonl(jsonl);
+    return inspectPiSessionJsonl(jsonl);
   });
   if ("error" in parsed) {
     return piCheckpointError(
@@ -367,13 +370,13 @@ function validatePiCheckpointSession(
     );
   }
   const session = parsed.ok;
-  if (session.getSessionId() !== sessionId) {
+  if (session.sessionId !== sessionId) {
     return piCheckpointError(
       "PI_H2_SESSION_MISMATCH",
       "Pi H2 native session id does not match the launch session",
     );
   }
-  if (!session.isSettledCheckpoint()) {
+  if (!session.isSettledCheckpoint) {
     return piCheckpointError(
       "PI_H2_NOT_SETTLED",
       "Pi H2 is not a settled native session checkpoint",
@@ -415,7 +418,7 @@ const validatePiCheckpoint$ = command(async function validatePiCheckpoint(
 });
 
 async function loadSessionHistoryBlobMetadata(
-  db: Db,
+  db: SessionHistoryBlobReadDb,
   hash: string,
 ): Promise<SessionHistoryBlobMetadata | undefined> {
   const [blob] = await db
@@ -432,7 +435,7 @@ async function loadSessionHistoryBlobMetadata(
 
 async function ensureSessionHistoryBlobMetadata(
   args: {
-    readonly db: Db;
+    readonly db: SessionHistoryBlobWriteDb;
     readonly body: PrepareHistoryBody;
     readonly requestedEncoding: string;
   },
@@ -501,22 +504,6 @@ export const prepareCheckpointHistoryUpload$ = command(
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
-    const [run] = await db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.id, input.body.runId),
-          eq(agentRuns.userId, input.auth.userId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!run) {
-      return notFound("Agent run not found");
-    }
-
     const requestedEncoding =
       input.body.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
     if (
@@ -527,14 +514,50 @@ export const prepareCheckpointHistoryUpload$ = command(
         "Identity session history encodedSize must match rawSize",
       );
     }
-    const { blob, insertedNewBlob } = await ensureSessionHistoryBlobMetadata(
-      {
-        db,
-        body: input.body,
-        requestedEncoding,
-      },
-      signal,
-    );
+
+    const admission = await db.transaction(async (tx) => {
+      await lockAgentRunCheckpointLifecycle(tx, input.body.runId);
+      signal.throwIfAborted();
+      const [run] = await tx
+        .select({ status: agentRuns.status })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.id, input.body.runId),
+            eq(agentRuns.userId, input.auth.userId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      signal.throwIfAborted();
+      if (!run) {
+        return { kind: "not-found" } as const;
+      }
+      const status = runStatusSchema.parse(run.status);
+      if (status === "timeout") {
+        return { kind: "timeout", status } as const;
+      }
+      return {
+        kind: "admitted",
+        prepared: await ensureSessionHistoryBlobMetadata(
+          {
+            db: tx,
+            body: input.body,
+            requestedEncoding,
+          },
+          signal,
+        ),
+      } as const;
+    });
+    signal.throwIfAborted();
+
+    if (admission.kind === "not-found") {
+      return notFound("Agent run not found");
+    }
+    if (admission.kind === "timeout") {
+      return badRequestMessage(checkpointRunStateError(admission.status));
+    }
+    const { blob, insertedNewBlob } = admission.prepared;
 
     if (blob.rawSize !== input.body.rawSize) {
       return badRequestMessage(
@@ -679,6 +702,10 @@ function piCheckpointRunStateError(status: RunStatus): string {
   const code =
     status === "queued" ? "PI_H2_RUN_NOT_ACTIVE" : "PI_H2_RUN_TERMINAL";
   return `[${code}] Pi H2 cannot become canonical while the run status is ${status}`;
+}
+
+function checkpointRunStateError(status: RunStatus): string {
+  return `[CHECKPOINT_RUN_TERMINAL] Checkpoint cannot become canonical while the run status is ${status}`;
 }
 
 interface ExistingPiCheckpoint {
@@ -923,6 +950,9 @@ async function commitAgentCheckpoint(
       return badRequestMessage(typeError);
     }
     const piRun = isPiCheckpointRun(run);
+    if (!piRun && run.status === "timeout") {
+      return badRequestMessage(checkpointRunStateError(run.status));
+    }
     if (piRun) {
       const admission = await admitPiCheckpoint(
         tx,

@@ -7,6 +7,8 @@ use guest_contracts::diagnostics::CliTerminationReason;
 use serde_json::json;
 use std::time::Duration;
 
+const TRANSCRIPT_CHECKPOINT_PADDING_BYTES: usize = 16 * 1024;
+
 #[tokio::test]
 async fn task_notification_result_does_not_end_the_user_command()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -64,7 +66,10 @@ async fn task_notification_result_does_not_end_the_user_command()
             "message": {
                 "role": "assistant",
                 "content": [{ "type": "text", "text": continued_activity }]
-            }
+            },
+            // Keep this checkpoint larger than the transcript buffer. Its
+            // persisted marker proves the earlier task result was consumed.
+            "checkpoint_padding": "x".repeat(TRANSCRIPT_CHECKPOINT_PADDING_BYTES)
         })
         .to_string(),
     ]
@@ -72,8 +77,14 @@ async fn task_notification_result_does_not_end_the_user_command()
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 1, 1)?;
-        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "1");
-        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "2");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            "1",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "2",
+        );
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
@@ -114,8 +125,8 @@ async fn task_notification_result_does_not_end_the_user_command()
             .reason,
         CliTerminationReason::ExecutionTimeout
     );
-    assert!(result.claude_result.is_none());
-    assert!(result.post_result_cleanup_result.is_none());
+    assert!(result.jsonl_result.is_none());
+    assert!(result.post_result_cleanup_jsonl_result.is_none());
 
     let agent_log = std::fs::read_to_string(runtime.paths.agent_log_file())?;
     assert!(agent_log.contains(r#""kind":"task-notification""#));

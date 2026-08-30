@@ -1,13 +1,20 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
-import { initTheme$ } from "./theme.ts";
+import type { SupportedLocale } from "../i18n/resources.ts";
+import {
+  initAuthRecovery$,
+  initClerkRuntime$,
+  setupClerk$,
+  watchOrgSwitch$,
+} from "./auth.ts";
+import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
+  setupPageWrapper,
   setupAuthPageWrapper,
   pathParams$,
   pathname$,
@@ -20,15 +27,15 @@ import { ROUTES, type RoutePath } from "./route-paths.ts";
 
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
-import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
-import { setupAgentPhoneConnectPage$ } from "./zero-page/agentphone-connect-page.ts";
-import { setupGithubConnectPage$ } from "./zero-page/github-connect-page.ts";
-import { setupTeamsConnectPage$ } from "./zero-page/teams-connect-page.ts";
-import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
-import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
-import { setupFeishuSettingsPage$ } from "./zero-page/feishu-settings-page.ts";
-import { setupStrapiSettingsPage$ } from "./zero-page/strapi-settings-page.ts";
-import { setupFeishuOAuthCallbackPage$ } from "./zero-page/feishu-oauth-callback-page.ts";
+import { setupSlackConnectPage$ } from "./okou-page/slack-connect-page.ts";
+import { setupAgentPhoneConnectPage$ } from "./okou-page/agentphone-connect-page.ts";
+import { setupGithubConnectPage$ } from "./okou-page/github-connect-page.ts";
+import { setupTeamsConnectPage$ } from "./okou-page/teams-connect-page.ts";
+import { setupTelegramConnectPage$ } from "./okou-page/telegram-connect-page.ts";
+import { setupTelegramSettingsPage$ } from "./okou-page/telegram-settings-page.ts";
+import { setupFeishuSettingsPage$ } from "./okou-page/feishu-settings-page.ts";
+import { setupStrapiSettingsPage$ } from "./okou-page/strapi-settings-page.ts";
+import { setupFeishuOAuthCallbackPage$ } from "./okou-page/feishu-oauth-callback-page.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
@@ -36,10 +43,11 @@ import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts"
 import { setupArtifactsPage$ } from "./artifacts-page/artifacts-page-setup.ts";
 import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
+import { setupOfficialWorkflowsPage$ } from "./workflows-page/official-workflows-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
-import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
-import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
+import { setupAgentChatPage$ } from "./okou-page/agent-chat-page-setup.ts";
+import { setupHomePage$ } from "./okou-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
 import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
 import {
@@ -53,7 +61,7 @@ import {
   setupOnboardingWorkflowPickerPage$,
   setupOnboardingWorkflowRunPage$,
 } from "./onboarding/onboarding-page-setup.ts";
-import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
+import { setupIdeationPage$ } from "./okou-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
 import { setupBrowserAuthorizationPage$ } from "./browser-authorization/browser-authorization-page-setup.ts";
@@ -62,14 +70,18 @@ import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-pa
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupConnectorRedirectingPage$ } from "./connectors-page/connector-redirecting-page-setup.ts";
 import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callback-page-setup.ts";
+import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
-import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
+import {
+  setupSignInV2Page$,
+  setupSignUpV2Page$,
+} from "./auth-v2-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
-import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
+import { initSlackOrg$ as handleSlackRedirect$ } from "./okou-page/slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import {
   hideAppSkeleton$,
@@ -81,7 +93,7 @@ import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
-import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
+import { setupGlobalKeyboardShortcuts$ } from "./okou-page/nav.ts";
 import {
   featureSwitch$,
   reloadFeatureSwitch$,
@@ -90,8 +102,13 @@ import {
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
 } from "./connection-diagnostics.ts";
-import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
+import { checkUnifiedSettingsParam$ } from "./okou-page/settings/settings-dialog.ts";
 import { captureInvitationRedirect$ } from "./invitation-redirect.ts";
+import {
+  initBootstrapPhaseTiming$,
+  markBootstrapLocaleInitCompleted$,
+  markBootstrapLocaleInitStarted$,
+} from "../lib/posthog.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(NotFoundPage));
@@ -163,6 +180,22 @@ const ROUTE_CONFIG = [
     path: ROUTES.signUpCatchAll,
     setup: setupSignUpPage$,
   },
+  {
+    path: ROUTES.signInV2,
+    setup: setupPageWrapper(setupSignInV2Page$),
+  },
+  {
+    path: ROUTES.signInV2CatchAll,
+    setup: setupPageWrapper(setupSignInV2Page$),
+  },
+  {
+    path: ROUTES.signUpV2,
+    setup: setupPageWrapper(setupSignUpV2Page$),
+  },
+  {
+    path: ROUTES.signUpV2CatchAll,
+    setup: setupPageWrapper(setupSignUpV2Page$),
+  },
 
   // --- New routes ---
   {
@@ -188,6 +221,14 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.browserAuthorize,
     setup: setupAuthPageWrapper(setupBrowserAuthorizationPage$),
+  },
+  {
+    path: ROUTES.bankingConnectReturnResult,
+    setup: setupBankingConnectReturnPage$,
+  },
+  {
+    path: ROUTES.bankingConnectReturn,
+    setup: setupBankingConnectReturnPage$,
   },
   {
     path: ROUTES.connectorCallbackResult,
@@ -232,6 +273,14 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.agentPermissions,
     setup: setupAuthPageWrapper(setupPermissionAllowPage$),
+  },
+  {
+    path: ROUTES.officialWorkflowDetail,
+    setup: setupAuthSidebarPageWrapper(setupOfficialWorkflowsPage$),
+  },
+  {
+    path: ROUTES.officialWorkflows,
+    setup: setupAuthSidebarPageWrapper(setupOfficialWorkflowsPage$),
   },
   {
     path: ROUTES.workflowDetail,
@@ -362,11 +411,6 @@ const ROUTE_CONFIG = [
     setup: setupSignInTokenPage$,
   },
   {
-    // Public route: opened from the Morning Brief email, no auth guard.
-    path: ROUTES.morningBriefUnsubscribe,
-    setup: setupMorningBriefUnsubscribePage$,
-  },
-  {
     path: ROUTES.redeemCampaign,
     setup: setupAuthPageWrapper(setupRedeemCampaignPage$),
   },
@@ -423,22 +467,48 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
-const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
-  await set(reloadFeatureSwitch$, signal);
-  await set(syncLocalePreference$, signal);
-});
+const setupFeatureSwitches$ = command(
+  async (
+    { set },
+    initialLocaleLoadFailure: SupportedLocale | null,
+    signal: AbortSignal,
+  ) => {
+    await set(reloadFeatureSwitch$, signal);
+    await set(syncLocalePreference$, initialLocaleLoadFailure, signal);
+    await set(syncThemePreferences$, signal);
+  },
+);
+
+function notificationChatThreadId(data: unknown): string | null {
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !("type" in data) ||
+    data.type !== "NOTIFICATION_CLICK" ||
+    !("url" in data) ||
+    typeof data.url !== "string" ||
+    !URL.canParse(data.url, window.location.origin)
+  ) {
+    return null;
+  }
+
+  const url = new URL(data.url, window.location.origin);
+  if (url.origin !== window.location.origin) {
+    return null;
+  }
+
+  return /^\/chats\/([^/]+)$/u.exec(url.pathname)?.[1] ?? null;
+}
 
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
   navigator.serviceWorker?.addEventListener(
     "message",
-    onDomEventFn((event: MessageEvent): void => {
-      if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
-        const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
-        if (match) {
-          set(detachedNavigateTo$, "/chats/:threadId", {
-            pathParams: { threadId: match[1] },
-          });
-        }
+    onDomEventFn((event: MessageEvent<unknown>): void => {
+      const threadId = notificationChatThreadId(event.data);
+      if (threadId) {
+        set(detachedNavigateTo$, ROUTES.chat, {
+          pathParams: { threadId },
+        });
       }
     }),
     {
@@ -449,11 +519,16 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 
 export const bootstrap$ = command(
   async ({ get, set }, render: () => void, signal: AbortSignal) => {
+    set(initBootstrapPhaseTiming$, signal);
     set(captureInvitationRedirect$);
-    await set(initLocale$, signal);
+    set(markBootstrapLocaleInitStarted$);
+    const initialLocaleLoadFailure = await set(initLocale$, signal);
     signal.throwIfAborted();
+    set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
     set(setRootSignal$, signal);
+    set(initClerkRuntime$, signal);
+    set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);
 
     set(setupLoggers$);
@@ -465,7 +540,7 @@ export const bootstrap$ = command(
     set(setupConnectionDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
-      enabled: get(featureSwitch$)[FeatureSwitchKey.ZeroDebug] ?? false,
+      enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,
     });
 
     render();
@@ -482,7 +557,7 @@ export const bootstrap$ = command(
       set(setupGlobalKeyboardShortcuts$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
-      set(setupFeatureSwitches$, signal),
+      set(setupFeatureSwitches$, initialLocaleLoadFailure, signal),
     ]);
 
     signal.throwIfAborted();

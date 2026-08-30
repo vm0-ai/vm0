@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
@@ -31,6 +32,7 @@ import { env } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
+import { teamsBotDisplayName } from "../../lib/teams-official-app";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
@@ -84,10 +86,10 @@ const TEAMS_SUPPORTED_COMMANDS_TEXT =
   "`help`, `connect`, `disconnect`, `switch`, `model`";
 const TEAMS_AGENT_PICKER_MAX_OPTIONS = 100;
 const TEAMS_MODEL_PICKER_MAX_OPTIONS = 100;
-const TEAMS_CARD_ACTION_KEY = "zeroTeamsAction";
+const TEAMS_CARD_ACTION_KEY = "okouTeamsAction";
 const TEAMS_AGENT_PICKER_ACTION = "switch_agent";
 const TEAMS_MODEL_PICKER_ACTION = "switch_model";
-const TEAMS_AGENT_PICKER_INPUT_ID = "selectedComposeId";
+const TEAMS_AGENT_PICKER_INPUT_ID = "selectedAgentId";
 const TEAMS_MODEL_PICKER_INPUT_ID = "selectedModel";
 const TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE = "__org_default__";
 const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
@@ -106,30 +108,32 @@ type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
 type TeamsConnection = typeof teamsOrgConnections.$inferSelect;
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
 
-function teamsIdentity(installation?: TeamsInstallation | null): {
+function teamsIdentity(
+  installation: TeamsInstallation | null | undefined,
+  publicBrand: PublicBrand,
+): {
   readonly assistantName: "Zero" | "Okou";
   readonly brandName: "VM0" | "Okou";
-  readonly mentionName: string;
+  readonly botName: string;
 } {
-  const presentation = publicBrandPresentation(
-    installation?.publicBrand ?? "vm0",
-  );
+  const presentation = publicBrandPresentation(publicBrand);
   return {
     ...presentation,
-    mentionName: installation?.botName ?? presentation.assistantName,
+    botName: teamsBotDisplayName(installation?.botName),
   };
 }
 
 export function teamsWelcomeText(
-  installation?: TeamsInstallation | null,
+  installation: TeamsInstallation | null | undefined,
+  publicBrand: PublicBrand,
 ): string {
-  const { assistantName, brandName, mentionName } = teamsIdentity(installation);
+  const { botName, brandName } = teamsIdentity(installation, publicBrand);
   return [
-    `Hi, I'm ${assistantName}. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.`,
+    `Hi, I'm ${botName}. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.`,
     "",
     `To get started, use \`connect\` to link this Teams workspace to ${brandName}. An org admin may need to complete workspace setup first.`,
     "",
-    `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@${mentionName}\` with a task or send a DM to work privately.`,
+    `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@${botName}\` with a task or send a DM to work privately.`,
   ].join("\n");
 }
 
@@ -275,9 +279,13 @@ function isTeamsBotGreeting(prompt: string): boolean {
 function commandHelpNotice(args: {
   readonly canSwitch: boolean;
   readonly canModel: boolean;
+  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult {
-  const { assistantName, mentionName } = teamsIdentity(args.installation);
+  const { assistantName, botName } = teamsIdentity(
+    args.installation,
+    args.publicBrand,
+  );
   const switchLine = args.canSwitch
     ? "\n- `switch` - Choose which agent responds to your messages"
     : "";
@@ -285,45 +293,48 @@ function commandHelpNotice(args: {
   return {
     kind: "notice",
     replyText: [
-      `**${assistantName} Teams Bot Help**`,
+      `**${botName} Teams Bot Help**`,
       "",
       "**Commands**",
       `- \`connect\` - Connect to ${assistantName}${switchLine}${modelLine}`,
       `- \`disconnect\` - Disconnect from ${assistantName}`,
       "",
       "**Usage**",
-      `- \`@${mentionName} <message>\` - Send a message to your agent`,
-      `- Send a DM to ${mentionName} to chat without mentioning the bot`,
+      `- \`@${botName} <message>\` - Send a message to your agent`,
+      `- Send a DM to ${botName} to chat without mentioning the bot`,
     ].join("\n"),
   };
 }
 
 function greetingNotice(
-  installation?: TeamsInstallation | null,
+  installation: TeamsInstallation | null | undefined,
+  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
   return {
     kind: "notice",
-    replyText: teamsWelcomeText(installation),
+    replyText: teamsWelcomeText(installation, publicBrand),
   };
 }
 
 function connectedNotice(
   installation: TeamsInstallation,
+  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
-  const { assistantName, mentionName } = teamsIdentity(installation);
+  const { assistantName, botName } = teamsIdentity(installation, publicBrand);
   return {
     kind: "notice",
-    replyText: `You're already connected to ${assistantName}. Mention @${mentionName} in any channel or send a DM to start chatting with your agent.`,
+    replyText: `You're already connected to ${assistantName}. Mention @${botName} in any channel or send a DM to start chatting with your agent.`,
   };
 }
 
 function notInstalledNotice(
-  installation?: TeamsInstallation | null,
+  installation: TeamsInstallation | null | undefined,
+  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
-  const { assistantName, brandName } = teamsIdentity(installation);
+  const { botName, brandName } = teamsIdentity(installation, publicBrand);
   return {
     kind: "notice",
-    replyText: `The ${assistantName} Teams app hasn't been set up for this workspace yet. An org admin can complete the setup in ${brandName}.`,
+    replyText: `The ${botName} Teams app hasn't been set up for this workspace yet. An org admin can complete the setup in ${brandName}.`,
   };
 }
 
@@ -785,7 +796,7 @@ async function setUserAgentPreference(args: {
     .values({
       userId: args.userId,
       orgId: args.orgId,
-      selectedComposeId: args.composeId,
+      selectedAgentId: args.composeId,
     })
     .onConflictDoUpdate({
       target: [
@@ -793,7 +804,7 @@ async function setUserAgentPreference(args: {
         teamsUserAgentPreferences.orgId,
       ],
       set: {
-        selectedComposeId: args.composeId,
+        selectedAgentId: args.composeId,
         updatedAt: nowDate(),
       },
     });
@@ -844,7 +855,7 @@ async function getVisibleAgentPickerOptions(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly defaultComposeId: string | null;
+  readonly defaultAgentId: string | null;
 }): Promise<readonly TeamsAgentPickerOption[]> {
   const rows = await args.db
     .select({
@@ -863,7 +874,7 @@ async function getVisibleAgentPickerOptions(args: {
 
   return rows
     .filter((agent) => {
-      return agent.composeId !== args.defaultComposeId;
+      return agent.composeId !== args.defaultAgentId;
     })
     .slice(0, TEAMS_AGENT_PICKER_MAX_OPTIONS);
 }
@@ -890,13 +901,13 @@ async function resolveEffectiveCompose(args: {
     }
   }
 
-  const defaultComposeId = await resolveDefaultComposeId(args.db, args.orgId);
-  if (!defaultComposeId) {
+  const defaultAgentId = await resolveDefaultComposeId(args.db, args.orgId);
+  if (!defaultAgentId) {
     return { status: "not_configured" };
   }
   const configuredDefaultAgent = await getWorkspaceAgent(
     args.db,
-    defaultComposeId,
+    defaultAgentId,
     args.orgId,
   );
   if (!configuredDefaultAgent) {
@@ -904,7 +915,7 @@ async function resolveEffectiveCompose(args: {
   }
   const visibleDefaultAgent = await getVisibleWorkspaceAgent({
     db: args.db,
-    composeId: defaultComposeId,
+    composeId: defaultAgentId,
     orgId: args.orgId,
     userId: args.userId,
   });
@@ -913,7 +924,7 @@ async function resolveEffectiveCompose(args: {
   }
   return {
     status: "resolved",
-    composeId: defaultComposeId,
+    composeId: defaultAgentId,
     agent: visibleDefaultAgent,
   };
 }
@@ -1496,17 +1507,19 @@ function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
 function teamsValidationFallbackNotice(args: {
   readonly command: TeamsBotCommand | null;
   readonly isGreeting: boolean;
+  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult | null {
   if (args.command === "help") {
     return commandHelpNotice({
       canSwitch: false,
       canModel: false,
+      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
   if (args.isGreeting) {
-    return greetingNotice(args.installation);
+    return greetingNotice(args.installation, args.publicBrand);
   }
   return null;
 }
@@ -1563,6 +1576,7 @@ interface CanonicalTeamsLaunchContext {
   readonly activityId: string | null;
   readonly serviceUrl: string;
   readonly teamsAppId: string | null;
+  readonly publicBrand: PublicBrand;
   readonly senderUserId: string;
   readonly senderDisplayName: string | null;
   readonly senderPrincipalName: string | null;
@@ -1574,6 +1588,7 @@ interface CanonicalTeamsLaunchContext {
 
 function canonicalTeamsLaunchContext(args: {
   readonly activity: TeamsMessageActivity;
+  readonly publicBrand: PublicBrand;
   readonly connectionId: string;
   readonly threadId: string;
   readonly threadContext: string;
@@ -1591,6 +1606,7 @@ function canonicalTeamsLaunchContext(args: {
     activityId: args.activity.activityId,
     serviceUrl: args.activity.serviceUrl,
     teamsAppId: args.activity.teamsAppId,
+    publicBrand: args.publicBrand,
     senderUserId: args.activity.sender.id,
     senderDisplayName: args.activity.sender.name,
     senderPrincipalName: args.activity.sender.userPrincipalName,
@@ -1615,6 +1631,7 @@ async function persistTeamsChatMessage(
   args: {
     readonly db: Db;
     readonly activity: TeamsMessageActivity;
+    readonly publicBrand: PublicBrand;
     readonly installation: BoundTeamsInstallation;
     readonly connection: TeamsConnection;
     readonly composeId: string;
@@ -1645,7 +1662,7 @@ async function persistTeamsChatMessage(
     threadId,
     userId: args.connection.userId,
     orgId: args.installation.orgId,
-    agentComposeId: args.composeId,
+    agentId: args.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
     serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,
@@ -1654,6 +1671,7 @@ async function persistTeamsChatMessage(
 
   const launchContext = canonicalTeamsLaunchContext({
     activity: args.activity,
+    publicBrand: args.publicBrand,
     connectionId: args.connection.id,
     threadId,
     threadContext: args.promptContext.text,
@@ -1769,6 +1787,7 @@ const runAgentForTeams$ = command(
     { set },
     args: {
       readonly activity: TeamsMessageActivity;
+      readonly publicBrand: PublicBrand;
       readonly installation: BoundTeamsInstallation;
       readonly connection: TeamsConnection;
       readonly composeId: string;
@@ -1790,6 +1809,7 @@ const runAgentForTeams$ = command(
       {
         db,
         activity: args.activity,
+        publicBrand: args.publicBrand,
         installation: args.installation,
         connection: args.connection,
         composeId: args.composeId,
@@ -1805,12 +1825,16 @@ const runAgentForTeams$ = command(
       return { kind: "ignored" };
     }
 
-    await publishChatThreadMessageCreatedSafely(
-      args.connection.userId,
-      persisted.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: args.connection.userId,
+      orgId: args.installation.orgId,
+      threadId: persisted.chatThreadId,
+    });
     signal.throwIfAborted();
-    await publishThreadListChangedSafely(args.connection.userId);
+    await publishThreadListChangedSafely({
+      userId: args.connection.userId,
+      orgId: args.installation.orgId,
+    });
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,
@@ -1828,10 +1852,12 @@ const runAgentForTeams$ = command(
 function connectNotice(
   activity: TeamsMessageActivity,
   installation: TeamsInstallation | null,
+  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
-  const { assistantName } = teamsIdentity(installation);
+  const { assistantName } = teamsIdentity(installation, publicBrand);
   const connectUrl = buildTeamsConnectUrlForActivity({
     activity,
+    publicBrand,
     installation,
   });
   return {
@@ -1874,21 +1900,23 @@ function unboundInstallationNotice(args: {
   readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation | null;
+  readonly publicBrand: PublicBrand;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({
       canSwitch: false,
       canModel: false,
+      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
   if (args.command === "connect" && !args.installation) {
-    return notInstalledNotice(args.installation);
+    return notInstalledNotice(args.installation, args.publicBrand);
   }
   if (args.isGreeting) {
-    return greetingNotice(args.installation);
+    return greetingNotice(args.installation, args.publicBrand);
   }
-  return connectNotice(args.activity, args.installation);
+  return connectNotice(args.activity, args.installation, args.publicBrand);
 }
 
 function missingConnectionNotice(args: {
@@ -1896,29 +1924,34 @@ function missingConnectionNotice(args: {
   readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
+  readonly publicBrand: PublicBrand;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({
       canSwitch: true,
       canModel: false,
+      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
   if (args.isGreeting) {
-    return greetingNotice(args.installation);
+    return greetingNotice(args.installation, args.publicBrand);
   }
-  return connectNotice(args.activity, args.installation);
+  return connectNotice(args.activity, args.installation, args.publicBrand);
+}
+
+interface ConnectedCommandBeforeComposeArgs {
+  readonly db: Db;
+  readonly command: TeamsBotCommand | null;
+  readonly installation: BoundTeamsInstallation;
+  readonly connection: TeamsConnection;
+  readonly publicBrand: PublicBrand;
 }
 
 const connectedCommandBeforeCompose$ = command(
   async (
     { set },
-    args: {
-      readonly db: Db;
-      readonly command: TeamsBotCommand | null;
-      readonly installation: BoundTeamsInstallation;
-      readonly connection: TeamsConnection;
-    },
+    args: ConnectedCommandBeforeComposeArgs,
     signal: AbortSignal,
   ): Promise<TeamsMessageDispatchResult | null> => {
     switch (args.command) {
@@ -1926,11 +1959,12 @@ const connectedCommandBeforeCompose$ = command(
         return commandHelpNotice({
           canSwitch: true,
           canModel: true,
+          publicBrand: args.publicBrand,
           installation: args.installation,
         });
       }
       case "connect": {
-        return connectedNotice(args.installation);
+        return connectedNotice(args.installation, args.publicBrand);
       }
       case "disconnect": {
         const result = await set(
@@ -1957,7 +1991,7 @@ const connectedCommandBeforeCompose$ = command(
         return disconnectedNotice();
       }
       case "switch": {
-        const defaultComposeId = await resolveDefaultComposeId(
+        const defaultAgentId = await resolveDefaultComposeId(
           args.db,
           args.installation.orgId,
         );
@@ -1966,13 +2000,13 @@ const connectedCommandBeforeCompose$ = command(
           db: args.db,
           orgId: args.installation.orgId,
           userId: args.connection.userId,
-          defaultComposeId,
+          defaultAgentId,
         });
         signal.throwIfAborted();
-        const visibleDefaultAgent = defaultComposeId
+        const visibleDefaultAgent = defaultAgentId
           ? await getVisibleWorkspaceAgent({
               db: args.db,
-              composeId: defaultComposeId,
+              composeId: defaultAgentId,
               orgId: args.installation.orgId,
               userId: args.connection.userId,
             })
@@ -2065,15 +2099,15 @@ const connectedTeamsCardAction$ = command(
       }
 
       if (selected === TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE) {
-        const defaultComposeId = await resolveDefaultComposeId(
+        const defaultAgentId = await resolveDefaultComposeId(
           args.db,
           args.installation.orgId,
         );
         signal.throwIfAborted();
-        const visibleDefaultAgent = defaultComposeId
+        const visibleDefaultAgent = defaultAgentId
           ? await getVisibleWorkspaceAgent({
               db: args.db,
-              composeId: defaultComposeId,
+              composeId: defaultAgentId,
               orgId: args.installation.orgId,
               userId: args.connection.userId,
             })
@@ -2175,6 +2209,7 @@ const runResolvedTeamsAgentForActivity$ = command(
       readonly prompt: string;
       readonly promptFiles: readonly TeamsPromptFile[];
       readonly activity: TeamsMessageActivity;
+      readonly publicBrand: PublicBrand;
       readonly installation: BoundTeamsInstallation;
       readonly connection: TeamsConnection;
       readonly effectiveCompose: ResolvedEffectiveCompose;
@@ -2229,6 +2264,7 @@ const runResolvedTeamsAgentForActivity$ = command(
       runAgentForTeams$,
       {
         activity: { ...args.activity, text: args.prompt },
+        publicBrand: args.publicBrand,
         installation: args.installation,
         connection: args.connection,
         composeId: args.effectiveCompose.composeId,
@@ -2248,6 +2284,7 @@ export const dispatchTeamsMessageToAgent$ = command(
     { set },
     args: {
       readonly activity: TeamsInboundActivity;
+      readonly publicBrand: PublicBrand;
       readonly installation?: TeamsInstallation | null;
       readonly apiStartTime: number;
       readonly timing: ApiDispatchTimingCollector;
@@ -2268,6 +2305,7 @@ export const dispatchTeamsMessageToAgent$ = command(
         teamsValidationFallbackNotice({
           command,
           isGreeting,
+          publicBrand: args.publicBrand,
           installation: args.installation,
         }) ?? {
           kind: "ignored",
@@ -2277,10 +2315,10 @@ export const dispatchTeamsMessageToAgent$ = command(
 
     const promptFiles = cardAction ? [] : teamsPromptFiles(activity);
     if (!prompt && promptFiles.length === 0 && !cardAction) {
-      const { assistantName } = teamsIdentity(args.installation);
+      const { botName } = teamsIdentity(args.installation, args.publicBrand);
       return {
         kind: "notice",
-        replyText: `Please include a message for ${assistantName}.`,
+        replyText: `Please include a message for ${botName}.`,
       };
     }
 
@@ -2297,6 +2335,7 @@ export const dispatchTeamsMessageToAgent$ = command(
         isGreeting,
         activity,
         installation,
+        publicBrand: args.publicBrand,
       });
     }
     const boundInstallation: BoundTeamsInstallation = {
@@ -2318,6 +2357,7 @@ export const dispatchTeamsMessageToAgent$ = command(
         isGreeting,
         activity,
         installation,
+        publicBrand: args.publicBrand,
       });
     }
 
@@ -2342,6 +2382,7 @@ export const dispatchTeamsMessageToAgent$ = command(
         command,
         installation: boundInstallation,
         connection,
+        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -2367,6 +2408,7 @@ export const dispatchTeamsMessageToAgent$ = command(
         prompt,
         promptFiles,
         activity,
+        publicBrand: args.publicBrand,
         installation: boundInstallation,
         connection,
         effectiveCompose,

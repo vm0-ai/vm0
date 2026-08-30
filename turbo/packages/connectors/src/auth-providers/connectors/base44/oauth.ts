@@ -8,6 +8,7 @@ import type {
 } from "../../provider-flow-types";
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
 
 const BASE44_DEVICE_AUTH_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
@@ -50,10 +51,6 @@ const userInfoResponseSchema = z
     email: z.string().nullable().optional(),
   })
   .passthrough();
-
-function parseScopes(scope: string | undefined): string[] {
-  return scope?.split(/\s+/).filter(Boolean) ?? [];
-}
 
 function devicePollErrorResult(args: {
   readonly error: string;
@@ -132,6 +129,7 @@ export async function startBase44DeviceAuth(args: {
 export async function pollBase44DeviceAuth(args: {
   readonly clientId: string;
   readonly deviceCode: string;
+  readonly scopes: readonly string[];
 }): Promise<OAuthDeviceAuthPollResult<"base44", "oauth">> {
   const response = await fetch(BASE44_TOKEN_URL, {
     method: "POST",
@@ -177,7 +175,7 @@ export async function pollBase44DeviceAuth(args: {
         refreshToken: data.refresh_token ?? null,
       },
       expiresIn: data.expires_in,
-      scopes: parseScopes(data.scope),
+      scopes: effectiveOAuthScopes(data.scope, args.scopes, /\s+/),
       userInfo,
     },
   };
@@ -212,6 +210,7 @@ export async function refreshBase44Token(
     accessToken: requireAccessToken(data, "refresh"),
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, /\s+/),
   };
 }
 

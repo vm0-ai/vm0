@@ -27,7 +27,7 @@ def make_query_inputs(
     match_overrides=None,
 ):
     flow = real_flow(with_response=False, host=host, path=path)
-    flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "test-run"
     auth_config = {
         "headers": {},
         "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"},
@@ -38,7 +38,7 @@ def make_query_inputs(
         "base": api_base,
         "auth": auth_config,
     }
-    vm_info = {
+    sandbox_info = {
         "runId": "run-1",
         "sandboxToken": "tok",
         "encryptedSecrets": "iv:tag:data",
@@ -59,11 +59,12 @@ def make_query_inputs(
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
         "query": {"api_key": "resolved-key-123"},
     }
     if token_overrides:
         token_meta.update(token_overrides)
-    return flow, allow, vm_info, token_meta
+    return flow, allow, sandbox_info, token_meta
 
 
 # =========================================================================
@@ -105,7 +106,7 @@ class TestAuthQueryInjection:
             "duplicate": "resolved-duplicate",
             "new_last": "last",
         }
-        flow, allow, vm_info, token_meta = make_query_inputs(
+        flow, allow, sandbox_info, token_meta = make_query_inputs(
             real_flow,
             host="serpapi.com",
             path=(
@@ -141,11 +142,11 @@ class TestAuthQueryInjection:
         ):
             if hook_phase == "request":
                 result = await handle_firewall_request_without_upstream_admission(
-                    flow, allow, vm_info
+                    flow, allow, sandbox_info
                 )
             else:
                 result = await apply_requestheaders_auth_without_upstream_admission(
-                    flow, allow, vm_info
+                    flow, allow, sandbox_info
                 )
 
         assert result is expected_result
@@ -167,7 +168,7 @@ class TestAuthQueryInjection:
 
     async def test_query_params_injected_on_standard_path(self, real_flow, mitm_ctx):
         """Resolved auth.query params are injected into flow.request.query."""
-        flow, allow, vm_info, token_meta = make_query_inputs(
+        flow, allow, sandbox_info, token_meta = make_query_inputs(
             real_flow,
             auth_overrides={
                 "query": {
@@ -188,7 +189,9 @@ class TestAuthQueryInjection:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
         assert flow.request.query["api_key"] == "resolved-key-123"
@@ -197,7 +200,7 @@ class TestAuthQueryInjection:
 
     async def test_query_param_overwrites_existing_key(self, real_flow, mitm_ctx):
         """auth.query overwrites a query param already present in the original request."""
-        flow, allow, vm_info, token_meta = make_query_inputs(
+        flow, allow, sandbox_info, token_meta = make_query_inputs(
             real_flow,
             host="serpapi.com",
             path=(
@@ -210,7 +213,7 @@ class TestAuthQueryInjection:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
         # auth.query overwrites the agent's api_key
         assert flow.request.query["api_key"] == "real-secret-key"
         assert list(flow.request.query.get_all("api_key")) == ["real-secret-key"]
@@ -223,7 +226,7 @@ class TestAuthQueryInjection:
 
     async def test_query_params_with_headers_simultaneously(self, real_flow, mitm_ctx):
         """auth.query and auth.headers can coexist on the standard path."""
-        flow, allow, vm_info, token_meta = make_query_inputs(
+        flow, allow, sandbox_info, token_meta = make_query_inputs(
             real_flow,
             api_base="https://example.com",
             auth_overrides={
@@ -241,7 +244,7 @@ class TestAuthQueryInjection:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
         assert flow.request.headers["Authorization"] == "Bearer real-token"
         assert flow.request.query["key"] == "resolved-query-value"
 
@@ -249,7 +252,7 @@ class TestAuthQueryInjection:
         self, real_flow, mitm_ctx, headers, tmp_path
     ):
         """auth.query params are forwarded without mutating the placeholder request."""
-        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/hook?client=visible",
@@ -273,7 +276,7 @@ class TestAuthQueryInjection:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
         assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
         # Verify the forwarded URL contains the auth.query params
         call_args = mock_forward.call_args
@@ -297,7 +300,7 @@ class TestAuthQueryInjection:
         self, real_flow, mitm_ctx, tmp_path
     ):
         """auth.query overwrites duplicate keys while preserving other query values."""
-        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/hook?api_key=agent-key&q=test&empty=&repeat=one&repeat=two",
@@ -327,7 +330,7 @@ class TestAuthQueryInjection:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         forwarded = urlparse(mock_forward.call_args[0][0])
         query = parse_qs(forwarded.query, keep_blank_values=True)
@@ -345,7 +348,7 @@ class TestAuthQueryInjection:
 
     async def test_query_params_preserve_rewrite_path_params(self, real_flow, mitm_ctx, tmp_path):
         """auth.query merging must not strip URL path params from the rewrite target."""
-        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+        flow, allow, sandbox_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
             path="/hook/callback;matrix=1?q=test",
@@ -364,7 +367,7 @@ class TestAuthQueryInjection:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
 
         forwarded = urlparse(mock_forward.call_args[0][0])
         assert forwarded.path == "/webhook/secret;v=1/callback"
@@ -379,12 +382,12 @@ class TestAuthQueryInjection:
     async def test_no_query_injection_when_absent(self, real_flow, mitm_ctx):
         """No query modification when auth.query is not present."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "test-run"
         api_entry = {
             "base": "https://api.github.com",
             "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
         }
-        vm_info = {
+        sandbox_info = {
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
@@ -397,12 +400,13 @@ class TestAuthQueryInjection:
             "headers": {"Authorization": "Bearer real"},
             "resolved_secrets": ["TOKEN"],
             "cache_hit": False,
+            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            await handle_firewall_request_without_upstream_admission(flow, allow, sandbox_info)
         assert flow.request.headers["Authorization"] == "Bearer real"
         # No query params should have been added
         assert len(flow.request.query) == 0

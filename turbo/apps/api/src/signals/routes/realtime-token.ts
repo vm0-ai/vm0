@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 
 import { requiredAuthContext$, setAuthContext$ } from "../auth/auth-context";
-import { createPlatformUserRealtimeToken } from "../external/realtime";
+import { createPlatformRealtimeToken } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
 
 const unauthenticated = Object.freeze({
@@ -24,7 +24,10 @@ const createInner$ = command(async ({ set }, signal: AbortSignal) => {
 
   set(setAuthContext$, auth);
 
-  const tokenRequest = await createPlatformUserRealtimeToken(auth.userId);
+  const tokenRequest = await createPlatformRealtimeToken(
+    auth.userId,
+    auth.orgId,
+  );
   signal.throwIfAborted();
 
   return { status: 200 as const, body: tokenRequest };

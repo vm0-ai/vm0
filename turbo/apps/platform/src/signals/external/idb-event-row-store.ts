@@ -5,6 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  withLegacyChatEventProjection,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { logger } from "../log.ts";
@@ -111,8 +112,18 @@ function createRowReadStore(
       L.debug("readRowsAfter:start", { threadId, afterSeqId });
       const db = await getDb();
       signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readonly");
-      const index = tx.store.index(CHAT_EVENT_ROWS_ORDER_INDEX);
+      const tx = db.transaction([storeName, cursorStoreName], "readonly");
+      const rawCursor = await tx.objectStore(cursorStoreName).get(threadId);
+      signal?.throwIfAborted();
+      if (rawCursor === undefined) {
+        return [];
+      }
+      // A cursor versions the whole row generation. Reject it before exposing
+      // rows so a retired cache shape cannot enter the current row stream.
+      storedChatEventCursor(rawCursor);
+      const index = tx
+        .objectStore(storeName)
+        .index(CHAT_EVENT_ROWS_ORDER_INDEX);
       const storedRows = await index.getAll(
         threadRowRange(threadId, afterSeqId),
       );
@@ -144,8 +155,9 @@ function createRowWriteStore(
         tx.objectStore(cursorStoreName).put({
           threadId,
           schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          lastEventId: cursor.lastEventId,
-          lastSeqId: cursor.lastSeqId,
+          // Stage 1 App-to-IDB writer fallback for stale App readers (about two
+          // days). Remove under vm0-ai/vm0#30329 after that client gate closes.
+          ...withLegacyChatEventProjection(cursor),
         }),
       );
       await Promise.all([...requests, tx.done]);
@@ -172,8 +184,9 @@ function createRowWriteStore(
         tx.objectStore(cursorStoreName).put({
           threadId,
           schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          lastEventId: cursor.lastEventId,
-          lastSeqId: cursor.lastSeqId,
+          // Stage 1 App-to-IDB writer fallback for stale App readers (about two
+          // days). Remove under vm0-ai/vm0#30329 after that client gate closes.
+          ...withLegacyChatEventProjection(cursor),
         }),
         tx.done,
       ]);

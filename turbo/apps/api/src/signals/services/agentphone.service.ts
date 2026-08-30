@@ -22,7 +22,7 @@ import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { env } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
 import { now } from "../../lib/time";
 import {
@@ -70,15 +70,16 @@ import {
 } from "./user-data.service";
 
 const MAX_CONNECT_AGE_SECONDS = 600;
+const LEGACY_CONNECT_CUTOFF_ENV = "AGENTPHONE_LEGACY_CONNECT_CUTOFF_SECONDS";
 const MAX_WEBHOOK_AGE_SECONDS = 300;
 const SIGNATURE_PREFIX = "sha256=";
 const MAX_CONTEXT_MESSAGES = 10;
 const AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE =
   "Note: SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.";
 const AGENTPHONE_GROUP_CONNECT_IN_DM_MESSAGE =
-  "To connect this phone number, message Zero directly in a 1:1 iMessage conversation.";
+  "To connect this phone number, message this number directly in a 1:1 iMessage conversation.";
 const AGENTPHONE_GROUP_ACCOUNT_COMMAND_MESSAGE =
-  "Only the linked sender can use AgentPhone account commands in a group. Message Zero directly to connect or manage your link.";
+  "Only the linked sender can use AgentPhone account commands in a group. Message this number directly to connect or manage your link.";
 const AGENTPHONE_CHAT_MESSAGE_ID_NAMESPACE =
   "3208d609-59a7-4b0e-9c3b-3db20e9c924f";
 const agentPhoneQueueEventRevoker = alias(
@@ -212,12 +213,62 @@ function signAgentPhoneConnectParams(params: {
     .digest("hex");
 }
 
+function signAgentPhoneConnectBrand(params: {
+  readonly phoneHandle: string;
+  readonly agentphoneAgentId: string;
+  readonly timestamp: number;
+  readonly channel: AgentPhoneChannel;
+  readonly publicBrand: PublicBrand;
+  readonly secret: string;
+}): string {
+  return createHmac("sha256", params.secret)
+    .update(
+      `${normalizeHandleForConnect(params.phoneHandle)}:${
+        params.agentphoneAgentId
+      }:${String(params.timestamp)}:${params.channel}:${params.publicBrand}`,
+    )
+    .digest("hex");
+}
+
+function safeHexSignatureEqual(expected: string, actual: string): boolean {
+  if (actual.length !== expected.length || !/^[0-9a-f]+$/iu.test(actual)) {
+    return false;
+  }
+
+  const expectedBuffer = Buffer.from(expected, "hex");
+  const signatureBuffer = Buffer.from(actual, "hex");
+  if (expectedBuffer.length !== signatureBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(expectedBuffer, signatureBuffer);
+}
+
+function isLegacyBrandlessAgentPhoneConnectAllowed(timestamp: number): boolean {
+  const configured = optionalEnv(LEGACY_CONNECT_CUTOFF_ENV);
+  if (configured === undefined) {
+    return false;
+  }
+  const cutoff = Number(configured);
+  if (!Number.isSafeInteger(cutoff) || cutoff <= 0) {
+    return false;
+  }
+
+  // Old Platform -> new API rollout compatibility: old web/app clients can stay
+  // active for about two days and can omit both brand fields. Accept only links
+  // issued at or before the operator cutoff; newer stripped links fail closed.
+  // Remove with #27750 after the client floor excludes the old Platform and the
+  // final cutoff-eligible link's ten-minute TTL has elapsed.
+  return timestamp <= cutoff;
+}
+
 export function verifyAgentPhoneConnectSignature(params: {
   readonly phoneHandle: string;
   readonly agentphoneAgentId: string;
   readonly timestamp: number;
   readonly channel: AgentPhoneChannel;
   readonly signature: string;
+  readonly publicBrand?: PublicBrand;
+  readonly publicBrandSignature?: string;
   readonly secret: string;
 }): boolean {
   const nowSeconds = Math.floor(now() / 1000);
@@ -232,16 +283,34 @@ export function verifyAgentPhoneConnectSignature(params: {
     channel: params.channel,
     secret: params.secret,
   });
-  if (!/^[0-9a-f]+$/iu.test(params.signature)) {
+  if (!safeHexSignatureEqual(expected, params.signature)) {
     return false;
   }
 
-  const expectedBuffer = Buffer.from(expected, "hex");
-  const signatureBuffer = Buffer.from(params.signature, "hex");
-  if (expectedBuffer.length !== signatureBuffer.length) {
+  if (
+    params.publicBrand === undefined &&
+    params.publicBrandSignature === undefined
+  ) {
+    return isLegacyBrandlessAgentPhoneConnectAllowed(params.timestamp);
+  }
+  if (
+    params.publicBrand === undefined ||
+    params.publicBrandSignature === undefined
+  ) {
     return false;
   }
-  return timingSafeEqual(expectedBuffer, signatureBuffer);
+
+  return safeHexSignatureEqual(
+    signAgentPhoneConnectBrand({
+      phoneHandle: params.phoneHandle,
+      agentphoneAgentId: params.agentphoneAgentId,
+      timestamp: params.timestamp,
+      channel: params.channel,
+      publicBrand: params.publicBrand,
+      secret: params.secret,
+    }),
+    params.publicBrandSignature,
+  );
 }
 
 export function verifyAgentPhoneWebhook(params: {
@@ -284,6 +353,7 @@ export function buildAgentPhoneConnectUrl(params: {
   readonly publicBrand?: PublicBrand;
 }): string {
   const timestamp = Math.floor(now() / 1000);
+  const publicBrand = params.publicBrand ?? "vm0";
   const phoneHandle = normalizeAgentPhoneHandle(
     params.phoneHandle,
     params.channel,
@@ -292,6 +362,11 @@ export function buildAgentPhoneConnectUrl(params: {
     handle: phoneHandle,
     agent: params.agentphoneAgentId,
     ts: String(timestamp),
+    // New Platform -> old API rollback compatibility for the full retained
+    // rollback lifetime, which has no fixed maximum evidenced. The old API
+    // validates this Provider-identity signature and ignores the additive brand
+    // fields. Remove with #27750 after that API is no longer serving or retained
+    // for rollback.
     sig: signAgentPhoneConnectParams({
       phoneHandle,
       agentphoneAgentId: params.agentphoneAgentId,
@@ -300,8 +375,17 @@ export function buildAgentPhoneConnectUrl(params: {
       secret: params.secret,
     }),
     channel: params.channel,
+    publicBrand,
+    brandSig: signAgentPhoneConnectBrand({
+      phoneHandle,
+      agentphoneAgentId: params.agentphoneAgentId,
+      timestamp,
+      channel: params.channel,
+      publicBrand,
+      secret: params.secret,
+    }),
   });
-  return `${appUrlForPublicBrand(env("APP_URL"), params.publicBrand ?? "vm0")}/agentphone/connect?${query.toString()}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/agentphone/connect?${query.toString()}`;
 }
 
 export async function linkAgentPhoneUser(
@@ -510,6 +594,7 @@ export async function storeInboundAgentPhoneMessage(
   params: {
     readonly event: AgentPhoneMessageEvent;
     readonly userLinkId?: string | null;
+    readonly publicBrand: PublicBrand;
   },
 ): Promise<{ readonly inserted: boolean }> {
   const inserted = await db
@@ -519,6 +604,7 @@ export async function storeInboundAgentPhoneMessage(
       agentphoneMessageId: params.event.messageId,
       conversationId: params.event.conversationId,
       agentphoneAgentId: params.event.agentphoneAgentId,
+      publicBrand: params.publicBrand,
       agentphoneUserLinkId: params.userLinkId ?? null,
       phoneHandle: normalizeAgentPhoneHandle(
         params.event.fromNumber,
@@ -871,8 +957,8 @@ function buildAgentPhoneContextBlock(
     "# AgentPhone Message Context",
     "",
     isGroup
-      ? "The messages below are from an iMessage group conversation with the shared Zero number. Messages closer to RELATIVE_INDEX 0 are more recent."
-      : "The messages below are from the user's text message conversation with the shared Zero number. Messages closer to RELATIVE_INDEX 0 are more recent.",
+      ? "The messages below are from an iMessage group conversation with the shared AgentPhone number. Messages closer to RELATIVE_INDEX 0 are more recent."
+      : "The messages below are from the user's text message conversation with the shared AgentPhone number. Messages closer to RELATIVE_INDEX 0 are more recent.",
     "",
     formattedMessages.join("\n\n"),
     "",
@@ -980,31 +1066,36 @@ async function refreshTypingIfSupported(
   );
 }
 
-function formatConnectPrompt(event: AgentPhoneMessageEvent): string {
+function formatConnectPrompt(
+  event: AgentPhoneMessageEvent,
+  publicBrand: PublicBrand,
+): string {
+  const { brandName } = publicBrandPresentation(publicBrand);
   const connectUrl = buildAgentPhoneConnectUrl({
     phoneHandle: event.fromNumber,
     agentphoneAgentId: event.agentphoneAgentId,
     secret: env("SECRETS_ENCRYPTION_KEY"),
     channel: event.channel,
+    publicBrand,
   });
 
   return [
-    "Hi, I'm Zero, your AI coworker from vm0.",
+    `This shared AgentPhone number connects you to ${brandName}.`,
     "",
     "You can text me like a teammate and I'll actually do the work: research something, draft and send emails, summarize long documents, update spreadsheets, triage tickets, post to Slack, dig through your GitHub or Notion, and a lot more.",
     "",
     "I'm most useful once I'm connected to the tools you already use — GitHub, Gmail, Notion, Google Drive / Sheets / Docs / Calendar, Slack, Sentry, X, and 100+ others.",
     "",
-    "Click the link below to start to use zero",
+    `Click the link below to start using ${brandName}.`,
     "",
     connectUrl,
   ].join("\n");
 }
 
 function formatHelpMessage(publicBrand: PublicBrand): string {
-  const { assistantName, brandName } = publicBrandPresentation(publicBrand);
+  const { brandName } = publicBrandPresentation(publicBrand);
   return [
-    `${assistantName} text message commands`,
+    `${brandName} text message commands`,
     "",
     `/connect - Connect this phone number to ${brandName}`,
     "/new_session - Start a new conversation",
@@ -1012,16 +1103,17 @@ function formatHelpMessage(publicBrand: PublicBrand): string {
     `/disconnect - Disconnect this phone number from ${brandName}`,
     "/help - Show these commands",
     "",
-    `Send a message to chat with ${assistantName} after connecting.`,
+    "Send a message here after connecting.",
   ].join("\n");
 }
 
 async function sendConnectPrompt(
   event: AgentPhoneMessageEvent,
+  publicBrand: PublicBrand,
   options: { readonly slashCommand: boolean } | undefined,
   signal: AbortSignal,
 ): Promise<void> {
-  const body = formatConnectPrompt(event);
+  const body = formatConnectPrompt(event, publicBrand);
   await sendAgentPhoneText(
     event,
     options?.slashCommand
@@ -1085,21 +1177,25 @@ async function handleConnectCommand(
   args: {
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
   if (args.userLink) {
-    const { assistantName } = publicBrandPresentation(
-      args.userLink.publicBrand,
-    );
+    const { brandName } = publicBrandPresentation(args.publicBrand);
     await sendAgentPhoneSlashCommandText(
       args.event,
-      `You are already connected. Send a message here to start chatting with ${assistantName}.`,
+      `You are already connected. Send a message here to start using ${brandName}.`,
       signal,
     );
     return;
   }
-  await sendConnectPrompt(args.event, { slashCommand: true }, signal);
+  await sendConnectPrompt(
+    args.event,
+    args.publicBrand,
+    { slashCommand: true },
+    signal,
+  );
 }
 
 async function handleDisconnectCommand(
@@ -1107,6 +1203,7 @@ async function handleDisconnectCommand(
     readonly db: Db;
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -1126,7 +1223,7 @@ async function handleDisconnectCommand(
 
   await sendAgentPhoneSlashCommandText(
     args.event,
-    `This phone number has been disconnected from ${publicBrandPresentation(args.userLink.publicBrand).brandName}.`,
+    `This phone number has been disconnected from ${publicBrandPresentation(args.publicBrand).brandName}.`,
     signal,
   );
 }
@@ -1136,11 +1233,17 @@ async function handleNewSessionCommand(
     readonly db: Db;
     readonly event: AgentPhoneMessageEvent;
     readonly userLink: AgentPhoneUserLink | null;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
   if (!args.userLink) {
-    await sendConnectPrompt(args.event, { slashCommand: true }, signal);
+    await sendConnectPrompt(
+      args.event,
+      args.publicBrand,
+      { slashCommand: true },
+      signal,
+    );
     return;
   }
 
@@ -1349,6 +1452,7 @@ const dispatchAgentPhoneCommand$ = command(
       readonly command: string | undefined;
       readonly event: AgentPhoneMessageEvent;
       readonly userLink: AgentPhoneUserLink | null;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -1358,6 +1462,7 @@ const dispatchAgentPhoneCommand$ = command(
           {
             event: args.event,
             userLink: args.userLink,
+            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1369,6 +1474,7 @@ const dispatchAgentPhoneCommand$ = command(
             db: args.db,
             event: args.event,
             userLink: args.userLink,
+            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1380,6 +1486,7 @@ const dispatchAgentPhoneCommand$ = command(
             db: args.db,
             event: args.event,
             userLink: args.userLink,
+            publicBrand: args.publicBrand,
           },
           signal,
         );
@@ -1388,14 +1495,19 @@ const dispatchAgentPhoneCommand$ = command(
       case "help": {
         await sendAgentPhoneSlashCommandText(
           args.event,
-          formatHelpMessage(args.userLink?.publicBrand ?? "vm0"),
+          formatHelpMessage(args.publicBrand),
           signal,
         );
         return true;
       }
       case "model": {
         if (!args.userLink) {
-          await sendConnectPrompt(args.event, { slashCommand: true }, signal);
+          await sendConnectPrompt(
+            args.event,
+            args.publicBrand,
+            { slashCommand: true },
+            signal,
+          );
           return true;
         }
         await set(
@@ -1423,6 +1535,7 @@ const handleAgentPhoneCommandIfPresent$ = command(
       readonly db: Db;
       readonly event: AgentPhoneMessageEvent;
       readonly userLink: AgentPhoneUserLink | null;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -1452,6 +1565,7 @@ const handleAgentPhoneCommandIfPresent$ = command(
         command: commandText,
         event: args.event,
         userLink: args.userLink,
+        publicBrand: args.publicBrand,
       },
       signal,
     );
@@ -1480,6 +1594,7 @@ async function persistAgentPhoneChatMessage(
     readonly threadContext: string;
     readonly apiStartTime: number;
     readonly modelRoute: ModelRoutePin | undefined;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<
@@ -1497,7 +1612,7 @@ async function persistAgentPhoneChatMessage(
     conversationId: args.event.conversationId,
     userId: args.userLink.userId,
     orgId: args.userLink.orgId,
-    agentComposeId: args.agent.composeId,
+    agentId: args.agent.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
     serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,
@@ -1534,6 +1649,7 @@ async function persistAgentPhoneChatMessage(
           toNumber: args.event.toNumber,
           userLinkId: args.userLink.id,
           agentphoneAgentId: args.event.agentphoneAgentId,
+          publicBrand: args.publicBrand,
         },
         createdAt: currentTime,
       },
@@ -1626,6 +1742,7 @@ const runAgentForAgentPhone$ = command(
       readonly threadContext: string;
       readonly apiStartTime: number;
       readonly modelRoute: ModelRoutePin | undefined;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<AgentPhoneMessageDispatchResult> => {
@@ -1640,12 +1757,16 @@ const runAgentForAgentPhone$ = command(
       return { kind: "ignored" };
     }
 
-    await publishChatThreadMessageCreatedSafely(
-      args.userLink.userId,
-      persisted.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: args.userLink.userId,
+      orgId: args.userLink.orgId,
+      threadId: persisted.chatThreadId,
+    });
     signal.throwIfAborted();
-    await publishThreadListChanged(args.userLink.userId);
+    await publishThreadListChanged({
+      userId: args.userLink.userId,
+      orgId: args.userLink.orgId,
+    });
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,
@@ -1682,6 +1803,7 @@ export const handleAgentPhoneMessage$ = command(
       readonly event: AgentPhoneMessageEvent;
       readonly userLink: AgentPhoneUserLink | null;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -1697,6 +1819,7 @@ export const handleAgentPhoneMessage$ = command(
           db,
           event: params.event,
           userLink: params.userLink,
+          publicBrand: params.publicBrand,
         },
         signal,
       )
@@ -1710,7 +1833,12 @@ export const handleAgentPhoneMessage$ = command(
         return;
       }
 
-      await sendConnectPrompt(params.event, undefined, signal);
+      await sendConnectPrompt(
+        params.event,
+        params.publicBrand,
+        undefined,
+        signal,
+      );
       return;
     }
 
@@ -1719,7 +1847,7 @@ export const handleAgentPhoneMessage$ = command(
     if (!agent) {
       await sendAgentPhoneText(
         params.event,
-        `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(params.userLink.publicBrand).brandName} first.`,
+        `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(params.publicBrand).brandName} first.`,
         signal,
       );
       return;
@@ -1770,6 +1898,7 @@ export const handleAgentPhoneMessage$ = command(
         event: params.event,
         apiStartTime: params.apiStartTime,
         modelRoute,
+        publicBrand: params.publicBrand,
       },
       signal,
     );

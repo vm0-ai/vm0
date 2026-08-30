@@ -15,12 +15,12 @@ import {
   desktopDownloadSupportStatus$,
   visibleComputerUseHosts,
   OKOU_DESKTOP_DOWNLOAD_URL,
-} from "../../signals/zero-page/computer-use-hosts.ts";
+} from "../../signals/okou-page/computer-use-hosts.ts";
 import { computerUseProductName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { computerUseIllustrationImg } from "../zero-page/platform-assets.ts";
-import { ProductBrandMarkLink } from "../zero-page/zero-directed-shared.tsx";
+import { computerUseIllustrationImg } from "../okou-page/platform-assets.ts";
+import { ProductBrandMarkLink } from "../okou-page/directed-shared.tsx";
 import { locale$ } from "../../signals/locale.ts";
 import { i18n } from "../../i18n/index.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";

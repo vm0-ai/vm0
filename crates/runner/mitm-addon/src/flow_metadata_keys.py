@@ -7,15 +7,15 @@ When adding a shared metadata key, add its ownership and lifecycle notes here.
 
 Request context
 ---------------
-- ``VM_RUN_ID``: ``str`` copied from registry VM info by HTTP request
+- ``SANDBOX_RUN_ID``: ``str`` copied from registry sandbox info by HTTP request
   classification and ``tcp_start()``. Header-phase HTTP probes restore this key
   unless they intentionally keep the classification for a streaming or local
   response path. Read by HTTP, TCP, proxy logging, and usage reporting.
-- ``VM_NETWORK_LOG_PATH``: ``str`` copied from registry VM info. Read by HTTP
+- ``SANDBOX_NETWORK_LOG_PATH``: ``str`` copied from registry sandbox info. Read by HTTP
   and TCP log writers; empty strings skip network-log writes.
-- ``VM_PROXY_LOG_PATH``: ``str`` copied from registry VM info. Read by proxy
+- ``SANDBOX_PROXY_LOG_PATH``: ``str`` copied from registry sandbox info. Read by proxy
   warnings, usage reporting, and auth/streaming diagnostics.
-- ``VM_SANDBOX_AUTH_KEY``: ``str`` sandbox token copied from registry VM info.
+- ``SANDBOX_AUTH_KEY``: ``str`` sandbox token copied from registry sandbox info.
   Read by usage webhook reporters.
 - ``ORIGINAL_URL``: absolute URL written by HTTP request classification from
   trusted authority, or from the authority-validation fallback URL on local
@@ -25,12 +25,12 @@ Request context
 - ``NETWORK_LOG_TARGET``: ``dict`` with ``url``, ``host``, and ``port`` from
   trusted authority or authority-validation fallback URL. Read by network-log
   entry construction.
-- ``CAPTURE_BODY``: ``bool`` copied from registry VM info by HTTP request
+- ``CAPTURE_BODY``: ``bool`` copied from registry sandbox info by HTTP request
   classification. Read by ``response()`` to decide whether to add
   request/response bodies.
 - ``SUPPRESS_REQUEST_BODY_CAPTURE``: ``bool`` written by auth.base request-size
   handling. Read by body capture to mark oversized request bodies truncated.
-- ``CLI_AGENT_TYPE``: ``str`` copied from validated registry VM info. Read by
+- ``CLI_AGENT_TYPE``: ``str`` copied from validated registry sandbox info. Read by
   model-provider usage protocol selection.
 - ``BROWSER_USER_AGENT``: ``bool`` written during request classification when
   the request matches the short-term browser passthrough User-Agent heuristic.
@@ -44,7 +44,7 @@ Request context
 Timing context
 --------------
 - ``HTTP_REQUEST_START_MONOTONIC``: ``float`` from ``time.monotonic()``,
-  written when a request first reaches a registered-VM HTTP path, including
+  written when a request first reaches a registered-sandbox HTTP path, including
   header-phase streaming and local auth.base rejection paths. Popped by
   ``response()`` or ``error()`` when computing HTTP latency, and removed on
   request failures.
@@ -61,6 +61,9 @@ Firewall and auth context
 - ``FIREWALL_AUTH_CACHE_KEY``: opaque typed auth cache key written by matched
   auth handling after the full auth input identity is known. Read by 401 cache
   invalidation; stores only a digest of auth inputs and sandbox token.
+- ``FIREWALL_AUTH_CACHE_ENTRY_IDENTITY``: credential-free process-local object
+  identifying the exact cached auth result applied to this flow. Written only
+  after successful auth application and read by 401 cache invalidation.
 - ``FIREWALL_AUTH_PROBE_FAILURE``: ``Exception`` caught by header-phase auth
   probing after restoring the probe snapshot. Popped by request-phase auth
   handling to produce the same local auth failure without resolving auth a
@@ -73,7 +76,7 @@ Firewall and auth context
   network-log firewall metadata.
 - ``FIREWALL_PARAMS``: ``dict`` firewall params from the match. Read by
   network-log firewall metadata when it has the expected shape.
-- ``FIREWALL_BILLABLE``: ``bool`` computed from runner VM billable firewall
+- ``FIREWALL_BILLABLE``: ``bool`` computed from runner sandbox billable firewall
   context for matched auth flows, or forced ``False`` for browser passthrough
   and policy-only asterisk-form allows. Gates connector billing, model-provider
   billing, and connector response parser setup; model usage observation still
@@ -179,7 +182,7 @@ Model-provider usage
   history; otherwise positive usage uses a conservative tier. Written by
   model-provider billing and cleared at the WebSocket terminal lifecycle
   boundary.
-- ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry VM
+- ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry sandbox
   info. Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
   ran. Read by ``response()`` to skip legacy fallback JSON extraction.
@@ -196,10 +199,10 @@ Connector usage and parser state
 from typing import Final
 
 # Run and request context
-VM_RUN_ID: Final = "vm_run_id"
-VM_NETWORK_LOG_PATH: Final = "vm_network_log_path"
-VM_PROXY_LOG_PATH: Final = "vm_proxy_log_path"
-VM_SANDBOX_AUTH_KEY: Final = "vm_sandbox_token"
+SANDBOX_RUN_ID: Final = "sandbox_run_id"
+SANDBOX_NETWORK_LOG_PATH: Final = "sandbox_network_log_path"
+SANDBOX_PROXY_LOG_PATH: Final = "sandbox_proxy_log_path"
+SANDBOX_AUTH_KEY: Final = "sandbox_token"
 ORIGINAL_URL: Final = "original_url"
 NETWORK_LOG_TARGET: Final = "network_log_target"
 CAPTURE_BODY: Final = "capture_body"
@@ -216,6 +219,7 @@ TCP_START_MONOTONIC: Final = "tcp_start_monotonic"
 FIREWALL_BASE: Final = "firewall_base"
 FIREWALL_API_ID: Final = "firewall_api_id"
 FIREWALL_AUTH_CACHE_KEY: Final = "firewall_auth_cache_key"
+FIREWALL_AUTH_CACHE_ENTRY_IDENTITY: Final = "firewall_auth_cache_entry_identity"
 FIREWALL_AUTH_PROBE_FAILURE: Final = "firewall_auth_probe_failure"
 FIREWALL_NAME: Final = "firewall_name"
 FIREWALL_PERMISSION: Final = "firewall_permission"

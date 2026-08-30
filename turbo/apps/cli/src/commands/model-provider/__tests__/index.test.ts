@@ -59,7 +59,7 @@ describe("okou model-provider command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     mockConsoleLog.mockClear();
   });
@@ -94,12 +94,32 @@ describe("okou model-provider command", () => {
     expect(logCalls).toContain("Claude Sonnet 4.6");
     expect(logCalls).toContain("provider: built-in");
     expect(logCalls).toContain("provider type: vm0 (Built-in model)");
-    expect(logCalls).not.toContain("VM0 Managed");
     expect(logCalls).toContain("GPT 5.6 Luna");
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: subscription");
     expect(logCalls).toContain("No personal subscription connected");
+  });
+
+  it("should render canonical built-in responses as the built-in route", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/model-policies", () => {
+        return HttpResponse.json({
+          ...MODEL_POLICIES_RESPONSE,
+          policies: MODEL_POLICIES_RESPONSE.policies.map((policy, index) => {
+            return index === 0
+              ? { ...policy, defaultProviderType: "built-in" }
+              : policy;
+          }),
+        });
+      }),
+    );
+
+    await modelProviderCommand.parseAsync(["node", "cli", "ls"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("provider: built-in");
+    expect(logCalls).toContain("provider type: built-in (Built-in model)");
   });
 
   it("should show web-app provider routing guidance in set help", async () => {

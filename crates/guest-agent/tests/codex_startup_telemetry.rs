@@ -139,16 +139,25 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
         .env_clear()
         .env(guest_contracts::env::RUN_ID_ENV, args.run_id)
         .env(
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             args.run_payload_path,
         )
-        .env("VM0_API_BACKEND_URL", "http://127.0.0.1:1")
-        .env("VM0_API_TOKEN", "")
-        .env("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc")
-        .env("VM0_SANDBOX_REUSE_RESULT", "reused")
-        .env("VM0_TEST_CODEX_HOME_DIR", args.home.join(".codex"))
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        )
+        .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "")
+        .env(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        )
+        .env(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        )
+        .env("OKOU_TEST_CODEX_HOME_DIR", args.home.join(".codex"))
+        .env(
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             args.runtime_dir,
         )
         .env("HOME", args.home);
@@ -161,7 +170,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
             command
                 .env("CLI_AGENT_TYPE", "codex")
                 .env("USE_MOCK_CODEX", "true")
-                .env("VM0_MOCK_CODEX_PATH", binary);
+                .env(guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV, binary);
             if let Some(scenario) = app_server_scenario {
                 command.env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
             }
@@ -170,7 +179,7 @@ async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::
             command
                 .env("CLI_AGENT_TYPE", "claude-code")
                 .env("USE_MOCK_CLAUDE", "true")
-                .env("VM0_MOCK_CLAUDE_PATH", binary);
+                .env(guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV, binary);
         }
     }
 

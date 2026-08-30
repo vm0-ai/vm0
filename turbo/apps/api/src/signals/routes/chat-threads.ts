@@ -1,4 +1,8 @@
-import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  LEGACY_CHAT_EVENT_PROJECTION,
+  withLegacyChatEventProjection,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed } from "ccstate";
 import {
   chatSearchContract,
@@ -144,6 +148,12 @@ const listChatIndicatorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: indicators };
 });
 
+/**
+ * Stage 1 API-to-client adapter for strict pre-Stage-1 Snapshot readers.
+ * Stale App/SharedWorker clients can remain for about two days, while CLI
+ * artifacts use the queue plus claimed execution/finalization drain gate.
+ * Remove the fixed response field under vm0-ai/vm0#30329 after both close.
+ */
 const getChatEventSnapshotInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
@@ -188,11 +198,18 @@ const getChatEventSnapshotInner$ = command(
         expiresInSeconds: snapshot.expiresInSeconds,
         lastEventId: snapshot.lastEventId,
         lastSeqId: snapshot.lastSeqId,
+        projection: LEGACY_CHAT_EVENT_PROJECTION,
       },
     };
   },
 );
 
+/**
+ * Stage 1 API-to-client adapter: ignore the optional legacy request field and
+ * emit the fixed response shape for pre-Stage-1 App/SharedWorker clients
+ * (about two days) and CLI artifacts (queue plus execution/finalization).
+ * Remove both wire fields under vm0-ai/vm0#30329 after those gates close.
+ */
 const listChatEventRowsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
@@ -213,7 +230,13 @@ const listChatEventRowsInner$ = command(
       chatThreadEventRows({
         threadId: params.threadId,
         userId: auth.userId,
-        ...query,
+        limit: query.limit,
+        ...(query.sinceEventId === undefined
+          ? { sinceSeqId: 0 as const }
+          : {
+              sinceSeqId: query.sinceSeqId,
+              sinceEventId: query.sinceEventId,
+            }),
       }),
     );
     signal.throwIfAborted();
@@ -234,7 +257,12 @@ const listChatEventRowsInner$ = command(
 
     return {
       status: 200 as const,
-      body: { rows: [...page.rows] },
+      body: {
+        rows: [...page.rows],
+        cursor: withLegacyChatEventProjection(page.cursor),
+        hasMore: page.hasMore,
+        projection: LEGACY_CHAT_EVENT_PROJECTION,
+      },
     };
   },
 );
@@ -255,13 +283,14 @@ const listChatThreadDraftsInner$ = computed(async (get) => {
 });
 
 const listChatThreadUnreadsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
+  const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatThreadsContract.unreads));
 
   const unreads = await get(
     chatThreadUnreads({
       userId: auth.userId,
-      agentComposeId: query.agentId,
+      orgId: auth.orgId,
+      agentId: query.agentId,
     }),
   );
 
@@ -358,7 +387,14 @@ export const chatThreadRoutes: readonly RouteEntry[] = [
   },
   {
     route: chatThreadsContract.unreads,
-    handler: authRoute({}, listChatThreadUnreadsInner$),
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:read",
+      },
+      listChatThreadUnreadsInner$,
+    ),
   },
   {
     route: chatThreadByIdContract.get,

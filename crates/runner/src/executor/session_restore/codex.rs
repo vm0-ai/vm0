@@ -8,7 +8,7 @@ use api_contracts::generated::constants::runners::paths::{
 
 use super::{MaterializedResumeSession, SessionRestoreDiagnostics, write_session_history_file};
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, SandboxReuseResult};
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use guest_contracts::{
@@ -26,16 +26,43 @@ fn codex_restore_rollout_timestamp(
     session.codex_timestamp().unwrap_or(fallback_timestamp)
 }
 
-/// Write a Codex session history file as canonical JSONL or zstd-compressed
+/// Restore a Codex session history file as canonical JSONL or zstd-compressed
 /// JSONL under
 /// `~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl[.zst]`.
 ///
 /// Codex 0.137 filters filesystem resume candidates through its canonical
-/// rollout filename parser, so a bare `{thread_id}.jsonl` is ignored.
+/// rollout filename parser, so a bare `{thread_id}.jsonl` is ignored. The
+/// canonical path without the optional `.zst` suffix is the logical rollout
+/// path; the suffix is added only for compressed restored history.
+///
+/// On an idle-reused sandbox (`SandboxReuseResult::Reused`), cleanup runs
+/// before this function writes the replacement history. Every other reuse
+/// outcome writes to the timestamp-derived fallback path without scanning
+/// prior Codex state. The cleanup helper scans the complete
+/// `~/.codex/sessions` tree, bounded by `OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET`
+/// (default: 16,384 entries), because duplicate resume candidates can exist
+/// outside the fallback date directory.
+///
+/// Cleanup removes matching regular files and symlinks whose names contain the
+/// dashed or undashed session key and end in `.jsonl`, `.jsonl.zst`,
+/// `.jsonl.vm0tmp-*`, or `.jsonl.zst.vm0tmp-*`. Unrelated entries and
+/// directories are preserved. A matching regular file in the canonical
+/// `YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl[.zst]` layout is a
+/// logical-path candidate: raw and zstd siblings map to the same logical path,
+/// no candidate selects the fallback, and multiple distinct candidates are an
+/// ambiguity that fails before deletion.
+///
+/// The helper emits either empty stdout or exactly one LF-terminated canonical
+/// logical path. Rust validates that output independently at the guest trust
+/// boundary, including its layout, date/time fields, and session ID, before it
+/// becomes the write destination. A scan, deletion, helper, ambiguity,
+/// malformed/truncated-output, or path-validation failure therefore prevents
+/// the replacement history from being written.
 pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &MaterializedResumeSession,
+    sandbox_reuse_result: SandboxReuseResult,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let original_session_id = session.cli_agent_session_id();
     let thread_id = CodexThreadId::parse(original_session_id)
@@ -54,15 +81,25 @@ pub(super) async fn restore_codex_session(
         codex_rollout_relative_path(&thread_id, timestamp)
     );
 
-    let logical_path = cleanup_existing_codex_session_files(
-        sandbox,
-        context,
-        session_id,
-        &session_filename_key,
-        &fallback_logical_path,
-    )
-    .await?
-    .unwrap_or(fallback_logical_path);
+    // Only an idle-reused sandbox can retain a prior framework home. Fresh
+    // sandboxes may attach a cached workspace drive, but that drive contains
+    // only the working directory and cannot contain Codex session rollouts.
+    let logical_path = match sandbox_reuse_result {
+        SandboxReuseResult::Reused => cleanup_existing_codex_session_files(
+            sandbox,
+            context,
+            session_id,
+            &session_filename_key,
+            &fallback_logical_path,
+        )
+        .await?
+        .unwrap_or(fallback_logical_path),
+        SandboxReuseResult::NoReuseKey
+        | SandboxReuseResult::PoolMiss
+        | SandboxReuseResult::ProfileMismatch
+        | SandboxReuseResult::DeviceLimitMismatch
+        | SandboxReuseResult::UnparkFailed => fallback_logical_path,
+    };
     let session_path = format!("{logical_path}{physical_suffix}");
 
     write_session_history_file(sandbox, &session_path, session_history).await?;
@@ -91,12 +128,12 @@ async fn cleanup_existing_codex_session_files(
 ) -> RunnerResult<Option<String>> {
     let cleanup_cmd = codex_session_cleanup_command(CANONICAL_CODEX_HOME_DIR);
     let env = [
-        ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
+        ("OKOU_CODEX_RESTORE_SESSION_ID", session_id),
         (
-            "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
+            "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY",
             session_filename_key,
         ),
-        ("VM0_CODEX_RESTORE_SESSION_PATH", fallback_logical_path),
+        ("OKOU_CODEX_RESTORE_SESSION_PATH", fallback_logical_path),
     ];
     let result = sandbox
         .exec_with_diagnostic_label(
@@ -293,7 +330,7 @@ mod tests {
 
     fn run_cleanup_with_budget(codex_home: &Path, restore_path: &Path, budget: &str) -> Output {
         cleanup_command(codex_home, restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
-            .env("VM0_CODEX_SESSION_CLEANUP_SCAN_BUDGET", budget)
+            .env("OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET", budget)
             .output()
             .unwrap()
     }
@@ -310,13 +347,13 @@ mod tests {
             .arg(codex_session_cleanup_command(
                 codex_home.to_str().expect("test path should be utf-8"),
             ))
-            .env("VM0_CODEX_RESTORE_SESSION_ID", session_id)
+            .env("OKOU_CODEX_RESTORE_SESSION_ID", session_id)
             .env(
-                "VM0_CODEX_RESTORE_SESSION_FILENAME_KEY",
+                "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY",
                 session_filename_key,
             )
             .env(
-                "VM0_CODEX_RESTORE_SESSION_PATH",
+                "OKOU_CODEX_RESTORE_SESSION_PATH",
                 restore_path.to_str().expect("test path should be utf-8"),
             );
         command

@@ -45,7 +45,7 @@ import {
   capturePaidOnboardingAppHandoff$,
   capturePaidOnboardingStepViewed$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
-import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { onboardingStatus$ } from "../okou-page/onboarding.ts";
 
 interface OnboardingPageConfig {
   readonly step: OnboardingRouteStep;
@@ -134,7 +134,7 @@ function createOnboardingPageSetup(
       }
     }
 
-    const status = await get(zeroOnboardingStatus$);
+    const status = await get(onboardingStatus$);
     signal.throwIfAborted();
     if (!status.needsOnboarding) {
       const prompt = searchParams.get("prompt")?.trim();

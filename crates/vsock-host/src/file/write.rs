@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{fmt, io};
 
+use guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE;
 use shell_quote::quote_shell_arg;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES_RESULT};
 
@@ -72,13 +73,46 @@ impl<'a> WriteFileChunkRequest<'a> {
     }
 }
 
-/// One ordinary guest file write entry for [`VsockHost::write_files`].
+/// One guest file entry for [`VsockHost::write_files`] or
+/// [`VsockHost::write_private_files`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WriteFileEntry<'a> {
     /// Guest path to create or replace.
     pub path: &'a str,
     /// Bytes to write to the guest path.
     pub content: &'a [u8],
+}
+
+#[derive(Clone, Copy)]
+enum WriteFilesMode {
+    Ordinary,
+    Private,
+}
+
+impl WriteFilesMode {
+    const fn operation_name(self) -> &'static str {
+        match self {
+            Self::Ordinary => "write_files",
+            Self::Private => "write_private_files",
+        }
+    }
+
+    fn encode_frame(
+        self,
+        frame: &mut Vec<u8>,
+        seq: u32,
+        files: &[vsock_proto::WriteFileBatchEntry<'_>],
+    ) -> Result<(), vsock_proto::ProtocolError> {
+        match self {
+            Self::Ordinary => vsock_proto::encode_write_files_frame_into(frame, seq, files),
+            Self::Private => vsock_proto::encode_private_write_files_frame_into(frame, seq, files),
+        }
+    }
+}
+
+struct ValidatedWriteFiles<'a> {
+    proto_entries: Vec<vsock_proto::WriteFileBatchEntry<'a>>,
+    total_content_len: usize,
 }
 
 #[derive(Debug)]
@@ -378,9 +412,11 @@ impl VsockHost {
     /// This contract applies to every public file-write future on [`VsockHost`]:
     /// this method, [`write_files`](Self::write_files),
     /// [`write_private_file`](Self::write_private_file),
+    /// [`write_private_files`](Self::write_private_files),
     /// [`write_file_with_write_observer`](Self::write_file_with_write_observer),
     /// [`write_files_with_write_observer`](Self::write_files_with_write_observer),
-    /// and [`write_private_file_with_write_observer`](Self::write_private_file_with_write_observer).
+    /// [`write_private_file_with_write_observer`](Self::write_private_file_with_write_observer),
+    /// and [`write_private_files_with_write_observer`](Self::write_private_files_with_write_observer).
     ///
     /// Dropping one of these futures before any request frame starts writing
     /// sends no file-write request and leaves the connection reusable for later
@@ -403,8 +439,9 @@ impl VsockHost {
     /// does not prove the destination outcome or restore connection reuse. A
     /// chunked private write modifies the final path directly, can leave partial
     /// content, and has no rollback cleanup. The effects of a cancelled
-    /// [`write_files`](Self::write_files) batch are likewise unproven once its
-    /// frame starts writing.
+    /// [`write_files`](Self::write_files) or
+    /// [`write_private_files`](Self::write_private_files) batch are likewise
+    /// unproven once its frame starts writing.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
         self.write_file_with_write_observer(path, content, sudo, FrameWriteObserver::default())
             .await
@@ -423,6 +460,24 @@ impl VsockHost {
     /// [shared file-write cancellation contract](Self::write_file).
     pub async fn write_files(&self, files: &[WriteFileEntry<'_>]) -> io::Result<()> {
         self.write_files_with_write_observer(files, FrameWriteObserver::default())
+            .await
+    }
+
+    /// Write multiple private runtime files on the guest.
+    ///
+    /// A fitting multi-entry request uses one private batch helper. Empty input
+    /// is a no-op, one entry uses [`write_private_file`](Self::write_private_file),
+    /// and aggregate content above the batch limit falls back to sequential
+    /// private writes so existing chunking behavior is preserved.
+    ///
+    /// All paths and the entry-count bound are validated before any fallback
+    /// write begins. A later failure can leave earlier entries complete, but
+    /// the operation still returns an error.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file).
+    pub async fn write_private_files(&self, files: &[WriteFileEntry<'_>]) -> io::Result<()> {
+        self.write_private_files_with_write_observer(files, FrameWriteObserver::default())
             .await
     }
 
@@ -556,13 +611,15 @@ impl VsockHost {
                 .await;
         }
 
+        validate_write_file_chunk_request(WriteFileChunkRequest::standard(path, &[], sudo, false))?;
         let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
 
-        // Write chunks to a per-call temp file, then atomic rename. The
-        // suffix prevents concurrent large writes to the same destination
-        // from appending to or cleaning up each other's staging file.
-        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_temp_seq());
+        // Write chunks to a bounded per-call sibling, then atomic rename. The UUID
+        // prevents concurrent writes from sharing or cleaning up a staging file.
+        let tmp_path = std::path::Path::new(path)
+            .with_file_name(format!(".vm0tmp-{}", uuid::Uuid::new_v4().simple()));
+        let tmp = tmp_path.to_string_lossy();
         let quoted_tmp = quote_shell_arg(&tmp);
         let rm_tmp = format!("rm -f -- {quoted_tmp}");
         let cleanup_armed = Arc::new(AtomicBool::new(false));
@@ -657,41 +714,91 @@ impl VsockHost {
         if files.is_empty() {
             return Ok(());
         }
-        if files.len() > WRITE_FILES_BATCH_FILE_LIMIT {
+        let validated = validate_write_files(files, WriteFilesMode::Ordinary)?;
+        if validated.total_content_len > WRITE_FILES_BATCH_CONTENT_LIMIT {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "write_files batch contains {} files, limit is {WRITE_FILES_BATCH_FILE_LIMIT}",
-                    files.len()
+                    "write_files batch contains {} content bytes, limit is {WRITE_FILES_BATCH_CONTENT_LIMIT}",
+                    validated.total_content_len
                 ),
             ));
+        }
+        self.write_validated_files_batch(
+            files,
+            validated.proto_entries,
+            WriteFilesMode::Ordinary,
+            write_observer,
+        )
+        .await
+    }
+
+    /// Write multiple private runtime files and report before each request
+    /// frame is written.
+    ///
+    /// Cancellation follows the
+    /// [shared file-write cancellation contract](Self::write_file); the observer
+    /// reports the frame-write boundaries described there.
+    pub async fn write_private_files_with_write_observer(
+        &self,
+        files: &[WriteFileEntry<'_>],
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<()> {
+        self.write_private_files_with_write_observer_and_limits(
+            files,
+            write_observer,
+            WRITE_FILES_BATCH_CONTENT_LIMIT,
+            WRITE_FILE_CHUNK_LIMIT,
+        )
+        .await
+    }
+
+    pub(super) async fn write_private_files_with_write_observer_and_limits(
+        &self,
+        files: &[WriteFileEntry<'_>],
+        write_observer: FrameWriteObserver,
+        batch_content_limit: usize,
+        chunk_limit: usize,
+    ) -> io::Result<()> {
+        if files.is_empty() {
+            return Ok(());
         }
 
-        let mut total_content_len = 0usize;
-        let mut proto_entries = Vec::with_capacity(files.len());
-        for file in files {
-            validate_guest_file_path(file.path)?;
-            total_content_len = total_content_len
-                .checked_add(file.content.len())
-                .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "write_files content length overflow",
-                    )
-                })?;
-            proto_entries.push(vsock_proto::WriteFileBatchEntry {
-                path: file.path,
-                content: file.content,
-            });
+        let validated = validate_write_files(files, WriteFilesMode::Private)?;
+        let batch_fits_protocol =
+            vsock_proto::validate_write_files(&validated.proto_entries).is_ok();
+        if files.len() == 1
+            || validated.total_content_len > batch_content_limit
+            || !batch_fits_protocol
+        {
+            for file in files {
+                self.write_private_file_with_write_observer_and_chunk_limit(
+                    file.path,
+                    file.content,
+                    write_observer.clone(),
+                    chunk_limit,
+                )
+                .await?;
+            }
+            return Ok(());
         }
-        if total_content_len > WRITE_FILES_BATCH_CONTENT_LIMIT {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "write_files batch contains {total_content_len} content bytes, limit is {WRITE_FILES_BATCH_CONTENT_LIMIT}"
-                ),
-            ));
-        }
+
+        self.write_validated_files_batch(
+            files,
+            validated.proto_entries,
+            WriteFilesMode::Private,
+            write_observer,
+        )
+        .await
+    }
+
+    async fn write_validated_files_batch(
+        &self,
+        files: &[WriteFileEntry<'_>],
+        proto_entries: Vec<vsock_proto::WriteFileBatchEntry<'_>>,
+        mode: WriteFilesMode,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<()> {
         vsock_proto::validate_write_files(&proto_entries).map_err(protocol_invalid_input)?;
 
         let _path_guards = self
@@ -699,14 +806,14 @@ impl VsockHost {
             .acquire_shared_many(files.iter().map(|file| file.path))
             .await;
         let _file_write_guard = self.shared.file_write_gate.lock().await;
-        let timeout = Duration::from_secs(300);
+        let timeout = WRITE_FILE_REQUEST_DEADLINE;
         let resp = normal_request_on_shared_with_write_observer_frame_builder(
             &self.shared,
             WRITE_FILES_TERMINAL_MSG_TYPES,
             timeout,
             write_observer,
             move |seq, frame| {
-                vsock_proto::encode_write_files_frame_into(frame, seq, &proto_entries)
+                mode.encode_frame(frame, seq, &proto_entries)
                     .map_err(protocol_invalid_input)
             },
         )
@@ -744,7 +851,7 @@ impl VsockHost {
         validate_write_file_chunk_request(request)?;
 
         let _file_write_guard = self.shared.file_write_gate.lock().await;
-        let timeout = Duration::from_secs(300);
+        let timeout = WRITE_FILE_REQUEST_DEADLINE;
         let resp = match tracking {
             WriteFileChunkTracking::Tracked => {
                 normal_request_on_shared_with_write_observer_frame_builder(
@@ -791,6 +898,47 @@ impl VsockHost {
 
         Ok(())
     }
+}
+
+fn validate_write_files<'a>(
+    files: &[WriteFileEntry<'a>],
+    mode: WriteFilesMode,
+) -> io::Result<ValidatedWriteFiles<'a>> {
+    let operation_name = mode.operation_name();
+    if files.len() > WRITE_FILES_BATCH_FILE_LIMIT {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{operation_name} batch contains {} files, limit is {WRITE_FILES_BATCH_FILE_LIMIT}",
+                files.len()
+            ),
+        ));
+    }
+
+    let mut total_content_len = 0usize;
+    let mut proto_entries = Vec::with_capacity(files.len());
+    for file in files {
+        validate_guest_file_path(file.path)?;
+        vsock_proto::validate_write_file(file.path, &[], false, false)
+            .map_err(protocol_invalid_input)?;
+        total_content_len = total_content_len
+            .checked_add(file.content.len())
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{operation_name} content length overflow"),
+                )
+            })?;
+        proto_entries.push(vsock_proto::WriteFileBatchEntry {
+            path: file.path,
+            content: file.content,
+        });
+    }
+
+    Ok(ValidatedWriteFiles {
+        proto_entries,
+        total_content_len,
+    })
 }
 
 fn validate_write_file_chunk_request(request: WriteFileChunkRequest<'_>) -> io::Result<()> {

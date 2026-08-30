@@ -1,4 +1,4 @@
-import { userPermissionGrantActionSchema } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import { userPermissionGrantActionSchema } from "@okouai/api-contracts/contracts/user-permission-grants";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import type {
@@ -13,7 +13,7 @@ import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import { workflows } from "@okouai/db/schema/workflow";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -297,6 +297,7 @@ async function queryAgentRunWorkflowCandidates(
       name: workflows.name,
       visibility: workflows.visibility,
       ownerUserId: workflows.ownerUserId,
+      officialDefinitionName: workflows.officialDefinitionName,
       createdAt: workflows.createdAt,
     })
     .from(workflows)
@@ -304,6 +305,10 @@ async function queryAgentRunWorkflowCandidates(
       and(
         eq(workflows.orgId, args.orgId),
         eq(workflows.agentId, args.agentId),
+        or(
+          isNull(workflows.officialDefinitionName),
+          eq(workflows.officialInstallationState, "installed"),
+        ),
         or(
           eq(workflows.visibility, "public"),
           eq(workflows.ownerUserId, args.userId),

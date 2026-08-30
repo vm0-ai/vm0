@@ -13,7 +13,7 @@ from tests.flow_helpers import header_map, response_stream
 
 def test_pops_start_time_even_when_run_id_absent(real_flow, mitm_ctx):
     # If a partially initialized flow reaches response() without
-    # vm_run_id, response() must still pop the timing state.
+    # sandbox_run_id, response() must still pop the timing state.
     flow = real_flow(with_response=False)
     flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
@@ -26,9 +26,9 @@ def test_pops_start_time_even_when_run_id_absent(real_flow, mitm_ctx):
 def test_response_releases_streaming_state(tmp_path, real_flow, mitm_ctx):
     """The completed response hook must not retain parser/buffer closures."""
     flow = real_flow(with_response=False, host="api.anthropic.com")
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
     http_network_log.set_target(
@@ -151,8 +151,8 @@ def test_response_does_not_clear_external_stream_callback(tmp_path, real_flow, m
     def external_stream(chunk):
         return chunk
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
     http_network_log.set_target(
@@ -177,9 +177,9 @@ def test_response_does_not_clear_replaced_stream_callback(tmp_path, real_flow, m
     def external_stream(chunk):
         return chunk
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
     http_network_log.set_target(

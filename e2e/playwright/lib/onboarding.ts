@@ -83,7 +83,16 @@ export async function startVideoOnboardingCheckout(
   options: OnboardingFlowOptions,
 ): Promise<void> {
   await openOnboarding(page, options);
-  await chooseMakeOption(page, "Video production");
+  // The primary video choice now completes onboarding and opens the in-product
+  // template picker. Keep paid checkout coverage on the supported legacy deep
+  // link instead.
+  const videoTemplateUrl = new URL(
+    "/onboarding/video-template?choice=video",
+    options.appUrl,
+  );
+  await page.goto(videoTemplateUrl.toString(), {
+    waitUntil: "domcontentloaded",
+  });
   await expect(
     page.getByRole("heading", {
       name: /pick a video template to start from/i,

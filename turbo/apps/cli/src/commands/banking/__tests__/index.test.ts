@@ -9,6 +9,8 @@ import { server } from "../../../mocks/server";
 import { bankingCommand } from "../index";
 
 const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "banking-home-"));
+const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
+const THREAD_ID = "550e8400-e29b-41d4-a716-446655440001";
 
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
@@ -32,8 +34,11 @@ describe("okou banking command", () => {
   beforeEach(async () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_APP_URL", "https://app.example.test");
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
   afterEach(async () => {
@@ -142,5 +147,36 @@ describe("okou banking command", () => {
     const errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("Not authenticated");
     expect(errors).toContain("Set OKOU_TOKEN to a valid run token");
+  });
+
+  it("prints a current-chat banking access card URL", async () => {
+    await bankingCommand.parseAsync([
+      "node",
+      "cli",
+      "access-request",
+      "--reason",
+      "Review recent expenses",
+      "--callback-prompt",
+      "Continue the expense review",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    const urlText = mockConsoleLog.mock.calls
+      .flat()
+      .map(String)
+      .find((value) => {
+        return value.startsWith("https://app.example.test/agents/");
+      });
+    if (!urlText) {
+      throw new Error("Expected a banking access URL");
+    }
+    const url = new URL(urlText);
+    expect(url.pathname).toBe(`/agents/${AGENT_ID}/banking`);
+    expect(url.searchParams.get("reason")).toBe("Review recent expenses");
+    expect(url.searchParams.get("threadId")).toBe(THREAD_ID);
+    expect(url.searchParams.get("callbackPrompt")).toBe(
+      "Continue the expense review",
+    );
+    expect(output).toContain("end the current turn");
   });
 });

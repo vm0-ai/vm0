@@ -9,7 +9,6 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { removeAgentLegacyVersionsFixture } from "../../../test-fixtures/agent-deletion";
 import {
   createBddApi,
   expectApiError,
@@ -301,7 +300,7 @@ describe("GET /api/agents/:id", () => {
     });
   });
 
-  it("returns 403 for a zero token without agent:read capability", async () => {
+  it("returns 403 for an agent token without agent:read capability", async () => {
     const actor = bdd.user();
     const token = okouTokenFor(actor, ["file:read"]);
 
@@ -321,7 +320,7 @@ describe("GET /api/agents/:id", () => {
     });
   });
 
-  it("returns the agent for a zero token with agent:read capability", async () => {
+  it("returns the agent for an agent token with agent:read capability", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, {
       displayName: "Zero Token Agent",
@@ -355,7 +354,7 @@ describe("DELETE /api/agents/:id", () => {
     });
   });
 
-  it("returns 403 for a zero token without agent:delete capability", async () => {
+  it("returns 403 for an agent token without agent:delete capability", async () => {
     const actor = bdd.user();
     const token = okouTokenFor(actor, ["file:read"]);
 
@@ -438,7 +437,7 @@ describe("DELETE /api/agents/:id", () => {
     const actor = bdd.user();
     const agent = await createAgent(actor);
 
-    await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+    await bdd.deleteAgent(actor, agent.agentId);
 
     const response = await bdd.requestReadAgent(actor, agent.agentId, [404]);
     expect(response.body).toStrictEqual({
@@ -498,7 +497,7 @@ describe("DELETE /api/agents/:id", () => {
       return Promise.resolve({});
     });
 
-    await bdd.deleteVersionFreeAgent(actor, agent.agentId);
+    await bdd.deleteAgent(actor, agent.agentId);
 
     expect(listedPrefix).toMatch(
       new RegExp(
@@ -523,8 +522,6 @@ describe("DELETE /api/agents/:id", () => {
       displayName: "API Key Deletable Agent",
       visibility: "private",
     });
-    await removeAgentLegacyVersionsFixture(agent.agentId);
-
     const response = await accept(
       agentsClient().delete({
         params: { id: agent.agentId },
@@ -552,7 +549,7 @@ describe("DELETE /api/agents/:id", () => {
     const admin = bdd.user({ orgId: owner.orgId, orgRole: "org:admin" });
     const agent = await createAgent(owner);
 
-    await bdd.deleteVersionFreeAgent(admin, agent.agentId);
+    await bdd.deleteAgent(admin, agent.agentId);
 
     const readAfterDelete = await bdd.requestReadAgent(
       owner,
@@ -581,8 +578,6 @@ describe("DELETE /api/agents/:id", () => {
       prompt: "keep this run pending",
       modelProvider: "anthropic-api-key",
     });
-    await removeAgentLegacyVersionsFixture(agent.agentId);
-
     const response = await bdd.requestDeleteAgent(actor, agent.agentId, [409]);
 
     expect(response.body).toStrictEqual({

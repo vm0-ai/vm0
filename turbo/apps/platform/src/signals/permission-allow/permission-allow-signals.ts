@@ -4,12 +4,12 @@ import {
   type UserPermissionGrantApplyMode,
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
-  zeroUserPermissionGrantsContract,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+  userPermissionGrantsContract,
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
-} from "@okouai/connectors/firewall-types";
+} from "@okouai/connectors/firewall-contracts";
 import { apiClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
@@ -88,7 +88,7 @@ export function findPermissionInMetadata(
     return {
       name: UNKNOWN_PERMISSION_GRANT,
       description: i18n.t(($) => {
-        return $.authorization.permission.unknownEndpoints;
+        return $.connectors.permissions.otherEndpoints;
       }),
     };
   }
@@ -141,7 +141,7 @@ export function userPermissionGrantsByAgent(
 ): Computed<Promise<readonly PlatformUserPermissionGrant[]>> {
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
-    const client = get(apiClient$)(zeroUserPermissionGrantsContract);
+    const client = get(apiClient$)(userPermissionGrantsContract);
     const result = await retryTransientLoad((signal) => {
       return accept(
         client.list({
@@ -160,7 +160,7 @@ export function userPermissionGrantsByAgentIfExists(
 ): Computed<Promise<readonly PlatformUserPermissionGrant[] | null>> {
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
-    const client = get(apiClient$)(zeroUserPermissionGrantsContract);
+    const client = get(apiClient$)(userPermissionGrantsContract);
     const result = await retryTransientLoad((signal) => {
       return accept(
         client.list({
@@ -216,7 +216,7 @@ export const applyUserPermissionGrants$ = command(
     if (!params.agentId) {
       throw new Error("Permission grant scope is required");
     }
-    const client = get(apiClient$)(zeroUserPermissionGrantsContract);
+    const client = get(apiClient$)(userPermissionGrantsContract);
     const result = await accept(
       client.apply({
         body: {

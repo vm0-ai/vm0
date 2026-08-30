@@ -1,4 +1,4 @@
-//! Execute a command inside a running VM for live debugging.
+//! Execute a command inside a running sandbox for live debugging.
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -41,11 +41,15 @@ pub struct ExecArgs {
     #[arg(long, default_value = "30")]
     timeout: u32,
 
-    /// Run the command with sudo inside the VM
+    /// Run the command with sudo inside the sandbox
     #[arg(long)]
     sudo: bool,
 
-    /// Command to execute inside the VM (after `--`).
+    /// Print the guest terminal diagnostic for ordinary process exits
+    #[arg(long)]
+    show_diagnostic: bool,
+
+    /// Command to execute inside the sandbox (after `--`).
     ///
     /// Arguments are preserved as argv — pipes, redirects, globs, and
     /// variable expansion must be invoked explicitly via a shell:
@@ -87,11 +91,21 @@ async fn run_exec_with_writers(
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> RunnerResult<ExitCode> {
+    let home = HomePaths::new()?;
+    run_exec_with_home_and_writers(args, control, &home, stdout, stderr).await
+}
+
+async fn run_exec_with_home_and_writers(
+    args: ExecArgs,
+    control: &dyn SandboxControl,
+    home: &HomePaths,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> RunnerResult<ExitCode> {
     let target = if let Some(ref sid) = args.sandbox {
         SandboxControlTarget::sandbox(sid)
     } else if let Some(ref rid) = args.run {
-        let home = HomePaths::new()?;
-        let mappings = run_resolution::collect_active_run_mappings_from_home(&home).await?;
+        let mappings = run_resolution::collect_active_run_mappings_from_home(home).await?;
         let mapping = run_resolution::resolve_run_mapping(rid, &mappings)?;
         SandboxControlTarget::run(mapping.run_id, mapping.sandbox_id)
     } else {
@@ -115,7 +129,7 @@ async fn run_exec_with_writers(
     {
         Ok(result) => {
             let _ = stdout.write_all(&result.stdout);
-            write_remote_exec_stderr(stderr, &result);
+            write_remote_exec_stderr(stderr, &result, args.show_diagnostic);
 
             Ok(remote_exec_exit_code(result.termination))
         }
@@ -141,11 +155,15 @@ fn remote_exec_exit_code(termination: ExecTermination) -> ExitCode {
     }
 }
 
-fn write_remote_exec_stderr(stderr: &mut impl Write, result: &RemoteExecResult) {
+fn write_remote_exec_stderr(
+    stderr: &mut impl Write,
+    result: &RemoteExecResult,
+    show_diagnostic: bool,
+) {
     let _ = stderr.write_all(&result.stderr);
     let mut line_open = !result.stderr.is_empty() && !result.stderr.ends_with(b"\n");
 
-    write_remote_exec_terminal_diagnostic(stderr, result, &mut line_open);
+    write_remote_exec_terminal_diagnostic(stderr, result, show_diagnostic, &mut line_open);
     if result.stdout_truncated {
         write_remote_exec_warning(stderr, &mut line_open, REMOTE_EXEC_STDOUT_TRUNCATED_WARNING);
     }
@@ -157,14 +175,16 @@ fn write_remote_exec_stderr(stderr: &mut impl Write, result: &RemoteExecResult) 
 fn write_remote_exec_terminal_diagnostic(
     stderr: &mut impl Write,
     result: &RemoteExecResult,
+    show_diagnostic: bool,
     line_open: &mut bool,
 ) {
-    let (fallback, include_diagnostic) = match result.termination {
+    let (fallback, include_terminal_diagnostic) = match result.termination {
         ExecTermination::Exited { .. } => (None, false),
         ExecTermination::TimedOut => (Some("Timeout"), false),
         ExecTermination::Cancelled => (Some("Cancelled"), true),
         ExecTermination::StartFailed | ExecTermination::WaitFailed => (None, true),
     };
+    let include_diagnostic = show_diagnostic || include_terminal_diagnostic;
 
     if result.stderr.is_empty() {
         if let Some(message) = fallback {
@@ -193,6 +213,8 @@ fn write_remote_exec_warning(stderr: &mut impl Write, line_open: &mut bool, mess
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use sandbox::SandboxControlError;
     use sandbox_mock::{MockSandboxControl, RemoteExecCall};
 
@@ -204,6 +226,7 @@ mod tests {
             sandbox: Some(sandbox_id.into()),
             timeout: 5,
             sudo: false,
+            show_diagnostic: false,
             command: command.split_whitespace().map(String::from).collect(),
         }
     }
@@ -214,6 +237,7 @@ mod tests {
             sandbox: Some("id".into()),
             timeout: 5,
             sudo: false,
+            show_diagnostic: false,
             command: command.into_iter().map(String::from).collect(),
         }
     }
@@ -222,6 +246,37 @@ mod tests {
         let calls = control.recorded_exec_calls();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].command, expected);
+    }
+
+    async fn publish_active_run(
+        home: &HomePaths,
+        base_dir: &Path,
+        run_id: &str,
+        sandbox_id: &str,
+    ) -> crate::live_runner_instances::LiveRunnerInstanceHandle {
+        std::fs::create_dir_all(base_dir).unwrap();
+        std::fs::write(
+            base_dir.join("status.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "active_runs": [{
+                    "run_id": run_id,
+                    "sandbox_id": sandbox_id,
+                }],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        crate::live_runner_instances::publish(
+            home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: base_dir.join("runner.yaml"),
+                base_dir: base_dir.to_path_buf(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+            },
+        )
+        .await
+        .unwrap()
     }
 
     #[tokio::test]
@@ -269,6 +324,7 @@ mod tests {
             sandbox: Some("direct-sandbox".into()),
             timeout: 47,
             sudo: true,
+            show_diagnostic: false,
             command: vec!["echo".into(), "hello world".into()],
         };
 
@@ -284,6 +340,79 @@ mod tests {
                 sudo: true,
             }],
         );
+    }
+
+    #[tokio::test]
+    async fn resolves_run_prefix_and_forwards_full_identity_and_exec_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let run_id = "run-abcdef-full";
+        let sandbox_id = "sandbox-123";
+        let handle =
+            publish_active_run(&home, &dir.path().join("runner-base"), run_id, sandbox_id).await;
+        let control = MockSandboxControl::new("/tmp");
+        let args = ExecArgs {
+            run: Some("run-abc".into()),
+            sandbox: None,
+            timeout: 47,
+            sudo: true,
+            show_diagnostic: false,
+            command: vec!["echo".into(), "hello world".into()],
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let result =
+            run_exec_with_home_and_writers(args, &control, &home, &mut stdout, &mut stderr)
+                .await
+                .unwrap();
+        assert!(handle.remove_if_current().await.unwrap());
+
+        assert_eq!(result, ExitCode::SUCCESS);
+        assert_eq!(
+            control.recorded_exec_calls(),
+            vec![RemoteExecCall {
+                target: SandboxControlTarget::run(run_id, sandbox_id),
+                command: "'echo' 'hello world'".to_string(),
+                timeout: Duration::from_secs(47),
+                sudo: true,
+            }],
+        );
+    }
+
+    #[tokio::test]
+    async fn run_resolution_failure_does_not_dispatch_exec() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let handle = publish_active_run(
+            &home,
+            &dir.path().join("runner-base"),
+            "run-abcdef-full",
+            "sandbox-123",
+        )
+        .await;
+        let control = MockSandboxControl::new("/tmp");
+        let args = ExecArgs {
+            run: Some("missing".into()),
+            sandbox: None,
+            timeout: 5,
+            sudo: false,
+            show_diagnostic: false,
+            command: vec!["true".into()],
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+
+        let error = run_exec_with_home_and_writers(args, &control, &home, &mut stdout, &mut stderr)
+            .await
+            .unwrap_err();
+        assert!(handle.remove_if_current().await.unwrap());
+
+        assert!(matches!(
+            error,
+            RunnerError::Config(message) if message == "no active run matches 'missing'"
+        ));
+        assert!(control.recorded_exec_calls().is_empty());
     }
 
     #[tokio::test]
@@ -387,7 +516,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"stderr clue\nwait failed\n");
     }
@@ -404,7 +533,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"stderr clue");
     }
@@ -421,7 +550,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"Cancelled\n");
     }
@@ -438,7 +567,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"Cancelled\ncancel diagnostic\n");
     }
@@ -455,9 +584,29 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(stderr, b"Timeout\n");
+    }
+
+    #[test]
+    fn successful_terminal_diagnostic_is_opt_in() {
+        let result = RemoteExecResult {
+            termination: ExecTermination::Exited { exit_code: 0 },
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            diagnostic: "containment evidence".into(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        };
+        let mut default_stderr = Vec::new();
+        let mut diagnostic_stderr = Vec::new();
+
+        write_remote_exec_stderr(&mut default_stderr, &result, false);
+        write_remote_exec_stderr(&mut diagnostic_stderr, &result, true);
+
+        assert!(default_stderr.is_empty());
+        assert_eq!(diagnostic_stderr, b"containment evidence\n");
     }
 
     #[test]
@@ -472,7 +621,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(
             stderr,
@@ -492,7 +641,7 @@ mod tests {
         };
         let mut stderr = Vec::new();
 
-        write_remote_exec_stderr(&mut stderr, &result);
+        write_remote_exec_stderr(&mut stderr, &result, false);
 
         assert_eq!(
             stderr,

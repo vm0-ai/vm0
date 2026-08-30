@@ -18,19 +18,35 @@ use super::super::support::{
     setup_host_and_guest, setup_host_and_mock_guest,
 };
 use super::support::{
-    expect_write_file, expect_write_files, send_guest_error, send_write_file_failure,
-    send_write_file_success, send_write_files_failure, send_write_files_success, spawn_write_file,
-    spawn_write_files,
+    expect_write_file, expect_write_files, expect_write_private_files, send_guest_error,
+    send_write_file_failure, send_write_file_success, send_write_files_failure,
+    send_write_files_success, spawn_write_file, spawn_write_files, spawn_write_private_files,
 };
 use crate::{
-    FrameWriteObserver, WriteFileEntry,
-    file::test_support::{WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT},
+    FrameWriteObserver, RequestTimeoutError, RequestTimeoutStage, WriteFileEntry,
+    file::test_support::{
+        WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT,
+        write_private_files_with_small_limits,
+    },
     operation_tracker::NormalOperationReadiness,
 };
 
-// Public file APIs intentionally use a fixed 300-second request timeout. Use
+// Public file APIs use the shared production request timeout. Use
 // their shared request seam here so timeout lifecycle coverage remains fast.
 const FRAME_BUILDER_REQUEST_TIMEOUT: Duration = Duration::from_millis(50);
+
+fn assert_request_timeout(
+    error: &io::Error,
+    expected_stage: RequestTimeoutStage,
+    expected_timeout: Duration,
+) {
+    let timeout = error
+        .get_ref()
+        .and_then(|source| source.downcast_ref::<RequestTimeoutError>())
+        .unwrap_or_else(|| panic!("expected typed request timeout, got {error:?}"));
+    assert_eq!(timeout.stage(), expected_stage);
+    assert_eq!(timeout.timeout(), expected_timeout);
+}
 
 async fn poll_once_pending<F: Future>(mut future: Pin<&mut F>) {
     std::future::poll_fn(|cx| {
@@ -130,6 +146,212 @@ async fn write_files_guest_failure_releases_tracker() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+}
+
+#[tokio::test]
+async fn write_private_files_sends_one_private_batch_and_tracks_until_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_private_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/private-a.txt", b"alpha".to_vec()),
+            ("/tmp/private-b.txt", b"beta".to_vec()),
+        ],
+    );
+
+    let write = expect_write_private_files(&mut guest).await;
+    assert_eq!(
+        write.files,
+        vec![
+            ("/tmp/private-a.txt".to_string(), b"alpha".to_vec()),
+            ("/tmp/private-b.txt".to_string(), b"beta".to_vec()),
+        ]
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_files_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_private_files_guest_failure_releases_tracker_and_connection_reuses() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_private_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/private-a.txt", b"alpha".to_vec()),
+            ("/tmp/private-b.txt", b"beta".to_vec()),
+        ],
+    );
+
+    let write = expect_write_private_files(&mut guest).await;
+    send_write_files_failure(&mut guest, write.seq(), "permission denied").await;
+
+    let error = write_task.await.unwrap().unwrap_err();
+    assert!(error.to_string().contains("permission denied"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_private_files_single_entry_uses_private_single_write() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_private_files(
+        Arc::clone(&host),
+        vec![("/tmp/private.txt", b"secret".to_vec())],
+    );
+
+    let write = expect_write_file(&mut guest).await;
+    assert_eq!(write.path, "/tmp/private.txt");
+    assert_eq!(write.content, b"secret");
+    assert!(write.private);
+    assert!(!write.append);
+    send_write_file_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn write_private_files_oversized_aggregate_falls_back_to_private_single_writes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let first = vec![0xA1; 600];
+            let second = vec![0xB2; 600];
+            write_private_files_with_small_limits(
+                &host,
+                &[
+                    WriteFileEntry {
+                        path: "/tmp/private-a.txt",
+                        content: &first,
+                    },
+                    WriteFileEntry {
+                        path: "/tmp/private-b.txt",
+                        content: &second,
+                    },
+                ],
+                FrameWriteObserver::default(),
+            )
+            .await
+        })
+    };
+
+    let first = expect_write_file(&mut guest).await;
+    assert_eq!(first.path, "/tmp/private-a.txt");
+    assert!(first.private);
+    assert_eq!(first.content, vec![0xA1; 600]);
+    send_write_file_success(&mut guest, first.seq()).await;
+
+    let second = expect_write_file(&mut guest).await;
+    assert_eq!(second.path, "/tmp/private-b.txt");
+    assert!(second.private);
+    assert_eq!(second.content, vec![0xB2; 600]);
+    send_write_file_success(&mut guest, second.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn write_private_files_empty_batch_is_noop() {
+    let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_private_files_with_write_observer(
+            &[],
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        ),
+    )
+    .await
+    .expect("empty write_private_files should return before waiting for the writer")
+    .unwrap();
+
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("empty write_private_files must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after empty write_private_files: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    drop(writer_guard);
+}
+
+#[tokio::test]
+async fn write_private_files_validates_every_path_before_fallback_writes() {
+    let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let first = vec![0xA1; 600];
+    let second = vec![0xB2; 600];
+
+    let error = tokio::time::timeout(
+        Duration::from_secs(5),
+        write_private_files_with_small_limits(
+            &host,
+            &[
+                WriteFileEntry {
+                    path: "/tmp/private-a.txt",
+                    content: &first,
+                },
+                WriteFileEntry {
+                    path: "/tmp/has\0nul",
+                    content: &second,
+                },
+            ],
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        ),
+    )
+    .await
+    .expect("invalid write_private_files should return before waiting for the writer")
+    .unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("invalid write_private_files must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after invalid write_private_files: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    drop(writer_guard);
 }
 
 #[tokio::test]
@@ -810,6 +1032,7 @@ async fn write_file_frame_builder_request_zero_timeout_does_not_send_frame() {
     .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(&err, RequestTimeoutStage::BeforeFrameWrite, Duration::ZERO);
     assert_eq!(build_count.load(Ordering::SeqCst), 0);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     assert_eq!(pending_request_count(&host), 0);
@@ -868,6 +1091,11 @@ async fn write_file_frame_builder_request_times_out_waiting_for_builder() {
         .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::BeforeFrameWrite,
+        FRAME_BUILDER_REQUEST_TIMEOUT,
+    );
     assert_eq!(build_count.load(Ordering::SeqCst), 0);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     assert_eq!(pending_request_count(&host), 0);
@@ -921,6 +1149,11 @@ async fn write_file_frame_builder_request_blocked_write_poisons_connection() {
         .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::FrameWrite,
+        FRAME_BUILDER_REQUEST_TIMEOUT,
+    );
     assert!(!is_connected(&host));
     assert_eq!(pending_request_count(&host), 0);
     assert_eq!(
@@ -929,6 +1162,53 @@ async fn write_file_frame_builder_request_blocked_write_poisons_connection() {
     );
     assert!(host.shared.writer.try_lock().is_ok());
     assert!(host.shared.frame_builder.try_lock().is_ok());
+}
+
+#[tokio::test]
+async fn write_private_file_missing_terminal_response_uses_shared_deadline_and_fails_closed() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    tokio::time::pause();
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.write_private_file("/tmp/private-input.json", b"payload")
+                .await
+        })
+    };
+
+    let write = expect_write_file(&mut guest).await;
+    assert!(write.private);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    tokio::time::advance(guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE).await;
+    let error = write_task.await.unwrap().unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(
+        &error,
+        RequestTimeoutStage::AwaitingTerminalResponse,
+        guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE,
+    );
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    let later_error = host
+        .write_file("/tmp/later.txt", b"later", false)
+        .await
+        .unwrap_err();
+    assert_eq!(later_error.kind(), io::ErrorKind::ConnectionReset);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(read) => panic!("timed-out write must not be retried; read {read} bytes"),
+        Err(error) => panic!("unexpected guest read after timeout: {error}"),
+    }
 }
 
 #[tokio::test]
@@ -1352,6 +1632,40 @@ async fn write_files_rejects_protocol_message_too_large_before_waiting_for_write
 
     drop(writer_guard);
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_private_files_protocol_oversize_falls_back_to_private_single_writes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let path = format!("/{}", "a".repeat(u16::MAX as usize - 1));
+            let content = vec![0u8; WRITE_FILES_BATCH_CONTENT_LIMIT];
+            let files = (0..17)
+                .map(|index| WriteFileEntry {
+                    path: &path,
+                    content: if index == 0 { &content } else { &[] },
+                })
+                .collect::<Vec<_>>();
+
+            host.write_private_files(&files).await
+        })
+    };
+
+    for index in 0..17 {
+        let write = expect_write_file(&mut guest).await;
+        assert!(write.private);
+        if index == 0 {
+            assert_eq!(write.content.len(), WRITE_FILES_BATCH_CONTENT_LIMIT);
+        } else {
+            assert!(write.content.is_empty());
+        }
+        send_write_file_success(&mut guest, write.seq()).await;
+    }
+
+    write_task.await.unwrap().unwrap();
 }
 
 #[tokio::test]

@@ -10,7 +10,7 @@ entry points. The current suite covers:
 - Clerk sign-up and sign-in through the hosted form UI;
 - onboarding, chat submission, runner dispatch, and the assistant result through
   the deployed web application;
-- real Claude BYOK, vm0-managed Codex, and vm0-managed Pi execution, including
+- real Claude BYOK, vm0 built-in Codex, and vm0 built-in Pi execution, including
   public usage attribution;
 - active-run cancellation through the public run and chat-events APIs;
 - ordinary and empty chat attachments across continuation, plus runner-mounted
@@ -78,14 +78,14 @@ selects the CI-only runner tests.
 Runner BATS files live in `e2e/tests/03-runner`. They share the accounts and
 public device-flow tokens prepared by the runner E2E workflow, then create and
 clean up their own agents, threads, and connector connections through public
-`/api/okou/*` endpoints.
+`/api/*` endpoints.
 
 Name runner BATS files `run-tNN-<behavior>.bats`, using the next unused `NN`.
 The number is a stable file identifier, not an execution order. Test titles
 should describe behavior without repeating the file identifier.
 
 The workflow also prepares dedicated real-Codex and real-Claude identities.
-Use the Codex identity for vm0-managed model billing coverage and the Claude
+Use the Codex identity for vm0 built-in model billing coverage and the Claude
 identity for BYOK coverage so provider policy and usage assertions remain
 isolated. The shared mock-runner identity starts with `UTC` as its timezone.
 Runner BATS must not mutate shared account-level preferences from parallel

@@ -297,7 +297,9 @@ printf '%s\n' \
 install_host_file "$ca_cert" "/${CA_ROOTFS_DEST}" 644
 
 # /etc/environment is read by PAM for all login sessions.
-# [sync:etc-environment] Keep in sync with: .github/scripts/runner-behavior-exec.sh (Test 5)
+# [sync:etc-environment] Keep in sync with:
+# - .github/scripts/runner-behavior-exec.sh (Test 10)
+# - crates/vsock-guest/src/user.rs
 printf '%s\n' \
   "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   "LANG=C.UTF-8" \

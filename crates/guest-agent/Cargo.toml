@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.75.1"
+version = "0.82.21"
 edition.workspace = true
 
 [dependencies]
@@ -43,7 +43,7 @@ vsock-proto.workspace = true
 
 [[test]]
 name = "integration"
-path = "tests/integration/mod.rs"
+path = "tests/integration.rs"
 
 [lints]
 workspace = true

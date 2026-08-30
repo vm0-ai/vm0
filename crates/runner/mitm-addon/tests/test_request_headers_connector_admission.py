@@ -18,7 +18,7 @@ import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.firewall_helpers import cancel_pending_task
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
+    _single_firewall_sandbox,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -39,7 +39,7 @@ async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -91,7 +91,7 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="test-oauth",
             api_entry={
@@ -185,9 +185,9 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         "urlparse",
         track_api_url_parse,
     )
-    expected_derivation = (
+    expected_cached_api_derivation = (
         (("api.vm0.ai", 443),),
-        ("https://api.vm0.ai",),
+        (),
     )
 
     with (
@@ -195,13 +195,16 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
-        assert admission_derivations == [expected_derivation]
+        assert admission_derivations == [expected_cached_api_derivation]
         _assert_no_request_stream(flow)
         assert flow.server_conn.address == ("api.vm0.ai", 443)
 
         await mitm_addon.request(flow)
 
-    assert admission_derivations == [expected_derivation, expected_derivation]
+    assert admission_derivations == [
+        expected_cached_api_derivation,
+        expected_cached_api_derivation,
+    ]
     auth_fetch.assert_awaited_once()
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved"
@@ -265,7 +268,7 @@ async def test_test_connector_bounded_requestheaders_without_bypass_blocks(
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="test-oauth",
             api_entry={
@@ -317,7 +320,7 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -355,7 +358,7 @@ async def test_firewall_allow_header_auth_uses_connected_upstream_when_tls_verif
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -409,7 +412,7 @@ async def test_firewall_allow_disconnect_during_header_auth_restores_probe_state
     reg_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="example",
             api_entry={
@@ -426,7 +429,7 @@ async def test_firewall_allow_disconnect_during_header_auth_restores_probe_state
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -499,7 +502,7 @@ async def test_firewall_allow_header_auth_blocks_without_verified_connected_tls(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -552,7 +555,7 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -609,7 +612,7 @@ async def test_firewall_allow_prior_client_binding_scan_parses_live_endpoint_onc
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -663,7 +666,7 @@ async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -719,7 +722,7 @@ async def test_firewall_allow_header_auth_unconnected_skips_prior_client_binding
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -797,7 +800,7 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -817,7 +820,7 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
         assert mitm_addon.requestheaders(flow) is None
         assert validated_flows == [flow]
         _assert_no_request_stream(flow)
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
         assert flow.server_conn.address == ("api.github.com", 443)
 
@@ -883,7 +886,7 @@ async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_tl
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -907,7 +910,7 @@ async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_tl
     ):
         assert mitm_addon.requestheaders(flow) is None
         _assert_no_request_stream(flow)
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
         assert flow.server_conn.address == ("172.66.0.243", 443)
 
@@ -927,7 +930,7 @@ async def test_firewall_allow_small_bounded_body_blocks_without_verified_connect
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -948,7 +951,7 @@ async def test_firewall_allow_small_bounded_body_blocks_without_verified_connect
     ):
         assert mitm_addon.requestheaders(flow) is None
         _assert_no_request_stream(flow)
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
         await mitm_addon.request(flow)
@@ -981,7 +984,7 @@ async def test_firewall_allow_unknown_body_length_retargets_unconnected_upstream
     ):
         assert mitm_addon.requestheaders(flow) is None
         _assert_no_request_stream(flow)
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
         assert metadata_keys.ORIGINAL_URL not in flow.metadata
         assert flow.server_conn.address == ("api.github.com", 443)
 

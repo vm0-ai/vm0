@@ -1,6 +1,5 @@
-import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
+import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
 import type {
   PublicConnectorCatalogListResponse,
   PublicConnectorCatalogDiscoveryResponse,
@@ -11,6 +10,7 @@ import type {
 
 import type { ReadonlyDb } from "../external/db";
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
+import type { ConnectorCatalogConnection } from "./connector-catalog-connection";
 import {
   discoverExternalPublicConnectorCatalogStatus,
   ExternalConnectorCatalogUnavailableError,
@@ -57,7 +57,7 @@ export async function listPublicConnectorCatalog(
 
 export async function readPublicConnectorCatalogStatus(
   args: BrandedConnectorCatalogReadArgs & {
-    readonly connectors: readonly ConnectorResponse[];
+    readonly connections: readonly ConnectorCatalogConnection[];
     readonly referenceConnectorSlugs: readonly string[];
   },
 ): Promise<ConnectorCatalogStatusRead> {
@@ -66,7 +66,7 @@ export async function readPublicConnectorCatalogStatus(
 
 export async function listPublicConnectorCatalogStatus(
   args: BrandedConnectorCatalogReadArgs & {
-    readonly connectors: readonly ConnectorResponse[];
+    readonly connections: readonly ConnectorCatalogConnection[];
   },
 ): Promise<PublicConnectorCatalogStatusResponse> {
   const read = await readPublicConnectorCatalogStatus({
@@ -78,7 +78,7 @@ export async function listPublicConnectorCatalogStatus(
 
 export async function discoverPublicConnectorCatalogStatus(
   args: BrandedConnectorCatalogReadArgs & {
-    readonly connectors: readonly ConnectorResponse[];
+    readonly connections: readonly ConnectorCatalogConnection[];
     readonly keyword: string | undefined;
   },
 ): Promise<PublicConnectorCatalogDiscoveryResponse> {
@@ -91,7 +91,7 @@ export async function discoverPublicConnectorCatalogStatus(
 
 export async function getPublicConnectorCatalogStatus(
   args: ConnectorCatalogConnectorReadArgs & {
-    readonly connectors: readonly ConnectorResponse[];
+    readonly connections: readonly ConnectorCatalogConnection[];
   },
 ): Promise<PublicConnectorCatalogStatusItem | null> {
   return await getExternalPublicConnectorCatalogStatus(args);

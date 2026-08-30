@@ -1,8 +1,9 @@
 use super::super::super::*;
 use super::super::support::{
     context_with_session, mock_run_config_with_overrides, publish_idle_status, push_job,
-    seed_idle_pool_with_overrides, shutdown, status_idle_reuse_keys, test_profiles,
-    wait_budget_count, wait_idle_pool_len, wait_status_idle_empty_with_active_run,
+    seed_idle_pool_with_overrides, shutdown, status_idle_reuse_keys,
+    status_idle_reuse_keys_and_active_runs, test_profiles, wait_budget_count,
+    wait_discover_entered, wait_idle_pool_len, wait_status_idle_empty_with_active_run,
 };
 
 use crate::types::SandboxReuseResult;
@@ -76,7 +77,7 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
     );
 
     // Wait for resource ownership to settle: the failed idle entry has been
-    // destroyed and the fresh-create VM is parked as the single idle lease.
+    // destroyed and the fresh-create sandbox is parked as the single idle lease.
     // `idle_pool.len() == 1` is true before the job starts, so budget must be
     // the first terminal-state probe.
     wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
@@ -131,7 +132,7 @@ async fn unpark_failure_status_switches_from_idle_to_active_while_job_runs() {
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
         vec!["sess-unpark-status".to_string()],
-        "pre-run status should list the idle VM",
+        "pre-run status should list the idle sandbox",
     );
 
     let run_handle = tokio::spawn(run(config));
@@ -220,7 +221,7 @@ async fn uncertain_reserved_cleanup_fails_claim_without_starting_replacement() {
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let session_id = "sess-uncertain-cleanup";
 
-    seed_idle_pool_with_overrides(
+    let sandbox_id = seed_idle_pool_with_overrides(
         &idle_pool,
         &budget,
         &counter,
@@ -256,7 +257,7 @@ async fn uncertain_reserved_cleanup_fails_claim_without_starting_replacement() {
         Some("reserved idle sandbox cleanup was uncertain; fresh replacement was not started")
     );
     assert!(
-        counter.start_process_calls().is_empty(),
+        counter.start_agent_process_calls().is_empty(),
         "uncertain cleanup must not start a fresh sandbox"
     );
     assert_eq!(counter.park_call_count(), 0);
@@ -264,6 +265,95 @@ async fn uncertain_reserved_cleanup_fails_claim_without_starting_replacement() {
     assert_eq!(counter.destroy_call_count(), 1);
     assert_eq!(idle_pool.lock().await.len(), 0);
     wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+    let status_path = env._temp_dir.path().join("status.json");
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert_eq!(active_runs, vec![run_id.to_string()]);
+    let status: serde_json::Value =
+        serde_json::from_str(&tokio::fs::read_to_string(status_path).await.unwrap()).unwrap();
+    assert_eq!(
+        status["active_runs"][0]["sandbox_id"],
+        sandbox_id.to_string()
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn uncertain_post_claim_pool_reuse_keeps_active_status_without_starting_replacement() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let counter = Arc::clone(&overrides);
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated late pool unpark failure".into(),
+    }));
+    overrides.push_destroy_panic("simulated late pool destroy panic");
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let status = Arc::clone(&config.shared.status);
+    let session_id = "sess-late-uncertain-cleanup";
+
+    env.handle.block_claims();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, session_id)),
+    );
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await,
+        "provider claim did not reach its boundary"
+    );
+    let sandbox_id = seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &counter,
+        session_id,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    publish_idle_status(&idle_pool, &status).await;
+    env.handle.unblock_claims();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("uncertain late pool cleanup should fail the claimed run");
+    assert_eq!(completion.exit_code, 1);
+    assert_eq!(completion.sandbox_id, None);
+    assert_eq!(
+        completion.reuse_result,
+        Some(SandboxReuseResult::UnparkFailed)
+    );
+    assert_eq!(
+        completion.error.as_deref(),
+        Some("idle sandbox cleanup was uncertain; fresh replacement was not started")
+    );
+    assert!(counter.start_agent_process_calls().is_empty());
+    assert_eq!(counter.park_call_count(), 0);
+    assert_eq!(counter.unpark_call_count(), 1);
+    assert_eq!(counter.destroy_call_count(), 1);
+    assert_eq!(idle_pool.lock().await.len(), 0);
+    wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+
+    let status_path = env._temp_dir.path().join("status.json");
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert_eq!(active_runs, vec![run_id.to_string()]);
+    let status: serde_json::Value =
+        serde_json::from_str(&tokio::fs::read_to_string(status_path).await.unwrap()).unwrap();
+    assert_eq!(
+        status["active_runs"][0]["sandbox_id"],
+        sandbox_id.to_string()
+    );
 
     shutdown(&env, run_handle).await;
 }

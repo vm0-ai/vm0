@@ -1,6 +1,3 @@
-import { createHash } from "node:crypto";
-
-import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorCatalogActiveSnapshot,
@@ -10,63 +7,51 @@ import {
   connectorCatalogSyncState,
 } from "@okouai/db/schema/connector-catalog";
 import { command } from "ccstate";
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
-import { singleton, testOverride } from "../../lib/singleton";
+import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { safeJsonParse } from "../utils";
 import {
-  connectorCatalogArtifactConnectorSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
-  type ConnectorCatalogArtifactConnector,
-} from "./connector-catalog-artifacts/artifacts";
-import { decodeConnectorCatalogSnapshot } from "./connector-catalog-artifacts/loader";
+} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+import { decodeConnectorCatalogSnapshot } from "@okouai/connector-catalog-validation/artifacts/loader";
+import { connectorCatalogCompatibilityEvaluationSchema } from "@okouai/connector-catalog-validation/compatibility";
 import {
-  connectorCatalogCompatibilityEvaluationSchema,
-  connectorCatalogExecutableCapabilityState,
-} from "./connector-catalog-compatibility.service";
-import type { ExternalCatalogIdentity } from "./connector-catalog-external-reader.service";
+  CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+  connectorCatalogAuthMethodKey,
+  connectorCatalogRuntimeProjectionDigest,
+  connectorCatalogRuntimeProjectionPayload,
+  validateConnectorCatalogRuntimeProjectionRows,
+  type ConnectorCatalogRuntimeProjectionFallbackReason,
+  type ConnectorCatalogRuntimeProjectionIdentity,
+  type ConnectorCatalogRuntimeProjectionReadyIdentity,
+  type ConnectorCatalogRuntimeProjectionRow,
+  type ConnectorCatalogRuntimeProjectionRowsRead,
+  type ConnectorCatalogRuntimeProjectionRowSetIdentity,
+  type ConnectorCatalogRuntimeProjectionValidationTiming,
+} from "@okouai/connector-catalog-validation/runtime-projection";
+import { connectorCatalogExecutableCapabilityState } from "./connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
 import {
   connectorCatalogValidationAuthorityIsCurrent,
+  connectorCatalogValidationAuthorityIsCurrentOrNewer,
   currentConnectorCatalogValidatorIdentity,
   type ConnectorCatalogValidationAuthority,
   type ConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-validator-authority";
 
-const LEGACY_CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION = 1;
-export const CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION = 2;
-
-export type ConnectorCatalogRuntimeProjectionFallbackReason =
-  | "schema_unavailable"
-  | "not_ready"
-  | "unsupported"
-  | "compatibility_not_ready"
-  | "invalid_compatibility"
-  | "incomplete"
-  | "malformed"
-  | "digest_mismatch"
-  | "unstable";
-
-interface ConnectorCatalogRuntimeProjectionRowSetIdentity extends Omit<
-  ExternalCatalogIdentity,
-  "capabilityDigest"
-> {
-  readonly projectionSetId: string;
-  readonly projectionVersion: number;
-  readonly connectorCount: number;
-}
-
-export interface ConnectorCatalogRuntimeProjectionIdentity extends ConnectorCatalogRuntimeProjectionRowSetIdentity {
-  readonly capabilityDigest: string;
-}
-
-export interface ConnectorCatalogRuntimeProjectionReadyIdentity {
-  readonly identity: ConnectorCatalogRuntimeProjectionIdentity;
-  readonly filteredMethodKeys: ReadonlySet<string>;
-}
+export {
+  CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
+  validateConnectorCatalogRuntimeProjectionRows,
+};
+export type {
+  ConnectorCatalogRuntimeProjectionFallbackReason,
+  ConnectorCatalogRuntimeProjectionIdentity,
+  ConnectorCatalogRuntimeProjectionReadyIdentity,
+  ConnectorCatalogRuntimeProjectionRowsRead,
+  ConnectorCatalogRuntimeProjectionValidationTiming,
+};
 
 type ConnectorCatalogRuntimeProjectionIdentityRead =
   | {
@@ -77,49 +62,12 @@ type ConnectorCatalogRuntimeProjectionIdentityRead =
       readonly kind: "fallback";
       readonly reason: Extract<
         ConnectorCatalogRuntimeProjectionFallbackReason,
-        | "schema_unavailable"
         | "not_ready"
         | "unsupported"
         | "compatibility_not_ready"
         | "invalid_compatibility"
       >;
     };
-
-interface ConnectorCatalogRuntimeProjectionRow {
-  readonly connectorSlug: ConnectorSlug;
-  readonly connectorDigest: string;
-  readonly connector: unknown;
-  readonly connectorPayload: Buffer | null;
-}
-
-export type ConnectorCatalogRuntimeProjectionRowsRead =
-  | {
-      readonly kind: "ready";
-      readonly connectors: readonly ConnectorCatalogArtifactConnector[];
-      readonly missingConnectorSlugs: readonly ConnectorSlug[];
-    }
-  | {
-      readonly kind: "fallback";
-      readonly reason: Extract<
-        ConnectorCatalogRuntimeProjectionFallbackReason,
-        "malformed" | "digest_mismatch"
-      >;
-    };
-
-export interface ConnectorCatalogRuntimeProjectionValidationTiming {
-  measureParse<T>(operation: () => T): T;
-  measureDigest<T>(operation: () => T): T;
-}
-
-interface ProjectionSchemaAvailabilityCache {
-  available: boolean;
-}
-
-const projectionSchemaAvailabilityCache = singleton(
-  (): ProjectionSchemaAvailabilityCache => {
-    return { available: false };
-  },
-);
 
 type ConnectorCatalogRuntimeProjectionIdentityReadHook = () => Promise<void>;
 
@@ -139,99 +87,16 @@ export function clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest():
   projectionIdentityReadHook.clear();
 }
 
-function authMethodKey(connectorSlug: string, authMethodId: string): string {
-  return `${connectorSlug}\0${authMethodId}`;
-}
-
 function persistedConnectorCatalogValidationAuthority(args: {
   readonly backendVersion: string | null;
-  readonly buildCommitSha: string | null;
+  readonly validationRevision: string | null;
 }): ConnectorCatalogValidationAuthority | null {
   return args.backendVersion === null
     ? null
     : {
-        backendVersion: args.backendVersion,
-        buildCommitSha: args.buildCommitSha,
+        validatorVersion: args.backendVersion,
+        buildCommitSha: args.validationRevision,
       };
-}
-
-function isUnknownRecord(
-  value: unknown,
-): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function canonicalJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(canonicalJsonValue);
-  }
-  if (!isUnknownRecord(value)) {
-    return value;
-  }
-  return Object.fromEntries(
-    Object.keys(value)
-      .sort()
-      .map((key) => {
-        return [key, canonicalJsonValue(value[key])];
-      }),
-  );
-}
-
-function connectorCatalogRuntimeProjectionPayload(
-  connector: ConnectorCatalogArtifactConnector,
-): Buffer {
-  return Buffer.from(JSON.stringify(canonicalJsonValue(connector)), "utf8");
-}
-
-function connectorCatalogRuntimeProjectionDigest(payload: Uint8Array): string {
-  return `sha256:${createHash("sha256").update(payload).digest("hex")}`;
-}
-
-export async function connectorCatalogRuntimeProjectionSchemaAvailable(
-  db: ReadonlyDb,
-): Promise<boolean> {
-  const cache = projectionSchemaAvailabilityCache();
-  if (cache.available) {
-    return true;
-  }
-  const [state] = await db
-    .select({
-      available: sql`
-        to_regclass('public.connector_catalog_runtime_projection_sets') IS NOT NULL
-        AND to_regclass('public.connector_catalog_runtime_projections') IS NOT NULL
-        AND EXISTS (
-          SELECT 1
-          FROM pg_attribute
-          WHERE attrelid = to_regclass('public.connector_catalog_runtime_projection_sets')
-            AND attname = 'catalog_validation_backend_version'
-            AND NOT attisdropped
-        )
-        AND EXISTS (
-          SELECT 1
-          FROM pg_attribute
-          WHERE attrelid = to_regclass('public.connector_catalog_runtime_projection_sets')
-            AND attname = 'catalog_validation_build_commit_sha'
-            AND NOT attisdropped
-        )
-        AND EXISTS (
-          SELECT 1
-          FROM pg_attribute
-          WHERE attrelid = to_regclass('public.connector_catalog_runtime_projections')
-            AND attname = 'connector_payload'
-            AND NOT attisdropped
-        )
-      `.mapWith(pgBooleanDecoder),
-    })
-    .from(sql`(SELECT 1) AS connector_catalog_projection_schema_probe`)
-    .limit(1);
-  const available = state?.available ?? false;
-  // DB/API rollout can expose new code before the base projection migration
-  // 0963 or the attested-payload migration 0972. Cache only success so a warm
-  // instance sees migration arrival. Remove this probe and its rollout test
-  // after both migrations leave the production rollback window; tracked by
-  // #28275.
-  cache.available = available;
-  return available;
 }
 
 export async function persistConnectorCatalogRuntimeProjection(args: {
@@ -264,7 +129,7 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
       catalogDigest: args.identity.catalogDigest,
       projectionVersion: CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
       connectorCount: args.artifact.connectors.length,
-      catalogValidationBackendVersion: args.validator.backendVersion,
+      catalogValidationBackendVersion: args.validator.validatorVersion,
       catalogValidationBuildCommitSha: args.validator.buildCommitSha,
     })
     .returning({ id: connectorCatalogRuntimeProjectionSets.id });
@@ -280,7 +145,6 @@ export async function persistConnectorCatalogRuntimeProjection(args: {
         connectorSlug: connector.slug,
         connectorDigest:
           connectorCatalogRuntimeProjectionDigest(connectorPayload),
-        connector,
         connectorPayload,
       };
     }),
@@ -377,9 +241,6 @@ async function queryProjectionIdentity(
 async function readProjectionIdentity(
   db: ReadonlyDb,
 ): Promise<ConnectorCatalogRuntimeProjectionIdentityRead> {
-  if (!(await connectorCatalogRuntimeProjectionSchemaAvailable(db))) {
-    return { kind: "fallback", reason: "schema_unavailable" };
-  }
   const sourceId = connectorCatalogSource().sourceId;
   const capabilityDigest = connectorCatalogExecutableCapabilityState().digest;
   const validator = currentConnectorCatalogValidatorIdentity();
@@ -397,16 +258,12 @@ async function readProjectionIdentity(
   if (row.connectorCount === null) {
     return { kind: "fallback", reason: "unsupported" };
   }
-  if (
-    row.projectionVersion !==
-      LEGACY_CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION &&
-    row.projectionVersion !== CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION
-  ) {
+  if (row.projectionVersion !== CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION) {
     return { kind: "fallback", reason: "unsupported" };
   }
   const compatibilityAuthority = persistedConnectorCatalogValidationAuthority({
     backendVersion: row.compatibilityValidationBackendVersion,
-    buildCommitSha: row.compatibilityValidationBuildCommitSha,
+    validationRevision: row.compatibilityValidationBuildCommitSha,
   });
   if (
     row.evaluatedCapabilityDigest === null ||
@@ -424,15 +281,14 @@ async function readProjectionIdentity(
   }
   const projectionAuthority = persistedConnectorCatalogValidationAuthority({
     backendVersion: row.projectionValidationBackendVersion,
-    buildCommitSha: row.projectionValidationBuildCommitSha,
+    validationRevision: row.projectionValidationBuildCommitSha,
   });
   if (
-    row.projectionVersion === CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION &&
-    (projectionAuthority === null ||
-      !connectorCatalogValidationAuthorityIsCurrent({
-        authority: projectionAuthority,
-        validator,
-      }))
+    projectionAuthority === null ||
+    !connectorCatalogValidationAuthorityIsCurrent({
+      authority: projectionAuthority,
+      validator,
+    })
   ) {
     return { kind: "fallback", reason: "not_ready" };
   }
@@ -457,7 +313,10 @@ async function readProjectionIdentity(
       },
       filteredMethodKeys: new Set(
         compatibility.data.filteredAuthMethods.map((method) => {
-          return authMethodKey(method.connectorSlug, method.authMethodId);
+          return connectorCatalogAuthMethodKey(
+            method.connectorSlug,
+            method.authMethodId,
+          );
         }),
       ),
     },
@@ -496,23 +355,7 @@ export async function queryConnectorCatalogRuntimeProjectionRows(args: {
       ...args.connectorSlugs,
     ]),
   );
-  if (
-    args.projection.identity.projectionVersion ===
-    LEGACY_CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION
-  ) {
-    const rows = await args.db
-      .select({
-        connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
-        connectorDigest: connectorCatalogRuntimeProjections.connectorDigest,
-        connector: connectorCatalogRuntimeProjections.connector,
-      })
-      .from(connectorCatalogRuntimeProjections)
-      .where(where);
-    return rows.map((row) => {
-      return { ...row, connectorPayload: null };
-    });
-  }
-  const rows = await args.db
+  return await args.db
     .select({
       connectorSlug: connectorCatalogRuntimeProjections.connectorSlug,
       connectorDigest: connectorCatalogRuntimeProjections.connectorDigest,
@@ -520,145 +363,6 @@ export async function queryConnectorCatalogRuntimeProjectionRows(args: {
     })
     .from(connectorCatalogRuntimeProjections)
     .where(where);
-  return rows.map((row) => {
-    return { ...row, connector: null };
-  });
-}
-
-function isAttestedConnectorCatalogRuntimeProjection(
-  value: unknown,
-  connectorSlug: ConnectorSlug,
-): value is ConnectorCatalogArtifactConnector {
-  // The current validator authority on the exact projection generation
-  // establishes deep schema and semantic validity. Raw payload SHA plus this
-  // top-level row identity check binds the selected bytes without repeating
-  // complete connector validation on request traffic.
-  return isUnknownRecord(value) && value.slug === connectorSlug;
-}
-
-function parseAttestedConnectorCatalogRuntimeProjection(
-  payload: Buffer,
-  connectorSlug: ConnectorSlug,
-): ConnectorCatalogArtifactConnector | undefined {
-  if (
-    payload.byteLength === 0 ||
-    payload.byteLength > CONNECTOR_CATALOG_MAX_RAW_BYTES
-  ) {
-    return undefined;
-  }
-  const parsed = safeJsonParse(payload.toString("utf8"));
-  return isAttestedConnectorCatalogRuntimeProjection(parsed, connectorSlug)
-    ? parsed
-    : undefined;
-}
-
-function validateLegacyConnectorCatalogRuntimeProjectionRow(args: {
-  readonly row: ConnectorCatalogRuntimeProjectionRow;
-  readonly timing: ConnectorCatalogRuntimeProjectionValidationTiming;
-}):
-  | {
-      readonly kind: "ready";
-      readonly connector: ConnectorCatalogArtifactConnector;
-    }
-  | {
-      readonly kind: "fallback";
-      readonly reason: "malformed" | "digest_mismatch";
-    } {
-  const connector = args.timing.measureParse(() => {
-    const parsed = connectorCatalogArtifactConnectorSchema.safeParse(
-      args.row.connector,
-    );
-    return parsed.success && parsed.data.slug === args.row.connectorSlug
-      ? parsed.data
-      : undefined;
-  });
-  if (connector === undefined) {
-    return { kind: "fallback", reason: "malformed" };
-  }
-  const digestMatches = args.timing.measureDigest(() => {
-    const payload = connectorCatalogRuntimeProjectionPayload(connector);
-    return (
-      connectorCatalogRuntimeProjectionDigest(payload) ===
-      args.row.connectorDigest
-    );
-  });
-  return digestMatches
-    ? { kind: "ready", connector }
-    : { kind: "fallback", reason: "digest_mismatch" };
-}
-
-function validateAttestedConnectorCatalogRuntimeProjectionRow(args: {
-  readonly row: ConnectorCatalogRuntimeProjectionRow;
-  readonly timing: ConnectorCatalogRuntimeProjectionValidationTiming;
-}):
-  | {
-      readonly kind: "ready";
-      readonly connector: ConnectorCatalogArtifactConnector;
-    }
-  | {
-      readonly kind: "fallback";
-      readonly reason: "malformed" | "digest_mismatch";
-    } {
-  const payload = args.row.connectorPayload;
-  if (payload === null) {
-    return { kind: "fallback", reason: "malformed" };
-  }
-  const digestMatches = args.timing.measureDigest(() => {
-    return (
-      connectorCatalogRuntimeProjectionDigest(payload) ===
-      args.row.connectorDigest
-    );
-  });
-  if (!digestMatches) {
-    return { kind: "fallback", reason: "digest_mismatch" };
-  }
-  const connector = args.timing.measureParse(() => {
-    return parseAttestedConnectorCatalogRuntimeProjection(
-      payload,
-      args.row.connectorSlug,
-    );
-  });
-  return connector === undefined
-    ? { kind: "fallback", reason: "malformed" }
-    : { kind: "ready", connector };
-}
-
-export function validateConnectorCatalogRuntimeProjectionRows(args: {
-  readonly rows: readonly ConnectorCatalogRuntimeProjectionRow[];
-  readonly connectorSlugs: readonly ConnectorSlug[];
-  readonly projectionVersion: number;
-  readonly timing: ConnectorCatalogRuntimeProjectionValidationTiming;
-}): ConnectorCatalogRuntimeProjectionRowsRead {
-  const rowBySlug = new Map(
-    args.rows.map((row) => {
-      return [row.connectorSlug, row] as const;
-    }),
-  );
-  const connectors: ConnectorCatalogArtifactConnector[] = [];
-  const missingConnectorSlugs: ConnectorSlug[] = [];
-  for (const connectorSlug of args.connectorSlugs) {
-    const row = rowBySlug.get(connectorSlug);
-    if (row === undefined) {
-      missingConnectorSlugs.push(connectorSlug);
-      continue;
-    }
-    const validated =
-      args.projectionVersion ===
-      LEGACY_CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION
-        ? validateLegacyConnectorCatalogRuntimeProjectionRow({
-            row,
-            timing: args.timing,
-          })
-        : validateAttestedConnectorCatalogRuntimeProjectionRow({
-            row,
-            timing: args.timing,
-          });
-    if (validated.kind === "fallback") {
-      return validated;
-    }
-    connectors.push(validated.connector);
-  }
-  return { kind: "ready", connectors, missingConnectorSlugs };
 }
 
 export async function countConnectorCatalogRuntimeProjectionRows(args: {
@@ -696,10 +400,6 @@ async function lockSyncState(db: Db, sourceId: string): Promise<boolean> {
 export const reconcileConnectorCatalogRuntimeProjection$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
-    if (!(await connectorCatalogRuntimeProjectionSchemaAvailable(db))) {
-      signal.throwIfAborted();
-      return;
-    }
     const sourceId = connectorCatalogSource().sourceId;
     const validator = currentConnectorCatalogValidatorIdentity();
     await db.transaction(async (tx) => {
@@ -762,11 +462,12 @@ export const reconcileConnectorCatalogRuntimeProjection$ = command(
       if (ready !== undefined) {
         const authority = persistedConnectorCatalogValidationAuthority({
           backendVersion: ready.validationBackendVersion,
-          buildCommitSha: ready.validationBuildCommitSha,
+          validationRevision: ready.validationBuildCommitSha,
         });
+        // Preserve an attestation from the same or a newer validator package.
         if (
           authority !== null &&
-          connectorCatalogValidationAuthorityIsCurrent({
+          connectorCatalogValidationAuthorityIsCurrentOrNewer({
             authority,
             validator,
           })

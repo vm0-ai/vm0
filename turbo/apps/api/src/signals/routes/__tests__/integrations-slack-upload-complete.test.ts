@@ -428,7 +428,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     expect(files).toStrictEqual([]);
   });
 
-  it("records a Slack upload for a run-scoped zero token", async () => {
+  it("records a Slack upload for a run-scoped agent token", async () => {
     const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     mockSlackFileInfo(fileId);
@@ -1187,7 +1187,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     });
   });
 
-  it("generates a poster immediately for a Slack video Artifact", async () => {
+  it("uses the VM0 run brand for a Slack video", async () => {
     const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     const permalink = `https://slack.example/files/${fileId}`;
@@ -1207,7 +1207,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     const frameRequests: string[] = [];
     server.use(
       http.get(
-        /^https:\/\/cdn\.okou\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
+        /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
         ({ request }) => {
           frameRequests.push(request.url);
           return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff]), {
@@ -1220,7 +1220,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       userId,
       orgId,
       runId,
-      publicBrand: "okou",
+      publicBrand: "vm0",
     });
 
     const client = setupApp({
@@ -1237,7 +1237,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     await flushWaitUntilForTest();
 
     expect(frameRequests).toStrictEqual([
-      `https://cdn.okou.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
+      `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
     ]);
     expect(
       objectStore.puts.some((put) => {
@@ -1245,7 +1245,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
           put.bucket === "test-user-artifacts" &&
           /^artifacts\/[0-9a-z]{10}\.jpg$/u.test(put.key) &&
           put.contentType === "image/jpeg" &&
-          put.metadata?.["public-brand"] === "okou"
+          put.metadata?.["public-brand"] === "vm0"
         );
       }),
     ).toBeTruthy();
@@ -1259,7 +1259,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     expect(files[0]).toMatchObject({
       id: fileId,
       previewImageUrl: expect.stringMatching(
-        /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.jpg$/u,
       ),
     });
   });

@@ -220,7 +220,6 @@ done
     let metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
         config_path: dir.path().join("runner.yaml"),
         base_dir: dir.path().join("base"),
-        runner_name: "test-runner".into(),
         runner_group: "vm0/test".into(),
         subcommand: "start".into(),
     };
@@ -488,7 +487,7 @@ async fn factory_startup_failure_stops_status_and_cleans_startup_resources() {
 }
 
 #[tokio::test]
-async fn local_provider_setup_failure_does_not_create_runtime() {
+async fn nameless_config_reaches_local_provider_setup_before_runtime() {
     const ROOTFS_HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const SNAPSHOT_HASH: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 
@@ -531,7 +530,6 @@ async fn local_provider_setup_failure_does_not_create_runtime() {
         &config_path,
         format!(
             r#"
-name: test
 group: test/group
 base_dir: {base_dir}
 ca_dir: {ca_dir}

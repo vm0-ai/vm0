@@ -8,23 +8,23 @@ use super::super::support::{
 use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
 
 // -----------------------------------------------------------------------
-// Test 13: Same-thread work reuses an idle VM
+// Test 13: Same-thread work reuses an idle sandbox
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn same_thread_reuses_idle_vm() {
+async fn same_thread_reuses_idle_sandbox() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
 
-    // Pre-seed: park a VM for reuse key "sess-reuse" with matching profile.
+    // Pre-seed: park a sandbox for reuse key "sess-reuse" with matching profile.
     let seeded_sandbox_id =
         seed_idle_pool(&idle_pool, &budget, "sess-reuse", "vm0/default", 2, 4096).await;
     assert_eq!(budget.allocated().2, 1, "seeded entry holds budget");
 
     let run_handle = tokio::spawn(run(config));
 
-    // Push job for same reuse key — should reuse the idle VM.
+    // Push job for same reuse key — should reuse the idle sandbox.
     let run_id = RunId::new_v4();
     push_job(
         &env,
@@ -59,7 +59,7 @@ async fn same_thread_reuses_idle_vm() {
     wait_idle_pool_reuse_keys(&idle_pool, &["sess-reuse"], Duration::from_secs(5)).await;
     {
         let pool = idle_pool.lock().await;
-        assert_eq!(pool.len(), 1, "VM should be re-parked after reuse");
+        assert_eq!(pool.len(), 1, "sandbox should be re-parked after reuse");
     }
     assert_eq!(
         budget.allocated().2,
@@ -143,7 +143,7 @@ async fn invalid_reserved_resume_session_fails_before_reuse() {
     assert!(!error.contains(invalid_session_id));
     wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
     assert_eq!(
-        idle_pool.lock().await.status_snapshot().idle_vms[0].sandbox_id,
+        idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id,
         seeded_sandbox_id,
         "invalid continuation metadata must restore the reserved sandbox",
     );
@@ -195,12 +195,12 @@ async fn invalid_resume_session_fails_before_fresh_sandbox_creation() {
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn profile_mismatch_destroys_stale_vm() {
+async fn profile_mismatch_destroys_stale_sandbox() {
     let (config, env) = mock_run_config(two_profiles(), 16, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
 
-    // Pre-seed: park a "vm0/default" (2vcpu) VM for session "sess-mm".
+    // Pre-seed: park a "vm0/default" (2vcpu) sandbox for session "sess-mm".
     seed_idle_pool(&idle_pool, &budget, "sess-mm", "vm0/default", 2, 4096).await;
 
     let run_handle = tokio::spawn(run(config));
@@ -231,19 +231,19 @@ async fn profile_mismatch_destroys_stale_vm() {
         "freshly created sandbox still reports its id"
     );
 
-    // Stale VM destruction runs in a background destroy_task. Poll until
+    // Stale sandbox destruction runs in a background destroy_task. Poll until
     // its budget is released rather than using a fixed sleep.
     // Expected: stale 2vcpu released, new 4vcpu held → count=1.
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
 
     {
         let pool = idle_pool.lock().await;
-        assert_eq!(pool.len(), 1, "new VM should be parked");
+        assert_eq!(pool.len(), 1, "new sandbox should be parked");
     }
     let (alloc_vcpu, alloc_mem, alloc_count) = budget.allocated();
-    assert_eq!(alloc_count, 1, "only new VM should hold budget");
-    assert_eq!(alloc_vcpu, 4, "new VM is vm0/large (4 vcpu)");
-    assert_eq!(alloc_mem, 8192, "new VM is vm0/large (8192 MB)");
+    assert_eq!(alloc_count, 1, "only new sandbox should hold budget");
+    assert_eq!(alloc_vcpu, 4, "new sandbox is vm0/large (4 vcpu)");
+    assert_eq!(alloc_mem, 8192, "new sandbox is vm0/large (8192 MB)");
 
     shutdown(&env, run_handle).await;
 }

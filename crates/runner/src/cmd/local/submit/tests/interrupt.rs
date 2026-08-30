@@ -11,7 +11,7 @@ use crate::test_fixtures::ignored_child::{
     ignored_child_test_env_guard_enabled, run_ignored_child_test,
 };
 
-const INTERRUPT_CHILD_ENV: &str = "VM0_RUNNER_LOCAL_SUBMIT_INTERRUPT_TEST";
+const INTERRUPT_CHILD_ENV: &str = "OKOU_RUNNER_LOCAL_SUBMIT_INTERRUPT_TEST";
 const INTERRUPT_CHILD_VALUE: &str = "after-job-publication";
 const INTERRUPT_CHILD_TEST: &str =
     "cmd::local::submit::tests::interrupt::sigint_after_job_publication_uses_cancel_cleanup_child";

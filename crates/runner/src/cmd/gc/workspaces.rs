@@ -248,7 +248,7 @@ pub(super) async fn gc_workspace_orphans(
 
     // Discover active workspaces after initial candidate selection. This
     // protects orphaned Firecrackers whose parent runner already died but
-    // whose VM is still running.
+    // whose sandbox is still running.
     let discovered = crate::process::discover_all_with_status().await;
     if !discovered.proc_scan_complete {
         warn!(
@@ -384,14 +384,6 @@ async fn gc_workspace_orphans_with_candidates_and_remove(
         }
     }
 
-    if summary.workspaces_cleaned > 0 {
-        info!(
-            "workspace orphans: {} cleaned ({})",
-            summary.workspaces_cleaned,
-            human_bytes(summary.bytes_freed)
-        );
-    }
-
     Ok(summary)
 }
 
@@ -406,7 +398,7 @@ async fn gc_workspace_orphans_in_base_dir(
         Ok(GcDirStatus::RealDir(_)) => {}
         Ok(GcDirStatus::Missing) => return (0, 0, BaseDirLockDecision::RemoveIfStillFree),
         Ok(GcDirStatus::NotDirectory) => {
-            info!(
+            warn!(
                 "workspace gc: {} is not a real base directory, skipping",
                 base_dir.display()
             );
@@ -426,7 +418,7 @@ async fn gc_workspace_orphans_in_base_dir(
         Ok(GcDirStatus::RealDir(_)) => {}
         Ok(GcDirStatus::Missing) => return (0, 0, BaseDirLockDecision::RemoveIfStillFree),
         Ok(GcDirStatus::NotDirectory) => {
-            info!(
+            warn!(
                 "workspace gc: {} is not a real directory, skipping",
                 workspaces_dir.display()
             );
@@ -506,13 +498,7 @@ async fn gc_workspace_orphans_in_base_dir(
             );
         } else {
             match remove_dir_all(&path).await {
-                Ok(()) => {
-                    info!(
-                        "removed orphaned workspace {} ({})",
-                        path.display(),
-                        human_bytes(size)
-                    );
-                }
+                Ok(()) => {}
                 Err(e) => {
                     warn!("workspace gc: cannot remove {}: {e}", path.display());
                     preserve_lock = true;

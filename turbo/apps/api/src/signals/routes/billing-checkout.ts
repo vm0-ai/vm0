@@ -10,8 +10,6 @@ import {
   type UsagePackSubscriptionChangePreviewResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/acquisition-attribution";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
@@ -36,7 +34,7 @@ import {
   type ClerkClient,
 } from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import { getStripeClient, type StripeInvoice } from "../external/stripe-client";
 import {
   activePriceId,
   activeUsagePackPlanPriceId,
@@ -59,7 +57,6 @@ import {
 } from "../services/usage-pack-subscription.service";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
-  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
   type BillingPurchasePaymentMethod,
@@ -89,7 +86,6 @@ import {
   loadBillingOrganizationDirectory,
   loadBillingOrganizationMemberships,
 } from "../services/billing-clerk-directory.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { reconcilePaidStripeInvoice$ } from "../services/webhooks-stripe.service";
 import {
   mergeFirstTouchAttribution,
@@ -103,26 +99,6 @@ const adminRequired = Object.freeze({
   body: Object.freeze({
     error: Object.freeze({
       message: "Only org admins can manage billing",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const usagePackCheckoutDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Usage pack checkout is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const usagePackManagementDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Usage pack management is not enabled",
       code: "FORBIDDEN",
     }),
   }),
@@ -478,6 +454,26 @@ function usagePackCheckoutTierConflicts(
   );
 }
 
+function googleAdsPaidConversion(invoice: StripeInvoice | null):
+  | {
+      readonly transactionId: string;
+      readonly valueUsd: number;
+    }
+  | undefined {
+  const amountPaidCents = invoice?.amount_paid ?? 0;
+  if (
+    invoice?.status !== "paid" ||
+    invoice.currency.toLowerCase() !== "usd" ||
+    amountPaidCents <= 0
+  ) {
+    return undefined;
+  }
+  return {
+    transactionId: invoice.id,
+    valueUsd: amountPaidCents / 100,
+  };
+}
+
 const confirmPlanPurchaseForOrg$ = command(
   async ({ set }, orgId: string, previewToken: string, signal: AbortSignal) => {
     const result = await set(confirmPlanPurchase$, orgId, previewToken, signal);
@@ -498,7 +494,14 @@ const confirmPlanPurchaseForOrg$ = command(
         );
       }
     }
-    return { status: 200 as const, body: result.response };
+    const conversion = googleAdsPaidConversion(result.paidInvoice);
+    return {
+      status: 200 as const,
+      body:
+        result.response.status === "completed" && conversion
+          ? { ...result.response, googleAdsConversion: conversion }
+          : result.response,
+    };
   },
 );
 
@@ -534,15 +537,7 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     trialDays,
     adAttribution,
   } = bodyResult.data;
-  const previewEnabled = await set(
-    billingPurchasePreviewEnabled$,
-    {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      requested: supportsInAppPreview === true,
-    },
-    signal,
-  );
+  const previewEnabled = supportsInAppPreview === true;
   const clerk = get(clerk$);
   const resolvedAttribution = await checkoutAttribution(
     clerk,
@@ -703,7 +698,14 @@ const confirmUsagePackPurchaseForOrg$ = command(
         );
       }
     }
-    return { status: 200 as const, body: result.response };
+    const conversion = googleAdsPaidConversion(result.paidInvoice);
+    return {
+      status: 200 as const,
+      body:
+        result.response.status === "completed" && conversion
+          ? { ...result.response, googleAdsConversion: conversion }
+          : result.response,
+    };
   },
 );
 
@@ -730,20 +732,6 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return usagePackCheckoutDisabled;
-    }
-
     const db = get(db$);
     if (!(await usagePackPurchaseSerializationSchemaAvailable(db))) {
       return providerUnavailable("Usage pack billing is not ready");
@@ -751,15 +739,7 @@ const usagePackCheckoutAuthed$ = command(
     signal.throwIfAborted();
 
     const body = bodyResult.data;
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        requested: body.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = body.supportsInAppPreview === true;
     const clerk = get(clerk$);
     const resolvedAttribution = await checkoutAttribution(
       clerk,
@@ -873,20 +853,6 @@ const usagePackCatalogAuthed$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired;
     }
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return usagePackCheckoutDisabled;
-    }
-
     const usagePacks = await loadUsagePackCatalog();
     signal.throwIfAborted();
     return { status: 200 as const, body: { usagePacks: [...usagePacks] } };
@@ -936,31 +902,14 @@ const usagePackCheckoutConfirm$ = command(
   },
 );
 
-const usagePackManagementAccess$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    if (auth.orgRole !== "admin") {
-      return { allowed: false as const, response: adminRequired };
-    }
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return {
-        allowed: false as const,
-        response: usagePackManagementDisabled,
-      };
-    }
-    return { allowed: true as const, auth };
-  },
-);
+const usagePackManagementAccess$ = command(({ get }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return { allowed: false as const, response: adminRequired };
+  }
+  signal.throwIfAborted();
+  return { allowed: true as const, auth };
+});
 
 const usagePackManagementGetAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -1005,15 +954,7 @@ const usagePackChangePreviewAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: access.auth.orgId,
-        userId: access.auth.userId,
-        requested: bodyResult.data.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = bodyResult.data.supportsInAppPreview === true;
     if (
       previewEnabled &&
       (!bodyResult.data.returnUrl ||
@@ -1518,15 +1459,7 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const previewEnabled = await set(
-      billingPurchasePreviewEnabled$,
-      {
-        orgId: access.auth.orgId,
-        userId: access.auth.userId,
-        requested: bodyResult.data.supportsInAppPreview === true,
-      },
-      signal,
-    );
+    const previewEnabled = bodyResult.data.supportsInAppPreview === true;
     if (
       previewEnabled &&
       (!bodyResult.data.returnUrl ||
@@ -1859,9 +1792,16 @@ const checkoutCompleteAuthed$ = command(
       );
     }
 
+    const conversion =
+      result.status === "completed"
+        ? googleAdsPaidConversion(result.paidInvoice)
+        : undefined;
     return {
       status: 200 as const,
-      body: { completed: result.status === "completed" },
+      body: {
+        completed: result.status === "completed",
+        ...(conversion ? { googleAdsConversion: conversion } : {}),
+      },
     };
   },
 );

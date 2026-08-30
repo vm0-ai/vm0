@@ -25,7 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@okouai/ui";
-import { createSubagent$ } from "../../signals/zero-page/zero-agents.ts";
+import { createSubagent$ } from "../../signals/okou-page/agents.ts";
 import {
   defaultAgentId$,
   defaultAgentName$,
@@ -39,10 +39,7 @@ import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import {
-  AgentAvatarImg,
-  AvatarFromUrl,
-} from "../zero-page/zero-sidebar-shared.tsx";
+import { AgentAvatarImg, AvatarFromUrl } from "../okou-page/sidebar-shared.tsx";
 import {
   jobsDialogOpen$,
   setJobsDialogOpen$,
@@ -55,9 +52,9 @@ import {
   jobsActiveTab$,
   setJobsActiveTab$,
   resetJobsDialog$,
-} from "../../signals/zero-page/zero-jobs-page.ts";
-import { serializeAvatarSvgConfig } from "../zero-page/avatar-svg-utils.ts";
-import { AvatarMaker } from "../zero-page/avatar-maker.tsx";
+} from "../../signals/okou-page/jobs-page.ts";
+import { serializeAvatarSvgConfig } from "../okou-page/avatar-svg-utils.ts";
+import { AvatarMaker } from "../okou-page/avatar-maker.tsx";
 import { platformEmptyPrivateAgentsImg } from "../../lib/static-assets.ts";
 
 const MAX_PUBLIC_AGENTS = 7;
@@ -295,9 +292,9 @@ function AgentGrid({
       {agents.map((agent) => {
         return (
           <Link
-            key={agent.id}
+            key={agent.agentId}
             pathname="/agents/:agentId"
-            options={{ pathParams: { agentId: agent.id } }}
+            options={{ pathParams: { agentId: agent.agentId } }}
             className="block no-underline text-inherit"
           >
             <AgentCard
@@ -309,7 +306,7 @@ function AgentGrid({
                   return $.list.cards.unknownCreator;
                 }),
               )}
-              hasUnread={unreadAgentIds?.has(agent.id) ?? false}
+              hasUnread={unreadAgentIds?.has(agent.agentId) ?? false}
               showCreator={showCreator}
             />
           </Link>
@@ -624,7 +621,7 @@ function CreateTeammateDialogContent({
 
 type AgentProps = {
   agent: {
-    id: string;
+    agentId: string;
     ownerId?: string;
     displayName?: string | null;
     description?: string | null;
@@ -698,8 +695,8 @@ function AgentUnreadIndicator() {
 function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
   const { t } = useTranslation("agents");
   const defaultAgentId = useLastResolved(defaultAgentId$);
-  const lead = agent.id === defaultAgentId;
-  const displayName = agent.displayName ?? agent.id;
+  const lead = agent.agentId === defaultAgentId;
+  const displayName = agent.displayName ?? agent.agentId;
   const description = defaultAgentId
     ? agent.description ||
       (lead
@@ -716,7 +713,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
         <div className="flex items-center gap-3">
           <span className="relative h-10 w-10 shrink-0">
             <AgentAvatarImg
-              name={agent.id}
+              name={agent.agentId}
               alt={displayName}
               className="h-10 w-10 rounded-full object-cover object-top"
             />

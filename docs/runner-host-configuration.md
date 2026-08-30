@@ -1,5 +1,52 @@
 # Runner Host Configuration
 
+## Diagnostic Host Attribution
+
+`runner.yaml` may contain an optional `hostname` used only to identify the
+physical runner in claims, sandbox telemetry, and Runner Axiom warning/error
+events. Production automation writes the exact Ansible `inventory_hostname`;
+it does not derive the value from DNS or the operating system at runtime.
+
+The value must be non-empty and no longer than 255 JavaScript string units
+(UTF-16 code units). `runner config --hostname <value>` validates and preserves
+the raw value. Existing configuration files without `hostname` continue to
+load and omit the canonical hostname fields.
+
+Hostname does not select a service, directory, release, or rollback target.
+Systemd service suffixes are opaque local instance names. Production currently
+passes its explicit `runner_release` value as the service name and Runner
+directory name, but version logic uses `runner_release` directly and does not
+interpret a runner name as a version. Live processes are selected by their
+exact config path and process identity, and rolling log files use the release
+compiled into the Runner binary. Current Runner binaries send optional
+canonical `runnerHostname` from configuration and canonical `runnerVersion`
+compiled into the binary. They no longer send legacy `runnerName` in
+heartbeats or sandbox telemetry. Current API revisions no longer declare,
+persist, or map that field. During deployment overlap, an extra `runnerName`
+from an older Runner payload is tolerated but discarded before request
+handling.
+
+Current `runner.yaml` has no legacy `name` field. Repository automation writes
+`hostname` through `runner config`, while `--runner-dirname` and systemd service
+`--name` remain opaque local lifecycle inputs. Live-runner records contain exact
+config/process metadata and no legacy runner name. Readiness and doctor select
+live processes by the unit's exact config path.
+
+Operational queries and alerts should use `runner_hostname` and
+`runner_version`. A bounded historical fallback may use `runner_name` only for
+records that lack the canonical dimensions from before the cutover. Never
+interpret `runner_name` as a hostname.
+
+Runner Axiom warning/error events similarly include optional
+`runner_hostname` and required `runner_version`. The rollout order is compatible
+API and nullable heartbeat storage, Runner producer cutover, then logical API
+receiver removal, followed by physical state-column removal after pre-cutover
+serving API instances drained. The current schema no longer contains
+`runner_state.runner_name`. Canary each transition and verify claim snapshots,
+telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
+version. Remove any historical query fallback only after its bounded
+observation window expires.
+
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses
 `runner.yaml` for its concurrency factor and leaves I/O limiters disabled.
@@ -15,7 +62,7 @@ values is ignored:
 
 ```text
 # Optional host-local concurrency override
-VM0_RUNNER_CONCURRENCY_FACTOR = 1.5
+OKOU_RUNNER_CONCURRENCY_FACTOR = 1.5
 ```
 
 Do not use `export`, shell interpolation, quoted numeric values, or inline
@@ -23,13 +70,21 @@ comments. The parser accepts only the keys listed below. An unreadable file, a
 line without `=`, an unsupported key, or a duplicate key is a configuration
 error that prevents the runner from starting.
 
-| Key                                     | Unit                   | Valid values                               | Behavior                                                                                             |
-| --------------------------------------- | ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `VM0_RUNNER_CONCURRENCY_FACTOR`         | Dimensionless multiple | Positive finite number                     | Optional; overrides `sandbox.concurrency_factor` from `runner.yaml`. An invalid value fails startup. |
-| `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_DISK_IOPS`                  | Operations/s           | Integer in `1..=u64::MAX`                  | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_NET_RX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
-| `VM0_RUNNER_NET_TX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+## Canonical Host-Tuning Contract
+
+The runner accepts only these five host-tuning keys:
+
+| Key                                      | Unit                   | Valid values                               | Behavior                                                                                             |
+| ---------------------------------------- | ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `OKOU_RUNNER_CONCURRENCY_FACTOR`         | Dimensionless multiple | Positive finite number                     | Optional; overrides `sandbox.concurrency_factor` from `runner.yaml`. An invalid value fails startup. |
+| `OKOU_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_DISK_IOPS`                  | Operations/s           | Integer in `1..=u64::MAX`                  | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_NET_RX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_NET_TX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+
+Each key may appear at most once. Retired host-tuning names and every other
+unlisted key are unsupported and cannot select or override a value. The four
+I/O keys form one all-or-none group.
 
 Bandwidth values may be fractional. After conversion from MiB/s, the byte/s
 value must be at least `1`, must fit in a `u64`, and is rounded down to an
@@ -38,6 +93,23 @@ integer. Disk IOPS must parse directly as a nonzero `u64`.
 The concurrency override is independent of the I/O group, but it changes the
 resource budget used to calculate the I/O limits.
 
+## Completed Canonical Cutover and Rollback Floor
+
+Production host configuration completed the canonical cutover with Runner
+`0.178.4` (`b1440bfb43d75590ea1d0a43d9b8f0c8340832ef`). All three production
+hosts started and passed readiness and health on that release before their old
+services drained. Successor promotions confirmed the same canonical files.
+
+Runner `0.178.4` is the rollback floor for hosts using this contract. The
+retained rollback targets `0.178.4`, `0.178.6`, and `0.178.7` all read the five
+canonical keys. Do not add an earlier rollback target unless its compatibility
+with the canonical host file has been established separately.
+
+Normal Runner promotion no longer mutates `host.env`. It installs, starts, and
+health-checks the target before draining old services. If target installation,
+readiness, or health fails, promotion stops the failed target and leaves the
+already-running old services available.
+
 ## Configure Host I/O Capacity
 
 The four I/O keys are one atomic configuration. Either omit all four or provide
@@ -45,10 +117,10 @@ all four:
 
 ```text
 # Example sustainable aggregate host capacity; measure values for this host.
-VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC=2000
-VM0_RUNNER_DISK_IOPS=200000
-VM0_RUNNER_NET_RX_MIB_PER_SEC=1250
-VM0_RUNNER_NET_TX_MIB_PER_SEC=1000
+OKOU_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC=2000
+OKOU_RUNNER_DISK_IOPS=200000
+OKOU_RUNNER_NET_RX_MIB_PER_SEC=1250
+OKOU_RUNNER_NET_TX_MIB_PER_SEC=1000
 ```
 
 These values describe sustainable total host capacity, not desired per-sandbox
@@ -112,13 +184,13 @@ disk budget into `209715200 bytes/s` and `20000 ops/s` for each drive.
 
 Host-file parsing and I/O resolution have different failure boundaries:
 
-| Configuration state                                                   | Runner behavior                                                                                                                                  |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| File missing, or none of the four I/O keys present                    | Starts with I/O limiters disabled and logs `I/O limiters disabled`.                                                                              |
-| All four I/O keys present and usable                                  | Starts with all jobs limited and logs `I/O limiter capacity configured; applying limiters to all jobs`.                                          |
-| I/O keys partial, numerically invalid, or insufficient after division | Starts, logs `I/O limiter host env config invalid; disabling I/O limiter capacity` with a `reason`, and disables every disk and network limiter. |
-| File unreadable, line malformed, key unsupported, or key duplicated   | Fails startup with a runner configuration error.                                                                                                 |
-| `VM0_RUNNER_CONCURRENCY_FACTOR` present but invalid                   | Fails startup with a runner configuration error naming the key and `host.env`.                                                                   |
+| Configuration state                                                       | Runner behavior                                                                                                                                  |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| File missing, or none of the four I/O keys present                        | Starts with I/O limiters disabled and logs `I/O limiters disabled`.                                                                              |
+| All four I/O fields present and usable                                    | Starts with all jobs limited and logs `I/O limiter capacity configured; applying limiters to all jobs`.                                          |
+| I/O fields partial, numerically invalid, or insufficient after division   | Starts, logs `I/O limiter host env config invalid; disabling I/O limiter capacity` with a `reason`, and disables every disk and network limiter. |
+| File unreadable, line malformed, key unsupported, or exact key duplicated | Fails startup with a runner configuration error.                                                                                                 |
+| `OKOU_RUNNER_CONCURRENCY_FACTOR` present but invalid                      | Fails startup with a runner configuration error naming the key and `host.env`.                                                                   |
 
 The non-fatal I/O warning is all-or-nothing. A valid disk pair does not stay
 enabled when the network pair is missing or invalid, and vice versa.

@@ -16,7 +16,8 @@ export function escapeHtml(text: string): string {
 /**
  * Convert standard Markdown to Telegram-supported HTML subset.
  *
- * Supported conversions (mirrors apps/web/src/lib/zero/telegram/format.ts):
+ * Supported conversions (ported from the removed `apps/web` app; no
+ * upstream copy remains, so nothing here needs to be kept in sync):
  * - **bold** -> <b>bold</b>
  * - *italic* -> <i>italic</i>
  * - `code` -> <code>code</code>

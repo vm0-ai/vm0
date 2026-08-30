@@ -58,13 +58,11 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
     await removeTeamsForTest(context.signal, fixture);
   },
 );
-const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
-// The branded paths plus the final Microsoft console path from #28278.
-const TEAMS_BOT_URLS = [
-  "http://api.test/api/okou/teams/bot",
-  TEAMS_BOT_PATH,
-  "http://api.test/api/webhooks/teams/bot",
-] as const;
+// The final Microsoft console path from #28278. #28917 retired this route's
+// `MIGRATED_BRANDED_PATHS` row — the Azure Bot messaging endpoint was already
+// repointed here before #28545 landed — so the branded forms this file used to
+// replay are no longer registered.
+const TEAMS_BOT_PATH = "http://api.test/api/webhooks/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
@@ -712,11 +710,6 @@ function teamsBotInstallationAddedActivity(
   };
 }
 
-interface TeamsBotRawResponse {
-  readonly status: number;
-  readonly body: string;
-}
-
 async function postTeamsActivity(
   args: {
     readonly activity: Record<string, unknown>;
@@ -919,13 +912,13 @@ async function setupConnectedTeamsBotActor(): Promise<{
   return { fixture, actor, runnerGroup, outboundRequests };
 }
 
-describe("POST /api/zero/teams/bot", () => {
+describe("POST /api/webhooks/teams/bot", () => {
   beforeEach(() => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
     mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
-    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     context.mocks.axiom.query.mockResolvedValue([]);
     teamsOutboundHandlers(SERVICE_URL);
@@ -950,40 +943,13 @@ describe("POST /api/zero/teams/bot", () => {
     botFrameworkHandlers();
     const fixture = botFixture();
     const activity = teamsMessageActivity(fixture, { type: "typing" });
-    const token = teamsToken();
 
-    const results: TeamsBotRawResponse[] = [];
-    for (const url of TEAMS_BOT_URLS) {
-      const response = await postTeamsActivity({ activity, token, url });
-      results.push({
-        status: response.status,
-        body: await response.text(),
-      });
-    }
+    const response = await postTeamsActivity({
+      activity,
+      token: teamsToken(),
+    });
 
-    const [okou, zero, final] = results;
-    expect(okou?.status).toBe(200);
-    expect(zero).toStrictEqual(okou);
-    expect(final).toStrictEqual(okou);
-  });
-
-  it("rejects an unauthorized activity on every namespace", async () => {
-    const fixture = botFixture();
-    const activity = teamsMessageActivity(fixture);
-
-    const results: TeamsBotRawResponse[] = [];
-    for (const url of TEAMS_BOT_URLS) {
-      const response = await postTeamsActivity({ activity, url });
-      results.push({
-        status: response.status,
-        body: await response.text(),
-      });
-    }
-
-    const [okou, zero, final] = results;
-    expect(okou?.status).toBe(401);
-    expect(zero).toStrictEqual(okou);
-    expect(final).toStrictEqual(okou);
+    expect(response.status).toBe(200);
   });
 
   it("rejects a Teams activity without a stable identifier", async () => {
@@ -1110,6 +1076,7 @@ describe("POST /api/zero/teams/bot", () => {
     expect(connectUrl.searchParams.get("teamId")).toBe(fixture.teamsTeamId);
     expect(connectUrl.searchParams.get("teamName")).toBe("Team One");
     expect(connectUrl.searchParams.get("conversationType")).toBe("channel");
+    expect(connectUrl.searchParams.get("botName")).toBe("Zero");
     expect(body).not.toHaveProperty("dispatch");
     await flushWaitUntilForTest();
     expect(outboundRequests).toHaveLength(1);
@@ -1180,6 +1147,42 @@ describe("POST /api/zero/teams/bot", () => {
       tenantName: "Tenant One",
       teamId: fixture.teamsTeamId,
       teamName: "Team One",
+    });
+  });
+
+  it("uses the webhook Host for product branding and the Teams recipient for bot identity", async () => {
+    const fixture = await trackedBotFixture();
+    botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const botName = "Tenant Helper";
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: teamsFixtureExternalId(fixture, "activity-okou-host-help"),
+        text: "help",
+        entities: [],
+        recipient: { id: fixture.teamsBotId, name: botName },
+      }),
+      token: teamsToken(),
+      url: "https://api.okou.ai/api/webhooks/teams/bot",
+    });
+
+    const body = z
+      .object({ connectUrl: z.string() })
+      .parse(await readTeamsBotResponseAndFlush(response));
+    const connectUrl = new URL(body.connectUrl);
+    expect(connectUrl.origin).toBe("https://app.okou.ai");
+    expect(connectUrl.searchParams.get("botName")).toBe(botName);
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]?.body).toMatchObject({
+      text: expect.stringContaining(`${botName} Teams Bot Help`),
+    });
+    expect(outboundRequests[0]?.body).toMatchObject({
+      text: expect.stringContaining("Connect to Okou"),
+    });
+    expect(outboundRequests[0]?.body).toMatchObject({
+      text: expect.stringContaining(`@${botName}`),
     });
   });
 
@@ -1780,7 +1783,7 @@ describe("POST /api/zero/teams/bot", () => {
       routes: integrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
-      `/api/okou/integrations/teams/download-file?${new URLSearchParams({
+      `/api/integrations/teams/download-file?${new URLSearchParams({
         file_id: fileId ?? "",
       }).toString()}`,
       {
@@ -1867,7 +1870,7 @@ describe("POST /api/zero/teams/bot", () => {
       routes: integrationsTeamsDownloadFileRoutes,
     });
     const downloadResponse = await app.request(
-      `/api/okou/integrations/teams/download-file?${new URLSearchParams({
+      `/api/integrations/teams/download-file?${new URLSearchParams({
         file_id: fileId ?? "",
       }).toString()}`,
       {
@@ -1894,7 +1897,7 @@ describe("POST /api/zero/teams/bot", () => {
       contentType: "image/png",
     });
     const legacyDownloadResponse = await app.request(
-      `/api/okou/integrations/teams/download-file?${new URLSearchParams({
+      `/api/integrations/teams/download-file?${new URLSearchParams({
         file_id: legacyFileId,
       }).toString()}`,
       {
@@ -2032,8 +2035,8 @@ describe("POST /api/zero/teams/bot", () => {
         id: activityIds.switchSubmit,
         text: "",
         value: {
-          zeroTeamsAction: "switch_agent",
-          selectedComposeId: switchAgent.agentId,
+          okouTeamsAction: "switch_agent",
+          selectedAgentId: switchAgent.agentId,
         },
       }),
       token: teamsToken(),
@@ -2044,8 +2047,8 @@ describe("POST /api/zero/teams/bot", () => {
     expect(switchSubmitBody).toMatchObject({
       activity: {
         value: {
-          zeroTeamsAction: "switch_agent",
-          selectedComposeId: switchAgent.agentId,
+          okouTeamsAction: "switch_agent",
+          selectedAgentId: switchAgent.agentId,
         },
       },
     });
@@ -2056,7 +2059,7 @@ describe("POST /api/zero/teams/bot", () => {
         id: activityIds.modelSubmit,
         text: "",
         value: {
-          zeroTeamsAction: "switch_model",
+          okouTeamsAction: "switch_model",
           selectedModel: "claude-sonnet-5",
         },
       }),
@@ -2068,7 +2071,7 @@ describe("POST /api/zero/teams/bot", () => {
     expect(modelSubmitBody).toMatchObject({
       activity: {
         value: {
-          zeroTeamsAction: "switch_model",
+          okouTeamsAction: "switch_model",
           selectedModel: "claude-sonnet-5",
         },
       },
@@ -2113,7 +2116,7 @@ describe("POST /api/zero/teams/bot", () => {
             body: expect.arrayContaining([
               expect.objectContaining({
                 type: "Input.ChoiceSet",
-                id: "selectedComposeId",
+                id: "selectedAgentId",
                 choices: expect.arrayContaining([
                   expect.objectContaining({
                     title: expect.stringContaining("Use org default"),
@@ -2130,7 +2133,7 @@ describe("POST /api/zero/teams/bot", () => {
               {
                 type: "Action.Submit",
                 title: "Switch",
-                data: { zeroTeamsAction: "switch_agent" },
+                data: { okouTeamsAction: "switch_agent" },
               },
             ],
           },
@@ -2162,7 +2165,7 @@ describe("POST /api/zero/teams/bot", () => {
               {
                 type: "Action.Submit",
                 title: "Switch",
-                data: { zeroTeamsAction: "switch_model" },
+                data: { okouTeamsAction: "switch_model" },
               },
             ],
           },
@@ -2318,8 +2321,8 @@ describe("POST /api/zero/teams/bot", () => {
         id: activityIds.switchAgent,
         text: "",
         value: {
-          zeroTeamsAction: "switch_agent",
-          selectedComposeId: supportAgent.agentId,
+          okouTeamsAction: "switch_agent",
+          selectedAgentId: supportAgent.agentId,
         },
       }),
       token: teamsToken(),
@@ -2359,7 +2362,7 @@ describe("POST /api/zero/teams/bot", () => {
         id: activityIds.switchModel,
         text: "",
         value: {
-          zeroTeamsAction: "switch_model",
+          okouTeamsAction: "switch_model",
           selectedModel: "gpt-5.6-sol",
         },
       }),
@@ -2574,7 +2577,7 @@ describe("POST /api/zero/teams/bot", () => {
         orgRole: "org:admin",
       },
       {
-        [FeatureSwitchKey.ZeroDebug]: true,
+        [FeatureSwitchKey.OkouDebug]: true,
       },
     );
     botFrameworkHandlers();
@@ -2596,8 +2599,8 @@ describe("POST /api/zero/teams/bot", () => {
         id: switchActivityId,
         text: "",
         value: {
-          zeroTeamsAction: "switch_agent",
-          selectedComposeId: supportAgent.agentId,
+          okouTeamsAction: "switch_agent",
+          selectedAgentId: supportAgent.agentId,
         },
       }),
       token: teamsToken(),
@@ -3021,6 +3024,7 @@ describe("POST /api/zero/teams/bot", () => {
       expect.objectContaining({
         payload: expect.objectContaining({
           teamsDelivery: expect.objectContaining({
+            publicBrand: "vm0",
             files: expect.arrayContaining([
               expect.objectContaining({ name: "current-task.txt" }),
               expect.objectContaining({ name: "deployment-plan.pdf" }),
@@ -3190,7 +3194,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.requestCancelRun(actor, runId, [200]);
   });
 
-  it("includes Teams thread computer use host bindings in queued zero tokens", async () => {
+  it("includes Teams thread computer use host bindings in queued agent tokens", async () => {
     const { fixture, actor, runnerGroup } = await setupConnectedTeamsBotActor();
     const host = await computerUseApi.startComputerUseHost(actor, {
       hostName: "Teams authorized host",

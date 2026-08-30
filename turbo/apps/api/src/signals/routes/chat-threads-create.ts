@@ -21,7 +21,7 @@ import { type Db, writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/chat-thread.service";
-import { agentComposeExists } from "../services/compose-data.service";
+import { agentExistsInOrg } from "../services/agent-deletion.service";
 import { loadNewChatThreadMediaModels } from "../services/chat-thread-media-model.service";
 import {
   resolveModelSelectionPin,
@@ -94,9 +94,9 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const exists = await get(
-    agentComposeExists({
+    agentExistsInOrg({
       orgId: auth.orgId,
-      composeId: body.data.agentId,
+      agentId: body.data.agentId,
     }),
   );
   signal.throwIfAborted();
@@ -121,7 +121,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
   }
   const callerRunId =
-    auth.tokenType === "sandbox" || auth.tokenType === "zero"
+    auth.tokenType === "sandbox" || auth.tokenType === "agent"
       ? auth.runId
       : undefined;
   const inherited = await inheritedRunChatSettings(writeDb, callerRunId);
@@ -180,7 +180,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       userId: auth.userId,
       orgId: auth.orgId,
-      agentComposeId: body.data.agentId,
+      agentId: body.data.agentId,
       title: body.data.title,
       clientThreadId: body.data.clientThreadId,
       eventId: body.data.eventId,
@@ -197,7 +197,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage(thread.message);
   }
 
-  await publishThreadListChanged(auth.userId);
+  await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
   signal.throwIfAborted();
 
   return {

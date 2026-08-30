@@ -405,9 +405,18 @@ async function seedLegacyCustomFeishuOAuthState(
       storageVersion: body.storage_version,
       providerContext: {
         provider: "feishu",
-        completionTarget: "custom",
+        ...(body.provider_context.completion_target === "custom"
+          ? { completionTarget: "custom" }
+          : {
+              completionTarget: "feishu",
+              installationId: body.provider_context.installation_id,
+              ...(body.provider_context.expected_open_id
+                ? { expectedOpenId: body.provider_context.expected_open_id }
+                : {}),
+            }),
       },
     }),
+    accountMutation: { intent: "single-account" },
     expiresAt: connectorOAuthStateExpiresAt(),
   });
   signal.throwIfAborted();
@@ -564,6 +573,37 @@ async function setConnectorState(
   signal.throwIfAborted();
   return updated
     ? actionOk({ connector_id: updated.id })
+    : {
+        status: 400 as const,
+        body: { error: "Connector storage test fixture was not found" },
+      };
+}
+
+async function setBuiltinOAuthScopeFacts(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-builtin-oauth-scope-facts">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(connectors)
+    .set({
+      oauthScopes: JSON.stringify(body.oauth_scopes),
+      oauthGrantedScopes:
+        body.oauth_granted_scopes === null
+          ? null
+          : JSON.stringify(body.oauth_granted_scopes),
+    })
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.connectorSlug, body.connector_slug),
+      ),
+    )
+    .returning({ id: connectors.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
     : {
         status: 400 as const,
         body: { error: "Connector storage test fixture was not found" },
@@ -800,6 +840,9 @@ async function mutateConnectorAccountCompatibilityState(
     }
     case "set-connector-account-state": {
       return await setConnectorAccountState(db, body, signal);
+    }
+    case "set-builtin-oauth-scope-facts": {
+      return await setBuiltinOAuthScopeFacts(db, body, signal);
     }
     case "seed-builtin-thread-selection": {
       return await seedBuiltinThreadSelection(db, body, signal);

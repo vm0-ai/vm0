@@ -14,7 +14,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import { agentComposes, agentComposeVersions } from "./agent-compose";
 import { agents } from "./agent";
 import { registerAgentRunReferences } from "./agent-run-reference";
 import { chatThreads } from "./chat-thread";
@@ -22,6 +21,7 @@ import { threadGoals } from "./thread-goal";
 import { workflowAutomations } from "./workflow";
 import type {
   AgentRunLaunchSnapshot,
+  AgentRunOfficialWorkflowProvenance,
   AgentRunResult,
   AgentRunSecretNames,
   AgentRunStorageMounts,
@@ -32,21 +32,13 @@ import type {
 /**
  * Agent Runs table
  * Created when developer executes agent via SDK
- * References immutable compose version for reproducibility
+ * Stores an immutable launch snapshot for reproducibility.
  */
 export const agentRuns = pgTable(
   "agent_runs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(), // Clerk user ID - owner of this run
-    agentComposeVersionId: varchar("agent_compose_version_id", {
-      length: 64,
-    }).references(
-      () => {
-        return agentComposeVersions.id;
-      },
-      { onDelete: "set null" },
-    ),
     continuedFromSessionId: uuid("continued_from_session_id"),
     sessionId: uuid("session_id")
       .notNull()
@@ -65,6 +57,11 @@ export const agentRuns = pgTable(
     // Canonical resolved mounts used by new run writers.
     storageMounts: jsonb("storage_mounts").$type<AgentRunStorageMounts>(),
     launchSnapshot: jsonb("launch_snapshot").$type<AgentRunLaunchSnapshot>(),
+    // Exact accepted Definition inputs mounted for this Run. Null preserves
+    // historical and non-Official producers during the additive rollout.
+    officialWorkflowProvenance: jsonb(
+      "official_workflow_provenance",
+    ).$type<AgentRunOfficialWorkflowProvenance>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     // One of: "reused" | "featureDisabled" | "noSessionId" | "noReuseKey" |
     // "poolMiss" | "profileMismatch" | "deviceLimitMismatch" | "unparkFailed".
@@ -87,12 +84,15 @@ export const agentRuns = pgTable(
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
     lastHeartbeatAt: timestamp("last_heartbeat_at"),
-    // Immutable winning official claim identity. Null covers historical,
-    // rollout-omitting, and non-official claims.
+    // Immutable winning official claim attribution. ID/generation is the
+    // authority; hostname/version are diagnostic snapshots. Null covers
+    // historical, rollout-omitting, and non-official claims.
     runnerId: uuid("runner_id"),
     runnerHeartbeatGeneration: bigint("runner_heartbeat_generation", {
       mode: "number",
     }),
+    runnerHostname: varchar("runner_hostname", { length: 255 }),
+    runnerVersion: varchar("runner_version", { length: 128 }),
     activeInputEnabled: boolean("active_input_enabled")
       .default(false)
       .notNull(),
@@ -121,7 +121,6 @@ export const agentRuns = pgTable(
     selectedModel: varchar("selected_model", { length: 255 }),
     modelRuntimeProvider: varchar("model_runtime_provider", { length: 100 }),
     modelRuntimeModel: varchar("model_runtime_model", { length: 255 }),
-    vm0ModelKeyId: uuid("vm0_model_key_id"),
     builtInModelKeyId: uuid("built_in_model_key_id"),
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
@@ -193,7 +192,6 @@ export const agentRuns = pgTable(
             ${table.selectedModel} IS NULL AND
             ${table.modelRuntimeProvider} IS NULL AND
             ${table.modelRuntimeModel} IS NULL AND
-            ${table.vm0ModelKeyId} IS NULL AND
             ${table.builtInModelKeyId} IS NULL AND
             ${table.codexServiceTier} IS NULL AND
             ${table.selectedVideoModel} IS NULL AND
@@ -238,14 +236,80 @@ export const agentRuns = pgTable(
           )
         )`,
       ),
+      check(
+        "agent_runs_official_workflow_provenance_check",
+        sql`(
+          ${table.officialWorkflowProvenance} IS NULL OR (
+            jsonb_typeof(${table.officialWorkflowProvenance}) = 'object' AND
+            ${table.officialWorkflowProvenance} ?& ARRAY[
+              'schemaVersion',
+              'definitions'
+            ] AND
+            (
+              ${table.officialWorkflowProvenance} -
+              'schemaVersion' -
+              'definitions'
+            ) = '{}'::jsonb AND
+            ${table.officialWorkflowProvenance} -> 'schemaVersion' = '1'::jsonb AND
+            jsonb_typeof(
+              ${table.officialWorkflowProvenance} -> 'definitions'
+            ) = 'array' AND
+            jsonb_array_length(
+              ${table.officialWorkflowProvenance} -> 'definitions'
+            ) > 0 AND
+            NOT jsonb_path_exists(
+              ${table.officialWorkflowProvenance},
+              '$.definitions[*] ? (
+                @.type() != "object" ||
+                !exists(@.name) ||
+                @.name.type() != "string" ||
+                !(@.name like_regex "^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$") ||
+                !exists(@.revision) ||
+                @.revision.type() != "string" ||
+                !(@.revision like_regex "^[0-9a-f]{64}$") ||
+                !exists(@.artifact) ||
+                @.artifact.type() != "object" ||
+                exists(
+                  @.keyvalue() ? (
+                    @.key != "name" &&
+                    @.key != "revision" &&
+                    @.key != "artifact"
+                  )
+                ) ||
+                !exists(@.artifact.orgId) ||
+                @.artifact.orgId != "__system__" ||
+                !exists(@.artifact.userId) ||
+                @.artifact.userId != "__org__" ||
+                !exists(@.artifact.storageName) ||
+                @.artifact.storageName.type() != "string" ||
+                !(@.artifact.storageName like_regex "^.{1,255}.?$") ||
+                !exists(@.artifact.storageId) ||
+                @.artifact.storageId.type() != "string" ||
+                !(@.artifact.storageId like_regex "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$") ||
+                !exists(@.artifact.storageVersion) ||
+                @.artifact.storageVersion.type() != "string" ||
+                !(@.artifact.storageVersion like_regex "^[0-9a-f]{64}$") ||
+                exists(
+                  @.artifact.keyvalue() ? (
+                    @.key != "orgId" &&
+                    @.key != "userId" &&
+                    @.key != "storageName" &&
+                    @.key != "storageId" &&
+                    @.key != "storageVersion"
+                  )
+                )
+              )'
+            )
+          )
+        )`,
+      ),
     ];
   },
 );
 
 /**
  * Agent Sessions table
- * Lightweight compose to conversation association for continue operations
- * Sessions always use HEAD compose version at runtime, with no snapshotting.
+ * Lightweight Agent-to-conversation association for continue operations.
  */
 export const agentSessions = pgTable(
   "agent_sessions",
@@ -253,14 +317,6 @@ export const agentSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    agentComposeId: uuid("agent_compose_id")
-      .references(
-        () => {
-          return agentComposes.id;
-        },
-        { onDelete: "cascade" },
-      )
-      .notNull(),
     agentId: uuid("agent_id").references(
       () => {
         return agents.id;
@@ -282,16 +338,8 @@ export const agentSessions = pgTable(
   },
   (table) => {
     return [
-      index("idx_agent_sessions_user_compose").on(
-        table.userId,
-        table.agentComposeId,
-      ),
       index("idx_agent_sessions_user_agent").on(table.userId, table.agentId),
       index("idx_agent_sessions_org").on(table.orgId),
-      check(
-        "agent_sessions_agent_reference_match",
-        sql`${table.agentId} IS NULL OR ${table.agentId} IS NOT DISTINCT FROM ${table.agentComposeId}`,
-      ),
     ];
   },
 );

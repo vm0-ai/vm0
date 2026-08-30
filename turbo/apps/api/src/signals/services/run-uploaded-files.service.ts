@@ -254,7 +254,8 @@ export const recordHostedSiteArtifact$ = command(
  * run is linked to a thread. No-op when `runId` is undefined (ordinary
  * session callers without a run-scoped token).
  *
- * Verbatim port of apps/web/src/lib/zero/uploads/run-uploaded-files.ts.
+ * Verbatim port from the removed `apps/web` app; no upstream copy
+ * remains to keep in sync.
  * Idempotency contract is upsert on (runId, source, externalId).
  */
 export const recordWebUploadedFile$ = command(
@@ -355,9 +356,9 @@ interface RecordTelegramUploadedFileArgs {
  * run is linked to a thread. No-op when `runId` is undefined (sandbox
  * callers without a run-scoped token).
  *
- * Verbatim port of apps/web/src/lib/zero/uploads/run-uploaded-files.ts
- * scoped to the `"telegram"` source. Idempotency contract is upsert on
- * (runId, source, externalId).
+ * Verbatim port from the removed `apps/web` app, scoped to the
+ * `"telegram"` source; no upstream copy remains to keep in sync.
+ * Idempotency contract is upsert on (runId, source, externalId).
  */
 export const recordTelegramUploadedFile$ = command(
   async (

@@ -221,17 +221,19 @@ function makeCodexIdToken(opts: {
 function makeCodexTokenResponse(
   scope: "org" | "personal",
   args: {
+    readonly accessTokenExpiresAt?: number;
     readonly accountId?: string;
+    readonly refreshToken?: string;
     readonly workspaceName?: string;
   } = {},
 ) {
   const accountId = args.accountId ?? `ws_acct_from_id_token_${scope}`;
   return {
     access_token: makeCodexJwt({
-      exp: Math.floor(now() / 1000) + 7200,
+      exp: args.accessTokenExpiresAt ?? Math.floor(now() / 1000) + 7200,
       account_id: accountId,
     }),
-    refresh_token: `rt_${scope}_synthetic_high_entropy`,
+    refresh_token: args.refreshToken ?? `rt_${scope}_synthetic_high_entropy`,
     id_token: makeCodexIdToken({
       accountId,
       planType: "plus",
@@ -294,8 +296,10 @@ interface CodexDeviceAuthProviderRecorder {
 
 export function mockCodexDeviceAuthProvider(
   options: {
+    readonly accessTokenExpiresAt?: number;
     readonly tokenScope?: "org" | "personal";
     readonly accountId?: string;
+    readonly refreshToken?: string;
     readonly workspaceName?: string;
   } = {},
 ): CodexDeviceAuthProviderRecorder {

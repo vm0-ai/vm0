@@ -189,7 +189,7 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
     return providerUnavailable("Redeem service user unavailable");
   }
 
-  const machineSecretKey = optionalEnv("VM0_MACHINE_SECRET_KEY");
+  const machineSecretKey = optionalEnv("OKOU_MACHINE_SECRET_KEY");
   if (!machineSecretKey) {
     return providerUnavailable("Redeem service not configured");
   }

@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { clerk$ } from "./auth.ts";
+import { authRecovery$, clerk$ } from "./auth.ts";
 import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
@@ -14,9 +14,9 @@ import {
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
 import { setupRealtime$ } from "./realtime.ts";
-import { setupBillingRealtime$ } from "./zero-page/billing.ts";
-import { subscribePresentationTemplatesChanged$ } from "./zero-page/presentation-template-library.ts";
-import { subscribeCustomConnectorListChanged$ } from "./zero-page/settings/custom-connectors.ts";
+import { setupBillingRealtime$ } from "./okou-page/billing.ts";
+import { subscribePresentationTemplatesChanged$ } from "./okou-page/presentation-template-library.ts";
+import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custom-connectors.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { selectSharedDatabaseMode$ } from "./shared-database-mode.ts";
 import {
@@ -39,7 +39,9 @@ export const setupAuthenticatedDaemons$ = command(
       get(featureSwitch$)[FeatureSwitchKey.SharedChatDatabase] ?? false;
     set(selectSharedDatabaseMode$, sharedDatabaseEnabled);
     if (sharedDatabaseEnabled) {
-      set(setupSharedDatabaseBridge$, signal);
+      const authRecovery = await get(authRecovery$);
+      signal.throwIfAborted();
+      set(setupSharedDatabaseBridge$, authRecovery, signal);
       await set(heartbeatSharedDatabaseNow$, signal);
       signal.throwIfAborted();
     }

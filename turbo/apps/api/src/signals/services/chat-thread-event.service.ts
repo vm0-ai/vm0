@@ -60,7 +60,7 @@ export async function appendChatThreadEvent(
     readonly userId: string;
     readonly orgId?: string | null;
     readonly chatThreadId: string;
-    readonly agentComposeId: string;
+    readonly agentId: string;
     readonly eventId?: string;
     readonly title?: string | null;
     readonly selectedModel?: string | null;
@@ -77,7 +77,7 @@ export async function appendChatThreadEvent(
     const [compose] = await db
       .select({ orgId: agents.orgId })
       .from(agents)
-      .where(eq(agents.id, args.agentComposeId))
+      .where(eq(agents.id, args.agentId))
       .limit(1);
     orgId = compose?.orgId;
   }
@@ -97,7 +97,7 @@ export async function appendChatThreadEvent(
       seqId,
       chatThreadId: args.chatThreadId,
       kind: args.kind,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       title: args.title ?? null,
       selectedModel: args.selectedModel ?? null,
       serviceTier: args.serviceTier ?? null,
@@ -169,7 +169,7 @@ type ChatThreadEventRow = {
   readonly seqId: number;
   readonly kind: ChatThreadEventKind;
   readonly chatThreadId: string;
-  readonly agentComposeId: string | null;
+  readonly agentId: string | null;
   readonly title: string | null;
   readonly selectedModel: string | null;
   readonly serviceTier: ChatThreadServiceTier | null;
@@ -188,19 +188,19 @@ export function chatThreadServiceTierFromCodex(
 
 function hasCanonicalAgentReference(
   row: ChatThreadEventRow,
-): row is ChatThreadEventRow & { readonly agentComposeId: string } {
-  return row.agentComposeId !== null;
+): row is ChatThreadEventRow & { readonly agentId: string } {
+  return row.agentId !== null;
 }
 
 function toApiChatThreadEvent(
-  row: ChatThreadEventRow & { readonly agentComposeId: string },
+  row: ChatThreadEventRow & { readonly agentId: string },
 ): ChatThreadEvent {
   return {
     id: row.id,
     seqId: row.seqId,
     kind: row.kind,
     chatThreadId: row.chatThreadId,
-    agentId: row.agentComposeId,
+    agentId: row.agentId,
     title: row.title,
     selectedModel: row.selectedModel,
     serviceTier: row.serviceTier,
@@ -241,7 +241,7 @@ export async function getChatThreadEventsSince(
           seqId: pageChatThreadEvent.seqId,
           kind: pageChatThreadEvent.kind,
           chatThreadId: pageChatThreadEvent.chatThreadId,
-          agentComposeId: pageChatThreadEvent.agentId,
+          agentId: pageChatThreadEvent.agentId,
           title: pageChatThreadEvent.title,
           selectedModel: pageChatThreadEvent.selectedModel,
           serviceTier: pageChatThreadEvent.serviceTier,
@@ -289,7 +289,7 @@ export async function getChatThreadEventsSince(
         seqId: chatThreadEvents.seqId,
         kind: chatThreadEvents.kind,
         chatThreadId: chatThreadEvents.chatThreadId,
-        agentComposeId: chatThreadEvents.agentId,
+        agentId: chatThreadEvents.agentId,
         title: chatThreadEvents.title,
         selectedModel: chatThreadEvents.selectedModel,
         serviceTier: chatThreadEvents.serviceTier,

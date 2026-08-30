@@ -4,10 +4,19 @@ import type {
   ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorsBySlugContract,
-  zeroConnectorsMainContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  CONNECTOR_ACCOUNT_LIST_MAX_LIMIT,
+  connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
+  type ConnectorAccountConnection,
+  type ConnectorAccountInspectionResult,
+  type ConnectorAccountSelection,
+  type ConnectorAccountTarget,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorManualGrantContract,
+  connectorsBySlugContract,
+  connectorsMainContract,
+} from "@okouai/api-contracts/contracts/connectors";
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogListResponse,
@@ -21,14 +30,14 @@ import {
   type ConnectorCheckRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorsContract,
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   mcpConnectorListResponseSchema,
   mcpConnectorsContract,
@@ -50,12 +59,89 @@ type ZeroConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
 export type ConnectorCatalogPermissionDetail =
   PublicConnectorCatalogPermissionDetail;
 
+type ConnectorAccountConnectionsResult =
+  | {
+      readonly state: "available";
+      readonly connections: readonly ConnectorAccountConnection[];
+    }
+  | { readonly state: "unavailable" };
+
+export type ConnectorManualGrantAccountMutation = Extract<
+  ConnectorAccountMutationIntent,
+  { intent: "add" | "reconnect" }
+>;
+
+export async function listConnectorAccountConnections(
+  target: ConnectorAccountTarget,
+  search?: string,
+): Promise<ConnectorAccountConnectionsResult> {
+  const config = await getClientConfig();
+  const client = initClient(connectorAccountsContract, {
+    ...config,
+    validateResponse: true,
+  });
+  const connections: ConnectorAccountConnection[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const paging = {
+      limit: CONNECTOR_ACCOUNT_LIST_MAX_LIMIT,
+      ...(cursor ? { cursor } : {}),
+      ...(search ? { search } : {}),
+    };
+    const query =
+      target.kind === "builtin"
+        ? {
+            ...paging,
+            kind: "builtin" as const,
+            connectorSlug: target.connectorSlug,
+          }
+        : {
+            ...paging,
+            kind: "custom" as const,
+            customConnectorId: target.customConnectorId,
+          };
+    const result = await client.connections({ headers: {}, query });
+    if (result.status === 404) {
+      return { state: "unavailable" };
+    }
+    if (result.status !== 200) {
+      handleError(result, "Failed to list connector accounts");
+    }
+    connections.push(...result.body.connections);
+    cursor = result.body.nextCursor;
+  } while (cursor);
+
+  return { state: "available", connections };
+}
+
+export async function inspectConnectorAccounts(
+  selections: readonly ConnectorAccountSelection[],
+): Promise<readonly ConnectorAccountInspectionResult[] | null> {
+  const config = await getClientConfig();
+  const client = initClient(connectorAccountsContract, {
+    ...config,
+    validateResponse: true,
+  });
+  const result = await client.inspect({
+    headers: {},
+    body: { selections: [...selections] },
+  });
+  if (result.status === 200) {
+    return result.body.results;
+  }
+  if (result.status === 404) {
+    return null;
+  }
+  handleError(result, "Failed to inspect connector accounts for this run");
+}
+
 /**
  * List all connectors for the authenticated user (zero proxy)
  */
 export async function listConnectors(): Promise<ZeroConnectorListResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorsMainContract, config);
+  const client = initClient(connectorsMainContract, config);
 
   const result = await client.list({ headers: {} });
 
@@ -148,7 +234,7 @@ export async function getConnector(
   connectorSlug: ConnectorSlug,
 ): Promise<Connector | null> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorsBySlugContract, config);
+  const client = initClient(connectorsBySlugContract, config);
 
   const result = await client.get({
     params: { connectorSlug },
@@ -168,15 +254,16 @@ export async function getConnector(
 export async function connectConnectorManualGrant(
   connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
+  account: ConnectorManualGrantAccountMutation,
   values: Record<string, string>,
 ): Promise<Connector> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorManualGrantContract, config);
+  const client = initClient(connectorManualGrantContract, config);
 
   const result = await client.connect({
     params: { connectorSlug },
     body: {
-      account: { intent: "single-account" },
+      account,
       authMethod,
       values,
     },
@@ -193,7 +280,7 @@ export async function listCustomConnectors(): Promise<
   CustomConnectorResponse[]
 > {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorsContract, config);
+  const client = initClient(customConnectorsContract, config);
 
   const result = await client.list({ headers: {} });
   if (result.status === 200) {
@@ -219,7 +306,7 @@ export async function createCustomConnector(
   body: CreateCustomConnectorBody,
 ): Promise<CustomConnectorResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorsContract, config);
+  const client = initClient(customConnectorsContract, config);
 
   const result = await client.create({ body, headers: {} });
   if (result.status === 201) {
@@ -233,7 +320,7 @@ export async function getCustomConnector(
   id: string,
 ): Promise<CustomConnectorResponse | null> {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorByIdContract, config);
+  const client = initClient(customConnectorByIdContract, config);
 
   const result = await client.get({ params: { id }, headers: {} });
   if (result.status === 200) {
@@ -251,7 +338,7 @@ export async function updateCustomConnector(
   body: UpdateCustomConnectorBody,
 ): Promise<CustomConnectorResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroCustomConnectorByIdContract, config);
+  const client = initClient(customConnectorByIdContract, config);
 
   const result = await client.update({ params: { id }, body, headers: {} });
   if (result.status === 200) {

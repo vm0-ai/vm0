@@ -39,13 +39,18 @@
       "environmentMapping": "Mappatura dell'ambiente",
       "featureFlags": "Flag di funzionalità",
       "firewalls": "Firewall",
+      "modelProvider": "Provider del modello",
+      "modelRoute": "Instradamento del modello",
       "mountPath": "Percorso di montaggio",
       "name": "Nome",
       "networkPolicies": "Politiche di rete",
       "none": "Nessuno",
       "prompt": "Prompt",
       "runId": "ID esecuzione",
+      "runtimeModel": "Modello di runtime",
+      "runtimeProvider": "Provider di runtime",
       "secrets": "Segreti",
+      "selectedModel": "Modello selezionato",
       "session": "Sessione",
       "storageName": "Nome di archiviazione",
       "systemPrompt": "Prompt di sistema",
@@ -118,7 +123,10 @@
         "cacheMiss": "Nessuno spazio di lavoro nella cache corrispondeva alla chiave di riutilizzo.",
         "deviceLimitMismatch": "Esiste una voce del pool inattivo ma lo stato del limitatore di velocità del dispositivo non corrisponde.",
         "diskPressure": "Il riutilizzo dello spazio di lavoro è stato ignorato a causa della pressione sul disco del runner.",
+        "environment": "Ambiente",
         "featureDisabled": "Il riutilizzo del sandbox è disabilitato per questa esecuzione.",
+        "generation": "Generazione",
+        "hostname": "Nome host",
         "invalidMetadata": "I metadati dello spazio di lavoro nella cache non erano validi.",
         "invalidWorkingDir": "Non è stato possibile riutilizzare la directory di lavoro richiesta.",
         "lockBusy": "Un'altra esecuzione stava preparando lo stesso spazio di lavoro.",
@@ -126,21 +134,28 @@
         "noSessionId": "Risultato legacy: il motivo esatto per cui la sandbox non è stata riutilizzata non è disponibile.",
         "notConfigured": "Il riutilizzo dello spazio di lavoro non era configurato per questa esecuzione.",
         "notReused": "Non riutilizzato",
+        "outcomeUnavailableDescription": "Non sono disponibili ulteriori dettagli.",
         "poolMiss": "Nessun sandbox corrispondente trovato nel pool inattivo.",
         "profileMismatch": "La voce del pool inattivo esiste ma il suo profilo non corrisponde.",
         "provisioning": "Provisioning",
         "reused": "Riutilizzato",
         "reusedDescription": "La sandbox è stata riattivata dal pool inattivo.",
+        "runnerId": "ID runner",
         "sandbox": "Sandbox",
         "sandboxPrepareFallback": "È stato trovato uno spazio di lavoro nella cache, ma non è stato possibile utilizzarlo dopo la preparazione della sandbox.",
         "sandboxReusedDescription": "Lo spazio di lavoro è rimasto disponibile nella sandbox riutilizzata.",
         "startup": "Avvio",
         "startupCold": "Avvio a freddo",
+        "startupColdDescription": "Sono stati preparati una nuova sandbox e un nuovo spazio di lavoro.",
         "startupSandbox": "Riutilizzo della sandbox",
+        "startupSandboxDescription": "La sandbox e il relativo spazio di lavoro sono stati riutilizzati.",
         "startupUnknown": "Sconosciuto",
+        "startupUnknownDescription": "I dettagli sul riutilizzo all'avvio non sono disponibili.",
         "startupWorkspace": "Riutilizzo dello spazio di lavoro",
+        "startupWorkspaceDescription": "Una nuova sandbox ha ripristinato uno spazio di lavoro dalla cache.",
         "unavailable": "Non disponibile",
         "unparkFailed": "Impossibile riattivare la sandbox; ne è stata predisposta una nuova.",
+        "version": "Versione",
         "workspace": "Spazio di lavoro",
         "workspaceNoReuseKey": "Non era disponibile alcuna chiave di riutilizzo dello spazio di lavoro.",
         "workspaceReusedDescription": "Lo spazio di lavoro è stato ripristinato dalla cache del runner."
@@ -440,7 +455,7 @@
       "ariaLabel": "Barra laterale",
       "chat": "Chat",
       "collapse": "Comprimi la barra laterale",
-      "expand": "Espandi la barra laterale",
+      "hideChatList": "Nascondi elenco chat",
       "manage": "Gestisci",
       "mobile": {
         "invite": "Invita",
@@ -463,7 +478,8 @@
         "workflows": "Flussi di lavoro",
         "works": "Integrazioni"
       },
-      "searchConversations": "Cerca conversazioni",
+      "searchWorkspace": "Cerca nell'area di lavoro",
+      "showChatList": "Mostra elenco chat",
       "workspaceSwitcher": {
         "create": "Crea area di lavoro",
         "creating": "Creazione…",
@@ -497,6 +513,26 @@
       "shareArtifact": "Condividi artefatto",
       "zoomIn": "Ingrandisci",
       "zoomOut": "Rimpicciolisci"
+    },
+    "annotation": {
+      "attach": "Allega segni",
+      "draftOnly": "I segni restano nella bozza — puoi modificarli fino all'invio",
+      "inkLabel": "Colore {{color}}",
+      "notePlaceholder": "Scrivi cosa dovrebbe cambiare qui",
+      "open": "Annota",
+      "redo": "Ripeti",
+      "removeMark": "Rimuovi segno",
+      "subtitle_one": "{{count}} segno",
+      "subtitle_many": "{{count}} segni",
+      "subtitle_other": "{{count}} segni",
+      "textPlaceholder": "Scrivi l'etichetta",
+      "tools": {
+        "arrow": "Freccia",
+        "box": "Rettangolo",
+        "pen": "Disegna",
+        "text": "Testo"
+      },
+      "undo": "Annulla"
     },
     "attachments": {
       "cancelUpload": "Annulla caricamento {{filename}}",
@@ -633,7 +669,7 @@
       "illustration": "Illustrazione",
       "illustrationPreview": "{{title}} anteprima dell'illustrazione",
       "importDeck": "Importa la tua presentazione",
-      "importDeckHint": "(.pptx, .pdf)",
+      "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} diapositiva",
       "importedSlides_many": "{{count}} diapositive",
       "importedSlides_other": "{{count}} diapositive",
@@ -690,6 +726,12 @@
       "tryDifferentSearch": "Prova una ricerca diversa.",
       "use": "Utilizzare",
       "useThisTemplate": "Usa questo modello",
+      "visibility": {
+        "change": "Modifica",
+        "changeLabel": "Modifica la visibilità del modello",
+        "privateState": "Solo tu puoi vederlo e usarlo",
+        "workspaceState": "Chiunque in quest'area di lavoro può usarlo"
+      },
       "website": "Sito web",
       "websitePreview": "{{title}} anteprima del modello di sito web",
       "workflow": "Flusso di lavoro",
@@ -1028,8 +1070,152 @@
       "signIn": "Accedi",
       "signUp": "Iscriviti"
     },
+    "homeLink": "Vai alla home di {{brandName}}",
     "loading": "Caricamento dell'autenticazione",
-    "toggleTheme": "Cambia tema"
+    "theme": {
+      "darkEnabled": "Tema scuro attivato",
+      "lightEnabled": "Tema chiaro attivato"
+    },
+    "toggleTheme": "Cambia tema",
+    "v2": {
+      "continuation": {
+        "activationErrorDescription": "Non è stato possibile completare l'accesso. Ricomincia e riprova.",
+        "activationErrorTitle": "Impossibile completare l'accesso",
+        "chooseOrganizationDescription": "Scegli un'organizzazione per continuare su {{brandName}}.",
+        "chooseOrganizationTitle": "Scegli un'organizzazione",
+        "completeDescription": "Ti stiamo portando su {{brandName}}.",
+        "completeTitle": "Accesso completato",
+        "loadingDescription": "Stiamo verificando il prossimo passaggio richiesto dal tuo account.",
+        "loadingTitle": "Completamento dell'accesso",
+        "noOrganizationsDescription": "Questo account non dispone di organizzazioni. Chiedi l'accesso a un amministratore dell'organizzazione, quindi ricomincia.",
+        "noOrganizationsTitle": "Nessuna organizzazione disponibile",
+        "recoveryAction": "Ricomincia",
+        "secondFactorDescription": "Questo accesso richiede un ulteriore passaggio di verifica non supportato da questa pagina. Ricomincia per provare un altro metodo di accesso.",
+        "secondFactorTitle": "È richiesta un'ulteriore verifica",
+        "selectOrganization": "Continua con {{organizationName}}",
+        "signedInAs": "Accesso eseguito come {{identifier}}",
+        "unsupportedDescription": "Il tuo account ha restituito un passaggio di autenticazione non supportato da questa pagina. Ricomincia per provare un altro metodo di accesso.",
+        "unsupportedTitle": "Passaggio di accesso non disponibile"
+      },
+      "oauthProviders": {
+        "apple": "Apple",
+        "google": "Google"
+      },
+      "signIn": {
+        "addAccount": "Aggiungi account",
+        "appleMethod": "Continua con Apple",
+        "back": "Indietro",
+        "chooseAccountSubtitle": "Seleziona l'account con cui desideri continuare.",
+        "chooseAccountTitle": "Scegli un account",
+        "chooseMethodSubtitle": "Problemi di accesso? Puoi usare uno di questi metodi per accedere.",
+        "chooseMethodTitle": "Usa un altro metodo",
+        "clientTrustNotice": "Stai effettuando l'accesso da un nuovo dispositivo. Richiediamo la verifica per mantenere il tuo account sicuro.",
+        "codeExpired": "Questo codice di verifica è scaduto. Richiedine uno nuovo.",
+        "codeLabel": "Codice di verifica",
+        "completeSubtitle": "Verrai presto reindirizzato",
+        "completeTitle": "Accesso in corso...",
+        "confirmPasswordLabel": "Conferma password",
+        "continue": "Continua",
+        "editIdentifier": "Modifica indirizzo email o nome utente",
+        "emailAddressLabel": "Indirizzo email",
+        "emailAddressPlaceholder": "Inserisci il tuo indirizzo email",
+        "emailCodeMethod": "Invia codice a {{identifier}}",
+        "emailCodeSubtitle": "per continuare su {{brandName}}",
+        "emailCodeTitle": "Controlla la tua email",
+        "emailSupport": "Invia un’email all’assistenza",
+        "forgotPassword": "Password dimenticata?",
+        "getHelp": "Ricevi assistenza",
+        "googleMethod": "Continua con Google",
+        "helpDescription": "Se hai problemi ad accedere al tuo account, inviaci un’email e ti aiuteremo a ripristinare l’accesso il prima possibile.",
+        "helpTitle": "Ricevi assistenza",
+        "hidePassword": "Nascondi password",
+        "identifierLabel": "Indirizzo email o nome utente",
+        "identifierPlaceholder": "Inserisci il tuo indirizzo email o nome utente",
+        "lastUsed": "Ultimo utilizzo",
+        "methodsHelpPrompt": "Non hai nessuna di queste opzioni?",
+        "newPasswordLabel": "Nuova password",
+        "newPasswordSubtitle": "Per motivi di sicurezza, è richiesto di resettare la tua password.",
+        "newPasswordTitle": "Imposta nuova password",
+        "noAccount": "Non hai un account?",
+        "noMethodsMessage": "Impossibile procedere con l'accesso. Non ci sono strumenti di autenticazione disponibili.",
+        "noMethodsTitle": "Impossibile accedere",
+        "passkeyCancelled": "Passkey verification was cancelled or timed out.",
+        "passkeyMethod": "Usa una passkey",
+        "passkeyUnavailable": "Passkeys are not supported on this device.",
+        "passwordLabel": "Password",
+        "passwordMethod": "Accedi con la tua password",
+        "passwordMismatch": "Le password non coincidono.",
+        "passwordPlaceholder": "Inserisci la password",
+        "passwordResetMethod": "Resetta la tua password",
+        "passwordSubtitle": "per continuare su {{brandName}}",
+        "passwordTitle": "Inserisci la tua password",
+        "recoveryMethodsDivider": "Oppure accedi con un altro metodo",
+        "recoveryTitle": "Password dimenticata?",
+        "resendCode": "Rinvia codice",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "resetPassword": "Resetta la password",
+        "resetPasswordCodeSubtitle": "Per prima cosa, inserisci il codice inviato al tuo ID email",
+        "resetPasswordCodeTitle": "Resetta la password",
+        "separator": "o",
+        "showPassword": "Mostra password",
+        "signOutOfOtherSessions": "Esci da tutti gli altri dispositivi",
+        "signUp": "Registrati",
+        "startSubtitle": "per continuare su {{brandName}}",
+        "title": "Accedi a {{brandName}}",
+        "unknownError": "Non è stato possibile completare questa azione. Riprova più tardi o contatta il supporto se il problema persiste.",
+        "useAnotherMethod": "Utilizzo un altro metodo",
+        "usernameLabel": "Nome utente",
+        "usernamePlaceholder": "Inserisci il tuo nome utente",
+        "verify": "Verifica"
+      },
+      "signUp": {
+        "alreadyHaveAccount": "Hai già un account?",
+        "appleMethod": "Continua con Apple",
+        "back": "Indietro",
+        "captchaError": "Registrazione non riuscita a causa della convalida del bot non riuscita. Per favore, ricarica la pagina e riprova o contatta il supporto per ulteriore assistenza.",
+        "captchaExpired": "La verifica anti-bot è scaduta. Riprova.",
+        "captchaLoading": "Caricamento…",
+        "captchaSubtitle": "Attendi mentre verifichiamo la tua richiesta.",
+        "captchaTitle": "Stiamo verificando la tua richiesta",
+        "codeExpired": "Questo codice di verifica è scaduto. Richiedine uno nuovo.",
+        "codeLabel": "Codice di verifica",
+        "completeSubtitle": "Registrando...",
+        "completeTitle": "Registrato con successo",
+        "continue": "Continua",
+        "description": "per continuare su {{brandName}}",
+        "editEmailAddress": "Modifica indirizzo email",
+        "emailAddressLabel": "Indirizzo email",
+        "emailAddressPlaceholder": "Inserisci il tuo indirizzo email",
+        "emailCodeSubtitle": "per continuare su {{brandName}}",
+        "emailCodeTitle": "Verifica la tua email",
+        "firstNameLabel": "Nome",
+        "firstNamePlaceholder": "Inserisci il tuo nome",
+        "googleMethod": "Continua con Google",
+        "hidePassword": "Nascondi password",
+        "lastNameLabel": "Cognome",
+        "lastNamePlaceholder": "Inserisci il tuo cognome",
+        "legalPrivacyOnly": "Accetto la <privacy>Politica sulla Privacy</privacy>",
+        "legalRequired": "Per completare la registrazione, accetta i termini e la privacy policy.",
+        "legalTermsAndPrivacy": "Accetto i <terms>Termini di Servizio</terms> e la <privacy>Politica sulla Privacy</privacy>",
+        "legalTermsOnly": "Accetto i <terms>Termini di Servizio</terms>",
+        "optional": "Opzionale",
+        "passwordInvalid": "La tua password non è abbastanza forte.",
+        "passwordLabel": "Password",
+        "passwordPlaceholder": "Crea una password",
+        "resendCode": "Rinvia codice",
+        "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
+        "restart": "Utilizzo un altro metodo",
+        "retry": "Riprova",
+        "separator": "o",
+        "showPassword": "Mostra password",
+        "signIn": "Accedi",
+        "title": "Crea il tuo account",
+        "unknownError": "Non è stato possibile completare questa azione. Riprova più tardi o contatta il supporto se il problema persiste.",
+        "unknownMessage": "L'accesso è limitato per il momento. Ti invitiamo a contattare il supporto per ulteriori informazioni.",
+        "unknownTitle": "Accesso limitato",
+        "verify": "Verifica"
+      }
+    }
   },
   "authorization": {
     "browser": {
@@ -1108,7 +1294,6 @@
         "updatedTitle": "Autorizzazioni aggiornate"
       },
       "saving": "Salvataggio...",
-      "unknownEndpoints": "Endpoint sconosciuti",
       "userFallback": "lì",
       "wouldLike": "Mi piacerebbe"
     }
@@ -1539,7 +1724,6 @@
         "inviteMember": "Invita umani 🤝",
         "otherChannels": "Telegram e telefono"
       },
-      "invitePeople": "Invita persone",
       "taglines": {
         "anonymous": {
           "buildSomething": "Pronto a costruire qualcosa?",
@@ -1577,6 +1761,10 @@
       "loadingFile": "Caricamento in corso {{filename}}",
       "previewFile": "Anteprima {{filename}}",
       "title": "Allegati",
+      "unavailable": "{{filename}} non è più disponibile. Caricalo di nuovo per inviarlo.",
+      "unavailableCount_one": "{{count}} allegato non è più disponibile. Caricalo di nuovo per inviarlo.",
+      "unavailableCount_many": "{{count}} allegati non sono più disponibili. Caricali di nuovo per inviarli.",
+      "unavailableCount_other": "{{count}} allegati non sono più disponibili. Caricali di nuovo per inviarli.",
       "uploadFailed": "Impossibile caricare {{filename}}",
       "uploadFailedRetry": "Impossibile caricare {{filename}}. Riprova.",
       "uploadsFailed": "Impossibile caricare alcuni allegati. Riprova."
@@ -1681,6 +1869,38 @@
       "weeklyAt": "Ogni settimana alle {{time}}",
       "weeklyOnAt": "Ogni settimana il {{days}} alle {{time}}"
     },
+    "banking": {
+      "accountFallback": "Conto bancario",
+      "actionFailed": "Operazione bancaria non riuscita",
+      "active_one": "Accesso attivo per {{count}} conto",
+      "active_many": "Accesso attivo per {{count}} conti",
+      "active_other": "Accesso attivo per {{count}} conti",
+      "automationOff": "L'accesso in sola lettura non è disponibile per le esecuzioni di automazione.",
+      "cancel": "Annulla",
+      "change": "Modifica",
+      "connect": "Collega una banca",
+      "continue": "Continua",
+      "duration": "Durata dell'accesso",
+      "expiresAt": "Scade il {{time}}",
+      "grant": "Concedi accesso",
+      "institutionFallback": "Istituto finanziario",
+      "loadFailed": "Impossibile caricare l'accesso bancario",
+      "noAccounts": "Non sono disponibili conti attivi. Ricollega o ripara prima l'istituto.",
+      "oneDay": "24 ore",
+      "oneHour": "1 ora",
+      "popupBlocked": "Consenti i popup per Zero e riprova.",
+      "readOnly": "Conti, saldi e transazioni · sola lettura",
+      "repair": "Ripara",
+      "repairRequired": "{{institution}} deve essere riparato",
+      "retry": "Riprova",
+      "revoke": "Revoca",
+      "revokeConfirm": "Revocare l'accesso bancario di questo Agente?",
+      "selectAccounts": "Seleziona conti",
+      "sevenDays": "7 giorni",
+      "thirtyDays": "30 giorni",
+      "title": "Richiesta di accesso bancario",
+      "waiting": "In attesa di Mastercard Data Connect. Completa la procedura lì, quindi torna alla Chat."
+    },
     "billing": {
       "addCreditsToContinue": "Aggiungi crediti per continuare a chattare con {{assistantName}}.",
       "askAdminCredits": "Chiedi a un amministratore dell'area di lavoro di aggiungere crediti in modo da poter continuare a chattare con {{assistantName}}.",
@@ -1705,18 +1925,17 @@
       "agentSuggestions": "Agenti",
       "configureModel": "Configura modello",
       "createWorkflow": "Crea flusso di lavoro",
+      "imageModelForThisChat": "Modello di immagini per questa chat",
       "message": "Messaggio",
+      "modelForThisChat": "Modello per questa chat",
       "placeholder": "Chiedimi di automatizzare i flussi di lavoro, gestire le attività...",
       "selectedModelUnavailable": "Il modello selezionato non è disponibile. Configuralo prima dell'invio.",
       "selectedModelUnavailableToast": "Il modello selezionato non è disponibile",
       "selectModel": "Seleziona modello",
-      "setAsDefault": "Imposta come predefinito",
-      "temporaryFastModeDisabledNotice": "La modalità Fast è temporaneamente disattivata per questa esecuzione",
-      "temporaryFastModeEnabledNotice": "La modalità Fast è temporaneamente attivata per questa esecuzione",
-      "temporaryImageModelNotice": "Passaggio temporaneo a {{model}} per le immagini",
-      "temporaryModelNotice": "Passaggio temporaneo a {{model}}",
-      "temporaryVideoModelNotice": "Passaggio temporaneo a {{model}} per i video",
+      "temporarilySwitchTo": "Passa temporaneamente a",
       "threadSuggestions": "Thread di chat",
+      "useForFutureChats": "Usa questo modello per le chat future",
+      "videoModelForThisChat": "Modello video per questa chat",
       "visualAttachmentsUnsupported": "{{modelName}} non supporta immagini o video. Passa a un modello con capacità visive per allegarli.",
       "workflows": {
         "empty": "Nessun flusso di lavoro corrispondente",
@@ -1746,6 +1965,7 @@
       "yourComputer": "Il tuo computer"
     },
     "connectors": {
+      "accountForThread": "Account per questo thread",
       "add": "Aggiungi {{connectorName}}",
       "addConnectors": "Aggiungi connettori",
       "authorizationFailed": "{{connectorName}} connesso ma non è stato possibile autorizzarlo per {{agentName}}",
@@ -1753,11 +1973,17 @@
       "available_one": "Connettori disponibili per la connessione ({{count}})",
       "available_many": "Connettori disponibili per la connessione ({{count}})",
       "available_other": "Connettori disponibili per la connessione ({{count}})",
+      "back": "Indietro",
       "configurePermissions": "Configura le autorizzazioni {{connectorName}}",
       "customAuthorizeDescription": "Esamina, connetti e autorizza questo connettore personalizzato per l'agente.",
+      "defaultAccountFor": "{{connector}} · Account predefinito in uso: {{account}}",
+      "fallsBackTo": "Passa a {{account}} come alternativa",
       "find": "Trova connettori...",
+      "noUsableAccount": "Nessun account utilizzabile",
       "remove": "Rimuovi {{connectorName}}",
-      "title": "Connettori"
+      "selectedAccountFor": "{{connector}} · Account selezionato: {{account}}",
+      "title": "Connettori",
+      "useDefault": "Usa predefinito"
     },
     "documentTitle": "Chat",
     "errors": {
@@ -1805,12 +2031,102 @@
       "agents": "Agenti",
       "back": "Indietro",
       "content": "Contenuto",
-      "description": "Inoltra il contenuto selezionato a un agente o a una chat.",
+      "description": "Invia il contenuto selezionato a un agente o a una chat per continuare a lavorarci.",
       "noResults": "Nessun agente o chat trovato",
       "search": "Cerca agenti e chat...",
       "sent": "Inoltrato correttamente",
       "threads": "Chat",
       "title": "Inoltra a"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "Scegli un avatar",
+        "help": "Scegli un presentatore o continua senza avatar",
+        "none": "Nessun avatar"
+      },
+      "cardDescription": "Trasforma un file o una registrazione dello schermo in un video completo",
+      "description": "Aggiungi una fonte, scegli facoltativamente avatar e voce, quindi crea il video in una chat.",
+      "errors": {
+        "recordingEmpty": "La registrazione è vuota. Riprova.",
+        "recordingFailed": "Impossibile avviare la registrazione dello schermo. Riprova in una versione recente di Chrome.",
+        "recordingPermission": "Non è stato condiviso nulla. Scegli una scheda, una finestra o uno schermo quando sei pronto.",
+        "recordingShareEnded": "La condivisione dello schermo è terminata prima dell'inizio della registrazione.",
+        "recordingUnsupported": "Questo browser non supporta la registrazione dello schermo.",
+        "sendFailed": "Impossibile creare la chat. La fonte è ancora salvata in locale ed è stata scaricata come backup.",
+        "uploadFailed": "Impossibile caricare la fonte. È ancora salvata in locale ed è stata scaricata come backup."
+      },
+      "footer": {
+        "back": "Indietro",
+        "createInChat": "Crea nella chat",
+        "download": "Scarica fonte",
+        "next": "Avanti",
+        "startRecording": "Scegli lo schermo e avvia",
+        "stopRecording": "Interrompi registrazione"
+      },
+      "recording": {
+        "chooseSurface": "Scegli una scheda, una finestra o uno schermo",
+        "countdown": "La registrazione inizia dopo il conto alla rovescia",
+        "description": "Chrome chiederà cosa condividere. La registrazione inizia solo dopo il conto alla rovescia di tre secondi.",
+        "heading": "Registra lo schermo",
+        "localNote": "Puoi interrompere dalla barra di condivisione di Chrome o tornare qui. La registrazione resta in locale finché non viene creata la chat.",
+        "microphone": "Microfono",
+        "microphoneHelp": "Aggiungi una narrazione durante la dimostrazione",
+        "recordingLocally": "Registrazione locale in corso",
+        "systemAudio": "Audio di sistema",
+        "systemAudioHelp": "Le fonti disponibili dipendono da Chrome e dal sistema"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Controlla il video introduttivo",
+        "help": "Conferma le scelte che Zero riceverà nella nuova chat",
+        "instructions": "Istruzioni di montaggio",
+        "source": "Fonte",
+        "voice": "Voce"
+      },
+      "source": {
+        "chatDescription": "Apri subito una chat e sviluppa il video con Zero",
+        "chatDetail": "Aggiungi fonte, avatar o voce più tardi nella chat",
+        "chatTitle": "Inizia nella chat",
+        "documentDescription": "Trasforma i contenuti in un video introduttivo narrato",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Carica slide o documento",
+        "dropDescription": "Slide, documenti o registrazioni",
+        "dropTitle": "Rilascia qui una fonte",
+        "heading": "Come vuoi iniziare?",
+        "help": "Aggiungi materiale che hai già, registra lo schermo o descrivi il video con parole tue",
+        "recordDescription": "Scegli una scheda, una finestra o l'intero schermo",
+        "recordDetail": "Inizia dopo un conto alla rovescia di tre secondi",
+        "recordTitle": "Registra lo schermo",
+        "videoDescription": "Lascia che l'IA migliori ritmo, inquadratura e narrazione",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Carica una registrazione"
+      },
+      "sourceReview": {
+        "format": "Formato",
+        "heading": "La fonte è pronta",
+        "help": "Controlla il file prima di continuare",
+        "inBrowser": "In questo browser",
+        "inTab": "Finché non chiudi questa scheda",
+        "replace": "Sostituisci fonte",
+        "saved": "Salvata",
+        "source": "Fonte"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Passaggi del video introduttivo",
+        "review": "Controllo",
+        "source": "Fonte",
+        "voice": "Voce"
+      },
+      "title": "Crea un video introduttivo",
+      "voice": {
+        "heading": "Scegli una voce",
+        "help": "Ascolta un campione prima di continuare",
+        "none": "Nessuna voce fuori campo",
+        "noneDescription": "Crea un video guidato dai sottotitoli senza narrazione",
+        "original": "Audio originale",
+        "originalDescription": "Mantieni l'audio del video o della registrazione caricati"
+      }
     },
     "mail": {
       "bcc": "bcc",
@@ -1883,6 +2199,7 @@
       "expiresInHours_many": "Scade tra {{count}} ore",
       "expiresInHours_other": "Scade tra {{count}} ore",
       "loadFailed": "Impossibile caricare lo stato dell'autorizzazione",
+      "otherEndpoints": "altri endpoint",
       "unknown": "Autorizzazione sconosciuta",
       "updated": "Autorizzazioni aggiornate",
       "updateFailed": "Impossibile aggiornare le autorizzazioni"
@@ -1911,6 +2228,7 @@
       "message_one": "{{count}} messaggio",
       "message_many": "{{count}} messaggi",
       "message_other": "{{count}} messaggi",
+      "morningBrief": "Riepilogo mattutino",
       "openGoalDetails": "Apri i dettagli dell'obiettivo",
       "pendingAutomationEvent": "Evento di automazione in sospeso",
       "queuedMessage": "Messaggio in coda",
@@ -2165,6 +2483,47 @@
       "title": "Gestisci l'accesso a {{connector}}",
       "unnamedAgent": "Senza nome"
     },
+    "accounts": {
+      "accountName": "Nome account",
+      "accountsUnavailable": "Gli account non sono disponibili per questo connettore.",
+      "actions": "Azioni account",
+      "addAccount": "Aggiungi account",
+      "connected": "Connesso",
+      "default": "Predefinito",
+      "deleteAccount": "Elimina account",
+      "deleteDescription": "Le conversazioni che usano questo account torneranno all’ereditarietà predefinita.",
+      "deleteDescriptionWithCount": "{{value}} conversazioni torneranno all’ereditarietà predefinita.",
+      "deleteDescriptionWithCount_one": "",
+      "deleteDescriptionWithCount_many": "",
+      "deleteDescriptionWithCount_other": "",
+      "deleteTitle": "Eliminare {{account}}?",
+      "fallbackName": "Account #{{id}}",
+      "find": "Cerca account",
+      "loading": "Caricamento account…",
+      "loadingMore": "Caricamento…",
+      "loadMore": "Carica altro",
+      "makeDefault": "Imposta come predefinito",
+      "managerTitle": "Gestisci gli account di {{connector}}",
+      "namePromptDescription": "Puoi saltare questo passaggio e assegnare un nome all'account in seguito.",
+      "namePromptTitle": "Assegna un nome al tuo account {{connector}}",
+      "noAccounts": "Nessun account",
+      "noAccountsFound": "Nessun account trovato",
+      "reconnectRequired": "Riconnessione necessaria",
+      "rename": "Rinomina",
+      "skipName": "Salta",
+      "summaryMany": "{{value}} account",
+      "summaryMany_one": "",
+      "summaryMany_many": "",
+      "summaryMany_other": "",
+      "summaryOne": "{{value}} account",
+      "summaryOne_one": "",
+      "summaryOne_many": "",
+      "summaryOne_other": "",
+      "summaryWithAttention": "{{value}}/{{total}} richiedono attenzione",
+      "summaryWithAttention_one": "",
+      "summaryWithAttention_many": "",
+      "summaryWithAttention_other": ""
+    },
     "actions": {
       "apply": "Applicare",
       "authorize": "Autorizza",
@@ -2227,6 +2586,8 @@
       "access": {
         "add": "Aggiungi accesso",
         "manage": "Gestisci l'accesso {{connector}}",
+        "summaryMany": "{{value}} agenti",
+        "unavailable": "Accesso non disponibile",
         "usedBy": "Utilizzato da "
       },
       "categories": {
@@ -2565,8 +2926,8 @@
         "connectTitle": "Connetti a Slack",
         "invalidDescription": "Questa pagina deve essere aperta da un collegamento di connessione Slack.",
         "open": "Apri Slack",
-        "successDescription": "Menziona @Zero in qualsiasi canale o invia un messaggio diretto per iniziare a chattare.",
-        "successDescriptionWorkspace": "Sei connesso a {{workspace}}. Menziona @Zero in qualsiasi canale o invia un messaggio diretto per iniziare a chattare.",
+        "successDescription": "Menziona il bot installato in qualsiasi canale o invia un messaggio diretto per iniziare a chattare.",
+        "successDescriptionWorkspace": "Sei connesso a {{workspace}}. Menziona il bot installato in qualsiasi canale o invia un messaggio diretto per iniziare a chattare.",
         "successTitle": "Connesso a Slack!"
       },
       "teams": {
@@ -2576,7 +2937,7 @@
         "invalidDescription": "Questa pagina deve essere aperta da un collegamento di connessione di Microsoft Teams.",
         "open": "Apri Microsoft Teams",
         "providerName": "Microsoft Teams",
-        "successDescription": "Sei connesso a {{team}}. Menziona @Zero in Teams per iniziare a chattare.",
+        "successDescription": "Sei connesso a {{team}}. Menziona @{{botName}} in Teams per iniziare a chattare.",
         "successTitle": "Connesso a Microsoft Teams"
       },
       "telegram": {
@@ -2720,12 +3081,12 @@
         "copied": "{{label}} copiato",
         "copy": "Copia",
         "create": {
-          "descriptionAfter": ", crea un'app aziendale personalizzata denominata {{brandName}}, carica l'icona {{brandName}}, quindi aggiungi la funzionalità Bot.",
+          "descriptionAfter": ", crea un'app aziendale personalizzata con il nome e l'icona che preferisci, quindi aggiungi la funzionalità Bot.",
           "descriptionBefore": "Nel ",
-          "downloadIcon": "Scarica l'icona {{brandName}}",
-          "iconAlt": "{{brandName}} icona dell'app",
+          "downloadIcon": "Scarica l'icona {{brandName}} facoltativa",
+          "iconAlt": "Icona facoltativa dell'app {{brandName}}",
           "iconHint": "oppure utilizza l'icona che preferisci.",
-          "iconTitle": "{{brandName}} icona dell'app",
+          "iconTitle": "Icona facoltativa dell'app {{brandName}}",
           "imageAlt": "Feishu modulo di creazione dell'app con il nome dell'app, l'icona e il pulsante Crea evidenziati",
           "title": "Creare un'app aziendale personalizzata"
         },
@@ -2865,7 +3226,7 @@
           "testReceived": "Strapi webhook di prova ricevuto"
         },
         "webhookUrl": "Webhook URL",
-        "whereZeroWorks": "Dove lavora {{assistantName}}"
+        "whereAssistantWorks": "Dove lavora {{assistantName}}"
       },
       "telegram": {
         "addBot": "Aggiungi bot",
@@ -2904,7 +3265,7 @@
         "moreOptions": "Altre opzioni per {{bot}}",
         "newBotToken": "Nuovo token bot",
         "notConnected": "Non connesso",
-        "officialBot": "{{assistantName}} bot ufficiale",
+        "officialBot": "Bot ufficiale di Telegram",
         "officialDescription": "Bot ufficiale fornito da {{brandName}}.",
         "officialMissing": "Manca la configurazione ufficiale del bot.",
         "pageDescription": "Gestisci il routing dei bot per questa area di lavoro",
@@ -3020,15 +3381,6 @@
       "doneTitle": "Iscrizione annullata",
       "errorBody": "Questo collegamento per annullare l'iscrizione non è valido o è scaduto. Puoi gestire le notifiche email nelle Impostazioni.",
       "errorTitle": "Qualcosa è andato storto"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "Non riceverai più l'e-mail quotidiana del Morning Brief. Puoi riattivarla in qualsiasi momento nelle Impostazioni.",
-      "doneTitle": "Morning Brief è stato disattivato",
-      "errorBody": "Il link per annullare l'iscrizione non è valido o è incompleto. Apri l'ultima email di Morning Brief e utilizza il collegamento per annullare l'iscrizione oppure gestisci la preferenza in Impostazioni.",
-      "errorTitle": "Questo collegamento non è valido",
-      "loadingLabel": "Caricamento dello stato di annullamento dell'iscrizione",
-      "managePreferences": "Gestisci le preferenze"
     },
     "pwaInstall": {
       "banner": "Installa {{assistantName}} per un'esperienza migliore",
@@ -3161,9 +3513,17 @@
           "description": "Genera diapositive e relatore",
           "title": "Generare una presentazione"
         },
+        "slack": {
+          "description": "Chatta con il tuo collega IA nel tuo spazio di lavoro",
+          "title": "Chatta con Okou su Slack"
+        },
         "video": {
           "description": "Trasforma le tue idee in video",
           "title": "Produzione video"
+        },
+        "website": {
+          "description": "Crea e pubblica una pagina condivisibile",
+          "title": "Crea un sito web"
         },
         "workflow": {
           "description": "Esplora da modelli preimpostati",
@@ -3305,7 +3665,7 @@
       "whatItDoes": "Cosa fa"
     },
     "workflowRun": {
-      "continueWithZero": "Continua con {{assistantName}}",
+      "continueWithAssistant": "Continua con {{assistantName}}",
       "createWorkflow": "Crea flusso di lavoro",
       "customNoteLabel": "Descrivi il tuo flusso di lavoro",
       "customNotePlaceholder": "Descrivi cosa vuoi che {{assistantName}} costruisca",
@@ -4476,7 +4836,6 @@
         "usage": {
           "balanceDescription": "Quanto resta da spendere al tuo team.",
           "balanceTitle": "Saldo del credito",
-          "balanceUsageDescription": "Il saldo dei crediti e l'utilizzo del tuo team.",
           "usageDescription": "Il tuo utilizzo del credito attraverso chat, automazioni e canali.",
           "usageTitle": "Utilizzo del credito"
         }
@@ -4490,7 +4849,7 @@
         "start": "Esporta i miei dati",
         "starting": "Avvio dell'esportazione"
       },
-      "backToZero": "Torna a {{assistantName}}",
+      "backToAssistant": "Torna a {{assistantName}}",
       "description": "Scarica i file e i record di testo che hai creato in {{assistantName}}.",
       "documentTitle": "Esporta dati",
       "duration": {
@@ -4778,6 +5137,20 @@
         "sectionTitle": "Conto e sicurezza"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Applica una palette luminosa e delicata a ogni livello dell'interfaccia.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema colore"
+        },
         "description": "Scegli l'aspetto dell'interfaccia.",
         "sectionTitle": "Aspetto",
         "theme": {
@@ -4789,6 +5162,30 @@
         }
       },
       "debug": {
+        "builtInModelCooldown": {
+          "cancelAction": "Annulla cooldown",
+          "cancelDescription": "L'annullamento di questo cooldown globale rende immediatamente disponibile la route per tutti i workspace in cui è attivo il fallback dei modelli integrati.",
+          "cancelling": "Annullamento...",
+          "cancelTitle": "Annullare il cooldown globale?",
+          "cancelWarning": "Un errore successivo idoneo può riportare questa route in cooldown.",
+          "description": "Esamina le route dei modelli integrati temporaneamente escluse dalla selezione di fallback.",
+          "disabled": "disattivato",
+          "disabledExplanation": "Il fallback dei modelli integrati è disattivato per questo workspace, quindi questi cooldown globali vengono attualmente ignorati qui.",
+          "empty": "Al momento nessuna route di modello integrato è in cooldown globale.",
+          "enabled": "attivato",
+          "globalActive": "cooldown globali attivi",
+          "globalExplanation": "I cooldown sono uno stato operativo globale. Possono influire su questo workspace solo quando il fallback dei modelli integrati è attivato qui.",
+          "keepCooldown": "Mantieni cooldown",
+          "loading": "Caricamento della diagnostica dei cooldown dei modelli integrati...",
+          "providerType": "Tipo di provider",
+          "refresh": "Aggiorna",
+          "selectedModel": "Modello selezionato",
+          "title": "Fallback dei modelli integrati",
+          "unavailable": "La diagnostica dei cooldown dei modelli integrati non è disponibile.",
+          "unavailableUntil": "Non disponibile fino a",
+          "upstreamModel": "Modello upstream",
+          "workspaceFallback": "fallback del workspace"
+        },
         "capture": {
           "description": "Cattura i nomi delle intestazioni HTTP, i valori delle intestazioni sicure selezionate e i corpi nei log di rete per il debug.",
           "disabled": "Disabilitato",
@@ -4815,24 +5212,6 @@
           "title": "Diagnostica della connessione in tempo reale",
           "unavailable": "non disponibile"
         },
-        "managedModelCooldown": {
-          "description": "Esamina le route dei modelli gestiti temporaneamente escluse dalla selezione di fallback.",
-          "disabled": "disattivato",
-          "disabledExplanation": "Il fallback dei modelli gestiti è disattivato per questo workspace, quindi questi cooldown globali vengono attualmente ignorati qui.",
-          "empty": "Al momento nessuna route di modello gestito è in cooldown globale.",
-          "enabled": "attivato",
-          "globalActive": "cooldown globali attivi",
-          "globalExplanation": "I cooldown sono uno stato operativo globale. Possono influire su questo workspace solo quando il fallback dei modelli gestiti è attivato qui.",
-          "loading": "Caricamento della diagnostica dei cooldown dei modelli gestiti...",
-          "providerType": "Tipo di provider",
-          "refresh": "Aggiorna",
-          "selectedModel": "Modello selezionato",
-          "title": "Fallback dei modelli gestiti",
-          "unavailable": "La diagnostica dei cooldown dei modelli gestiti non è disponibile.",
-          "unavailableUntil": "Non disponibile fino a",
-          "upstreamModel": "Modello upstream",
-          "workspaceFallback": "fallback del workspace"
-        },
         "tab": "Debug"
       },
       "documentTitle": "Preferenze",
@@ -4852,16 +5231,6 @@
           "spanish": "Español"
         },
         "title": "Lingua"
-      },
-      "morningBrief": {
-        "description": "Un'email quotidiana alle 7:00 con agenda, attività e aggiornamenti da GitHub, Gmail e Google Calendar collegati",
-        "nextEmail": "Prossima email: {{date}}",
-        "nextEmailInTimezone": "Prossima email: {{date}} ({{timezone}})",
-        "notScheduled": "Prossima email: non ancora pianificata: spegni e riaccendi l'interruttore per riprogrammare",
-        "sending": "Invio...",
-        "sendNow": "Invia ora",
-        "title": "Riepilogo mattutino",
-        "triggeredToast": "Morning Brief attivato, l'email arriva a breve"
       },
       "pageDescription": "Gestisci l'aspetto e le preferenze di esecuzione degli agenti",
       "pageTitle": "Preferenze",
@@ -5073,15 +5442,20 @@
       "viewSource": "Codice del diagramma"
     },
     "notFound": {
+      "action": "Torna alla home",
       "description": "La pagina che stai cercando non esiste.",
       "title": "Pagina non trovata"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Questa conversazione condivisa non esiste.",
+    "handoffDescription": "{{assistantName}} porta il contesto in una nuova chat",
+    "handoffPrompt": "Continua questa conversazione condivisa con me: {{url}}",
+    "makeConversationYours": "Fai tua questa conversazione",
     "notFoundTitle": "Conversazione condivisa non trovata",
-    "tryOkou": "Prova {{assistantName}}"
+    "share": "Condividi",
+    "signIn": "Accedi",
+    "signUp": "Registrati",
+    "tryItYourself": "Provalo tu"
   },
   "usage": {
     "displayNames": {
@@ -5832,6 +6206,69 @@
       },
       "title": "Flussi di lavoro",
       "viewAutomations": "Visualizza le automazioni"
+    },
+    "official": {
+      "activeInstallationDescription": "Questo workflow ufficiale resta operativo e i suoi contenuti gestiti rimangono di sola lettura.",
+      "activeInstallationTitle": "Workflow ufficiale",
+      "agent": "Agente",
+      "automationCount_one": "{{count}} automazione",
+      "automationCount_many": "",
+      "automationCount_other": "{{count}} automazioni",
+      "badge": "Ufficiale",
+      "browse": "Sfoglia gli ufficiali",
+      "chooseValue": "Scegli un valore",
+      "copySucceededUninstallFailed": "La copia è pronta, ma non è stato possibile disinstallare il workflow ufficiale originale.",
+      "description": "Installa workflow gestiti e mantenuti da vm0.",
+      "empty": "Non sono disponibili workflow ufficiali.",
+      "includedAutomations": "Automazioni incluse",
+      "install": "Installa",
+      "installDescription": "Scegli un agente e completa tutti i parametri obbligatori. Verranno installate tutte le automazioni incluse.",
+      "installed": "Workflow ufficiale installato",
+      "installErrorDescription": "Controlla l’agente e i valori dei parametri, quindi riprova.",
+      "installErrorTitle": "Impossibile installare il workflow ufficiale",
+      "installTitle": "Installa {{name}}",
+      "intendedOff": "deve essere disattivato",
+      "intendedOn": "deve essere attivato",
+      "loadErrorDescription": "Questo catalogo potrebbe non essere disponibile o abilitato per il tuo account.",
+      "loadErrorTitle": "Impossibile caricare i workflow ufficiali",
+      "no": "No",
+      "noParameters": "Non sono richiesti parametri.",
+      "noResults": "Nessun workflow ufficiale corrisponde alla ricerca.",
+      "notFound": "Questo workflow ufficiale non è stato trovato.",
+      "parameterCount_one": "{{count}} parametro",
+      "parameterCount_many": "",
+      "parameterCount_other": "{{count}} parametri",
+      "parameterRequired": "{{key}} (obbligatorio)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Riconfigura",
+      "reconfigured": "Workflow ufficiale riconfigurato",
+      "reconfigureDescription": "Aggiorna i parametri tipizzati senza sostituire questo workflow o le sue automazioni.",
+      "reconfigureDialogDescription": "Controlla ogni automazione gestita e aggiornane i parametri.",
+      "reconfigureErrorDescription": "Controlla i valori obbligatori e riprova.",
+      "reconfigureErrorTitle": "Impossibile riconfigurare il workflow ufficiale",
+      "reconfigureTitle": "Parametri di installazione",
+      "reconfigureUnavailable": "I metadati autorevoli dei parametri non sono temporaneamente disponibili.",
+      "retiredBadge": "Ufficiale · Ritirato",
+      "retiredDefinitionDescription": "Questa definizione conservata può essere visualizzata, ma non può più essere installata.",
+      "retiredInstallationDescription": "Questa definizione è stata ritirata. L’installazione esistente resta operativa e di sola lettura finché non viene disinstallata.",
+      "retiredInstallationTitle": "Workflow ufficiale ritirato",
+      "retiredTitle": "Definizione ritirata",
+      "retry": "Riprova",
+      "search": "Cerca workflow ufficiali",
+      "selectAgent": "Seleziona un agente",
+      "statusCurrent": "Aggiornato",
+      "statusFailed": "Non riuscito",
+      "statusNeedsReconfiguration": "Richiede riconfigurazione",
+      "statusReconciling": "Sincronizzazione",
+      "title": "Workflow ufficiali",
+      "unavailableInstallationDescription": "La definizione accettata non è temporaneamente disponibile. I controlli operativi esistenti restano disponibili.",
+      "unavailableInstallationTitle": "Definizione ufficiale non disponibile",
+      "uninstall": "Disinstalla",
+      "uninstallConfirm": "Questa operazione rimuove l’installazione ufficiale e tutte le sue automazioni. Non può essere annullata.",
+      "uninstallDescription": "Rimuovi questa installazione di workflow ufficiale tramite il relativo ciclo di vita gestito.",
+      "uninstallTitle": "Disinstalla workflow ufficiale",
+      "viewAndInstall": "Visualizza e installa",
+      "yes": "Sì"
     }
   },
   "works": {

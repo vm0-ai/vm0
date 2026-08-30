@@ -10,16 +10,19 @@ import {
   billingCheckoutContract,
   billingUsagePackCheckoutContract,
 } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
-  zeroConnectorManualGrantContract,
-  zeroConnectorOauthStartContract,
-} from "@okouai/api-contracts/contracts/zero-connectors";
+  connectorManualGrantContract,
+  connectorOauthStartContract,
+} from "@okouai/api-contracts/contracts/connectors";
+import {
+  agentsMainContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 
 import {
   click,
@@ -33,13 +36,34 @@ import {
   PRESENTATION_SHOWCASE_URL,
 } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import { pathname } from "../../../signals/location.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
+import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const STALE_AGENT_ID = "c0000000-0000-4000-a000-000000000099";
+const { set$: setLastUsedAgentId$ } = localStorageSignals(
+  "zero.lastUsedAgentId",
+);
+
+function onboardingAgent(agentId: string): AgentResponse {
+  return {
+    agentId,
+    ownerId: "user_mock",
+    displayName: "Default agent",
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
+  };
+}
 
 const MARKETING_PRESENTATION_PROMPT = [
   "/gen presentation with template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, a playful habit-building app for remote teams introducing a shared 30-day wellness challenge.",
@@ -73,6 +97,10 @@ function firstItem<Item>(items: readonly Item[]): Item {
 
 const ONBOARDING_START_SEND_TO = "AW-18144854014/GVKdCLbQ9LscEP7_kcxD";
 const CHECKOUT_START_SEND_TO = "AW-18144854014/EEovCKmuvbscEP7_kcxD";
+const ADSMARCH_ONBOARDING_START_SEND_TO = "AW-18407336975/xkGcCLaRrOccEI_YpslE";
+const ADSMARCH_CHECKOUT_START_SEND_TO = "AW-18407336975/hWi8CPWRrOccEI_YpslE";
+const ADSMARCH_PAID_IN_ONBOARDING_SEND_TO =
+  "AW-18407336975/M7QYCPiRrOccEI_YpslE";
 
 type GtagFn = (...args: unknown[]) => void;
 
@@ -260,6 +288,93 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
+  it("leads with Slack and opens its setup after completing onboarding", async () => {
+    await openMakePage();
+
+    const slackOption = firstItem(screen.getAllByRole("radio"));
+    expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
+    expect(
+      screen.getByTestId("onboarding-slack-illustration"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
+      "src",
+      expect.stringContaining("slack-198390069136.svg"),
+    );
+
+    click(slackOption);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(ROUTES.works);
+    });
+  });
+
+  it.each([
+    ["Generate a presentation", "Generate slides and speaker", "Presentation"],
+    ["Generate images", "Create high-quality visuals", "Illustration"],
+    ["Video production", "Turn your ideas into video", "Video"],
+    ["Build a website", "Create and publish a shareable page", "Website"],
+  ])(
+    "opens the %s product templates from the make page",
+    async (option, description, tab) => {
+      await openMakePage();
+
+      const makeOption = screen.getByRole("radio", {
+        name: `${option} ${description}`,
+      });
+      click(makeOption);
+
+      await waitFor(() => {
+        const selectedTab = queryAllByRoleFast("tab").find((candidate) => {
+          return (
+            candidate.textContent === tab &&
+            candidate.getAttribute("aria-selected") === "true"
+          );
+        });
+        expect(selectedTab).toBeInTheDocument();
+      });
+    },
+  );
+
+  it("opens product templates with the new workspace default agent", async () => {
+    context.store.set(setLastUsedAgentId$, STALE_AGENT_ID);
+    let firstAgentRoute: string | null = null;
+    context.mocks.api(agentsMainContract.list, ({ respond }) => {
+      const currentPath = pathname();
+      if (firstAgentRoute === null && currentPath.startsWith("/agents/")) {
+        firstAgentRoute = currentPath;
+      }
+      return respond(200, [onboardingAgent(DEFAULT_AGENT_ID)]);
+    });
+
+    await openMakePage();
+    chooseMakeOption("Generate a presentation");
+
+    await waitFor(() => {
+      expect(firstAgentRoute).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
+    });
+    await waitFor(() => {
+      const presentationTab = queryAllByRoleFast("tab").find((candidate) => {
+        return (
+          candidate.textContent === "Presentation" &&
+          candidate.getAttribute("aria-selected") === "true"
+        );
+      });
+      expect(presentationTab).toBeInTheDocument();
+    });
+  });
+
+  it("shows the website choice illustration", async () => {
+    await openMakePage();
+
+    const websiteOption = screen.getByRole("radio", {
+      name: /Build a website/u,
+    });
+    expect(websiteOption.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("v2-choice-website_80x80.png"),
+    );
+  });
+
   it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
     usePortugueseLocale();
     mockOnboardingNeeded();
@@ -804,7 +919,7 @@ describe("onboarding flow", () => {
     });
     context.mocks.browser.open(authWindow);
     context.mocks.api(
-      zeroConnectorOauthStartContract.start,
+      connectorOauthStartContract.start,
       ({ params, respond }) => {
         expect(params.connectorSlug).toBe("github");
         return respond(200, {
@@ -896,11 +1011,11 @@ describe("onboarding flow", () => {
 
   it("connects Ahrefs for the default agent without permission confirmation", async () => {
     context.mocks.api(
-      zeroConnectorManualGrantContract.connect,
+      connectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("ahrefs");
         expect(body.authMethod).toBe("api-token");
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();
         return respond(200, {
@@ -1071,10 +1186,13 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("selects and reviews a presentation template", async () => {
+  it("keeps the presentation template deep link available", async () => {
     const template = firstItem(PRESENTATION_TEMPLATE_PICKER_ITEMS);
-    await openMakePage();
-    chooseMakeOption("Generate a presentation");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/presentation-template?choice=presentation",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1120,8 +1238,11 @@ describe("onboarding flow", () => {
       },
     });
 
-    await openMakePage();
-    chooseMakeOption("Generate images");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/image-template?choice=images",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1157,19 +1278,25 @@ describe("onboarding flow", () => {
         generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
-    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
-      successUrl = body.successUrl;
-      cancelUrl = body.cancelUrl;
-      return respond(200, {
-        url: "https://checkout.stripe.com/test/onboarding-video",
-      });
-    });
+    context.mocks.api(
+      billingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        successUrl = body.successUrl;
+        cancelUrl = body.cancelUrl;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test/onboarding-video",
+        });
+      },
+    );
     context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
       return respond(200, { completed: true });
     });
 
-    await openMakePage();
-    chooseMakeOption("Video production");
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/video-template?choice=video",
+    });
 
     await expect(
       screen.findByRole("heading", {
@@ -1241,9 +1368,8 @@ describe("onboarding flow", () => {
     });
   });
 
-  it("uses the new Pro plan with a $20 usage pack when enabled", async () => {
+  it("uses the Pro plan with a $20 usage pack", async () => {
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    let legacyCheckoutCalled = false;
     let usagePackCheckoutBody:
       | {
           readonly tier: "pro" | "team";
@@ -1253,12 +1379,6 @@ describe("onboarding flow", () => {
           }[];
         }
       | undefined;
-    context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
-      legacyCheckoutCalled = true;
-      return respond(200, {
-        url: "https://checkout.stripe.com/test/legacy-onboarding-video",
-      });
-    });
     context.mocks.api(
       billingUsagePackCheckoutContract.create,
       ({ body, respond }) => {
@@ -1272,15 +1392,8 @@ describe("onboarding flow", () => {
     mockOnboardingNeeded();
     detachedSetupPage({
       context,
-      path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+      path: "/onboarding/video-template?choice=video",
     });
-    await expect(
-      screen.findByRole("heading", {
-        name: "What do you want to make first",
-      }),
-    ).resolves.toBeInTheDocument();
-    chooseMakeOption("Video production");
     await expect(
       screen.findByRole("heading", {
         name: "Pick a video template to start from",
@@ -1301,7 +1414,6 @@ describe("onboarding flow", () => {
         "https://checkout.stripe.com/test/usage-pack-onboarding-video",
       );
     });
-    expect(legacyCheckoutCalled).toBeFalsy();
     expect(usagePackCheckoutBody).toMatchObject({
       tier: "pro",
       memberUsagePacks: [{ memberId: "test-user-123", usagePackUsd: 20 }],
@@ -1309,6 +1421,7 @@ describe("onboarding flow", () => {
   });
 
   it("resumes a video run after checkout and completes onboarding", async () => {
+    const gtag = installGtagMock();
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
     let runPrompt: string | undefined;
     let generationType: string | undefined;
@@ -1321,7 +1434,18 @@ describe("onboarding flow", () => {
     });
     context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
       checkoutCompletionAttempts += 1;
-      return respond(200, { completed: checkoutCompletionAttempts >= 2 });
+      return respond(
+        200,
+        checkoutCompletionAttempts >= 2
+          ? {
+              completed: true,
+              googleAdsConversion: {
+                transactionId: "in_onboarding_paid",
+                valueUsd: 49,
+              },
+            }
+          : { completed: false },
+      );
     });
     mockOnboardingNeeded();
     const params = new URLSearchParams({
@@ -1342,6 +1466,12 @@ describe("onboarding flow", () => {
       expect(generationType).toBe("video");
       expect(checkoutCompletionAttempts).toBe(2);
       expect(pathname()).toMatch(/^\/chats\//u);
+    });
+    expect(gtag).toHaveBeenCalledWith("event", "conversion", {
+      send_to: ADSMARCH_PAID_IN_ONBOARDING_SEND_TO,
+      value: 49,
+      currency: "USD",
+      transaction_id: "in_onboarding_paid",
     });
   });
 
@@ -1416,16 +1546,22 @@ describe("onboarding flow", () => {
       });
     });
 
-    await openMakePage();
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding/video-template?choice=video",
+    });
 
-    expect(sentConversions(gtag)).toStrictEqual([ONBOARDING_START_SEND_TO]);
-
-    chooseMakeOption("Video production");
     await expect(
       screen.findByRole("heading", {
         name: "Pick a video template to start from",
       }),
     ).resolves.toBeInTheDocument();
+
+    expect(sentConversions(gtag)).toStrictEqual([
+      ONBOARDING_START_SEND_TO,
+      ADSMARCH_ONBOARDING_START_SEND_TO,
+    ]);
     chooseTemplate(template.title, "video");
 
     await expect(
@@ -1444,7 +1580,9 @@ describe("onboarding flow", () => {
     await waitFor(() => {
       expect(sentConversions(gtag)).toStrictEqual([
         ONBOARDING_START_SEND_TO,
+        ADSMARCH_ONBOARDING_START_SEND_TO,
         CHECKOUT_START_SEND_TO,
+        ADSMARCH_CHECKOUT_START_SEND_TO,
       ]);
     });
   });

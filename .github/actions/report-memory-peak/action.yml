@@ -13,5 +13,5 @@ runs:
     - name: Read cgroup peak memory
       shell: bash
       env:
-        VM0_MEMORY_REPORT_LABEL: ${{ inputs.job-label }}
+        OKOU_MEMORY_REPORT_LABEL: ${{ inputs.job-label }}
       run: bash "$GITHUB_ACTION_PATH/report.sh"

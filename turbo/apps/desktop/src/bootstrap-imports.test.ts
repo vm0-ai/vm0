@@ -20,6 +20,7 @@ const IGNORED_SPECIFIERS = new Set(["./main.js"]);
 
 const IMPORT_PATTERN =
   /(?:^|\n)import\s+(?<type>type\s+)?(?:[^"']*?|[^"']*?\{[^}]*\}[^"']*?)from\s+["'](?<from>[^"']+)["']|await import\(["'](?<dynamic>[^"']+)["']\)/g;
+const SOURCE_EXTENSION_PATTERN = /\.[cm]?[jt]s$/;
 
 function valueImports(sourceFile: string): readonly string[] {
   const source = readFileSync(join(__dirname, sourceFile), "utf8");
@@ -63,7 +64,12 @@ describe("bootstrap import graph", () => {
         if (specifier.endsWith(".json")) {
           continue;
         }
-        queue.push(`${specifier.replace(/^\.\//, "")}.ts`);
+        const sourceSpecifier = specifier.replace(/^\.\//, "");
+        queue.push(
+          SOURCE_EXTENSION_PATTERN.test(sourceSpecifier)
+            ? sourceSpecifier
+            : `${sourceSpecifier}.ts`,
+        );
       }
     }
 
@@ -71,6 +77,7 @@ describe("bootstrap import graph", () => {
     // Keep the reachable set intentional: growing it means growing the code
     // that must never fail to load.
     expect([...visited].sort()).toEqual([
+      "../scripts/desktop-environment.js",
       "bootstrap-degraded.ts",
       "bootstrap.ts",
       "computer-use-types.ts",

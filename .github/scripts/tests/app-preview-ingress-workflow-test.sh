@@ -123,20 +123,23 @@ end
 raise "missing browser E2E run step" unless browser_run
 browser_env = browser_run.fetch("env")
 expected_downstream_preview = "${{ needs.deploy-app.outputs.preview-url }}"
-unless browser_env.fetch("VM0_AUTH_URL") == expected_downstream_preview
+unless browser_env.fetch("OKOU_AUTH_URL") == expected_downstream_preview
   raise "browser E2E must use the smoke-tested app preview gateway"
 end
-unless browser_env.fetch("VM0_AUTH_REDIRECT_URL") == "#{expected_downstream_preview}/_/skeleton"
+unless browser_env.fetch("OKOU_AUTH_REDIRECT_URL") == "#{expected_downstream_preview}/_/skeleton"
   raise "browser E2E redirect must stay on the app preview gateway"
+end
+expected_auth_domain = "${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}"
+unless browser_env.fetch("OKOU_AUTH_DOMAIN") == expected_auth_domain
+  raise "browser E2E auth domain must stay on the API preview"
 end
 
 playwright_run = playwright_e2e.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
 raise "missing Playwright E2E run step" unless playwright_run
-unless playwright_run.fetch("env").fetch("OKOU_APP_URL") == expected_downstream_preview &&
-    playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_preview
-  raise "Playwright E2E must emit both branded app preview URLs"
+unless playwright_run.fetch("env").fetch("OKOU_APP_URL") == expected_downstream_preview
+  raise "Playwright E2E must emit the app preview URL"
 end
 
 turbo_source = File.read(ARGV.fetch(0))

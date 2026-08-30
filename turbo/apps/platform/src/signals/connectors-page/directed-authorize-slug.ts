@@ -12,7 +12,7 @@ import { withCleanup } from "../utils.ts";
 import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
-} from "../zero-page/agent-connector-authorizations.ts";
+} from "../okou-page/agent-connector-authorizations.ts";
 
 /**
  * Connector slug extracted from `/connectors/:connectorSlug/authorize` route params.
@@ -41,7 +41,7 @@ export const directedAuthorizeAgentName$ = computed(async (get) => {
   }
   const agents = await get(agents$);
   const agent = agents.find((a) => {
-    return a.id === agentId;
+    return a.agentId === agentId;
   });
   return { agentId, displayName: agent?.displayName ?? null };
 });

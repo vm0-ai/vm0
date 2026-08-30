@@ -1,10 +1,11 @@
 [package]
 name = "guest-contracts"
-version = "0.11.14"
+version = "0.12.14"
 edition.workspace = true
 description = "Shared contracts between runner and guest binaries"
 
 [dependencies]
+base64.workspace = true
 chrono = { workspace = true, features = ["alloc"] }
 libc.workspace = true
 serde = { workspace = true, features = ["derive"] }

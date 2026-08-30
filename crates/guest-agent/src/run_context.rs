@@ -5,6 +5,8 @@ use crate::http::HttpClient;
 use crate::paths::GuestPaths;
 use crate::workload_containment::WorkloadContainment;
 
+const LOG_TAG: &str = "sandbox:guest-agent";
+
 /// Production runtime services for one guest-agent run.
 #[derive(Clone)]
 pub struct GuestRuntime {
@@ -12,6 +14,7 @@ pub struct GuestRuntime {
     pub paths: GuestPaths,
     pub http: HttpClient,
     pub workload_containment: Option<WorkloadContainment>,
+    pub process_control_endpoint: Option<String>,
 }
 
 impl GuestRuntime {
@@ -32,12 +35,27 @@ impl GuestRuntime {
     /// process-wide setup and consume runner-owned inputs before returning, so
     /// callers must not retry it in the same process.
     pub fn from_process_env() -> Result<Self, String> {
-        let workload_containment = WorkloadContainment::from_process_env()?;
-        let raw = GuestConfigRaw::from_process_env();
+        let guest_runtime_dir =
+            guest_contracts::runtime_paths::guest_runtime_dir_env_from_process_env()
+                .map_err(|error| format!("failed to resolve guest runtime paths: {error}"))?;
+        let process_control_endpoint =
+            process_control_env_value(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)?;
+        let workload_containment =
+            WorkloadContainment::from_process_env(process_control_endpoint.is_some())?;
+        let raw = GuestConfigRaw::from_process_env_with_guest_runtime_dir(guest_runtime_dir)?;
         raw.require_run_payload_file()?;
         let paths = paths_from_raw(&raw)?;
         guest_common::log::set_system_log_file(paths.system_log_file());
         guest_common::telemetry::set_sandbox_ops_log_file(paths.sandbox_ops_file());
+        if let Some(containment) = &workload_containment {
+            for (key, source) in containment.env_source_evidence() {
+                guest_common::log_info!(
+                    LOG_TAG,
+                    "cgroup_placement_env_source key={key} source={source}"
+                );
+            }
+        }
+        raw.emit_bootstrap_alias_source_events();
 
         let config = GuestConfig::from_raw(raw)?;
         let http = HttpClient::for_config(&config).map_err(|error| error.to_string())?;
@@ -47,7 +65,19 @@ impl GuestRuntime {
             paths,
             http,
             workload_containment,
+            process_control_endpoint,
         })
+    }
+}
+
+fn process_control_env_value(key: &'static str) -> Result<Option<String>, String> {
+    match std::env::var_os(key) {
+        None => Ok(None),
+        Some(value) if value.is_empty() => Ok(None),
+        Some(value) => value
+            .into_string()
+            .map(Some)
+            .map_err(|_| format!("{key} must be valid UTF-8")),
     }
 }
 

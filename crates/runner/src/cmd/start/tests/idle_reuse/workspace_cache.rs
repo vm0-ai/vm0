@@ -1,9 +1,10 @@
 use super::super::super::*;
 use super::super::support::{
-    WorkspacePromotionSeedSpec, assert_run_exits_within, context_with_session, mock_run_config,
-    mock_run_config_with_overrides, push_job, seed_idle_pool_with_overrides,
+    WorkspacePromotionSeedSpec, assert_run_exits_within, context_with_session, minimal_context,
+    mock_run_config, mock_run_config_with_overrides, push_job, seed_idle_pool_with_overrides,
     seed_idle_pool_with_workspace_promotion, seed_workspace_cache_state, shutdown, test_profiles,
-    wait_budget_count, wait_discover_entered, wait_idle_pool_reuse_keys,
+    wait_budget_count, wait_cancel_token, wait_discover_entered, wait_idle_pool_reuse_keys,
+    wait_status_mode,
 };
 
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
@@ -213,6 +214,108 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
 }
 
 #[tokio::test(start_paused = true)]
+async fn workspace_cache_change_while_draining_is_preserved_after_resume() {
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&gate),
+    ));
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config_with_overrides(profiles, 8, 32768, 4, overrides);
+    let status_path = env._temp_dir.path().join("status.json");
+    let home = config.paths.home.clone();
+    let group = config.runner.group.clone();
+    let observer_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let observer_cache = WorkspaceImageCache::shared(observer_paths, &home, &group);
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(observer_cache.clone());
+
+    let publisher_paths = RunnerPaths::new(env._temp_dir.path().join("draining-publisher"));
+    tokio::fs::create_dir_all(publisher_paths.base_dir())
+        .await
+        .unwrap();
+    let publisher_cache = WorkspaceImageCache::shared(publisher_paths.clone(), &home, &group);
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    env.drain();
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
+
+    observer_cache.reset_held_state_root_scan_count();
+    let before_change = env.handle.heartbeat_count();
+    let watcher_cursor = env.start_observer.cursor();
+    let reuse_key = "thread:draining-watcher-change";
+    seed_workspace_cache_state(
+        &publisher_cache,
+        &publisher_paths,
+        reuse_key,
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    env.start_observer
+        .wait_workspace_cache_change_observed_after(watcher_cursor, Duration::from_secs(5))
+        .await;
+    assert!(
+        wait_heartbeat_matching_after(
+            &env.handle,
+            before_change,
+            Duration::from_secs(5),
+            |heartbeat| {
+                heartbeat.mode == "draining"
+                    && heartbeat
+                        .held_workspace_states
+                        .iter()
+                        .any(|state| state.reuse_key == reuse_key)
+            },
+        )
+        .await,
+        "a cache change consumed while draining should refresh the published snapshot",
+    );
+    assert_eq!(observer_cache.held_state_root_scan_count(), 1);
+
+    env.resume();
+    wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
+    let before_routine = env.handle.heartbeat_count();
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    assert!(
+        wait_heartbeat_matching_after(
+            &env.handle,
+            before_routine,
+            Duration::from_secs(5),
+            |heartbeat| {
+                heartbeat.mode == "running"
+                    && heartbeat
+                        .held_workspace_states
+                        .iter()
+                        .any(|state| state.reuse_key == reuse_key)
+            },
+        )
+        .await,
+        "the snapshot refreshed while draining should remain current after resume",
+    );
+    assert_eq!(
+        observer_cache.held_state_root_scan_count(),
+        1,
+        "the post-resume routine heartbeat should reuse the refreshed snapshot",
+    );
+
+    gate.notify_one();
+    assert!(
+        env.handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .is_some(),
+        "the gated run should complete after resume",
+    );
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tick() {
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
@@ -233,7 +336,7 @@ async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tic
     .await;
     Arc::get_mut(&mut config.exec_config)
         .unwrap()
-        .workspace_cache = Some(workspace_cache);
+        .workspace_cache = Some(workspace_cache.clone());
 
     let run_handle = tokio::spawn(run(config));
     assert!(
@@ -245,6 +348,57 @@ async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tic
         })
         .await,
         "non-empty initial cache should be published before the deferred routine tick",
+    );
+
+    workspace_cache.reset_held_state_root_scan_count();
+    let mut heartbeat_cursor = env.start_observer.cursor();
+    for _ in 0..2 {
+        let before = env.handle.heartbeat_count();
+        tokio::time::advance(HEARTBEAT_PERIOD).await;
+        heartbeat_cursor = env
+            .start_observer
+            .wait_routine_heartbeat_requested_after(
+                heartbeat_cursor,
+                RunnerMode::Running,
+                Duration::from_secs(5),
+            )
+            .await;
+        assert!(
+            env.handle
+                .wait_heartbeat_past(before, Duration::from_secs(5))
+                .await,
+            "routine heartbeat should still reach the provider",
+        );
+    }
+    assert_eq!(
+        workspace_cache.held_state_root_scan_count(),
+        0,
+        "healthy routine heartbeats should reuse the committed cache snapshot",
+    );
+    {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert!(
+            heartbeats.last().is_some_and(|heartbeat| {
+                heartbeat
+                    .held_workspace_states
+                    .iter()
+                    .any(|state| state.reuse_key == "thread:initial-workspace-cache")
+            }),
+            "snapshot-only routine heartbeats should retain the initial cache capability",
+        );
+    }
+
+    tokio::time::advance(WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY - HEARTBEAT_PERIOD * 2).await;
+    assert_eq!(
+        workspace_cache
+            .wait_for_held_state_root_scan_after(0, Duration::from_secs(5))
+            .await,
+        1,
+        "independent reconciliation should scan once while the watcher remains healthy",
     );
 
     shutdown(&env, run_handle).await;
@@ -385,7 +539,7 @@ async fn startup_unclassified_cache_invalidated_after_scan_is_reconciled() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn unavailable_workspace_cache_watcher_does_not_block_discovery() {
+async fn unavailable_workspace_cache_watcher_uses_periodic_reconciliation() {
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
     let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
@@ -406,6 +560,7 @@ async fn unavailable_workspace_cache_watcher_does_not_block_discovery() {
 
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(5)).await;
+    workspace_cache.reset_held_state_root_scan_count();
 
     tokio::fs::remove_file(cache_root).await.unwrap();
     let runner_paths = RunnerPaths::new(env._temp_dir.path().join("fallback-publisher"));
@@ -422,7 +577,25 @@ async fn unavailable_workspace_cache_watcher_does_not_block_discovery() {
     )
     .await;
     let before = env.handle.heartbeat_count();
-    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    let mut heartbeat_cursor = env.start_observer.cursor();
+    for _ in 0..2 {
+        tokio::time::advance(HEARTBEAT_PERIOD).await;
+        heartbeat_cursor = env
+            .start_observer
+            .wait_routine_heartbeat_requested_after(
+                heartbeat_cursor,
+                RunnerMode::Running,
+                Duration::from_secs(5),
+            )
+            .await;
+    }
+    assert_eq!(
+        workspace_cache.held_state_root_scan_count(),
+        0,
+        "ordinary heartbeats should not provide failed-watcher reconciliation",
+    );
+
+    tokio::time::advance(WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY - HEARTBEAT_PERIOD * 2).await;
     assert!(
         wait_heartbeat_matching_after(&env.handle, before, Duration::from_secs(5), |heartbeat| {
             heartbeat
@@ -431,8 +604,9 @@ async fn unavailable_workspace_cache_watcher_does_not_block_discovery() {
                 .any(|state| state.reuse_key == "thread:routine-fallback")
         })
         .await,
-        "routine heartbeat must converge after watcher setup failure",
+        "periodic reconciliation must converge after watcher setup failure",
     );
+    assert_eq!(workspace_cache.held_state_root_scan_count(), 1);
 
     shutdown(&env, run_handle).await;
 }
@@ -503,7 +677,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     assert_eq!(
         env.idle_pool.lock().await.len(),
         0,
-        "soft-drained parking gate should prevent VM parking",
+        "soft-drained parking gate should prevent sandbox parking",
     );
 
     assert!(
@@ -566,7 +740,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates() {
+async fn workspace_promotion_mismatch_destroys_stale_idle_sandbox_and_fresh_creates() {
     let (mut config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
@@ -622,7 +796,7 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
     assert!(
         workspace_cache.held_workspace_states().await.is_empty(),
-        "mismatched stale idle VM must be destroyed without publishing its workspace image"
+        "mismatched stale idle sandbox must be destroyed without publishing its workspace image"
     );
 
     shutdown(&env, run_handle).await;

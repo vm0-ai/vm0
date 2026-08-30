@@ -5,6 +5,7 @@
 //! so both sides agree on the same filesystem layout.
 
 use std::env;
+use std::ffi::OsString;
 use std::fs::File;
 #[cfg(not(unix))]
 use std::fs::{self, OpenOptions};
@@ -14,7 +15,7 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
-use std::ffi::{CString, OsStr, OsString};
+use std::ffi::{CString, OsStr};
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 #[cfg(unix)]
@@ -25,7 +26,7 @@ use uuid::Uuid;
 ///
 /// When set to a non-empty absolute path, this value is used as the run
 /// directory directly instead of deriving one from `HOME` and a run id.
-pub const GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
+pub const CANONICAL_GUEST_RUNTIME_DIR_ENV: &str = "OKOU_GUEST_RUNTIME_DIR";
 /// Fixed fallback path used when a storage manifest exceeds the stdin limit.
 pub const STORAGE_MANIFEST_PATH: &str = "/tmp/storage-manifest.json";
 const DEFAULT_RUNTIME_PARENT: &str = ".vm0/guest-agent/runs";
@@ -43,7 +44,7 @@ pub enum RuntimePathError {
     InvalidRunId,
     /// The fallback runtime directory layout requires a non-empty `HOME`.
     MissingHome,
-    /// `VM0_GUEST_RUNTIME_DIR` was set to a relative path.
+    /// `OKOU_GUEST_RUNTIME_DIR` was set to a relative path.
     InvalidRuntimeDir,
 }
 
@@ -54,7 +55,7 @@ impl std::fmt::Display for RuntimePathError {
             Self::InvalidRunId => f.write_str("OKOU_RUN_ID must be a single safe path segment"),
             Self::MissingHome => f.write_str("HOME is required for guest runtime paths"),
             Self::InvalidRuntimeDir => {
-                f.write_str("VM0_GUEST_RUNTIME_DIR must be an absolute path")
+                f.write_str("OKOU_GUEST_RUNTIME_DIR must be an absolute path")
             }
         }
     }
@@ -100,29 +101,54 @@ pub fn run_dir_for_home(
         .join(run_id))
 }
 
-/// Resolve the runtime directory from process environment.
-///
-/// A non-empty absolute `VM0_GUEST_RUNTIME_DIR` wins and is returned as the
-/// complete runtime directory. In that override branch, `run_id` is not
-/// validated and is not appended. Empty overrides are ignored, relative
-/// overrides return [`RuntimePathError::InvalidRuntimeDir`], and fallback
-/// resolution uses `HOME` plus [`run_dir_for_home`].
-pub fn run_dir_from_env(run_id: &str) -> Result<PathBuf, RuntimePathError> {
-    if let Some(path) = env::var_os(GUEST_RUNTIME_DIR_ENV)
-        && !path.is_empty()
+fn canonical_guest_runtime_dir(
+    value: Option<OsString>,
+) -> Result<Option<PathBuf>, RuntimePathError> {
+    let runtime_dir = value.filter(|value| !value.is_empty()).map(PathBuf::from);
+    if runtime_dir
+        .as_deref()
+        .is_some_and(|runtime_dir| !runtime_dir.is_absolute())
     {
-        let path = PathBuf::from(path);
-        if !path.is_absolute() {
+        return Err(RuntimePathError::InvalidRuntimeDir);
+    }
+    Ok(runtime_dir)
+}
+
+/// Capture the canonical guest runtime-directory override exactly once.
+pub fn guest_runtime_dir_env_from_process_env() -> Result<Option<PathBuf>, RuntimePathError> {
+    canonical_guest_runtime_dir(env::var_os(CANONICAL_GUEST_RUNTIME_DIR_ENV))
+}
+
+/// Resolve a complete run directory from already captured values.
+pub fn run_dir_from_captured_env(
+    run_id: &str,
+    runtime_dir: Option<&Path>,
+    process_home: Option<&Path>,
+) -> Result<PathBuf, RuntimePathError> {
+    if let Some(runtime_dir) = runtime_dir {
+        if !runtime_dir.is_absolute() {
             return Err(RuntimePathError::InvalidRuntimeDir);
         }
-        return Ok(path);
+        return Ok(runtime_dir.to_path_buf());
     }
 
-    let home = env::var_os("HOME").ok_or(RuntimePathError::MissingHome)?;
-    if home.is_empty() {
-        return Err(RuntimePathError::MissingHome);
-    }
+    let home = process_home
+        .filter(|value| !value.as_os_str().is_empty())
+        .ok_or(RuntimePathError::MissingHome)?;
     run_dir_for_home(home, run_id)
+}
+
+/// Resolve the runtime directory from process environment.
+///
+/// A non-empty absolute canonical override wins and is returned as the complete
+/// runtime directory. In that override branch, `run_id` is not validated and
+/// is not appended. An empty override is ignored, a relative override returns
+/// [`RuntimePathError::InvalidRuntimeDir`], and fallback resolution uses `HOME`
+/// plus [`run_dir_for_home`].
+pub fn run_dir_from_env(run_id: &str) -> Result<PathBuf, RuntimePathError> {
+    let runtime_dir = guest_runtime_dir_env_from_process_env()?;
+    let home = env::var_os("HOME").map(PathBuf::from);
+    run_dir_from_captured_env(run_id, runtime_dir.as_deref(), home.as_deref())
 }
 
 fn file(run_dir: impl AsRef<Path>, name: &str) -> PathBuf {
@@ -168,6 +194,11 @@ pub fn pi_launch_payload_file(run_dir: impl AsRef<Path>) -> PathBuf {
         .as_ref()
         .join(crate::env::PI_LAUNCH_PAYLOAD_PRIVATE_DIR_NAME)
         .join(crate::env::PI_LAUNCH_PAYLOAD_FILENAME)
+}
+
+/// Return the private Claude appended-system-prompt file.
+pub fn claude_append_system_prompt_file(run_dir: impl AsRef<Path>) -> PathBuf {
+    file(run_dir, "claude-append-system-prompt")
 }
 
 /// Return the run-root `active-input-receipts.json` file.
@@ -1205,7 +1236,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     use std::os::fd::FromRawFd;
     #[cfg(unix)]
-    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
@@ -1258,18 +1289,58 @@ mod tests {
     }
 
     #[test]
-    fn env_runtime_dir_wins_without_run_id_segment() {
-        let temp = tempfile::tempdir().unwrap();
-        unsafe {
-            env::set_var(GUEST_RUNTIME_DIR_ENV, temp.path());
+    fn canonical_guest_runtime_dir_preserves_path_and_empty_semantics() {
+        assert_eq!(CANONICAL_GUEST_RUNTIME_DIR_ENV, "OKOU_GUEST_RUNTIME_DIR");
+        assert_eq!(
+            canonical_guest_runtime_dir(None),
+            Ok(None),
+            "an absent override must use fallback resolution"
+        );
+        assert_eq!(
+            canonical_guest_runtime_dir(Some(OsString::new())),
+            Ok(None),
+            "an empty override must use fallback resolution"
+        );
+        assert_eq!(
+            canonical_guest_runtime_dir(Some(OsString::from("/canonical"))),
+            Ok(Some(PathBuf::from("/canonical")))
+        );
+    }
+
+    #[test]
+    fn canonical_guest_runtime_dir_preserves_non_unicode_and_fallback_contract() {
+        #[cfg(unix)]
+        {
+            let absolute = PathBuf::from(OsString::from_vec(vec![b'/', b'r', b'u', b'n', 0xff]));
+            assert_eq!(
+                canonical_guest_runtime_dir(Some(absolute.as_os_str().to_owned())),
+                Ok(Some(absolute))
+            );
+
+            let home = PathBuf::from(OsString::from_vec(vec![b'/', b'h', b'o', b'm', b'e', 0xfe]));
+            let fallback = run_dir_from_captured_env("run-123", None, Some(&home)).unwrap();
+            assert_eq!(fallback, home.join(DEFAULT_RUNTIME_PARENT).join("run-123"));
         }
 
-        let dir = run_dir_from_env("not/validated/when/env/is/set").unwrap();
-
-        assert_eq!(dir, temp.path());
-        unsafe {
-            env::remove_var(GUEST_RUNTIME_DIR_ENV);
-        }
+        let override_dir = run_dir_from_captured_env(
+            "not/validated/when/env/is/set",
+            Some(Path::new("/runtime")),
+            None,
+        )
+        .unwrap();
+        assert_eq!(override_dir, Path::new("/runtime"));
+        assert_eq!(
+            run_dir_from_captured_env(
+                "run-123",
+                Some(Path::new("relative-runtime")),
+                Some(Path::new("/home/vm0")),
+            ),
+            Err(RuntimePathError::InvalidRuntimeDir)
+        );
+        assert_eq!(
+            canonical_guest_runtime_dir(Some(OsString::from("relative-runtime"))),
+            Err(RuntimePathError::InvalidRuntimeDir)
+        );
     }
 
     #[test]

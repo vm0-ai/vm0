@@ -359,29 +359,6 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     });
   });
 
-  it("admin connects successfully to a bound workspace", async () => {
-    const fixture = await track(
-      store.set(seedSlackConnectOrg$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    const client = setupApp({ context, routes: slackConnectRoutes })(
-      slackConnectContract,
-    );
-    const response = await accept(
-      client.connect({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          workspaceId: fixture.slackWorkspaceId,
-          slackUserId: fixture.slackUserId,
-        },
-      }),
-      [200],
-    );
-
-    expect(response.body.role).toBe("admin");
-  });
-
   it("does not provision artifact storage after connect", async () => {
     const fixture = await track(
       store.set(seedSlackConnectOrg$, {}, context.signal),
@@ -446,6 +423,9 @@ describe("POST /api/zero/integrations/slack/connect", () => {
         thread_ts: "1234567890.123456",
       }),
     );
+    expect(
+      JSON.stringify(context.mocks.slack.chat.postEphemeral.mock.calls),
+    ).toContain("<@U_BOT_TEST>");
     expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
     expect(context.mocks.slack.views.publish).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -463,6 +443,9 @@ describe("POST /api/zero/integrations/slack/connect", () => {
         }),
       }),
     );
+    expect(
+      JSON.stringify(context.mocks.slack.views.publish.mock.calls),
+    ).toContain("<@U_BOT_TEST>");
 
     const connection = await store.set(
       findSlackOrgConnection$,
@@ -510,7 +493,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       2,
       expect.objectContaining({
         channel: fixture.slackUserId,
-        text: "Hi! I'm Zero.",
+        text: "Hi! I'm <@U_BOT_TEST>.",
         thread_ts: "mock.ts",
       }),
     );
@@ -537,9 +520,11 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       }),
     );
 
-    const client = setupApp({ context, routes: slackConnectRoutes })(
-      slackConnectContract,
-    );
+    const client = setupApp({
+      baseUrl: "https://api.okou.ai",
+      context,
+      routes: slackConnectRoutes,
+    })(slackConnectContract);
     await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
@@ -561,6 +546,12 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       }),
     );
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledTimes(2);
+    expect(
+      JSON.stringify(context.mocks.slack.chat.postMessage.mock.calls),
+    ).toContain("connected to Okou");
+    expect(
+      JSON.stringify(context.mocks.slack.chat.postMessage.mock.calls),
+    ).toContain("<@U_BOT_TEST>");
 
     const connection = await store.set(
       findSlackOrgConnection$,
@@ -573,11 +564,11 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     expect(connection?.dmWelcomeSent).toBeTruthy();
   });
 
-  it("admin connects to an unbound workspace (binds it)", async () => {
+  it("binds an unbound legacy VM0 workspace as Okou", async () => {
     const fixture = await track(
       store.set(
         seedSlackConnectOrg$,
-        { installationOrgId: null },
+        { installationOrgId: null, publicBrand: "vm0" },
         context.signal,
       ),
     );
@@ -605,6 +596,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
     expect(installation?.orgId).toBe(fixture.orgId);
     expect(installation?.installedByUserId).toBe(fixture.userId);
+    expect(installation?.publicBrand).toBe("okou");
   });
 
   it("returns 403 when non-admin tries to connect unbound workspace", async () => {

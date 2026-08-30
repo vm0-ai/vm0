@@ -32,10 +32,12 @@ export const connectorOauthStates = pgTable(
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
     redirectUri: text("redirect_uri").notNull(),
     authorizationUrl: text("authorization_url"),
+    oauthRequestedScopes: text("oauth_requested_scopes"),
     codeVerifier: text("code_verifier"),
     oauthContext: text("oauth_context"),
-    accountMutation:
-      jsonb("account_mutation").$type<StoredConnectorAccountMutation>(),
+    accountMutation: jsonb("account_mutation")
+      .$type<StoredConnectorAccountMutation>()
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(),
     consumedAt: timestamp("consumed_at"),

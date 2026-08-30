@@ -10,6 +10,7 @@
 //! endpoint into the managed CLI environment so the Bash launcher can request
 //! one root-owned tool cgroup before executing user code.
 
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
@@ -19,7 +20,8 @@ use std::sync::Arc;
 
 use guest_contracts::diagnostics::WorkloadResourceLimitDiagnostic;
 use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX, RUNTIME_CGROUP_NAME,
+    CANONICAL_TOOL_CGROUP_PROCS_ENV, CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, CGROUP_V2_MOUNT_PATH,
+    CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX, RUNTIME_CGROUP_NAME,
     TOOL_CGROUP_PROCS_ENDPOINT_ENV, TOOLS_CGROUP_NAME, WORKLOAD_CGROUP_NAME,
     WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, WorkloadResourceEvents,
 };
@@ -27,9 +29,9 @@ use guest_contracts::process_containment::{
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 const CGROUP2_SUPER_MAGIC: u64 = 0x6367_7270;
-const WORKLOAD_BOOTSTRAP_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const WORKLOAD_BOOTSTRAP_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 #[cfg(debug_assertions)]
-const TEST_ALLOW_UNMANAGED_PROCESS_CONTROL_ENV: &str = "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL";
+const TEST_ALLOW_UNMANAGED_PROCESS_CONTROL_ENV: &str = "OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL";
 
 /// Root-opened capability used only to place CLI children in `workload/runtime`.
 #[derive(Clone, Debug)]
@@ -52,60 +54,46 @@ impl WorkloadContainment {
     /// Receive and adopt the production bootstrap descriptor.
     ///
     /// This must run before any other thread can read or mutate process-global
-    /// environment state. A process-control bootstrap requires a matching
-    /// workload capability in production. Direct local execution is unmanaged
-    /// when neither bootstrap value exists.
-    pub fn from_process_env() -> Result<Option<Self>, String> {
-        let process_control_present = match std::env::var_os(process_control_ipc::BOOTSTRAP_ENV) {
-            None => false,
-            Some(endpoint) if endpoint.is_empty() => false,
-            Some(endpoint) if endpoint.to_str().is_none() => {
-                return Err(format!(
-                    "{} must be valid UTF-8",
-                    process_control_ipc::BOOTSTRAP_ENV
-                ));
-            }
-            Some(_) => true,
-        };
-        let placement_endpoint = std::env::var_os(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV);
-        let tool_endpoint = std::env::var_os(TOOL_CGROUP_PROCS_ENDPOINT_ENV);
+    /// environment state. The caller supplies the once-resolved canonical
+    /// process-control presence. A process-control bootstrap requires
+    /// the canonical workload and tool capabilities in production. Direct
+    /// local execution is unmanaged when the canonical process-control value
+    /// and both canonical capabilities are absent.
+    /// Retired root-bootstrap aliases are ignored during selection and scrubbed
+    /// after the canonical pair is captured successfully.
+    pub fn from_process_env(process_control_present: bool) -> Result<Option<Self>, String> {
+        let (placement_endpoint, tool_endpoint) =
+            resolve_cgroup_placement_endpoints_from_process_env()?;
 
         match (process_control_present, placement_endpoint, tool_endpoint) {
             (false, None, None) => Ok(None),
             (true, None, None) if test_allows_unmanaged_process_control() => Ok(None),
             (true, Some(placement), Some(tool)) => {
+                reject_empty_cgroup_placement_endpoint(
+                    &placement,
+                    CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                )?;
+                reject_empty_cgroup_placement_endpoint(&tool, CANONICAL_TOOL_CGROUP_PROCS_ENV)?;
                 // SAFETY: production calls this before constructing the Tokio
                 // runtime, so no other thread can access the environment.
                 unsafe {
-                    std::env::remove_var(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV);
-                    std::env::remove_var(TOOL_CGROUP_PROCS_ENDPOINT_ENV);
-                }
-                let placement = placement.into_string().map_err(|_| {
-                    format!("{WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV} must be valid UTF-8")
-                })?;
-                let tool = tool
-                    .into_string()
-                    .map_err(|_| format!("{TOOL_CGROUP_PROCS_ENDPOINT_ENV} must be valid UTF-8"))?;
-                if tool.is_empty() {
-                    return Err(format!(
-                        "{TOOL_CGROUP_PROCS_ENDPOINT_ENV} must not be empty"
-                    ));
+                    remove_cgroup_placement_endpoint_aliases();
                 }
                 Self::receive(&placement, tool).map(Some).map_err(|error| {
-                    format!("invalid {WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV}: {error}")
+                    format!("invalid {CANONICAL_WORKLOAD_CGROUP_PROCS_ENV}: {error}")
                 })
             }
             (true, _, _) => Err(format!(
                 "{} and {} are required with {}",
-                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
+                CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                CANONICAL_TOOL_CGROUP_PROCS_ENV,
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             )),
             (false, _, _) => Err(format!(
                 "{} and {} require {}",
-                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
+                CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                CANONICAL_TOOL_CGROUP_PROCS_ENV,
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             )),
         }
     }
@@ -156,16 +144,26 @@ impl WorkloadContainment {
     /// Runner-owned endpoint injected into managed CLI environments.
     pub(crate) fn tool_placement_env(&self) -> (&'static str, String) {
         (
-            TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            CANONICAL_TOOL_CGROUP_PROCS_ENV,
             self.tool_placement_endpoint.to_string(),
         )
     }
 
+    pub(crate) fn env_source_evidence(&self) -> [(&'static str, &'static str); 2] {
+        [
+            (CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, "canonical-only"),
+            (CANONICAL_TOOL_CGROUP_PROCS_ENV, "canonical-only"),
+        ]
+    }
+
     fn receive(endpoint: &str, tool_endpoint: String) -> io::Result<Self> {
         let stream = process_control_ipc::connect_abstract(endpoint)?;
-        stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_READ_TIMEOUT))?;
+        stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_IO_TIMEOUT))?;
+        stream.set_write_timeout(Some(WORKLOAD_BOOTSTRAP_IO_TIMEOUT))?;
         let placement = process_control_ipc::receive_workload_placement(&stream)?;
-        Self::adopt(placement, tool_endpoint)
+        let containment = Self::adopt(placement, tool_endpoint)?;
+        process_control_ipc::write_workload_placement_confirmation(&stream)?;
+        Ok(containment)
     }
 
     fn adopt(placement: OwnedFd, tool_endpoint: String) -> io::Result<Self> {
@@ -187,6 +185,57 @@ impl WorkloadContainment {
             workload_path: Arc::new(workload_path),
             tool_placement_endpoint: Arc::from(tool_endpoint),
         })
+    }
+}
+
+fn resolve_cgroup_placement_endpoints_from_process_env()
+-> Result<(Option<String>, Option<String>), String> {
+    let workload_canonical = std::env::var_os(CANONICAL_WORKLOAD_CGROUP_PROCS_ENV);
+    let tool_canonical = std::env::var_os(CANONICAL_TOOL_CGROUP_PROCS_ENV);
+
+    Ok((
+        canonical_cgroup_placement_endpoint(
+            CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+            workload_canonical,
+        )?,
+        canonical_cgroup_placement_endpoint(CANONICAL_TOOL_CGROUP_PROCS_ENV, tool_canonical)?,
+    ))
+}
+
+fn canonical_cgroup_placement_endpoint(
+    key: &'static str,
+    value: Option<OsString>,
+) -> Result<Option<String>, String> {
+    value
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| format!("{key} must be valid UTF-8"))
+        })
+        .transpose()
+}
+
+fn reject_empty_cgroup_placement_endpoint(endpoint: &str, key: &'static str) -> Result<(), String> {
+    if endpoint.is_empty() {
+        return Err(format!(
+            "invalid cgroup placement environment: key={key} state=empty"
+        ));
+    }
+    Ok(())
+}
+
+unsafe fn remove_cgroup_placement_endpoint_aliases() {
+    for key in [
+        CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+        WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+        CANONICAL_TOOL_CGROUP_PROCS_ENV,
+        TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+    ] {
+        // SAFETY: the caller runs before constructing the Tokio runtime, so no
+        // other thread can access the process environment.
+        unsafe {
+            std::env::remove_var(key);
+        }
     }
 }
 
@@ -334,6 +383,7 @@ fn write_self_to_cgroup(fd: RawFd) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::io::{Read, Seek, SeekFrom};
+    use std::os::unix::ffi::OsStringExt;
     use std::process::Stdio;
 
     use guest_contracts::process_containment::MATERIAL_CPU_THROTTLED_USEC;
@@ -381,9 +431,56 @@ mod tests {
         assert_eq!(
             containment.tool_placement_env(),
             (
-                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+                CANONICAL_TOOL_CGROUP_PROCS_ENV,
                 "runner-tool-endpoint".to_string()
             )
+        );
+        assert_ne!(
+            containment.tool_placement_env().0,
+            TOOL_CGROUP_PROCS_ENDPOINT_ENV
+        );
+        assert_eq!(
+            containment.env_source_evidence(),
+            [
+                (CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, "canonical-only"),
+                (CANONICAL_TOOL_CGROUP_PROCS_ENV, "canonical-only"),
+            ]
+        );
+    }
+
+    #[test]
+    fn canonical_cgroup_placement_endpoint_preserves_values_and_empty() {
+        assert_eq!(
+            canonical_cgroup_placement_endpoint(CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, None),
+            Ok(None)
+        );
+        assert_eq!(
+            canonical_cgroup_placement_endpoint(
+                CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                Some(OsString::from("canonical-endpoint")),
+            ),
+            Ok(Some("canonical-endpoint".to_string()))
+        );
+        assert_eq!(
+            canonical_cgroup_placement_endpoint(
+                CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                Some(OsString::new()),
+            ),
+            Ok(Some(String::new()))
+        );
+    }
+
+    #[test]
+    fn rejects_non_unicode_canonical_cgroup_placement_endpoint_without_values() {
+        let error = canonical_cgroup_placement_endpoint(
+            CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+            Some(OsString::from_vec(vec![0xff])),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            format!("{CANONICAL_WORKLOAD_CGROUP_PROCS_ENV} must be valid UTF-8")
         );
     }
 

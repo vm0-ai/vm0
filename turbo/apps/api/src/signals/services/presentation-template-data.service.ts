@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateSummary } from "@okouai/api-contracts/contracts/presentation-templates";
 import { CANONICAL_WORKING_DIR } from "@okouai/api-contracts/contracts/runners";
@@ -8,6 +10,7 @@ import {
 import { getPresentationTemplateStorageName } from "@okouai/core/storage-names";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { z } from "zod";
 
 import type { ReadonlyDb } from "../external/db";
 
@@ -16,6 +19,49 @@ export type PresentationTemplateRow = typeof presentationTemplates.$inferSelect;
 export interface PresentationTemplateVolume {
   readonly name: string;
   readonly mountPath: string;
+}
+
+const PRESENTATION_TEMPLATE_PREVIEW_ASSET_PREFIX = "ptp:";
+
+interface PresentationTemplatePreviewAssetIdentity {
+  readonly templateId: string;
+  readonly storageVersionId: string;
+}
+
+/**
+ * Give a rendered page a stable public identity without exposing its object
+ * key. The hash follows the immutable page object if page order changes.
+ */
+export function presentationTemplatePreviewAssetId(
+  templateId: string,
+  objectKey: string,
+): string {
+  const storageVersionId = createHash("sha256")
+    .update(objectKey)
+    .digest("base64url");
+  return `${PRESENTATION_TEMPLATE_PREVIEW_ASSET_PREFIX}${templateId}:${storageVersionId}`;
+}
+
+export function parsePresentationTemplatePreviewAssetId(
+  previewAssetId: string,
+): PresentationTemplatePreviewAssetIdentity | null {
+  if (!previewAssetId.startsWith(PRESENTATION_TEMPLATE_PREVIEW_ASSET_PREFIX)) {
+    return null;
+  }
+  const identity = previewAssetId.slice(
+    PRESENTATION_TEMPLATE_PREVIEW_ASSET_PREFIX.length,
+  );
+  const separator = identity.indexOf(":");
+  const templateId = identity.slice(0, separator);
+  const storageVersionId = identity.slice(separator + 1);
+  if (
+    separator === -1 ||
+    !z.uuid().safeParse(templateId).success ||
+    !/^[\w-]{43}$/.test(storageVersionId)
+  ) {
+    return null;
+  }
+  return { templateId, storageVersionId };
 }
 
 /**

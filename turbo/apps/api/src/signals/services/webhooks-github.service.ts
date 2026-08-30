@@ -3,6 +3,7 @@ import {
   githubPullRequestReviewStateSchema,
   githubWorkflowRunConclusionSchema,
 } from "@okouai/api-contracts/contracts/workflows";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { githubUserLinks } from "@okouai/db/schema/github-user-link";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
@@ -251,6 +252,7 @@ export const handleGithubPullRequestEvent$ = command(
       readonly payload: GithubPullRequestEventPayload;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
       readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
@@ -265,6 +267,7 @@ export const handleGithubPullRequestEvent$ = command(
           payload: args.payload,
         },
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,
@@ -279,6 +282,7 @@ export const handleGithubWorkflowRunEvent$ = command(
       readonly payload: GithubWorkflowRunEventPayload;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
       readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
@@ -289,6 +293,7 @@ export const handleGithubWorkflowRunEvent$ = command(
         deliveryId: args.deliveryId,
         payload: args.payload,
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,
@@ -303,6 +308,7 @@ export const handleGithubWorkflowJobEvent$ = command(
       readonly payload: GithubWorkflowJobEventPayload;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
       readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
@@ -317,6 +323,7 @@ export const handleGithubWorkflowJobEvent$ = command(
           payload: args.payload,
         },
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,
@@ -331,6 +338,7 @@ export const handleGithubPullRequestReviewEvent$ = command(
       readonly payload: GithubPullRequestReviewEventPayload;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
       readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
@@ -345,6 +353,7 @@ export const handleGithubPullRequestReviewEvent$ = command(
           payload: args.payload,
         },
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,
@@ -359,6 +368,7 @@ export const handleGithubDeploymentStatusEvent$ = command(
       readonly payload: GithubDeploymentStatusEventPayload;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
       readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
@@ -373,6 +383,7 @@ export const handleGithubDeploymentStatusEvent$ = command(
           payload: args.payload,
         },
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,
@@ -387,6 +398,7 @@ export const handleGithubIssueCommentEvent$ = command(
       readonly payload: GitHubIssueCommentEvent;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly publicBrand: PublicBrand;
       readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
@@ -402,6 +414,7 @@ export const handleGithubIssueCommentEvent$ = command(
           payload: payload as GithubIssueCommentEventPayload,
         },
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,

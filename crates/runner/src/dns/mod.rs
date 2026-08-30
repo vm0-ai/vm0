@@ -1,6 +1,6 @@
-//! DNS proxy for sandbox VMs using dnsmasq.
+//! DNS proxy for runner sandboxes using dnsmasq.
 //!
-//! Spawns a dnsmasq process that serves as the DNS resolver for all VMs.
+//! Spawns a dnsmasq process that serves as the DNS resolver for all sandboxes.
 //! DNS queries are intercepted via iptables REDIRECT (PREROUTING chain)
 //! and forwarded to upstream resolvers (8.8.8.8, 8.8.4.4).
 //!
@@ -9,7 +9,7 @@
 //! - Layer 2: iptables DROP external UDP/TCP 53 and TCP 853 (bypass prevention)
 //! - Layer 3: IPv4/IPv6 INPUT filters reject direct access to dnsmasq's wildcard
 //!   port from interfaces outside the runner's netns pool
-//! - Layer 4: dnsmasq validates each request against the runner's VM-facing
+//! - Layer 4: dnsmasq validates each request against the runner's sandbox-facing
 //!   veth interface pattern (listener access control)
 //!
 //! VM resolv.conf points to an external nameserver (e.g. 8.8.8.8) as a dummy
@@ -17,7 +17,7 @@
 //! VM subnet and redirect to dnsmasq before packets reach FORWARD/POSTROUTING.
 //!
 //! Log format: dnsmasq `--log-queries=extra` outputs to stderr, parsed by a background
-//! async task that submits per-VM network JSON rows through `NetworkLogManager`.
+//! async task that submits per-sandbox network JSON rows through `NetworkLogManager`.
 
 mod log;
 mod port;

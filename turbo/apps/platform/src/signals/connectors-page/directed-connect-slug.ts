@@ -6,7 +6,7 @@ import {
 import {
   customConnectorSlugSchema,
   type CustomConnectorSlug,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 
@@ -49,7 +49,7 @@ export const directedConnectAgentName$ = computed(async (get) => {
   }
   const agents = await get(agents$);
   const agent = agents.find((a) => {
-    return a.id === agentId;
+    return a.agentId === agentId;
   });
   return { agentId, displayName: agent?.displayName ?? null };
 });

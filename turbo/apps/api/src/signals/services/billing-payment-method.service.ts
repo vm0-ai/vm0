@@ -1,9 +1,4 @@
-import { command } from "ccstate";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-
 import { getStripeClient } from "../external/stripe-client";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import {
   billingPreviewExpiresAt,
   createBillingPaymentMethodPreviewToken,
@@ -142,31 +137,6 @@ export async function setStripeSubscriptionPaymentMethod(
   );
   signal.throwIfAborted();
 }
-
-export const billingPurchasePreviewEnabled$ = command(
-  async (
-    { get },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly requested: boolean;
-    },
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    if (!args.requested) {
-      return false;
-    }
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-    return isFeatureEnabled(FeatureSwitchKey.SavedBillingCreditPurchase, {
-      orgId: args.orgId,
-      userId: args.userId,
-      overrides,
-    });
-  },
-);
 
 type BillingPurchasePreviewRoute = {
   readonly kind: "preview";

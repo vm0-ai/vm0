@@ -9,14 +9,14 @@ async def async_for_iterable():
 def sync_for_target_rebinding():
     target_meta = flow.metadata
     for target_meta in rows:
-        target_meta["vm_run_id"] = "loop-item"
-    target_meta["vm_sandbox_token"] = "sandbox"
+        target_meta["sandbox_run_id"] = "loop-item"
+    target_meta["sandbox_token"] = "sandbox"
 
 async def async_for_target_rebinding():
     target_meta = flow.metadata
     async for target_meta in async_rows:
-        target_meta["vm_run_id"] = "loop-item"
-    target_meta["vm_sandbox_token"] = "sandbox"
+        target_meta["sandbox_run_id"] = "loop-item"
+    target_meta["sandbox_token"] = "sandbox"
 
 def sync_for_body_alias():
     body_meta = {}

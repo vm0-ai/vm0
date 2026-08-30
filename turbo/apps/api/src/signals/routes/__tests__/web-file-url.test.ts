@@ -133,7 +133,7 @@ describe("GET /api/web/file-url", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 403 for a zero token without file:read capability", async () => {
+  it("returns 403 for an agent token without file:read capability", async () => {
     const token = mintOkouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,

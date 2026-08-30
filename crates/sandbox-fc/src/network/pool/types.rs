@@ -13,7 +13,7 @@ pub struct NetnsInfo {
     /// Host-side veth device name (e.g. `vm0-ve-00-00`).
     pub(super) host_device: String,
     /// Veth namespace-side IP (e.g. `10.200.0.2`). This is the source IP
-    /// that the proxy sees after NAT, used as the VM registry key.
+    /// that the proxy sees after NAT, used as the sandbox registry key.
     pub(super) peer_ip: String,
 }
 
@@ -36,7 +36,7 @@ impl NetnsInfo {
         &self.host_device
     }
 
-    /// Returns the namespace-side veth IP used to identify the VM behind NAT.
+    /// Returns the namespace-side veth IP used to identify the sandbox behind NAT.
     pub fn peer_ip(&self) -> &str {
         &self.peer_ip
     }

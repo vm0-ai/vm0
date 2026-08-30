@@ -18,6 +18,8 @@ const RUN_ID_ENV = "OKOU_RUN_ID";
 const PI_SESSION_ID_ENV = "OKOU_PI_SESSION_ID";
 const PI_LAUNCH_PAYLOAD_FILE_ENV = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
 const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
+const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE =
+  "vm0_pi_api_first_turn_boundary";
 
 export interface PiSandboxAgentConfig {
   readonly runId: string;
@@ -51,6 +53,29 @@ async function readLaunchPayload(
   return piLaunchPayloadSchema.parse(JSON.parse(raw) as unknown);
 }
 
+async function writePiApiFirstTurnBoundaryControl(
+  sandboxEventSequenceStart: number,
+): Promise<void> {
+  const line = `${JSON.stringify({
+    type: PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
+    schemaVersion: 1,
+    sandboxEventSequenceStart,
+  })}\n`;
+  await new Promise<void>((resolve, reject) => {
+    process.stdout.write(line, (error) => {
+      if (error) {
+        reject(
+          new Error("Pi API first-turn boundary control could not be written", {
+            cause: error,
+          }),
+        );
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 /**
  * Resolve immutable Pi runtime inputs injected by guest-agent.
  *
@@ -78,7 +103,23 @@ export async function piSandboxAgentConfigFromEnv(
   };
 }
 
-/** Run the official sandbox-owned Pi RPC host until guest-agent closes stdin. */
+/**
+ * Resolve the API-first handoff and run the official sandbox-owned Pi RPC host.
+ *
+ * The handoff resolver validates the immutable manifest and restored H1
+ * session, maps manifest v1 to sequence 1 or reads the manifest v2 sequence,
+ * and returns the session file plus the authoritative first Sandbox event
+ * sequence. This host then writes one private JSONL startup-control record with
+ * that sequence before entering `runPiOfficialRpcMode`.
+ *
+ * The guest-agent consumes that control record before admitting any official
+ * Pi RPC record, so the control is not an agent event, Chat event, transcript
+ * line, or public delivery. `runPiOfficialRpcMode` owns the official RPC
+ * command/record stream; guest-agent owns its stdin and keeps it open through
+ * `agent_settled`, closing it only after terminal handling and active-input
+ * quiescence. The host consequently remains in official RPC mode until the
+ * guest closes stdin.
+ */
 export async function runPiSandboxAgentLoop(args: {
   readonly config: PiSandboxAgentConfig;
   readonly cwd?: string;
@@ -91,6 +132,7 @@ export async function runPiSandboxAgentLoop(args: {
     sessionDir,
     sessionId: args.config.sessionId,
   });
+  await writePiApiFirstTurnBoundaryControl(handoff.sandboxEventSequenceStart);
   return await runPiOfficialRpcMode({
     sessionId: args.config.sessionId,
     sessionDir,

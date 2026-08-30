@@ -127,7 +127,7 @@ def test_check_flow_metadata_keys_cli_bounds_conditional_starred_arguments(tmp_p
     src_root = addon_root / "src"
     src_root.mkdir()
     (src_root / "flow_metadata_keys.py").write_text(
-        'VM_RUN_ID = "vm_run_id"\n'
+        'SANDBOX_RUN_ID = "sandbox_run_id"\n'
         'FIREWALL_NAME = "firewall_name"\n'
         'FIREWALL_ACTION = "firewall_action"\n',
         encoding="utf-8",
@@ -135,7 +135,7 @@ def test_check_flow_metadata_keys_cli_bounds_conditional_starred_arguments(tmp_p
     tests_root = addon_root / "tests"
     tests_root.mkdir()
     starred_elements = [
-        '    *([] if c0 else ["vm_run_id"]),',
+        '    *([] if c0 else ["sandbox_run_id"]),',
         '    *(["firewall_name"] if c1 else ["firewall_action"]),',
         *[
             f'    *(["external-{index}-left"] if c{index} else ["external-{index}-right"]),'
@@ -160,7 +160,7 @@ def test_check_flow_metadata_keys_cli_bounds_conditional_starred_arguments(tmp_p
         "for flow.metadata access\n"
         "tests/complex_star_args.py:3: use metadata_keys.FIREWALL_ACTION "
         "for flow.metadata access\n"
-        "tests/complex_star_args.py:2: use metadata_keys.VM_RUN_ID for flow.metadata access\n"
+        "tests/complex_star_args.py:2: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access\n"
     )
     assert result.stderr == ""
 
@@ -227,7 +227,7 @@ def test_registered_flow_metadata_guard_flags_match_or_pattern_keys(tmp_path):
     )
 
 
-def test_registered_flow_metadata_guard_flags_direct_unbound_mapping_reads(tmp_path):
+def test_registered_flow_metadata_guard_flags_direct_unbound_mapping_calls(tmp_path):
     source_path = tmp_path / "unbound_calls.py"
     _write_python_source(source_path, "unbound_calls.base.py.txt")
 
@@ -268,6 +268,17 @@ def test_registered_flow_metadata_guard_tracks_for_statement_variants(tmp_path):
 
     assert _normalized_violations(source_path, violations) == _expected_lines(
         "for_statement_flow.expected.txt"
+    )
+
+
+def test_registered_flow_metadata_guard_tracks_break_statement_exits(tmp_path):
+    source_path = tmp_path / "break_statement_flow.py"
+    _write_python_source(source_path, "break_statement_flow.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "break_statement_flow.expected.txt"
     )
 
 
@@ -317,22 +328,22 @@ def test_registered_flow_metadata_guard_tracks_with_item_binding_order(tmp_path)
 
 def test_registered_flow_metadata_guard_respects_python_source_encoding(tmp_path):
     source_path = tmp_path / "latin1.py"
-    source_path.write_bytes(b'# coding: latin-1\nflow.metadata["vm_run_id"] = "caf\xe9"\n')
+    source_path.write_bytes(b'# coding: latin-1\nflow.metadata["sandbox_run_id"] = "caf\xe9"\n')
 
     violations = flow_metadata_key_linter.metadata_key_violations(source_path)
 
     assert len(violations) == 1
-    assert "metadata_keys.VM_RUN_ID" in violations[0]
+    assert "metadata_keys.SANDBOX_RUN_ID" in violations[0]
 
 
 def test_registered_flow_metadata_guard_accepts_utf8_bom(tmp_path):
     source_path = tmp_path / "bom.py"
-    source_path.write_bytes(b'\xef\xbb\xbfflow.metadata["vm_run_id"] = "run-1"\n')
+    source_path.write_bytes(b'\xef\xbb\xbfflow.metadata["sandbox_run_id"] = "run-1"\n')
 
     violations = flow_metadata_key_linter.metadata_key_violations(source_path)
 
     assert len(violations) == 1
-    assert "metadata_keys.VM_RUN_ID" in violations[0]
+    assert "metadata_keys.SANDBOX_RUN_ID" in violations[0]
 
 
 def test_registered_flow_metadata_guard_ignores_external_schema_and_private_markers(tmp_path):

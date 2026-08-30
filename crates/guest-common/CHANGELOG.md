@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.3.39](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.38...guest-common-v0.3.39) (2026-08-30)
+
+## [0.3.38](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.37...guest-common-v0.3.38) (2026-08-30)
+
+## [0.3.37](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.36...guest-common-v0.3.37) (2026-08-30)
+
+## [0.3.36](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.35...guest-common-v0.3.36) (2026-08-29)
+
+## [0.3.35](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.34...guest-common-v0.3.35) (2026-08-28)
+
+## [0.3.34](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.33...guest-common-v0.3.34) (2026-08-28)
+
+## [0.3.33](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.32...guest-common-v0.3.33) (2026-08-28)
+
+## [0.3.32](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.31...guest-common-v0.3.32) (2026-08-28)
+
+## [0.3.31](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.30...guest-common-v0.3.31) (2026-08-28)
+
+## [0.3.30](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.29...guest-common-v0.3.30) (2026-08-28)
+
+## [0.3.29](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.28...guest-common-v0.3.29) (2026-08-28)
+
+## [0.3.28](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.27...guest-common-v0.3.28) (2026-08-27)
+
+## [0.3.27](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.26...guest-common-v0.3.27) (2026-08-27)
+
+## [0.3.26](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.25...guest-common-v0.3.26) (2026-08-27)
+
+## [0.3.25](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.24...guest-common-v0.3.25) (2026-08-26)
+
+## [0.3.24](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.23...guest-common-v0.3.24) (2026-08-26)
+
+## [0.3.23](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.22...guest-common-v0.3.23) (2026-08-25)
+
+## [0.3.22](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.21...guest-common-v0.3.22) (2026-08-25)
+
+## [0.3.21](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.20...guest-common-v0.3.21) (2026-08-25)
+
+## [0.3.20](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.19...guest-common-v0.3.20) (2026-08-25)
+
+## [0.3.19](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.18...guest-common-v0.3.19) (2026-08-24)
+
+## [0.3.18](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.17...guest-common-v0.3.18) (2026-08-24)
+
+## [0.3.17](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.16...guest-common-v0.3.17) (2026-08-24)
+
+## [0.3.16](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.15...guest-common-v0.3.16) (2026-08-24)
+
 ## [0.3.15](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.14...guest-common-v0.3.15) (2026-08-23)
 
 ## [0.3.14](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.13...guest-common-v0.3.14) (2026-08-21)

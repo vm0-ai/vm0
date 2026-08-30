@@ -637,7 +637,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     ]);
   });
 
-  it("scopes host discovery to the bound host for zero run tokens", async () => {
+  it("scopes host discovery to the bound host for agent run tokens", async () => {
     const actor = bdd.user();
     await api.startComputerUseHost(actor, {
       hostName: "Other Desktop",
@@ -1283,6 +1283,115 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expect(JSON.stringify(audit.auditEvents[0]?.redactedResult)).not.toContain(
       "private local notes",
     );
+  });
+
+  it("normalizes NUL characters in completion results and errors", async () => {
+    const actor = bdd.user();
+    const host = await api.startComputerUseHost(actor);
+
+    const succeeded = await api.createComputerUseWriteCommand(actor);
+    const claimedSucceeded = await api.claimNextComputerUseCommand(
+      host.hostToken,
+    );
+    expect(claimedSucceeded.status).toBe("command");
+    if (claimedSucceeded.status !== "command") {
+      throw new Error("Expected the successful command to be claimed");
+    }
+    expect(claimedSucceeded.command.id).toBe(succeeded.commandId);
+
+    const nestedNulKey = "nested\0key";
+    const nestedReplacementKey = "nested\uFFFDkey";
+    const collisionNulKey = "collision\0key";
+    const collisionReplacementKey = "collision\uFFFDkey";
+    const succeededBody = {
+      status: "succeeded" as const,
+      result: {
+        payload: {
+          [nestedNulKey]: ["before\0after", { unicode: "中文🙂" }],
+          collision: {
+            [collisionNulKey]: "replaced",
+            [collisionReplacementKey]: "preserved",
+          },
+        },
+      },
+    };
+    await api.completeComputerUseCommandWith(
+      host.hostToken,
+      succeeded.commandId,
+      succeededBody,
+    );
+    await api.completeComputerUseCommandWith(
+      host.hostToken,
+      succeeded.commandId,
+      succeededBody,
+    );
+
+    const completed = await api.readComputerUseCommand(
+      actor,
+      succeeded.commandId,
+    );
+    expect(completed).toMatchObject({
+      status: "succeeded",
+      result: {
+        payload: {
+          [nestedReplacementKey]: ["before\uFFFDafter", { unicode: "中文🙂" }],
+          collision: { [collisionReplacementKey]: "preserved" },
+        },
+      },
+    });
+    const succeededAudit = await api.listComputerUseAuditEvents(actor, {
+      commandId: succeeded.commandId,
+    });
+    expect(succeededAudit.auditEvents).toHaveLength(1);
+    expect(succeededAudit.auditEvents[0]).toMatchObject({
+      event: "completed",
+      redactedResult: {
+        payload: {
+          [nestedReplacementKey]: ["before\uFFFDafter", { unicode: "中文🙂" }],
+          collision: { [collisionReplacementKey]: "preserved" },
+        },
+      },
+      error: null,
+    });
+
+    const failed = await api.createComputerUseWriteCommand(actor);
+    const claimedFailed = await api.claimNextComputerUseCommand(host.hostToken);
+    expect(claimedFailed.status).toBe("command");
+    if (claimedFailed.status !== "command") {
+      throw new Error("Expected the failed command to be claimed");
+    }
+    expect(claimedFailed.command.id).toBe(failed.commandId);
+
+    await api.completeComputerUseCommandWith(host.hostToken, failed.commandId, {
+      status: "failed",
+      error: {
+        code: "app_not_found",
+        message: "Finder\0is unavailable 中文🙂",
+      },
+    });
+    const failedCommand = await api.readComputerUseCommand(
+      actor,
+      failed.commandId,
+    );
+    expect(failedCommand).toMatchObject({
+      status: "failed",
+      error: {
+        code: "app_not_found",
+        message: "Finder\uFFFDis unavailable 中文🙂",
+      },
+    });
+    const failedAudit = await api.listComputerUseAuditEvents(actor, {
+      commandId: failed.commandId,
+    });
+    expect(failedAudit.auditEvents).toHaveLength(1);
+    expect(failedAudit.auditEvents[0]).toMatchObject({
+      event: "completed",
+      redactedResult: null,
+      error: {
+        code: "app_not_found",
+        message: "Finder\uFFFDis unavailable 中文🙂",
+      },
+    });
   });
 
   it("times out stale running commands and reports completion failures", async () => {

@@ -31,7 +31,7 @@ const checkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   if (
-    auth.tokenType === "zero" &&
+    auth.tokenType === "agent" &&
     !auth.capabilities.includes("agent-run:read")
   ) {
     return missingAgentRunReadCapability();
@@ -44,7 +44,7 @@ const checkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       userId: auth.userId,
       stateSource:
-        auth.tokenType === "zero"
+        auth.tokenType === "agent"
           ? { kind: "run", runId: auth.runId }
           : { kind: "stored" },
     },

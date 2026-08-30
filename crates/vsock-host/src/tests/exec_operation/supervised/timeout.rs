@@ -14,11 +14,12 @@ use super::super::super::support::{
     setup_host_and_guest, wait_for_operation_count,
 };
 use super::support::supervised_request;
-use crate::SupervisedExecRequest;
 use crate::exec_operation as exec_operation_impl;
 use crate::operation_tracker::NormalOperationReadiness;
+use crate::{SupervisedExecControl, SupervisedExecRequest};
 
 const START_ACK_TEST_TIMEOUT: Duration = Duration::from_millis(50);
+const AGENT_READY_TEST_TIMEOUT: Duration = Duration::from_millis(200);
 
 #[tokio::test]
 async fn supervised_exec_terminal_wait_timeout_does_not_send_cancel() {
@@ -77,6 +78,44 @@ async fn supervised_exec_start_ack_timeout_sends_cancel() {
         Ok(n) => panic!("start timeout must send exactly one exec cancel; read {n} extra bytes"),
         Err(err) => panic!("unexpected read error after start timeout: {err}"),
     }
+}
+
+#[tokio::test]
+async fn supervised_agent_ready_timeout_after_started_sends_cancel() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                role: vsock_proto::ExecProcessRole::Agent,
+                control: SupervisedExecControl::Enabled { sink: true },
+                start_timeout: AGENT_READY_TEST_TIMEOUT,
+                ..supervised_request("agent-ready-timeout")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    send_exec_started(&mut guest, start.seq, 123).await;
+    tokio::task::yield_now().await;
+    assert!(!task.is_finished());
+
+    let result = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("Agent-ready wait should respect the start deadline")
+        .unwrap();
+    let err = match result {
+        Ok(_) => panic!("Agent start should time out before exec_agent_ready"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(operation_count(&host), 0);
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
 }
 
 #[tokio::test]
@@ -414,4 +453,40 @@ async fn supervised_exec_start_wait_cancellation_sends_cancel() {
         }
         Err(err) => panic!("unexpected read error after cancelled start wait: {err}"),
     }
+}
+
+#[tokio::test]
+async fn supervised_agent_start_wait_cancellation_after_started_sends_cancel() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                role: vsock_proto::ExecProcessRole::Agent,
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("cancel-agent-ready-wait")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    send_exec_started(&mut guest, start.seq, 123).await;
+    tokio::task::yield_now().await;
+    assert!(!task.is_finished());
+
+    task.abort();
+    let err = match task.await {
+        Ok(_) => panic!("cancelled Agent-ready wait task should abort"),
+        Err(err) => err,
+    };
+    assert!(err.is_cancelled());
+    assert_eq!(operation_count(&host), 0);
+    let cancel = tokio::time::timeout(Duration::from_secs(5), read_guest_message(&mut guest))
+        .await
+        .expect("cancelled Agent-ready wait should send exec cancel");
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
 }

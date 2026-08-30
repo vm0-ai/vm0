@@ -2,6 +2,8 @@ export const internalRunCallbackKinds = [
   "agentphone:chat",
   "chat",
   "github:chat",
+  // Phase-A identity fallback for persisted callback rows. Phase B removes it
+  // after #30264's released zero-callback/retry observation gate.
   "morning-brief:email",
   "slack:chat",
   "feishu:chat",
@@ -10,6 +12,7 @@ export const internalRunCallbackKinds = [
   "feishu:org",
   "workflow-automation:cron",
   "workflow-automation:loop",
+  "workflow-automation:result-email",
 ] as const;
 
 export type InternalRunCallbackKind = (typeof internalRunCallbackKinds)[number];
@@ -57,7 +60,8 @@ function isInternalRunCallbackKind(
     case "telegram:chat":
     case "feishu:org":
     case "workflow-automation:cron":
-    case "workflow-automation:loop": {
+    case "workflow-automation:loop":
+    case "workflow-automation:result-email": {
       return true;
     }
     default: {

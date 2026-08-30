@@ -32,8 +32,11 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
                 resume_session_id: None,
             },
         )?;
-        std::env::set_var("VM0_API_BACKEND_URL", &server.base_url);
-        std::env::set_var("VM0_API_TOKEN", "test-token");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            &server.base_url,
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
     }
     let mut runtime = common::guest_runtime_from_process_env()?;
     runtime.http = guest_agent::http::HttpClient::with_api_config(
@@ -57,7 +60,7 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
     assert!(result.control_error.is_none());
-    assert_eq!(result.last_event_sequence, Some(9));
+    assert_eq!(result.last_event_sequence, Some(11));
 
     server
         .wait_for_quiet(Duration::from_millis(50), Duration::from_secs(5))
@@ -87,7 +90,7 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
                 .unwrap_or_default()
         })
         .collect::<Vec<_>>();
-    assert_eq!(delivered.len(), 10);
+    assert_eq!(delivered.len(), 12);
     assert!(
         delivered
             .iter()
@@ -104,7 +107,7 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
             .iter()
             .map(|event| event["sequenceNumber"].as_u64())
             .collect::<Vec<_>>(),
-        (0..10).map(Some).collect::<Vec<_>>()
+        (0..12).map(Some).collect::<Vec<_>>()
     );
 
     for item_id in [
@@ -113,7 +116,7 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         "oversized-plan",
         "oversized-command",
         "oversized-file-change",
-        "oversized-structure",
+        "oversized-multi-change",
     ] {
         let event = delivered_item(&delivered, item_id)?;
         assert_eq!(event["item"]["id"], item_id);
@@ -152,11 +155,16 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
     assert_eq!(command["item"]["type"], "command_execution");
     assert_eq!(command["item"]["status"], "completed");
     assert_eq!(command["item"]["exit_code"], 0);
-    assert!(command["item"]["command"].as_str().is_some_and(
-        |text| text.starts_with("command-head-")
+    assert!(command["item"]["command"].as_str().is_some_and(|text| {
+        text.starts_with("command-head-***-")
             && text.ends_with("-command-tail")
             && text.contains(DELIVERY_MARKER)
-    ));
+    }));
+    assert!(
+        !command["item"]["command"]
+            .as_str()
+            .is_some_and(|text| text.contains("guest-tool-exec") || text.contains("vm0.command"))
+    );
     assert!(
         command["item"]["aggregated_output"]
             .as_str()
@@ -176,15 +184,52 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
                 && text.contains(DELIVERY_MARKER))
     );
 
-    let structure = delivered_item(&delivered, "oversized-structure")?;
-    assert_eq!(structure["item"]["type"], "file_change");
-    assert_eq!(structure["item"]["status"], "completed");
+    let fallback_plan = delivered
+        .iter()
+        .find(|event| event["type"] == "turn.plan.updated")
+        .ok_or("oversized plan update was not delivered")?;
+    assert_eq!(fallback_plan["sequenceNumber"], 7);
     assert_eq!(
-        structure["item"]["changes"].as_array().map(Vec::len),
-        Some(1)
+        fallback_plan["plan"],
+        serde_json::json!([{
+            "step": FALLBACK_MARKER,
+            "status": "pending",
+        }])
     );
-    assert_eq!(structure["item"]["changes"][0]["diff"], FALLBACK_MARKER);
-    assert!(structure["item"]["changes"][0].get("kind").is_none());
+    assert_eq!(fallback_plan["explanation"], FALLBACK_MARKER);
+
+    let multi_change = delivered_items(&delivered, "oversized-multi-change");
+    assert_eq!(multi_change.len(), 2);
+    assert_eq!(
+        multi_change
+            .iter()
+            .map(|event| event["sequenceNumber"].as_u64())
+            .collect::<Vec<_>>(),
+        vec![Some(8), Some(9)]
+    );
+    assert_eq!(
+        multi_change
+            .iter()
+            .map(|event| event["item"]["changes"][0]["path"].as_str())
+            .collect::<Vec<_>>(),
+        vec![Some("structure-a.txt"), Some("structure-b.txt")]
+    );
+    for (event, (head, tail)) in multi_change.iter().zip([
+        ("structure-a-head-***-", "-structure-a-tail"),
+        ("structure-b-head-***-", "-structure-b-tail"),
+    ]) {
+        assert_eq!(event["item"]["type"], "file_change");
+        assert_eq!(event["item"]["status"], "completed");
+        assert_eq!(event["item"]["changes"].as_array().map(Vec::len), Some(1));
+        assert_eq!(event["item"]["changes"][0]["kind"], "modify");
+        assert!(
+            event["item"]["changes"][0]["diff"]
+                .as_str()
+                .is_some_and(|text| text.starts_with(head)
+                    && text.ends_with(tail)
+                    && text.contains(DELIVERY_MARKER))
+        );
+    }
 
     let warning = delivered
         .iter()
@@ -202,14 +247,37 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
     assert!(local_text.contains(SECRET));
     assert!(!local_text.contains(DELIVERY_MARKER));
     assert!(local_agent.get("vm0_delivery").is_none());
+    let local_plan = local_events
+        .iter()
+        .find(|event| event["type"] == "turn.plan.updated")
+        .ok_or("local oversized plan update was not recorded")?;
+    assert_eq!(local_plan["plan"].as_array().map(Vec::len), Some(75_000));
+    assert!(!serde_json::to_string(local_plan)?.contains(FALLBACK_MARKER));
+    let local_multi_change = delivered_item(&local_events, "oversized-multi-change")?;
+    assert_eq!(
+        local_multi_change["item"]["changes"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert!(
+        local_multi_change["item"]["changes"]
+            .as_array()
+            .is_some_and(|changes| changes.iter().all(|change| {
+                change["diff"]
+                    .as_str()
+                    .is_some_and(|diff| diff.contains(SECRET) && !diff.contains(DELIVERY_MARKER))
+            }))
+    );
 
     let system_log = std::fs::read_to_string(runtime.paths.system_log_file())?;
     assert_eq!(
         system_log
             .matches("Codex event reduced for delivery")
             .count(),
-        6
+        8
     );
+    assert!(system_log.contains("event_type=turn.plan.updated"));
     assert!(system_log.contains("fallback=true"));
     assert!(!system_log.contains(SECRET));
     assert!(!system_log.contains("agent-head"));
@@ -223,6 +291,13 @@ fn delivered_item<'a>(events: &'a [Value], item_id: &str) -> Result<&'a Value, S
         .iter()
         .find(|event| event.pointer("/item/id").and_then(Value::as_str) == Some(item_id))
         .ok_or_else(|| format!("missing item {item_id}"))
+}
+
+fn delivered_items<'a>(events: &'a [Value], item_id: &str) -> Vec<&'a Value> {
+    events
+        .iter()
+        .filter(|event| event.pointer("/item/id").and_then(Value::as_str) == Some(item_id))
+        .collect()
 }
 
 fn read_jsonl(path: &str) -> Result<Vec<Value>, Box<dyn std::error::Error>> {

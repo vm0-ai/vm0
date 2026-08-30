@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
@@ -18,7 +20,10 @@ import {
   finalizeClaimedRunUserMessage,
   resolveRunChatThreadModelContext,
 } from "./chat-run-event.service";
-import type { ModelFirstPin } from "./model-selection.service";
+import {
+  modelProviderWriteTypeForLaunch,
+  type ModelFirstPin,
+} from "./model-selection.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -73,6 +78,12 @@ interface InternalRunCallbackInput {
   readonly payload: unknown;
 }
 
+function workflowModelProviderBody(modelProvider: string | null | undefined) {
+  return modelProvider
+    ? { modelProvider: modelProviderWriteTypeForLaunch(modelProvider) }
+    : {};
+}
+
 type ModelContext =
   | {
       readonly ok: true;
@@ -87,6 +98,7 @@ type ModelContext =
 export interface RunWorkflowAutomationNowArgs {
   readonly due: DueWorkflowAutomation;
   readonly automationContext: WorkflowAutomationContext;
+  readonly publicBrand?: PublicBrand;
   readonly apiStartTime: number;
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
   /** Exact member connector that durably delivered this provider event. */
@@ -110,6 +122,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly due: DueWorkflowAutomation;
   readonly apiStartTime: number;
   readonly prompt: string;
+  readonly publicBrand: PublicBrand;
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
   readonly connectorSourceId?: string;
@@ -159,45 +172,56 @@ function workflowAutomationRunMetadata(
 }
 
 /**
- * The recurrence reschedule callback (advances `next_run_at` / failure
- * bookkeeping on completion) plus the chat callback (drives the web-chat
- * render). Cron and once both use the cron callback; once carries no
- * cronExpression so it does not recur.
+ * The schedule recurrence callback (when applicable), the launch-snapshotted
+ * Official result-email callback, and the chat callback. Cron and once both
+ * use the cron callback; once carries no cronExpression so it does not recur.
  */
 export function buildWorkflowAutomationCallbacks(
   automation: AutomationRow,
   agentId: string,
   chatThreadId: string,
+  publicBrand: PublicBrand,
+  workflowName: string,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
-  if (automation.kind !== "schedule") {
-    return buildChatOnlyWorkflowAutomationCallbacks(chatThreadId, agentId);
+  if (automation.kind === "schedule") {
+    if (automation.scheduleType === "loop") {
+      callbacks.push({
+        internalKind: "workflow-automation:loop",
+        secret: generateCallbackSecret(),
+        payload: {
+          automationId: automation.id,
+        },
+      });
+    } else {
+      callbacks.push({
+        internalKind: "workflow-automation:cron",
+        secret: generateCallbackSecret(),
+        payload: {
+          automationId: automation.id,
+          timezone: automation.timezone,
+          ...(automation.cronExpression
+            ? { cronExpression: automation.cronExpression }
+            : {}),
+        },
+      });
+    }
   }
-  if (automation.scheduleType === "loop") {
+  if (automation.officialResultEmailEnabled === true) {
     callbacks.push({
-      internalKind: "workflow-automation:loop",
+      internalKind: "workflow-automation:result-email",
       secret: generateCallbackSecret(),
       payload: {
         automationId: automation.id,
-      },
-    });
-  } else {
-    callbacks.push({
-      internalKind: "workflow-automation:cron",
-      secret: generateCallbackSecret(),
-      payload: {
-        automationId: automation.id,
-        timezone: automation.timezone,
-        ...(automation.cronExpression
-          ? { cronExpression: automation.cronExpression }
-          : {}),
+        workflowName,
+        publicBrand,
       },
     });
   }
   callbacks.push({
     internalKind: "chat",
     secret: generateCallbackSecret(),
-    payload: { threadId: chatThreadId, agentId },
+    payload: { threadId: chatThreadId, agentId, publicBrand },
   });
   return callbacks;
 }
@@ -251,22 +275,6 @@ function appendComputerUseSystemPrompt(
   ].join("\n\n");
 }
 
-export function buildChatOnlyWorkflowAutomationCallbacks(
-  chatThreadId: string,
-  agentId: string,
-): InternalRunCallbackInput[] {
-  return [
-    {
-      internalKind: "chat",
-      secret: generateCallbackSecret(),
-      payload: {
-        threadId: chatThreadId,
-        agentId,
-      },
-    },
-  ];
-}
-
 async function resolveModelContext(
   args: {
     readonly db: Db;
@@ -307,15 +315,14 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const fallbackEnabled =
-    effectiveModelProvider === "vm0"
-      ? isFeatureEnabled(
-          FeatureSwitchKey.ManagedModelProviderFallback,
-          await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
-        )
-      : false;
+  const fallbackEnabled = isBuiltInModelProviderType(effectiveModelProvider)
+    ? isFeatureEnabled(
+        FeatureSwitchKey.BuiltInModelProviderFallback,
+        await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
+      )
+    : false;
   const builtInModelRuntimeRoute =
-    effectiveModelProvider === "vm0" && selectedModel
+    isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
       ? await resolveBuiltInModelRuntimeRoute(
           args.db,
           selectedModel,
@@ -323,7 +330,10 @@ async function resolveModelContext(
         )
       : undefined;
   signal.throwIfAborted();
-  if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
+  if (
+    isBuiltInModelProviderType(effectiveModelProvider) &&
+    !builtInModelRuntimeRoute
+  ) {
     return {
       ok: false,
       failure: {
@@ -336,7 +346,7 @@ async function resolveModelContext(
                 ? "MODEL_PROVIDER_UNAVAILABLE"
                 : "PROVIDER_UNAVAILABLE",
               message: fallbackEnabled
-                ? "Every managed route for this model is temporarily unavailable"
+                ? "Every built-in model route for this model is temporarily unavailable"
                 : "No model provider configured: no built-in model key is configured",
             },
           },
@@ -526,6 +536,7 @@ async function recordWorkflowAutomationRunStart(
   const { automation, chatThreadId } = args.due;
   await finalizeClaimedRunUserMessage({
     db,
+    orgId: automation.orgId,
     threadId: chatThreadId,
     userId: automation.ownerUserId,
     runId,
@@ -653,11 +664,10 @@ export const launchQueuedWorkflowAutomation$ = command(
         body: {
           prompt: runInput.prompt,
           agentId,
-          ...(effectiveModelProvider
-            ? { modelProvider: effectiveModelProvider }
-            : {}),
+          ...workflowModelProviderBody(effectiveModelProvider),
         },
         apiStartTime: args.apiStartTime,
+        publicBrand: args.publicBrand,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
         ...(args.connectorSourceId
@@ -674,6 +684,9 @@ export const launchQueuedWorkflowAutomation$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         agentRunMetadata: runInput.agentRunMetadata,
+        ...(automation.officialBlueprintKey === null
+          ? {}
+          : { requiredOfficialWorkflowIds: [automation.workflowId] }),
         queueFirstAssociation: {
           kind: "automation_event",
           threadId: chatThreadId,

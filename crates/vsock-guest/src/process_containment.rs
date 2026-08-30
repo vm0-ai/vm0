@@ -1,12 +1,15 @@
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
+use std::net::Shutdown;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -22,6 +25,7 @@ use guest_contracts::process_containment::{
     WORKLOAD_CGROUP_NAME, WORKLOAD_MEMORY_OOM_GROUP, WorkloadResourceEvents,
     WorkloadResourcePolicy,
 };
+use vsock_proto::ExecProcessRole;
 
 use crate::log::log;
 
@@ -40,7 +44,6 @@ const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
 const PIDS_EVENTS_FILE: &str = "pids.events";
 const PIDS_MAX_FILE: &str = "pids.max";
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
-const WORKLOAD_BOOTSTRAP_ACCEPT_POLL: Duration = Duration::from_millis(100);
 const WORKLOAD_BOOTSTRAP_ENDPOINT_SUFFIX: &str = "-workload-placement";
 const TOOL_PLACEMENT_ENDPOINT_SUFFIX: &str = "-tool-placement";
 const TOOL_PLACEMENT_IO_TIMEOUT: Duration = Duration::from_secs(5);
@@ -104,8 +107,84 @@ impl PreparedProcessContainmentCommand {
 pub(crate) struct WorkloadPlacementBootstrap {
     endpoint: String,
     tool_endpoint: String,
+    setup_elapsed: Duration,
+    ready_rx: mpsc::Receiver<io::Result<()>>,
     cancel: Arc<AtomicBool>,
+    cancel_wake_writer: Option<OwnedFd>,
+    active_tool_placement: Arc<ActiveToolPlacement>,
     workers: Vec<JoinHandle<()>>,
+}
+
+#[derive(Default)]
+struct ActiveToolPlacement {
+    stream: Mutex<Option<Arc<UnixStream>>>,
+}
+
+struct ActiveToolPlacementStream {
+    active: Arc<ActiveToolPlacement>,
+    stream: Arc<UnixStream>,
+}
+
+impl ActiveToolPlacement {
+    fn register(
+        self: &Arc<Self>,
+        stream: UnixStream,
+        cancel: &AtomicBool,
+    ) -> io::Result<Option<ActiveToolPlacementStream>> {
+        let mut active = self
+            .stream
+            .lock()
+            .map_err(|_| io::Error::other("active tool placement state is unavailable"))?;
+        if cancel.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        let stream = Arc::new(stream);
+        *active = Some(Arc::clone(&stream));
+        Ok(Some(ActiveToolPlacementStream {
+            active: Arc::clone(self),
+            stream,
+        }))
+    }
+
+    fn clear(&self) -> io::Result<()> {
+        let mut active = self
+            .stream
+            .lock()
+            .map_err(|_| io::Error::other("active tool placement state is unavailable"))?;
+        *active = None;
+        Ok(())
+    }
+
+    fn shutdown(&self) -> io::Result<()> {
+        let stream = {
+            let mut active = self
+                .stream
+                .lock()
+                .map_err(|_| io::Error::other("active tool placement state is unavailable"))?;
+            active.take()
+        };
+        match stream {
+            Some(stream) => stream.shutdown(Shutdown::Both),
+            None => Ok(()),
+        }
+    }
+}
+
+impl AsRef<UnixStream> for ActiveToolPlacementStream {
+    fn as_ref(&self) -> &UnixStream {
+        &self.stream
+    }
+}
+
+impl Drop for ActiveToolPlacementStream {
+    fn drop(&mut self) {
+        if let Err(error) = self.active.clear() {
+            log(
+                "WARN",
+                &format!("active tool placement cleanup failed: {error}"),
+            );
+        }
+    }
 }
 
 impl WorkloadPlacementBootstrap {
@@ -116,11 +195,30 @@ impl WorkloadPlacementBootstrap {
     pub(crate) fn tool_endpoint(&self) -> &str {
         &self.tool_endpoint
     }
+
+    pub(crate) fn setup_elapsed(&self) -> Duration {
+        self.setup_elapsed
+    }
+
+    pub(crate) fn recv_ready_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<io::Result<()>, mpsc::RecvTimeoutError> {
+        self.ready_rx.recv_timeout(timeout)
+    }
 }
 
 impl Drop for WorkloadPlacementBootstrap {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Release);
+        // Closing the sole pipe writer wakes every worker poll through POLLHUP.
+        drop(self.cancel_wake_writer.take());
+        if let Err(error) = self.active_tool_placement.shutdown() {
+            log(
+                "WARN",
+                &format!("active tool placement shutdown failed: {error}"),
+            );
+        }
         for worker in self.workers.drain(..) {
             if let Err(error) = worker.join() {
                 log(
@@ -160,7 +258,7 @@ impl ExecProcessContainment {
     pub(crate) fn create(
         sequence: u32,
         mode: ProcessContainmentMode,
-        trusted_control: bool,
+        role: ExecProcessRole,
     ) -> Result<Self, ProcessContainmentError> {
         if use_test_noop_backend(mode) {
             return Ok(Self {
@@ -168,7 +266,7 @@ impl ExecProcessContainment {
             });
         }
 
-        CgroupGuard::create(sequence, trusted_control).map(|guard| Self {
+        CgroupGuard::create(sequence, role).map(|guard| Self {
             backend: ContainmentBackend::Cgroup(guard),
         })
     }
@@ -187,6 +285,15 @@ impl ExecProcessContainment {
                 outer_placement: None,
                 deny_process_inspection: false,
             }),
+        }
+    }
+
+    pub(crate) fn create_elapsed(&self) -> Duration {
+        match &self.backend {
+            ContainmentBackend::Cgroup(guard) => guard.create_elapsed,
+            ContainmentBackend::TestNoop => Duration::ZERO,
+            #[cfg(test)]
+            ContainmentBackend::TestDirectory(_) => Duration::ZERO,
         }
     }
 
@@ -209,11 +316,19 @@ impl ExecProcessContainment {
         self,
         mode: ProcessContainmentCleanupMode,
     ) -> Result<(), ProcessContainmentError> {
+        self.cleanup_with_evidence(mode).map(|_| ())
+    }
+
+    pub(crate) fn cleanup_with_evidence(
+        self,
+        mode: ProcessContainmentCleanupMode,
+    ) -> Result<Option<String>, ProcessContainmentError> {
         match self.backend {
             ContainmentBackend::Cgroup(guard) => guard.cleanup(mode),
-            ContainmentBackend::TestNoop => Ok(()),
+            ContainmentBackend::TestNoop => Ok(None),
             #[cfg(test)]
             ContainmentBackend::TestDirectory(group_path) => fs::remove_dir(group_path)
+                .map(|()| None)
                 .map_err(|error| ProcessContainmentError::new("remove test cgroup", error)),
         }
     }
@@ -265,22 +380,18 @@ fn verify_exec_process_containment_empty_in(
 }
 
 impl CgroupGuard {
-    fn create(sequence: u32, trusted_control: bool) -> Result<Self, ProcessContainmentError> {
+    fn create(sequence: u32, role: ExecProcessRole) -> Result<Self, ProcessContainmentError> {
         let policy = workload_resource_policy()?;
-        Self::create_in(
-            Path::new(EXEC_CGROUP_BASE_PATH),
-            sequence,
-            trusted_control,
-            policy,
-        )
+        Self::create_in(Path::new(EXEC_CGROUP_BASE_PATH), sequence, role, policy)
     }
 
     fn create_in(
         base_path: &Path,
         sequence: u32,
-        trusted_control: bool,
+        role: ExecProcessRole,
         policy: WorkloadResourcePolicy,
     ) -> Result<Self, ProcessContainmentError> {
+        let trusted_control = role == ExecProcessRole::Agent;
         let started = Instant::now();
         let id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
         let group_name = format!(
@@ -399,6 +510,7 @@ impl CgroupGuard {
         control_endpoint: &str,
         expected_uid: libc::uid_t,
     ) -> Result<WorkloadPlacementBootstrap, ProcessContainmentError> {
+        let started = Instant::now();
         let placement = self
             .workload_placement
             .as_ref()
@@ -430,18 +542,30 @@ impl CgroupGuard {
                 io::Error::other("trusted control cgroup has no tools domain"),
             )
         })?;
+        let (cancel_reader, cancel_wake_writer) = placement_cancel_pipe().map_err(|error| {
+            ProcessContainmentError::new("prepare placement cancellation", error)
+        })?;
+        let cancel_reader = Arc::new(cancel_reader);
+        let workload_cancel_reader = Arc::clone(&cancel_reader);
+        let tool_cancel_reader = Arc::clone(&cancel_reader);
+        let active_tool_placement = Arc::new(ActiveToolPlacement::default());
+        let worker_active_tool_placement = Arc::clone(&active_tool_placement);
+        let mut cancel_wake_writer = Some(cancel_wake_writer);
         let cancel = Arc::new(AtomicBool::new(false));
+        let (ready_tx, ready_rx) = mpsc::channel();
         let worker_cancel = Arc::clone(&cancel);
         let workload_worker = thread::Builder::new()
             .name(THREAD_WORKLOAD_BOOTSTRAP.to_owned())
             .spawn(move || {
-                serve_workload_placement(
+                let result = serve_workload_placement(
                     listener,
                     placement,
                     expected_uid,
                     &expected_cgroup,
                     &worker_cancel,
+                    workload_cancel_reader.as_raw_fd(),
                 );
+                let _ = ready_tx.send(result);
             })
             .map_err(|error| {
                 ProcessContainmentError::new("start workload placement bootstrap worker", error)
@@ -455,12 +579,15 @@ impl CgroupGuard {
                     expected_uid,
                     &expected_runtime_cgroup,
                     &tools_path,
+                    &worker_active_tool_placement,
                     &tool_cancel,
+                    tool_cancel_reader.as_raw_fd(),
                 );
             }) {
             Ok(worker) => worker,
             Err(error) => {
                 cancel.store(true, Ordering::Release);
+                drop(cancel_wake_writer.take());
                 let _ = workload_worker.join();
                 return Err(ProcessContainmentError::new(
                     "start tool placement worker",
@@ -471,12 +598,19 @@ impl CgroupGuard {
         Ok(WorkloadPlacementBootstrap {
             endpoint,
             tool_endpoint,
+            setup_elapsed: started.elapsed(),
+            ready_rx,
             cancel,
+            cancel_wake_writer,
+            active_tool_placement,
             workers: vec![workload_worker, tool_worker],
         })
     }
 
-    fn cleanup(self, mode: ProcessContainmentCleanupMode) -> Result<(), ProcessContainmentError> {
+    fn cleanup(
+        self,
+        mode: ProcessContainmentCleanupMode,
+    ) -> Result<Option<String>, ProcessContainmentError> {
         let started = Instant::now();
         let CgroupGuard {
             group_name,
@@ -494,26 +628,17 @@ impl CgroupGuard {
         let result = cleanup_cgroup(&group_path, mode);
         match result {
             Ok(report) => {
-                // Healthy exec cleanup is a hot path. Emit diagnostics
-                // only when containment had work beyond removing an empty leaf.
-                if report.descendants_observed
-                    || report.cgroup_kill_used
-                    || report.graceful_errors > 0
-                {
-                    log(
-                        "INFO",
-                        &format!(
-                            "exec process containment cleaned group={group_name} mode={mode:?} descendants_observed={} cgroup_kill_used={} initial_members={} graceful_errors={} create_us={} cleanup_ms={}",
-                            report.descendants_observed,
-                            report.cgroup_kill_used,
-                            report.initial_members,
-                            report.graceful_errors,
-                            create_elapsed.as_micros(),
-                            started.elapsed().as_millis()
-                        ),
-                    );
+                let evidence = cleanup_evidence_line(
+                    &group_name,
+                    mode,
+                    &report,
+                    create_elapsed,
+                    started.elapsed(),
+                );
+                if let Some(evidence) = evidence.as_deref() {
+                    log("INFO", evidence);
                 }
-                Ok(())
+                Ok(evidence)
             }
             Err(error) => {
                 log(
@@ -700,6 +825,29 @@ struct CleanupReport {
     graceful_errors: usize,
 }
 
+fn cleanup_evidence_line(
+    group_name: &str,
+    mode: ProcessContainmentCleanupMode,
+    report: &CleanupReport,
+    create_elapsed: Duration,
+    cleanup_elapsed: Duration,
+) -> Option<String> {
+    // Healthy exec cleanup is a hot path. Produce evidence only when
+    // containment had work beyond removing an empty leaf.
+    if !report.descendants_observed && !report.cgroup_kill_used && report.graceful_errors == 0 {
+        return None;
+    }
+    Some(format!(
+        "exec process containment cleaned group={group_name} mode={mode:?} descendants_observed={} cgroup_kill_used={} initial_members={} graceful_errors={} create_us={} cleanup_ms={}",
+        report.descendants_observed,
+        report.cgroup_kill_used,
+        report.initial_members,
+        report.graceful_errors,
+        create_elapsed.as_micros(),
+        cleanup_elapsed.as_millis()
+    ))
+}
+
 fn cleanup_cgroup(
     group_path: &Path,
     mode: ProcessContainmentCleanupMode,
@@ -823,40 +971,143 @@ fn install_process_inspection_denial(command: &mut Command) {
     }
 }
 
+fn placement_cancel_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0; 2];
+    // SAFETY: `pipe2` initializes two file descriptors in `fds` on success.
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: both descriptors were freshly returned by `pipe2` and ownership
+    // is transferred to the returned `OwnedFd` values.
+    let reader = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    // SAFETY: see above; this is the distinct writer descriptor.
+    let writer = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+    Ok((reader, writer))
+}
+
+enum PlacementWaitOutcome {
+    ListenerReady,
+    Cancelled,
+}
+
+fn wait_for_placement_or_cancelled(
+    listener: &UnixListener,
+    cancel_fd: RawFd,
+) -> io::Result<PlacementWaitOutcome> {
+    loop {
+        let mut pollfds = [
+            libc::pollfd {
+                fd: listener.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: cancel_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        // SAFETY: `pollfds` points to two initialized descriptor entries that
+        // remain owned by the caller for the duration of this call.
+        let result = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as libc::nfds_t, -1) };
+        if result > 0 {
+            let listener_revents = pollfds[0].revents;
+            let cancel_revents = pollfds[1].revents;
+            if cancel_revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+                return Ok(PlacementWaitOutcome::Cancelled);
+            }
+            if cancel_revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                return Err(io::Error::other(
+                    "placement cancellation descriptor became unavailable",
+                ));
+            }
+            if listener_revents & libc::POLLIN != 0 {
+                return Ok(PlacementWaitOutcome::ListenerReady);
+            }
+            if listener_revents & libc::POLLNVAL != 0 {
+                return Err(io::Error::other(
+                    "placement listener descriptor became unavailable",
+                ));
+            }
+            if listener_revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+                return Err(listener
+                    .take_error()?
+                    .unwrap_or_else(|| io::Error::other("placement listener became unavailable")));
+            }
+            continue;
+        }
+        if result == 0 {
+            continue;
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+fn accept_placement_or_cancelled(
+    listener: &UnixListener,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) -> io::Result<Option<UnixStream>> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        match wait_for_placement_or_cancelled(listener, cancel_fd)? {
+            PlacementWaitOutcome::Cancelled => return Ok(None),
+            PlacementWaitOutcome::ListenerReady => {
+                if cancel.load(Ordering::Acquire) {
+                    return Ok(None);
+                }
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        if cancel.load(Ordering::Acquire) {
+                            return Ok(None);
+                        }
+                        return Ok(Some(stream));
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+    }
+}
+
 fn serve_workload_placement(
-    listener: std::os::unix::net::UnixListener,
+    listener: UnixListener,
     placement: OwnedFd,
     expected_uid: libc::uid_t,
     expected_cgroup: &Path,
     cancel: &AtomicBool,
-) {
-    while !cancel.load(Ordering::Acquire) {
-        let stream = match process_control_ipc::accept_with_timeout(
-            &listener,
-            WORKLOAD_BOOTSTRAP_ACCEPT_POLL,
-        ) {
-            Ok(stream) => stream,
-            Err(error) if error.kind() == io::ErrorKind::TimedOut => continue,
-            Err(error) => {
-                log(
-                    "WARN",
-                    &format!("workload placement bootstrap accept failed: {error}"),
-                );
-                return;
-            }
+    cancel_fd: RawFd,
+) -> io::Result<()> {
+    loop {
+        let stream = match accept_placement_or_cancelled(&listener, cancel, cancel_fd) {
+            Ok(Some(stream)) => stream,
+            Ok(None) => return Err(workload_bootstrap_cancelled()),
+            Err(error) => return Err(error),
         };
 
         match workload_bootstrap_peer_matches(&stream, expected_uid, expected_cgroup) {
             Ok(true) => {
-                if let Err(error) =
-                    process_control_ipc::send_workload_placement(&stream, placement.as_fd())
-                {
-                    log(
-                        "WARN",
-                        &format!("workload placement descriptor send failed: {error}"),
-                    );
+                stream.set_nonblocking(true)?;
+                send_workload_placement_or_cancelled(
+                    &stream,
+                    placement.as_fd(),
+                    cancel,
+                    cancel_fd,
+                )?;
+                read_workload_confirmation_or_cancelled(&stream, cancel, cancel_fd)?;
+                if !workload_bootstrap_peer_matches(&stream, expected_uid, expected_cgroup)? {
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "workload placement peer left the control cgroup before confirmation",
+                    ));
                 }
-                return;
+                return Ok(());
             }
             Ok(false) => {
                 log(
@@ -874,34 +1125,164 @@ fn serve_workload_placement(
     }
 }
 
+fn send_workload_placement_or_cancelled(
+    stream: &UnixStream,
+    placement: std::os::fd::BorrowedFd<'_>,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) -> io::Result<()> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Err(workload_bootstrap_cancelled());
+        }
+        match process_control_ipc::send_workload_placement(stream, placement) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                wait_placement_stream_or_cancelled(stream, libc::POLLOUT, cancel, cancel_fd)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn read_workload_confirmation_or_cancelled(
+    stream: &UnixStream,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) -> io::Result<()> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Err(workload_bootstrap_cancelled());
+        }
+        match process_control_ipc::read_workload_placement_confirmation(stream) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                wait_placement_stream_or_cancelled(stream, libc::POLLIN, cancel, cancel_fd)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn wait_placement_stream_or_cancelled(
+    stream: &UnixStream,
+    events: libc::c_short,
+    cancel: &AtomicBool,
+    cancel_fd: RawFd,
+) -> io::Result<()> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Err(workload_bootstrap_cancelled());
+        }
+        let mut pollfds = [
+            libc::pollfd {
+                fd: stream.as_raw_fd(),
+                events,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: cancel_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        // SAFETY: both poll entries reference live descriptors owned by the
+        // bootstrap for the duration of this call.
+        let result = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as libc::nfds_t, -1) };
+        if result > 0 {
+            let stream_revents = pollfds[0].revents;
+            let cancel_revents = pollfds[1].revents;
+            if cancel.load(Ordering::Acquire)
+                || cancel_revents & (libc::POLLIN | libc::POLLHUP) != 0
+            {
+                return Err(workload_bootstrap_cancelled());
+            }
+            if cancel_revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                return Err(io::Error::other(
+                    "placement cancellation descriptor became unavailable",
+                ));
+            }
+            if stream_revents & events != 0 {
+                return Ok(());
+            }
+            if stream_revents & libc::POLLNVAL != 0 {
+                return Err(io::Error::other(
+                    "workload placement stream descriptor became unavailable",
+                ));
+            }
+            if stream_revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+                return Err(stream.take_error()?.unwrap_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "workload placement stream closed before confirmation",
+                    )
+                }));
+            }
+            continue;
+        }
+        if result == 0 {
+            continue;
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+fn workload_bootstrap_cancelled() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::Interrupted,
+        "workload placement bootstrap cancelled",
+    )
+}
+
 fn serve_tool_placement(
-    listener: std::os::unix::net::UnixListener,
+    listener: UnixListener,
     expected_uid: libc::uid_t,
     expected_runtime_cgroup: &Path,
     tools_path: &Path,
+    active_tool_placement: &Arc<ActiveToolPlacement>,
     cancel: &AtomicBool,
+    cancel_fd: RawFd,
 ) {
     let mut next_tool_id = 1_u64;
-    while !cancel.load(Ordering::Acquire) {
-        let stream = match process_control_ipc::accept_with_timeout(
-            &listener,
-            WORKLOAD_BOOTSTRAP_ACCEPT_POLL,
-        ) {
-            Ok(stream) => stream,
-            Err(error) if error.kind() == io::ErrorKind::TimedOut => continue,
+    loop {
+        let stream = match accept_placement_or_cancelled(&listener, cancel, cancel_fd) {
+            Ok(Some(stream)) => stream,
+            Ok(None) => return,
             Err(error) => {
                 log("WARN", &format!("tool placement accept failed: {error}"));
                 return;
             }
         };
-        if let Err(error) = stream.set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT)) {
+        let stream = match active_tool_placement.register(stream, cancel) {
+            Ok(Some(stream)) => stream,
+            Ok(None) => return,
+            Err(error) => {
+                log(
+                    "WARN",
+                    &format!("tool placement stream registration failed: {error}"),
+                );
+                return;
+            }
+        };
+        if let Err(error) = stream
+            .as_ref()
+            .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+        {
             log(
                 "WARN",
                 &format!("tool placement read timeout setup failed: {error}"),
             );
             continue;
         }
-        if let Err(error) = stream.set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT)) {
+        if let Err(error) = stream
+            .as_ref()
+            .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+        {
             log(
                 "WARN",
                 &format!("tool placement write timeout setup failed: {error}"),
@@ -910,7 +1291,7 @@ fn serve_tool_placement(
         }
 
         let placement = place_tool_peer(
-            &stream,
+            stream.as_ref(),
             expected_uid,
             expected_runtime_cgroup,
             tools_path,
@@ -918,6 +1299,9 @@ fn serve_tool_placement(
         );
         next_tool_id = next_tool_id.saturating_add(1);
         if let Err(error) = placement {
+            if cancel.load(Ordering::Acquire) {
+                return;
+            }
             log("WARN", &format!("tool placement rejected: {error}"));
         }
     }
@@ -1303,8 +1687,18 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
     use std::process::{Child, Stdio};
+    use std::sync::mpsc;
 
     struct ChildGuard(Child);
+
+    fn current_cgroup_path() -> PathBuf {
+        let current_cgroup = fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative = current_cgroup
+            .lines()
+            .find_map(|line| line.strip_prefix("0::/"))
+            .unwrap();
+        Path::new(CGROUP_V2_MOUNT_PATH).join(relative)
+    }
 
     impl Drop for ChildGuard {
         fn drop(&mut self) {
@@ -1319,6 +1713,47 @@ mod tests {
         assert_eq!(parse_populated("populated 1\nfrozen 0\n"), Some(true));
         assert_eq!(parse_populated("frozen 0\n"), None);
         assert_eq!(parse_populated("populated 2\n"), None);
+    }
+
+    #[test]
+    fn cleanup_evidence_reports_material_cgroup_kill() {
+        let evidence = cleanup_evidence_line(
+            "exec-7-1",
+            ProcessContainmentCleanupMode::Graceful,
+            &CleanupReport {
+                descendants_observed: true,
+                cgroup_kill_used: true,
+                initial_members: 61,
+                graceful_errors: 0,
+            },
+            Duration::from_micros(42),
+            Duration::from_millis(17),
+        )
+        .unwrap();
+
+        assert_eq!(
+            evidence,
+            "exec process containment cleaned group=exec-7-1 mode=Graceful descendants_observed=true cgroup_kill_used=true initial_members=61 graceful_errors=0 create_us=42 cleanup_ms=17"
+        );
+    }
+
+    #[test]
+    fn cleanup_evidence_omits_empty_healthy_cleanup() {
+        assert!(
+            cleanup_evidence_line(
+                "exec-8-1",
+                ProcessContainmentCleanupMode::Graceful,
+                &CleanupReport {
+                    descendants_observed: false,
+                    cgroup_kill_used: false,
+                    initial_members: 0,
+                    graceful_errors: 0,
+                },
+                Duration::ZERO,
+                Duration::ZERO,
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1400,12 +1835,7 @@ mod tests {
         let (peer, _server) = std::os::unix::net::UnixStream::pair().unwrap();
         // SAFETY: geteuid is a simple scalar getter with no preconditions.
         let uid = unsafe { libc::geteuid() };
-        let current_cgroup = fs::read_to_string("/proc/self/cgroup").unwrap();
-        let relative = current_cgroup
-            .lines()
-            .find_map(|line| line.strip_prefix("0::/"))
-            .unwrap();
-        let expected = Path::new(CGROUP_V2_MOUNT_PATH).join(relative);
+        let expected = current_cgroup_path();
 
         assert!(workload_bootstrap_peer_matches(&peer, uid, &expected).unwrap());
         assert!(!workload_bootstrap_peer_matches(&peer, uid.wrapping_add(1), &expected).unwrap());
@@ -1413,6 +1843,405 @@ mod tests {
             !workload_bootstrap_peer_matches(&peer, uid, &expected.join("not-the-peer-cgroup"))
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn workload_bootstrap_completes_after_authenticated_descriptor_confirmation() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-workload-confirm-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let placement: OwnedFd = tempfile::tempfile().unwrap().into();
+        let (cancel_reader, _cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let server_cancel = Arc::clone(&cancel);
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        let uid = unsafe { libc::geteuid() };
+        let expected = current_cgroup_path();
+        let server = thread::spawn(move || {
+            serve_workload_placement(
+                listener,
+                placement,
+                uid,
+                &expected,
+                &server_cancel,
+                cancel_reader.as_raw_fd(),
+            )
+        });
+
+        let client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let descriptor = process_control_ipc::receive_workload_placement(&client).unwrap();
+        process_control_ipc::write_workload_placement_confirmation(&client).unwrap();
+
+        server.join().unwrap().unwrap();
+        drop(descriptor);
+    }
+
+    #[test]
+    fn workload_bootstrap_fails_when_descriptor_recipient_disconnects_before_confirmation() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-workload-disconnect-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let placement: OwnedFd = tempfile::tempfile().unwrap().into();
+        let (cancel_reader, _cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let server_cancel = Arc::clone(&cancel);
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        let uid = unsafe { libc::geteuid() };
+        let expected = current_cgroup_path();
+        let server = thread::spawn(move || {
+            serve_workload_placement(
+                listener,
+                placement,
+                uid,
+                &expected,
+                &server_cancel,
+                cancel_reader.as_raw_fd(),
+            )
+        });
+
+        let client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let descriptor = process_control_ipc::receive_workload_placement(&client).unwrap();
+        drop(client);
+
+        let error = server
+            .join()
+            .unwrap()
+            .expect_err("missing placement confirmation must fail readiness");
+        assert!(matches!(
+            error.kind(),
+            io::ErrorKind::UnexpectedEof
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::BrokenPipe
+        ));
+        drop(descriptor);
+    }
+
+    #[test]
+    fn placement_accept_returns_connection_while_active() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-placement-accept-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = AtomicBool::new(false);
+
+        let accepted =
+            accept_placement_or_cancelled(&listener, &cancel, cancel_reader.as_raw_fd()).unwrap();
+
+        assert!(accepted.is_some());
+        drop(cancel_writer);
+        drop(client);
+    }
+
+    #[test]
+    fn placement_cancel_wins_over_ready_connection() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint = format!(
+            "vm0-test-placement-cancel-ready-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let _client = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel = AtomicBool::new(false);
+        drop(cancel_writer);
+
+        let accepted =
+            accept_placement_or_cancelled(&listener, &cancel, cancel_reader.as_raw_fd()).unwrap();
+
+        assert!(accepted.is_none());
+    }
+
+    #[test]
+    fn placement_bootstrap_drop_wakes_all_idle_accept_workers() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint_base = format!(
+            "vm0-test-placement-cancel-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let endpoint = format!("{endpoint_base}-workload");
+        let tool_endpoint = format!("{endpoint_base}-tool");
+        let workload_listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let tool_listener = process_control_ipc::bind_abstract_listener(&tool_endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel_reader = Arc::new(cancel_reader);
+        let workload_cancel_reader = Arc::clone(&cancel_reader);
+        let tool_cancel_reader = Arc::clone(&cancel_reader);
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let worker_done = Arc::new(AtomicU64::new(0));
+        let workload_ready_tx = ready_tx.clone();
+        let workload_done = Arc::clone(&worker_done);
+        let workload_worker = thread::Builder::new()
+            .name("test-workload-placement-cancel".to_owned())
+            .spawn(move || {
+                workload_ready_tx.send(()).unwrap();
+                match wait_for_placement_or_cancelled(
+                    &workload_listener,
+                    workload_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                {
+                    PlacementWaitOutcome::Cancelled => {}
+                    PlacementWaitOutcome::ListenerReady => {
+                        panic!("idle workload placement listener unexpectedly became ready");
+                    }
+                }
+                workload_done.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
+        let tool_done = Arc::clone(&worker_done);
+        let tool_worker = thread::Builder::new()
+            .name("test-tool-placement-cancel".to_owned())
+            .spawn(move || {
+                ready_tx.send(()).unwrap();
+                match wait_for_placement_or_cancelled(
+                    &tool_listener,
+                    tool_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                {
+                    PlacementWaitOutcome::Cancelled => {}
+                    PlacementWaitOutcome::ListenerReady => {
+                        panic!("idle tool placement listener unexpectedly became ready");
+                    }
+                }
+                tool_done.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_after_drop = Arc::clone(&cancel);
+        let (_bootstrap_ready_tx, bootstrap_ready_rx) = mpsc::channel();
+        let bootstrap = WorkloadPlacementBootstrap {
+            endpoint,
+            tool_endpoint,
+            setup_elapsed: Duration::ZERO,
+            ready_rx: bootstrap_ready_rx,
+            cancel,
+            cancel_wake_writer: Some(cancel_writer),
+            active_tool_placement: Arc::new(ActiveToolPlacement::default()),
+            workers: vec![workload_worker, tool_worker],
+        };
+
+        for _ in 0..2 {
+            ready_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("placement worker should enter its idle wait");
+        }
+        let (drop_done_tx, drop_done_rx) = mpsc::channel();
+        let drop_worker = thread::spawn(move || {
+            drop(bootstrap);
+            drop_done_tx.send(()).unwrap();
+        });
+
+        drop_done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("bootstrap drop should actively wake and join the idle worker");
+        drop_worker.join().unwrap();
+        assert!(cancel_after_drop.load(Ordering::Acquire));
+        assert_eq!(worker_done.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn placement_bootstrap_drop_interrupts_accepted_tool_handshake() {
+        let endpoint_id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
+        let endpoint_base = format!(
+            "vm0-test-placement-active-cancel-{}-{endpoint_id}",
+            std::process::id()
+        );
+        let endpoint = format!("{endpoint_base}-workload");
+        let tool_endpoint = format!("{endpoint_base}-tool");
+        let workload_listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let tool_listener = process_control_ipc::bind_abstract_listener(&tool_endpoint).unwrap();
+        let (cancel_reader, cancel_writer) = placement_cancel_pipe().unwrap();
+        let cancel_reader = Arc::new(cancel_reader);
+        let workload_cancel_reader = Arc::clone(&cancel_reader);
+        let tool_cancel_reader = Arc::clone(&cancel_reader);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let tool_cancel = Arc::clone(&cancel);
+        let cancel_after_drop = Arc::clone(&cancel);
+        let active_tool_placement = Arc::new(ActiveToolPlacement::default());
+        let worker_active_tool_placement = Arc::clone(&active_tool_placement);
+        let active_after_success = Arc::clone(&active_tool_placement);
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let workload_ready_tx = ready_tx.clone();
+        let (successful_done_tx, successful_done_rx) = mpsc::channel();
+        let (stalled_error_tx, stalled_error_rx) = mpsc::channel();
+        let worker_done = Arc::new(AtomicU64::new(0));
+        let workload_done = Arc::clone(&worker_done);
+        let tool_done = Arc::clone(&worker_done);
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        let expected_uid = unsafe { libc::geteuid() };
+        let current_cgroup = fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative_cgroup = current_cgroup
+            .lines()
+            .find_map(|line| line.strip_prefix("0::/"))
+            .unwrap();
+        let expected_cgroup = Path::new(CGROUP_V2_MOUNT_PATH).join(relative_cgroup);
+
+        let workload_worker = thread::Builder::new()
+            .name("test-workload-placement-active-cancel".to_owned())
+            .spawn(move || {
+                workload_ready_tx.send(()).unwrap();
+                match wait_for_placement_or_cancelled(
+                    &workload_listener,
+                    workload_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                {
+                    PlacementWaitOutcome::Cancelled => {}
+                    PlacementWaitOutcome::ListenerReady => {
+                        panic!("idle workload placement listener unexpectedly became ready");
+                    }
+                }
+                workload_done.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
+        let tool_worker = thread::Builder::new()
+            .name("test-tool-placement-active-cancel".to_owned())
+            .spawn(move || {
+                ready_tx.send(()).unwrap();
+                let placement = std::fs::File::open("/dev/null").unwrap();
+
+                let successful_stream = accept_placement_or_cancelled(
+                    &tool_listener,
+                    &tool_cancel,
+                    tool_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                .unwrap();
+                let successful_stream = worker_active_tool_placement
+                    .register(successful_stream, &tool_cancel)
+                    .unwrap()
+                    .unwrap();
+                successful_stream
+                    .as_ref()
+                    .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+                    .unwrap();
+                successful_stream
+                    .as_ref()
+                    .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+                    .unwrap();
+                assert!(
+                    peer_matches(successful_stream.as_ref(), expected_uid, &expected_cgroup)
+                        .unwrap()
+                );
+                process_control_ipc::send_tool_placement(
+                    successful_stream.as_ref(),
+                    placement.as_fd(),
+                )
+                .unwrap();
+                process_control_ipc::read_tool_placement_confirmation(successful_stream.as_ref())
+                    .unwrap();
+                process_control_ipc::write_tool_placement_ack(successful_stream.as_ref()).unwrap();
+                drop(successful_stream);
+                successful_done_tx.send(()).unwrap();
+
+                let stalled_stream = accept_placement_or_cancelled(
+                    &tool_listener,
+                    &tool_cancel,
+                    tool_cancel_reader.as_raw_fd(),
+                )
+                .unwrap()
+                .unwrap();
+                let stalled_stream = worker_active_tool_placement
+                    .register(stalled_stream, &tool_cancel)
+                    .unwrap()
+                    .unwrap();
+                stalled_stream
+                    .as_ref()
+                    .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+                    .unwrap();
+                stalled_stream
+                    .as_ref()
+                    .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+                    .unwrap();
+                assert!(
+                    peer_matches(stalled_stream.as_ref(), expected_uid, &expected_cgroup).unwrap()
+                );
+                process_control_ipc::send_tool_placement(
+                    stalled_stream.as_ref(),
+                    placement.as_fd(),
+                )
+                .unwrap();
+                let error =
+                    process_control_ipc::read_tool_placement_confirmation(stalled_stream.as_ref())
+                        .expect_err("bootstrap drop should interrupt the confirmation read");
+                stalled_error_tx.send(error.kind()).unwrap();
+                tool_done.fetch_add(1, Ordering::Release);
+            })
+            .unwrap();
+        let (_bootstrap_ready_tx, bootstrap_ready_rx) = mpsc::channel();
+        let bootstrap = WorkloadPlacementBootstrap {
+            endpoint,
+            tool_endpoint: tool_endpoint.clone(),
+            setup_elapsed: Duration::ZERO,
+            ready_rx: bootstrap_ready_rx,
+            cancel,
+            cancel_wake_writer: Some(cancel_writer),
+            active_tool_placement,
+            workers: vec![workload_worker, tool_worker],
+        };
+
+        for _ in 0..2 {
+            ready_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("placement worker should enter its wait");
+        }
+        let successful_client = process_control_ipc::connect_abstract(&tool_endpoint).unwrap();
+        successful_client
+            .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+            .unwrap();
+        successful_client
+            .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+            .unwrap();
+        let successful_placement =
+            process_control_ipc::receive_tool_placement(&successful_client).unwrap();
+        drop(successful_placement);
+        process_control_ipc::write_tool_placement_confirmation(&successful_client).unwrap();
+        process_control_ipc::read_tool_placement_ack(&successful_client).unwrap();
+        successful_done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("successful placement should clear its active stream");
+        assert!(active_after_success.stream.lock().unwrap().is_none());
+
+        let stalled_client = process_control_ipc::connect_abstract(&tool_endpoint).unwrap();
+        stalled_client
+            .set_read_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+            .unwrap();
+        stalled_client
+            .set_write_timeout(Some(TOOL_PLACEMENT_IO_TIMEOUT))
+            .unwrap();
+        let stalled_placement =
+            process_control_ipc::receive_tool_placement(&stalled_client).unwrap();
+        drop(stalled_placement);
+
+        let (drop_done_tx, drop_done_rx) = mpsc::channel();
+        let drop_worker = thread::spawn(move || {
+            drop(bootstrap);
+            drop_done_tx.send(()).unwrap();
+        });
+
+        drop_done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("bootstrap drop should interrupt and join the accepted handshake");
+        drop_worker.join().unwrap();
+        let stalled_error = stalled_error_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("accepted handshake should report interrupted I/O");
+        assert_ne!(stalled_error, io::ErrorKind::TimedOut);
+        process_control_ipc::read_tool_placement_ack(&stalled_client)
+            .expect_err("cancelled placement must not receive an acknowledgement");
+        assert!(cancel_after_drop.load(Ordering::Acquire));
+        assert_eq!(worker_done.load(Ordering::Acquire), 2);
     }
 
     #[test]
@@ -1467,7 +2296,7 @@ mod tests {
         let policy =
             WorkloadResourcePolicy::for_guest_capacity(2, u64::from(4096_u32) * 1024 * 1024)
                 .unwrap();
-        let result = CgroupGuard::create_in(base.path(), 17, false, policy);
+        let result = CgroupGuard::create_in(base.path(), 17, ExecProcessRole::Workload, policy);
         let Err(error) = result else {
             panic!("placement-file open unexpectedly succeeded");
         };

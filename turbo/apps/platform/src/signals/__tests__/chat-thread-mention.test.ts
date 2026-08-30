@@ -3,9 +3,9 @@ import { testContext } from "./test-helpers.ts";
 import {
   serializeChatThreadMention,
   splitChatThreadMentionSegments,
-} from "../zero-page/chat-thread-suggestion-domain.ts";
-import { createDraftSignals } from "../zero-page/chat-draft.ts";
-import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+} from "../okou-page/chat-thread-suggestion-domain.ts";
+import { createDraftSignals } from "../okou-page/chat-draft.ts";
+import { createWorkflowComposerSignals } from "../okou-page/tiptap-workflow-composer.ts";
 
 const context = testContext();
 

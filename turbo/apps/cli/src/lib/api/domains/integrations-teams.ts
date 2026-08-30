@@ -83,7 +83,7 @@ export async function downloadTeamsFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/okou/integrations/teams/download-file", baseUrl);
+  const url = new URL("/api/integrations/teams/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
 
   const headers: Record<string, string> = {

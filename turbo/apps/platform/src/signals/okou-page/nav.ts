@@ -1,0 +1,254 @@
+import { command, computed, state } from "ccstate";
+import { detachedNavigateTo$ } from "../route.ts";
+import { ROUTES, type RouteKey } from "../route-paths.ts";
+import { localStorageSignals } from "../external/local-storage.ts";
+import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
+import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
+import { currentChatAgentId$ } from "../agent-chat.ts";
+import { activeRoute$ } from "../active-route.ts";
+import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
+import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
+import {
+  openAgentListDialog$,
+  openThreeColumnSearchDialog$,
+} from "./sidebar-state.ts";
+import { displayedPinnedAgents$ } from "./pinned-agents.ts";
+import { writeToClipboard } from "./clipboard.ts";
+import { isStandaloneMode } from "./settings/connectors.ts";
+
+type PinnedAgentShortcutDirection = "prev" | "next";
+
+export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
+  set(detachedNavigateTo$, "/chats/:threadId", {
+    pathParams: { threadId: chatThreadId },
+  });
+});
+
+const navigateToNewChat$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const agentId = await get(currentChatAgentId$);
+    signal.throwIfAborted();
+    if (!agentId) {
+      return;
+    }
+    set(detachedNavigateTo$, "/agents/:agentId/chat", {
+      pathParams: { agentId },
+    });
+  },
+);
+
+function adjacentPinnedAgentId(
+  pinnedAgents: readonly { readonly agentId: string }[],
+  currentAgentId: string | null,
+  direction: PinnedAgentShortcutDirection,
+): string | null {
+  if (pinnedAgents.length === 0) {
+    return null;
+  }
+  const currentIndex = currentAgentId
+    ? pinnedAgents.findIndex((agent) => {
+        return agent.agentId === currentAgentId;
+      })
+    : -1;
+  if (currentIndex === -1) {
+    return direction === "next"
+      ? pinnedAgents[0]!.agentId
+      : pinnedAgents[pinnedAgents.length - 1]!.agentId;
+  }
+  const offset = direction === "next" ? 1 : -1;
+  return pinnedAgents[
+    (currentIndex + offset + pinnedAgents.length) % pinnedAgents.length
+  ]!.agentId;
+}
+
+const firstChatThreadIdForAgent$ = command(
+  async ({ get }, agentId: string, signal: AbortSignal) => {
+    const threads = await get(eventDrivenChatThreads$);
+    signal.throwIfAborted();
+    for (const thread of threads) {
+      if (thread.agentId === agentId) {
+        return thread.id;
+      }
+    }
+    return null;
+  },
+);
+
+const navigateToAgentChat$ = command(({ set }, agentId: string) => {
+  set(detachedNavigateTo$, "/agents/:agentId/chat", {
+    pathParams: { agentId },
+  });
+});
+
+const navigateToPinnedAgent$ = command(
+  async ({ get, set }, agentId: string, signal: AbortSignal) => {
+    if (get(activeRoute$) === "chat") {
+      const threadId = await set(firstChatThreadIdForAgent$, agentId, signal);
+      signal.throwIfAborted();
+      if (threadId) {
+        set(navigateToChat$, threadId);
+        return;
+      }
+    }
+    set(navigateToAgentChat$, agentId);
+  },
+);
+
+const navigateAdjacentPinnedAgent$ = command(
+  async (
+    { get, set },
+    direction: PinnedAgentShortcutDirection,
+    signal: AbortSignal,
+  ) => {
+    const currentAgentId = await get(currentChatAgentId$);
+    signal.throwIfAborted();
+    const targetAgentId = adjacentPinnedAgentId(
+      await get(displayedPinnedAgents$),
+      currentAgentId,
+      direction,
+    );
+    signal.throwIfAborted();
+    if (!targetAgentId) {
+      return;
+    }
+    await set(navigateToPinnedAgent$, targetAgentId, signal);
+  },
+);
+
+const {
+  get$: sidebarOffRaw$,
+  set$: setSidebarOffRaw$,
+  clear$: clearSidebarOff$,
+} = localStorageSignals("sidebarOff");
+
+export const sidebarOff$ = computed((get) => {
+  return get(sidebarOffRaw$) !== null;
+});
+
+export const toggleSidebarOff$ = command(({ get, set }) => {
+  if (get(sidebarOffRaw$) !== null) {
+    set(clearSidebarOff$);
+  } else {
+    set(setSidebarOffRaw$, "1");
+  }
+});
+
+export const setupGlobalKeyboardShortcuts$ = command(
+  ({ set }, signal: AbortSignal) => {
+    setupGlobalShortcut(
+      {
+        "mod+b": {
+          allowInEditableTarget: true,
+          run: () => {
+            set(toggleSidebarOff$);
+          },
+        },
+        "mod+k": {
+          allowInEditableTarget: true,
+          run: () => {
+            set(openThreeColumnSearchDialog$);
+          },
+        },
+        "mod+l": {
+          allowInEditableTarget: true,
+          shouldHandle: () => {
+            return isStandaloneMode();
+          },
+          run: async () => {
+            await writeToClipboard(window.location.href);
+          },
+        },
+        "mod+shift+o": {
+          allowInEditableTarget: true,
+          run: async () => {
+            await set(navigateToNewChat$, signal);
+          },
+        },
+        "mod+shift+a": {
+          allowInEditableTarget: true,
+          run: () => {
+            set(openAgentListDialog$);
+          },
+        },
+        "ctrl+shift+[": {
+          allowInEditableTarget: true,
+          run: async () => {
+            await set(navigateAdjacentPinnedAgent$, "prev", signal);
+          },
+        },
+        "ctrl+shift+]": {
+          allowInEditableTarget: true,
+          run: async () => {
+            await set(navigateAdjacentPinnedAgent$, "next", signal);
+          },
+        },
+        "shift+/": {
+          run: () => {
+            set(setChatShortcutHelpOpen$, true);
+          },
+        },
+      },
+      signal,
+    );
+  },
+);
+
+const internalSidebarExpanded$ = state(false);
+
+export const sidebarExpanded$ = computed((get) => {
+  return get(internalSidebarExpanded$);
+});
+
+export const setSidebarExpanded$ = command(({ set }, expanded: boolean) => {
+  set(internalSidebarExpanded$, expanded);
+});
+
+export type SidebarNavId =
+  | "chat"
+  | "agents"
+  | "artifacts"
+  | "connectors"
+  | "workflows"
+  | "works"
+  | "settings"
+  | "queues";
+
+export function isChatRoute(key: RouteKey | null): boolean {
+  return (
+    key === "home" ||
+    key === "agentChat" ||
+    key === "agentIdeas" ||
+    key === "chat"
+  );
+}
+
+export const handleNavSelect$ = command(({ set }, id: SidebarNavId) => {
+  if (id === "queues") {
+    set(openQueueDrawer$);
+  } else {
+    const navRoutes = {
+      chat: ROUTES.home,
+      agents: ROUTES.agents,
+      artifacts: ROUTES.artifacts,
+      connectors: ROUTES.connectors,
+      workflows: ROUTES.workflows,
+      works: ROUTES.works,
+      settings: ROUTES.settings,
+    } satisfies Record<
+      Exclude<SidebarNavId, "queues">,
+      (typeof ROUTES)[keyof typeof ROUTES]
+    >;
+    set(detachedNavigateTo$, navRoutes[id]);
+  }
+});
+
+export type AccountAction = "lab" | "signout";
+
+export const handleAccountAction$ = command(
+  ({ set }, action: AccountAction) => {
+    set(internalSidebarExpanded$, false);
+    if (action === "lab") {
+      set(detachedNavigateTo$, ROUTES.lab);
+    }
+  },
+);

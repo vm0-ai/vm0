@@ -24,7 +24,10 @@ from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
-from ...reporting_context import usage_reporting_context
+from ...reporting_context import (
+    log_usage_reporting_context_missing,
+    usage_reporting_context,
+)
 from ...underbilling import log_usage_underbilling
 from .x_billing import (
     INCLUDES_OVERFLOW_CATEGORY,
@@ -34,7 +37,11 @@ from .x_billing import (
     include_billing_category,
     refine_bucket_with_body,
 )
-from .x_response_inspection import parse_json_response_fields_from_body
+from .x_response_inspection import (
+    as_non_negative_response_count,
+    is_stream_path,
+    parse_json_response_fields_from_body,
+)
 
 # HTTP 2xx success range (RFC 9110). Also defined in ``response_streaming.py``
 # and ``x_response_inspection.py``; kept local to avoid a constants module for a
@@ -160,10 +167,6 @@ def _compile_request_fallback_hint_policies(
 _REQUEST_FALLBACK_HINT_POLICIES = _compile_request_fallback_hint_policies(
     _REQUEST_FALLBACK_HINT_POLICY_SPECS
 )
-
-
-def _as_non_bool_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _count_bounded_non_empty_comma_segments(value: str, max_count: int) -> int | None:
@@ -522,7 +525,7 @@ def _compute_billable_counts(
 
     if resp_meta.get("body_parsed"):
         if req_meta.get("is_count_endpoint"):
-            total = _as_non_bool_int(resp_meta.get("response_total_tweet_count"))
+            total = as_non_negative_response_count(resp_meta.get("response_total_tweet_count"))
             primary = 0 if total is None else total
         else:
             # Body was parsed — trust actual response counts.
@@ -616,7 +619,8 @@ def _response_usage_context(flow: http.HTTPFlow) -> _ResponseUsageContext | None
 
 def needs_response_buffer_fallback(flow: http.HTTPFlow) -> bool:
     """Return whether X billing may consume a buffered response body."""
-    return _response_usage_context(flow) is not None
+    context = _response_usage_context(flow)
+    return context is not None and not is_stream_path(context.request_path)
 
 
 def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
@@ -748,7 +752,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         method == "GET"
         and req_meta.get("is_count_endpoint")
         and resp_meta.get("body_parsed")
-        and _as_non_bool_int(resp_meta.get("response_total_tweet_count")) is None
+        and as_non_negative_response_count(resp_meta.get("response_total_tweet_count")) is None
     ):
         log_usage_underbilling(
             proxy_log_path,
@@ -766,16 +770,11 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
 
     reporting_context = usage_reporting_context(flow)
     if not reporting_context.is_complete:
-        log_usage_underbilling(
-            reporting_context.proxy_log_path,
-            "Cannot report usage event: missing sandbox_token or api_url",
-            "missing_reporting_context",
-            "confirmed",
-            run_id=run_id,
-            firewall_name=firewall_name,
+        log_usage_reporting_context_missing(
+            reporting_context,
+            run_id,
+            firewall_name,
             permission=permission,
-            missing_sandbox_token=reporting_context.missing_sandbox_token,
-            missing_api_url=reporting_context.missing_api_url,
         )
         return
     events: list[UsageEvent] = []

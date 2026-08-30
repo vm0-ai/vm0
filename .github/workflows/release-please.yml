@@ -76,6 +76,7 @@ jobs:
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       release_target: ${{ steps.release-target.outputs.sha }}
+      release_tags: ${{ steps.release-tags.outputs.tags }}
       api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
       core_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] }}
       api_contracts_release_created: ${{ steps.release.outputs['turbo/packages/api-contracts--release_created'] }}
@@ -85,8 +86,8 @@ jobs:
       desktop_release_created: ${{ steps.release.outputs['turbo/apps/desktop--release_created'] }}
       host_worker_release_created: ${{ steps.release.outputs['turbo/apps/host-worker--release_created'] }}
       runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
-      api_runtime_dependency_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
-      api_deploy_required: ${{ steps.release.outputs['turbo/apps/api--release_created'] == 'true' || steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
+      api_runtime_dependency_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' || steps.release.outputs['turbo/packages/connector-catalog-validation--release_created'] == 'true' }}
+      api_deploy_required: ${{ steps.release.outputs['turbo/apps/api--release_created'] == 'true' || steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' || steps.release.outputs['turbo/packages/connector-catalog-validation--release_created'] == 'true' }}
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       api_version: ${{ steps.release.outputs['turbo/apps/api--version'] }}
       app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
@@ -104,21 +105,61 @@ jobs:
         id: release-target
         if: ${{ steps.release.outputs.releases_created == 'true' }}
         env:
-          RELEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+          RELEASE_SHAS: >-
+            [
+              ${{ toJSON(steps.release.outputs['crates/ably-subscriber--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/api-contracts--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-agent--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-common--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-contracts--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-download--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-init--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-reseed--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-write-file--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/nbd-cow--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/process-control-ipc--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-mock--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/shell-quote--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/tracing-test-support--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-guest--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-host--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-proto--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-test--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/api--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/cli--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/desktop--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/platform--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/connectors--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/connector-catalog-validation--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/core--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/db--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/pi-agent-runtime--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/ui--sha']) }}
+            ]
         run: |
           set -euo pipefail
 
           release_target=$(
             jq -er '
-              [
-                to_entries[]
-                | select(.key == "sha" or (.key | endswith("--sha")))
-                | .value
-                | select(
-                    type == "string" and
-                    test("^[0-9a-f]{40}$")
-                  )
-              ]
+              map(select(. != null and . != ""))
+              | map(
+                  if type != "string" then
+                    error("release-please returned non-string release SHA: " + tostring)
+                  elif test("^[0-9a-f]{40}$") then
+                    .
+                  else
+                    error("release-please returned invalid release SHA: " + .)
+                  end
+                )
               | unique
               | if length == 1 then
                   .[0]
@@ -130,10 +171,94 @@ jobs:
                     join(", ")
                   )
                 end
-            ' <<<"$RELEASE_OUTPUTS"
+            ' <<<"$RELEASE_SHAS"
           )
 
           echo "sha=$release_target" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve current release tags
+        id: release-tags
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        env:
+          RELEASE_TAGS: >-
+            [
+              ${{ toJSON(steps.release.outputs['crates/ably-subscriber--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/api-contracts--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-agent--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-common--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-contracts--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-download--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-init--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-reseed--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-write-file--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/nbd-cow--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/process-control-ipc--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-mock--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/shell-quote--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/tracing-test-support--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-guest--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-host--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-proto--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/vsock-test--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/api--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/cli--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/desktop--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/platform--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/connectors--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/connector-catalog-validation--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/core--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/db--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/pi-agent-runtime--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/packages/ui--tag_name']) }}
+            ]
+          DESKTOP_RELEASE_CREATED: ${{ steps.release.outputs['turbo/apps/desktop--release_created'] }}
+          DESKTOP_VERSION: ${{ steps.release.outputs['turbo/apps/desktop--version'] }}
+        run: |
+          set -euo pipefail
+
+          derived_release_tags='[]'
+          if [ "$DESKTOP_RELEASE_CREATED" = "true" ]; then
+            derived_release_tags=$(jq -nc \
+              --arg tag "okou-desktop-v${DESKTOP_VERSION}" \
+              '[$tag]')
+          fi
+
+          release_tags=$(
+            jq -ce --argjson derived_release_tags "$derived_release_tags" '
+              (. + $derived_release_tags)
+              | map(select(. != null and . != ""))
+              | map(
+                  if type != "string" then
+                    error("release-please returned non-string release tag: " + tostring)
+                  elif test("^.+-v[0-9]") then
+                    .
+                  else
+                    error("release-please returned invalid release tag: " + .)
+                  end
+                )
+              | if length == 0 then
+                  error("release-please returned no release tag")
+                elif length != (unique | length) then
+                  error(
+                    "release-please returned duplicate release tags: " +
+                    (group_by(.) | map(select(length > 1) | .[0]) | join(", "))
+                  )
+                else
+                  .
+                end
+            ' <<<"$RELEASE_TAGS"
+          )
+
+          echo "tags=$release_tags" >> "$GITHUB_OUTPUT"
 
   # Refreshing the release pull request is a separate job so that a failure here
   # cannot skip the release and deployment jobs above. release-please recomputes
@@ -195,7 +320,7 @@ jobs:
       RELEASE_TAG: desktop-v${{ needs.release-please.outputs.desktop_version }}
       OKOU_RELEASE_TAG: okou-desktop-v${{ needs.release-please.outputs.desktop_version }}
       RELEASE_TARGET: ${{ needs.release-please.outputs.release_target }}
-      VM0_DESKTOP_SIGNING_IDENTITY: "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)"
+      OKOU_DESKTOP_SIGNING_IDENTITY: "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)"
       MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
@@ -390,7 +515,7 @@ jobs:
             "$keychain_path"
           security list-keychains -d user -s "$keychain_path"
 
-          if ! security find-identity -p codesigning -v "$keychain_path" | grep -F "$VM0_DESKTOP_SIGNING_IDENTITY"; then
+          if ! security find-identity -p codesigning -v "$keychain_path" | grep -F "$OKOU_DESKTOP_SIGNING_IDENTITY"; then
             echo "::error::Developer ID Application identity not found in imported certificate"
             exit 1
           fi
@@ -408,9 +533,9 @@ jobs:
       - name: Sign and notarize macOS artifacts
         id: desktop-artifacts
         env:
-          VM0_DESKTOP_NOTARIZE_API_KEY_PATH: ${{ steps.notary-key.outputs.path }}
-          VM0_DESKTOP_NOTARIZE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          VM0_DESKTOP_NOTARIZE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          OKOU_DESKTOP_NOTARIZE_API_KEY_PATH: ${{ steps.notary-key.outputs.path }}
+          OKOU_DESKTOP_NOTARIZE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          OKOU_DESKTOP_NOTARIZE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
         run: |
           create_product_artifacts() {
             local product="$1"
@@ -437,11 +562,11 @@ jobs:
               --out "$dmg_artifact_path" \
               --volume-name "$volume_name" \
               "${background_args[@]}"
-            codesign --force --sign "$VM0_DESKTOP_SIGNING_IDENTITY" --timestamp "$dmg_artifact_path"
+            codesign --force --sign "$OKOU_DESKTOP_SIGNING_IDENTITY" --timestamp "$dmg_artifact_path"
             xcrun notarytool submit "$dmg_artifact_path" \
-              --key "$VM0_DESKTOP_NOTARIZE_API_KEY_PATH" \
-              --key-id "$VM0_DESKTOP_NOTARIZE_API_KEY_ID" \
-              --issuer "$VM0_DESKTOP_NOTARIZE_API_ISSUER" \
+              --key "$OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" \
+              --key-id "$OKOU_DESKTOP_NOTARIZE_API_KEY_ID" \
+              --issuer "$OKOU_DESKTOP_NOTARIZE_API_ISSUER" \
               --wait
             xcrun stapler staple "$dmg_artifact_path"
           }
@@ -527,11 +652,11 @@ jobs:
             file "$app_dir/Contents/MacOS/$app_name" | grep -q "arm64"
             file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "arm64"
             codesign --verify --deep --strict --verbose=2 "$app_dir"
-            codesign --display --verbose=4 "$app_dir" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
+            codesign --display --verbose=4 "$app_dir" 2>&1 | grep -F "Authority=$OKOU_DESKTOP_SIGNING_IDENTITY"
             xcrun stapler validate "$app_dir"
             unzip -l "$zip_artifact_path" | grep -q "$app_name.app/Contents/MacOS/$app_name"
             codesign --verify --verbose=2 "$dmg_artifact_path"
-            codesign --display --verbose=4 "$dmg_artifact_path" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
+            codesign --display --verbose=4 "$dmg_artifact_path" 2>&1 | grep -F "Authority=$OKOU_DESKTOP_SIGNING_IDENTITY"
             xcrun stapler validate "$dmg_artifact_path"
             hdiutil verify "$dmg_artifact_path"
 
@@ -579,17 +704,17 @@ jobs:
                 mkdir -p "$install_dir" "$update_dir"
 
                 ditto "$mounted_app" "$installed_app"
-                VM0_DESKTOP_PRODUCT=okou \
-                VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
-                VM0_DESKTOP_SMOKE_APP_PATH="$installed_app" \
+                OKOU_DESKTOP_PRODUCT=okou \
+                OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+                OKOU_DESKTOP_SMOKE_APP_PATH="$installed_app" \
                 node apps/desktop/scripts/smoke-test-packaged-app.js
 
                 unzip -q "$zip_artifact_path" -d "$update_dir"
                 rm -rf "$installed_app"
                 ditto "$update_dir/Okou.app" "$installed_app"
-                VM0_DESKTOP_PRODUCT=okou \
-                VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
-                VM0_DESKTOP_SMOKE_APP_PATH="$installed_app" \
+                OKOU_DESKTOP_PRODUCT=okou \
+                OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+                OKOU_DESKTOP_SMOKE_APP_PATH="$installed_app" \
                 node apps/desktop/scripts/smoke-test-packaged-app.js
               fi
             )
@@ -867,7 +992,7 @@ jobs:
       group: deploy-host-worker-production
       cancel-in-progress: false
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     permissions:
       contents: read
     environment: production
@@ -1012,7 +1137,7 @@ jobs:
       needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -1129,7 +1254,7 @@ jobs:
           database-url: ${{ steps.get-db-url.outputs.database-url }}
           web-url: https://www.vm0.ai
           app-url: https://app.vm0.ai
-          api-backend-url: ${{ vars.VM0_API_BACKEND_URL }}
+          api-backend-url: ${{ vars.OKOU_API_BACKEND_URL }}
           cli-pkg-url: ${{ steps.cli-artifact.outputs.package-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
@@ -1439,7 +1564,7 @@ jobs:
       needs.promote-api-production.result == 'success'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     defaults:
       run:
         shell: bash
@@ -1577,6 +1702,14 @@ jobs:
           echo "canonical-dist=$canonical_dist" >> "$GITHUB_OUTPUT"
           echo "pages-dist=$pages_dist" >> "$GITHUB_OUTPUT"
 
+      - name: Verify immutable app assets on CDN
+        env:
+          CANONICAL_ASSETS: ${{ steps.pages-production.outputs.canonical-dist }}/assets
+        run: |
+          bash .github/scripts/verify-okou-app-assets.sh \
+            "https://static.okou.io/okou-app/assets" \
+            "$CANONICAL_ASSETS"
+
       - name: Upload Cloudflare Pages source maps to Sentry
         env:
           CANONICAL_DIST: ${{ steps.pages-production.outputs.canonical-dist }}
@@ -1591,9 +1724,11 @@ jobs:
         id: deploy-pages
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
+          CANONICAL_ASSETS: ${{ steps.pages-production.outputs.canonical-dist }}/assets
           CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          OKOU_APP_RUNTIME_MAX_ATTEMPTS: "60"
           PAGES_DIST: ${{ steps.pages-production.outputs.pages-dist }}
         run: |
           set -euo pipefail
@@ -1605,6 +1740,15 @@ jobs:
 
           pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
           production_url="https://app.vm0.ai"
+          for app_url in \
+            "$pages_url" \
+            "https://app.vm0.ai" \
+            "https://app.okou.ai"; do
+            bash .github/scripts/verify-okou-app-runtime.sh \
+              "$app_url" \
+              "https://static.okou.io/okou-app/assets" \
+              "$CANONICAL_ASSETS"
+          done
           bash .github/scripts/verify-okou-production-domains.sh "$pages_url"
           echo "url=$production_url" >> "$GITHUB_OUTPUT"
 
@@ -1680,6 +1824,7 @@ jobs:
         release-please,
         promote-api-production,
         promote-app-production,
+        promote-desktop-release,
         promote-runner-production,
       ]
     if: >-
@@ -1688,6 +1833,8 @@ jobs:
       needs.promote-api-production.result == 'success' &&
       (needs.release-please.outputs.app_release_created != 'true' ||
        needs.promote-app-production.result == 'success') &&
+      (needs.release-please.outputs.desktop_release_created != 'true' ||
+       needs.promote-desktop-release.result == 'success') &&
       (needs.release-please.outputs.runner_rs_release_created != 'true' ||
        needs.promote-runner-production.result == 'success')
     runs-on: ubuntu-latest
@@ -1697,13 +1844,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: main
+          ref: ${{ github.sha }}
 
       - name: Update rollback dashboard issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ vars.ROLLBACK_ISSUE_NUMBER }}
           RELEASE_TARGET: ${{ needs.release-please.outputs.release_target }}
+          RELEASE_TAGS: ${{ needs.release-please.outputs.release_tags }}
           ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-production.yml
         run: |
           set -euo pipefail
@@ -1718,7 +1866,8 @@ jobs:
           updated_body=$(bash .github/scripts/update-rollback-dashboard-body.sh \
             /tmp/rollback-dashboard.md \
             "$RELEASE_TARGET" \
-            "$ROLLBACK_URL")
+            "$ROLLBACK_URL" \
+            "$RELEASE_TAGS")
 
           gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" \
             -X PATCH \
@@ -1774,7 +1923,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest-8-cores
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
     defaults:
       run:
         shell: bash
@@ -2029,7 +2178,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
     permissions:
       contents: read
     environment: production
@@ -2188,7 +2337,7 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           RUNNER_TARGET: ${{ matrix.target }}
-          API_URL: ${{ vars.VM0_API_BACKEND_URL }}
+          API_URL: ${{ vars.OKOU_API_BACKEND_URL }}
           # R2 image cache credentials — from resolve-image-cache job (repo-level,
           # not production-scoped) so the runner uses the same bucket as CI.
           # R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY come from $GITHUB_ENV
@@ -2279,7 +2428,7 @@ jobs:
        needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
     permissions:
       contents: read
     environment: production
@@ -2447,7 +2596,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     permissions:
       contents: read
     steps:

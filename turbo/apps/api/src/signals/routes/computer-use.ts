@@ -188,7 +188,7 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
-  if (auth.tokenType === "zero") {
+  if (auth.tokenType === "agent") {
     const hostId = auth.computerUseHostId;
     if (!hostId) {
       return computerUseHostNotAuthorized;
@@ -217,8 +217,8 @@ const commandCreateInner$ = command(
     }
 
     const targetHostId =
-      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
-    if (auth.tokenType === "zero" && !targetHostId) {
+      auth.tokenType === "agent" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "agent" && !targetHostId) {
       return computerUseHostNotAuthorized;
     }
 
@@ -230,7 +230,7 @@ const commandCreateInner$ = command(
         kind: bodyResult.data.kind,
         payload: bodyResult.data,
         timeoutMs: bodyResult.data.timeoutMs,
-        ...(auth.tokenType === "zero"
+        ...(auth.tokenType === "agent"
           ? { runId: auth.runId, targetHostId }
           : {}),
       },
@@ -271,8 +271,8 @@ const writeCommandCreateInner$ = command(
     }
 
     const targetHostId =
-      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
-    if (auth.tokenType === "zero" && !targetHostId) {
+      auth.tokenType === "agent" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "agent" && !targetHostId) {
       return computerUseHostNotAuthorized;
     }
 
@@ -284,7 +284,7 @@ const writeCommandCreateInner$ = command(
         kind: bodyResult.data.kind,
         payload: bodyResult.data,
         timeoutMs: bodyResult.data.timeoutMs,
-        ...(auth.tokenType === "zero"
+        ...(auth.tokenType === "agent"
           ? { runId: auth.runId, targetHostId }
           : {}),
       },
@@ -338,8 +338,8 @@ const pluginCommandCreateInner$ = command(
     }
 
     const targetHostId =
-      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
-    if (auth.tokenType === "zero" && !targetHostId) {
+      auth.tokenType === "agent" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "agent" && !targetHostId) {
       return computerUseHostNotAuthorized;
     }
 
@@ -363,7 +363,7 @@ const pluginCommandCreateInner$ = command(
                 arguments: bodyResult.data.arguments,
               },
         timeoutMs: bodyResult.data.timeoutMs,
-        ...(auth.tokenType === "zero"
+        ...(auth.tokenType === "agent"
           ? { runId: auth.runId, targetHostId }
           : {}),
       },
@@ -395,8 +395,9 @@ const commandGetParams$ = pathParamsOf(computerUseCommandContract.get);
 const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const params = get(commandGetParams$);
-  const hostId = auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
-  if (auth.tokenType === "zero" && !hostId) {
+  const hostId =
+    auth.tokenType === "agent" ? auth.computerUseHostId : undefined;
+  if (auth.tokenType === "agent" && !hostId) {
     return computerUseHostNotAuthorized;
   }
   const result = await set(
@@ -425,8 +426,8 @@ const screenshotGetInner$ = command(
     const auth = get(organizationAuthContext$);
     const params = get(screenshotGetParams$);
     const hostId =
-      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
-    if (auth.tokenType === "zero" && !hostId) {
+      auth.tokenType === "agent" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "agent" && !hostId) {
       return computerUseHostNotAuthorized;
     }
     const screenshot = await set(
@@ -464,8 +465,8 @@ const pluginContentGetInner$ = command(
     const auth = get(organizationAuthContext$);
     const params = get(pluginContentGetParams$);
     const hostId =
-      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
-    if (auth.tokenType === "zero" && !hostId) {
+      auth.tokenType === "agent" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "agent" && !hostId) {
       return computerUseHostNotAuthorized;
     }
     const content = await set(

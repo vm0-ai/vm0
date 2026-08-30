@@ -3,7 +3,7 @@
 import matching
 from tests.builtin_firewall_cache_helpers import serialize_builtin_firewall_catalog_cache
 from tests.registry_helpers import (
-    write_multi_vm_registry,
+    write_multi_sandbox_registry,
     write_trusted_catalog_cache_text,
 )
 
@@ -66,7 +66,7 @@ def write_catalog_cache(
 
 def write_registry_with_cache(
     tmp_path,
-    vms: dict,
+    sandboxes: dict,
     firewalls: dict[str, dict],
     *,
     digest: str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -74,7 +74,7 @@ def write_registry_with_cache(
 ):
     registry_path = tmp_path / "registry.json"
     cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-    write_multi_vm_registry(registry_path, vms)
+    write_multi_sandbox_registry(registry_path, sandboxes)
     write_catalog_cache(
         cache_path,
         digest=digest,

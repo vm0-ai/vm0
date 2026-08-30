@@ -162,7 +162,7 @@ async function readGoalMarkerSummaries(fixture: GoalApiFixture) {
     });
 }
 
-describe("zero goals", () => {
+describe("agent goals", () => {
   beforeEach(() => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   });

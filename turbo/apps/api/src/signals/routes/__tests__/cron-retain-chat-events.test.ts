@@ -62,7 +62,9 @@ async function createFixtureThread(label: string): Promise<string> {
 async function retainFixtures(...chatThreadIds: readonly string[]) {
   const response = await accept(
     fixtureClient().retain({
-      body: { chat_thread_ids: [...chatThreadIds] },
+      body: {
+        chat_thread_ids: [...chatThreadIds],
+      },
     }),
     [200],
   );
@@ -203,9 +205,21 @@ describe("chat event retention cron", () => {
     await expect(eventRows(retainedEventId)).resolves.toHaveLength(1);
   }, 60_000);
 
-  it("requires a current snapshot and durable search coverage", async () => {
+  it("uses a clean redacted head as retention authority", async () => {
     const snapshotThreadId = await createFixtureThread("snapshot-gate");
     const searchThreadId = await createFixtureThread("search-gate");
+    const redactedAuthorityThreadId =
+      await createFixtureThread("redacted-authority");
+    await store.set(
+      seedRetentionOutputEvent$,
+      { chatThreadId: snapshotThreadId, offsetMs: NEW_OFFSET_MS },
+      context.signal,
+    );
+    await store.set(
+      coverRetentionThread$,
+      { chatThreadId: snapshotThreadId },
+      context.signal,
+    );
     const snapshotEventId = await store.set(
       seedRetentionOutputEvent$,
       { chatThreadId: snapshotThreadId, offsetMs: OLD_OFFSET_MS },
@@ -216,9 +230,9 @@ describe("chat event retention cron", () => {
       { chatThreadId: searchThreadId, offsetMs: OLD_OFFSET_MS },
       context.signal,
     );
-    await store.set(
-      coverRetentionThread$,
-      { chatThreadId: snapshotThreadId, archiveSchemaVersion: 3 },
+    const redactedAuthorityEventId = await store.set(
+      seedRetentionOutputEvent$,
+      { chatThreadId: redactedAuthorityThreadId, offsetMs: OLD_OFFSET_MS },
       context.signal,
     );
     const searchLastSeqId = await store.set(
@@ -234,15 +248,24 @@ describe("chat event retention cron", () => {
       },
       context.signal,
     );
+    await store.set(
+      coverRetentionThread$,
+      { chatThreadId: redactedAuthorityThreadId },
+      context.signal,
+    );
 
-    const held = await retainFixtures(snapshotThreadId, searchThreadId);
+    const held = await retainFixtures(
+      snapshotThreadId,
+      searchThreadId,
+      redactedAuthorityThreadId,
+    );
     expect(held).toMatchObject({
-      deleted: 0,
+      deleted: 1,
       skippedSnapshot: 1,
       skippedSearchWatermark: 1,
     });
     await expect(
-      eventRows(snapshotEventId, searchEventId),
+      eventRows(snapshotEventId, searchEventId, redactedAuthorityEventId),
     ).resolves.toHaveLength(2);
 
     await store.set(

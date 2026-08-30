@@ -1,19 +1,16 @@
 import {
-  check,
   pgTable,
   primaryKey,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { agentComposes } from "./agent-compose";
 import { agents } from "./agent";
 
 /**
  * Per-user official Telegram agent preference.
  *
- * A missing row or selected_compose_id = null means "use org default".
+ * A missing row or selected_agent_id = null means "use org default".
  * Custom BotFather-created Telegram bots keep using their installation-level
  * default agent and never read this table.
  */
@@ -22,12 +19,6 @@ export const telegramUserAgentPreferences = pgTable(
   {
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
-    selectedComposeId: uuid("selected_compose_id").references(
-      () => {
-        return agentComposes.id;
-      },
-      { onDelete: "set null" },
-    ),
     selectedAgentId: uuid("selected_agent_id").references(
       () => {
         return agents.id;
@@ -38,12 +29,6 @@ export const telegramUserAgentPreferences = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
-    return [
-      primaryKey({ columns: [table.userId, table.orgId] }),
-      check(
-        "telegram_user_agent_preferences_agent_reference_match",
-        sql`${table.selectedAgentId} IS NULL OR ${table.selectedAgentId} IS NOT DISTINCT FROM ${table.selectedComposeId}`,
-      ),
-    ];
+    return [primaryKey({ columns: [table.userId, table.orgId] })];
   },
 );

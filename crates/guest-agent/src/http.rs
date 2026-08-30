@@ -31,8 +31,17 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 #[cfg(debug_assertions)]
-const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "VM0_TEST_DISABLE_HTTP_RETRY_DELAY";
+const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "OKOU_TEST_DISABLE_HTTP_RETRY_DELAY";
 const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const API_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC: &str =
+    "VM0 API response body exceeds the configured limit";
+const API_ERROR_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC: &str =
+    "VM0 API error response body exceeds the configured limit";
+
+enum ResponseBodyCollectionError {
+    TooLarge,
+    Transport(reqwest::Error),
+}
 
 /// Content-safe facts published before one event request is awaited.
 #[derive(Debug, Clone)]
@@ -87,7 +96,7 @@ fn format_reqwest_error(error: reqwest::Error) -> String {
 /// API-enabled runs build this during initialization and pass cheap clones to
 /// background tasks. That keeps webhook/S3 timeout configuration consistent
 /// across all HTTP calls and makes client-construction failures explicit at
-/// startup. Local/test runs without `VM0_API_TOKEN` use a disabled client so
+/// startup. Local/test runs without `OKOU_API_TOKEN` use a disabled client so
 /// they do not fail on HTTP stack setup they will never use.
 #[derive(Clone)]
 pub struct HttpClient {
@@ -120,7 +129,7 @@ impl HttpClient {
     /// Build an HTTP transport client without API webhook configuration.
     ///
     /// This constructor always initializes the underlying `reqwest` client and
-    /// does not check `VM0_API_TOKEN`. It can send presigned uploads, but
+    /// does not check `OKOU_API_TOKEN`. It can send presigned uploads, but
     /// webhook JSON posts require API config from [`Self::with_api_config`],
     /// or [`Self::for_config`].
     /// Production guest-agent initialization should use [`Self::for_config`]
@@ -243,6 +252,14 @@ impl HttpClient {
         )
     }
 
+    /// Returns whether backend API/webhook configuration is present.
+    ///
+    /// This reports API capability, not generic HTTP transport availability.
+    /// [`Self::new`] returns `false` here while still providing a transport for
+    /// presigned uploads. [`Self::for_config`] also returns `false` when its API
+    /// token is empty, but that API-disabled client has no transport. Presigned
+    /// uploads require only the transport, while backend API operations require
+    /// API configuration.
     pub fn has_api(&self) -> bool {
         self.api.is_some()
     }
@@ -250,7 +267,7 @@ impl HttpClient {
     fn inner(&self) -> Result<&Client, AgentError> {
         self.inner.as_ref().ok_or_else(|| {
             AgentError::Http(
-                "guest-agent HTTP client is disabled because VM0_API_TOKEN is unset".into(),
+                "guest-agent HTTP client is disabled because OKOU_API_TOKEN is unset".into(),
             )
         })
     }
@@ -338,12 +355,12 @@ impl ApiHttpConfig {
     ) -> Result<Self, AgentError> {
         if base_url.is_empty() {
             return Err(AgentError::Http(
-                "VM0_API_BACKEND_URL is required when VM0_API_TOKEN is set".into(),
+                "OKOU_API_BACKEND_URL is required when OKOU_API_TOKEN is set".into(),
             ));
         }
         if token.is_empty() {
             return Err(AgentError::Http(
-                "VM0_API_TOKEN is required for enabled API HTTP config".into(),
+                "OKOU_API_TOKEN is required for enabled API HTTP config".into(),
             ));
         }
         reqwest::header::HeaderValue::from_str(&client_session_id)
@@ -508,6 +525,52 @@ fn observe_attempt_finished(
     })
 }
 
+async fn collect_response_body(
+    mut response: Response,
+    max_bytes: usize,
+) -> Result<Bytes, ResponseBodyCollectionError> {
+    let capacity = match response.content_length() {
+        Some(length) if length > max_bytes as u64 => {
+            return Err(ResponseBodyCollectionError::TooLarge);
+        }
+        Some(length) => {
+            usize::try_from(length).map_err(|_| ResponseBodyCollectionError::TooLarge)?
+        }
+        None => 0,
+    };
+    let mut body = BytesMut::with_capacity(capacity);
+
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(ResponseBodyCollectionError::Transport)?
+    {
+        let length = body
+            .len()
+            .checked_add(chunk.len())
+            .ok_or(ResponseBodyCollectionError::TooLarge)?;
+        if length > max_bytes {
+            return Err(ResponseBodyCollectionError::TooLarge);
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(body.freeze())
+}
+
+async fn collect_api_success_body(response: Response) -> Result<Bytes, AgentError> {
+    collect_response_body(response, constants::API_SUCCESS_RESPONSE_BODY_MAX_BYTES)
+        .await
+        .map_err(|error| match error {
+            ResponseBodyCollectionError::TooLarge => {
+                AgentError::Http(API_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC.to_string())
+            }
+            ResponseBodyCollectionError::Transport(error) => {
+                AgentError::Http(format_reqwest_error(error))
+            }
+        })
+}
+
 impl HttpClient {
     /// POST JSON to a webhook endpoint with Bearer auth, Vercel bypass, and retry.
     ///
@@ -535,15 +598,12 @@ impl HttpClient {
             .post_json_response(url, body, max_attempts, None, None)
             .await?;
 
-        let text = resp
-            .text()
-            .await
-            .map_err(|error| AgentError::Http(format_reqwest_error(error)))?;
-        if text.is_empty() {
+        let body = collect_api_success_body(resp).await?;
+        if body.is_empty() {
             return Ok(None);
         }
         let val: Value =
-            serde_json::from_str(&text).map_err(|e| AgentError::Http(e.to_string()))?;
+            serde_json::from_slice(&body).map_err(|error| AgentError::Http(error.to_string()))?;
         Ok(Some(val))
     }
 
@@ -581,10 +641,9 @@ impl HttpClient {
                 )),
             )
             .await?;
-        response
-            .json::<ActiveInputReceiptResponse>()
-            .await
-            .map_err(|error| AgentError::Http(format_reqwest_error(error)))
+        let body = collect_api_success_body(response).await?;
+        serde_json::from_slice::<ActiveInputReceiptResponse>(&body)
+            .map_err(|error| AgentError::Http(error.to_string()))
     }
 
     async fn post_json_response(
@@ -630,12 +689,33 @@ impl HttpClient {
                 let url = url.to_owned();
                 async move {
                     let status = resp.status();
-                    let error_msg = resp
-                        .text()
-                        .await
-                        .ok()
-                        .and_then(|body| serde_json::from_str::<Value>(&body).ok())
-                        .and_then(|v| v.get("error")?.get("message")?.as_str().map(String::from));
+                    let error_msg = match collect_response_body(
+                        resp,
+                        constants::API_ERROR_RESPONSE_BODY_MAX_BYTES,
+                    )
+                    .await
+                    {
+                        Ok(body) => serde_json::from_slice::<Value>(&body).ok().and_then(|value| {
+                            value
+                                .get("error")?
+                                .get("message")?
+                                .as_str()
+                                .map(String::from)
+                        }),
+                        Err(ResponseBodyCollectionError::TooLarge) => {
+                            log_warn!(
+                                LOG_TAG,
+                                "HTTP POST failed: HTTP {status} — {API_ERROR_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC}",
+                            );
+                            return AgentError::HttpStatus {
+                                status: status.as_u16(),
+                                message: format!(
+                                    "HTTP {status}: {API_ERROR_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC}"
+                                ),
+                            };
+                        }
+                        Err(ResponseBodyCollectionError::Transport(_)) => None,
+                    };
 
                     match error_msg {
                         Some(msg) => {

@@ -1,21 +1,20 @@
 import {
-  teamContract,
-  type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/team";
-import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
   agentsByIdContract,
+  agentsMainContract,
   agentInstructionsContract,
+  type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
   chatSearchContract,
   chatThreadsContract,
   chatThreadByIdContract,
+  chatThreadMetadataContract,
   chatThreadDraftContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
@@ -26,26 +25,51 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { mockApi } from "../msw-contract.ts";
 
-const DEFAULT_TEAM: TeamComposeItem[] = [
+const DEFAULT_AGENTS: AgentResponse[] = [
   {
-    id: "c0000000-0000-4000-a000-000000000001",
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    ownerId: "user_mock",
     displayName: null,
     description: null,
     sound: null,
     avatarUrl: null,
-    headVersionId: "version_1",
-    updatedAt: "2024-01-01T00:00:00Z",
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
   },
 ];
 
-let mockTeam: TeamComposeItem[] = [...DEFAULT_TEAM];
+let mockAgents: AgentResponse[] = [...DEFAULT_AGENTS];
 
-export function setMockTeam(team: TeamComposeItem[]): void {
-  mockTeam = team;
+type MockAgentResponse = Pick<AgentResponse, "agentId"> &
+  Partial<Omit<AgentResponse, "agentId">>;
+
+export function createMockAgentResponse(
+  agent: MockAgentResponse,
+): AgentResponse {
+  return {
+    ownerId: "user_mock",
+    displayName: null,
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private",
+    ...agent,
+  };
 }
 
-export function resetMockTeam(): void {
-  mockTeam = [...DEFAULT_TEAM];
+export function setMockAgents(agents: MockAgentResponse[]): void {
+  mockAgents = agents.map((agent) => {
+    return createMockAgentResponse(agent);
+  });
+}
+
+export function resetMockAgents(): void {
+  mockAgents = [...DEFAULT_AGENTS];
 }
 
 const mockEnabledConnectorSlugsByAgent = new Map<string, string[]>();
@@ -105,9 +129,9 @@ function mockCustomConnectorGrantUpdateResponse(
 }
 
 export const apiAgentsHandlers = [
-  // GET /api/team
-  mockApi(teamContract.list, ({ respond }) => {
-    return respond(200, mockTeam);
+  // GET /api/agents
+  mockApi(agentsMainContract.list, ({ respond }) => {
+    return respond(200, mockAgents);
   }),
 
   // GET /api/agents/:id/user-connectors
@@ -120,7 +144,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/agents/:id/custom-connectors
-  mockApi(zeroAgentCustomConnectorsContract.get, ({ params, respond }) => {
+  mockApi(agentCustomConnectorsContract.get, ({ params, respond }) => {
     const grants = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
     return respond(200, { grants });
   }),
@@ -139,19 +163,16 @@ export const apiAgentsHandlers = [
   }),
 
   // PUT /api/agents/:id/custom-connectors
-  mockApi(
-    zeroAgentCustomConnectorsContract.update,
-    ({ body, params, respond }) => {
-      const current = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
-      const grants = mockCustomConnectorGrantUpdateResponse(
-        current,
-        body.grants,
-        body.operation,
-      );
-      mockCustomConnectorGrantsByAgent.set(params.id, grants);
-      return respond(200, { grants });
-    },
-  ),
+  mockApi(agentCustomConnectorsContract.update, ({ body, params, respond }) => {
+    const current = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
+    const grants = mockCustomConnectorGrantUpdateResponse(
+      current,
+      body.grants,
+      body.operation,
+    );
+    mockCustomConnectorGrantsByAgent.set(params.id, grants);
+    return respond(200, { grants });
+  }),
 
   // GET /api/agents/:id
   mockApi(agentsByIdContract.get, ({ respond }) => {
@@ -245,7 +266,12 @@ export const apiAgentsHandlers = [
 
   // GET /api/chat-threads/:threadId/event-rows
   mockApi(chatThreadEventsContract.rows, ({ respond }) => {
-    return respond(200, { rows: [] });
+    return respond(200, {
+      rows: [],
+      cursor: { lastEventId: null, lastSeqId: 0 },
+      hasMore: false,
+      projection: "tool-redacted",
+    });
   }),
 
   // GET /api/chat-threads/:threadId/artifacts
@@ -258,6 +284,16 @@ export const apiAgentsHandlers = [
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
       cancellationRecoveryPending: false,
+    });
+  }),
+
+  // GET /api/chat-threads/:id/metadata
+  mockApi(chatThreadMetadataContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "CHAT_THREAD_NOT_FOUND",
+        message: "Chat thread not found",
+      },
     });
   }),
 

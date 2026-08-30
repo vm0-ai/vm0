@@ -1,12 +1,57 @@
 use std::io;
-use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Default buffer size for reading process output from stdout/stderr pipes.
 const DEFAULT_DRAIN_READ_BYTES: usize = 64 * 1024;
 /// Initial allocation for captured output, independent of the drain read size.
 const INITIAL_CAPTURE_CAPACITY_BYTES: usize = 8 * 1024;
-const DRAIN_POLL_TIMEOUT_MS: libc::c_int = 100;
+
+pub(crate) struct DrainCancellation {
+    cancelled: AtomicBool,
+    wake_reader: OwnedFd,
+    wake_writer: Mutex<Option<OwnedFd>>,
+}
+
+impl DrainCancellation {
+    pub(crate) fn new() -> io::Result<Self> {
+        let mut fds = [0; 2];
+        // SAFETY: `pipe2` initializes both descriptor slots on success.
+        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `pipe2` returned two distinct owned descriptors.
+        let wake_reader = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        // SAFETY: ownership of the second descriptor is transferred separately.
+        let wake_writer = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        Ok(Self {
+            cancelled: AtomicBool::new(false),
+            wake_reader,
+            wake_writer: Mutex::new(Some(wake_writer)),
+        })
+    }
+
+    pub(crate) fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+        // Closing the sole writer leaves POLLHUP level-visible to every drain
+        // polling the shared reader.
+        drop(
+            self.wake_writer
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .take(),
+        );
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    fn wake_fd(&self) -> RawFd {
+        self.wake_reader.as_raw_fd()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BoundedStreamConfig {
@@ -18,53 +63,67 @@ pub(crate) struct BoundedStreamConfig {
 pub(crate) struct BoundedDrainResult {
     pub(crate) captured: Option<Vec<u8>>,
     pub(crate) capture_truncated: bool,
+    pub(crate) stream_truncated: bool,
 }
 
 /// Drain `pipe` until EOF or `cancel` is set, calling `on_chunk` for each
 /// non-empty read.
 ///
-/// Cancel mechanism: each iteration polls for input with a 100 ms timeout
-/// before reading from the same fd, so the cancel flag is observed at most
-/// ~100 ms after it's set even if a leaked grandchild still holds the pipe
-/// write end open. When the loop returns, dropping the owned read end closes
-/// it, at which point any still-writing producer gets EPIPE / SIGPIPE on its
+/// Each iteration polls the output and cancellation descriptors indefinitely.
+/// Cancelling closes the sole cancellation-pipe writer, so every worker sharing
+/// its reader wakes through level-triggered POLLHUP even if a leaked grandchild
+/// still holds the output writer open. Returning drops the owned output read
+/// end, at which point any still-writing producer gets EPIPE / SIGPIPE on its
 /// next write. That's the property a tempfile-based capture cannot offer: a
 /// regular file is always writable, so a leaked daemon would grow tmpfs memory
 /// indefinitely.
 pub(crate) fn drain_until_eof_or_cancelled(
     pipe: impl Into<OwnedFd>,
-    cancel: &AtomicBool,
+    cancel: &DrainCancellation,
     mut on_chunk: impl FnMut(&[u8]),
 ) {
     let pipe = pipe.into();
     let raw_fd = pipe.as_raw_fd();
     let mut chunk = [0u8; DEFAULT_DRAIN_READ_BYTES];
     loop {
-        if cancel.load(Ordering::Acquire) {
+        if cancel.is_cancelled() {
             break;
         }
 
-        let mut pfd = libc::pollfd {
-            fd: raw_fd,
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        // SAFETY: pfd is a valid pollfd; nfds=1 matches the single descriptor.
-        let r = unsafe { libc::poll(&mut pfd, 1, DRAIN_POLL_TIMEOUT_MS) };
+        let mut pollfds = [
+            libc::pollfd {
+                fd: raw_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: cancel.wake_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        // SAFETY: `pollfds` contains two initialized descriptors that remain
+        // owned by `pipe` and `cancel` for the duration of this call.
+        let r = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as libc::nfds_t, -1) };
         if r < 0 {
             if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
                 continue;
             }
             break;
         }
-        if r == 0 {
-            continue; // timeout — re-check cancel
-        }
-        if pfd.revents & libc::POLLNVAL != 0 {
+        if cancel.is_cancelled() {
             break;
         }
-        if pfd.revents & (libc::POLLIN | libc::POLLHUP) == 0 {
-            if pfd.revents & libc::POLLERR != 0 {
+        let cancel_revents = pollfds[1].revents;
+        if cancel_revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0 {
+            break;
+        }
+        let pipe_revents = pollfds[0].revents;
+        if pipe_revents & libc::POLLNVAL != 0 {
+            break;
+        }
+        if pipe_revents & (libc::POLLIN | libc::POLLHUP) == 0 {
+            if pipe_revents & libc::POLLERR != 0 {
                 break;
             }
             continue;
@@ -92,7 +151,10 @@ pub(crate) fn drain_until_eof_or_cancelled(
 
 /// Buffered variant of [`drain_until_eof_or_cancelled`]: accumulates
 /// everything read into a `Vec<u8>` and returns it.
-pub(crate) fn drain_into_vec_cancellable(pipe: impl Into<OwnedFd>, cancel: &AtomicBool) -> Vec<u8> {
+pub(crate) fn drain_into_vec_cancellable(
+    pipe: impl Into<OwnedFd>,
+    cancel: &DrainCancellation,
+) -> Vec<u8> {
     let mut buf = Vec::new();
     drain_until_eof_or_cancelled(pipe, cancel, |chunk| buf.extend_from_slice(chunk));
     buf
@@ -106,7 +168,7 @@ pub(crate) fn drain_into_vec_cancellable(pipe: impl Into<OwnedFd>, cancel: &Atom
 /// further stream forwarding; draining still continues unless `cancel` is set.
 pub(crate) fn drain_bounded_cancellable<R>(
     pipe: R,
-    cancel: &AtomicBool,
+    cancel: &DrainCancellation,
     capture_limit_bytes: Option<usize>,
     stream: Option<BoundedStreamConfig>,
     mut on_stream_chunk: impl FnMut(&[u8], bool) -> bool,
@@ -168,6 +230,7 @@ where
     BoundedDrainResult {
         captured,
         capture_truncated,
+        stream_truncated,
     }
 }
 
@@ -249,51 +312,81 @@ mod tests {
     }
 
     #[test]
-    fn drain_cancel_closes_reader_while_writer_fd_remains_open() {
-        let (reader, mut writer) = pipe_pair();
+    fn drain_cancel_wakes_all_idle_workers_and_closes_owned_readers() {
+        let (first_reader, first_writer) = pipe_pair();
+        let (second_reader, second_writer) = pipe_pair();
+        let pipe_targets = [
+            fd_target(first_reader.as_raw_fd()),
+            fd_target(second_reader.as_raw_fd()),
+        ];
+        let writer_fds = [first_writer.as_raw_fd(), second_writer.as_raw_fd()];
+        let cancel = Arc::new(DrainCancellation::new().unwrap());
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let handles = [first_reader, second_reader]
+            .into_iter()
+            .map(|reader| {
+                let drain_cancel = Arc::clone(&cancel);
+                let ready_tx = ready_tx.clone();
+                let done_tx = done_tx.clone();
+                thread::spawn(move || {
+                    let _ = ready_tx.send(());
+                    drain_until_eof_or_cancelled(reader, &drain_cancel, |_| {});
+                    let _ = done_tx.send(());
+                })
+            })
+            .collect::<Vec<_>>();
+        drop(ready_tx);
+        drop(done_tx);
+
+        for _ in 0..2 {
+            ready_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        }
+        assert!(
+            matches!(
+                done_rx.recv_timeout(Duration::from_millis(250)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ),
+            "idle drains must remain blocked beyond the removed poll timeout"
+        );
+
+        cancel.cancel();
+        cancel.cancel();
+        for _ in 0..2 {
+            done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        }
+
+        for (index, writer_fd) in writer_fds.into_iter().enumerate() {
+            assert_fd_open(
+                writer_fd,
+                "writer fd should remain open after drain cancellation",
+            );
+            assert_no_current_process_read_end(&pipe_targets[index], writer_fd);
+        }
+        drop(first_writer);
+        drop(second_writer);
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn drain_cancelled_before_entry_closes_owned_reader() {
+        let (reader, writer) = pipe_pair();
         let pipe_target = fd_target(reader.as_raw_fd());
         let writer_fd = writer.as_raw_fd();
-        let cancel = Arc::new(AtomicBool::new(false));
-        let (chunk_tx, chunk_rx) = mpsc::channel();
-        let (done_tx, done_rx) = mpsc::channel();
+        let cancel = DrainCancellation::new().unwrap();
+        cancel.cancel();
 
-        let drain_cancel = Arc::clone(&cancel);
-        let handle = thread::spawn(move || {
-            let mut output = Vec::new();
-            let mut sent_first_chunk = false;
-            drain_until_eof_or_cancelled(reader, &drain_cancel, |chunk| {
-                output.extend_from_slice(chunk);
-                if !sent_first_chunk {
-                    sent_first_chunk = true;
-                    let _ = chunk_tx.send(chunk.to_vec());
-                }
-            });
-            let _ = done_tx.send(output);
+        drain_until_eof_or_cancelled(reader, &cancel, |_| {
+            panic!("pre-cancelled drain must not read output");
         });
 
-        writer.write_all(b"hello").unwrap();
-        let first_chunk = chunk_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(first_chunk, b"hello".to_vec());
-
-        cancel.store(true, Ordering::Release);
-        let output = match done_rx.recv_timeout(Duration::from_secs(1)) {
-            Ok(output) => output,
-            Err(e) => {
-                drop(writer);
-                panic!("drain did not observe cancel while writer stayed open: {e}");
-            }
-        };
-
-        assert_eq!(output, b"hello".to_vec());
-        // A concurrent fork can briefly inherit this pipe, so assert local fd
-        // ownership directly instead of requiring the writer to see EPIPE.
         assert_fd_open(
             writer_fd,
-            "writer fd should remain open after drain cancellation",
+            "writer fd should remain open after pre-cancelled drain",
         );
         assert_no_current_process_read_end(&pipe_target, writer_fd);
-        drop(writer);
-        handle.join().unwrap();
     }
 
     #[test]
@@ -301,7 +394,7 @@ mod tests {
         let (reader, writer) = pipe_pair();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let mut output = Vec::new();
         drain_until_eof_or_cancelled(reader, &cancel, |chunk| {
             output.extend_from_slice(chunk);
@@ -316,7 +409,7 @@ mod tests {
         writer.write_all(b"abcdef").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let result = drain_bounded_cancellable(reader, &cancel, Some(3), None, |_, _| true);
 
         assert_eq!(result.captured, Some(b"abc".to_vec()));
@@ -329,7 +422,7 @@ mod tests {
         writer.write_all(b"abc").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let result = drain_bounded_cancellable(reader, &cancel, Some(3), None, |_, _| true);
 
         assert_eq!(result.captured, Some(b"abc".to_vec()));
@@ -342,7 +435,7 @@ mod tests {
         writer.write_all(b"abc").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let result = drain_bounded_cancellable(reader, &cancel, Some(0), None, |_, _| true);
 
         assert_eq!(result.captured, Some(Vec::new()));
@@ -355,11 +448,12 @@ mod tests {
         writer.write_all(b"abc").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let result = drain_bounded_cancellable(reader, &cancel, None, None, |_, _| true);
 
         assert_eq!(result.captured, None);
         assert!(!result.capture_truncated);
+        assert!(!result.stream_truncated);
     }
 
     #[test]
@@ -367,7 +461,7 @@ mod tests {
         assert_eq!(DEFAULT_DRAIN_READ_BYTES, EXPECTED_DEFAULT_DRAIN_READ_BYTES);
         let input = vec![b'x'; EXPECTED_DEFAULT_DRAIN_READ_BYTES * 3 + 123];
         let reader = file_with_contents(&input);
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let mut streamed = Vec::new();
         let mut chunk_lengths = Vec::new();
 
@@ -406,7 +500,7 @@ mod tests {
         let input = vec![b'y'; EXPECTED_DEFAULT_DRAIN_READ_BYTES + 123];
         let stream_limit = EXPECTED_DEFAULT_DRAIN_READ_BYTES / 2;
         let reader = file_with_contents(&input);
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let mut chunks = Vec::new();
 
         let result = drain_bounded_cancellable(
@@ -425,6 +519,7 @@ mod tests {
 
         assert_eq!(result.captured, Some(input));
         assert!(!result.capture_truncated);
+        assert!(result.stream_truncated);
         assert_eq!(chunks, vec![(stream_limit, false), (0, true)]);
     }
 
@@ -434,7 +529,7 @@ mod tests {
         writer.write_all(b"abcdef").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let mut chunks = Vec::new();
         let result = drain_bounded_cancellable(
             reader,
@@ -452,6 +547,7 @@ mod tests {
 
         assert_eq!(result.captured, Some(b"abcdef".to_vec()));
         assert!(!result.capture_truncated);
+        assert!(result.stream_truncated);
         assert_eq!(
             chunks,
             vec![
@@ -469,7 +565,7 @@ mod tests {
         writer.write_all(b"abcd").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let mut chunks = Vec::new();
         let result = drain_bounded_cancellable(
             reader,
@@ -486,6 +582,7 @@ mod tests {
         );
 
         assert_eq!(result.captured, None);
+        assert!(!result.stream_truncated);
         assert_eq!(
             chunks,
             vec![(b"ab".to_vec(), false), (b"cd".to_vec(), false)]
@@ -498,7 +595,7 @@ mod tests {
         writer.write_all(b"abc").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let mut chunks = Vec::new();
         let result = drain_bounded_cancellable(
             reader,
@@ -515,6 +612,7 @@ mod tests {
         );
 
         assert_eq!(result.captured, None);
+        assert!(result.stream_truncated);
         assert_eq!(chunks, vec![(Vec::new(), true)]);
     }
 
@@ -524,7 +622,7 @@ mod tests {
         writer.write_all(b"abc").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let mut chunks = Vec::new();
         let result = drain_bounded_cancellable(
             reader,
@@ -541,6 +639,7 @@ mod tests {
         );
 
         assert_eq!(result.captured, None);
+        assert!(result.stream_truncated);
         assert_eq!(chunks, vec![(Vec::new(), true)]);
     }
 
@@ -550,7 +649,7 @@ mod tests {
         writer.write_all(b"abcdef").unwrap();
         drop(writer);
 
-        let cancel = AtomicBool::new(false);
+        let cancel = DrainCancellation::new().unwrap();
         let mut chunks = Vec::new();
         let result = drain_bounded_cancellable(
             reader,
@@ -569,5 +668,6 @@ mod tests {
         assert_eq!(chunks, vec![(b"ab".to_vec(), false)]);
         assert_eq!(result.captured, Some(b"abcdef".to_vec()));
         assert!(!result.capture_truncated);
+        assert!(!result.stream_truncated);
     }
 }

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/user-permission-grants";
 
 import { now } from "../../lib/time.ts";
 import { i18n } from "../../i18n/index.ts";

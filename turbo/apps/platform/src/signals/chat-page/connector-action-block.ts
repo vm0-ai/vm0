@@ -7,7 +7,7 @@ import {
   customConnectorSlugSchema,
   type CustomConnectorResponse,
   type CustomConnectorSlug,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
 import { connectorCatalogItemBySlug } from "../external/connectors.ts";
 import {
@@ -15,16 +15,17 @@ import {
   connectConnectorOAuthAuthCode$,
   connectorCurrentConnectionStatus,
   getConnectorStatusDirectConnectMethod,
-} from "../zero-page/settings/connectors.ts";
+} from "../okou-page/settings/connectors.ts";
 import {
   customConnectorAuthorizedAgentsById$,
   customConnectors$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorAgentAuthorization$,
-} from "../zero-page/settings/custom-connectors.ts";
+} from "../okou-page/settings/custom-connectors.ts";
 import { resolvePlatformOriginForTarget } from "../api-base.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-slug.ts";
-import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
+import { isAgentConnectorAuthorized } from "../okou-page/agent-connector-authorizations.ts";
+import { defaultBuiltinConnectorAccountOptions } from "../okou-page/settings/connector-account-dialogs.ts";
 import {
   chatActionCallbackFromUrl,
   runChatActionCallback$,
@@ -227,6 +228,10 @@ function createCatalogConnectorActivation(
     if (!connector) {
       return;
     }
+    const accountOptions = defaultBuiltinConnectorAccountOptions(connector);
+    if (!accountOptions) {
+      return;
+    }
 
     const directConnectMethod =
       getConnectorStatusDirectConnectMethod(connector);
@@ -242,6 +247,7 @@ function createCatalogConnectorActivation(
       connectorLabel: connector.label,
       connectorIcon: connector.icon,
       agentId: descriptor.agentId,
+      ...accountOptions,
     };
     const connectionCompleted =
       directConnectMethod.kind === "browser-auth"
@@ -356,7 +362,7 @@ function createCustomConnectorSignals(
     );
     return (authorizedAgentsByConnectorId.get(connector.id) ?? []).some(
       (agent) => {
-        return agent.id === descriptor.agentId;
+        return agent.agentId === descriptor.agentId;
       },
     );
   });

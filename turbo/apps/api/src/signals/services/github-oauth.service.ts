@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@okouai/connectors/auth-providers";
 import type { AuthUrlResult } from "@okouai/connectors/auth-providers/provider-flow-types";
 import {
+  connectorGrantScopes,
   resolveConnectorAuthClient,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
@@ -18,6 +19,7 @@ import { connectors } from "@okouai/db/schema/connector";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { githubUserLinks } from "@okouai/db/schema/github-user-link";
+import { z } from "zod";
 
 import type { Db } from "../external/db";
 import { safeJsonParse, tapError } from "../utils";
@@ -27,6 +29,10 @@ import {
 } from "../../lib/connector-oauth-state";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
+import {
+  githubAppUrl,
+  OFFICIAL_GITHUB_PUBLIC_BRAND,
+} from "../../lib/github-official-app";
 import { encryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
@@ -35,16 +41,22 @@ const INSTALLATION_ID_RE = /^\d+$/;
 const MAX_GITHUB_CONNECT_AGE_SECONDS = 10 * 60;
 const GITHUB_OAUTH_AUTH_METHOD = "oauth";
 
-interface AppInstallation {
-  readonly id: number;
-  readonly account: {
-    readonly id: number;
-    readonly login: string;
-    readonly type: string;
-  };
-}
+const appInstallationSchema = z.object({
+  id: z.number(),
+  app_id: z.number(),
+  app_slug: z.string().min(1),
+  account: z.object({
+    id: z.number(),
+    login: z.string(),
+    type: z.string(),
+  }),
+});
+
+type AppInstallation = z.infer<typeof appInstallationSchema>;
 
 interface GitHubInstallationInfo {
+  readonly appId: string;
+  readonly appSlug: string;
   readonly targetType: string;
   readonly targetId: string;
   readonly targetName: string;
@@ -57,7 +69,17 @@ interface GithubOAuthState {
   readonly sig: string | null;
   readonly publicBrand: PublicBrand;
   readonly publicBrandSig: string | null;
+  readonly oauthRequestedScopes: readonly string[] | null;
+  readonly oauthRequestedScopesSig: string | null;
 }
+
+type ParsedGithubOauthRequestedScopesState =
+  | {
+      readonly ok: true;
+      readonly scopes: readonly string[] | null;
+      readonly signature: string | null;
+    }
+  | { readonly ok: false };
 
 export function getGithubOAuthAuthMethod(): ConnectorAuthMethodId {
   return GITHUB_OAUTH_AUTH_METHOD;
@@ -153,7 +175,7 @@ async function listGithubAppInstallations(
     );
   }
 
-  return (await response.json()) as AppInstallation[];
+  return appInstallationSchema.array().parse(await response.json());
 }
 
 export async function getGithubInstallationInfo(
@@ -180,15 +202,11 @@ export async function getGithubInstallationInfo(
     );
   }
 
-  const data = (await response.json()) as {
-    readonly account: {
-      readonly id: number;
-      readonly login: string;
-      readonly type: string;
-    };
-  };
+  const data = appInstallationSchema.parse(await response.json());
 
   return {
+    appId: String(data.app_id),
+    appSlug: data.app_slug,
     targetType: data.account.type,
     targetId: String(data.account.id),
     targetName: data.account.login,
@@ -233,15 +251,24 @@ async function createGithubOauthStateSignature(args: {
   readonly composeId: string | null;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
+  return await createGithubOauthStateHmac(
+    `${args.userId}:${args.orgId ?? ""}:${args.composeId ?? ""}`,
+    args.secretsEncryptionKey,
+  );
+}
+
+async function createGithubOauthStateHmac(
+  payload: string,
+  secretsEncryptionKey: string,
+): Promise<string> {
   const textEncoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
-    textEncoder.encode(args.secretsEncryptionKey),
+    textEncoder.encode(secretsEncryptionKey),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const payload = `${args.userId}:${args.orgId ?? ""}:${args.composeId ?? ""}`;
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
@@ -258,14 +285,6 @@ async function createGithubOauthPublicBrandSignature(args: {
   readonly publicBrand: PublicBrand;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
-  const textEncoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    textEncoder.encode(args.secretsEncryptionKey),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
   const payload = [
     "github-oauth-public-brand-v1",
     args.userId ?? "",
@@ -273,14 +292,28 @@ async function createGithubOauthPublicBrandSignature(args: {
     args.composeId ?? "",
     args.publicBrand,
   ].join(":");
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    textEncoder.encode(payload),
-  );
-
-  return Buffer.from(signature).toString("hex");
+  return await createGithubOauthStateHmac(payload, args.secretsEncryptionKey);
 }
+
+async function createGithubOauthRequestedScopesSignature(args: {
+  readonly userId: string | null;
+  readonly orgId: string | null;
+  readonly composeId: string | null;
+  readonly publicBrand: PublicBrand;
+  readonly oauthRequestedScopes: readonly string[];
+  readonly secretsEncryptionKey: string;
+}): Promise<string> {
+  const payload = [
+    "github-oauth-requested-scopes-v1",
+    args.userId ?? "",
+    args.orgId ?? "",
+    args.composeId ?? "",
+    args.publicBrand,
+    JSON.stringify(args.oauthRequestedScopes),
+  ].join(":");
+  return await createGithubOauthStateHmac(payload, args.secretsEncryptionKey);
+}
+
 function signaturesMatch(actual: string | null, expected: string): boolean {
   return (
     actual !== null &&
@@ -344,6 +377,7 @@ async function buildGithubOauthState(args: {
   readonly orgId?: string;
   readonly composeId?: string;
   readonly publicBrand: PublicBrand;
+  readonly oauthRequestedScopes?: readonly string[];
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
   const state: {
@@ -353,6 +387,8 @@ async function buildGithubOauthState(args: {
     sig?: string;
     publicBrand?: PublicBrand;
     publicBrandSig?: string;
+    oauthRequestedScopes?: readonly string[];
+    oauthRequestedScopesSig?: string;
   } = {};
   if (args.userId) {
     state.userId = args.userId;
@@ -381,6 +417,18 @@ async function buildGithubOauthState(args: {
       secretsEncryptionKey: args.secretsEncryptionKey,
     });
   }
+  if (args.oauthRequestedScopes !== undefined) {
+    state.oauthRequestedScopes = args.oauthRequestedScopes;
+    state.oauthRequestedScopesSig =
+      await createGithubOauthRequestedScopesSignature({
+        userId: state.userId ?? null,
+        orgId: state.orgId ?? null,
+        composeId: state.composeId ?? null,
+        publicBrand: args.publicBrand,
+        oauthRequestedScopes: args.oauthRequestedScopes,
+        secretsEncryptionKey: args.secretsEncryptionKey,
+      });
+  }
 
   return Object.keys(state).length > 0 ? JSON.stringify(state) : "";
 }
@@ -396,6 +444,7 @@ export async function buildGithubAppInstallUrl(args: {
   readonly composeId?: string;
   readonly origin: string;
   readonly publicBrand: PublicBrand;
+  readonly oauthRequestedScopes?: readonly string[];
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
   const state = await buildGithubOauthState({
@@ -403,11 +452,10 @@ export async function buildGithubAppInstallUrl(args: {
     orgId: args.orgId,
     composeId: args.composeId,
     publicBrand: args.publicBrand,
+    oauthRequestedScopes: args.oauthRequestedScopes,
     secretsEncryptionKey: args.secretsEncryptionKey,
   });
-  const url = new URL(
-    `https://github.com/apps/${args.appSlug}/installations/new`,
-  );
+  const url = new URL(`${githubAppUrl(args.appSlug)}/installations/new`);
   if (state) {
     url.searchParams.set("state", state);
   }
@@ -421,6 +469,22 @@ export async function buildGithubAppInstallUrl(args: {
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
+}
+
+function parseGithubOauthRequestedScopesState(args: {
+  readonly scopes: unknown;
+  readonly signature: unknown;
+}): ParsedGithubOauthRequestedScopesState {
+  if (args.scopes === undefined && args.signature === undefined) {
+    return { ok: true, scopes: null, signature: null };
+  }
+  if (typeof args.signature !== "string") {
+    return { ok: false };
+  }
+  const scopes = z.array(z.string()).safeParse(args.scopes);
+  return scopes.success
+    ? { ok: true, scopes: scopes.data, signature: args.signature }
+    : { ok: false };
 }
 
 export async function buildGithubUserConnectAuthorizationUrl(
@@ -467,9 +531,12 @@ export async function buildGithubUserConnectAuthorizationUrl(
     userId: args.userId,
     orgId: args.orgId,
     redirectUri,
+    oauthRequestedScopes: JSON.stringify(
+      connectorGrantScopes(args.method.grant),
+    ),
     codeVerifier: authResult.codeVerifier,
     oauthContext: authResult.oauthContext,
-    accountMutation: { intent: "single-account" },
+    accountMutation: { intent: "add" },
     expiresAt: connectorOAuthStateExpiresAt(),
   });
   signal.throwIfAborted();
@@ -488,6 +555,8 @@ export function parseGithubOauthState(
       sig: null,
       publicBrand: "vm0",
       publicBrandSig: null,
+      oauthRequestedScopes: null,
+      oauthRequestedScopesSig: null,
     };
   }
 
@@ -503,6 +572,8 @@ export function parseGithubOauthState(
     readonly sig?: unknown;
     readonly publicBrand?: unknown;
     readonly publicBrandSig?: unknown;
+    readonly oauthRequestedScopes?: unknown;
+    readonly oauthRequestedScopesSig?: unknown;
   };
 
   const publicBrand = stateObject.publicBrand;
@@ -518,6 +589,14 @@ export function parseGithubOauthState(
     return null;
   }
 
+  const oauthRequestedScopes = parseGithubOauthRequestedScopesState({
+    scopes: stateObject.oauthRequestedScopes,
+    signature: stateObject.oauthRequestedScopesSig,
+  });
+  if (!oauthRequestedScopes.ok) {
+    return null;
+  }
+
   return {
     userId: typeof stateObject.userId === "string" ? stateObject.userId : null,
     orgId: typeof stateObject.orgId === "string" ? stateObject.orgId : null,
@@ -526,6 +605,8 @@ export function parseGithubOauthState(
     sig: typeof stateObject.sig === "string" ? stateObject.sig : null,
     publicBrand: publicBrand === "okou" ? "okou" : "vm0",
     publicBrandSig: typeof publicBrandSig === "string" ? publicBrandSig : null,
+    oauthRequestedScopes: oauthRequestedScopes.scopes,
+    oauthRequestedScopesSig: oauthRequestedScopes.signature,
   };
 }
 
@@ -548,16 +629,38 @@ export async function isGithubOauthStateSignatureValid(args: {
   }
 
   if (args.state.publicBrandSig === null) {
-    return args.state.publicBrand === "vm0";
+    if (args.state.publicBrand !== "vm0") {
+      return false;
+    }
+  } else {
+    const expectedPublicBrandSig = await createGithubOauthPublicBrandSignature({
+      userId: args.state.userId,
+      orgId: args.state.orgId,
+      composeId: args.state.composeId,
+      publicBrand: args.state.publicBrand,
+      secretsEncryptionKey: args.secretsEncryptionKey,
+    });
+    if (!signaturesMatch(args.state.publicBrandSig, expectedPublicBrandSig)) {
+      return false;
+    }
   }
-  const expectedPublicBrandSig = await createGithubOauthPublicBrandSignature({
-    userId: args.state.userId,
-    orgId: args.state.orgId,
-    composeId: args.state.composeId,
-    publicBrand: args.state.publicBrand,
-    secretsEncryptionKey: args.secretsEncryptionKey,
-  });
-  return signaturesMatch(args.state.publicBrandSig, expectedPublicBrandSig);
+
+  if (args.state.oauthRequestedScopes === null) {
+    return args.state.oauthRequestedScopesSig === null;
+  }
+  const expectedOauthRequestedScopesSig =
+    await createGithubOauthRequestedScopesSignature({
+      userId: args.state.userId,
+      orgId: args.state.orgId,
+      composeId: args.state.composeId,
+      publicBrand: args.state.publicBrand,
+      oauthRequestedScopes: args.state.oauthRequestedScopes,
+      secretsEncryptionKey: args.secretsEncryptionKey,
+    });
+  return signaturesMatch(
+    args.state.oauthRequestedScopesSig,
+    expectedOauthRequestedScopesSig,
+  );
 }
 
 export async function linkGithubUser(
@@ -748,10 +851,68 @@ export async function resolveGithubOauthOrgId(
   return compose.orgId;
 }
 
+async function loadGithubInstallationForRemoteLink(
+  db: Db,
+  installationId: string,
+) {
+  const [installation] = await db
+    .select({
+      id: githubInstallations.id,
+      orgId: githubInstallations.orgId,
+      appId: githubInstallations.appId,
+      appSlug: githubInstallations.appSlug,
+    })
+    .from(githubInstallations)
+    .where(eq(githubInstallations.installationId, installationId))
+    .limit(1);
+  return installation;
+}
+
+async function linkExistingGithubAppInstallation(
+  args: {
+    readonly db: Db;
+    readonly userId: string;
+    readonly installation: {
+      readonly id: string;
+      readonly appId: string | null;
+      readonly appSlug: string | null;
+    };
+    readonly providerInstallation: AppInstallation;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  const providerAppId = String(args.providerInstallation.app_id);
+  const providerAppSlug = args.providerInstallation.app_slug;
+  if (
+    args.installation.appId !== providerAppId ||
+    args.installation.appSlug !== providerAppSlug
+  ) {
+    await args.db
+      .update(githubInstallations)
+      .set({
+        appId: providerAppId,
+        appSlug: providerAppSlug,
+        updatedAt: new Date(now()),
+      })
+      .where(eq(githubInstallations.id, args.installation.id));
+    signal.throwIfAborted();
+  }
+  const linked = await linkGithubUser(
+    {
+      db: args.db,
+      installRecordId: args.installation.id,
+      userId: args.userId,
+    },
+    signal,
+  );
+  return linked !== null;
+}
+
 export async function tryLinkGithubFromRemoteInstallations(
   args: {
     readonly db: Db;
     readonly appId: string;
+    readonly appSlug: string;
     readonly privateKey: string;
     readonly orgId: string | null;
     readonly userId: string;
@@ -776,36 +937,28 @@ export async function tryLinkGithubFromRemoteInstallations(
   }
   signal.throwIfAborted();
 
-  if (installations.length === 0) {
-    return false;
-  }
-
   let unclaimedInstallation: AppInstallation | undefined;
   for (const ghInstall of installations) {
     const ghInstallationId = String(ghInstall.id);
-    const [existing] = await args.db
-      .select({
-        id: githubInstallations.id,
-        orgId: githubInstallations.orgId,
-      })
-      .from(githubInstallations)
-      .where(eq(githubInstallations.installationId, ghInstallationId))
-      .limit(1);
+    const existing = await loadGithubInstallationForRemoteLink(
+      args.db,
+      ghInstallationId,
+    );
     signal.throwIfAborted();
 
     if (existing) {
       if (args.orgId && existing.orgId !== args.orgId) {
         continue;
       }
-      const linked = await linkGithubUser(
+      return await linkExistingGithubAppInstallation(
         {
           db: args.db,
-          installRecordId: existing.id,
           userId: args.userId,
+          installation: existing,
+          providerInstallation: ghInstall,
         },
         signal,
       );
-      return linked !== null;
     }
 
     unclaimedInstallation ??= ghInstall;
@@ -854,17 +1007,20 @@ export async function tryLinkGithubFromRemoteInstallations(
     .insert(githubInstallations)
     .values({
       installationId: ghInstallationId,
+      appId: String(ghInstall.app_id),
+      appSlug: ghInstall.app_slug,
       encryptedAccessToken: await encryptPersistentSecretValue(
         token,
         featureSwitchContext,
       ),
       status: "active",
       orgId,
+      publicBrand: OFFICIAL_GITHUB_PUBLIC_BRAND,
       targetType: ghInstall.account.type,
       targetId: String(ghInstall.account.id),
       targetName: ghInstall.account.login,
       adminGithubUserId,
-      defaultComposeId: args.composeId,
+      defaultAgentId: args.composeId,
     })
     .returning({ id: githubInstallations.id });
   signal.throwIfAborted();
@@ -943,10 +1099,13 @@ export async function createOrActivateGithubInstallation(
       .set({
         status: "active",
         installationId: args.installationId,
+        appId: args.installInfo.appId,
+        appSlug: args.installInfo.appSlug,
         encryptedAccessToken: args.encryptedAccessToken,
         targetType: args.installInfo.targetType,
         targetName: args.installInfo.targetName,
         adminGithubUserId: args.adminGithubUserId,
+        publicBrand: OFFICIAL_GITHUB_PUBLIC_BRAND,
         updatedAt: new Date(now()),
       })
       .where(eq(githubInstallations.id, pendingRecord.id));
@@ -959,14 +1118,17 @@ export async function createOrActivateGithubInstallation(
     .insert(githubInstallations)
     .values({
       installationId: args.installationId,
+      appId: args.installInfo.appId,
+      appSlug: args.installInfo.appSlug,
       encryptedAccessToken: args.encryptedAccessToken,
       status: "active",
       orgId: args.orgId,
+      publicBrand: OFFICIAL_GITHUB_PUBLIC_BRAND,
       targetType: args.installInfo.targetType,
       targetId: args.installInfo.targetId,
       targetName: args.installInfo.targetName,
       adminGithubUserId: args.adminGithubUserId,
-      defaultComposeId: args.composeId,
+      defaultAgentId: args.composeId,
     })
     .returning({ id: githubInstallations.id });
   signal.throwIfAborted();

@@ -1,0 +1,135 @@
+import type { FormEvent } from "react";
+import { useGet, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+} from "@okouai/ui";
+import { connectorAccountEffectiveLabel } from "@okouai/api-contracts/contracts/connector-accounts";
+
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { renameConnectorAccount$ } from "../../../../signals/okou-page/settings/connector-accounts.ts";
+import {
+  closeConnectorAccountNamePrompt$,
+  connectorAccountNamePrompt$,
+  connectorAccountNamePromptValue$,
+  setConnectorAccountNamePromptValue$,
+} from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
+
+export function ConnectorAccountNameDialog() {
+  const { t } = useTranslation();
+  const prompt = useGet(connectorAccountNamePrompt$);
+  const value = useGet(connectorAccountNamePromptValue$);
+  const setValue = useSet(setConnectorAccountNamePromptValue$);
+  const close = useSet(closeConnectorAccountNamePrompt$);
+  const [renameLoadable, rename] = useLoadableSet(renameConnectorAccount$);
+  const signal = useGet(pageSignal$);
+
+  if (!prompt) {
+    return null;
+  }
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const displayName = value.trim();
+    if (!displayName) {
+      return;
+    }
+    detach(
+      (async () => {
+        await rename(
+          {
+            target: prompt.target,
+            connectionId: prompt.account.id,
+            displayName,
+          },
+          signal,
+        );
+        close();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        return !open && close();
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <form className="flex flex-col gap-5" onSubmit={submit}>
+          <DialogHeader>
+            <DialogTitle className="line-clamp-2 break-words pr-8 leading-snug">
+              {t(
+                ($) => {
+                  return $.connectors.accounts.namePromptTitle;
+                },
+                { connector: prompt.connectorLabel },
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {t(($) => {
+                return $.connectors.accounts.namePromptDescription;
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="new-connector-account-name"
+              className="text-sm font-medium"
+            >
+              {t(($) => {
+                return $.connectors.accounts.accountName;
+              })}
+            </label>
+            <Input
+              id="new-connector-account-name"
+              autoFocus
+              value={value}
+              onChange={(event) => {
+                return setValue(event.target.value);
+              }}
+              placeholder={connectorAccountEffectiveLabel(
+                prompt.account,
+                t(
+                  ($) => {
+                    return $.connectors.accounts.fallbackName;
+                  },
+                  { id: prompt.account.id.slice(0, 8) },
+                ),
+              )}
+              maxLength={255}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={close}>
+              {t(($) => {
+                return $.connectors.accounts.skipName;
+              })}
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                value.trim().length === 0 || renameLoadable.state === "loading"
+              }
+            >
+              {t(($) => {
+                return $.connectors.actions.save;
+              })}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

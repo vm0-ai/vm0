@@ -1,7 +1,9 @@
 import { computed, type Computed, type State } from "ccstate";
 import type { Root } from "hast";
 
+import { createPlainMarkdownTree } from "../lib/markdown/plain-markdown.ts";
 import { parseMarkdownTree } from "../lib/markdown/pipeline.ts";
+import { richMarkdownRetryVersion$ } from "./rich-markdown-retry.ts";
 import {
   createMermaidDiagramSignals,
   embedMermaidSignals,
@@ -24,9 +26,17 @@ export function createMarkdownPreviewTree(
   owner: AbortSignal | Computed<AbortSignal> | State<AbortSignal>,
 ): MarkdownPreviewTreeComputed {
   return computed(async (get): Promise<Root> => {
+    // The preview's error surface can explicitly retry preparation without
+    // replacing an otherwise unchanged file.
+    get(richMarkdownRetryVersion$);
     const ownerSignal = "aborted" in owner ? owner : get(owner);
-    const tree = parseMarkdownTree(await get(text$), {
-      mathEnabled: false,
+    const source = await get(text$);
+    ownerSignal.throwIfAborted();
+    const plainTree = createPlainMarkdownTree(source, { mathEnabled: false });
+    if (plainTree !== null) {
+      return plainTree;
+    }
+    const tree = parseMarkdownTree(source, {
       mermaid: true,
     });
     ownerSignal.throwIfAborted();

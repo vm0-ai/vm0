@@ -1,27 +1,28 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::ids::RunId;
-#[cfg(test)]
 use crate::local_queue;
 use crate::local_queue::{CancelTargetState, LocalQueue};
 #[cfg(test)]
 use crate::run_cancellation::RunCancellationRegistration;
 use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistry};
 
-/// Poll interval for scanning local cancel markers.
-const POLL_INTERVAL: Duration = Duration::from_millis(100);
+#[cfg(test)]
+use super::ScanObserver;
+use super::watch::{QueueFileKind, RECONCILE_INTERVAL, ensure_watcher, next_change_or_pending};
 
 #[derive(Clone)]
 pub(super) struct LocalCancelScanner {
     queue: LocalQueue,
     cancel_tokens: RunCancellationRegistry,
     owned_claims: Arc<tokio::sync::Mutex<HashSet<RunId>>>,
+    #[cfg(test)]
+    scan_observer: ScanObserver,
 }
 
 pub(super) struct LocalCancelWatcher {
@@ -39,6 +40,8 @@ impl LocalCancelScanner {
             queue,
             cancel_tokens,
             owned_claims,
+            #[cfg(test)]
+            scan_observer: ScanObserver::default(),
         }
     }
 
@@ -50,6 +53,8 @@ impl LocalCancelScanner {
     /// token are kept while a claim/job may still exist, and are deleted only
     /// after they no longer have a pending target.
     pub(super) async fn scan_cancel_files(&self) {
+        #[cfg(test)]
+        let _scan_observation = self.scan_observer.observe();
         let queue = self.queue.clone();
         let cancel_markers =
             match tokio::task::spawn_blocking(move || queue.collect_cancel_markers_sync()).await {
@@ -142,6 +147,16 @@ impl LocalCancelScanner {
             owned.remove(&run_id);
         }
     }
+
+    #[cfg(test)]
+    pub(super) async fn wait_for_scan_count(&self, expected: usize) {
+        self.scan_observer.wait_for_count(expected).await;
+    }
+
+    #[cfg(test)]
+    pub(super) fn scan_count(&self) -> usize {
+        self.scan_observer.count()
+    }
 }
 
 impl LocalCancelWatcher {
@@ -149,16 +164,43 @@ impl LocalCancelWatcher {
         let shutdown = CancellationToken::new();
         let task_shutdown = shutdown.clone();
         let handle = match tokio::runtime::Handle::try_current() {
-            Ok(handle) => Some(handle.spawn(async move {
-                loop {
-                    scanner.prune_owned_claims_without_tokens().await;
-                    scanner.scan_cancel_files().await;
-                    tokio::select! {
-                        () = task_shutdown.cancelled() => break,
-                        () = tokio::time::sleep(POLL_INTERVAL) => {}
+            Ok(handle) => {
+                let cancel_dir = match local_queue::ensure_cancels_dir(scanner.queue.group_dir()) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        warn!(error = %error, "local: cancel directory unavailable, using reconciliation");
+                        local_queue::cancels_dir(scanner.queue.group_dir())
                     }
+                };
+                let watch_paths = vec![cancel_dir];
+                let mut watcher = None;
+                if let Err(error) =
+                    ensure_watcher(&mut watcher, &watch_paths, QueueFileKind::Cancel)
+                {
+                    warn!(error = %error, "local: cancel watcher unavailable, using reconciliation");
                 }
-            })),
+                Some(handle.spawn(async move {
+                    loop {
+                        if let Err(error) =
+                            ensure_watcher(&mut watcher, &watch_paths, QueueFileKind::Cancel)
+                        {
+                            warn!(error = %error, "local: cancel watcher unavailable, using reconciliation");
+                        }
+                        scanner.prune_owned_claims_without_tokens().await;
+                        scanner.scan_cancel_files().await;
+                        tokio::select! {
+                            () = task_shutdown.cancelled() => break,
+                            () = tokio::time::sleep(RECONCILE_INTERVAL) => {}
+                            result = next_change_or_pending(&mut watcher) => {
+                                if let Err(error) = result {
+                                    warn!(error = %error, "local: cancel watcher failed, using reconciliation");
+                                    watcher = None;
+                                }
+                            }
+                        }
+                    }
+                }))
+            }
             Err(e) => {
                 warn!(error = %e, "local: cancel watcher not started because no tokio runtime is active");
                 None
@@ -212,6 +254,8 @@ impl Drop for LocalCancelWatcher {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     fn empty_cancel_tokens() -> RunCancellationRegistry {

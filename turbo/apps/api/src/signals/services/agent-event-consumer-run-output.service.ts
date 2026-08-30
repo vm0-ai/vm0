@@ -1,4 +1,8 @@
 import { command } from "ccstate";
+import {
+  runStatusSchema,
+  type RunStatus,
+} from "@okouai/api-contracts/contracts/runs";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
@@ -21,8 +25,8 @@ import {
 } from "./chat-first-assistant-event-metric.service";
 import { chatThreadForRunFromDb } from "./chat-thread.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
+import { lockChatQueueThread } from "./chat-event-queue.service";
 
-const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
 interface OutputCandidate {
@@ -34,12 +38,27 @@ export interface MaterializedChatProjection {
   readonly thread: {
     readonly chatThreadId: string;
     readonly userId: string;
+    readonly orgId: string;
   };
   readonly insertedRowCount: number;
   readonly firstAssistantAcknowledgement: {
     readonly apiStartedAt: number;
     readonly acknowledgedAt: number;
   } | null;
+}
+
+type RunOutputMaterializationResult =
+  | {
+      readonly outcome: "accepted";
+      readonly chatProjection: MaterializedChatProjection | null;
+    }
+  | { readonly outcome: "ignored-timeout" };
+
+export class AgentEventRunNotFoundError extends Error {
+  constructor(runId: string) {
+    super(`Run ${runId} is missing during output materialization`);
+    this.name = "AgentEventRunNotFoundError";
+  }
 }
 
 function recordOf(value: unknown): Record<string, unknown> | null {
@@ -154,11 +173,6 @@ function latestCandidate(
 }
 
 function eventOutputId(event: AgentEvent): string {
-  const message = recordOf(event.message);
-  if (typeof message?.id === "string") {
-    return message.id;
-  }
-
   const item = recordOf(event.item);
   if (typeof item?.id === "string") {
     return item.id;
@@ -167,71 +181,13 @@ function eventOutputId(event: AgentEvent): string {
   return `event:${event.sequenceNumber}`;
 }
 
-function nextProjectionSequenceState(
-  currentProcessedThroughSequence: number,
-  currentPendingSequenceNumbers: readonly number[],
-  events: readonly AgentEvent[],
-): {
-  readonly processedThroughSequence: number;
-  readonly pendingSequenceNumbers: number[];
-} {
-  const sortedSequences = Array.from(
-    new Set(
-      [
-        ...currentPendingSequenceNumbers,
-        ...events.map((event) => {
-          return event.sequenceNumber;
-        }),
-      ].filter((sequenceNumber) => {
-        return Number.isInteger(sequenceNumber) && sequenceNumber >= 0;
-      }),
-    ),
-  ).sort((left, right) => {
-    return left - right;
-  });
-
-  let nextProcessedThroughSequence = currentProcessedThroughSequence;
-  for (const sequenceNumber of sortedSequences) {
-    if (sequenceNumber <= nextProcessedThroughSequence) {
-      continue;
-    }
-    if (sequenceNumber !== nextProcessedThroughSequence + 1) {
-      break;
-    }
-    nextProcessedThroughSequence = sequenceNumber;
-  }
-
-  return {
-    processedThroughSequence: nextProcessedThroughSequence,
-    pendingSequenceNumbers: sortedSequences.filter((sequenceNumber) => {
-      return sequenceNumber > nextProcessedThroughSequence;
-    }),
-  };
-}
-
-function nextStoredProjectionSequenceState(
-  current:
-    | {
-        readonly processedThroughSequence: number;
-        readonly pendingSequenceNumbers: readonly number[];
-      }
-    | undefined,
-  events: readonly AgentEvent[],
-): {
-  readonly processedThroughSequence: number;
-  readonly pendingSequenceNumbers: number[];
-} {
-  return nextProjectionSequenceState(
-    current?.processedThroughSequence ?? INITIAL_PROCESSED_THROUGH_SEQUENCE,
-    current?.pendingSequenceNumbers ?? [],
-    events,
-  );
-}
-
-function assistantEventItems(
-  events: readonly AgentEvent[],
-): InsertAssistantEventsInput["items"] {
+function assistantEventItems(args: {
+  readonly events: readonly AgentEvent[];
+}): InsertAssistantEventsInput["items"] {
   const items: InsertAssistantEventsInput["items"][number][] = [];
+  const events = [...args.events].sort((left, right) => {
+    return left.sequenceNumber - right.sequenceNumber;
+  });
   for (const event of events) {
     const messageText = assistantMessageText(event);
     if (messageText !== null) {
@@ -245,18 +201,44 @@ function assistantEventItems(
     }
 
     const reasoningText = codexReasoningText(event);
-    if (reasoningText === null) {
+    if (reasoningText !== null) {
+      items.push({
+        eventType: "output.thinking",
+        runEventSequenceNumber: event.sequenceNumber,
+        thinking: reasoningText,
+        runEventId: eventOutputId(event),
+      });
       continue;
     }
-
-    items.push({
-      eventType: "output.thinking",
-      runEventSequenceNumber: event.sequenceNumber,
-      thinking: reasoningText,
-      runEventId: eventOutputId(event),
-    });
   }
   return items;
+}
+
+interface AssistantEventInsertion {
+  readonly insertedRowCount: number;
+  readonly shouldAttemptFirstAssistantEventClaim: boolean;
+}
+
+async function insertRunOutputChatEvents(
+  tx: Tx,
+  payload: EventConsumerPayload,
+  thread: MaterializedChatProjection["thread"],
+  signal: AbortSignal,
+): Promise<AssistantEventInsertion> {
+  const assistantItems = assistantEventItems({
+    events: payload.events,
+  });
+  return await insertAssistantEventsInTransaction(
+    tx,
+    {
+      runId: payload.runId,
+      threadId: thread.chatThreadId,
+      userId: thread.userId,
+      orgId: thread.orgId,
+      items: assistantItems,
+    },
+    signal,
+  );
 }
 
 async function lockRunOutputProjection(
@@ -277,60 +259,59 @@ async function lockRunOutputProjection(
   signal.throwIfAborted();
 }
 
-async function materializeRunOutputEvents(
-  writeDb: Db,
-  payload: EventConsumerPayload,
+async function lockAgentRunForOutputMaterialization(
+  tx: Tx,
+  runId: string,
   signal: AbortSignal,
-): Promise<MaterializedChatProjection | null> {
-  const assistantItems = assistantEventItems(payload.events);
-  const latestResult = latestCandidate(payload.events, resultText);
-  const latestOutput = latestCandidate(payload.events, callbackOutputText);
+): Promise<RunStatus> {
+  const [run] = await tx
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("update")
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    throw new AgentEventRunNotFoundError(runId);
+  }
+  return runStatusSchema.parse(run.status);
+}
 
-  return await writeDb.transaction(async (tx) => {
-    await lockRunOutputProjection(tx, payload.runId, signal);
+type OutputMaterializationTransactionResult =
+  | RunOutputMaterializationResult
+  | { readonly outcome: "retry" };
 
-    const thread = await chatThreadForRunFromDb(tx, payload.runId);
-    signal.throwIfAborted();
+async function materializeAdmittedRunOutputEvents(
+  args: {
+    readonly tx: Tx;
+    readonly payload: EventConsumerPayload;
+    readonly thread: MaterializedChatProjection["thread"] | null;
+    readonly latestResult: OutputCandidate | null;
+    readonly latestOutput: OutputCandidate | null;
+  },
+  signal: AbortSignal,
+): Promise<RunOutputMaterializationResult> {
+  const { tx, payload, thread, latestResult, latestOutput } = args;
+  let insertedRowCount = 0;
+  let shouldAttemptFirstAssistantEventClaim = false;
+  if (thread) {
+    const insertion = await insertRunOutputChatEvents(
+      tx,
+      payload,
+      thread,
+      signal,
+    );
+    insertedRowCount = insertion.insertedRowCount;
+    shouldAttemptFirstAssistantEventClaim =
+      insertion.shouldAttemptFirstAssistantEventClaim;
+  }
 
-    let insertedRowCount = 0;
-    let shouldAttemptFirstAssistantEventClaim = false;
-    if (thread) {
-      const insertion = await insertAssistantEventsInTransaction(
-        tx,
-        {
-          runId: payload.runId,
-          threadId: thread.chatThreadId,
-          userId: thread.userId,
-          items: assistantItems,
-        },
-        signal,
-      );
-      insertedRowCount = insertion.insertedRowCount;
-      shouldAttemptFirstAssistantEventClaim =
-        insertion.shouldAttemptFirstAssistantEventClaim;
-    }
-
-    const [existingState] = await tx
-      .select({
-        processedThroughSequence:
-          runOutputMaterializations.processedThroughSequence,
-        pendingSequenceNumbers:
-          runOutputMaterializations.pendingSequenceNumbers,
-      })
-      .from(runOutputMaterializations)
-      .where(eq(runOutputMaterializations.runId, payload.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    const { processedThroughSequence, pendingSequenceNumbers } =
-      nextStoredProjectionSequenceState(existingState, payload.events);
+  if (latestResult !== null || latestOutput !== null) {
     const updatedAt = nowDate();
     await tx
       .insert(runOutputMaterializations)
       .values({
         runId: payload.runId,
-        processedThroughSequence,
-        pendingSequenceNumbers,
         latestResultSequence: latestResult?.sequenceNumber,
         latestResultText: latestResult?.content,
         latestOutputSequence: latestOutput?.sequenceNumber,
@@ -340,8 +321,6 @@ async function materializeRunOutputEvents(
       .onConflictDoUpdate({
         target: runOutputMaterializations.runId,
         set: {
-          processedThroughSequence: sql`greatest(${runOutputMaterializations.processedThroughSequence}, ${processedThroughSequence})`,
-          pendingSequenceNumbers,
           latestResultSequence:
             latestResult === null
               ? runOutputMaterializations.latestResultSequence
@@ -361,31 +340,34 @@ async function materializeRunOutputEvents(
           updatedAt,
         },
       });
-    signal.throwIfAborted();
+  }
+  signal.throwIfAborted();
 
-    if (!thread) {
-      return null;
-    }
+  if (!thread) {
+    return { outcome: "accepted", chatProjection: null };
+  }
 
-    const acknowledgedAt = nowDate();
-    const firstAssistantClaimWhere = and(
-      eq(agentRuns.id, payload.runId),
-      isNotNull(agentRuns.apiStartedAt),
-      isNull(agentRuns.firstAssistantEventAcknowledgedAt),
-    );
-    if (!firstAssistantClaimWhere) {
-      throw new Error("First assistant acknowledgement predicate is empty");
-    }
-    const [firstAssistantClaim] =
-      insertedRowCount > 0 && shouldAttemptFirstAssistantEventClaim
-        ? await writeRunMetadataInTransaction(tx, {
-            patch: { firstAssistantEventAcknowledgedAt: acknowledgedAt },
-            where: firstAssistantClaimWhere,
-          })
-        : [];
-    signal.throwIfAborted();
+  const acknowledgedAt = nowDate();
+  const firstAssistantClaimWhere = and(
+    eq(agentRuns.id, payload.runId),
+    isNotNull(agentRuns.apiStartedAt),
+    isNull(agentRuns.firstAssistantEventAcknowledgedAt),
+  );
+  if (!firstAssistantClaimWhere) {
+    throw new Error("First assistant acknowledgement predicate is empty");
+  }
+  const [firstAssistantClaim] =
+    insertedRowCount > 0 && shouldAttemptFirstAssistantEventClaim
+      ? await writeRunMetadataInTransaction(tx, {
+          patch: { firstAssistantEventAcknowledgedAt: acknowledgedAt },
+          where: firstAssistantClaimWhere,
+        })
+      : [];
+  signal.throwIfAborted();
 
-    return {
+  return {
+    outcome: "accepted",
+    chatProjection: {
       thread,
       insertedRowCount,
       firstAssistantAcknowledgement:
@@ -396,8 +378,57 @@ async function materializeRunOutputEvents(
               apiStartedAt: firstAssistantClaim.apiStartedAt.getTime(),
               acknowledgedAt: acknowledgedAt.getTime(),
             },
-    };
-  });
+    },
+  };
+}
+
+async function materializeRunOutputEvents(
+  writeDb: Db,
+  payload: EventConsumerPayload,
+  signal: AbortSignal,
+): Promise<RunOutputMaterializationResult> {
+  const latestResult = latestCandidate(payload.events, resultText);
+  const latestOutput = latestCandidate(payload.events, callbackOutputText);
+
+  let expectedThread = await chatThreadForRunFromDb(writeDb, payload.runId);
+  signal.throwIfAborted();
+  while (true) {
+    const result: OutputMaterializationTransactionResult =
+      await writeDb.transaction(async (tx) => {
+        await lockRunOutputProjection(tx, payload.runId, signal);
+        const threadLocked = expectedThread
+          ? await lockChatQueueThread(tx, expectedThread.chatThreadId)
+          : false;
+        signal.throwIfAborted();
+        const status = await lockAgentRunForOutputMaterialization(
+          tx,
+          payload.runId,
+          signal,
+        );
+        const thread = await chatThreadForRunFromDb(tx, payload.runId);
+        signal.throwIfAborted();
+        if (thread?.chatThreadId !== expectedThread?.chatThreadId) {
+          return { outcome: "retry" };
+        }
+        if (expectedThread && !threadLocked) {
+          throw new Error("Agent run retained a missing chat thread");
+        }
+        if (status === "timeout") {
+          return { outcome: "ignored-timeout" };
+        }
+
+        return await materializeAdmittedRunOutputEvents(
+          { tx, payload, thread, latestResult, latestOutput },
+          signal,
+        );
+      });
+    signal.throwIfAborted();
+    if (result.outcome !== "retry") {
+      return result;
+    }
+    expectedThread = await chatThreadForRunFromDb(writeDb, payload.runId);
+    signal.throwIfAborted();
+  }
 }
 
 export const materializeRunOutputEvents$ = command(
@@ -405,7 +436,7 @@ export const materializeRunOutputEvents$ = command(
     { set },
     payload: EventConsumerPayload,
     signal: AbortSignal,
-  ): Promise<MaterializedChatProjection | null> => {
+  ): Promise<RunOutputMaterializationResult> => {
     return await materializeRunOutputEvents(set(writeDb$), payload, signal);
   },
 );
@@ -421,6 +452,7 @@ export async function publishMaterializedChatProjection(
   if (projection.firstAssistantAcknowledgement) {
     await publishFirstAssistantEventCreatedSignalSafely({
       userId: projection.thread.userId,
+      orgId: projection.thread.orgId,
       threadId: projection.thread.chatThreadId,
     });
     recordFirstAssistantEventAcknowledgementMetric({
@@ -428,10 +460,11 @@ export async function publishMaterializedChatProjection(
       ...projection.firstAssistantAcknowledgement,
     });
   } else {
-    await publishChatThreadMessageCreatedSafely(
-      projection.thread.userId,
-      projection.thread.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: projection.thread.userId,
+      orgId: projection.thread.orgId,
+      threadId: projection.thread.chatThreadId,
+    });
   }
   signal.throwIfAborted();
 }

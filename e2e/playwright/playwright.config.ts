@@ -41,15 +41,12 @@ export function deriveServiceOrigin(
 }
 
 export function deriveAppUrl(sourceUrl: string): string {
-  return (
-    process.env.OKOU_APP_URL ||
-    process.env.ZERO_APP_URL ||
-    deriveServiceOrigin(sourceUrl, "app")
-  );
+  return process.env.OKOU_APP_URL || deriveServiceOrigin(sourceUrl, "app");
 }
 
 export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
 const appUrl = deriveAppUrl(apiUrl);
+const retainBlobReport = process.env.PLAYWRIGHT_PROJECT !== "auth-v2";
 const vercelAutomationBypassSecret =
   process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
@@ -57,9 +54,10 @@ export default defineConfig({
   testDir: "./tests",
   globalSetup: "./global-setup",
   globalTeardown: "./global-teardown",
-  reporter: process.env.CI
-    ? [["list"], ["blob", { outputDir: "blob-report" }]]
-    : "list",
+  reporter:
+    process.env.CI && retainBlobReport
+      ? [["list"], ["blob", { outputDir: "blob-report" }]]
+      : "list",
   timeout: 120_000,
   use: {
     baseURL: appUrl,
@@ -78,6 +76,16 @@ export default defineConfig({
     {
       name: "paid-onboarding",
       testMatch: "paid-onboarding.spec.ts",
+    },
+    {
+      name: "auth-v2",
+      testMatch: "auth-v2.spec.ts",
+      workers: 1,
+      use: {
+        screenshot: "off",
+        trace: "off",
+        video: "off",
+      },
     },
     {
       name: "features",

@@ -214,9 +214,52 @@ if [ "$#" -eq 2 ] && [ "$1" = "uname" ] && [ "$2" = "-m" ]; then
 fi
 
 if [ "${1:-}" = "bash" ] && [ "${2:-}" = "-s" ]; then
+  if [[ "${4:-}" = *.tmp ]]; then
+    exit 0
+  fi
+
   "$@"
-  # Keep this test scoped to remote preparation. A successful preparation
-  # stops at the next SSH boundary instead of emulating binary installation.
+  if [ "${SSH_REACH_GC:-}" != "1" ]; then
+    # Service cleanup cases stop before emulating binary installation.
+    exit 42
+  fi
+  exit 0
+fi
+
+if [ "${1:-}" = "sudo" ] && [ "${2:-}" = "install" ]; then
+  exit 0
+fi
+
+if [ "${1:-}" = "sudo" ] && [ "${2:-}" = "flock" ]; then
+  gc_attempt=$(( $(< "$SSH_GC_COUNT_FILE") + 1 ))
+  printf '%s\n' "$gc_attempt" > "$SSH_GC_COUNT_FILE"
+  IFS=',' read -r -a gc_statuses <<< "$SSH_GC_STATUSES"
+  if [ "$gc_attempt" -gt "${#gc_statuses[@]}" ]; then
+    echo "unexpected GC attempt ${gc_attempt}" >&2
+    exit 1
+  fi
+  if [ -n "${SSH_GC_SERIALIZATION_DIR:-}" ]; then
+    case "$gc_attempt" in
+      1)
+        read -r < "${SSH_GC_SERIALIZATION_DIR}/holder-ready"
+        ;;
+      2)
+        if flock --exclusive --nonblock \
+          "${SSH_GC_SERIALIZATION_DIR}/deployment-gc.lock" true; then
+          echo "GC retry acquired the surviving invocation's lock" >&2
+          exit 1
+        fi
+        printf 'retry arrived\n' > "${SSH_GC_SERIALIZATION_DIR}/retry-arrived"
+        flock --exclusive \
+          "${SSH_GC_SERIALIZATION_DIR}/deployment-gc.lock" true
+        printf 'serialized\n' > "${SSH_GC_SERIALIZATION_DIR}/serialized"
+        ;;
+    esac
+  fi
+  exit "${gc_statuses[$((gc_attempt - 1))]}"
+fi
+
+if [ "${1:-}" = "sudo" ] && [ "${3:-}" = "setup" ]; then
   exit 42
 fi
 
@@ -262,8 +305,10 @@ case "$command" in
       [ -f "$state_path" ] || continue
       unit=${state_path##*/}
       state=$(< "$state_path")
-      printf '%s loaded %s fixture fixture\n' "$unit" "$state"
+      load_state=$(< "${SYSTEMCTL_LOAD_STATE_DIR}/${unit}")
+      printf '%s %s %s fixture fixture\n' "$unit" "$load_state" "$state"
     done
+    cat "$SYSTEMCTL_EXTRA_LIST_ROWS_FILE"
     ;;
   stop)
     {
@@ -309,16 +354,20 @@ chmod +x "${TMPDIR}/bin/ssh" "${TMPDIR}/bin/sudo" "${TMPDIR}/bin/systemctl"
 
 prepare_remote_case() {
   local case_dir=$1
-  mkdir -p "${case_dir}/state"
+  mkdir -p "${case_dir}/state" "${case_dir}/load-state"
   : > "${case_dir}/ssh.log"
   : > "${case_dir}/systemctl.log"
+  : > "${case_dir}/extra-list-rows"
+  printf '0\n' > "${case_dir}/gc-count"
 }
 
 set_unit_state() {
   local case_dir=$1
   local unit=$2
   local state=$3
+  local load_state=${4:-loaded}
   printf '%s\n' "$state" > "${case_dir}/state/${unit}"
+  printf '%s\n' "$load_state" > "${case_dir}/load-state/${unit}"
 }
 
 run_remote_case() {
@@ -328,8 +377,14 @@ run_remote_case() {
   local sticky_unit=${4:-}
   if PATH="${TMPDIR}/bin:${PATH}" \
     SSH_LOG="${case_dir}/ssh.log" \
+    SSH_GC_COUNT_FILE="${case_dir}/gc-count" \
+    SSH_GC_SERIALIZATION_DIR="${REMOTE_GC_SERIALIZATION_DIR:-}" \
+    SSH_GC_STATUSES="${REMOTE_GC_STATUSES:-}" \
+    SSH_REACH_GC="${REMOTE_REACH_GC:-}" \
     SYSTEMCTL_LOG="${case_dir}/systemctl.log" \
     SYSTEMCTL_STATE_DIR="${case_dir}/state" \
+    SYSTEMCTL_LOAD_STATE_DIR="${case_dir}/load-state" \
+    SYSTEMCTL_EXTRA_LIST_ROWS_FILE="${case_dir}/extra-list-rows" \
     SYSTEMCTL_LIST_FAILURE="$list_failure" \
     SYSTEMCTL_STOP_FAILURE_UNIT="$stop_failure_unit" \
     SYSTEMCTL_STICKY_UNIT="$sticky_unit" \
@@ -354,6 +409,8 @@ set_unit_state "$success_case" "vm0-runner-pr-123-7.service" active
 set_unit_state "$success_case" "vm0-runner-pr-123-exec.service" active
 set_unit_state "$success_case" "vm0-runner-pr-123-keepalive.service" active
 set_unit_state "$success_case" "vm0-runner-pr-123-cancel.service" active
+set_unit_state "$success_case" "vm0-runner-pr-123-9.service" active not-found
+set_unit_state "$success_case" "vm0-runner-pr-123-10.service" active masked
 run_remote_case "$success_case"
 grep -q 'ci@dev-arm-1 uname -m' "${success_case}/ssh.log" || fail "valid supplied runner must reach the SSH boundary"
 grep -Eq '^stop .*vm0-runner-pr-123-2\.service([[:space:]]|$)' "${success_case}/systemctl.log" || fail "expected primary runner suffix 2 to stop"
@@ -364,9 +421,14 @@ fi
 if grep '^stop ' "${success_case}/systemctl.log" | grep -q 'vm0-runner-pr-123-1\.service'; then
   fail "architecture-subset index must not determine the stopped service"
 fi
+if grep -Eq '^(stop|show|reset-failed).*vm0-runner-pr-123-(9|10)\.service' "${success_case}/systemctl.log"; then
+  fail "non-loaded primary runner rows must not participate in cleanup"
+fi
 [ "$(< "${success_case}/state/vm0-runner-pr-123-2.service")" = "inactive" ] || fail "expected primary runner suffix 2 to be inactive"
 [ "$(< "${success_case}/state/vm0-runner-pr-123-7.service")" = "inactive" ] || fail "expected primary runner suffix 7 to be inactive"
 [ "$(< "${success_case}/state/vm0-runner-pr-123-exec.service")" = "active" ] || fail "expected auxiliary runner to remain active"
+[ "$(< "${success_case}/state/vm0-runner-pr-123-9.service")" = "active" ] || fail "expected not-found runner row to remain untouched"
+[ "$(< "${success_case}/state/vm0-runner-pr-123-10.service")" = "active" ] || fail "expected masked runner row to remain untouched"
 last_show_line=$(grep -n '^show ' "${success_case}/systemctl.log" | tail -n1 | cut -d: -f1)
 first_mutation_line=$(grep -n '^mutate ' "${success_case}/systemctl.log" | head -n1 | cut -d: -f1)
 [ -n "$last_show_line" ] || fail "expected post-stop state verification"
@@ -391,6 +453,15 @@ if grep -q '^mutate ' "${discovery_failure_case}/systemctl.log"; then
 fi
 grep -q 'mock list-units failure' "${discovery_failure_case}/out" || fail "expected discovery failure output"
 
+malformed_loaded_case="${TMPDIR}/remote-malformed-loaded"
+prepare_remote_case "$malformed_loaded_case"
+printf '%s\n' "vm0-runner-pr-123-2.service loaded active" >> "${malformed_loaded_case}/extra-list-rows"
+run_remote_case "$malformed_loaded_case"
+if grep -q '^mutate ' "${malformed_loaded_case}/systemctl.log"; then
+  fail "malformed loaded row must prevent shared-path mutation"
+fi
+grep -q 'malformed loaded runner service row: vm0-runner-pr-123-2.service loaded active' "${malformed_loaded_case}/out" || fail "expected malformed loaded row output"
+
 stop_failure_case="${TMPDIR}/remote-stop-failure"
 prepare_remote_case "$stop_failure_case"
 set_unit_state "$stop_failure_case" "vm0-runner-pr-123-2.service" active
@@ -408,5 +479,61 @@ if grep -q '^mutate ' "${verification_failure_case}/systemctl.log"; then
   fail "verification failure must prevent shared-path mutation"
 fi
 grep -q 'runner service vm0-runner-pr-123-2.service is active after stop' "${verification_failure_case}/out" || fail "expected verification failure output"
+
+gc_command='ci@dev-arm-1 sudo flock --exclusive /var/lib/vm0-runner/locks/deployment-gc.lock /var/lib/vm0-runner/bin/pr-123/runner gc --keep-latest 6'
+setup_command='ci@dev-arm-1 sudo /var/lib/vm0-runner/bin/pr-123/runner setup'
+
+gc_success_case="${TMPDIR}/gc-success"
+prepare_remote_case "$gc_success_case"
+REMOTE_REACH_GC=1 REMOTE_GC_STATUSES=0 run_remote_case "$gc_success_case"
+[ "$(< "${gc_success_case}/gc-count")" -eq 1 ] || fail "successful GC must run once"
+[ "$(grep -Fxc -- "$gc_command" "${gc_success_case}/ssh.log")" -eq 1 ] || fail "successful GC must use the deployment lock once"
+grep -Fqx -- "$setup_command" "${gc_success_case}/ssh.log" || fail "successful GC must continue to runner setup"
+
+gc_retry_case="${TMPDIR}/gc-retry"
+prepare_remote_case "$gc_retry_case"
+mkfifo "${gc_retry_case}/holder-ready" "${gc_retry_case}/retry-arrived"
+(
+  exec 9> "${gc_retry_case}/deployment-gc.lock"
+  flock --exclusive 9
+  printf 'lock held\n' > "${gc_retry_case}/holder-ready"
+  read -r < "${gc_retry_case}/retry-arrived"
+) &
+gc_holder_pid=$!
+REMOTE_REACH_GC=1 \
+REMOTE_GC_STATUSES=255,0 \
+REMOTE_GC_SERIALIZATION_DIR="$gc_retry_case" \
+  run_remote_case "$gc_retry_case"
+gc_retry_count=$(< "${gc_retry_case}/gc-count")
+if [ "$gc_retry_count" -ne 2 ]; then
+  kill "$gc_holder_pid" 2>/dev/null || true
+  wait "$gc_holder_pid" 2>/dev/null || true
+  fail "SSH status 255 must retry GC once"
+fi
+wait "$gc_holder_pid"
+[ -f "${gc_retry_case}/serialized" ] || fail "GC retry must wait for a surviving invocation's lock"
+[ "$(grep -Fxc -- "$gc_command" "${gc_retry_case}/ssh.log")" -eq 2 ] || fail "each GC retry must use the deployment lock"
+grep -Fq 'runner GC SSH transport failed on dev-arm-1 with status 255; retrying once' "${gc_retry_case}/out" || fail "expected transient GC retry diagnostic"
+grep -Fqx -- "$setup_command" "${gc_retry_case}/ssh.log" || fail "recovered GC must continue to runner setup"
+
+gc_failure_case="${TMPDIR}/gc-failure"
+prepare_remote_case "$gc_failure_case"
+REMOTE_REACH_GC=1 REMOTE_GC_STATUSES=7 run_remote_case "$gc_failure_case"
+[ "$(< "${gc_failure_case}/gc-count")" -eq 1 ] || fail "ordinary GC failure must not retry"
+grep -Fq 'runner GC failed on dev-arm-1 with status 7' "${gc_failure_case}/out" || fail "expected ordinary GC failure status"
+if grep -Fqx -- "$setup_command" "${gc_failure_case}/ssh.log"; then
+  fail "failed GC must not continue to runner setup"
+fi
+
+gc_transport_failure_case="${TMPDIR}/gc-transport-failure"
+prepare_remote_case "$gc_transport_failure_case"
+REMOTE_REACH_GC=1 REMOTE_GC_STATUSES=255,255 \
+  run_remote_case "$gc_transport_failure_case"
+[ "$(< "${gc_transport_failure_case}/gc-count")" -eq 2 ] || fail "persistent SSH failure must stop after one GC retry"
+[ "$(grep -Fxc -- "$gc_command" "${gc_transport_failure_case}/ssh.log")" -eq 2 ] || fail "persistent SSH attempts must use the deployment lock"
+grep -Fq 'runner GC failed on dev-arm-1 with status 255' "${gc_transport_failure_case}/out" || fail "expected final SSH failure status"
+if grep -Fqx -- "$setup_command" "${gc_transport_failure_case}/ssh.log"; then
+  fail "persistent SSH failure must not continue to runner setup"
+fi
 
 echo "prepare-runner-image-test: ok"

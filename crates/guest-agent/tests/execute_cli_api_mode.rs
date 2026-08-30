@@ -21,10 +21,19 @@ unsafe fn setup_api_env(
     unsafe {
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
-        std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            mock_path,
+        );
         std::env::set_var("USE_MOCK_CLAUDE", "true");
-        std::env::set_var("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "3");
-        std::env::set_var("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            "3",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            "1",
+        );
         let run_id = std::env::current_exe()
             .ok()
             .as_deref()
@@ -41,10 +50,16 @@ unsafe fn setup_api_env(
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;
-        std::env::set_var("VM0_API_BACKEND_URL", api_url);
-        std::env::set_var("VM0_API_TOKEN", "test-token");
-        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
-        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
+        std::env::set_var(guest_contracts::env::CANONICAL_API_URL_ENV, api_url);
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
         std::env::set_var("HOME", workdir);
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;

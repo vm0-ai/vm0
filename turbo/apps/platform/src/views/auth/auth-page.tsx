@@ -1,4 +1,5 @@
 import { GoogleOneTap, SignIn, SignUp } from "@clerk/react";
+import type { BrowserClerk } from "@clerk/shared/types";
 import { Loader2 } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -12,11 +13,13 @@ import { authPageMountRef$ } from "../../signals/auth-page-mount.ts";
 import { theme$ } from "../../signals/theme.ts";
 import { AuthLayout } from "./auth-layout.tsx";
 import { getClerkAppearance } from "./auth-clerk-appearance.ts";
+import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 
 export type AuthPageMode = "sign-in" | "sign-up";
 
 interface AuthPageProps {
-  mode: AuthPageMode;
+  readonly clerk: BrowserClerk;
+  readonly mode: AuthPageMode;
 }
 
 function AuthLoadingFallback() {
@@ -37,7 +40,7 @@ function AuthLoadingFallback() {
   );
 }
 
-export function AuthPage({ mode }: AuthPageProps) {
+function AuthPageContent({ mode }: Pick<AuthPageProps, "mode">) {
   const authPageMountRef = useSet(authPageMountRef$);
   const activeRoute = useGet(activeRoute$);
   const theme = useGet(theme$);
@@ -97,5 +100,13 @@ export function AuthPage({ mode }: AuthPageProps) {
         />
       </div>
     </AuthLayout>
+  );
+}
+
+export function AuthPage({ clerk, mode }: AuthPageProps) {
+  return (
+    <VM0ClerkProvider clerk={clerk}>
+      <AuthPageContent mode={mode} />
+    </VM0ClerkProvider>
   );
 }

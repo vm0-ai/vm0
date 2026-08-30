@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Real Codex smoke and vm0-managed usage attribution through public APIs.
+# Real Codex smoke and vm0 built-in usage attribution through public APIs.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
@@ -19,7 +19,7 @@ teardown() {
     runner_e2e_teardown_test
 }
 
-@test "real codex reports vm0-managed model usage" {
+@test "real codex reports vm0 built-in model usage" {
     run create_runner_agent "e2e-real-codex-${TEST_ID}"
     echo "$output"
     assert_success
@@ -32,7 +32,7 @@ teardown() {
     assert_success
 
     # The same dedicated Codex organization uses gpt-5.6-luna for BYOK steer
-    # coverage. Its independent gpt-5.6-sol policy remains vm0-managed, so the
+    # coverage. Its independent gpt-5.6-sol policy remains built-in, so the
     # two real-agent shards can run concurrently without changing org state.
     run runner_api_curl "/api/model-policies"
     echo "$output"
@@ -40,7 +40,7 @@ teardown() {
     run jq -e '
         any(.policies[]?;
             .model == "gpt-5.6-sol" and
-            .defaultProviderType == "vm0" and
+            .defaultProviderType == "built-in" and
             .credentialScope == "org" and
             .modelProviderId == null
         )

@@ -268,10 +268,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
     let shutdown = CancellationToken::new();
     let cli_cancellation = CancellationToken::new();
     let framework_supports_active_input = framework_supports_active_input(runtime.config.framework);
-    let has_process_control_endpoint = matches!(
-        std::env::var(process_control_ipc::BOOTSTRAP_ENV),
-        Ok(endpoint) if !endpoint.is_empty()
-    );
+    let has_process_control_endpoint = runtime.process_control_endpoint.is_some();
     let active_input_enabled = framework_supports_active_input && has_process_control_endpoint;
     let active_input = if active_input_enabled {
         let receipt_journal_path =
@@ -302,6 +299,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
         )
     };
     let control_handle = control::ControlHandle::spawn(
+        runtime.process_control_endpoint.as_deref(),
         shutdown.clone(),
         active_input.controller(),
         cli_cancellation.clone(),
@@ -692,8 +690,8 @@ fn preserves_successful_post_result_cleanup(
         && cli_result.control_error.is_none()
         && cli_result.exit_code != 0
         && cli_result
-            .post_result_cleanup_result
-            .is_some_and(|result| result.status == cli::ClaudeResultStatus::Success)
+            .post_result_cleanup_jsonl_result
+            .is_some_and(|result| result.status == cli::JsonlResultStatus::Success)
         && cli_result
             .cli_termination
             .as_ref()
@@ -1072,6 +1070,7 @@ mod tests {
             paths: paths::GuestPaths::from_runtime_dir(test_runtime_dir()),
             http,
             workload_containment: None,
+            process_control_endpoint: None,
         }
     }
 
@@ -1143,15 +1142,18 @@ mod tests {
         let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
         unsafe {
             clear_test_env();
-            std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            );
+            std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
             std::env::set_var(guest_contracts::env::RUN_ID_ENV, "main-recovery-checkpoint");
             std::env::set_var(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 test_runtime_dir(),
             );
             std::env::set_var(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 write_test_run_payload(prompt),
             );
         }
@@ -1162,35 +1164,50 @@ mod tests {
         for key in [
             guest_contracts::env::API_URL_ENV,
             guest_contracts::env::RUN_ID_ENV,
-            guest_contracts::env::API_TOKEN_ENV,
-            guest_contracts::env::SANDBOX_ID_ENV,
-            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
-            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+            "VM0_API_TOKEN",
+            guest_contracts::env::CANONICAL_API_TOKEN_ENV,
+            "VM0_SANDBOX_ID",
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "VM0_SANDBOX_REUSE_RESULT",
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "VM0_WORKSPACE_REUSE_RESULT",
+            guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             guest_contracts::env::PROMPT_ENV,
             guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
-            guest_contracts::env::RESUME_SESSION_ID_ENV,
-            guest_contracts::env::API_START_TIME_ENV,
+            "VM0_RESUME_SESSION_ID",
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+            "VM0_API_START_TIME",
+            guest_contracts::env::CANONICAL_API_START_TIME_ENV,
             guest_contracts::env::SECRET_VALUES_ENV,
             guest_contracts::env::DISALLOWED_TOOLS_ENV,
             guest_contracts::env::TOOLS_ENV,
             guest_contracts::env::SETTINGS_ENV,
             guest_contracts::env::CLI_AGENT_TYPE_ENV,
-            guest_contracts::env::USER_ENV_FILE_ENV,
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            "VM0_USER_ENV_FILE",
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            "VM0_RUN_PAYLOAD_FILE",
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             guest_contracts::env::ARTIFACTS_ENV,
             guest_contracts::env::FEATURE_FLAGS_ENV,
             guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
             guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
             guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,
-            guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-            guest_contracts::env::MOCK_CODEX_PATH_ENV,
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            process_control_ipc::BOOTSTRAP_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+            process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+            guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+            guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
+            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {
@@ -1231,12 +1248,12 @@ mod tests {
 
     #[test]
     fn successful_post_result_cleanup_preserves_semantic_success_only_for_narrow_case() {
-        let success_result = cli::ClaudeResultSummary {
+        let success_result = cli::JsonlResultSummary {
             num_turns: Some(1),
-            status: cli::ClaudeResultStatus::Success,
+            status: cli::JsonlResultStatus::Success,
         };
-        let make_result = |claude_result: cli::ClaudeResultSummary,
-                           cleanup_result: cli::ClaudeResultSummary,
+        let make_result = |jsonl_result: cli::JsonlResultSummary,
+                           cleanup_result: cli::JsonlResultSummary,
                            termination_reason: CliTerminationReason| {
             let termination = CliTerminationDiagnostic::new(termination_reason)
                 .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(1_000))
@@ -1247,8 +1264,8 @@ mod tests {
                 stderr_lines: Vec::new(),
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: Some(claude_result),
-                post_result_cleanup_result: Some(cleanup_result),
+                jsonl_result: Some(jsonl_result),
+                post_result_cleanup_jsonl_result: Some(cleanup_result),
                 failure_diagnostic: None,
                 control_error: None,
                 cli_termination: Some(termination),
@@ -1271,9 +1288,9 @@ mod tests {
         ));
 
         let late_error_result_after_successful_cleanup = make_result(
-            cli::ClaudeResultSummary {
+            cli::JsonlResultSummary {
                 num_turns: Some(1),
-                status: cli::ClaudeResultStatus::Error,
+                status: cli::JsonlResultStatus::Error,
             },
             success_result,
             CliTerminationReason::PostResultReap,
@@ -1285,9 +1302,9 @@ mod tests {
 
         let error_cleanup = make_result(
             success_result,
-            cli::ClaudeResultSummary {
+            cli::JsonlResultSummary {
                 num_turns: Some(1),
-                status: cli::ClaudeResultStatus::Error,
+                status: cli::JsonlResultStatus::Error,
             },
             CliTerminationReason::PostResultReap,
         );
@@ -1759,7 +1776,7 @@ mod tests {
                 .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!({"checkpointId": "historyless-checkpoint"}));
+                .json_body(json!({"checkpointId": "historyless-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
         });
         let complete_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/complete");
@@ -1864,7 +1881,7 @@ mod tests {
                 .json_body_includes(r#"{"cliAgentSessionId":"recovery-session-from-main"}"#);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!({"checkpointId": "checkpoint-from-main"}));
+                .json_body(json!({"checkpointId": "checkpoint-from-main", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
         });
         let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");

@@ -14,12 +14,12 @@ fi
 provider_response=$(curl -fsS "${headers[@]}" \
     -X POST \
     -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-    "${api_url}/api/zero/me/model-providers")
+    "${api_url}/api/me/model-providers")
 jq -e '.provider.type == "claude-code-oauth-token"' \
     <<<"$provider_response" \
     >/dev/null
 
-policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+policies=$(curl -fsS "${headers[@]}" "${api_url}/api/model-policies")
 policy_payload=$(jq -c '
     {
       policies: (
@@ -47,12 +47,12 @@ policy_payload=$(jq -c '
 curl -fsS "${headers[@]}" \
     -X PUT \
     -d "$policy_payload" \
-    "${api_url}/api/zero/model-policies" \
+    "${api_url}/api/model-policies" \
     >/dev/null
 
 curl -fsS "${headers[@]}" \
     -X POST \
     -d '{"switches":{"realAgentInPreview":false}}' \
-    "${api_url}/api/zero/feature-switches" \
+    "${api_url}/api/feature-switches" \
     | jq -e '.effectiveSwitches.realAgentInPreview == false' \
     >/dev/null

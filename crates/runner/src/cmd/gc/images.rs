@@ -69,10 +69,12 @@ async fn try_delete_orphan_rootfs(
         .duration_since(rootfs_mtime)
         .unwrap_or_default();
     if age < GC_MIN_AGE {
-        info!(
-            "images/{rootfs_hash}: orphaned but too recent ({}s), keeping",
-            age.as_secs()
-        );
+        if dry_run {
+            info!(
+                "images/{rootfs_hash}: orphaned but too recent ({}s), keeping",
+                age.as_secs()
+            );
+        }
         return None;
     }
     if dry_run {
@@ -83,11 +85,6 @@ async fn try_delete_orphan_rootfs(
     } else if let Err(e) = tokio::fs::remove_dir_all(rootfs_path).await {
         warn!("failed to remove orphaned rootfs images/{rootfs_hash}: {e}");
         return None;
-    } else {
-        info!(
-            "deleted orphaned rootfs images/{rootfs_hash} ({})",
-            human_bytes(rootfs_size)
-        );
     }
     Some(rootfs_size)
 }
@@ -108,11 +105,13 @@ async fn gc_template_warm_dir(
     let _lock = match probe_lock(&lock_path) {
         LockProbe::Free(lock) => lock,
         LockProbe::Held => {
-            info!("images/{warm_name}: template warm dir in use, skipping");
+            if dry_run {
+                info!("images/{warm_name}: template warm dir in use, skipping");
+            }
             return None;
         }
         LockProbe::Error(e) => {
-            info!("images/{warm_name}: template lock probe failed ({e}), skipping");
+            warn!("images/{warm_name}: template lock probe failed ({e}), skipping");
             return None;
         }
     };
@@ -129,10 +128,12 @@ async fn gc_template_warm_dir(
     let (size, mtime) = dir_stats(warm_path).await;
     let age = SystemTime::now().duration_since(mtime).unwrap_or_default();
     if age < GC_MIN_AGE {
-        info!(
-            "images/{warm_name}: template warm dir too recent ({}s), keeping",
-            age.as_secs()
-        );
+        if dry_run {
+            info!(
+                "images/{warm_name}: template warm dir too recent ({}s), keeping",
+                age.as_secs()
+            );
+        }
         return None;
     }
     if dry_run {
@@ -143,11 +144,6 @@ async fn gc_template_warm_dir(
     } else if let Err(e) = tokio::fs::remove_dir_all(warm_path).await {
         warn!("failed to remove template warm dir images/{warm_name}: {e}");
         return None;
-    } else {
-        info!(
-            "deleted template warm dir images/{warm_name} ({})",
-            human_bytes(size)
-        );
     }
     Some(size)
 }
@@ -167,11 +163,13 @@ async fn gc_rootfs_action(
     let _rootfs_lock = match probe_lock(&rootfs_lock_path) {
         LockProbe::Free(lock) => lock,
         LockProbe::Held => {
-            info!("images/{}: rootfs in use, skipping", state.hash);
+            if dry_run {
+                info!("images/{}: rootfs in use, skipping", state.hash);
+            }
             return GcReport::default();
         }
         LockProbe::Error(e) => {
-            info!("images/{}: lock probe failed ({e}), skipping", state.hash);
+            warn!("images/{}: lock probe failed ({e}), skipping", state.hash);
             return GcReport::default();
         }
     };
@@ -180,7 +178,7 @@ async fn gc_rootfs_action(
         Ok(GcDirStatus::RealDir(_)) => {}
         Ok(GcDirStatus::Missing) => return GcReport::default(),
         Ok(GcDirStatus::NotDirectory) => {
-            info!("images/{}: not a real directory, skipping", state.hash);
+            warn!("images/{}: not a real directory, skipping", state.hash);
             return GcReport::default();
         }
         Err(e) => {
@@ -200,7 +198,7 @@ async fn gc_rootfs_action(
                 });
         }
         Ok(GcDirStatus::NotDirectory) => {
-            info!(
+            warn!(
                 "images/{}/snapshots: not a real directory, skipping",
                 state.hash
             );
@@ -264,15 +262,17 @@ async fn gc_rootfs_action(
             LockProbe::Free(lock) => lock,
             LockProbe::Held => {
                 any_snapshot_survives = true;
-                info!(
-                    "images/{}/snapshots/{}: in use, skipping",
-                    state.hash, deletion.hash
-                );
+                if dry_run {
+                    info!(
+                        "images/{}/snapshots/{}: in use, skipping",
+                        state.hash, deletion.hash
+                    );
+                }
                 continue;
             }
             LockProbe::Error(e) => {
                 any_snapshot_survives = true;
-                info!(
+                warn!(
                     "images/{}/snapshots/{}: lock probe failed ({e}), skipping",
                     state.hash, deletion.hash
                 );
@@ -285,7 +285,7 @@ async fn gc_rootfs_action(
             Ok(GcDirStatus::Missing) => continue,
             Ok(GcDirStatus::NotDirectory) => {
                 any_snapshot_survives = true;
-                info!(
+                warn!(
                     "images/{}/snapshots/{}: not a real directory, skipping",
                     state.hash, deletion.hash
                 );
@@ -305,12 +305,14 @@ async fn gc_rootfs_action(
         let age = SystemTime::now().duration_since(mtime).unwrap_or_default();
         if age < GC_MIN_AGE {
             any_snapshot_survives = true;
-            info!(
-                "images/{}/snapshots/{}: too recent ({}s), keeping",
-                state.hash,
-                deletion.hash,
-                age.as_secs()
-            );
+            if dry_run {
+                info!(
+                    "images/{}/snapshots/{}: too recent ({}s), keeping",
+                    state.hash,
+                    deletion.hash,
+                    age.as_secs()
+                );
+            }
             continue;
         }
 
@@ -324,14 +326,7 @@ async fn gc_rootfs_action(
             dry_run_snapshot_bytes = dry_run_snapshot_bytes.saturating_add(size);
         } else {
             match tokio::fs::remove_dir_all(&deletion.path).await {
-                Ok(()) => {
-                    info!(
-                        "deleted images/{}/snapshots/{} ({})",
-                        state.hash,
-                        deletion.hash,
-                        human_bytes(size)
-                    );
-                }
+                Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => {
                     any_snapshot_survives = true;
@@ -472,11 +467,13 @@ async fn gc_nested_images_with_protected_refs_and_readers(
         let rootfs_lock = match probe_lock(&rootfs_lock_path) {
             LockProbe::Free(lock) => lock,
             LockProbe::Held => {
-                info!("images/{rootfs_hash}: rootfs in use, skipping");
+                if dry_run {
+                    info!("images/{rootfs_hash}: rootfs in use, skipping");
+                }
                 continue;
             }
             LockProbe::Error(e) => {
-                info!("images/{rootfs_hash}: lock probe failed ({e}), skipping");
+                warn!("images/{rootfs_hash}: lock probe failed ({e}), skipping");
                 continue;
             }
         };
@@ -494,7 +491,7 @@ async fn gc_nested_images_with_protected_refs_and_readers(
                 continue;
             }
             Ok(GcDirStatus::NotDirectory) => {
-                info!("images/{rootfs_hash}/snapshots: not a real directory, skipping");
+                warn!("images/{rootfs_hash}/snapshots: not a real directory, skipping");
                 continue;
             }
             Err(e) => {
@@ -544,9 +541,11 @@ async fn gc_nested_images_with_protected_refs_and_readers(
             }
 
             if is_protected_image_ref(protected_image_refs, &rootfs_hash, &snap_hash) {
-                info!(
-                    "images/{rootfs_hash}/snapshots/{snap_hash}: referenced by retained runner or service config, keeping"
-                );
+                if dry_run {
+                    info!(
+                        "images/{rootfs_hash}/snapshots/{snap_hash}: referenced by retained runner or service config, keeping"
+                    );
+                }
                 continue;
             }
 
@@ -559,10 +558,12 @@ async fn gc_nested_images_with_protected_refs_and_readers(
                     if age < GC_MIN_AGE {
                         // Too recent to be safely deleted (races with
                         // `runner build` releasing its lock).
-                        info!(
-                            "images/{rootfs_hash}/snapshots/{snap_hash}: too recent ({}s), keeping",
-                            age.as_secs()
-                        );
+                        if dry_run {
+                            info!(
+                                "images/{rootfs_hash}/snapshots/{snap_hash}: too recent ({}s), keeping",
+                                age.as_secs()
+                            );
+                        }
                     } else {
                         candidates.push(GcCandidate {
                             hash: snap_hash,
@@ -573,10 +574,12 @@ async fn gc_nested_images_with_protected_refs_and_readers(
                     }
                 }
                 LockProbe::Held => {
-                    info!("images/{rootfs_hash}/snapshots/{snap_hash}: in use, skipping");
+                    if dry_run {
+                        info!("images/{rootfs_hash}/snapshots/{snap_hash}: in use, skipping");
+                    }
                 }
                 LockProbe::Error(e) => {
-                    info!(
+                    warn!(
                         "images/{rootfs_hash}/snapshots/{snap_hash}: lock probe failed ({e}), skipping"
                     );
                 }
@@ -605,12 +608,14 @@ async fn gc_nested_images_with_protected_refs_and_readers(
             ))
         })?;
         let disposition = if rank < keep_count {
-            info!(
-                "images/{}/snapshots/{}: keeping (global top-{keep_count}, {})",
-                state.hash,
-                candidate.hash,
-                human_bytes(candidate.size)
-            );
+            if dry_run {
+                info!(
+                    "images/{}/snapshots/{}: keeping (global top-{keep_count}, {})",
+                    state.hash,
+                    candidate.hash,
+                    human_bytes(candidate.size)
+                );
+            }
             SnapshotDisposition::Keep
         } else {
             SnapshotDisposition::Delete

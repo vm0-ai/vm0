@@ -2,7 +2,7 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import type { CustomConnectorPermissionBundleRef } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorPermissionBundleRef } from "@okouai/api-contracts/contracts/custom-connectors";
 import type {
   ExpandedFirewallConfig,
   FirewallPolicyValue,

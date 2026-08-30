@@ -148,7 +148,12 @@ export async function signInWithLoadedClerkTestingHelper(
     ...clerkStateBefore,
   });
 
-  await clerk.signIn({ page, emailAddress: email });
+  // Generated E2E identities are Clerk testing emails. Keep sign-in on the
+  // testing-token FAPI path instead of adding Backend API lookup/token calls.
+  await clerk.signIn({
+    page,
+    signInParams: { strategy: "email_code", identifier: email },
+  });
   await page.waitForFunction(() => Boolean(window.Clerk?.session), undefined, {
     timeout: 30_000,
   });

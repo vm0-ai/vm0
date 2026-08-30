@@ -1,8 +1,7 @@
 //! Validation for runner `org/name` identifiers.
 //!
-//! Mirrors the `/^[a-z0-9-]+\/[a-z0-9-]+$/` contracts in:
+//! Mirrors the `/^[a-z0-9-]+\/[a-z0-9-]+$/` contract in:
 //! - `turbo/packages/api-contracts/src/contracts/runners.ts`
-//! - `turbo/packages/api-contracts/src/contracts/composes.ts`
 //!
 //! Keep the Rust and TypeScript contracts in sync.
 

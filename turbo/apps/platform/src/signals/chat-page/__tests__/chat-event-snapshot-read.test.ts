@@ -3,17 +3,20 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
 
+import { setupBootstrap } from "../../../__tests__/page-helper.ts";
 import {
-  clearMockedAuthOnAbort,
-  mockOrganization,
-  mockUser,
-} from "../../../__tests__/mock-auth.ts";
-import { testContext } from "../../__tests__/test-helpers.ts";
-import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
+  testContext,
+  chatEventRowsResponse,
+} from "../../__tests__/test-helpers.ts";
+import {
+  CHAT_EVENT_CURSOR_STORE,
+  CHAT_EVENT_ROWS_STORE,
+} from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
@@ -126,31 +129,35 @@ async function writeCachedRows(rows: readonly ChatEventRow[]): Promise<void> {
     {
       threadId: lastRow.chatThreadId,
       rows,
-      cursor: { lastEventId: lastRow.id, lastSeqId: lastRow.seqId },
+      cursor: {
+        lastEventId: lastRow.id,
+        lastSeqId: lastRow.seqId,
+      },
     },
     context.signal,
   );
 }
 
-function mockSignedInUser(): void {
-  clearMockedAuthOnAbort(context.signal);
-  mockUser(
-    {
+async function setupAuthenticatedBootstrap(): Promise<void> {
+  await setupBootstrap({
+    context,
+    path: "/error",
+    user: {
       id: userId(),
       fullName: "Snapshot Read User",
       email: "snapshot-read@example.com",
     },
-    { token: "test-token" },
-  );
-  mockOrganization({
-    activeOrg: { id: orgId(), name: "Snapshot Read Org" },
-    memberships: [{ id: orgId() }],
+    session: { token: "test-token" },
+    org: {
+      activeOrg: { id: orgId(), name: "Snapshot Read Org" },
+      memberships: [{ id: orgId() }],
+    },
   });
 }
 
 describe("chat event snapshot read", () => {
   it("reads sparse snapshot positions and tails from its coverage", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const threadId = crypto.randomUUID();
     const promptEventRow = promptRow(threadId, 5, "snapshot prompt");
     const assistantEventRow = baseRow(threadId, 8);
@@ -166,8 +173,9 @@ describe("chat event snapshot read", () => {
         return respond(200, {
           url: SNAPSHOT_URL,
           expiresInSeconds: 900,
+          projection: "tool-redacted",
           lastEventId: assistantEventRow.id,
-          lastSeqId: 10,
+          lastSeqId: assistantEventRow.seqId,
         });
       },
     );
@@ -184,10 +192,10 @@ describe("chat event snapshot read", () => {
         );
         rowRequests.push(query.sinceSeqId);
         rowEventIds.push(query.sinceEventId);
-        if (query.sinceSeqId === 10) {
-          return respond(200, { rows: [tailEventRow] });
+        if (query.sinceSeqId === assistantEventRow.seqId) {
+          return respond(200, chatEventRowsResponse([tailEventRow], query));
         }
-        return respond(200, { rows: [] });
+        return respond(200, chatEventRowsResponse([], query));
       },
     );
 
@@ -220,7 +228,7 @@ describe("chat event snapshot read", () => {
       parts: [{ type: "text", text: "snapshot prompt" }],
     });
     expect(prompt).not.toHaveProperty("contextType");
-    expect(rowRequests).toStrictEqual([10, 12]);
+    expect(rowRequests).toStrictEqual([assistantEventRow.seqId, 12]);
     expect(rowEventIds).toStrictEqual([assistantEventRow.id, tailEventRow.id]);
 
     await expect(
@@ -229,7 +237,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("cold-starts from the rows endpoint when the thread has no snapshot yet", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
 
@@ -245,11 +253,12 @@ describe("chat event snapshot read", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
       if (query.sinceSeqId === 0) {
-        return respond(200, {
-          rows: [promptEventRow, assistantEventRow],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse([promptEventRow, assistantEventRow], query),
+        );
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     const signals = createSignals(threadId);
@@ -271,7 +280,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("fails loudly when the rows cursor expires right after a cold start", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId } = threadFixture();
 
     // A head the reader refuses to serve: the snapshot endpoint fails closed
@@ -305,7 +314,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("initializes from cached rows without touching the network", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     context.mocks.api(chatThreadEventsContract.snapshot, () => {
       throw new Error("snapshot endpoint must not be called");
     });
@@ -323,7 +332,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("rebuilds from a fresh snapshot when the rows cursor expires", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
     const staleRow = baseRow(threadId, 5);
@@ -333,6 +342,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: 2,
       });
@@ -349,7 +359,7 @@ describe("chat event snapshot read", () => {
           },
         });
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     const signals = createSignals(threadId);
@@ -371,16 +381,32 @@ describe("chat event snapshot read", () => {
   });
 
   it("background-syncs new rows into the row cache", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const appDb = await openTestChatDb();
-    await writeCachedRows([promptEventRow, assistantEventRow]);
+    const seed = appDb.transaction(
+      [CHAT_EVENT_ROWS_STORE, CHAT_EVENT_CURSOR_STORE],
+      "readwrite",
+    );
+    await Promise.all([
+      seed.objectStore(CHAT_EVENT_ROWS_STORE).put(promptEventRow),
+      seed.objectStore(CHAT_EVENT_ROWS_STORE).put(assistantEventRow),
+      seed.objectStore(CHAT_EVENT_CURSOR_STORE).put({
+        threadId,
+        schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        lastEventId: assistantEventRow.id,
+        lastSeqId: assistantEventRow.seqId,
+      }),
+      seed.done,
+    ]);
+    const positiveCursorProjections: (string | undefined)[] = [];
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === 2) {
-        return respond(200, { rows: [tailEventRow] });
+        positiveCursorProjections.push(query.sinceProjection);
+        return respond(200, chatEventRowsResponse([tailEventRow], query));
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     await context.store.set(setupRealtime$, context.signal);
@@ -405,10 +431,22 @@ describe("chat event snapshot read", () => {
         appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
       ).resolves.toStrictEqual(tailEventRow);
     });
+    await expect(
+      appDb.get(CHAT_EVENT_CURSOR_STORE, threadId),
+    ).resolves.toStrictEqual({
+      threadId,
+      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      lastEventId: tailEventRow.id,
+      lastSeqId: tailEventRow.seqId,
+      projection: LEGACY_CHAT_EVENT_PROJECTION,
+    });
+    expect(positiveCursorProjections).toStrictEqual([
+      LEGACY_CHAT_EVENT_PROJECTION,
+    ]);
   });
 
   it("background-cold-starts raw rows and forwards them to an active thread", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const appDb = await openTestChatDb();
@@ -417,6 +455,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: assistantEventRow.seqId,
       });
@@ -428,9 +467,9 @@ describe("chat event snapshot read", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
       if (query.sinceSeqId === assistantEventRow.seqId) {
-        return respond(200, { rows: [tailEventRow] });
+        return respond(200, chatEventRowsResponse([tailEventRow], query));
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     const signals = createChatEventSignals(threadId);
@@ -470,7 +509,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("background-cold-starts from row zero when no snapshot exists", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
 
@@ -486,9 +525,12 @@ describe("chat event snapshot read", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
       if (query.sinceSeqId === 0) {
-        return respond(200, { rows: [promptEventRow, assistantEventRow] });
+        return respond(
+          200,
+          chatEventRowsResponse([promptEventRow, assistantEventRow], query),
+        );
       }
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
 
     await context.store.set(setupRealtime$, context.signal);
@@ -517,7 +559,7 @@ describe("chat event snapshot read", () => {
   });
 
   it("background-rebuilds raw rows when the cached cursor expires", async () => {
-    mockSignedInUser();
+    await setupAuthenticatedBootstrap();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const staleRow = baseRow(threadId, 5);
@@ -528,6 +570,7 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: assistantEventRow.seqId,
       });
@@ -546,7 +589,7 @@ describe("chat event snapshot read", () => {
           },
         });
       }
-      return respond(200, { rows: [tailEventRow] });
+      return respond(200, chatEventRowsResponse([tailEventRow], query));
     });
 
     await context.store.set(setupRealtime$, context.signal);

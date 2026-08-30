@@ -1,0 +1,9 @@
+break_statement_flow.py:7: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
+break_statement_flow.py:16: use metadata_keys.SANDBOX_AUTH_KEY for flow.metadata access
+break_statement_flow.py:25: use metadata_keys.CAPTURE_BODY for flow.metadata access
+break_statement_flow.py:36: use metadata_keys.FIREWALL_NAME for flow.metadata access
+break_statement_flow.py:80: use metadata_keys.FIREWALL_PERMISSION for flow.metadata access
+break_statement_flow.py:104: use metadata_keys.AUTH_CACHE_HIT for flow.metadata access
+break_statement_flow.py:116: use metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG for flow.metadata access
+break_statement_flow.py:130: use metadata_keys.NETWORK_LOG_TARGET for flow.metadata access
+break_statement_flow.py:153: use metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE for flow.metadata access

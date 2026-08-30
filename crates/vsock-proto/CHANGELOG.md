@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.18.41](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.40...vsock-proto-v0.18.41) (2026-08-28)
+
+
+### Documentation
+
+* **rust:** document exec-start process contracts ([#30083](https://github.com/vm0-ai/vm0/issues/30083)) ([598b61b](https://github.com/vm0-ai/vm0/commit/598b61b22a54af2f711ab05c7ed09431d0924ceb))
+
+## [0.18.40](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.39...vsock-proto-v0.18.40) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
+## [0.18.39](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.38...vsock-proto-v0.18.39) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
+## [0.18.38](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.37...vsock-proto-v0.18.38) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
+## [0.18.37](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.36...vsock-proto-v0.18.37) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
+## [0.18.36](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.35...vsock-proto-v0.18.36) (2026-08-25)
+
+
+### Documentation
+
+* **rust:** document encode_exec_result error conditions ([#29302](https://github.com/vm0-ai/vm0/issues/29302)) ([ce9c119](https://github.com/vm0-ai/vm0/commit/ce9c119be404e55d69db7b5613ee37ff8f0d1714))
+
+## [0.18.35](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.34...vsock-proto-v0.18.35) (2026-08-24)
+
+
+### Refactoring
+
+* **rust:** centralize process termination codec ([#28973](https://github.com/vm0-ai/vm0/issues/28973)) ([6c15cd8](https://github.com/vm0-ai/vm0/commit/6c15cd8f5056d98f40d751cbe445840e4248445e))
+
+## [0.18.34](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.33...vsock-proto-v0.18.34) (2026-08-24)
+
+
+### Bug Fixes
+
+* **rust:** make payload-too-large diagnostics unit-accurate ([#28806](https://github.com/vm0-ai/vm0/issues/28806)) ([d2c2ab3](https://github.com/vm0-ai/vm0/commit/d2c2ab316045c28a3b8726847c3b5c9a14831d09))
+
+## [0.18.33](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.32...vsock-proto-v0.18.33) (2026-08-24)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
 ## [0.18.32](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.31...vsock-proto-v0.18.32) (2026-08-21)
 
 

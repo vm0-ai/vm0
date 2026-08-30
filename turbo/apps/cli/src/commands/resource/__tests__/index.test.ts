@@ -67,7 +67,7 @@ describe("okou resource pull registry resolver", () => {
           archive: expect.objectContaining({
             type: "tar.gz",
             sha256:
-              "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+              "5d9f69b7f9625681b5b6183623cbece78c4f40dc6fe585ca799212d05e589623",
           }),
         }),
       }),
@@ -77,23 +77,6 @@ describe("okou resource pull registry resolver", () => {
   it("canonicalizes unprefixed built-in website template ids", () => {
     expect(findRegistryResourceForPull("dot-matrix")?.id).toBe(
       "template:dot-matrix",
-    );
-  });
-
-  it("resolves the pre-cutover stable website SHA outside the rollout", () => {
-    expect(
-      findRegistryResourceForPull("template:dot-matrix", "previous"),
-    ).toEqual(
-      expect.objectContaining({
-        id: "template:dot-matrix",
-        source: expect.objectContaining({
-          archive: {
-            type: "tar.gz",
-            sha256:
-              "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
-          },
-        }),
-      }),
     );
   });
 
@@ -169,7 +152,7 @@ describe("okou resource pull command", () => {
 
   beforeEach(async () => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     outputDir = await mkdtemp(path.join(tmpdir(), "resource-pull-test-"));
     mockExit.mockClear();
@@ -201,6 +184,53 @@ describe("okou resource pull command", () => {
     expect(skill).toContain("# vm0 Illustration");
     expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
       "✓ Pulled image-style:vm0-illustration",
+    );
+  });
+
+  it("resolves the pull-only presentation reverse-template guide through the command", async () => {
+    const reverseTemplateSha256 =
+      "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11";
+    server.use(
+      http.get(
+        "http://localhost:3000/api/registry/resources/download",
+        ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("id")).toBe(
+            "skill:presentation-reverse-template",
+          );
+          expect(url.searchParams.get("expectedSha256")).toBe(
+            reverseTemplateSha256,
+          );
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer test-token",
+          );
+          return HttpResponse.json({
+            url: downloadUrl,
+            id: "skill:presentation-reverse-template",
+            type: "tar.gz",
+            sha256: "0".repeat(64),
+            expiresInSeconds: 900,
+            versionId,
+            fileCount: 3,
+            size: 30_489,
+          });
+        },
+      ),
+    );
+
+    await expect(
+      resourceCommand.parseAsync([
+        "node",
+        "cli",
+        "pull",
+        "skill:presentation-reverse-template",
+        "--dir",
+        outputDir,
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Resource archive digest metadata mismatch",
     );
   });
 

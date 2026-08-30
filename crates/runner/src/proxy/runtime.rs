@@ -9,14 +9,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use nix::fcntl::Flock;
-use nix::sys::signal::Signal;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::process::{ProcessStat, ProcessStatRead, process_stat_is_live};
 
-pub(super) const RUNTIME_MARKER_ENV: &str = "VM0_MITMDUMP_RUNTIME_DIR";
-const RUNTIME_MARKER_PREFIX: &[u8] = b"VM0_MITMDUMP_RUNTIME_DIR=";
+// Marker-bearing descendants can outlive their runner, so cleanup resolves the
+// canonical marker from each process environment before signalling it.
+pub(super) const CANONICAL_RUNTIME_MARKER_ENV: &str = "OKOU_MITMDUMP_RUNTIME_DIR";
+const CANONICAL_RUNTIME_MARKER_PREFIX: &[u8] = b"OKOU_MITMDUMP_RUNTIME_DIR=";
 const LAUNCH_PREFIX: &str = "launch-";
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const PROCESS_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -41,11 +42,19 @@ struct ProcessSnapshot {
     same_uid: usize,
 }
 
+#[cfg(test)]
+struct TestEnvironmentReadError {
+    pid: u32,
+    error: Box<dyn FnOnce() -> std::io::Error + Send>,
+}
+
 /// Serializes owners of the runner-local proxy resources and scopes every
 /// PyInstaller extraction to one private launch directory.
 pub(super) struct MitmdumpRuntime {
     root: PathBuf,
     _lock: Flock<File>,
+    #[cfg(test)]
+    test_environment_read_error: std::sync::Mutex<Option<TestEnvironmentReadError>>,
 }
 
 impl MitmdumpRuntime {
@@ -68,6 +77,8 @@ impl MitmdumpRuntime {
         let runtime = Arc::new(Self {
             root,
             _lock: runtime_lock,
+            #[cfg(test)]
+            test_environment_read_error: std::sync::Mutex::new(None),
         });
         runtime.reconcile().await?;
         Ok(runtime)
@@ -101,7 +112,7 @@ impl MitmdumpRuntime {
             )));
         }
         if let Err(error) = self.terminate_marked_processes(Some(&path)).await {
-            warn!(path = %path.display(), error = %error, "preserving mitmdump launch directory for later reconciliation");
+            warn!(error = %error, "preserving mitmdump launch directory for later reconciliation");
             return Err(error);
         }
         match tokio::fs::remove_dir_all(&path).await {
@@ -204,7 +215,7 @@ impl MitmdumpRuntime {
             } else {
                 consecutive_empty_scans = 0;
                 for process in &snapshot.processes {
-                    signal_stable_process(process.identity).await?;
+                    signal_stable_process(self, exact_path, process.identity).await?;
                 }
                 wait_for_processes_exit(target, &snapshot).await?;
             }
@@ -229,6 +240,41 @@ impl MitmdumpRuntime {
 
     fn is_launch_path(&self, path: &Path) -> bool {
         is_launch_path(&self.root, path)
+    }
+
+    async fn read_process_environment(&self, pid: u32) -> std::io::Result<Vec<u8>> {
+        #[cfg(test)]
+        {
+            let test_error = {
+                let mut test_error = self.test_environment_read_error.lock().unwrap();
+                if test_error.as_ref().is_some_and(|error| error.pid == pid) {
+                    test_error.take()
+                } else {
+                    None
+                }
+            };
+            if let Some(test_error) = test_error {
+                return Err((test_error.error)());
+            }
+        }
+        tokio::fs::read(format!("/proc/{pid}/environ")).await
+    }
+
+    #[cfg(test)]
+    fn set_test_environment_read_error(
+        &self,
+        pid: u32,
+        error: impl FnOnce() -> std::io::Error + Send + 'static,
+    ) {
+        let mut test_error = self.test_environment_read_error.lock().unwrap();
+        assert!(
+            test_error.is_none(),
+            "test environment read error is already set"
+        );
+        *test_error = Some(TestEnvironmentReadError {
+            pid,
+            error: Box::new(error),
+        });
     }
 }
 
@@ -272,7 +318,7 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
         let Some(environ) = read_process_environ(pid)? else {
             continue;
         };
-        let Some(marker) = runtime_marker(&environ) else {
+        let Some(marker) = resolve_runtime_marker(&environ) else {
             continue;
         };
         let marker_path = Path::new(std::ffi::OsStr::from_bytes(marker));
@@ -299,7 +345,7 @@ fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult
         let Some(rechecked_environ) = read_process_environ(pid)? else {
             continue;
         };
-        if runtime_marker(&rechecked_environ) != Some(marker) {
+        if resolve_runtime_marker(&rechecked_environ) != Some(marker) {
             continue;
         }
         let after = match crate::process::read_process_stat_checked_blocking(pid) {
@@ -377,10 +423,10 @@ fn process_disappeared(error: &std::io::Error) -> bool {
     error.kind() == std::io::ErrorKind::NotFound || error.raw_os_error() == Some(nix::libc::ESRCH)
 }
 
-fn runtime_marker(environ: &[u8]) -> Option<&[u8]> {
+fn resolve_runtime_marker(environ: &[u8]) -> Option<&[u8]> {
     environ
         .split(|byte| *byte == 0)
-        .find_map(|entry| entry.strip_prefix(RUNTIME_MARKER_PREFIX))
+        .find_map(|entry| entry.strip_prefix(CANONICAL_RUNTIME_MARKER_PREFIX))
 }
 
 fn is_launch_path(root: &Path, path: &Path) -> bool {
@@ -486,44 +532,408 @@ fn process_exit_timeout_error(
     ))
 }
 
-async fn signal_stable_process(process: ProcessIdentity) -> RunnerResult<()> {
-    let current = match crate::process::read_process_stat_checked(process.pid).await {
+async fn signal_stable_process(
+    runtime: &MitmdumpRuntime,
+    exact_path: Option<&Path>,
+    process: ProcessIdentity,
+) -> RunnerResult<()> {
+    let Some(pidfd) = open_pidfd(process.pid)? else {
+        return Ok(());
+    };
+    if !marked_process_matches_after_pidfd_open(runtime, exact_path, process).await? {
+        return Ok(());
+    }
+    match rustix::process::pidfd_send_signal(&pidfd, rustix::process::Signal::KILL) {
+        Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "pidfd signal mitmdump runtime owner pid {}: {error}",
+            process.pid
+        ))),
+    }
+}
+
+fn open_pidfd(pid: u32) -> RunnerResult<Option<std::os::fd::OwnedFd>> {
+    let raw_pid = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "convert mitmdump cleanup pid {pid} to a positive process id"
+            ))
+        })?;
+    match rustix::process::pidfd_open(raw_pid, rustix::process::PidfdFlags::empty()) {
+        Ok(pidfd) => Ok(Some(pidfd)),
+        Err(rustix::io::Errno::SRCH) => Ok(None),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "open pidfd for mitmdump runtime owner pid {pid}: {error}"
+        ))),
+    }
+}
+
+async fn marked_process_matches_after_pidfd_open(
+    runtime: &MitmdumpRuntime,
+    exact_path: Option<&Path>,
+    process: ProcessIdentity,
+) -> RunnerResult<bool> {
+    let before = match crate::process::read_process_stat_checked(process.pid).await {
         ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
-        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(()),
-        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(()),
+        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(false),
+        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(false),
         ProcessStatRead::Unreadable(error) => {
             return Err(RunnerError::Internal(format!(
-                "recheck /proc/{}/stat before mitmdump cleanup signal: {error}",
+                "recheck /proc/{}/stat after opening mitmdump cleanup pidfd: {error}",
                 process.pid
             )));
         }
         ProcessStatRead::Invalid => {
             return Err(RunnerError::Internal(format!(
-                "reparse /proc/{}/stat before mitmdump cleanup signal",
+                "reparse /proc/{}/stat after opening mitmdump cleanup pidfd",
                 process.pid
             )));
         }
     };
-    if current.starttime != process.starttime {
-        return Ok(());
+    if before.starttime != process.starttime {
+        return Ok(false);
     }
-    let pid = i32::try_from(process.pid).map_err(|error| {
-        RunnerError::Internal(format!(
-            "convert mitmdump cleanup pid {}: {error}",
-            process.pid
-        ))
-    })?;
-    match nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), Signal::SIGKILL) {
-        Ok(()) | Err(nix::errno::Errno::ESRCH) => Ok(()),
-        Err(error) => Err(RunnerError::Internal(format!(
-            "kill mitmdump runtime owner pid {}: {error}",
-            process.pid
-        ))),
+
+    let environ = match runtime.read_process_environment(process.pid).await {
+        Ok(environ) => environ,
+        Err(error) if process_disappeared(&error) => return Ok(false),
+        Err(environment_error) => {
+            match crate::process::read_process_stat_checked(process.pid).await {
+                ProcessStatRead::Found(stat)
+                    if process_stat_is_live(&stat) && stat.starttime == process.starttime =>
+                {
+                    return Err(RunnerError::Internal(format!(
+                        "recheck /proc/{}/environ after opening mitmdump cleanup pidfd: {environment_error}",
+                        process.pid
+                    )));
+                }
+                ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(false),
+                ProcessStatRead::Unreadable(error) if process_disappeared(&error) => {
+                    return Ok(false);
+                }
+                ProcessStatRead::Unreadable(error) => {
+                    return Err(RunnerError::Internal(format!(
+                        "recheck /proc/{}/stat after environment recheck failed during mitmdump cleanup: {error}; environment error: {environment_error}",
+                        process.pid
+                    )));
+                }
+                ProcessStatRead::Invalid => {
+                    return Err(RunnerError::Internal(format!(
+                        "reparse /proc/{}/stat after environment recheck failed during mitmdump cleanup; environment error: {environment_error}",
+                        process.pid
+                    )));
+                }
+            }
+        }
+    };
+    let Some(marker) = resolve_runtime_marker(&environ) else {
+        return Ok(false);
+    };
+    let marker_path = Path::new(std::ffi::OsStr::from_bytes(marker));
+    if !is_launch_path(&runtime.root, marker_path)
+        || exact_path.is_some_and(|expected| marker_path != expected)
+    {
+        return Ok(false);
     }
+
+    let after = match crate::process::read_process_stat_checked(process.pid).await {
+        ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
+        ProcessStatRead::Found(_) | ProcessStatRead::Missing => return Ok(false),
+        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => return Ok(false),
+        ProcessStatRead::Unreadable(error) => {
+            return Err(RunnerError::Internal(format!(
+                "final recheck /proc/{}/stat after opening mitmdump cleanup pidfd: {error}",
+                process.pid
+            )));
+        }
+        ProcessStatRead::Invalid => {
+            return Err(RunnerError::Internal(format!(
+                "final reparse /proc/{}/stat after opening mitmdump cleanup pidfd",
+                process.pid
+            )));
+        }
+    };
+    Ok(before.procfs_generation() == after.procfs_generation()
+        && after.starttime == process.starttime)
 }
 
 pub(super) fn preserve_launch(launch: tempfile::TempDir, error: &impl std::fmt::Display) {
     let path = launch.path().to_path_buf();
     let _kept_path = launch.keep();
     warn!(path = %path.display(), error = %error, "preserving mitmdump launch directory for later reconciliation");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+
+    use super::*;
+
+    struct ProbeChild {
+        child: Child,
+        stdin: ChildStdin,
+        stdout: BufReader<ChildStdout>,
+    }
+
+    impl ProbeChild {
+        fn spawn(marker: Option<(&str, &Path)>) -> Self {
+            let mut command = Command::new("cat");
+            command
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .env_remove(CANONICAL_RUNTIME_MARKER_ENV)
+                .env_remove(retired_runtime_marker_env());
+            if let Some((name, value)) = marker {
+                command.env(name, value);
+            }
+            let mut child = command.spawn().unwrap();
+            let stdin = child.stdin.take().unwrap();
+            let stdout = BufReader::new(child.stdout.take().unwrap());
+            Self {
+                child,
+                stdin,
+                stdout,
+            }
+        }
+
+        fn pid(&self) -> u32 {
+            self.child.id()
+        }
+
+        fn assert_responds(&mut self) {
+            writeln!(self.stdin, "probe").unwrap();
+            self.stdin.flush().unwrap();
+            let mut response = String::new();
+            self.stdout.read_line(&mut response).unwrap();
+            assert_eq!(response, "probe\n");
+        }
+    }
+
+    fn retired_runtime_marker_env() -> String {
+        ["VM0", "MITMDUMP", "RUNTIME", "DIR"].join("_")
+    }
+
+    fn marker_environment(canonical: Option<&[u8]>, retired: Option<&[u8]>) -> Vec<u8> {
+        let mut environ = b"UNRELATED=value\0".to_vec();
+        if let Some(value) = canonical {
+            environ.extend_from_slice(CANONICAL_RUNTIME_MARKER_PREFIX);
+            environ.extend_from_slice(value);
+            environ.push(0);
+        }
+        if let Some(value) = retired {
+            environ.extend_from_slice(retired_runtime_marker_env().as_bytes());
+            environ.push(b'=');
+            environ.extend_from_slice(value);
+            environ.push(0);
+        }
+        environ
+    }
+
+    #[tokio::test]
+    async fn acquisition_reconciles_canonical_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("runtime");
+        let lock_path = dir.path().join("runtime.lock");
+        crate::private_fs::ensure_private_dir(&root).await.unwrap();
+        let launch = root.join("launch-canonical");
+        std::fs::create_dir(&launch).unwrap();
+        let mut child = ProbeChild::spawn(Some((CANONICAL_RUNTIME_MARKER_ENV, &launch)));
+
+        let runtime = MitmdumpRuntime::acquire(root, lock_path).await.unwrap();
+
+        let status = child.child.wait().unwrap();
+        assert!(
+            !status.success(),
+            "canonical-marked process was not signalled"
+        );
+        assert!(!launch.exists(), "stale canonical launch was not removed");
+        drop(runtime);
+    }
+
+    #[tokio::test]
+    async fn acquisition_ignores_retired_legacy_only_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("runtime");
+        let lock_path = dir.path().join("runtime.lock");
+        crate::private_fs::ensure_private_dir(&root).await.unwrap();
+        let launch = root.join("launch-retired");
+        std::fs::create_dir(&launch).unwrap();
+        let retired_marker = retired_runtime_marker_env();
+        let mut child = ProbeChild::spawn(Some((&retired_marker, &launch)));
+
+        let runtime = MitmdumpRuntime::acquire(root, lock_path).await.unwrap();
+
+        child.assert_responds();
+        assert!(!launch.exists(), "stale launch directory was not removed");
+        drop(runtime);
+    }
+
+    #[test]
+    fn runtime_marker_resolver_reads_canonical_bytes_only() {
+        let canonical = b"/runtime/launch-canonical";
+        let retired = b"/runtime/launch-retired";
+        let non_unicode = b"/runtime/launch-\xff";
+
+        assert!(resolve_runtime_marker(&marker_environment(None, None)).is_none());
+        assert_eq!(
+            resolve_runtime_marker(&marker_environment(None, Some(retired))),
+            None,
+        );
+        assert_eq!(
+            resolve_runtime_marker(&marker_environment(Some(b""), None)),
+            Some(b"".as_slice()),
+        );
+        assert_eq!(
+            resolve_runtime_marker(&marker_environment(Some(non_unicode), None)),
+            Some(non_unicode.as_slice()),
+        );
+        assert_eq!(
+            resolve_runtime_marker(&marker_environment(Some(canonical), Some(retired))),
+            Some(canonical.as_slice()),
+        );
+    }
+
+    impl Drop for ProbeChild {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    async fn process_identity(pid: u32) -> ProcessIdentity {
+        let ProcessStatRead::Found(stat) = crate::process::read_process_stat_checked(pid).await
+        else {
+            panic!("probe child process stat is unavailable");
+        };
+        ProcessIdentity {
+            pid,
+            starttime: stat.starttime,
+        }
+    }
+
+    async fn test_runtime(root: &Path) -> Arc<MitmdumpRuntime> {
+        MitmdumpRuntime::acquire(root.to_path_buf(), root.join("runtime.lock"))
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn pidfd_signal_rejects_replacement_process_generation() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime(root.path()).await;
+        let launch = root.path().join("launch-stale-generation");
+        std::fs::create_dir(&launch).unwrap();
+        let mut replacement = ProbeChild::spawn(Some((CANONICAL_RUNTIME_MARKER_ENV, &launch)));
+        let current = process_identity(replacement.pid()).await;
+        let stale = ProcessIdentity {
+            starttime: current.starttime.checked_add(1).unwrap(),
+            ..current
+        };
+
+        signal_stable_process(&runtime, Some(&launch), stale)
+            .await
+            .unwrap();
+
+        replacement.assert_responds();
+    }
+
+    #[tokio::test]
+    async fn pidfd_signal_rechecks_runtime_marker() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime(root.path()).await;
+        let launch = root.path().join("launch-removed-marker");
+        std::fs::create_dir(&launch).unwrap();
+        let mut replacement = ProbeChild::spawn(None);
+        let current = process_identity(replacement.pid()).await;
+
+        signal_stable_process(&runtime, Some(&launch), current)
+            .await
+            .unwrap();
+
+        replacement.assert_responds();
+    }
+
+    #[tokio::test]
+    async fn pidfd_signal_ignores_retired_legacy_marker() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime(root.path()).await;
+        let launch = root.path().join("launch-retired-marker");
+        std::fs::create_dir(&launch).unwrap();
+        let retired_marker = retired_runtime_marker_env();
+        let mut replacement = ProbeChild::spawn(Some((&retired_marker, &launch)));
+        let current = process_identity(replacement.pid()).await;
+
+        signal_stable_process(&runtime, Some(&launch), current)
+            .await
+            .unwrap();
+
+        replacement.assert_responds();
+    }
+
+    #[tokio::test]
+    async fn close_launch_accepts_environment_error_after_process_becomes_zombie() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime(root.path()).await;
+        let launch = root.path().join("launch-zombie-environment");
+        std::fs::create_dir(&launch).unwrap();
+        let child = ProbeChild::spawn(Some((CANONICAL_RUNTIME_MARKER_ENV, &launch)));
+        let pid = child.pid();
+
+        runtime.set_test_environment_read_error(pid, move || {
+            let pid = nix::unistd::Pid::from_raw(i32::try_from(pid).unwrap());
+            nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL).unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(1);
+            loop {
+                match crate::process::read_process_stat_checked_blocking(pid.as_raw() as u32) {
+                    ProcessStatRead::Found(stat) if !process_stat_is_live(&stat) => break,
+                    ProcessStatRead::Found(_) => {}
+                    ProcessStatRead::Missing => panic!("probe child disappeared before reaping"),
+                    ProcessStatRead::Unreadable(error) => {
+                        panic!("probe child stat became unreadable: {error}")
+                    }
+                    ProcessStatRead::Invalid => panic!("probe child stat became invalid"),
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "probe child did not become a zombie"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            std::io::Error::from_raw_os_error(nix::libc::EACCES)
+        });
+
+        runtime.close_launch_path(launch.clone()).await.unwrap();
+
+        assert!(!launch.exists());
+        drop(child);
+    }
+
+    #[tokio::test]
+    async fn close_launch_rejects_environment_error_for_live_process() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = test_runtime(root.path()).await;
+        let launch = root.path().join("launch-live-environment-error");
+        std::fs::create_dir(&launch).unwrap();
+        let mut child = ProbeChild::spawn(Some((CANONICAL_RUNTIME_MARKER_ENV, &launch)));
+        let pid = child.pid();
+        runtime.set_test_environment_read_error(pid, || {
+            std::io::Error::from_raw_os_error(nix::libc::EACCES)
+        });
+
+        let error = runtime
+            .close_launch_path(launch.clone())
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("recheck /proc/"));
+        assert!(error.contains("/environ after opening mitmdump cleanup pidfd"));
+        assert!(error.contains("Permission denied"));
+        assert!(launch.exists());
+        child.assert_responds();
+    }
 }

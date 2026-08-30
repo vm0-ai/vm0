@@ -465,11 +465,6 @@
     },
     "chat": "चैट",
     "description": "बातचीत शुरू करने के लिए किसी भी कार्ड पर क्लिक करें। यह एक ऑन-डिमांड कार्य, एक आवर्ती वर्कफ़्लो, या एक सबएजेंट बन सकता है।",
-    "entry": {
-      "description": "सभी कनेक्टर्स में उपयोग के मामले ब्राउज़ करें",
-      "title": "विचार और उपयोग के मामले",
-      "viewAll": "सभी को देखें"
-    },
     "search": {
       "accessibilityLabel": "उपयोग के मामले खोजें",
       "empty": "कोई भी उपयोग का मामला आपकी खोज से मेल नहीं खाता।",
@@ -619,20 +614,24 @@
     "pinAgentDescription": "साइडबार पर पिन करने के लिए एक एजेंट चुनें।",
     "pinned": "पिन की गई",
     "pinnedAgents": "पिन किए गए एजेंट",
+    "pinSuccess": "{{agentName}} को पिन किया गया",
     "resultCount_one": "{{count}} परिणाम",
     "resultCount_other": "{{count}} परिणाम",
     "searchAgents": "खोज एजेंट...",
     "searchAgentsAndChats": "खोज एजेंट और चैट...",
-    "searchChatsAndMessages": "चैट और संदेश खोजें...",
     "searching": "खोज जारी है...",
+    "searchWorkspace": "चैट, संदेश, वर्कफ़्लो और आर्टिफ़ैक्ट खोजें...",
     "sections": {
+      "artifacts": "आर्टिफ़ैक्ट्स",
       "chats": "चैट",
       "lead": "लीड",
       "messages": "संदेश",
-      "others": "अन्य"
+      "others": "अन्य",
+      "workflows": "वर्कफ़्लो"
     },
     "talkTo": "से बात",
-    "unpin": "अनपिन"
+    "unpin": "अनपिन",
+    "unpinSuccess": "{{agentName}} को अनपिन किया गया"
   },
   "status": {
     "unread": "अपठित"

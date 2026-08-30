@@ -257,39 +257,44 @@ async fn create_checkpoint_impl(
         }
     };
 
-    // Validate response
-    let checkpoint_id = result
-        .as_ref()
-        .and_then(|v| v.get("checkpointId"))
-        .and_then(|v| v.as_str());
-
-    if let Some(id) = checkpoint_id {
-        if let Some(uploaded_history) = uploaded_history
-            && session_history::reconcile_live_history_after_checkpoint(
-                uploaded_history.live_history,
-            )
-        {
-            session_history::write_final_session_history_identity(
-                mode,
-                &uploaded_history.cli_agent_session_id,
-                &uploaded_history.history_hash,
-                uploaded_history.history_size,
-                &uploaded_history.history_source,
-                inputs.framework,
-                inputs.final_session_history_identity_file.as_ref(),
-            );
-        }
-        log_info!(LOG_TAG, "{} created successfully: {id}", mode.log_label());
-        record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
-        Ok(())
-    } else {
-        Err(fail(
+    let response = result.ok_or_else(|| {
+        fail(
             mode,
             "checkpoint_api_call",
             api_start,
             "Invalid checkpoint API response",
-        ))
+        )
+    })?;
+    let response = serde_json::from_value::<checkpoints::Response>(response).map_err(|_| {
+        fail(
+            mode,
+            "checkpoint_api_call",
+            api_start,
+            "Invalid checkpoint API response",
+        )
+    })?;
+
+    if let Some(uploaded_history) = uploaded_history
+        && session_history::reconcile_live_history_after_checkpoint(uploaded_history.live_history)
+    {
+        session_history::write_final_session_history_identity(
+            mode,
+            &uploaded_history.cli_agent_session_id,
+            &uploaded_history.history_hash,
+            uploaded_history.history_size,
+            &uploaded_history.history_source,
+            inputs.framework,
+            inputs.final_session_history_identity_file.as_ref(),
+        );
     }
+    log_info!(
+        LOG_TAG,
+        "{} created successfully: {}",
+        mode.log_label(),
+        response.checkpoint_id
+    );
+    record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -372,7 +377,7 @@ mod tests {
         let checkpoint = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/checkpoints");
             then.status(200)
-                .json_body(json!({"checkpointId": "unreachable"}));
+                .json_body(json!({"checkpointId": "unreachable", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
         });
         let http = HttpClient::with_api_config(
             server.base_url(),
@@ -454,6 +459,7 @@ mod tests {
                 }));
             then.status(200).json_body(json!({
                 "presignedUrl": upload_url,
+                "existing": false,
                 "encoding": SESSION_HISTORY_ENCODING_ZSTD,
             }));
         });
@@ -472,7 +478,7 @@ mod tests {
                     "cliAgentSessionHistoryHash": history_hash,
                 }));
             then.status(200)
-                .json_body(json!({"checkpointId": "checkpoint-codex-zstd"}));
+                .json_body(json!({"checkpointId": "checkpoint-codex-zstd", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
         });
         let http = HttpClient::with_api_config(
             server.base_url(),

@@ -425,8 +425,8 @@ async fn run_codex_app_server(
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             event_delivery: None,
-            claude_result: None,
-            post_result_cleanup_result: None,
+            jsonl_result: None,
+            post_result_cleanup_jsonl_result: None,
             failure_diagnostic: ingestor.failure_diagnostic(),
             control_error: None,
             cli_termination: None,
@@ -459,8 +459,8 @@ async fn run_codex_app_server(
     }
     let active_input_delivery_ids = active_input_controller.finalize_receipts().await;
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
-    // Complete the final event-log write after the child is stopped and
-    // before callers observe the finished app-server execution.
+    // Publish buffered event-log bytes after the child is stopped and before
+    // callers observe the finished app-server execution.
     agent_log.flush().await;
     let active_input_delivery_ids = match active_input_delivery_ids {
         Ok(delivery_ids) => delivery_ids,
@@ -510,8 +510,8 @@ async fn run_codex_app_server(
                 stderr_lines,
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: None,
-                post_result_cleanup_result: None,
+                jsonl_result: None,
+                post_result_cleanup_jsonl_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
                 control_error: Some(AgentError::Execution(format!(
                     "Agent execution timed out after {timeout_secs} seconds"
@@ -536,8 +536,8 @@ async fn run_codex_app_server(
                 stderr_lines,
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: None,
-                post_result_cleanup_result: None,
+                jsonl_result: None,
+                post_result_cleanup_jsonl_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
                 control_error: Some(AgentError::Execution("Run cancelled by user".to_string())),
                 cli_termination: Some(CliTerminationDiagnostic::new(
@@ -598,6 +598,7 @@ async fn start_or_resume_thread(
                 "threadId".to_string(),
                 Value::String(resume_thread_id.to_string()),
             );
+            params.insert("excludeTurns".to_string(), Value::Bool(true));
             client
                 .request_value("thread/resume", Value::Object(params))
                 .await
@@ -1220,7 +1221,7 @@ fn resume_thread_id_from_runtime(
     }
     canonical_codex_thread_id(
         resume_id,
-        "VM0_RESUME_SESSION_ID is not a valid Codex thread id",
+        "resume session id is not a valid Codex thread id",
     )
     .map(Some)
 }

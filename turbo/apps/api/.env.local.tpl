@@ -7,16 +7,16 @@ CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 CLERK_WEBHOOK_SIGNING_SECRET=op://Development/clerk/CLERK_WEBHOOK_SIGNING_SECRET
 
 # Required: API, web, and app URLs
-VM0_API_BACKEND_URL=https://api.vm7.ai:8443
+OKOU_API_BACKEND_URL=https://api.vm7.ai:8443
 FEISHU_CALLBACK_BASE_URL=https://api.vm7.ai:8443
-VM0_WEB_URL=https://www.vm7.ai:8443
+OKOU_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
 
 # CLI_PKG_URL is appended by scripts/sync-env.sh using the local machine identity.
 
 # Optional: Atom redeem service for onboarding codes
 ATOM_URL=https://atom-api.vm7.ai:8442
-VM0_MACHINE_SECRET_KEY=op://Development/clerk/OKOU_MACHINE_SECRET_KEY
+OKOU_MACHINE_SECRET_KEY=op://Development/clerk/OKOU_MACHINE_SECRET_KEY
 
 # Required: API deploy stage tag
 ENV=development
@@ -296,7 +296,7 @@ GITHUB_APP_PRIVATE_KEY=op://Development/github/GITHUB_APP_PRIVATE_KEY
 GITHUB_APP_SLUG=op://Development/github/GITHUB_APP_SLUG
 GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
 
-# Optional: VM0 Managed Model Provider API Keys
+# Optional: VM0 Built-in Model Provider API Keys
 DEV_MODEL_ANTHROPIC_KEY=op://Development/anthropic/DEV_MODEL_ANTHROPIC_KEY
 DEV_MODEL_OPENAI_KEY=op://Development/openai/OPENAI_API_KEY
 DEV_MODEL_MOONSHOT_KEY=op://Development/moonshot/DEV_MODEL_MOONSHOT_KEY

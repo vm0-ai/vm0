@@ -41,7 +41,7 @@ export const feishuBrowserConnectContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Connect a Feishu user from the VM0 app",
+    summary: "Connect a Feishu user from the product app",
   },
   getStatus: {
     method: "GET",
@@ -60,7 +60,7 @@ export const feishuBrowserConnectContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Check whether a Feishu user is connected to VM0",
+    summary: "Check whether a Feishu user is connected",
   },
 });
 

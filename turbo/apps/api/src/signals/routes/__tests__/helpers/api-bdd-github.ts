@@ -6,8 +6,8 @@ import {
   type GithubConnectUserBody,
   type GithubInstallationResponse,
 } from "@okouai/api-contracts/contracts/integrations-github";
-import { zeroConnectorsBySlugContract } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { connectorsBySlugContract } from "@okouai/api-contracts/contracts/connectors";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
@@ -141,6 +141,8 @@ function mockGithubInstallationsList(
         installations.map((installation) => {
           return {
             id: Number(installation.id),
+            app_id: Number(GITHUB_APP_ID),
+            app_slug: GITHUB_APP_SLUG,
             account: {
               id: Number(installation.targetId),
               login: installation.login ?? "bdd-org",
@@ -166,6 +168,8 @@ function mockGithubInstallationApi(args: {
       () => {
         return HttpResponse.json({
           id: Number(args.installationId),
+          app_id: Number(GITHUB_APP_ID),
+          app_slug: GITHUB_APP_SLUG,
           account: {
             id: Number(args.targetId),
             login: args.login ?? "bdd-org",
@@ -391,7 +395,7 @@ export function createGithubBddApi(context: TestContext) {
 
     async readGithubConnector(actor: ApiTestUser) {
       const client = setupApp({ context, routes: connectorsRoutes })(
-        zeroConnectorsBySlugContract,
+        connectorsBySlugContract,
       );
       const response = await accept(
         client.get({
@@ -405,12 +409,12 @@ export function createGithubBddApi(context: TestContext) {
 
     async enableAuditLink(actor: ApiTestUser): Promise<void> {
       const client = setupApp({ context, routes: featureSwitchesRoutes })(
-        zeroFeatureSwitchesContract,
+        featureSwitchesContract,
       );
       await accept(
         client.update({
           headers: authenticate(actor),
-          body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
+          body: { switches: { [FeatureSwitchKey.OkouDebug]: true } },
         }),
         [200],
       );
@@ -431,6 +435,7 @@ export function createGithubBddApi(context: TestContext) {
           readonly githubUserId: string;
           readonly login?: string;
         };
+        readonly beforeCallback?: () => Promise<void>;
         readonly targetType?: string;
         readonly targetLogin?: string;
       } = {},
@@ -485,6 +490,7 @@ export function createGithubBddApi(context: TestContext) {
           login: options.oauthCode.login,
         });
       }
+      await options.beforeCallback?.();
 
       const callbackQuery = new URLSearchParams({
         installation_id: remoteInstallationId,

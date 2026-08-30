@@ -109,12 +109,12 @@ export type RunnerRealtimeTokenContract = typeof runnerRealtimeTokenContract;
 
 /**
  * Platform realtime token contract for /api/realtime/token
- * Used by the frontend to get an Ably token for subscribing to user-scoped push signals.
+ * Used by the frontend to get an Ably token for subscribing to user- and active-org-scoped push signals.
  */
 export const platformRealtimeTokenContract = c.router({
   /**
    * POST /api/realtime/token
-   * Get an Ably token to subscribe to the authenticated user's push channel
+   * Get an Ably token for the authenticated user and active organization
    */
   create: {
     method: "POST",
@@ -126,7 +126,7 @@ export const platformRealtimeTokenContract = c.router({
       401: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get Ably token for platform user push notifications",
+    summary: "Get Ably token for platform push notifications",
   },
 });
 

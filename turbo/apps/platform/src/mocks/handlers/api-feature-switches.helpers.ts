@@ -5,7 +5,7 @@
  * remains stateless and test-specific overrides stay in test code.
  */
 
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 
 import { mockApi } from "../msw-contract.ts";
 import { server } from "../server.ts";
@@ -20,7 +20,7 @@ export function setMockFeatureSwitches(
     }
   }
   server.use(
-    mockApi(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    mockApi(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: sanitized,
         effectiveSwitches: sanitized,

@@ -63,7 +63,6 @@ interface TelegramChatRunContext {
 interface TelegramOwnerBinding {
   readonly botToken: string;
   readonly ownerLink: TelegramOwnerLink;
-  readonly publicBrand: PublicBrand;
 }
 
 async function markDelivered(db: Db, callbackId: string): Promise<void> {
@@ -142,10 +141,7 @@ async function loadTelegramOwnerBinding(
       return undefined;
     }
     const [link] = await args.db
-      .select({
-        id: telegramOfficialUserLinks.id,
-        publicBrand: telegramOfficialUserLinks.publicBrand,
-      })
+      .select({ id: telegramOfficialUserLinks.id })
       .from(telegramOfficialUserLinks)
       .where(
         and(
@@ -161,7 +157,6 @@ async function loadTelegramOwnerBinding(
       ? {
           botToken,
           ownerLink: { kind: "official", id: link.id },
-          publicBrand: link.publicBrand,
         }
       : undefined;
   }
@@ -174,7 +169,6 @@ async function loadTelegramOwnerBinding(
       id: telegramUserLinks.id,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
       ownerUserId: telegramInstallations.ownerUserId,
-      publicBrand: telegramInstallations.publicBrand,
     })
     .from(telegramUserLinks)
     .innerJoin(
@@ -204,7 +198,6 @@ async function loadTelegramOwnerBinding(
       ),
     ),
     ownerLink: { kind: "custom", id: binding.id },
-    publicBrand: binding.publicBrand,
   };
 }
 
@@ -454,7 +447,7 @@ async function resolveTelegramPresentation(
   ]);
   signal.throwIfAborted();
   return {
-    logsUrl: isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
+    logsUrl: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
       ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`
       : undefined,
     footerText,
@@ -544,7 +537,7 @@ async function deliverClaimedTelegramChatCallback(
       run,
       runId: args.callback.runId,
       installationId: payload.installationId,
-      publicBrand: binding.publicBrand,
+      publicBrand: payload.publicBrand,
     },
     signal,
   );

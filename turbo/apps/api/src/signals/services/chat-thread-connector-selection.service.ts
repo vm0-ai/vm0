@@ -1,4 +1,5 @@
 import type {
+  ConnectorAccountConnection,
   ConnectorAccountSelection,
   ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
@@ -10,14 +11,11 @@ import { agents } from "@okouai/db/schema/agent";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { connectors } from "@okouai/db/schema/connector";
-import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import type { Db, ReadonlyDb } from "../external/db";
-import {
-  connectorAccountTargetKey,
-  resolveConnectorAccounts,
-} from "./connector-account-resolution.service";
+import { connectorAccountTargetKey } from "./connector-account-resolution.service";
 import {
   loadAgentConnectorScope,
   type AgentConnectorScope,
@@ -28,6 +26,7 @@ import {
   type ConnectorRuntimeSelection,
 } from "./connector-catalog-runtime.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+import { listConnectorAccountsByIds } from "./connector-account-lifecycle.service";
 
 interface OwnedChatThread {
   readonly agentId: string;
@@ -39,6 +38,11 @@ interface ConnectorSelectionRow {
   readonly customConnectorId: string | null;
 }
 
+interface ConnectorTargetOwnership extends ConnectorSelectionRow {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
 export type PreparedChatThreadConnectorSelection = ConnectorAccountSelection;
 
 type PrepareChatThreadConnectorSelectionsResult =
@@ -47,6 +51,11 @@ type PrepareChatThreadConnectorSelectionsResult =
       readonly selections: readonly PreparedChatThreadConnectorSelection[];
     }
   | { readonly kind: "invalid"; readonly message: string };
+
+interface ChatThreadConnectorSelectionList {
+  readonly selections: readonly ConnectorAccountSelection[];
+  readonly selectedConnections: readonly ConnectorAccountConnection[];
+}
 
 type UpdateChatThreadConnectorSelectionResult =
   | { readonly kind: "updated"; readonly selection: ConnectorAccountSelection }
@@ -203,6 +212,32 @@ async function loadConnectorTarget(
   return row ? targetFromRow(row) : undefined;
 }
 
+async function loadConnectorTargetOwnerships(
+  db: ReadonlyDb,
+  args: {
+    readonly connectorIds: readonly string[];
+  },
+): Promise<ReadonlyMap<string, ConnectorTargetOwnership>> {
+  if (args.connectorIds.length === 0) {
+    return new Map();
+  }
+  const rows = await db
+    .select({
+      connectorId: connectors.id,
+      connectorSlug: connectors.connectorSlug,
+      customConnectorId: connectors.customConnectorId,
+      orgId: connectors.orgId,
+      userId: connectors.userId,
+    })
+    .from(connectors)
+    .where(inArray(connectors.id, [...new Set(args.connectorIds)]));
+  return new Map(
+    rows.map((row) => {
+      return [row.connectorId, row];
+    }),
+  );
+}
+
 export async function listChatThreadConnectorSelections(
   db: ReadonlyDb,
   args: {
@@ -210,17 +245,39 @@ export async function listChatThreadConnectorSelections(
     readonly userId: string;
     readonly chatThreadId: string;
   },
-): Promise<readonly ConnectorAccountSelection[] | null> {
+): Promise<ChatThreadConnectorSelectionList | null> {
   const thread = await loadOwnedChatThread(db, args);
   if (!thread) {
     return null;
   }
   const rows = await loadSelectionRows(db, args.chatThreadId);
-  const selections = rows.map(selectionFromRow);
-  const snapshot = await loadSnapshotForBuiltinTargets(db, selections);
-  return selections.filter((selection) => {
-    return targetExistsInCatalog(snapshot, selection.target);
+  const storedSelections = rows.map(selectionFromRow);
+  const projectedConnections = await listConnectorAccountsByIds(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectionIds: storedSelections.map((selection) => {
+      return selection.connectionId;
+    }),
   });
+  const connectionById = new Map(
+    projectedConnections.map((connection) => {
+      return [connection.id, connection];
+    }),
+  );
+  const selections: ConnectorAccountSelection[] = [];
+  const selectedConnections: ConnectorAccountConnection[] = [];
+  for (const selection of storedSelections) {
+    const connection = connectionById.get(selection.connectionId);
+    if (
+      connection &&
+      connectorAccountTargetKey(connection.target) ===
+        connectorAccountTargetKey(selection.target)
+    ) {
+      selections.push(selection);
+      selectedConnections.push(connection);
+    }
+  }
+  return { selections, selectedConnections };
 }
 
 export async function prepareChatThreadConnectorSelections(
@@ -230,6 +287,7 @@ export async function prepareChatThreadConnectorSelections(
     readonly userId: string;
     readonly agentId: string;
     readonly selections: readonly ConnectorAccountSelection[];
+    readonly missingAccountPolicy?: "reject" | "omit";
   },
 ): Promise<PrepareChatThreadConnectorSelectionsResult> {
   const byTarget = new Map<string, ConnectorAccountSelection>();
@@ -276,28 +334,87 @@ export async function prepareChatThreadConnectorSelections(
     }
   }
 
-  const resolutions = await resolveConnectorAccounts(db, {
+  const connectionIds = selections.map((selection) => {
+    return selection.connectionId;
+  });
+  const targetOwnerships = await loadConnectorTargetOwnerships(db, {
+    connectorIds: connectionIds,
+  });
+  const projectedConnections = await listConnectorAccountsByIds(db, {
     orgId: args.orgId,
     userId: args.userId,
-    requests: selections.map((selection) => {
-      return {
-        target: selection.target,
-        selection: {
-          kind: "exact" as const,
-          sourceId: selection.connectionId,
-        },
-      };
-    }),
+    connectionIds,
   });
-  for (const [key] of byTarget) {
-    if (resolutions.get(key)?.kind !== "resolved") {
+  const projectedById = new Map(
+    projectedConnections.map((connection) => {
+      return [connection.id, connection];
+    }),
+  );
+  for (const [key, selection] of byTarget) {
+    const ownership = targetOwnerships.get(selection.connectionId);
+    if (!ownership) {
+      if (args.missingAccountPolicy === "omit") {
+        byTarget.delete(key);
+        continue;
+      }
       return {
         kind: "invalid",
         message: "Connector account does not match the requested target",
       };
     }
+    if (ownership.orgId !== args.orgId || ownership.userId !== args.userId) {
+      return {
+        kind: "invalid",
+        message: "Connector account does not match the requested target",
+      };
+    }
+    const ownedTarget = targetFromRow(ownership);
+    if (
+      connectorAccountTargetKey(ownedTarget) !==
+      connectorAccountTargetKey(selection.target)
+    ) {
+      return {
+        kind: "invalid",
+        message: "Connector account does not match the requested target",
+      };
+    }
+    const projected = projectedById.get(selection.connectionId);
+    if (!projected) {
+      return {
+        kind: "invalid",
+        message: "Connector account is unavailable for thread selection",
+      };
+    }
   }
   return { kind: "ready", selections: [...byTarget.values()] };
+}
+
+async function projectStoredSelections(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly selections: readonly ConnectorAccountSelection[];
+  },
+): Promise<readonly ConnectorAccountSelection[]> {
+  const connections = await listConnectorAccountsByIds(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectionIds: args.selections.map((selection) => {
+      return selection.connectionId;
+    }),
+  });
+  const connectionTargetById = new Map(
+    connections.map((connection) => {
+      return [connection.id, connectorAccountTargetKey(connection.target)];
+    }),
+  );
+  return args.selections.filter((selection) => {
+    return (
+      connectionTargetById.get(selection.connectionId) ===
+      connectorAccountTargetKey(selection.target)
+    );
+  });
 }
 
 async function upsertSelection(
@@ -455,12 +572,16 @@ export async function resolveChatThreadConnectorSelections(
     };
   }
   const rows = await loadSelectionRows(db, args.chatThreadId);
+  const storedSelections = await projectStoredSelections(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    selections: rows.map(selectionFromRow),
+  });
   const selectionCandidates = new Map<
     string,
     readonly ConnectorAccountSelection[]
   >();
-  for (const row of rows) {
-    const selection = selectionFromRow(row);
+  for (const selection of storedSelections) {
     if (targetIsAuthorized(args.scope, selection.target)) {
       selectionCandidates.set(connectorAccountTargetKey(selection.target), [
         selection,

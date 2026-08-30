@@ -2245,7 +2245,10 @@ async function markRefreshSuccess(
   prepared: PreparedRefreshTokenContext,
   context: RefreshTokenContext,
   outputs: readonly ValidatedRefreshOutput[],
-  expiresIn: number | undefined,
+  refresh: {
+    readonly expiresIn?: number;
+    readonly scopes?: readonly string[];
+  },
 ): Promise<Record<string, string>> {
   const returnedSecretValues = await persistRefreshOutputValues(
     args,
@@ -2256,7 +2259,7 @@ async function markRefreshSuccess(
 
   const expiresAt = new Date(
     nowDate().getTime() +
-      (expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
+      (refresh.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
   );
   if (prepared.sourceType === "model-provider") {
     if (args.sourceId) {
@@ -2319,6 +2322,9 @@ async function markRefreshSuccess(
   await args.db
     .update(connectors)
     .set({
+      ...(refresh.scopes === undefined
+        ? {}
+        : { oauthGrantedScopes: JSON.stringify(refresh.scopes) }),
       tokenExpiresAt: expiresAt,
       storageVersion: prepared.runtimeMethod.method.storage.version,
       needsReconnect: false,
@@ -2441,6 +2447,9 @@ async function markAndReturnRefreshFailure(
     accessSourceKey: args.accessSourceKey,
     orgId: args.orgId,
     userId: args.userId,
+    ...(args.sourceType === "model-provider" && args.sourceId
+      ? { modelProviderAccountId: args.sourceId }
+      : {}),
     errorCode,
     failureReason,
     ...oauthRefreshFailureLogFields(error),
@@ -2793,7 +2802,7 @@ async function refreshLockedAccessToken(args: {
     args.prepared,
     args.prepared.context,
     outputValidation.outputs,
-    refreshResult.value.expiresIn,
+    refreshResult.value,
   );
   const refreshedSecrets = runtimeSecretsFromRefreshResult({
     accessSourceKey: args.refreshArgs.accessSourceKey,
@@ -3260,7 +3269,7 @@ async function getModelProviderRuntimeSecretValue(args: {
   });
 }
 
-export async function resolveModelProviderRuntimeSecretForApi(args: {
+interface ModelProviderRuntimeSecretForApiArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -3268,7 +3277,50 @@ export async function resolveModelProviderRuntimeSecretForApi(args: {
   readonly providerKey: string;
   readonly metadata: SecretConnectorMetadata;
   readonly featureSwitchContext: FeatureSwitchContext;
-}): Promise<string | null> {
+}
+
+interface ResolvedModelProviderRuntimeSecretLookup {
+  readonly metadata: SecretConnectorMetadata;
+  readonly providerType: ModelProviderType;
+  readonly secretName: string;
+  readonly userId: string;
+}
+
+interface ModelProviderRuntimeRefreshState {
+  readonly tokenExpiresAt: Date | null;
+  readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
+}
+
+interface ModelProviderRuntimeReconnectState {
+  readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
+}
+
+type CurrentModelProviderRuntimeSecretForApiResult =
+  | {
+      readonly status: "available";
+      readonly value: string;
+    }
+  | {
+      readonly status: "unavailable";
+      readonly reconnectState: ModelProviderRuntimeReconnectState | null;
+    };
+
+function modelProviderRuntimeReconnectState(
+  state: ModelProviderRuntimeRefreshState | null,
+): ModelProviderRuntimeReconnectState | null {
+  return state
+    ? {
+        needsReconnect: state.needsReconnect,
+        lastRefreshErrorCode: state.lastRefreshErrorCode,
+      }
+    : null;
+}
+
+function resolveModelProviderRuntimeSecretLookup(
+  args: ModelProviderRuntimeSecretForApiArgs,
+): ResolvedModelProviderRuntimeSecretLookup | null {
   const metadata = resolveRefreshMetadata(args.providerKey, args.metadata);
   if (metadata.sourceType !== "model-provider") {
     return null;
@@ -3282,19 +3334,184 @@ export async function resolveModelProviderRuntimeSecretForApi(args: {
   if (!providerType || !secretName) {
     return null;
   }
-  return await getModelProviderRuntimeSecretValue({
-    db: args.db,
-    orgId: args.orgId,
+
+  return {
+    metadata,
+    providerType,
+    secretName,
     userId: resolveSecretUserId(
       "model-provider",
       args.userId,
       metadata.sourceUserId,
     ),
-    providerType,
-    secretName,
-    sourceId: metadata.sourceId,
+  };
+}
+
+async function loadModelProviderRuntimeRefreshState(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly lookup: ResolvedModelProviderRuntimeSecretLookup;
+}): Promise<ModelProviderRuntimeRefreshState | null> {
+  if (args.lookup.metadata.sourceId) {
+    const [row] = await args.db
+      .select({
+        tokenExpiresAt: modelProviderAccounts.tokenExpiresAt,
+        needsReconnect: modelProviderAccounts.needsReconnect,
+        lastRefreshErrorCode: modelProviderAccounts.lastRefreshErrorCode,
+      })
+      .from(modelProviderAccounts)
+      .where(
+        and(
+          eq(modelProviderAccounts.id, args.lookup.metadata.sourceId),
+          eq(modelProviderAccounts.orgId, args.orgId),
+          eq(modelProviderAccounts.userId, args.lookup.userId),
+          eq(modelProviderAccounts.type, args.lookup.providerType),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  const [row] = await args.db
+    .select({
+      tokenExpiresAt: modelProviders.tokenExpiresAt,
+      needsReconnect: modelProviders.needsReconnect,
+      lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+    })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, args.orgId),
+        eq(modelProviders.userId, args.lookup.userId),
+        eq(modelProviders.type, args.lookup.providerType),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+async function readModelProviderRuntimeSecretForApi(
+  args: ModelProviderRuntimeSecretForApiArgs,
+  lookup: ResolvedModelProviderRuntimeSecretLookup,
+): Promise<string | null> {
+  return await getModelProviderRuntimeSecretValue({
+    db: args.db,
+    orgId: args.orgId,
+    userId: lookup.userId,
+    providerType: lookup.providerType,
+    secretName: lookup.secretName,
+    sourceId: lookup.metadata.sourceId,
     featureSwitchContext: args.featureSwitchContext,
   });
+}
+
+async function unavailableModelProviderRuntimeSecretForApi(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly lookup: ResolvedModelProviderRuntimeSecretLookup;
+  },
+  signal: AbortSignal,
+): Promise<CurrentModelProviderRuntimeSecretForApiResult> {
+  const state = await loadModelProviderRuntimeRefreshState(args);
+  signal.throwIfAborted();
+  return {
+    status: "unavailable",
+    reconnectState: modelProviderRuntimeReconnectState(state),
+  };
+}
+
+export async function resolveModelProviderRuntimeSecretForApi(
+  args: ModelProviderRuntimeSecretForApiArgs,
+): Promise<string | null> {
+  const lookup = resolveModelProviderRuntimeSecretLookup(args);
+  return lookup
+    ? await readModelProviderRuntimeSecretForApi(args, lookup)
+    : null;
+}
+
+export async function resolveCurrentModelProviderRuntimeSecretForApi(
+  args: ModelProviderRuntimeSecretForApiArgs,
+  signal: AbortSignal,
+): Promise<CurrentModelProviderRuntimeSecretForApiResult> {
+  const lookup = resolveModelProviderRuntimeSecretLookup(args);
+  if (!lookup) {
+    return { status: "unavailable", reconnectState: null };
+  }
+
+  const refreshMetadata = getModelProviderRefreshMetadata(args.providerKey);
+  if (!refreshMetadata?.refreshableSecrets.includes(lookup.secretName)) {
+    const value = await readModelProviderRuntimeSecretForApi(args, lookup);
+    signal.throwIfAborted();
+    return value === null
+      ? await unavailableModelProviderRuntimeSecretForApi(
+          { db: args.db, orgId: args.orgId, lookup },
+          signal,
+        )
+      : { status: "available", value };
+  }
+
+  const initialState = await loadModelProviderRuntimeRefreshState({
+    db: args.db,
+    orgId: args.orgId,
+    lookup,
+  });
+  signal.throwIfAborted();
+  if (!initialState) {
+    return { status: "unavailable", reconnectState: null };
+  }
+  if (
+    args.providerKey === "codex-oauth-token" &&
+    initialState.needsReconnect &&
+    isTerminalChatgptRefreshErrorCode(initialState.lastRefreshErrorCode)
+  ) {
+    return {
+      status: "unavailable",
+      reconnectState: modelProviderRuntimeReconnectState(initialState),
+    };
+  }
+  if (
+    !initialState.needsReconnect &&
+    !tokenExpiresAtNeedsRefresh(initialState.tokenExpiresAt)
+  ) {
+    const value = await readModelProviderRuntimeSecretForApi(args, lookup);
+    signal.throwIfAborted();
+    if (value !== null) {
+      return { status: "available", value };
+    }
+  }
+
+  const refreshResult = await refreshAccessTokenForSource({
+    db: args.db,
+    accessSourceKey: args.providerKey,
+    orgId: args.orgId,
+    userId: args.userId,
+    sourceType: "model-provider",
+    sourceUserId: lookup.metadata.sourceUserId,
+    sourceId: lookup.metadata.sourceId,
+    metadataKey: lookup.metadata.metadataKey,
+    connectorSecrets: {},
+    accessEnvVars: [args.key],
+    forceRefresh: false,
+    forceRefreshStartedAtMicros: null,
+    connectorAccessBySlug: new Map<string, ConnectorAccessState>(),
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  signal.throwIfAborted();
+  if (refreshResult.ok) {
+    const value = refreshResult.secrets[args.key];
+    if (value === undefined) {
+      throw new Error(
+        `${args.providerKey} refresh did not resolve API runtime secret ${args.key}`,
+      );
+    }
+    return { status: "available", value };
+  }
+
+  return await unavailableModelProviderRuntimeSecretForApi(
+    { db: args.db, orgId: args.orgId, lookup },
+    signal,
+  );
 }
 
 async function syncModelProviderRuntimeSecrets(args: {

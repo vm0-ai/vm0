@@ -33,11 +33,13 @@ const BATCH_SIZE: usize = 50;
 /// Time-based flush trigger for batches that stay below `BATCH_SIZE`. Keeps
 /// events from sitting in the buffer indefinitely when traffic is sparse.
 const BATCH_INTERVAL: Duration = Duration::from_secs(5);
-/// Upper bound on how long `AxiomGuard::shutdown` waits for the dispatcher
-/// to drain before returning. Must stay `>= HTTP_TIMEOUT` with enough slack
-/// for queued events to reach the `Close` marker — otherwise the final
-/// in-flight flush gets aborted mid-request and the most valuable batch
-/// (errors emitted right before shutdown) never reaches Axiom.
+/// The current 15-second upper bound on how long `AxiomGuard::shutdown` waits
+/// for the dispatcher. It covers both sending the `Close` marker and waiting
+/// for the dispatcher to finish, so shutdown is a bounded, best-effort drain:
+/// queued or in-flight events may remain undelivered when it expires. Must
+/// stay `>= HTTP_TIMEOUT` with enough slack for queued events to reach the
+/// `Close` marker — otherwise the final batch (errors emitted right before
+/// shutdown) may be aborted mid-request and never reach Axiom.
 const FLUSH_DEADLINE: Duration = Duration::from_secs(15);
 /// Per-request HTTP timeout on the reqwest client — bounds the time a single
 /// stuck ingest call can hold up the dispatcher's batch loop. Must stay
@@ -51,19 +53,21 @@ const _: () = assert!(
     FLUSH_DEADLINE.as_nanos() >= HTTP_TIMEOUT.as_nanos(),
     "FLUSH_DEADLINE must be >= HTTP_TIMEOUT; see FLUSH_DEADLINE doc comment",
 );
-/// Max bytes we'll serialize from a single `Debug`-formatted field.
+/// Max content bytes we'll retain from a single textual field.
 ///
-/// Covers typical legit Debug output (errors, configs — nearly all under
-/// ~2 KiB) while flagging accidental huge-struct dumps: `tracing::warn!(v
-/// = ?gigantic, ...)` would otherwise embed megabytes into a single event
-/// and blow past Axiom's per-request body limit. Oversized values are
-/// truncated on a UTF-8 boundary with a `…[truncated]` marker so the
-/// condition is visible in the log.
-const DEBUG_FIELD_MAX_BYTES: usize = 4 * 1024;
+/// Covers typical legitimate strings and formatted values while flagging
+/// accidental huge fields. Oversized values are truncated on a UTF-8
+/// boundary with a visible marker. The marker is appended after this content
+/// cap, matching the existing bounded Debug-field behavior.
+const TEXT_FIELD_MAX_BYTES: usize = 4 * 1024;
+/// Max native error sources retained after the top-level error message.
+const ERROR_SOURCE_MAX_DEPTH: usize = 8;
+const TRUNCATION_MARKER: &str = "…[truncated]";
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
 const AXIOM_TOKEN_ENV: &str = "AXIOM_TOKEN_TELEMETRY";
 const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
+const ADDON_LOG_TARGET: &str = "mitmdump_addon";
 /// Target used for this layer's own diagnostics. Dispatcher diagnostics
 /// (non-success ingest responses, HTTP errors) remain visible to local
 /// logging, while the Axiom per-layer filter keeps any observed diagnostics
@@ -71,27 +75,27 @@ const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
 const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 #[derive(Default)]
-struct BoundedDebugOutput {
+struct BoundedTextOutput {
     value: String,
     truncated: bool,
 }
 
-impl BoundedDebugOutput {
+impl BoundedTextOutput {
     fn finish(mut self) -> String {
         if self.truncated {
-            self.value.push_str("…[truncated]");
+            self.value.push_str(TRUNCATION_MARKER);
         }
         self.value
     }
 }
 
-impl std::fmt::Write for BoundedDebugOutput {
+impl std::fmt::Write for BoundedTextOutput {
     fn write_str(&mut self, value: &str) -> std::fmt::Result {
         if self.truncated {
             return Err(std::fmt::Error);
         }
 
-        let remaining = DEBUG_FIELD_MAX_BYTES - self.value.len();
+        let remaining = TEXT_FIELD_MAX_BYTES - self.value.len();
         if value.len() <= remaining {
             self.value.push_str(value);
             return Ok(());
@@ -107,15 +111,28 @@ impl std::fmt::Write for BoundedDebugOutput {
     }
 }
 
-/// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
-/// without calling `shutdown` leaves the tokio runtime to abort the task.
+fn format_bounded(arguments: std::fmt::Arguments<'_>) -> String {
+    let mut output = BoundedTextOutput::default();
+    let _ = output.write_fmt(arguments);
+    output.finish()
+}
+
+/// Holds the dispatcher task.
+///
+/// `shutdown().await` attempts a best-effort drain bounded by the current
+/// 15-second `FLUSH_DEADLINE`. The bound covers sending `Msg::Close` and
+/// waiting for the dispatcher to finish; if it expires, queued or in-flight
+/// events may remain undelivered and shutdown returns without guaranteeing
+/// that the queue was fully drained. Dropping without calling `shutdown`
+/// leaves the Tokio runtime to abort the task without waiting for this bound.
 ///
 /// **Abnormal-exit caveat**: on `panic!`, `std::process::exit`, or
-/// `std::process::abort`, `shutdown` does not run — the tokio runtime tears
-/// down mid-flight and the events buffered at that moment (often the most
-/// valuable batch, since they include whatever triggered the exit) are lost.
-/// Sentry's panic integration still captures the panic itself; Axiom just
-/// does not receive the corresponding structured log.
+/// `std::process::abort`, `shutdown` does not run — the Tokio runtime tears
+/// down mid-flight without even attempting this bounded drain. Events buffered
+/// at that moment (often the most valuable batch, since they include whatever
+/// triggered the exit) are lost. Sentry's panic integration still captures
+/// the panic itself; Axiom just does not receive the corresponding structured
+/// log.
 pub(crate) struct AxiomGuard {
     tx: mpsc::Sender<Msg>,
     handle: Option<JoinHandle<()>>,
@@ -140,11 +157,12 @@ impl AxiomGuard {
 /// Initialize the Axiom layer. Returns `None` when required env is missing —
 /// caller should install a `None` layer in that case (no-op). Production
 /// entry point; always targets `DEFAULT_AXIOM_URL`.
-pub(crate) fn init() -> Option<(AxiomLayer, AxiomGuard)> {
+pub(crate) fn init(runner_hostname: Option<String>) -> Option<(AxiomLayer, AxiomGuard)> {
     init_from_env_values(
         DEFAULT_AXIOM_URL,
         std::env::var(AXIOM_TOKEN_ENV).ok(),
         std::env::var(AXIOM_SUFFIX_ENV).ok(),
+        runner_hostname,
     )
 }
 
@@ -152,20 +170,31 @@ fn init_from_env_values(
     base_url: &str,
     token: Option<String>,
     suffix: Option<String>,
+    runner_hostname: Option<String>,
 ) -> Option<(AxiomLayer, AxiomGuard)> {
     let token = token.filter(|s| !s.is_empty())?;
     let suffix = suffix.filter(|s| !s.is_empty())?;
-    init_with_base_url(base_url, &token, &suffix)
+    init_with_base_url_and_hostname(base_url, &token, &suffix, runner_hostname)
 }
 
 /// Core init with an explicit base URL. Exists so module tests can point
 /// at an `httpmock` server without leaking an `AXIOM_URL` override into the
 /// runner's production env surface — production code should always call
 /// [`init`], which hard-codes [`DEFAULT_AXIOM_URL`].
+#[cfg(test)]
 fn init_with_base_url(
     base_url: &str,
     token: &str,
     suffix: &str,
+) -> Option<(AxiomLayer, AxiomGuard)> {
+    init_with_base_url_and_hostname(base_url, token, suffix, None)
+}
+
+fn init_with_base_url_and_hostname(
+    base_url: &str,
+    token: &str,
+    suffix: &str,
+    runner_hostname: Option<String>,
 ) -> Option<(AxiomLayer, AxiomGuard)> {
     // Shared dataset with TS: turbo/apps/web/src/lib/shared/axiom/datasets.ts
     // DATASETS.WEB_LOGS. APL queries filter by `service == "runner"`.
@@ -191,6 +220,7 @@ fn init_with_base_url(
         AxiomLayer {
             tx: tx.clone(),
             dropped: AtomicU64::new(0),
+            runner_hostname,
         },
         AxiomGuard {
             tx,
@@ -202,10 +232,11 @@ fn init_with_base_url(
 pub(crate) struct AxiomLayer {
     tx: mpsc::Sender<Msg>,
     dropped: AtomicU64,
+    runner_hostname: Option<String>,
 }
 
 fn should_ingest(metadata: &Metadata<'_>) -> bool {
-    *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
+    metadata.target() != INTERNAL_TARGET && *metadata.level() <= tracing::Level::WARN
 }
 
 fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {
@@ -245,7 +276,10 @@ where
             return;
         };
 
-        permit.send(Msg::Event(serialize_event(event)));
+        permit.send(Msg::Event(serialize_event(
+            event,
+            self.runner_hostname.as_deref(),
+        )));
     }
 }
 
@@ -324,11 +358,14 @@ async fn flush(client: &Client, ingest_url: &str, token: &str, batch: &mut Vec<V
 /// `turbo/apps/web/src/lib/shared/logger.ts`: flat top-level `_time`, `level`
 /// (lowercase), `message`, `context`, plus any user-supplied fields —
 /// augmented with a Rust-only `service` discriminator.
-fn serialize_event(event: &Event<'_>) -> Value {
+fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
     struct V(Map<String, Value>);
     impl Visit for V {
         fn record_str(&mut self, f: &Field, v: &str) {
-            self.0.insert(f.name().into(), Value::String(v.into()));
+            self.0.insert(
+                f.name().into(),
+                Value::String(format_bounded(format_args!("{v}"))),
+            );
         }
         fn record_i64(&mut self, f: &Field, v: i64) {
             self.0.insert(f.name().into(), v.into());
@@ -355,12 +392,21 @@ fn serialize_event(event: &Event<'_>) -> Value {
             // `.source()`, the closest analog to JS `cause`.
             let mut chain: Vec<Value> = Vec::new();
             let mut cur = err.source();
-            while let Some(e) = cur {
-                chain.push(Value::String(e.to_string()));
+            for _ in 0..ERROR_SOURCE_MAX_DEPTH {
+                let Some(e) = cur else {
+                    break;
+                };
+                chain.push(Value::String(format_bounded(format_args!("{e}"))));
                 cur = e.source();
             }
+            if cur.is_some() {
+                chain.push(Value::String(TRUNCATION_MARKER.into()));
+            }
             let mut obj = Map::new();
-            obj.insert("message".into(), Value::String(err.to_string()));
+            obj.insert(
+                "message".into(),
+                Value::String(format_bounded(format_args!("{err}"))),
+            );
             if !chain.is_empty() {
                 obj.insert("chain".into(), Value::Array(chain));
             }
@@ -369,10 +415,10 @@ fn serialize_event(event: &Event<'_>) -> Value {
         fn record_debug(&mut self, f: &Field, v: &dyn std::fmt::Debug) {
             // Cap per-field size so a user who logs a huge struct via `?v`
             // can't blow past Axiom's body limit or starve the dispatcher.
-            let mut output = BoundedDebugOutput::default();
-            let _ = write!(output, "{v:?}");
-            self.0
-                .insert(f.name().into(), Value::String(output.finish()));
+            self.0.insert(
+                f.name().into(),
+                Value::String(format_bounded(format_args!("{v:?}"))),
+            );
         }
     }
 
@@ -381,6 +427,13 @@ fn serialize_event(event: &Event<'_>) -> Value {
     event.record(&mut v);
 
     let mut out = v.0;
+    if meta.target() == ADDON_LOG_TARGET
+        && let Some(encoded) = out.get("message").and_then(Value::as_str)
+        && let Ok(addon_log) = serde_json::from_str::<Map<String, Value>>(encoded)
+    {
+        out = addon_log;
+        out.remove("runner_hostname");
+    }
     out.insert(
         "_time".into(),
         Value::String(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
@@ -391,9 +444,18 @@ fn serialize_event(event: &Event<'_>) -> Value {
     );
     out.insert("context".into(), Value::String(meta.target().into()));
     out.insert("service".into(), Value::String(SERVICE_NAME.into()));
+    if let Some(runner_hostname) = runner_hostname {
+        out.insert(
+            "runner_hostname".into(),
+            Value::String(runner_hostname.to_string()),
+        );
+    }
+    out.insert(
+        "runner_version".into(),
+        Value::String(env!("CARGO_PKG_VERSION").into()),
+    );
     Value::Object(out)
 }
 
 #[cfg(test)]
-#[path = "axiom_layer_tests.rs"]
 mod tests;

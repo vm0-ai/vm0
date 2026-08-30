@@ -17,7 +17,7 @@ interface ChatThreadEventFixtureArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly chatThreadId: string;
-  readonly agentComposeId: string;
+  readonly agentId: string;
   readonly title: string;
 }
 
@@ -89,7 +89,7 @@ export async function holdChatThreadEventInsertTransactionFixture(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: args.chatThreadId,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       title: args.title,
     });
     const [event] = await tx
@@ -131,7 +131,7 @@ export async function insertChatThreadEventTransactionFixture(
       userId: args.userId,
       orgId: args.orgId,
       chatThreadId: args.chatThreadId,
-      agentComposeId: args.agentComposeId,
+      agentId: args.agentId,
       title: args.title,
     });
     const [persisted] = await tx

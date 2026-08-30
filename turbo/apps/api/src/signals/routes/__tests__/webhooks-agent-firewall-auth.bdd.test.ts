@@ -35,10 +35,14 @@ import {
   awsVerificationCode,
   createConnectorBddApi,
   mockAwsExternalCodeProvider,
+  mockTestOAuthAuthCodeProvider,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
+import {
+  setConnectorCredentialStorageState,
+  setBuiltinOAuthScopeFacts,
+} from "./helpers/connector-credential-storage-state";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
@@ -883,6 +887,119 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     }
     expect(refreshed.body.headers.Authorization).toBe("Bearer forced-access");
     expect(refreshed.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
+  });
+
+  it("maintains authoritative and unknown OAuth grants across refresh", async () => {
+    const fw = createFirewallApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, headers } = await firewallRun();
+    if (!actor.orgId) {
+      throw new Error("Expected firewall actor to have an organization");
+    }
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    mockTestOAuthAuthCodeProvider({
+      accessToken: "initial-scoped-access",
+      refreshToken: "initial-scoped-refresh",
+      scope: "read provider-added",
+    });
+    const start = await connectors.startOauth(actor, "test-oauth", "oauth");
+    const state = new URL(start.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected test OAuth authorization state");
+    }
+    await connectors.completeOauthCallback("test-oauth", {
+      code: "scoped-refresh-code",
+      state,
+    });
+
+    const connected = await connectors.readConnectorBySlug(actor, "test-oauth");
+    expect(connected.oauthScopes).toStrictEqual(["read", "provider-added"]);
+    expect(connected.connectionStatus).toBe("connected");
+    const connectorSources = await exactSecretConnectorSources(actor, {
+      TEST_OAUTH_TOKEN: "test-oauth",
+    });
+    const forceRefresh = async (currentAccessToken: string) => {
+      const response = await fw.requestFirewallAuth(
+        headers,
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({
+            TEST_OAUTH_TOKEN: currentAccessToken,
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+          },
+          ...connectorSources,
+          forceRefresh: true,
+        },
+        [200],
+      );
+      if (response.status !== 200) {
+        throw new Error("Expected scoped connector refresh to succeed");
+      }
+      return response.body;
+    };
+
+    fw.mockTestOauthTokenRefresh(() => {
+      return fw.oauthTokenResponse({
+        accessToken: "narrow-scoped-access",
+        refreshToken: "narrow-scoped-refresh",
+        expiresIn: 3600,
+        scope: "provider-added",
+      });
+    });
+    const narrowed = await forceRefresh("initial-scoped-access");
+    expect(narrowed.headers.Authorization).toBe("Bearer narrow-scoped-access");
+    const narrowedConnector = await connectors.readConnectorBySlug(
+      actor,
+      "test-oauth",
+    );
+    expect(narrowedConnector.oauthScopes).toStrictEqual(["provider-added"]);
+    expect(narrowedConnector.connectionStatus).toBe("connected");
+    await expect(
+      connectors.readScopeDiff(actor, "test-oauth"),
+    ).resolves.toStrictEqual({
+      addedScopes: [],
+      removedScopes: [],
+      currentScopes: ["read"],
+      storedScopes: ["read"],
+    });
+
+    fw.mockTestOauthTokenRefresh(() => {
+      return fw.oauthTokenResponse({
+        accessToken: "omitted-scope-access",
+        refreshToken: "omitted-scope-refresh",
+        expiresIn: 3600,
+      });
+    });
+    await forceRefresh("narrow-scoped-access");
+    const preservedConnector = await connectors.readConnectorBySlug(
+      actor,
+      "test-oauth",
+    );
+    expect(preservedConnector.oauthScopes).toStrictEqual(["provider-added"]);
+
+    await setBuiltinOAuthScopeFacts(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorSlug: "test-oauth",
+      oauthScopes: ["legacy-requested"],
+      oauthGrantedScopes: null,
+    });
+    fw.mockTestOauthTokenRefresh(() => {
+      return fw.oauthTokenResponse({
+        accessToken: "legacy-unknown-access",
+        refreshToken: "legacy-unknown-refresh",
+        expiresIn: 3600,
+      });
+    });
+    await forceRefresh("omitted-scope-access");
+    const legacyUnknownConnector = await connectors.readConnectorBySlug(
+      actor,
+      "test-oauth",
+    );
+    expect(legacyUnknownConnector.oauthScopes).toBeNull();
   });
 
   it("resolves a current connector token missing from the runtime namespace", async () => {

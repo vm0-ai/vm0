@@ -17,13 +17,28 @@ use crate::constants;
 use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
-const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_ENV;
+const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
+const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV;
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
+pub(crate) const AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC: &str = "agent execution timeout";
 #[cfg(debug_assertions)]
-const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "VM0_TEST_CLAUDE_CONFIG_DIR";
+const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
-const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "VM0_TEST_CODEX_HOME_DIR";
+const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
+
+/// Empty value-free source evidence retained across capture and runtime sink setup.
+///
+/// All staged bootstrap alias source slots have been retired.
+#[derive(Clone, Default)]
+pub struct BootstrapAliasSourceEvents;
+
+impl BootstrapAliasSourceEvents {
+    fn iter(&self) -> impl Iterator<Item = (&'static str, &'static str, &'static str)> + '_ {
+        std::iter::empty()
+    }
+
+    fn emit(&self) {}
+}
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
@@ -56,7 +71,7 @@ impl Framework {
 
 /// Production install location for the mock-claude binary. Exposed so
 /// tests can assert against a single source of truth when the
-/// `VM0_MOCK_CLAUDE_PATH` env override is unset.
+/// mock Claude path aliases are absent or non-Unicode.
 pub const DEFAULT_MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
 
 /// Production install location for the mock-codex binary, mirroring
@@ -177,7 +192,7 @@ pub struct GuestConfigRaw {
     pub api_start_time: String,
     pub agent_execution_timeout_secs: String,
     pub use_mock_claude: String,
-    /// Optional `VM0_MOCK_CLAUDE_PATH` executable override.
+    /// Optional canonical mock Claude executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
     /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
@@ -187,7 +202,7 @@ pub struct GuestConfigRaw {
     pub user_env_file: String,
     pub run_payload_file: String,
     pub use_mock_codex: String,
-    /// Optional `VM0_MOCK_CODEX_PATH` executable override.
+    /// Optional canonical mock Codex executable override.
     ///
     /// [`Self::from_process_env`] captures an absent or non-Unicode value as
     /// `None` and a present empty value as `Some("")`. [`GuestConfig::from_raw`]
@@ -204,36 +219,69 @@ pub struct GuestConfigRaw {
     pub post_result_sigterm_grace_secs: String,
     pub post_result_total_cap_secs: String,
     pub post_result_sigkill_grace_secs: String,
+    /// Empty bootstrap alias source state retained until the run-scoped
+    /// system-log sink is installed.
+    #[doc(hidden)]
+    pub bootstrap_alias_sources: BootstrapAliasSourceEvents,
 }
 
 impl GuestConfigRaw {
     /// Capture raw startup values from the current process environment.
-    pub fn from_process_env() -> Self {
+    ///
+    /// Returns an error when the canonical runtime directory cannot be resolved.
+    pub fn from_process_env() -> Result<Self, String> {
         let guest_runtime_dir =
-            std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from);
+            guest_contracts::runtime_paths::guest_runtime_dir_env_from_process_env()
+                .map_err(|error| format!("failed to resolve guest runtime paths: {error}"))?;
+        Self::from_process_env_with_guest_runtime_dir(guest_runtime_dir)
+    }
 
-        Self {
+    /// Capture all remaining startup values after the canonical runtime
+    /// directory was resolved at the outer single-threaded bootstrap boundary.
+    pub(crate) fn from_process_env_with_guest_runtime_dir(
+        guest_runtime_dir: Option<PathBuf>,
+    ) -> Result<Self, String> {
+        let bootstrap_alias_sources = BootstrapAliasSourceEvents;
+        let api_url = env_or_empty(guest_contracts::env::CANONICAL_API_URL_ENV);
+
+        let stuck_tool_timeout_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV);
+        let post_result_sigterm_grace_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV);
+        let post_result_total_cap_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV);
+        let post_result_sigkill_grace_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV);
+
+        let user_env_file = env_or_empty(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV);
+        let run_payload_file = env_or_empty(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV);
+
+        Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
-            api_url: env_or_empty(guest_contracts::env::API_URL_ENV),
-            api_token: env_or_empty(guest_contracts::env::API_TOKEN_ENV),
-            sandbox_id: env_or_empty(guest_contracts::env::SANDBOX_ID_ENV),
-            sandbox_reuse_result: env_or_empty(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV),
-            workspace_reuse_result: env_or_empty(guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV),
+            api_url,
+            api_token: env_or_empty(guest_contracts::env::CANONICAL_API_TOKEN_ENV),
+            sandbox_id: env_or_empty(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV),
+            sandbox_reuse_result: env_or_empty(
+                guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            ),
+            workspace_reuse_result: env_or_empty(
+                guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+            ),
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
-            resume_session_id: env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV),
-            api_start_time: env_or_empty(guest_contracts::env::API_START_TIME_ENV),
+            resume_session_id: env_or_empty(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV),
+            api_start_time: env_or_empty(guest_contracts::env::CANONICAL_API_START_TIME_ENV),
             agent_execution_timeout_secs: env_or_empty(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             ),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
-            mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
+            mock_claude_path: std::env::var(guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV)
+                .ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
-            user_env_file: env_or_empty(USER_ENV_FILE_ENV_KEY),
-            run_payload_file: env_or_empty(RUN_PAYLOAD_FILE_ENV_KEY),
+            user_env_file,
+            run_payload_file,
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
-            mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV).ok(),
+            mock_codex_path: std::env::var(guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV)
+                .ok(),
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
@@ -245,19 +293,25 @@ impl GuestConfigRaw {
             test_codex_home_dir: std::env::var_os(TEST_CODEX_HOME_DIR_ENV_KEY)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
-            stuck_tool_timeout_secs: env_or_empty(
-                guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-            ),
-            post_result_sigterm_grace_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            ),
-            post_result_total_cap_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
-            ),
-            post_result_sigkill_grace_secs: env_or_empty(
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            ),
-        }
+            stuck_tool_timeout_secs,
+            post_result_sigterm_grace_secs,
+            post_result_total_cap_secs,
+            post_result_sigkill_grace_secs,
+            bootstrap_alias_sources,
+        })
+    }
+
+    /// Iterate the captured fixed event family, canonical key, and source
+    /// label without exposing any selected environment value.
+    #[doc(hidden)]
+    pub fn bootstrap_alias_source_events(
+        &self,
+    ) -> impl Iterator<Item = (&'static str, &'static str, &'static str)> + '_ {
+        self.bootstrap_alias_sources.iter()
+    }
+
+    pub(crate) fn emit_bootstrap_alias_source_events(&self) {
+        self.bootstrap_alias_sources.emit();
     }
 
     pub(crate) fn require_run_payload_file(&self) -> Result<(), String> {
@@ -312,7 +366,7 @@ pub struct GuestConfig {
 impl GuestConfig {
     /// Build an owned config from the current process environment.
     pub fn from_process_env() -> Result<Self, String> {
-        let raw = GuestConfigRaw::from_process_env();
+        let raw = GuestConfigRaw::from_process_env()?;
         raw.require_run_payload_file()?;
         Self::from_raw(raw)
     }
@@ -364,7 +418,7 @@ impl GuestConfig {
             resume_session_id: raw.resume_session_id,
             api_start_time: raw.api_start_time,
             agent_execution_timeout: optional_positive_duration_secs(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+                AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC,
                 non_empty(&raw.agent_execution_timeout_secs),
             )?,
             secret_values: payload.secret_values,
@@ -819,30 +873,25 @@ mod tests {
     #[test]
     fn agent_execution_timeout_is_optional_and_strict() {
         assert_eq!(
-            optional_positive_duration_secs(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-                None,
-            )
-            .unwrap(),
+            optional_positive_duration_secs(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC, None,).unwrap(),
             None
         );
         assert_eq!(
-            optional_positive_duration_secs(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-                Some("7200"),
-            )
-            .unwrap(),
+            optional_positive_duration_secs(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC, Some("7200"),)
+                .unwrap(),
             Some(Duration::from_secs(7200))
         );
 
         for invalid in ["0", "-1", "not-a-number", "18446744073709551615"] {
-            let error = optional_positive_duration_secs(
-                guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-                Some(invalid),
-            )
-            .unwrap_err();
+            let error =
+                optional_positive_duration_secs(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC, Some(invalid))
+                    .unwrap_err();
             assert!(
-                error.contains(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV),
+                error.contains(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC),
+                "{error}"
+            );
+            assert!(
+                !error.contains(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV),
                 "{error}"
             );
         }

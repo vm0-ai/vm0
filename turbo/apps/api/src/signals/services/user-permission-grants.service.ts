@@ -23,7 +23,7 @@ import type {
   ApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
-} from "@okouai/api-contracts/contracts/zero-user-permission-grants";
+} from "@okouai/api-contracts/contracts/user-permission-grants";
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishConnectorPermissionUpdatedSafely } from "../external/realtime";
@@ -34,12 +34,15 @@ import {
 } from "./firewall-network-policy.service";
 import {
   loadConnectorRuntimeSnapshot,
-  type ConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSelection,
 } from "./connector-catalog-runtime.service";
-import type { ConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
+import type {
+  ConnectorServerFirewallCatalog,
+  ConnectorServerFirewallMetadataCatalog,
+} from "./connector-server-firewall-catalog.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
-import { SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION } from "./connector-catalog-artifacts/artifacts";
+import { SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION } from "@okouai/connector-catalog-validation/artifacts/artifacts";
 import {
   connectorCatalogValidationAuthorityIsCurrent,
   currentConnectorCatalogValidatorIdentity,
@@ -280,7 +283,7 @@ function resolvedConnectorFirewallPolicies(
 }
 
 export function networkPolicyRefreshConnectorSlugs(
-  catalog: ConnectorServerFirewallCatalog,
+  catalog: ConnectorServerFirewallMetadataCatalog,
   connectorSlugs: readonly string[],
 ): string[] {
   return [
@@ -296,7 +299,7 @@ export async function resolveActiveNetworkPolicyRefreshes(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   connectorSlugs: readonly string[],
-  preloadedSnapshot?: ConnectorRuntimeSnapshot,
+  preloadedSnapshot?: ConnectorRuntimeSelection,
   checkedAt: Date = nowDate(),
 ): Promise<readonly ActiveNetworkPolicyRefresh[]> {
   if (connectorSlugs.length === 0) {
@@ -382,7 +385,10 @@ function baselineStaticIdentityIsCurrent(
       SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION &&
     baseline.catalogIdentity.capabilityDigest === current.capabilityDigest &&
     connectorCatalogValidationAuthorityIsCurrent({
-      authority: baseline.validationAuthority,
+      authority: {
+        validatorVersion: baseline.validationAuthority.backendVersion,
+        buildCommitSha: baseline.validationAuthority.buildCommitSha,
+      },
       validator: current.validator,
     })
   );

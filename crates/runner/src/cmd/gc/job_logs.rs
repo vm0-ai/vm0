@@ -58,9 +58,7 @@ pub(super) async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult
             );
         } else {
             match tokio::fs::remove_file(entry.path()).await {
-                Ok(()) => {
-                    info!("deleted job log {name} ({})", human_bytes(size));
-                }
+                Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => {
                     warn!("cannot remove {}: {e}", entry.path().display());

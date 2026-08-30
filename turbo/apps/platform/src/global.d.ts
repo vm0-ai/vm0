@@ -32,6 +32,9 @@ interface VM0PreBundleCopy {
 }
 
 declare global {
+  const __OKOU_APP_GIT_COMMIT_SHA__: string;
+  const __OKOU_APP_VERSION__: string;
+
   interface Window {
     _vm0: VM0Global | undefined;
     __vm0BrowserSupported?: boolean;
@@ -43,6 +46,8 @@ declare global {
      * the first time the app skeleton is dismissed.
      */
     __appBootstrapStart?: number;
+    /** Set when the entry module graph has finished evaluating. */
+    __appBootstrapModuleReady?: number;
   }
 }
 

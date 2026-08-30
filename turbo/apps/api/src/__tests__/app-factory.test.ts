@@ -644,7 +644,7 @@ describe("createApp", () => {
       ],
     ])("redirects %s to the configured app origin", async (path, expected) => {
       mockEnv("APP_URL", "https://pr-123-app.vm6.ai");
-      mockEnv("VM0_WEB_URL", "https://pr-123-www.omby.ai");
+      mockEnv("OKOU_WEB_URL", "https://pr-123-www.omby.ai");
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,

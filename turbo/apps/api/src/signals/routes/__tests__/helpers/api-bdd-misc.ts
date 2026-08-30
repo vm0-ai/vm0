@@ -7,10 +7,11 @@ import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
-import type {
-  ModelProviderType,
-  OrgModelPoliciesResponse,
-  UpsertModelProviderRequest,
+import {
+  isBuiltInModelProviderType,
+  type ModelProviderType,
+  type OrgModelPoliciesResponse,
+  type UpsertModelProviderRequest,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   workflowsCollectionContract,
@@ -23,9 +24,9 @@ import {
   modelProvidersMainContract,
 } from "@okouai/api-contracts/contracts/model-provider-routes";
 import {
-  zeroPersonalModelProvidersByTypeContract,
-  zeroPersonalModelProvidersMainContract,
-} from "@okouai/api-contracts/contracts/zero-personal-model-providers";
+  personalModelProvidersByTypeContract,
+  personalModelProvidersMainContract,
+} from "@okouai/api-contracts/contracts/personal-model-providers";
 import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   userPreferencesContract,
@@ -49,12 +50,12 @@ import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { userPreferencesRoutes } from "../../user-preferences";
 import { workflowsRoutes } from "../../workflows";
 
-const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+const personalModelProvidersMainTestRoutes = Object.freeze([
   ...meModelProvidersListRoutes,
   ...meModelProvidersUpsertRoutes,
 ]);
 
-const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
+const personalModelProvidersByTypeTestRoutes = Object.freeze([
   ...meModelProvidersDeleteRoutes,
   ...meModelProvidersResetSubscriptionRoutes,
 ]);
@@ -517,8 +518,8 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroPersonalModelProvidersMainTestRoutes })(
-          zeroPersonalModelProvidersMainContract,
+        setupApp({ context, routes: personalModelProvidersMainTestRoutes })(
+          personalModelProvidersMainContract,
         ).list({
           headers: authenticate(context, actor),
         }),
@@ -532,8 +533,8 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 201 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroPersonalModelProvidersMainTestRoutes })(
-          zeroPersonalModelProvidersMainContract,
+        setupApp({ context, routes: personalModelProvidersMainTestRoutes })(
+          personalModelProvidersMainContract,
         ).upsert({
           headers: authenticate(context, actor),
           body,
@@ -550,8 +551,8 @@ export function createMiscRoutesApi(context: TestContext) {
       return await accept(
         setupApp({
           context,
-          routes: zeroPersonalModelProvidersByTypeTestRoutes,
-        })(zeroPersonalModelProvidersByTypeContract).delete({
+          routes: personalModelProvidersByTypeTestRoutes,
+        })(personalModelProvidersByTypeContract).delete({
           headers: authenticate(context, actor),
           params: { type },
         }),
@@ -588,7 +589,11 @@ export function createMiscRoutesApi(context: TestContext) {
               return {
                 model: policy.model,
                 isDefault: policy.isDefault,
-                defaultProviderType: policy.defaultProviderType,
+                defaultProviderType: isBuiltInModelProviderType(
+                  policy.defaultProviderType,
+                )
+                  ? "vm0"
+                  : policy.defaultProviderType,
                 credentialScope: policy.credentialScope,
                 modelProviderId: policy.modelProviderId,
               };

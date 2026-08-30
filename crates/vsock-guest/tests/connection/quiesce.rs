@@ -4,7 +4,7 @@ use vsock_proto::{
     self, ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_MEMORY_SNAPSHOT,
     MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
     MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_WRITE_FILE, MSG_WRITE_FILES,
-    WriteFileBatchEntry,
+    MSG_WRITE_PRIVATE_FILES, WriteFileBatchEntry,
 };
 
 use super::support::*;
@@ -152,6 +152,7 @@ fn quiesced_connection_rejects_file_write_variants_without_creating_files() {
     for (variant, msg_type) in [
         ("write-file", MSG_WRITE_FILE),
         ("write-files", MSG_WRITE_FILES),
+        ("write-private-files", MSG_WRITE_PRIVATE_FILES),
     ] {
         let (handle, mut host_stream) = start_guest_connection();
         let path = unique_tmp_path(&format!("quiesce-{variant}"), ".txt");
@@ -188,6 +189,7 @@ fn quiesced_connection_rejects_file_write_zero_sequences_before_quiesce_state() 
     for (msg_type, operation_label) in [
         (MSG_WRITE_FILE, "write_file"),
         (MSG_WRITE_FILES, "write_files"),
+        (MSG_WRITE_PRIVATE_FILES, "write_private_files"),
     ] {
         let (handle, mut host_stream) = start_guest_connection();
 

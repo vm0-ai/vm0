@@ -1,12 +1,10 @@
 import type { SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { ChevronLeft, ChevronRight, CircleCheckBig, Eye } from "lucide-react";
-import {
-  r2ImageTransformUrl,
-  type IllustrationTemplateItem,
-  type PresentationTemplateItem,
-  type VideoTemplateItem,
-} from "@okouai/core";
+import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
+import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
+import type { VideoTemplateItem } from "@okouai/core/video-template-items";
 import { Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
@@ -29,6 +27,7 @@ import {
   localizedPresentationTemplates,
   localizedVideoTemplates,
 } from "./onboarding-template-localization.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 function SelectionCheck({ selected }: { readonly selected: boolean }) {
   return selected ? (
@@ -92,7 +91,7 @@ function PresentationPreview({
             className="h-full w-full object-contain"
           />
         ) : null}
-        <button
+        <IconTooltipButton
           type="button"
           className="absolute left-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background/90 shadow-sm"
           aria-label={t(($) => {
@@ -103,8 +102,8 @@ function PresentationPreview({
           }}
         >
           <ChevronLeft size={20} aria-hidden="true" />
-        </button>
-        <button
+        </IconTooltipButton>
+        <IconTooltipButton
           type="button"
           className="absolute right-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background/90 shadow-sm"
           aria-label={t(($) => {
@@ -115,7 +114,7 @@ function PresentationPreview({
           }}
         >
           <ChevronRight size={20} aria-hidden="true" />
-        </button>
+        </IconTooltipButton>
       </div>
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         {template.previewImages.map((image, index) => {
@@ -194,7 +193,7 @@ function PresentationTemplateCard({
           className="h-full w-full object-contain"
         />
       </div>
-      <button
+      <IconTooltipButton
         type="button"
         className="absolute right-1.5 top-1.5 z-20 inline-flex h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-background opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
         aria-label={t(
@@ -206,7 +205,7 @@ function PresentationTemplateCard({
         onClick={onPreview}
       >
         <Eye size={13} aria-hidden="true" />
-      </button>
+      </IconTooltipButton>
       <div className="flex min-w-0 items-center justify-between gap-2 px-2.5 py-[9px]">
         <span className="truncate text-[11px] font-semibold leading-4">
           {template.title}

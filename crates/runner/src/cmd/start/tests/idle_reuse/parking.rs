@@ -28,7 +28,7 @@ fn context_with_session_opt(
 }
 
 #[tokio::test(start_paused = true)]
-async fn job_with_session_parks_vm() {
+async fn job_with_session_parks_sandbox() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
@@ -44,7 +44,11 @@ async fn job_with_session_parks_vm() {
     assert_eq!(c.unwrap().exit_code, 0);
 
     let pool = env.idle_pool.lock().await;
-    assert_eq!(pool.len(), 1, "VM should be parked when session is present");
+    assert_eq!(
+        pool.len(),
+        1,
+        "sandbox should be parked when session is present"
+    );
     assert!(
         pool.held_reuse_keys()
             .contains(&"thread:idle-sess-1".to_string())
@@ -72,7 +76,11 @@ async fn job_without_reuse_key_does_not_park() {
     assert_eq!(c.unwrap().exit_code, 0);
 
     let pool = env.idle_pool.lock().await;
-    assert_eq!(pool.len(), 0, "VM should not be parked without a reuse key");
+    assert_eq!(
+        pool.len(),
+        0,
+        "sandbox should not be parked without a reuse key"
+    );
     drop(pool);
 
     shutdown(&env, run_handle).await;
@@ -168,7 +176,7 @@ async fn job_without_cli_session_parks_and_reuses_by_reuse_key() {
 }
 
 // -----------------------------------------------------------------------
-// Test 10: Successful job parks VM in idle pool
+// Test 10: Successful job parks sandbox in idle pool
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
@@ -193,18 +201,18 @@ async fn successful_job_parks_in_idle_pool() {
     assert!(completion.is_some(), "job should complete");
     assert_eq!(completion.unwrap().exit_code, 0);
 
-    // VM should be parked in idle pool, holding budget.
+    // sandbox should be parked in idle pool, holding budget.
     wait_idle_pool_reuse_keys(&idle_pool, &["sess-park"], Duration::from_secs(5)).await;
     {
         let pool = idle_pool.lock().await;
-        assert_eq!(pool.len(), 1, "VM should be parked");
+        assert_eq!(pool.len(), 1, "sandbox should be parked");
         assert!(
             pool.held_reuse_keys().contains(&"sess-park".to_string()),
             "parked session should be sess-park"
         );
     }
     let (_, _, count) = budget.allocated();
-    assert_eq!(count, 1, "parked VM should hold budget");
+    assert_eq!(count, 1, "parked sandbox should hold budget");
 
     shutdown(&env, run_handle).await;
 }
@@ -392,7 +400,7 @@ async fn job_without_reuse_key_destroys_sandbox() {
 //
 // Exercises the full reuse cycle: park → take → reuse → park.
 // After two jobs the pool should have exactly 1 entry (the second job's
-// VM) and the budget count should be 1.
+// sandbox) and the budget count should be 1.
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
@@ -402,7 +410,7 @@ async fn sequential_same_reuse_key_cycle() {
     let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
-    // Job 1: parks VM for reuse key "sess-seq".
+    // Job 1: parks sandbox for reuse key "sess-seq".
     let id1 = RunId::new_v4();
     push_job(
         &env,
@@ -416,7 +424,11 @@ async fn sequential_same_reuse_key_cycle() {
         .await;
     assert!(c1.is_some(), "job 1 should complete");
     wait_idle_pool_reuse_keys(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
-    assert_eq!(idle_pool.lock().await.len(), 1, "job 1 VM should be parked");
+    assert_eq!(
+        idle_pool.lock().await.len(),
+        1,
+        "job 1 sandbox should be parked"
+    );
 
     // Job 2: same reuse key → take → reuse → re-park.
     let id2 = RunId::new_v4();
@@ -434,7 +446,7 @@ async fn sequential_same_reuse_key_cycle() {
     assert_eq!(
         c2.unwrap().reuse_result,
         Some(SandboxReuseResult::Reused),
-        "job 2 should reuse the first job's parked VM",
+        "job 2 should reuse the first job's parked sandbox",
     );
     wait_idle_pool_reuse_keys(&idle_pool, &["sess-seq"], Duration::from_secs(5)).await;
 
@@ -443,13 +455,17 @@ async fn sequential_same_reuse_key_cycle() {
         1,
         "pool should have 1 entry after two sequential jobs"
     );
-    assert_eq!(budget.allocated().2, 1, "only one VM should hold budget");
+    assert_eq!(
+        budget.allocated().2,
+        1,
+        "only one sandbox should hold budget"
+    );
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn same_thread_reuses_vm_across_provider_session_change() {
+async fn same_thread_reuses_sandbox_across_provider_session_change() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
@@ -479,7 +495,7 @@ async fn same_thread_reuses_vm_across_provider_session_change() {
     assert_eq!(
         completion.reuse_result,
         Some(SandboxReuseResult::Reused),
-        "the thread reuse key should select the first job's parked VM"
+        "the thread reuse key should select the first job's parked sandbox"
     );
     wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
 
@@ -534,7 +550,7 @@ async fn discovered_cli_session_does_not_substitute_for_reuse_key() {
         "the discovered CLI session ID must not create a reuse identity"
     );
     assert_eq!(
-        pool.status_snapshot().idle_vms[0].sandbox_id,
+        pool.status_snapshot().idle_sandboxes[0].sandbox_id,
         seeded_sandbox_id
     );
     drop(pool);
@@ -606,9 +622,9 @@ async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
 }
 
 /// A successful job with a session triggers `Sandbox::park()` exactly once
-/// when the VM is handed off to the idle pool.
+/// when the sandbox is handed off to the idle pool.
 #[tokio::test(start_paused = true)]
-async fn park_called_when_vm_enters_idle_pool() {
+async fn park_called_when_sandbox_enters_idle_pool() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
@@ -641,7 +657,7 @@ async fn park_called_when_vm_enters_idle_pool() {
         0,
         "unpark() must not be called for a fresh park"
     );
-    assert_eq!(idle_pool.lock().await.len(), 1, "VM should be parked");
+    assert_eq!(idle_pool.lock().await.len(), 1, "sandbox should be parked");
 
     shutdown(&env, run_handle).await;
 }

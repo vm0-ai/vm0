@@ -22,6 +22,7 @@ const HANG_AFTER_RESULT_PERIODIC_EVENTS_MARKER: &str = "@hang-after-result-perio
 const HANG_AFTER_ERROR_RESULT_MARKER: &str = "@hang-after-error-result";
 const EXIT_AFTER_RESULT_MARKER: &str = "@exit-after-result";
 const WRITE_ENV_JSON_MARKER: &str = "@write-env-json:";
+const APPEND_PROMPT_TRANSPORT_MARKER: &str = "@append-prompt-transport:";
 const PARALLEL_SHELL_TOOL_OOM_MARKER: &str = "@parallel-shell-tool-oom";
 const HANG_AFTER_RESULT_MARKER: &str = "@hang-after-result";
 
@@ -48,6 +49,7 @@ pub(crate) enum MockScenario<'a> {
     HangAfterErrorResult,
     ExitAfterResult,
     WriteEnvJson(&'a str),
+    AppendPromptTransport(&'a str),
     ParallelShellToolOom,
     Shell,
 }
@@ -81,6 +83,7 @@ enum ScenarioKind {
     HangAfterErrorResult,
     ExitAfterResult,
     WriteEnvJson,
+    AppendPromptTransport,
     ParallelShellToolOom,
 }
 
@@ -217,6 +220,11 @@ const SCENARIO_RULES: &[ScenarioRule] = &[
         scenario_kind: ScenarioKind::WriteEnvJson,
     },
     ScenarioRule {
+        marker: APPEND_PROMPT_TRANSPORT_MARKER,
+        match_kind: ScenarioMatchKind::PrefixPayload,
+        scenario_kind: ScenarioKind::AppendPromptTransport,
+    },
+    ScenarioRule {
         marker: PARALLEL_SHELL_TOOL_OOM_MARKER,
         match_kind: ScenarioMatchKind::Exact,
         scenario_kind: ScenarioKind::ParallelShellToolOom,
@@ -262,6 +270,9 @@ impl ScenarioKind {
             (Self::FailNoNewline, ScenarioMatch::Payload(msg)) => MockScenario::FailNoNewline(msg),
             (Self::Fail, ScenarioMatch::Payload(msg)) => MockScenario::Fail(msg),
             (Self::WriteEnvJson, ScenarioMatch::Payload(path)) => MockScenario::WriteEnvJson(path),
+            (Self::AppendPromptTransport, ScenarioMatch::Payload(payload)) => {
+                MockScenario::AppendPromptTransport(payload)
+            }
             (Self::FailInvalidUtf8, ScenarioMatch::Marker) => MockScenario::FailInvalidUtf8,
             (Self::FailInvalidUtf8Long, ScenarioMatch::Marker) => MockScenario::FailInvalidUtf8Long,
             (Self::StdoutOverLimit { newline }, ScenarioMatch::Marker) => {
@@ -471,6 +482,10 @@ mod tests {
             (
                 "@write-env-json:/tmp/env.json",
                 MockScenario::WriteEnvJson("/tmp/env.json"),
+            ),
+            (
+                "@append-prompt-transport:{\"expectedPrompt\":\"marker\"}",
+                MockScenario::AppendPromptTransport("{\"expectedPrompt\":\"marker\"}"),
             ),
             (
                 "@parallel-shell-tool-oom",

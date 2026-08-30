@@ -89,6 +89,24 @@ pub const MSG_GUEST_DNS_READINESS: u8 = 0x16;
 /// Guest-to-host result of the fixed guest DNS readiness operation.
 pub const MSG_GUEST_DNS_READINESS_RESULT: u8 = 0x17;
 
+/// Host-to-guest request to apply a bounded storage manifest.
+pub const MSG_GUEST_STORAGE_MANIFEST: u8 = 0x18;
+
+/// Guest-to-host result of applying a bounded storage manifest.
+pub const MSG_GUEST_STORAGE_MANIFEST_RESULT: u8 = 0x19;
+
+/// Host-to-guest request to restore bounded snapshot-sensitive guest state.
+pub const MSG_GUEST_STATE_RESTORE: u8 = 0x1A;
+
+/// Guest-to-host result of restoring snapshot-sensitive guest state.
+pub const MSG_GUEST_STATE_RESTORE_RESULT: u8 = 0x1B;
+
+/// Guest-to-host acknowledgement that an Agent adopted runtime placement.
+pub const MSG_EXEC_AGENT_READY: u8 = 0x1C;
+
+/// Host-to-guest private multi-file write request.
+pub const MSG_WRITE_PRIVATE_FILES: u8 = 0x1D;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -154,6 +172,24 @@ mod tests {
                 MSG_GUEST_DNS_READINESS_RESULT,
                 0x17,
             ),
+            (
+                "MSG_GUEST_STORAGE_MANIFEST",
+                MSG_GUEST_STORAGE_MANIFEST,
+                0x18,
+            ),
+            (
+                "MSG_GUEST_STORAGE_MANIFEST_RESULT",
+                MSG_GUEST_STORAGE_MANIFEST_RESULT,
+                0x19,
+            ),
+            ("MSG_GUEST_STATE_RESTORE", MSG_GUEST_STATE_RESTORE, 0x1A),
+            (
+                "MSG_GUEST_STATE_RESTORE_RESULT",
+                MSG_GUEST_STATE_RESTORE_RESULT,
+                0x1B,
+            ),
+            ("MSG_EXEC_AGENT_READY", MSG_EXEC_AGENT_READY, 0x1C),
+            ("MSG_WRITE_PRIVATE_FILES", MSG_WRITE_PRIVATE_FILES, 0x1D),
             ("MSG_ERROR", MSG_ERROR, 0xFF),
         ];
 

@@ -31,7 +31,7 @@ const init$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       filename: body.filename,
       publicBrand:
-        auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+        auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
     },
     signal,
   );

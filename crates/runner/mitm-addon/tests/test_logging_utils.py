@@ -1,13 +1,15 @@
 """Tests for mitm addon logging utilities."""
 
 import json
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 
 import flow_metadata_keys as metadata_keys
 import logging_utils
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
+from tests.process_log_helpers import capture_addon_process_events
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
@@ -16,26 +18,32 @@ def _read_jsonl_entries_without_flush(path):
 
 
 class TestLogNetworkEntry:
-    def test_writes_jsonl(self, tmp_path):
+    def test_writes_jsonl_with_current_utc_timestamp(self, tmp_path):
         log_path = str(tmp_path / "net.jsonl")
         entry = {"action": "ALLOW", "host": "example.com"}
+        current_time = datetime(2026, 8, 24, 2, 16, 45, 678_901, tzinfo=UTC)
 
-        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
+        with (
+            patch.object(logging_utils, "datetime") as clock,
+            capture_addon_process_events(),
+        ):
+            clock.now.return_value = current_time
             logging_utils.log_network_entry(log_path, entry)
 
         entries = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert len(entries) == 1
         parsed = entries[0]
+        clock.now.assert_called_once_with(UTC)
         assert parsed["action"] == "ALLOW"
         assert parsed["host"] == "example.com"
-        assert_utc_millisecond_timestamp(parsed["timestamp"])
+        assert parsed["timestamp"] == "2026-08-24T02:16:45.678Z"
         assert "timestamp" not in entry
 
     def test_timestamp_is_authoritative(self, tmp_path):
         log_path = str(tmp_path / "net.jsonl")
         entry = {"timestamp": "caller-timestamp", "action": "ALLOW"}
 
-        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             logging_utils.log_network_entry(log_path, entry)
 
         [parsed] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
@@ -46,7 +54,7 @@ class TestLogNetworkEntry:
     def test_appends_multiple(self, tmp_path):
         log_path = str(tmp_path / "net.jsonl")
 
-        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             logging_utils.log_network_entry(log_path, {"n": 1})
             logging_utils.log_network_entry(log_path, {"n": 2})
 
@@ -54,18 +62,14 @@ class TestLogNetworkEntry:
         assert len(entries) == 2
 
     def test_no_path_is_noop(self):
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             logging_utils.log_network_entry("", {"payload": b"binary"})
 
         log.warn.assert_not_called()
 
     def test_missing_parent_path_warns_and_does_not_raise(self, tmp_path):
         log_path = tmp_path / "missing" / "net.jsonl"
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
             logging_utils.flush_log_path(str(log_path))
 
@@ -76,9 +80,7 @@ class TestLogNetworkEntry:
 
     def test_non_serializable_entry_warns_without_creating_file(self, tmp_path):
         log_path = tmp_path / "net.jsonl"
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             logging_utils.log_network_entry(str(log_path), {"payload": b"binary"})
 
         log.warn.assert_called_once()
@@ -89,11 +91,9 @@ class TestLogNetworkEntry:
 
     def test_full_backlog_warns_without_creating_file(self, tmp_path):
         log_path = tmp_path / "net.jsonl"
-        log = MagicMock()
-
         with (
             patch.object(logging_utils.jsonl_writer, "MAX_PENDING_JSONL_BYTES", 1),
-            patch.object(logging_utils.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
         ):
             logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
 
@@ -278,9 +278,7 @@ class TestLogProxyEntry:
         assert entries[1]["message"] == "second"
 
     def test_empty_path_no_op(self, tmp_path):
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             logging_utils.log_proxy_entry(
                 "", "warn", "should not write", payload={"body": b"binary"}
             )
@@ -289,9 +287,7 @@ class TestLogProxyEntry:
         assert not list(tmp_path.iterdir())
 
     def test_missing_parent_path_warns_and_does_not_raise(self, tmp_path):
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             logging_utils.log_proxy_entry(
                 str(tmp_path / "missing" / "proxy.jsonl"), "warn", "message"
             )
@@ -303,9 +299,7 @@ class TestLogProxyEntry:
         assert "FileNotFoundError" in warning
 
     def test_directory_path_warns_and_does_not_raise(self, tmp_path):
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             logging_utils.log_proxy_entry(str(tmp_path), "warn", "message")
             logging_utils.flush_log_path(str(tmp_path))
 
@@ -316,9 +310,7 @@ class TestLogProxyEntry:
 
     def test_non_serializable_extra_warns_without_creating_file(self, tmp_path):
         proxy_path = tmp_path / "proxy-test.jsonl"
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             logging_utils.log_proxy_entry(
                 str(proxy_path), "warn", "message", payload={"body": b"binary"}
             )
@@ -382,15 +374,13 @@ class TestJsonlWriterBehavior:
     def test_write_after_shutdown_is_noop_without_warning(self, tmp_path):
         network_path = tmp_path / "network.jsonl"
         proxy_path = tmp_path / "proxy.jsonl"
-        log = MagicMock()
-
         logging_utils.log_network_entry(str(network_path), {"action": "ALLOW"})
         logging_utils.log_proxy_entry(str(proxy_path), "info", "before shutdown")
         logging_utils.shutdown_log_writer()
         before_network_entries = _read_jsonl_entries_without_flush(network_path)
         before_entries = _read_jsonl_entries_without_flush(proxy_path)
 
-        with patch.object(logging_utils.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             logging_utils.log_network_entry(str(network_path), {"action": "DENY"})
             logging_utils.log_proxy_entry(str(proxy_path), "warn", "after shutdown")
 

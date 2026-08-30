@@ -1,10 +1,13 @@
 use std::ffi::OsStr;
+use std::future::Future;
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
+use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
+use tracing::warn;
 
 use crate::process::ChildExitNotifier;
 
@@ -13,6 +16,8 @@ type PipeReadTask = JoinHandle<std::io::Result<PipeReadOutput>>;
 const DEFAULT_SEMANTIC_OUTPUT_LIMIT_BYTES: usize = 4 * 1024 * 1024;
 const DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES: usize = 64 * 1024;
 const PIPE_READ_CHUNK_BYTES: usize = 8192;
+const COMMAND_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+const COMMAND_CHILD_LABEL: &str = "sandbox host command";
 
 /// Error from a failed command.
 #[derive(Debug, thiserror::Error)]
@@ -36,6 +41,7 @@ pub enum IgnoredCommandOutcome {
     PipeError,
     OutputTooLarge,
     Timeout,
+    LifecycleError,
 }
 
 impl IgnoredCommandOutcome {
@@ -60,6 +66,8 @@ enum CommandRunError {
     OutputTooLarge { pipe: &'static str, limit: usize },
     #[error("timed out after {0}ms")]
     Timeout(u128),
+    #[error("command lifecycle failed: {0}")]
+    Lifecycle(String),
 }
 
 #[derive(Debug)]
@@ -168,11 +176,13 @@ where
 ///
 /// This helper is intended for host lifecycle operations where an unbounded
 /// subprocess can block resource cleanup. On timeout the child is killed and
-/// waited before returning. On Unix, the subprocess runs in its own process
-/// group so timeout cleanup also kills grandchildren while the child is still
-/// owned. The timeout bounds both child exit and stdout/stderr pipe draining.
-/// When pipe draining times out after the child has already been reaped, cleanup
-/// aborts pipe readers without signalling by a stale PID.
+/// waited before returning within a separate finite cleanup budget. On Unix,
+/// the subprocess runs in its own process group so timeout cleanup also kills
+/// grandchildren while the child is still owned. The command timeout bounds
+/// child exit and stdout/stderr pipe draining; lifecycle errors report when
+/// termination cannot be confirmed within the cleanup budget. When pipe
+/// draining times out after the child has already been reaped, cleanup aborts
+/// pipe readers without signalling by a stale PID.
 pub async fn exec_with_timeout(
     program: &str,
     args: &[&str],
@@ -266,6 +276,7 @@ pub async fn exec_ignore_errors_with_timeout(
             | CommandRunError::PipeUnavailable(_),
         ) => IgnoredCommandOutcome::PipeError,
         Err(CommandRunError::OutputTooLarge { .. }) => IgnoredCommandOutcome::OutputTooLarge,
+        Err(CommandRunError::Lifecycle(_)) => IgnoredCommandOutcome::LifecycleError,
         Err(CommandRunError::Spawn(e)) if e.kind() == std::io::ErrorKind::NotFound => {
             IgnoredCommandOutcome::NotFound
         }
@@ -343,30 +354,31 @@ where
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
-    let mut child = CommandChild::new(command.spawn().map_err(CommandRunError::Spawn)?);
-    let exit_notifier = open_exit_notifier(child.as_child());
+    let spawned_child = command.spawn().map_err(CommandRunError::Spawn)?;
+    let exit_notifier = open_exit_notifier(&spawned_child);
+    let mut child = CommandChild::new(spawned_child);
 
-    let stdout_task =
-        spawn_pipe_task(child.as_child_mut(), PipeKind::Stdout, output_policy.stdout)?;
-    let stderr_task =
-        match spawn_pipe_task(child.as_child_mut(), PipeKind::Stderr, output_policy.stderr) {
-            Ok(task) => task,
-            Err(e) => {
-                if let Some(task) = stdout_task {
-                    abort_pipe_task(task).await;
-                }
-                return Err(e);
-            }
-        };
+    let stdout_task = match child.spawn_pipe_task(PipeKind::Stdout, output_policy.stdout) {
+        Ok(task) => task,
+        Err(error) => {
+            let mut pipe_tasks = PipeTasks::new(None, None);
+            return Err(cleanup_command_failure(&mut child, &mut pipe_tasks, error).await);
+        }
+    };
+    let stderr_task = match child.spawn_pipe_task(PipeKind::Stderr, output_policy.stderr) {
+        Ok(task) => task,
+        Err(error) => {
+            let mut pipe_tasks = PipeTasks::new(stdout_task, None);
+            return Err(cleanup_command_failure(&mut child, &mut pipe_tasks, error).await);
+        }
+    };
     let mut pipe_tasks = PipeTasks::new(stdout_task, stderr_task);
     let deadline = tokio::time::Instant::now() + timeout;
 
-    let child_exit = match wait_for_child_exit(&mut child, &exit_notifier, deadline, timeout).await
-    {
+    let child_exit = match wait_for_child_exit(&exit_notifier, deadline, timeout).await {
         Ok(child_exit) => child_exit,
-        Err(e) => {
-            pipe_tasks.abort_all().await;
-            return Err(e);
+        Err(error) => {
+            return Err(cleanup_command_failure(&mut child, &mut pipe_tasks, error).await);
         }
     };
 
@@ -466,36 +478,182 @@ enum CommandChildExit {
 }
 
 struct CommandChild {
-    child: Child,
+    child: Option<Child>,
 }
 
 impl CommandChild {
     fn new(child: Child) -> Self {
-        Self { child }
+        Self { child: Some(child) }
     }
 
-    fn as_child(&self) -> &Child {
-        &self.child
-    }
-
-    fn as_child_mut(&mut self) -> &mut Child {
-        &mut self.child
+    fn spawn_pipe_task(
+        &mut self,
+        kind: PipeKind,
+        policy: StreamOutputPolicy,
+    ) -> std::result::Result<Option<PipeReadTask>, CommandRunError> {
+        let child = self
+            .child
+            .as_mut()
+            .ok_or_else(|| CommandRunError::Lifecycle("command child is not owned".to_string()))?;
+        spawn_pipe_task(child, kind, policy)
     }
 
     async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
-        self.child.wait().await
+        let result = match self.child.as_mut() {
+            Some(child) => child.wait().await,
+            None => Err(std::io::Error::other("command child is not owned")),
+        };
+        if result.is_ok() {
+            self.child.take();
+        }
+        result
     }
 
-    async fn kill_and_wait(&mut self) {
-        kill_child_tree(&mut self.child).await;
+    async fn kill_and_wait_with_gate<F>(
+        &mut self,
+        cleanup_timeout: Duration,
+        before_wait: F,
+    ) -> std::result::Result<(), String>
+    where
+        F: Future<Output = ()>,
+    {
+        let Some(child) = self.child.as_mut() else {
+            return Err("command child is not owned".to_string());
+        };
+        let pid = child.id();
+        let (group_kill_error, child_kill_error) = request_child_tree_kill(child);
+        let deadline = tokio::time::Instant::now() + cleanup_timeout;
+        let wait_result = tokio::time::timeout_at(deadline, async {
+            before_wait.await;
+            self.wait().await
+        })
+        .await;
+
+        match wait_result {
+            Ok(Ok(_)) => {
+                if let Some(error) =
+                    group_kill_error.filter(|error| *error != nix::errno::Errno::ESRCH)
+                {
+                    warn!(
+                        label = COMMAND_CHILD_LABEL,
+                        ?pid,
+                        %error,
+                        "command child reaped after process-group kill failed"
+                    );
+                }
+                if let Some(error) = child_kill_error
+                    .filter(|error| error.kind() != std::io::ErrorKind::InvalidInput)
+                {
+                    warn!(
+                        label = COMMAND_CHILD_LABEL,
+                        ?pid,
+                        %error,
+                        "command child reaped after direct-child kill failed"
+                    );
+                }
+                Ok(())
+            }
+            Ok(Err(error)) => Err(self.defer_reap_with_error(
+                format!("failed to wait for killed child: {error}"),
+                group_kill_error,
+                child_kill_error,
+            )),
+            Err(_) => Err(self.defer_reap_with_error(
+                format!(
+                    "killed child did not exit within {}ms",
+                    cleanup_timeout.as_millis()
+                ),
+                group_kill_error,
+                child_kill_error,
+            )),
+        }
+    }
+
+    fn defer_reap_with_error(
+        &mut self,
+        failure: String,
+        group_kill_error: Option<nix::errno::Errno>,
+        child_kill_error: Option<std::io::Error>,
+    ) -> String {
+        let mut details = vec![failure];
+        if let Some(error) = group_kill_error {
+            details.push(format!("process-group kill failed first: {error}"));
+        }
+        if let Some(error) = child_kill_error {
+            details.push(format!("direct-child kill failed first: {error}"));
+        }
+        self.spawn_reaper();
+        details.join("; ")
+    }
+
+    fn spawn_reaper(&mut self) {
+        if let Some(child) = self.child.take() {
+            spawn_child_reaper(child);
+        }
     }
 }
 
 impl Drop for CommandChild {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        crate::process::kill_process_group(&self.child);
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        let pid = child.id();
+        let (group_kill_error, child_kill_error) = request_child_tree_kill(&mut child);
+        if let Some(error) = group_kill_error.filter(|error| *error != nix::errno::Errno::ESRCH) {
+            warn!(
+                label = COMMAND_CHILD_LABEL,
+                ?pid,
+                %error,
+                "failed to kill command process group during drop cleanup"
+            );
+        }
+        if let Some(error) =
+            child_kill_error.filter(|error| error.kind() != std::io::ErrorKind::InvalidInput)
+        {
+            warn!(
+                label = COMMAND_CHILD_LABEL,
+                ?pid,
+                %error,
+                "failed to kill direct command child during drop cleanup"
+            );
+        }
+        spawn_child_reaper(child);
     }
+}
+
+fn request_child_tree_kill(
+    child: &mut Child,
+) -> (Option<nix::errno::Errno>, Option<std::io::Error>) {
+    #[cfg(unix)]
+    let group_kill_error = crate::process::kill_process_group(child).err();
+    #[cfg(not(unix))]
+    let group_kill_error = None;
+    let child_kill_error = child.start_kill().err();
+    (group_kill_error, child_kill_error)
+}
+
+fn spawn_child_reaper(mut child: Child) {
+    let pid = child.id();
+    let Ok(runtime) = Handle::try_current() else {
+        warn!(
+            label = COMMAND_CHILD_LABEL,
+            ?pid,
+            "cannot spawn command child reaper without an active Tokio runtime"
+        );
+        return;
+    };
+
+    runtime.spawn(async move {
+        if let Err(error) = child.wait().await {
+            warn!(
+                label = COMMAND_CHILD_LABEL,
+                ?pid,
+                %error,
+                "failed to reap command child after ownership handoff"
+            );
+        }
+    });
 }
 
 struct PipeTasks {
@@ -629,20 +787,50 @@ fn collect_pipe_result(
     }
 }
 
-async fn kill_child_tree(child: &mut Child) {
-    #[cfg(unix)]
-    crate::process::kill_process_group(child);
-    let _ = child.start_kill();
-    let _ = child.wait().await;
-}
-
 async fn abort_pipe_task(task: PipeReadTask) {
     task.abort();
     let _ = task.await;
 }
 
-async fn wait_for_child_exit(
+async fn cleanup_command_failure(
     child: &mut CommandChild,
+    pipe_tasks: &mut PipeTasks,
+    primary_error: CommandRunError,
+) -> CommandRunError {
+    cleanup_command_failure_with_wait_gate(
+        child,
+        pipe_tasks,
+        primary_error,
+        COMMAND_CLEANUP_TIMEOUT,
+        std::future::ready(()),
+    )
+    .await
+}
+
+async fn cleanup_command_failure_with_wait_gate<F>(
+    child: &mut CommandChild,
+    pipe_tasks: &mut PipeTasks,
+    primary_error: CommandRunError,
+    cleanup_timeout: Duration,
+    before_wait: F,
+) -> CommandRunError
+where
+    F: Future<Output = ()>,
+{
+    let cleanup_result = child
+        .kill_and_wait_with_gate(cleanup_timeout, before_wait)
+        .await;
+    pipe_tasks.abort_all().await;
+
+    match cleanup_result {
+        Ok(()) => primary_error,
+        Err(cleanup_error) => {
+            CommandRunError::Lifecycle(format!("{primary_error}; cleanup failed: {cleanup_error}"))
+        }
+    }
+}
+
+async fn wait_for_child_exit(
     exit_notifier: &ChildExitNotifier,
     deadline: tokio::time::Instant,
     timeout: Duration,
@@ -651,10 +839,7 @@ async fn wait_for_child_exit(
         match tokio::time::timeout_at(deadline, exit_notifier.wait_for_exit()).await {
             Ok(Ok(())) => return Ok(CommandChildExit::PreReap),
             Ok(Err(_)) => return Ok(CommandChildExit::NoPreReapNotifier),
-            Err(_) => {
-                child.kill_and_wait().await;
-                return Err(CommandRunError::Timeout(timeout.as_millis()));
-            }
+            Err(_) => return Err(CommandRunError::Timeout(timeout.as_millis())),
         }
     }
 
@@ -681,31 +866,32 @@ async fn collect_command_output(
                 Ok((stdout, stderr)) => {
                     let status = match child.wait().await {
                         Ok(status) => status,
-                        Err(e) => {
-                            child.kill_and_wait().await;
-                            return Err(CommandRunError::Wait(e));
+                        Err(error) => {
+                            return Err(cleanup_command_failure(
+                                child,
+                                pipe_tasks,
+                                CommandRunError::Wait(error),
+                            )
+                            .await);
                         }
                     };
                     Ok((status, stdout, stderr))
                 }
-                Err(e) => {
-                    child.kill_and_wait().await;
-                    pipe_tasks.abort_all().await;
-                    Err(e)
-                }
+                Err(error) => Err(cleanup_command_failure(child, pipe_tasks, error).await),
             }
         }
         CommandChildExit::NoPreReapNotifier => {
             match pipe_tasks.collect_with_deadline(deadline, timeout).await {
                 Ok((stdout, stderr)) => {
-                    let status = wait_child_with_deadline(child, deadline, timeout).await?;
+                    let status = match wait_child_with_deadline(child, deadline, timeout).await {
+                        Ok(status) => status,
+                        Err(error) => {
+                            return Err(cleanup_command_failure(child, pipe_tasks, error).await);
+                        }
+                    };
                     Ok((status, stdout, stderr))
                 }
-                Err(e) => {
-                    child.kill_and_wait().await;
-                    pipe_tasks.abort_all().await;
-                    Err(e)
-                }
+                Err(error) => Err(cleanup_command_failure(child, pipe_tasks, error).await),
             }
         }
     }
@@ -718,14 +904,8 @@ async fn wait_child_with_deadline(
 ) -> std::result::Result<std::process::ExitStatus, CommandRunError> {
     match tokio::time::timeout_at(deadline, child.wait()).await {
         Ok(Ok(status)) => Ok(status),
-        Ok(Err(e)) => {
-            child.kill_and_wait().await;
-            Err(CommandRunError::Wait(e))
-        }
-        Err(_) => {
-            child.kill_and_wait().await;
-            Err(CommandRunError::Timeout(timeout.as_millis()))
-        }
+        Ok(Err(error)) => Err(CommandRunError::Wait(error)),
+        Err(_) => Err(CommandRunError::Timeout(timeout.as_millis())),
     }
 }
 
@@ -936,6 +1116,65 @@ mod tests {
     #[test]
     fn output_too_large_ignored_outcome_is_not_trusted() {
         assert!(!IgnoredCommandOutcome::OutputTooLarge.completed_without_timeout());
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn cleanup_wait_timeout_transfers_child_and_finishes_pipe_tasks() {
+        let mut command = Command::new("sleep");
+        command
+            .arg("60")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .process_group(0);
+        let mut child = CommandChild::new(command.spawn().unwrap());
+        let pid = child.child.as_ref().and_then(Child::id).unwrap();
+        let starttime = process_starttime(pid).expect("spawned child process was not observable");
+        let stdout_task = child
+            .spawn_pipe_task(
+                PipeKind::Stdout,
+                StreamOutputPolicy::DiagnosticCapture { max_bytes: 16 },
+            )
+            .unwrap();
+        let stderr_task = child
+            .spawn_pipe_task(
+                PipeKind::Stderr,
+                StreamOutputPolicy::DiagnosticCapture { max_bytes: 16 },
+            )
+            .unwrap();
+        let mut pipe_tasks = PipeTasks::new(stdout_task, stderr_task);
+
+        let error = tokio::time::timeout(
+            Duration::from_secs(1),
+            cleanup_command_failure_with_wait_gate(
+                &mut child,
+                &mut pipe_tasks,
+                CommandRunError::Timeout(50),
+                Duration::from_millis(25),
+                std::future::pending(),
+            ),
+        )
+        .await
+        .expect("foreground cleanup exceeded its outer test bound");
+
+        match error {
+            CommandRunError::Lifecycle(detail) => {
+                assert!(
+                    detail.contains("timed out after 50ms"),
+                    "detail was: {detail}"
+                );
+                assert!(
+                    detail.contains("killed child did not exit within 25ms"),
+                    "detail was: {detail}"
+                );
+            }
+            other => panic!("unexpected cleanup result: {other:?}"),
+        }
+        assert!(child.child.is_none(), "child ownership was not transferred");
+        assert!(pipe_tasks.stdout.is_none());
+        assert!(pipe_tasks.stderr.is_none());
+        assert_pid_reaped(pid, starttime).await;
     }
 
     #[tokio::test]
@@ -1202,6 +1441,24 @@ mod tests {
             return false;
         };
         !after_comm.starts_with('Z')
+    }
+
+    #[cfg(target_os = "linux")]
+    fn process_starttime(pid: u32) -> Option<u64> {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let (_, after_comm) = stat.rsplit_once(") ")?;
+        after_comm.split_whitespace().nth(19)?.parse().ok()
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn assert_pid_reaped(pid: u32, starttime: u64) {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while process_starttime(pid) == Some(starttime) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("process {pid} was not reaped after ownership handoff"));
     }
 
     #[cfg(all(unix, not(target_os = "linux")))]

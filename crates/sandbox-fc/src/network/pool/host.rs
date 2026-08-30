@@ -1030,6 +1030,7 @@ mod tests {
             IgnoredCommandOutcome::PipeError,
             IgnoredCommandOutcome::OutputTooLarge,
             IgnoredCommandOutcome::Timeout,
+            IgnoredCommandOutcome::LifecycleError,
         ] {
             assert_eq!(
                 namespace_delete_outcome_from_best_effort([

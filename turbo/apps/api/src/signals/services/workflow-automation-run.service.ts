@@ -57,6 +57,7 @@ export const runWorkflowAutomationNow$ = command(
               args.automationContext.event,
             ),
           connectorSourceId: args.connectorSourceId,
+          publicBrand: args.publicBrand,
           chatThreadId,
           triggerSource: args.triggerSource ?? "automation-schedule",
           triggerBrief: args.triggerBrief,
@@ -68,10 +69,11 @@ export const runWorkflowAutomationNow$ = command(
     signal.throwIfAborted();
 
     if (admission.kind === "inserted") {
-      await publishChatThreadMessageCreatedSafely(
-        automation.ownerUserId,
-        chatThreadId,
-      );
+      await publishChatThreadMessageCreatedSafely({
+        userId: automation.ownerUserId,
+        orgId: automation.orgId,
+        threadId: chatThreadId,
+      });
       signal.throwIfAborted();
     }
 

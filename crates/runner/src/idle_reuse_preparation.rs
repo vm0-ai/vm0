@@ -56,11 +56,18 @@ impl ReuseRejectionReason {
 #[derive(Debug)]
 pub(crate) struct IdleReusePreparationFailure {
     error: String,
+    expected_capacity_rejection: bool,
 }
 
 impl std::fmt::Display for IdleReusePreparationFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.error)
+    }
+}
+
+impl IdleReusePreparationFailure {
+    pub(crate) fn is_expected_capacity_rejection(&self) -> bool {
+        self.expected_capacity_rejection
     }
 }
 
@@ -175,6 +182,7 @@ impl IdleReusePreparation {
                     "guest rootfs below reuse reserve: {} bytes and {} inodes available",
                     report.after.available_bytes, report.after.available_inodes
                 ),
+                expected_capacity_rejection: true,
             });
         }
 
@@ -272,7 +280,10 @@ fn reject_without_exec(
         error = %error,
         "sandbox rejected from idle reuse"
     );
-    IdleReusePreparationFailure { error }
+    IdleReusePreparationFailure {
+        error,
+        expected_capacity_rejection: false,
+    }
 }
 
 fn reject_with_result(
@@ -294,7 +305,10 @@ fn reject_with_result(
         error = %error,
         "sandbox rejected from idle reuse"
     );
-    IdleReusePreparationFailure { error }
+    IdleReusePreparationFailure {
+        error,
+        expected_capacity_rejection: false,
+    }
 }
 
 fn log_report(
@@ -329,7 +343,7 @@ fn log_report(
             "sandbox prepared for idle reuse"
         );
     } else {
-        warn!(
+        info!(
             run_id = %run_id,
             sandbox_id,
             reason,
@@ -353,6 +367,7 @@ mod tests {
     use guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_SUCCESS;
     use sandbox::{Sandbox, SandboxError, SandboxOperation, SandboxOperationReason};
     use sandbox_mock::MockSandbox;
+    use tracing::Level;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
@@ -488,6 +503,7 @@ mod tests {
 
         assert!(result.is_err());
         let event = captured_event(&events, "sandbox rejected from idle reuse");
+        assert_eq!(event.level, Level::INFO);
         assert_eq!(
             event.fields.get("reason").map(String::as_str),
             Some("low_bytes")
@@ -525,6 +541,7 @@ mod tests {
 
         assert!(result.is_err());
         let event = captured_event(&events, "sandbox rejected from idle reuse");
+        assert_eq!(event.level, Level::INFO);
         assert_eq!(
             event.fields.get("reason").map(String::as_str),
             Some("low_inodes")
@@ -539,6 +556,26 @@ mod tests {
         assert_eq!(
             event.fields.get("reclaimed_inodes").map(String::as_str),
             Some("100")
+        );
+    }
+
+    #[tokio::test]
+    async fn preparation_rejects_low_bytes_and_inodes_at_info() {
+        let sandbox = MockSandbox::new("low-bytes-and-inodes");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            0,
+            serde_json::to_vec(&report(64, 96, 500, 600)).unwrap(),
+            Vec::new(),
+        )));
+
+        let (result, events) = capture_preparation(&sandbox, RunId::new_v4()).await;
+
+        assert!(result.is_err());
+        let event = captured_event(&events, "sandbox rejected from idle reuse");
+        assert_eq!(event.level, Level::INFO);
+        assert_eq!(
+            event.fields.get("reason").map(String::as_str),
+            Some("low_bytes_and_inodes")
         );
     }
 
@@ -567,6 +604,7 @@ mod tests {
 
             assert!(result.is_err());
             let event = captured_event(&events, "sandbox rejected from idle reuse");
+            assert_eq!(event.level, Level::WARN);
             assert_eq!(
                 event.fields.get("reason").map(String::as_str),
                 Some(expected_reason)
@@ -648,6 +686,10 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(
+            captured_event(&events, "sandbox rejected from idle reuse").level,
+            Level::WARN
+        );
+        assert_eq!(
             captured_event(&events, "sandbox rejected from idle reuse")
                 .fields
                 .get("reason")
@@ -662,6 +704,10 @@ mod tests {
         malformed.push_exec_result(Ok(ExecResult::new(0, b"not-json".to_vec(), Vec::new())));
         let (result, events) = capture_preparation(&malformed, RunId::new_v4()).await;
         assert!(result.is_err());
+        assert_eq!(
+            captured_event(&events, "sandbox rejected from idle reuse").level,
+            Level::WARN
+        );
         assert_eq!(
             captured_event(&events, "sandbox rejected from idle reuse")
                 .fields
@@ -678,6 +724,10 @@ mod tests {
         }));
         let (result, events) = capture_preparation(&transport, RunId::new_v4()).await;
         assert!(result.is_err());
+        assert_eq!(
+            captured_event(&events, "sandbox rejected from idle reuse").level,
+            Level::WARN
+        );
         assert_eq!(
             captured_event(&events, "sandbox rejected from idle reuse")
                 .fields

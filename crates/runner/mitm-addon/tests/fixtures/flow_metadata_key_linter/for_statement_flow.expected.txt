@@ -1,7 +1,7 @@
 for_statement_flow.py:2: use metadata_keys.FIREWALL_RULE_MATCH for flow.metadata access
 for_statement_flow.py:6: use metadata_keys.FIREWALL_RULE_MATCH for flow.metadata access
-for_statement_flow.py:13: use metadata_keys.VM_SANDBOX_AUTH_KEY for flow.metadata access
-for_statement_flow.py:19: use metadata_keys.VM_SANDBOX_AUTH_KEY for flow.metadata access
+for_statement_flow.py:13: use metadata_keys.SANDBOX_AUTH_KEY for flow.metadata access
+for_statement_flow.py:19: use metadata_keys.SANDBOX_AUTH_KEY for flow.metadata access
 for_statement_flow.py:25: use metadata_keys.CAPTURE_BODY for flow.metadata access
 for_statement_flow.py:31: use metadata_keys.CAPTURE_BODY for flow.metadata access
 for_statement_flow.py:39: use metadata_keys.ORIGINAL_URL for flow.metadata access

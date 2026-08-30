@@ -59,7 +59,7 @@ import {
 } from "./api-integrations-github.ts";
 import {
   apiAgentsHandlers,
-  resetMockTeam,
+  resetMockAgents,
   resetMockUserConnectors,
 } from "./api-agents.ts";
 import { apiWorkflowsHandlers, resetMockWorkflows } from "./api-workflows.ts";
@@ -81,7 +81,6 @@ import {
 } from "./api-onboarding.ts";
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 import { apiAttributionHandlers } from "./api-attribution.ts";
-import { apiEmailMorningBriefUnsubscribeHandlers } from "./api-email-morning-brief-unsubscribe.ts";
 import { resetMockWorkflowAutomations } from "./workflow-automations-store.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
@@ -94,8 +93,13 @@ import {
 } from "./api-user-permission-grants.ts";
 import { apiVoiceIoHandlers } from "./api-voice-io.ts";
 import { apiBuildInfoHandlers } from "./api-build-info.ts";
+import { apiWebFilesHandlers } from "./api-web-files.ts";
+import { localeResourceHandlers } from "./locale-resources.ts";
+import { clerkLocalizationHandlers } from "./clerk-localizations.ts";
 
 export const handlers = [
+  ...clerkLocalizationHandlers,
+  ...localeResourceHandlers,
   ...apiBuildInfoHandlers,
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
@@ -121,13 +125,13 @@ export const handlers = [
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
   ...apiAttributionHandlers,
-  ...apiEmailMorningBriefUnsubscribeHandlers,
   ...apiIntegrationsSlackConnectHandlers,
   ...apiFeatureSwitchesHandlers,
   ...apiRealtimeHandlers,
   ...apiUserPermissionGrantsHandlers,
   ...apiQueuePositionHandlers,
   ...apiVoiceIoHandlers,
+  ...apiWebFilesHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -153,7 +157,7 @@ export function resetAllMockHandlers(): void {
   resetMockUsageMembers();
   resetMockUsageRecord();
   resetMockWorkflowAutomations();
-  resetMockTeam();
+  resetMockAgents();
   resetMockUserConnectors();
   resetMockWorkflows();
   resetMockOnboardingStatus();

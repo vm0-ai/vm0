@@ -16,8 +16,8 @@ import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
-    _shared_route_vm,
-    _single_firewall_vm,
+    _shared_route_sandbox,
+    _single_firewall_sandbox,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -87,7 +87,7 @@ async def test_connector_intent_selects_auth_template_in_both_firewall_orders(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_shared_route_vm(tmp_path, reverse=reverse, primary_name=primary_name),
+        sandbox_info=_shared_route_sandbox(tmp_path, reverse=reverse, primary_name=primary_name),
     )
     flow = real_flow(
         with_response=False,
@@ -126,7 +126,7 @@ async def test_connector_intent_selects_auth_template_in_both_firewall_orders(
 async def test_invalid_captured_connector_intent_fails_ambiguous_route_before_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, captured_value
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_shared_route_sandbox(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -199,7 +199,7 @@ async def test_ambiguous_connector_route_fails_before_auth_and_logs_candidates(
     intent_headers,
     reason,
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_shared_route_sandbox(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -252,7 +252,7 @@ async def test_oversized_connector_intent_is_malformed_without_decoding_or_auth(
     mitm_ctx,
     fake_firewall_headers,
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_shared_route_sandbox(tmp_path))
     oversized_intent = _DecodeGuardConnectorIntent(b"x" * (1024 * 1024))
     request_headers = mitm_addon.http.Headers(
         [
@@ -296,7 +296,7 @@ async def test_ambiguous_response_discards_large_fragment_before_url_parsing(
     mitm_ctx,
     fake_firewall_headers,
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_shared_route_sandbox(tmp_path))
     retained_url = "https://shared.example.com/items/123"
     discarded_suffix = f"#fragment={'x' * 200_000}?sensitive=query"
     flow = real_flow(
@@ -326,7 +326,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     """Firewall with permissions but no matching rule returns 403."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -387,7 +387,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
 async def test_head_firewall_permission_block_is_bodyless_and_logged(tmp_path, real_flow, mitm_ctx):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -463,7 +463,7 @@ async def test_asterisk_form_enforces_unknown_policy(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="example",
             api_entry={
@@ -510,7 +510,7 @@ async def test_asterisk_form_policy_allow_preserves_target_without_connector_sid
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="example",
             api_entry={
@@ -528,7 +528,7 @@ async def test_asterisk_form_policy_allow_preserves_target_without_connector_sid
                 "unknownPolicy": "allow",
             },
             billable_firewalls=["example"],
-            vm_fields={
+            sandbox_fields={
                 "captureNetworkBodies": True,
                 "modelUsageProvider": "anthropic",
             },
@@ -583,7 +583,7 @@ async def test_asterisk_form_policy_allow_still_enforces_public_destination(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="example",
             api_entry={
@@ -598,7 +598,7 @@ async def test_asterisk_form_policy_allow_still_enforces_public_destination(
                 "ask": [],
                 "unknownPolicy": "allow",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -641,7 +641,7 @@ async def test_firewall_malformed_config_block_reports_reason(
     """Malformed firewall config blocks fail closed with an explicit reason."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -689,7 +689,7 @@ async def test_firewall_malformed_auth_config_block_reports_reason(
     """Malformed auth config blocks before the auth handler runs."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -735,7 +735,7 @@ async def test_firewall_malformed_network_policy_block_reports_reason(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     """Malformed network policy blocks fail closed instead of raising."""
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -754,8 +754,8 @@ async def test_firewall_malformed_network_policy_block_reports_reason(
             "unknownPolicy": "allow",
         },
     )
-    vm_info["networkPolicies"] = {"github": "denied"}
-    reg_path = _write_registry(tmp_path, vm_info=vm_info)
+    sandbox_info["networkPolicies"] = {"github": "denied"}
+    reg_path = _write_registry(tmp_path, sandbox_info=sandbox_info)
 
     flow = real_flow(
         with_response=False,
@@ -784,7 +784,7 @@ async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     """Top-level malformed network policy blocks fail closed after base match."""
-    vm_info = _single_firewall_vm(
+    sandbox_info = _single_firewall_sandbox(
         tmp_path,
         api_entry={
             "base": "https://api.github.com",
@@ -803,8 +803,8 @@ async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
             "unknownPolicy": "allow",
         },
     )
-    vm_info["networkPolicies"] = "denied"
-    reg_path = _write_registry(tmp_path, vm_info=vm_info)
+    sandbox_info["networkPolicies"] = "denied"
+    reg_path = _write_registry(tmp_path, sandbox_info=sandbox_info)
 
     flow = real_flow(
         with_response=False,
@@ -835,7 +835,7 @@ async def test_firewall_permission_denied_block_reports_reason(
     """Denied permission blocks include the explicit runtime reason."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -888,7 +888,7 @@ async def test_firewall_block_response_url_preserves_raw_encoded_path_without_qu
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -939,7 +939,7 @@ async def test_firewall_block_response_url_joins_base_path_without_double_slash(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="example",
             api_entry={
@@ -984,7 +984,7 @@ async def test_firewall_block_response_url_uses_runtime_url_for_parameterized_ba
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="example",
             api_entry={
@@ -1030,7 +1030,7 @@ async def test_firewall_permission_allows_matched(
     """Firewall with permissions and matching rule calls handler with allow result."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -1143,7 +1143,7 @@ async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
     """Unknown-endpoint allow keeps legacy empty permission metadata."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="example",
             api_entry={
@@ -1220,7 +1220,7 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     """Unsafe paths block before trusted auth is injected."""
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -1284,7 +1284,7 @@ async def test_unsafe_firewall_base_still_blocks_before_auth_injection(
     path = "/repos/%2e%2e/admin"
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": unsafe_base,

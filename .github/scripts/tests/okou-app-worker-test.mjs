@@ -80,7 +80,7 @@ function rewritePairedTag(html, tagName, handler) {
       : tagName === "head"
         ? /<head([^>]*)>([\s\S]*?)<\/head>/iu
         : /<title([^>]*)>([\s\S]*?)<\/title>/iu;
-  return html.replace(pattern, (tag, attributeSource, innerContent) => {
+  return html.replace(pattern, (_tag, attributeSource, innerContent) => {
     const state = applyHandler({
       attributes: parseAttributes(attributeSource),
       handler,
@@ -165,17 +165,50 @@ const [indexTemplate, manifestTemplate, workerModule] = await Promise.all([
 const worker = workerModule.default;
 const sharedThreadId = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://pr-25304-api.vm6.ai";
+const clerkJsVersion = "6.25.8";
+const previewClerkHost = "informed-calf-6.clerk.accounts.dev";
+const productionClerkHost = "clerk.vm0.ai";
+const clerkSatelliteDomain = "app.okou.ai";
+const previewClerkPublishableKey = publishableKey("test", previewClerkHost);
+const productionClerkPublishableKey = publishableKey(
+  "live",
+  productionClerkHost,
+);
+const previewClerkScriptUrl = clerkScriptUrl(previewClerkHost);
+const productionClerkScriptUrl = clerkScriptUrl(productionClerkHost);
+const satelliteClerkScriptUrl = clerkScriptUrl(`clerk.${clerkSatelliteDomain}`);
+const builtIndexTemplate = indexTemplate
+  .replaceAll(
+    "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%",
+    previewClerkPublishableKey,
+  )
+  .replaceAll(
+    "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
+    productionClerkPublishableKey,
+  )
+  .replaceAll("__VM0_CLERK_PREVIEW_SCRIPT_URL__", previewClerkScriptUrl)
+  .replaceAll("__VM0_CLERK_PRODUCTION_SCRIPT_URL__", productionClerkScriptUrl)
+  .replaceAll("__VM0_CLERK_SATELLITE_SCRIPT_URL__", satelliteClerkScriptUrl);
+const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
 const vm0Description =
   "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
 const okouDescription =
   "Okou, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
+
+function publishableKey(environment, host) {
+  return `pk_${environment}_${Buffer.from(`${host}$`).toString("base64")}`;
+}
+
+function clerkScriptUrl(host) {
+  return `https://${host}/npm/@clerk/clerk-js@${clerkJsVersion}/dist/clerk.browser.js`;
+}
 
 function requestUrl(input) {
   return new URL(input instanceof Request ? input.url : input.toString());
 }
 
 function assetEnvironment(apiOrigin = "") {
-  const indexHtml = indexTemplate.replace(
+  const indexHtml = builtIndexTemplate.replace(
     '<meta name="vm0-api-origin" content="" />',
     `<meta name="vm0-api-origin" content="${apiOrigin}" />`,
   );
@@ -262,6 +295,17 @@ function htmlAttribute(html, attributeName) {
   return tag ? (parseAttributes(tag).get(attributeName) ?? null) : null;
 }
 
+function clerkBootstrap(html) {
+  const bootstrap =
+    /<script\b[^>]*data-vm0-clerk-bootstrap=""[^>]*>[\s\S]*?<\/script>/iu.exec(
+      html,
+    )?.[0];
+  if (!bootstrap) {
+    throw new Error("Clerk bootstrap script is unavailable");
+  }
+  return bootstrap;
+}
+
 async function requestAppPage(origin, apiOrigin = "") {
   const response = await worker.fetch(
     new Request(`${origin}/settings/profile`),
@@ -320,6 +364,7 @@ assert.equal(
   tagAttribute(vm0Page.html, "img", "alt", "", "src"),
   "https://static.vm0.io/platform/icon.svg",
 );
+assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
 
 const okouPage = await requestAppPage("https://app.okou.ai");
 assert.equal(
@@ -367,6 +412,7 @@ assert.equal(
   tagAttribute(okouPage.html, "img", "alt", "", "src"),
   "https://static.okou.io/platform/icon.svg",
 );
+assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
 const okouPreview = await requestAppPage(
   "https://3508a2f5.okou-app.pages.dev",
@@ -381,6 +427,8 @@ assert.equal(
   metaContent(okouPreview.html, "name", "vm0-api-origin"),
   previewOrigin,
 );
+assert.equal(clerkBootstrap(okouPreview.html), expectedClerkBootstrap);
+assert.equal(okouPreview.html.includes("/npm/@clerk/ui@"), false);
 
 const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");
 assert.equal(htmlAttribute(untrustedSuffix.html, "data-app-brand-name"), "VM0");
@@ -413,6 +461,44 @@ const staticAsset = await worker.fetch(
 assert.equal(await staticAsset.text(), "export const app = true;");
 assert.equal(staticAsset.headers.get("etag"), '"asset-etag"');
 assert.equal(staticAsset.headers.get("x-robots-tag"), null);
+
+let proxiedAssetRequest = null;
+globalThis.fetch = (input) => {
+  proxiedAssetRequest = input instanceof Request ? input : new Request(input);
+  return Promise.resolve(
+    new Response("export const worker = true;", {
+      headers: {
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-type": "application/javascript",
+      },
+    }),
+  );
+};
+const proxiedAsset = await worker.fetch(
+  new Request(
+    "https://app.okou.ai/okou-app/assets/shared-database-worker-AbCd1234.js",
+    {
+      headers: {
+        Authorization: "Bearer secret",
+        Cookie: "session=secret",
+        Range: "bytes=0-1023",
+      },
+    },
+  ),
+  assetEnvironment(),
+);
+assert.equal(
+  proxiedAssetRequest?.url,
+  "https://static.okou.io/okou-app/assets/shared-database-worker-AbCd1234.js",
+);
+assert.equal(proxiedAssetRequest?.headers.get("range"), "bytes=0-1023");
+assert.equal(proxiedAssetRequest?.headers.get("authorization"), null);
+assert.equal(proxiedAssetRequest?.headers.get("cookie"), null);
+assert.equal(await proxiedAsset.text(), "export const worker = true;");
+assert.equal(
+  proxiedAsset.headers.get("cache-control"),
+  "public, max-age=31536000, immutable",
+);
 
 async function requestSharedPage({
   appOrigin,
@@ -448,7 +534,7 @@ const preview = await requestSharedPage({
 assert.equal(preview.response.status, 200);
 assert.equal(
   preview.observedUrl,
-  `${previewOrigin}/api/okou/shared-threads/${sharedThreadId}/meta`,
+  `${previewOrigin}/api/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   preview.observedHeaders.get("x-vercel-protection-bypass"),
@@ -485,7 +571,7 @@ const production = await requestSharedPage({
 assert.equal(production.response.status, 200);
 assert.equal(
   production.observedUrl,
-  `https://api.okou.ai/api/okou/shared-threads/${sharedThreadId}/meta`,
+  `https://api.okou.ai/api/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   production.observedHeaders.get("x-vercel-protection-bypass"),
@@ -519,20 +605,13 @@ assert.equal(
   "https://static.vm0.io/web/og-image.png",
 );
 
-const oldApiSharedOnOkouHost = await requestSharedPage({
+const missingBrandSharedPage = await requestSharedPage({
   appOrigin: "https://app.okou.ai",
   metaResponse() {
-    return Response.json({ title: "Pre-brand conversation" });
+    return Response.json({ title: "Missing-brand conversation" });
   },
 });
-assert.equal(oldApiSharedOnOkouHost.response.status, 200);
-const oldApiSharedHtml = await oldApiSharedOnOkouHost.response.text();
-assert.equal(documentTitle(oldApiSharedHtml), "Pre-brand conversation | VM0");
-assert.equal(htmlAttribute(oldApiSharedHtml, "data-app-brand-name"), "VM0");
-assert.equal(
-  metaContent(oldApiSharedHtml, "property", "og:url"),
-  `https://app.vm0.ai/share/threads/${sharedThreadId}`,
-);
+assert.equal(missingBrandSharedPage.response.status, 502);
 
 const missing = await requestSharedPage({
   appOrigin: "https://app.vm0.ai",
@@ -546,7 +625,7 @@ const missing = await requestSharedPage({
 assert.equal(missing.response.status, 404);
 assert.equal(
   missing.observedUrl,
-  `https://api.vm0.ai/api/okou/shared-threads/${sharedThreadId}/meta`,
+  `https://api.vm0.ai/api/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   missing.response.headers.get("cache-control"),

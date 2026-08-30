@@ -9,7 +9,7 @@ import { expect } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -129,7 +129,7 @@ function configureGoogleCalendarApiMock(args: {
     incrementalCalls: 0,
   };
   let incrementalCallCount = 0;
-  mockOptionalEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",

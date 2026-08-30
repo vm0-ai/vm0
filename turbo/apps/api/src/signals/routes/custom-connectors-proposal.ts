@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroCustomConnectorProposalContract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import { customConnectorProposalContract } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -12,7 +12,7 @@ const saveProposalInner$ = command(
     const auth = get(organizationAuthContext$);
 
     const bodyResult = await get(
-      bodyResultOf(zeroCustomConnectorProposalContract.save),
+      bodyResultOf(customConnectorProposalContract.save),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -43,7 +43,7 @@ const saveProposalInner$ = command(
 
 export const customConnectorProposalRoutes: readonly RouteEntry[] = [
   {
-    route: zeroCustomConnectorProposalContract.save,
+    route: customConnectorProposalContract.save,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       saveProposalInner$,

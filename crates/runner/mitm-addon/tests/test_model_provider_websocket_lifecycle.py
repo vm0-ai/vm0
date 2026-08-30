@@ -16,7 +16,7 @@ from tests.model_provider_flow_helpers import (
 )
 from tests.model_provider_websocket_helpers import feed_websocket_server_message
 from tests.pending_helpers import assert_pending
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.usage_helpers import compact_observation_quantities
 
 
@@ -24,7 +24,7 @@ def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
     firewall_name = "model-provider:openai-api-key"
     return _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             run_id="run-abc-123",
             sandbox_marker="tok-xyz",
@@ -41,7 +41,7 @@ def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
                 "unknownPolicy": "deny",
             },
             billable_firewalls=[firewall_name],
-            vm_fields={
+            sandbox_fields={
                 "cliAgentType": "codex",
                 "modelUsageProvider": "gpt-5.5",
             },

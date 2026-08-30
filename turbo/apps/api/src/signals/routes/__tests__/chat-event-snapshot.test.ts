@@ -3,7 +3,10 @@ import { gunzipSync } from "node:zlib";
 
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
-import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadEventsContract,
   type UserMessageDocument,
@@ -29,10 +32,7 @@ import {
   readFakeChatEventObject,
   writeFakeChatEventObject,
 } from "./helpers/fake-chat-event-r2";
-import {
-  readChatEventSnapshotHead,
-  setChatEventSnapshotHeadVersion,
-} from "./helpers/runtime-state";
+import { readChatEventSnapshotHead } from "./helpers/runtime-state";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
@@ -72,7 +72,8 @@ function authenticate(actor: ApiTestUser) {
   );
   return {
     authorization: "Bearer clerk-session",
-    [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
   };
 }
 
@@ -132,21 +133,6 @@ async function sendNoCreditMessage(
   return sent.body.threadId;
 }
 
-async function replaceHeadWithRetiredVersion(
-  threadId: string,
-): Promise<string> {
-  const head = await readChatEventSnapshotHead(context, threadId);
-  const body = readFakeChatEventObject(head.object_key);
-  if (body === undefined) {
-    throw new Error("Expected a current snapshot object");
-  }
-  const retiredKey = `chat-events/${threadId}/retired-v3-${randomUUID()}.ndjson.gz`;
-  writeFakeChatEventObject(retiredKey, body);
-  await trackFakeChatEventObject(Promise.resolve(retiredKey));
-  await setChatEventSnapshotHeadVersion(context, threadId, 3, retiredKey);
-  return retiredKey;
-}
-
 describe("chat event snapshot read endpoints", () => {
   beforeEach(() => {
     installFakeChatEventR2(context);
@@ -199,12 +185,15 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [200],
     );
-    expect(download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    );
     expect(download.body).toStrictEqual({
       url: FAKE_CHAT_EVENT_SNAPSHOT_URL,
       expiresInSeconds: 900,
       lastEventId: head.last_event_id,
       lastSeqId: head.last_seq_id,
+      projection: "tool-redacted",
     });
 
     const snapshotObject = readFakeChatEventObject(head.object_key);
@@ -238,7 +227,7 @@ describe("chat event snapshot read endpoints", () => {
     await expect(
       readChatEventSnapshotHead(context, threadId),
     ).resolves.toMatchObject({
-      archive_schema_version: 5,
+      archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       last_event_id: head.last_event_id,
       last_seq_id: head.last_seq_id,
       object_key: head.object_key,
@@ -312,13 +301,13 @@ describe("chat event snapshot read endpoints", () => {
         code: "CHAT_EVENT_SCHEMA_VERSION_INVALID",
       },
       {
-        version: "4",
+        version: (CURRENT_CHAT_EVENT_SCHEMA_VERSION - 1).toString(),
         status: 426,
         message: "The requested Chat Event schema version is retired",
         code: "CHAT_EVENT_SCHEMA_VERSION_RETIRED",
       },
       {
-        version: "6",
+        version: (CURRENT_CHAT_EVENT_SCHEMA_VERSION + 1).toString(),
         status: 409,
         message:
           "The requested Chat Event schema version is newer than this API",
@@ -374,25 +363,27 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [200],
     );
-    expect(fromStart.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(fromStart.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    );
     const firstRow = fromStart.body.rows[0];
     if (firstRow === undefined) {
       throw new Error("Expected seeded chat events");
     }
     const firstSeqId = firstRow.seqId;
 
-    const v5Input = fromStart.body.rows
+    const canonicalInput = fromStart.body.rows
       .map((row) => {
         return chatEventFromRow(row);
       })
       .find((event) => {
         return event.eventType === "input.prompt";
       });
-    if (v5Input?.eventType !== "input.prompt") {
-      throw new Error("Expected the V5 feedback input");
+    if (canonicalInput?.eventType !== "input.prompt") {
+      throw new Error("Expected the canonical feedback input");
     }
     expect(
-      v5Input.userMessage.parts.find((part) => {
+      canonicalInput.userMessage.parts.find((part) => {
         return part.type === "feedback";
       }),
     ).toMatchObject({
@@ -405,11 +396,20 @@ describe("chat event snapshot read endpoints", () => {
       eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: { sinceSeqId: firstSeqId, sinceEventId: firstRow.id },
+        query: {
+          sinceSeqId: firstSeqId,
+          sinceEventId: firstRow.id,
+        },
       }),
       [200],
     );
-    expect(rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
+    expect(rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    );
+    expect(rows.body.projection).toBe("tool-redacted");
+    expect(rows.body.cursor).toMatchObject({
+      projection: "tool-redacted",
+    });
     for (const row of rows.body.rows) {
       chatEventRowSchema.parse(row);
       expect(row.chatThreadId).toBe(threadId);
@@ -452,7 +452,11 @@ describe("chat event snapshot read endpoints", () => {
       eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: { sinceSeqId: firstSeqId, sinceEventId: randomUUID() },
+        query: {
+          sinceSeqId: firstSeqId,
+          sinceEventId: randomUUID(),
+          sinceProjection: "tool-redacted",
+        },
       }),
       [410],
     );
@@ -467,7 +471,11 @@ describe("chat event snapshot read endpoints", () => {
       eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: { sinceSeqId: 999_999, sinceEventId: randomUUID() },
+        query: {
+          sinceSeqId: 999_999,
+          sinceEventId: randomUUID(),
+          sinceProjection: "tool-redacted",
+        },
       }),
       [410],
     );
@@ -476,43 +484,6 @@ describe("chat event snapshot read endpoints", () => {
         message: "Chat events cursor has expired",
         code: "CHAT_EVENTS_EXPIRED",
       },
-    });
-  }, 60_000);
-
-  it("preserves and skips the only Snapshot when no lossless upgrade exists", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Snapshot fail-closed agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `snapshot-fail-closed-${randomUUID()}`,
-    });
-
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    const retiredKey = await replaceHeadWithRetiredVersion(threadId);
-
-    const unavailable = await accept(
-      eventsClient().snapshot({
-        headers: authenticate(owner),
-        params: { threadId },
-      }),
-      [404],
-    );
-    expect(unavailable.body.error.code).toBe("CHAT_EVENT_SNAPSHOT_NOT_FOUND");
-    await expect(runSnapshotCron([threadId])).resolves.toMatchObject({
-      snapshots: 0,
-      archivedEvents: 0,
-      skippedUnsupportedHeads: 1,
-    });
-    expect(readFakeChatEventObject(retiredKey)).toBeDefined();
-    await expect(
-      readChatEventSnapshotHead(context, threadId),
-    ).resolves.toMatchObject({
-      archive_schema_version: 3,
-      object_key: retiredKey,
-      snapshot_count: 1,
     });
   }, 60_000);
 
@@ -590,9 +561,7 @@ describe("chat event snapshot read endpoints", () => {
 
     const result = await runSnapshotCron([], keys);
 
-    expect(
-      result.retiredSnapshotReferencesDeleted + result.r2ObjectsDeleted,
-    ).toBe(1000);
+    expect(result.r2ObjectsDeleted).toBe(1000);
     const remaining = keys.filter((key) => {
       return readFakeChatEventObject(key) !== undefined;
     });

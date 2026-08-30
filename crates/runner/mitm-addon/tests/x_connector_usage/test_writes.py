@@ -317,6 +317,87 @@ def test_tweet_create_multi_member_gzip_enforces_total_decoded_cap(
 
 
 @pytest.mark.parametrize(
+    ("wbits", "decoded_size", "expected_category"),
+    [
+        pytest.param(
+            _ZLIB_DEFLATE_WBITS,
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+            "content.create",
+            id="zlib-exact-limit",
+        ),
+        pytest.param(
+            _RAW_DEFLATE_WBITS,
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+            "content.create",
+            id="raw-exact-limit",
+        ),
+        pytest.param(
+            _ZLIB_DEFLATE_WBITS,
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT + 1,
+            "content.create_with_url",
+            id="zlib-over-limit",
+        ),
+        pytest.param(
+            _RAW_DEFLATE_WBITS,
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT + 1,
+            "content.create_with_url",
+            id="raw-over-limit",
+        ),
+    ],
+)
+def test_tweet_create_deflate_enforces_decoded_cap(
+    x_usage, tmp_path, real_flow, wbits, decoded_size, expected_category
+):
+    request_payload = _tweet_body_with_size(decoded_size)
+    request_body = zlib.compress(request_payload, wbits=wbits)
+    assert len(request_payload) == decoded_size
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=request_body,
+        request_encoding="deflate",
+    )
+    flow.request.method = "POST"
+
+    real_factory = zlib.decompressobj
+    max_lengths: list[int] = []
+
+    class TrackingDecompressionObj:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def decompress(self, data, max_length=0):
+            max_lengths.append(max_length)
+            return self._wrapped.decompress(data, max_length=max_length)
+
+        @property
+        def eof(self):
+            return self._wrapped.eof
+
+        @property
+        def unused_data(self):
+            return self._wrapped.unused_data
+
+    def factory(*args, **kwargs):
+        return TrackingDecompressionObj(real_factory(*args, **kwargs))
+
+    with patch("billing_body.zlib.decompressobj", factory):
+        p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == expected_category
+    assert p["quantity"] == 1
+    assert max_lengths
+    assert set(max_lengths) == {REQUEST_BODY_BILLING_INSPECTION_LIMIT + 1}
+
+
+@pytest.mark.parametrize(
     ("request_encoding", "request_body", "wbits"),
     [
         pytest.param(
@@ -675,6 +756,7 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         "Sharp S faß.de",
         "Fullwidth compatibility \uff26\uff2f\uff2f.com",
         "Fullwidth terminal example.\uff23\uff2f\uff2d",
+        "Repeated fullwidth compatibility \uff26\uff2f\uff2f.\uff26\uff2f\uff2f",
     ],
 )
 def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_flow, text):
@@ -818,12 +900,16 @@ def test_tweet_create_long_unicode_label_does_not_restart_candidate_search(
     assert p["quantity"] == 1
 
 
-def test_tweet_create_near_limit_non_link_candidate_downgrades_to_content_create(
-    x_usage, tmp_path, real_flow
-):
-    """Near-limit Unicode labels avoid repeated IDNA work and remain non-link."""
-    text = "a." + (("é" * 20 + ".") * 1_400) + "notatld"
-    request_body = json.dumps({"text": text}, ensure_ascii=False).encode()
+def test_tweet_create_repeated_unicode_labels_reuse_classification(x_usage, tmp_path, real_flow):
+    """Repeated Unicode labels reuse IDNA work and remain non-link."""
+    text = "a." + (("é" * 20 + ".") * 1_189) + "notatld"
+    request_body = json.dumps(
+        {"text": text},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+    assert len(text) == 24_978
+    assert len(request_body) == 48_769
     assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
     flow = x_usage.make_flow(
         real_flow,
@@ -837,9 +923,69 @@ def test_tweet_create_near_limit_non_link_candidate_downgrades_to_content_create
     flow.request.method = "POST"
     flow.request.content = request_body
 
-    p = x_usage.call_and_get_single_billing(flow)
+    with (
+        patch.object(
+            x_billing,
+            "normalize_idna_label",
+            wraps=x_billing.normalize_idna_label,
+        ) as normalize_idna_label,
+        patch.object(
+            x_billing,
+            "_label_has_tld_prefix_before_unicode",
+            wraps=x_billing._label_has_tld_prefix_before_unicode,
+        ) as label_has_tld_prefix_before_unicode,
+    ):
+        p = x_usage.call_and_get_single_billing(flow)
 
+    assert normalize_idna_label.call_count == 3
+    assert label_has_tld_prefix_before_unicode.call_count == 2
     assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_distinct_unicode_labels_stop_at_body_work_limit(x_usage, tmp_path, real_flow):
+    """Distinct labels across candidates stop at one body-wide work limit."""
+    unicode_labels = [chr(0x4E00 + index) for index in range(10_000)]
+    labels_per_candidate = 128
+    text = " ".join(
+        "a." + ".".join(unicode_labels[start : start + labels_per_candidate]) + ".notatld"
+        for start in range(0, len(unicode_labels), labels_per_candidate)
+    )
+    request_body = json.dumps(
+        {"text": text},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.content = request_body
+
+    with (
+        patch.object(
+            x_billing,
+            "normalize_idna_label",
+            wraps=x_billing.normalize_idna_label,
+        ) as normalize_idna_label,
+        patch.object(
+            x_billing,
+            "_label_has_tld_prefix_before_unicode",
+            wraps=x_billing._label_has_tld_prefix_before_unicode,
+        ) as label_has_tld_prefix_before_unicode,
+    ):
+        p = x_usage.call_and_get_single_billing(flow)
+
+    assert normalize_idna_label.call_count == 256
+    assert label_has_tld_prefix_before_unicode.call_count == 255
+    assert p["category"] == "content.create_with_url"
     assert p["quantity"] == 1
 
 

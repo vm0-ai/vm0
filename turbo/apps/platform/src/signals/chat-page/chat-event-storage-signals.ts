@@ -12,6 +12,7 @@ import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event
 import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
+import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import type { ChatEventDataKey } from "../../shared-database/data-key.ts";
 import {
@@ -25,10 +26,10 @@ import {
   clearIndexedDbChatEventRows$,
   loadIndexedDbChatEventCursor$,
   loadIndexedDbChatEventRowsAfter$,
+  replaceIndexedDbChatEventRows$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
-  CHAT_EVENT_ROWS_PAGE_LIMIT,
   fetchChatEventSnapshotRows$,
   listRowsAfter$,
 } from "./remote-chat-event-row-data-source.ts";
@@ -69,7 +70,7 @@ function reportNewCompletedRuns({
 }: {
   persistentEvents: readonly PersistedChatEvent[];
   events: readonly PersistedChatEvent[];
-}): void {
+}): boolean {
   const reportedCompletedRunIds = new Set(
     completedRunIdsFromEvents(persistentEvents),
   );
@@ -81,6 +82,7 @@ function reportNewCompletedRuns({
   for (const _ of newlyCompletedRunIds) {
     captureTaskCompletedSuccessfully();
   }
+  return newlyCompletedRunIds.length > 0;
 }
 
 function mergePersistentEvents(
@@ -168,29 +170,36 @@ function createSyncRemoteRowsCommand({
      * not reached yet has no snapshot, so the whole thread is still in
      * Postgres and the tail below reads it from the beginning.
      */
-    const loadColdStartCursor = async (): Promise<ChatEventCursor> => {
-      const snapshot = await settle(
+    const loadColdStartCursor = async (): Promise<{
+      readonly cursor: ChatEventCursor;
+    }> => {
+      const result = await settle(
         set(fetchChatEventSnapshotRows$, threadId, signal),
         signal,
       );
-      if (!snapshot.ok) {
-        throw snapshot.error;
+      if (!result.ok) {
+        throw result.error;
       }
-      if (snapshot.value === null) {
-        return { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID };
-      }
-      const cursor = {
-        lastEventId: snapshot.value.lastEventId,
-        lastSeqId: snapshot.value.lastSeqId,
-      };
+      const snapshot = result.value.snapshot;
+      const cursor: ChatEventCursor =
+        snapshot === null || snapshot.lastEventId === null
+          ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
+          : {
+              lastEventId: snapshot.lastEventId,
+              lastSeqId: snapshot.lastSeqId,
+            };
       await set(
-        writeIndexedDbChatEventRows$,
-        { threadId, rows: snapshot.value.rows, cursor },
+        replaceIndexedDbChatEventRows$,
+        {
+          threadId,
+          rows: snapshot?.rows ?? [],
+          cursor,
+        },
         signal,
       );
       signal.throwIfAborted();
-      await mergeRows(snapshot.value.rows);
-      return cursor;
+      await mergeRows(snapshot?.rows ?? []);
+      return { cursor };
     };
 
     // True once the cursor came from the server rather than the local cache.
@@ -209,8 +218,9 @@ function createSyncRemoteRowsCommand({
       signal,
     );
     if (cachedCursor === null) {
-      cursor = await loadColdStartCursor();
+      const coldStart = await loadColdStartCursor();
       signal.throwIfAborted();
+      cursor = coldStart.cursor;
       cursorFromServer = true;
       needsColdStartTailConfirmation = true;
     } else {
@@ -229,28 +239,29 @@ function createSyncRemoteRowsCommand({
         }
         await set(clearIndexedDbChatEventRows$, threadId, signal);
         signal.throwIfAborted();
-        cursor = await loadColdStartCursor();
+        const coldStart = await loadColdStartCursor();
         signal.throwIfAborted();
+        cursor = coldStart.cursor;
         cursorFromServer = true;
         needsColdStartTailConfirmation = true;
         continue;
       }
-      const lastRow = page.rows.at(-1);
-      if (lastRow !== undefined) {
-        cursor = { lastEventId: lastRow.id, lastSeqId: lastRow.seqId };
-        await set(
-          writeIndexedDbChatEventRows$,
-          { threadId, rows: page.rows, cursor },
-          signal,
-        );
-        signal.throwIfAborted();
-      }
+      cursor = page.cursor;
+      await set(
+        writeIndexedDbChatEventRows$,
+        {
+          threadId,
+          rows: page.rows,
+          cursor,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
       await mergeRows(page.rows);
       signal.throwIfAborted();
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
-      shouldLoadNextPage =
-        confirmColdStartTail || page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
+      shouldLoadNextPage = confirmColdStartTail || page.hasMore;
     }
   });
 }
@@ -408,7 +419,7 @@ export function createChatEventStorageSignals({
       if (events.length === 0) {
         return;
       }
-      reportNewCompletedRuns({
+      const hasNewCompletedRun = reportNewCompletedRuns({
         persistentEvents: get(persistentChatEvents$),
         events,
       });
@@ -418,6 +429,9 @@ export function createChatEventStorageSignals({
       set(reconcileOptimisticChatEvents$, { threadId, events });
       await set(notifyChatEventsChanged$, chatEvents$, signal);
       signal.throwIfAborted();
+      if (hasNewCompletedRun) {
+        await settle(set(syncGoogleAdsConversionMilestones$, signal), signal);
+      }
     },
   );
   const syncLegacyRemoteEvents$ = createSyncRemoteRowsCommand({

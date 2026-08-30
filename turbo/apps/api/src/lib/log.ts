@@ -38,6 +38,8 @@ interface Logger {
   level: Level;
 }
 
+type RetainedAliasResolutionEvent = "stripe_preview_job_ref_alias_resolution";
+
 class LoggerRegistry {
   private readonly store = new Map<string, Logger>();
 
@@ -54,8 +56,7 @@ const loggerRegistry = singleton(() => {
   return new LoggerRegistry();
 });
 
-function getDebugPatterns(): string[] {
-  const value = env("VM0_DEBUG");
+function parseDebugPatterns(value: string | undefined): readonly string[] {
   if (!value) {
     return [];
   }
@@ -70,6 +71,10 @@ function getDebugPatterns(): string[] {
     });
 }
 
+const debugPatterns = singleton(() => {
+  return parseDebugPatterns(env("OKOU_DEBUG"));
+});
+
 function matchesDebugPattern(name: string, pattern: string): boolean {
   if (pattern === "*") {
     return true;
@@ -83,7 +88,7 @@ function matchesDebugPattern(name: string, pattern: string): boolean {
 }
 
 function isDebugEnabled(name: string): boolean {
-  return getDebugPatterns().some((pattern) => {
+  return debugPatterns().some((pattern) => {
     return matchesDebugPattern(name, pattern);
   });
 }
@@ -346,8 +351,17 @@ export function logger(name: string): Logger {
   return loggerInstance;
 }
 
+export function logAliasResolutionInfo(
+  loggerInstance: Pick<Logger, "info">,
+  event: RetainedAliasResolutionEvent,
+  fields: Readonly<Record<string, string>>,
+): void {
+  loggerInstance.info(event, fields);
+}
+
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export function __resetForTest(): void {
+  debugPatterns.reset();
   getAxiomLogger.reset();
   loggerRegistry.reset();
 }

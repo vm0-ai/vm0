@@ -53,6 +53,9 @@ case "$MOCK_CURL_MODE" in
     fi
     cp "$MOCK_CURL_SOURCE" "$output"
     ;;
+  success)
+    cp "$MOCK_CURL_SOURCE" "$output"
+    ;;
   corrupt-then-success)
     if ((attempt == 1)); then
       printf 'invalid release response\n' > "$output"
@@ -85,8 +88,8 @@ run_download() {
   MOCK_CURL_MODE="$mode" \
     MOCK_CURL_SOURCE="$source_file" \
     MOCK_CURL_STATE="$state_file" \
-    VM0_DOWNLOAD_VERIFIED_MAX_ATTEMPTS=3 \
-    VM0_DOWNLOAD_VERIFIED_RETRY_DELAY_SECONDS=0 \
+    OKOU_DOWNLOAD_VERIFIED_MAX_ATTEMPTS=3 \
+    OKOU_DOWNLOAD_VERIFIED_RETRY_DELAY_SECONDS=0 \
     PATH="${tmp_dir}/bin:${PATH}" \
     bash "$script" "$url" "$expected_sha256" "$destination" \
       > /dev/null 2> "$stderr_file"
@@ -138,5 +141,21 @@ if find "$tmp_dir" -maxdepth 1 -name 'existing.tar.gz.partial.*' -print -quit | 
   echo "Expected failed downloads to remove their partial file" >&2
   exit 1
 fi
+
+legacy_state="${tmp_dir}/legacy.state"
+legacy_destination="${tmp_dir}/legacy.tar.gz"
+retired_prefix="VM0_"
+printf '0\n' > "$legacy_state"
+env \
+  "${retired_prefix}DOWNLOAD_VERIFIED_MAX_ATTEMPTS=invalid" \
+  "${retired_prefix}DOWNLOAD_VERIFIED_RETRY_DELAY_SECONDS=invalid" \
+  MOCK_CURL_MODE=success \
+  MOCK_CURL_SOURCE="$source_file" \
+  MOCK_CURL_STATE="$legacy_state" \
+  PATH="${tmp_dir}/bin:${PATH}" \
+  bash "$script" "$url" "$expected_sha256" "$legacy_destination" \
+    > /dev/null
+cmp "$source_file" "$legacy_destination"
+[[ "$(<"$legacy_state")" == "1" ]]
 
 echo "download-verified tests passed"

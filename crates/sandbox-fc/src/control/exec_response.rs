@@ -289,6 +289,8 @@ impl<'a> RawFrameReader<'a> {
 
 #[cfg(test)]
 mod tests {
+    use sandbox::EXEC_OUTPUT_LIMIT_7_MIB;
+
     use super::super::protocol::MAX_FRAME_PAYLOAD_SIZE;
     use super::*;
 
@@ -379,21 +381,21 @@ mod tests {
 
     #[tokio::test]
     async fn maximum_control_capture_avoids_base64_wire_expansion() {
-        const STREAM_LEN: usize = 7 * 1024 * 1024;
+        let stdout_len = EXEC_OUTPUT_LIMIT_7_MIB.stdout_limit_bytes as usize;
+        let stderr_len = EXEC_OUTPUT_LIMIT_7_MIB.stderr_limit_bytes as usize;
         let payload = encoded_payload(ExecResult::Success {
             termination: ExecTermination::Exited { exit_code: 0 },
-            stdout: vec![b'o'; STREAM_LEN],
-            stderr: vec![b'e'; STREAM_LEN],
+            stdout: vec![b'o'; stdout_len],
+            stderr: vec![b'e'; stderr_len],
             stdout_truncated: true,
             stderr_truncated: true,
             diagnostic: String::new(),
         })
         .await;
 
-        assert_eq!(payload.len(), 24 + 2 * STREAM_LEN);
-        let base64_len = 2 * STREAM_LEN.div_ceil(3) * 4;
+        assert_eq!(payload.len(), 24 + stdout_len + stderr_len);
+        let base64_len = stdout_len.div_ceil(3) * 4 + stderr_len.div_ceil(3) * 4;
         assert!(payload.len() < base64_len);
-        assert_eq!(base64_len - payload.len(), 4_893_336);
     }
 
     #[tokio::test]

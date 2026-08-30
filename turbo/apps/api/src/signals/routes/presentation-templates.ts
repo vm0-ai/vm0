@@ -1,7 +1,7 @@
 import { command, computed } from "ccstate";
 import {
   presentationTemplatesContract,
-  PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
+  type PresentationTemplatePreviewAsset,
 } from "@okouai/api-contracts/contracts/presentation-templates";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -15,17 +15,26 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
-import { publishPresentationTemplatesChangedSafely } from "../external/realtime";
-import { generatePresignedGetUrl } from "../external/s3";
+import {
+  publishPresentationTemplatesChangedForOrgSafely,
+  publishPresentationTemplatesChangedForUserSafely,
+} from "../external/realtime";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   listAccessiblePresentationTemplates,
   loadAccessiblePresentationTemplate,
+  parsePresentationTemplatePreviewAssetId,
+  presentationTemplatePreviewAssetId,
   presentationTemplateSummary,
   type PresentationTemplateRow,
 } from "../services/presentation-template-data.service";
 import { deletePresentationTemplate$ } from "../services/presentation-template-delete.service";
 import { publishPresentationTemplate$ } from "../services/presentation-template-publish.service";
+import {
+  presentationTemplatePreviewPresignedUrlCacheKey,
+  resolvePresentationTemplatePreviewPresignedUrls,
+  type PresentationTemplatePreviewPresignedUrlRequest,
+} from "../services/system-storage-presigned-url-cache.service";
 import type { RouteEntry } from "../route-entry";
 
 const templateReadAuth = {
@@ -73,19 +82,99 @@ function templateNotFound(templateId: string) {
   return notFound(`Presentation template not found: ${templateId}`);
 }
 
-function presentationTemplatePageFilename(index: number): string {
-  return `page-${(index + 1).toString().padStart(3, "0")}.png`;
+interface AccessiblePresentationTemplatePreviewAsset {
+  readonly previewAssetId: string;
+  readonly request: PresentationTemplatePreviewPresignedUrlRequest;
 }
 
-async function signedPageUrls(
-  row: PresentationTemplateRow,
-  sign: (key: string, index: number) => Promise<string>,
-): Promise<readonly string[]> {
-  return await Promise.all(
-    row.pageKeys.map(async (key, index) => {
-      return await sign(key, index);
+function presentationTemplatePreviewAsset(args: {
+  readonly row: PresentationTemplateRow;
+  readonly objectKey: string;
+  readonly bucket: string;
+  readonly orgId: string;
+}): AccessiblePresentationTemplatePreviewAsset {
+  const previewAssetId = presentationTemplatePreviewAssetId(
+    args.row.id,
+    args.objectKey,
+  );
+  const identity = parsePresentationTemplatePreviewAssetId(previewAssetId);
+  if (identity === null) {
+    throw new Error(`Invalid generated preview asset id: ${previewAssetId}`);
+  }
+  return {
+    previewAssetId,
+    request: {
+      bucket: args.bucket,
+      objectKey: args.objectKey,
+      storageVersionId: identity.storageVersionId,
+      resolvedOrgId: args.orgId,
+      publicEndpoint: true,
+    },
+  };
+}
+
+function presentationTemplatePreviewAssetsForRow(args: {
+  readonly row: PresentationTemplateRow;
+  readonly bucket: string;
+  readonly orgId: string;
+}): readonly AccessiblePresentationTemplatePreviewAsset[] {
+  return args.row.pageKeys.map((objectKey) => {
+    return presentationTemplatePreviewAsset({ ...args, objectKey });
+  });
+}
+
+function resolvedPresentationTemplatePreviewAssets(
+  assets: readonly AccessiblePresentationTemplatePreviewAsset[],
+  urlsByCacheKey: ReadonlyMap<
+    string,
+    { readonly url: string; readonly expiresAt: Date }
+  >,
+): readonly PresentationTemplatePreviewAsset[] {
+  return assets.map((asset) => {
+    const result = urlsByCacheKey.get(
+      presentationTemplatePreviewPresignedUrlCacheKey(asset.request),
+    );
+    if (result === undefined) {
+      throw new Error(`Preview URL not resolved: ${asset.previewAssetId}`);
+    }
+    return {
+      previewAssetId: asset.previewAssetId,
+      url: result.url,
+      expiresAt: result.expiresAt.toISOString(),
+    };
+  });
+}
+
+function accessiblePresentationTemplatePreviewAssets(args: {
+  readonly rows: readonly PresentationTemplateRow[];
+  readonly previewAssetIds: readonly string[];
+  readonly bucket: string;
+  readonly orgId: string;
+}): readonly AccessiblePresentationTemplatePreviewAsset[] {
+  const rowById = new Map(
+    args.rows.map((row) => {
+      return [row.id, row];
     }),
   );
+  return [...new Set(args.previewAssetIds)].flatMap((previewAssetId) => {
+    const identity = parsePresentationTemplatePreviewAssetId(previewAssetId);
+    const row = identity ? rowById.get(identity.templateId) : undefined;
+    const objectKey = row?.pageKeys.find((pageKey) => {
+      return (
+        presentationTemplatePreviewAssetId(row.id, pageKey) === previewAssetId
+      );
+    });
+    return identity === null || row === undefined || objectKey === undefined
+      ? []
+      : [
+          presentationTemplatePreviewAsset({
+            row,
+            objectKey,
+            bucket: args.bucket,
+            orgId: args.orgId,
+          }),
+        ];
+  });
 }
 
 const publishBody$ = bodyResultOf(presentationTemplatesContract.publish);
@@ -117,19 +206,26 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!row) {
     throw new Error(`Published template not found: ${result.templateId}`);
   }
-  const coverKey = row.pageKeys[0];
-  const coverUrl = coverKey
-    ? await get(
-        generatePresignedGetUrl(
-          env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-          coverKey,
-          PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
-          presentationTemplatePageFilename(0),
-          true,
-        ),
-      )
-    : null;
-  await publishPresentationTemplatesChangedSafely(auth.userId);
+  const coverAsset = presentationTemplatePreviewAssetsForRow({
+    row,
+    bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+    orgId: auth.orgId,
+  })[0];
+  const coverUrlsByCacheKey = await get(
+    resolvePresentationTemplatePreviewPresignedUrls({
+      db: set(writeDb$),
+      requests: coverAsset === undefined ? [] : [coverAsset.request],
+    }),
+  );
+  signal.throwIfAborted();
+  const coverUrl =
+    coverAsset === undefined
+      ? null
+      : (resolvedPresentationTemplatePreviewAssets(
+          [coverAsset],
+          coverUrlsByCacheKey,
+        )[0]?.url ?? null);
+  await publishPresentationTemplatesChangedForUserSafely(auth.userId);
   signal.throwIfAborted();
   return {
     status: 200 as const,
@@ -137,7 +233,7 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const listInner$ = computed(async (get) => {
+const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await get(presentationTemplatesEnabled$))) {
     return presentationTemplatesDisabled;
@@ -146,29 +242,50 @@ const listInner$ = computed(async (get) => {
     orgId: auth.orgId,
     userId: auth.userId,
   });
+  signal.throwIfAborted();
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const summaries = await Promise.all(
-    rows.map(async (row) => {
-      const coverKey = row.pageKeys[0];
-      const coverUrl = coverKey
-        ? await get(
-            generatePresignedGetUrl(
-              bucket,
-              coverKey,
-              PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
-              presentationTemplatePageFilename(0),
-              true,
-            ),
-          )
-        : null;
-      return presentationTemplateSummary(row, coverUrl, auth.userId);
+  const previewAssetsByTemplateId = new Map(
+    rows.map((row) => {
+      return [
+        row.id,
+        presentationTemplatePreviewAssetsForRow({
+          row,
+          bucket,
+          orgId: auth.orgId,
+        }),
+      ] as const;
     }),
   );
-  return { status: 200 as const, body: summaries };
+  const urlsByCacheKey = await get(
+    resolvePresentationTemplatePreviewPresignedUrls({
+      db: set(writeDb$),
+      requests: [...previewAssetsByTemplateId.values()].flatMap((assets) => {
+        return assets.map((asset) => {
+          return asset.request;
+        });
+      }),
+    }),
+  );
+  signal.throwIfAborted();
+  const catalog = rows.map((row) => {
+    const previewAssets = resolvedPresentationTemplatePreviewAssets(
+      previewAssetsByTemplateId.get(row.id) ?? [],
+      urlsByCacheKey,
+    );
+    return {
+      ...presentationTemplateSummary(
+        row,
+        previewAssets[0]?.url ?? null,
+        auth.userId,
+      ),
+      previewAssets,
+    };
+  });
+  return { status: 200 as const, body: catalog };
 });
 
 const getParams$ = pathParamsOf(presentationTemplatesContract.get);
-const getInner$ = computed(async (get) => {
+const getInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await get(presentationTemplatesEnabled$))) {
     return presentationTemplatesDisabled;
@@ -179,29 +296,87 @@ const getInner$ = computed(async (get) => {
     userId: auth.userId,
     templateId: params.templateId,
   });
+  signal.throwIfAborted();
   if (!row) {
     return templateNotFound(params.templateId);
   }
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const pageUrls = await signedPageUrls(row, async (key, index) => {
-    return await get(
-      generatePresignedGetUrl(
-        bucket,
-        key,
-        PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
-        presentationTemplatePageFilename(index),
-        true,
-      ),
-    );
+  const previewAssets = presentationTemplatePreviewAssetsForRow({
+    row,
+    bucket,
+    orgId: auth.orgId,
+  });
+  const urlsByCacheKey = await get(
+    resolvePresentationTemplatePreviewPresignedUrls({
+      db: set(writeDb$),
+      requests: previewAssets.map((asset) => {
+        return asset.request;
+      }),
+    }),
+  );
+  signal.throwIfAborted();
+  const resolvedPreviewAssets = resolvedPresentationTemplatePreviewAssets(
+    previewAssets,
+    urlsByCacheKey,
+  );
+  const pageUrls = resolvedPreviewAssets.map((asset) => {
+    return asset.url;
   });
   return {
     status: 200 as const,
     body: {
       ...presentationTemplateSummary(row, pageUrls[0] ?? null, auth.userId),
       pageUrls,
+      previewAssets: resolvedPreviewAssets,
     },
   };
 });
+
+const resolvePreviewUrlsBody$ = bodyResultOf(
+  presentationTemplatesContract.resolvePreviewUrls,
+);
+const resolvePreviewUrlsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (!(await get(presentationTemplatesEnabled$))) {
+      return presentationTemplatesDisabled;
+    }
+    const bodyResult = await get(resolvePreviewUrlsBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const rows = await listAccessiblePresentationTemplates(get(db$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+    });
+    signal.throwIfAborted();
+    const assets = accessiblePresentationTemplatePreviewAssets({
+      rows,
+      previewAssetIds: bodyResult.data.previewAssetIds,
+      bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+      orgId: auth.orgId,
+    });
+    const urlsByCacheKey = await get(
+      resolvePresentationTemplatePreviewPresignedUrls({
+        db: set(writeDb$),
+        requests: assets.map((asset) => {
+          return asset.request;
+        }),
+      }),
+    );
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: {
+        assets: resolvedPresentationTemplatePreviewAssets(
+          assets,
+          urlsByCacheKey,
+        ),
+      },
+    };
+  },
+);
 
 const updateParams$ = pathParamsOf(presentationTemplatesContract.update);
 const updateBody$ = bodyResultOf(presentationTemplatesContract.update);
@@ -216,38 +391,72 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const [row] = await set(writeDb$)
-    .update(presentationTemplates)
-    .set({
-      title: bodyResult.data.title,
-      visibility: bodyResult.data.visibility,
-      updatedAt: nowDate(),
-      updatedBy: auth.userId,
-    })
-    .where(
-      and(
-        eq(presentationTemplates.id, params.templateId),
-        eq(presentationTemplates.orgId, auth.orgId),
-        eq(presentationTemplates.ownerUserId, auth.userId),
-      ),
-    )
-    .returning();
+  const mutation = await set(writeDb$).transaction(async (tx) => {
+    const whereOwner = and(
+      eq(presentationTemplates.id, params.templateId),
+      eq(presentationTemplates.orgId, auth.orgId),
+      eq(presentationTemplates.ownerUserId, auth.userId),
+    );
+    const [previous] = await tx
+      .select({ visibility: presentationTemplates.visibility })
+      .from(presentationTemplates)
+      .where(whereOwner)
+      .for("update")
+      .limit(1);
+    if (!previous) {
+      return null;
+    }
+    const [row] = await tx
+      .update(presentationTemplates)
+      .set({
+        title: bodyResult.data.title,
+        visibility: bodyResult.data.visibility,
+        updatedAt: nowDate(),
+        updatedBy: auth.userId,
+      })
+      .where(whereOwner)
+      .returning();
+    if (!row) {
+      throw new Error(
+        `Presentation template disappeared: ${params.templateId}`,
+      );
+    }
+    return {
+      row,
+      workspaceVisible:
+        previous.visibility === "public" || row.visibility === "public",
+    };
+  });
   signal.throwIfAborted();
-  if (!row) {
+  if (!mutation) {
     return templateNotFound(params.templateId);
   }
-  const coverKey = row.pageKeys[0];
-  const coverUrl = coverKey
-    ? await get(
-        generatePresignedGetUrl(
-          env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-          coverKey,
-          PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
-          presentationTemplatePageFilename(0),
-          true,
-        ),
-      )
-    : null;
+  const { row, workspaceVisible } = mutation;
+  const coverAsset = presentationTemplatePreviewAssetsForRow({
+    row,
+    bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+    orgId: auth.orgId,
+  })[0];
+  const coverUrlsByCacheKey = await get(
+    resolvePresentationTemplatePreviewPresignedUrls({
+      db: set(writeDb$),
+      requests: coverAsset === undefined ? [] : [coverAsset.request],
+    }),
+  );
+  signal.throwIfAborted();
+  const coverUrl =
+    coverAsset === undefined
+      ? null
+      : (resolvedPresentationTemplatePreviewAssets(
+          [coverAsset],
+          coverUrlsByCacheKey,
+        )[0]?.url ?? null);
+  if (workspaceVisible) {
+    await publishPresentationTemplatesChangedForOrgSafely(auth.orgId);
+  } else {
+    await publishPresentationTemplatesChangedForUserSafely(auth.userId);
+  }
+  signal.throwIfAborted();
   return {
     status: 200 as const,
     body: presentationTemplateSummary(row, coverUrl, auth.userId),
@@ -270,9 +479,16 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
     signal,
   );
-  return deleted
-    ? { status: 204 as const, body: undefined }
-    : templateNotFound(params.templateId);
+  if (!deleted) {
+    return templateNotFound(params.templateId);
+  }
+  if (deleted.visibility === "public") {
+    await publishPresentationTemplatesChangedForOrgSafely(auth.orgId);
+  } else {
+    await publishPresentationTemplatesChangedForUserSafely(auth.userId);
+  }
+  signal.throwIfAborted();
+  return { status: 204 as const, body: undefined };
 });
 
 export const presentationTemplatesRoutes: readonly RouteEntry[] = [
@@ -287,6 +503,10 @@ export const presentationTemplatesRoutes: readonly RouteEntry[] = [
   {
     route: presentationTemplatesContract.get,
     handler: authRoute(templateReadAuth, getInner$),
+  },
+  {
+    route: presentationTemplatesContract.resolvePreviewUrls,
+    handler: authRoute(templateReadAuth, resolvePreviewUrlsInner$),
   },
   {
     route: presentationTemplatesContract.update,

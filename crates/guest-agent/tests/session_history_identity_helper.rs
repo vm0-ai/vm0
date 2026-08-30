@@ -28,6 +28,7 @@ use tokio::process::Command;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const SESSION_HISTORY_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
+const RETIRED_GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
 
 fn claude_history_fixture(
     root: &Path,
@@ -626,6 +627,140 @@ async fn export_session_history_sidecar_rejects_symlinked_metadata_without_openi
     );
     assert!(!export_path.exists());
     target_watch.assert_not_opened()?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn default_identity_path_reads_only_canonical_runtime_without_protocol_output() -> TestResult
+{
+    #[derive(Clone, Copy)]
+    enum CanonicalInput {
+        Absent,
+        Empty,
+        Selected,
+    }
+
+    struct Case {
+        name: &'static str,
+        canonical: CanonicalInput,
+        retired: bool,
+        use_canonical: bool,
+    }
+
+    let dir = tempfile::tempdir()?;
+    let history = br#"{"type":"system"}"#;
+    let session_id = "runtime-env-default-path";
+    let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
+    std::fs::write(&history_path, history)?;
+    let identity = SessionHistoryIdentity::new(
+        SessionHistoryFramework::ClaudeCode,
+        session_id_hash(session_id),
+        SessionHistoryRefKind::Blob,
+        sha256_hex(history),
+        history.len() as u64,
+        history_source,
+    )?;
+
+    for case in [
+        Case {
+            name: "canonical-only",
+            canonical: CanonicalInput::Selected,
+            retired: false,
+            use_canonical: true,
+        },
+        Case {
+            name: "canonical-is-not-overridden-by-retired",
+            canonical: CanonicalInput::Selected,
+            retired: true,
+            use_canonical: true,
+        },
+        Case {
+            name: "retired-only-is-ignored",
+            canonical: CanonicalInput::Absent,
+            retired: true,
+            use_canonical: false,
+        },
+        Case {
+            name: "canonical-empty-does-not-fall-back-to-retired",
+            canonical: CanonicalInput::Empty,
+            retired: true,
+            use_canonical: false,
+        },
+    ] {
+        let run_id = if case.use_canonical {
+            "not/validated/when/runtime-dir-is-set".to_string()
+        } else {
+            format!("helper-runtime-{}", case.name)
+        };
+        let home = dir.path().join(format!("{}-home", case.name));
+        let canonical_dir = dir.path().join(format!("{}-canonical", case.name));
+        let retired_dir = dir.path().join(format!("{}-retired", case.name));
+        let fallback_dir = if case.use_canonical {
+            None
+        } else {
+            Some(guest_contracts::runtime_paths::run_dir_for_home(
+                &home, &run_id,
+            )?)
+        };
+        let runtime_dir = if case.use_canonical {
+            &canonical_dir
+        } else {
+            fallback_dir
+                .as_ref()
+                .ok_or("fallback runtime is required")?
+        };
+        let metadata_path =
+            guest_contracts::runtime_paths::final_session_history_identity_file(runtime_dir);
+        guest_contracts::runtime_paths::write_private(&metadata_path, identity.to_json_vec()?)?;
+        let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
+        command
+            .env_clear()
+            .env(guest_contracts::env::RUN_ID_ENV, &run_id)
+            .env("HOME", &home)
+            .arg("verify-session-history-identity");
+        match case.canonical {
+            CanonicalInput::Absent => {}
+            CanonicalInput::Empty => {
+                command.env(
+                    guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+                    "",
+                );
+            }
+            CanonicalInput::Selected => {
+                command.env(
+                    guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+                    &canonical_dir,
+                );
+            }
+        }
+        if case.retired {
+            command.env(RETIRED_GUEST_RUNTIME_DIR_ENV, &retired_dir);
+        }
+
+        let output = common::command_output_with_timeout(
+            &mut command,
+            SESSION_HISTORY_HELPER_TIMEOUT,
+            &format!(
+                "{} default identity-path helper exceeded its completion budget",
+                case.name
+            ),
+        )
+        .await?;
+        assert!(
+            output.status.success(),
+            "{}: stdout={}, stderr={}",
+            case.name,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stdout.is_empty(), "{} changed stdout", case.name);
+        assert!(output.stderr.is_empty(), "{} changed stderr", case.name);
+        assert!(
+            !guest_contracts::runtime_paths::final_session_history_identity_file(retired_dir)
+                .exists()
+        );
+    }
+
     Ok(())
 }
 

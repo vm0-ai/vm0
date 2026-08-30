@@ -1,6 +1,6 @@
 import type { SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { r2ImageTransformUrl } from "@okouai/core";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {

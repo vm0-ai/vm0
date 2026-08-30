@@ -574,7 +574,7 @@ describe("GET /api/artifacts/catalog", () => {
     ).toHaveLength(1);
 
     await flushWaitUntilForTest();
-    await bdd.deleteVersionFreeAgent(owner.actor, owner.agentId);
+    await bdd.deleteAgent(owner.actor, owner.agentId);
 
     await expect(chat.listArtifactCatalog(owner.actor)).resolves.toStrictEqual({
       artifacts: [],
@@ -971,6 +971,41 @@ describe("GET /api/artifacts/catalog", () => {
     ).toStrictEqual([site]);
   }, 180_000);
 
+  it("searches artifact titles literally before applying the page limit", async () => {
+    const owner = await catalogActor("Artifact catalog search owner");
+    await uploadFile({
+      owner,
+      prompt: "upload launch brief",
+      filename: "Launch-Brief.txt",
+      contentType: "text/plain",
+    });
+    await uploadFile({
+      owner,
+      prompt: "upload budget",
+      filename: "budget.txt",
+      contentType: "text/plain",
+    });
+
+    const result = await chat.listArtifactCatalog(owner.actor, {
+      keyword: "launch",
+      limit: 1,
+    });
+
+    expect(result).toStrictEqual({
+      artifacts: [
+        expect.objectContaining({
+          kind: "file",
+          title: "Launch-Brief.txt",
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    await expect(
+      chat.listArtifactCatalog(owner.actor, { keyword: "%" }),
+    ).resolves.toStrictEqual({ artifacts: [], nextCursor: null });
+  }, 180_000);
+
   it("walks the whole catalog through the cursor without repeats or gaps", async () => {
     const owner = await catalogActor("Artifact catalog paging owner");
     const created: string[] = [];
@@ -1260,24 +1295,6 @@ describe("shared thread routes", () => {
     expect(directDetailResponse.status).toBe(200);
     const directDetail = asRecord(await directDetailResponse.json());
     expect(directDetail.kind).toBe("shared-thread");
-
-    // #28422 moved this contract to its neutral path. Released CLI and browser
-    // builds still request the branded forms, which `MIGRATED_BRANDED_PATHS`
-    // keeps registered; this is the request that proves they still answer.
-    const brandedStatuses: number[] = [];
-    for (const brandedPath of [
-      "/api/okou/artifacts/catalog",
-      "/api/zero/artifacts/catalog",
-    ]) {
-      const brandedResponse = await sharedThreadTestApp().request(brandedPath, {
-        headers: authenticateSharedThread(owner.actor),
-      });
-      brandedStatuses.push(brandedResponse.status);
-      expect(asRecord(await brandedResponse.json()).artifacts).toStrictEqual(
-        directCatalog.artifacts,
-      );
-    }
-    expect(brandedStatuses).toStrictEqual([200, 200]);
 
     await chat.deleteThread(owner.actor, run.threadId);
     const afterSourceDeletion = await readSharedThreadSnapshot(first.id);

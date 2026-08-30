@@ -6,12 +6,19 @@ import {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   type SupportedRunModel,
-  type Vm0ModelPriceTier,
+  type ModelPriceTier,
 } from "./model-price-tiers";
 import {
   MODEL_PROVIDER_TYPE_IDS,
+  MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS,
+  isBuiltInModelProviderType,
+  normalizeModelProviderWriteType,
   type ModelProviderFramework,
   type ModelProviderType,
+} from "./model-provider-types";
+export {
+  isBuiltInModelProviderType,
+  normalizeModelProviderWriteType,
 } from "./model-provider-types";
 export {
   getModelProviderFirewall,
@@ -20,8 +27,10 @@ export {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "./model-provider-firewalls";
 export type {
+  BuiltInModelProviderType,
   ModelProviderFramework,
   ModelProviderType,
+  ModelProviderWriteType,
 } from "./model-provider-types";
 
 const deepseekV4FlashCatalogModel = DEEPSEEK_V4_FLASH_MODEL_CATALOG.models[0];
@@ -46,7 +55,7 @@ export {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   type SupportedRunModel,
-  type Vm0ModelPriceTier,
+  type ModelPriceTier,
 };
 
 /**
@@ -143,7 +152,7 @@ export type ModelProviderCredentialScope = z.infer<
 export interface DefaultOrgModelPolicySeed {
   model: SupportedRunModel;
   isDefault: boolean;
-  defaultProviderType: "vm0";
+  defaultProviderType: "built-in";
   credentialScope: "org";
   modelProviderId: null;
 }
@@ -196,7 +205,7 @@ export function isCodexFastModeModel(
 
 export function getVm0ModelPriceTier(
   model: string,
-): Vm0ModelPriceTier | undefined {
+): ModelPriceTier | undefined {
   return isSupportedRunModel(model) ? VM0_MODEL_PRICE_TIER[model] : undefined;
 }
 
@@ -211,7 +220,7 @@ export function getDefaultOrgModelPolicySeed(
     return {
       model,
       isDefault: model === defaultModel,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
     };
@@ -219,13 +228,13 @@ export function getDefaultOrgModelPolicySeed(
 }
 
 /**
- * Mapping from VM0 managed model names to their concrete provider type and vendor.
+ * Mapping from VM0 built-in model names to their concrete provider type and vendor.
  * Used at build-context time to resolve the meta-provider to a real provider.
  *
  * NOTE: Defined before MODEL_PROVIDER_TYPES so the vm0 entry can derive its
  * models list from this mapping via Object.keys().
  */
-export const VM0_MANAGED_ROUTE_PROVIDERS = {
+export const VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS = {
   "anthropic-api-key": { vendor: "anthropic" },
   "openrouter-api-key": { vendor: "openrouter" },
   deepseek: { vendor: "deepseek" },
@@ -233,26 +242,26 @@ export const VM0_MANAGED_ROUTE_PROVIDERS = {
   "openai-api-key": { vendor: "openai" },
 } as const satisfies Partial<Record<ModelProviderType, { vendor: string }>>;
 
-export type Vm0ManagedRouteProviderType =
-  keyof typeof VM0_MANAGED_ROUTE_PROVIDERS;
+export type BuiltInModelRouteProviderType =
+  keyof typeof VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS;
 
-export interface Vm0ManagedRouteCandidate {
-  readonly concreteType: Vm0ManagedRouteProviderType;
+export interface BuiltInModelRouteCandidate {
+  readonly concreteType: BuiltInModelRouteProviderType;
   // Overrides the display-name when substituting `$model` in the concrete
   // provider's env bindings. Needed when the upstream API expects a
   // different identifier than what we show to users.
   readonly apiModel?: string;
 }
 
-interface Vm0ModelConfig {
+interface ModelConfig {
   readonly candidates: readonly [
-    Vm0ManagedRouteCandidate,
-    ...Vm0ManagedRouteCandidate[],
+    BuiltInModelRouteCandidate,
+    ...BuiltInModelRouteCandidate[],
   ];
 }
 
 // Key order is load-bearing: `Object.keys()` preserves insertion order and
-// `MODEL_PROVIDER_TYPES.vm0.models` is derived from it, which in turn drives
+// `MODEL_PROVIDER_TYPES["built-in"].models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER = {
   "claude-fable-5": {
@@ -354,16 +363,16 @@ export const VM0_MODEL_TO_PROVIDER = {
       },
     ],
   },
-} as const satisfies Record<SupportedRunModel, Vm0ModelConfig>;
+} as const satisfies Record<SupportedRunModel, ModelConfig>;
 
-export interface Vm0ManagedRouteTarget {
+export interface BuiltInModelRouteTarget {
   readonly selectedModel: SupportedRunModel;
-  readonly providerType: Vm0ManagedRouteProviderType;
+  readonly providerType: BuiltInModelRouteProviderType;
   readonly upstreamModel: string;
   readonly vendor: string;
 }
 
-function vm0PrimaryCandidate(model: string): Vm0ManagedRouteCandidate {
+function vm0PrimaryCandidate(model: string): BuiltInModelRouteCandidate {
   if (!isSupportedRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
@@ -372,9 +381,9 @@ function vm0PrimaryCandidate(model: string): Vm0ManagedRouteCandidate {
   return VM0_MODEL_TO_PROVIDER[model].candidates[0];
 }
 
-export function getVm0ManagedRouteCandidates(
+export function getVm0BuiltInModelRouteCandidates(
   model: string,
-): readonly Vm0ManagedRouteTarget[] {
+): readonly BuiltInModelRouteTarget[] {
   if (!isSupportedRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
@@ -385,17 +394,18 @@ export function getVm0ManagedRouteCandidates(
       selectedModel: model,
       providerType: candidate.concreteType,
       upstreamModel: "apiModel" in candidate ? candidate.apiModel : model,
-      vendor: VM0_MANAGED_ROUTE_PROVIDERS[candidate.concreteType].vendor,
+      vendor: VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType].vendor,
     };
   });
 }
 
-export function getVm0ManagedRouteVendors(): readonly string[] {
+export function getVm0BuiltInModelRouteVendors(): readonly string[] {
   return [
     ...new Set(
       Object.values(VM0_MODEL_TO_PROVIDER).flatMap((config) => {
         return config.candidates.map((candidate) => {
-          return VM0_MANAGED_ROUTE_PROVIDERS[candidate.concreteType].vendor;
+          return VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType]
+            .vendor;
         });
       }),
     ),
@@ -492,7 +502,7 @@ export function modelSupportsImageInput(
 }
 
 /**
- * Return the VM0 managed models visible to callers.
+ * Return the VM0 built-in models visible to callers.
  */
 export function getVm0VisibleModels(): string[] {
   return [...SUPPORTED_RUN_MODELS];
@@ -512,6 +522,13 @@ export function getVm0VisibleModels(): string[] {
  * - Legacy providers: use `secretName` for single secret
  * - Multi-auth providers: use `authMethods` for multiple auth options with different secrets
  */
+const BUILT_IN_MODEL_PROVIDER_CONFIG = {
+  framework: "claude-code" as const,
+  label: "Built-in model",
+  models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
+  defaultModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+};
+
 export const MODEL_PROVIDER_TYPES = {
   "claude-code-oauth-token": {
     framework: "claude-code" as const,
@@ -879,89 +896,82 @@ export const MODEL_PROVIDER_TYPES = {
     framework: "codex" as const,
     label: "Custom Gateway (OpenAI Responses)",
   },
-  vm0: {
-    framework: "claude-code" as const,
-    label: "VM0 Managed",
-    models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
-    defaultModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  },
+  vm0: BUILT_IN_MODEL_PROVIDER_CONFIG,
+  "built-in": BUILT_IN_MODEL_PROVIDER_CONFIG,
 } as const satisfies Record<ModelProviderType, unknown>;
 
 export function getModelProviderPresentationLabel(
   type: ModelProviderType,
 ): string {
-  if (type === "vm0") {
-    return "Built-in model";
-  }
   return MODEL_PROVIDER_TYPES[type].label;
 }
 
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   "claude-fable-5": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "claude-opus-5": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "claude-opus-4-8": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "claude-sonnet-5": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "claude-sonnet-4-6": [
-    "vm0",
+    "built-in",
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
   "gpt-5.6-sol": [
-    "vm0",
+    "built-in",
     "openai-api-key",
     "codex-oauth-token",
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
   "gpt-5.6-terra": [
-    "vm0",
+    "built-in",
     "openai-api-key",
     "codex-oauth-token",
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
   "gpt-5.6-luna": [
-    "vm0",
+    "built-in",
     "openai-api-key",
     "codex-oauth-token",
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
   "gpt-5.5": [
-    "vm0",
+    "built-in",
     "openai-api-key",
     "codex-oauth-token",
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
-  "deepseek-v4-flash": ["vm0", "deepseek"],
-  "deepseek-v4-pro": ["vm0", "deepseek"],
+  "deepseek-v4-flash": ["built-in", "deepseek"],
+  "deepseek-v4-pro": ["built-in", "deepseek"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
@@ -1020,7 +1030,9 @@ export function isModelSupportedByProvider(
   model: string,
   type: ModelProviderType,
 ): boolean {
-  return getProvidersForModel(model).includes(type);
+  return getProvidersForModel(model).includes(
+    isBuiltInModelProviderType(type) ? "built-in" : type,
+  );
 }
 
 export function getProviderRuntimeModel(
@@ -1031,7 +1043,7 @@ export function getProviderRuntimeModel(
   if (!isSupportedRunModel(canonical)) {
     return model;
   }
-  if (type === "vm0") {
+  if (isBuiltInModelProviderType(type)) {
     return vm0PrimaryCandidate(canonical).apiModel ?? canonical;
   }
   return PROVIDER_RUNTIME_MODEL_ALIASES[type]?.[canonical] ?? canonical;
@@ -1063,36 +1075,39 @@ const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
 export function getSelectableProviderTypes(): ModelProviderType[] {
   return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
     (type) => {
-      return !HIDDEN_PROVIDER_TYPES.has(type);
+      return type !== "vm0" && !HIDDEN_PROVIDER_TYPES.has(type);
     },
   );
 }
 
 export const modelProviderTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
+export const modelProviderWriteTypeSchema = z
+  .enum(MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS)
+  .transform(normalizeModelProviderWriteType);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
 /**
- * Get the concrete provider type for a VM0 managed model.
+ * Get the concrete provider type for a VM0 built-in model.
  * Throws if the model is not in the VM0 model mapping.
  */
 export function getVm0ConcreteProviderType(
   model: string,
-): Vm0ManagedRouteProviderType {
+): BuiltInModelRouteProviderType {
   return vm0PrimaryCandidate(model).concreteType;
 }
 
 /**
- * Get the vendor name for a VM0 managed model.
+ * Get the vendor name for a VM0 built-in model.
  * Used for key pool lookup.
  */
 export function getVm0Vendor(model: string): string {
   const providerType = vm0PrimaryCandidate(model).concreteType;
-  return VM0_MANAGED_ROUTE_PROVIDERS[providerType].vendor;
+  return VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[providerType].vendor;
 }
 
 /**
- * Get the upstream API model identifier for a VM0 managed model.
+ * Get the upstream API model identifier for a VM0 built-in model.
  * Falls back to the display name when no override is configured.
  */
 export function getVm0ApiModel(model: string): string {
@@ -1437,7 +1452,7 @@ export type ModelProviderListResponse = z.infer<
  * Multi-auth providers use `authMethod` + `secrets` (map)
  */
 export const upsertModelProviderRequestSchema = z.object({
-  type: modelProviderTypeSchema,
+  type: modelProviderWriteTypeSchema,
   secret: z.string().min(1).optional(), // Legacy single secret
   authMethod: z.string().optional(), // For multi-auth providers
   secrets: z.record(z.string(), z.string()).optional(), // For multi-auth providers
@@ -1490,7 +1505,7 @@ export type OrgModelPolicy = z.infer<typeof orgModelPolicySchema>;
 export const updateOrgModelPolicySchema = z.object({
   model: supportedRunModelSchema,
   isDefault: z.boolean(),
-  defaultProviderType: modelProviderTypeSchema,
+  defaultProviderType: modelProviderWriteTypeSchema,
   credentialScope: modelProviderCredentialScopeSchema,
   modelProviderId: z.uuid().nullable(),
   modelProviderSurfaceId: z.uuid().nullable().optional(),

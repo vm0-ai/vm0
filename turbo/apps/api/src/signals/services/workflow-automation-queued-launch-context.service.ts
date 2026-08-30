@@ -1,3 +1,5 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+
 import {
   EVENT_POLICY,
   restoredWorkflowAutomationEventPayload,
@@ -7,7 +9,6 @@ import {
   type WorkflowAutomationEventPayload,
 } from "./workflow-automation-context.service";
 import {
-  buildChatOnlyWorkflowAutomationCallbacks,
   buildWorkflowAutomationCallbacks,
   type AutomationRow,
 } from "./workflow-automation-launch.service";
@@ -29,6 +30,7 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
   readonly automation: AutomationRow;
   readonly agentId: string;
   readonly chatThreadId: string;
+  readonly publicBrand: PublicBrand;
 }): WorkflowAutomationQueuedLaunchMaterial | null {
   if (
     args.workflowName === null ||
@@ -52,17 +54,13 @@ export function buildWorkflowAutomationQueuedLaunchMaterial(args: {
   return {
     prompt: workflowAutomationAgentPrompt(context),
     appendSystemPrompt: undefined,
-    callbacks:
-      eventType === "schedule"
-        ? buildWorkflowAutomationCallbacks(
-            args.automation,
-            args.agentId,
-            args.chatThreadId,
-          )
-        : buildChatOnlyWorkflowAutomationCallbacks(
-            args.chatThreadId,
-            args.agentId,
-          ),
+    callbacks: buildWorkflowAutomationCallbacks(
+      args.automation,
+      args.agentId,
+      args.chatThreadId,
+      args.publicBrand,
+      args.workflowName,
+    ),
     ...EVENT_POLICY[eventType],
     allowClaimedOnceScheduleAutomation: args.automation.scheduleType === "once",
   };

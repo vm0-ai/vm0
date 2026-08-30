@@ -26,9 +26,9 @@ import {
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { authContract } from "@okouai/api-contracts/contracts/auth";
 import {
-  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
-} from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
+} from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   agentsByIdContract,
   agentsMainContract,
@@ -37,12 +37,12 @@ import {
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
-  zeroCustomConnectorByIdContract,
-  zeroCustomConnectorValuesContract,
-  zeroCustomConnectorsContract,
+  customConnectorByIdContract,
+  customConnectorValuesContract,
+  customConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
-} from "@okouai/api-contracts/contracts/zero-custom-connectors";
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import {
   orgContract,
   orgDeleteContract,
@@ -71,7 +71,6 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
-import { removeAgentLegacyVersionsFixture } from "../../../../test-fixtures/agent-deletion";
 import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
 import { agentsRoutes } from "../../agents";
@@ -829,6 +828,17 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async readCreatedOrganizationsCount(actor: ApiTestUser): Promise<number> {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        orgContract,
+      );
+      const response = await accept(
+        client.createdCount({ headers: authenticate(actor) }),
+        [200],
+      );
+      return response.body.createdOrganizationsCount;
+    },
+
     async requestReadOrg(
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 404)[],
@@ -1382,16 +1392,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    /**
-     * Constructs the legacy-version-free cohort needed to exercise the
-     * transitional successful-delete path. Conflict tests must call the route
-     * directly so the production preconditions remain observable.
-     */
-    async deleteVersionFreeAgent(
-      actor: ApiTestUser,
-      agentId: string,
-    ): Promise<void> {
-      await removeAgentLegacyVersionsFixture(agentId);
+    async deleteAgent(actor: ApiTestUser, agentId: string): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         agentsByIdContract,
       );
@@ -1426,7 +1427,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: CreateCustomConnectorBody,
     ): Promise<CustomConnectorResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorsContract,
+        customConnectorsContract,
       );
       const response = await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -1441,7 +1442,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorsContract,
+        customConnectorsContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -1453,7 +1454,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       readonly connectors: readonly CustomConnectorResponse[];
     }> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorsContract,
+        customConnectorsContract,
       );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
@@ -1468,7 +1469,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       value: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorValuesContract,
+        customConnectorValuesContract,
       );
       await accept(
         client.set({
@@ -1506,7 +1507,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       connectorId: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorByIdContract,
+        customConnectorByIdContract,
       );
       await accept(
         client.delete({
@@ -1522,7 +1523,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string,
     ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       const response = await accept(
         client.get({
@@ -1540,7 +1541,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       connectorIds: readonly string[],
     ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       const response = await accept(
         client.update({
@@ -1564,7 +1565,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentCustomConnectorsContract,
+        agentCustomConnectorsContract,
       );
       return await accept(
         client.update({

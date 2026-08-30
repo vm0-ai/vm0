@@ -61,6 +61,7 @@ interface OAuthDeviceAuthStartFlowArgs {
 interface OAuthDeviceAuthPollFlowArgs {
   readonly deviceCode: string;
   readonly pollState?: string;
+  readonly scopes: readonly string[];
 }
 
 interface ExternalCodeCompleteFlowArgs {

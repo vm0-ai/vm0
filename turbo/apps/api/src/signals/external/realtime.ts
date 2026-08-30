@@ -1,4 +1,4 @@
-import Ably from "ably";
+import Ably, { type CapabilityOp } from "ably";
 import type {
   BrowserSessionChangedPayload,
   UserPreferenceChangedPayload,
@@ -8,11 +8,15 @@ import type {
   RunnerPreference,
 } from "@okouai/api-contracts/contracts/runners";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
+import { db } from "../../lib/db";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
 import { waitUntil } from "../context/wait-until";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort, tapError } from "../utils";
 
 const L = logger("Realtime");
@@ -27,11 +31,19 @@ function getUserChannelName(userId: string): string {
   return `user:${userId}`;
 }
 
+function getOrgChannelName(orgId: string): string {
+  return `org:${orgId}`;
+}
+
+function getUserOrgChannelName(userId: string, orgId: string): string {
+  return `user-org:${userId}:${orgId}`;
+}
+
 function getBuiltInGenerationEventName(generationId: string): string {
   return `built-in-generation:${generationId}`;
 }
 
-export async function createPlatformUserRealtimeToken(
+async function createPlatformUserRealtimeToken(
   userId: string,
 ): Promise<Ably.TokenRequest> {
   const channelName = getUserChannelName(userId);
@@ -43,6 +55,28 @@ export async function createPlatformUserRealtimeToken(
     clientId: userId,
   });
   L.debug(`Generated platform realtime token for user:${userId}`);
+  return tokenRequest;
+}
+
+export async function createPlatformRealtimeToken(
+  userId: string,
+  orgId: string | undefined,
+): Promise<Ably.TokenRequest> {
+  const capability: Record<string, CapabilityOp[]> = {
+    [getUserChannelName(userId)]: ["subscribe"],
+  };
+  if (orgId !== undefined) {
+    capability[getOrgChannelName(orgId)] = ["subscribe"];
+    capability[getUserOrgChannelName(userId, orgId)] = ["subscribe"];
+  }
+  const tokenRequest = await ablyClient().auth.createTokenRequest({
+    capability,
+    ttl: 60 * 60 * 1000,
+    clientId: userId,
+  });
+  L.debug(
+    `Generated platform realtime token for user:${userId}${orgId === undefined ? "" : `/org:${orgId}`}`,
+  );
   return tokenRequest;
 }
 
@@ -85,6 +119,36 @@ async function publishUserSignalNow(
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
 }
 
+async function publishChatDatabaseSignalNow(
+  target: { readonly userId: string; readonly orgId: string },
+  topic: string,
+  payload: unknown,
+): Promise<void> {
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db(),
+    target.orgId,
+    target.userId,
+  );
+  const channelName = isFeatureEnabled(
+    FeatureSwitchKey.SharedChatDatabase,
+    featureSwitchContext,
+  )
+    ? getUserOrgChannelName(target.userId, target.orgId)
+    : getUserChannelName(target.userId);
+  const channel = ablyClient().channels.get(channelName);
+  await channel.publish(topic, payload);
+  L.debug(`Published "${topic}" to ${channelName}`);
+}
+
+function publishChatDatabaseSignal(
+  target: { readonly userId: string; readonly orgId: string },
+  topic: string,
+  payload: unknown = null,
+): Promise<void> {
+  waitUntil(bestEffort(publishChatDatabaseSignalNow(target, topic, payload)));
+  return Promise.resolve();
+}
+
 /**
  * Schedule a per-user invalidation/notification signal.
  *
@@ -117,14 +181,18 @@ export async function publishUserPreferenceChangedForUserSafely(
  * payload is intentionally empty because the server is authoritative and
  * the client already has a cheap list endpoint to re-fetch.
  */
-export async function publishThreadListChanged(userId: string): Promise<void> {
-  await publishUserSignal([userId], "threadListChanged");
+export async function publishThreadListChanged(target: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<void> {
+  await publishChatDatabaseSignal(target, "threadListChanged");
 }
 
-export async function publishThreadListChangedSafely(
-  userId: string,
-): Promise<void> {
-  await publishThreadListChanged(userId);
+export async function publishThreadListChangedSafely(target: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<void> {
+  await publishThreadListChanged(target);
 }
 
 /**
@@ -132,10 +200,19 @@ export async function publishThreadListChangedSafely(
  * The catalog is server-owned, so every open client re-fetches it instead of
  * trying to reconstruct the new entry from the notification payload.
  */
-export async function publishPresentationTemplatesChangedSafely(
+export async function publishPresentationTemplatesChangedForUserSafely(
   userId: string,
 ): Promise<void> {
   await publishUserSignal([userId], "presentationTemplatesChanged");
+}
+
+export function publishPresentationTemplatesChangedForOrgSafely(
+  orgId: string,
+): Promise<void> {
+  waitUntil(
+    bestEffort(publishOrgSignal(orgId, "presentationTemplatesChanged")),
+  );
+  return Promise.resolve();
 }
 
 /**
@@ -161,15 +238,18 @@ export async function publishChatThreadDetailChangedSafely(
  *
  * Best-effort: a failed publish must not fail the mutation that triggered it.
  */
-export async function publishChatThreadMessageCreatedSafely(
-  userId: string,
-  threadId: string,
-  syncThroughSeqId?: number,
-): Promise<void> {
-  await publishUserSignal(
-    [userId],
-    `chatThreadMessageCreated:${threadId}`,
-    syncThroughSeqId === undefined ? null : { syncThroughSeqId },
+export async function publishChatThreadMessageCreatedSafely(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly threadId: string;
+  readonly syncThroughSeqId?: number;
+}): Promise<void> {
+  await publishChatDatabaseSignal(
+    args,
+    `chatThreadMessageCreated:${args.threadId}`,
+    args.syncThroughSeqId === undefined
+      ? null
+      : { syncThroughSeqId: args.syncThroughSeqId },
   );
 }
 
@@ -257,7 +337,7 @@ export async function publishOrgSignal(
   payload: unknown = null,
 ): Promise<void> {
   const client = ablyClient();
-  const channel = client.channels.get(`org:${orgId}`);
+  const channel = client.channels.get(getOrgChannelName(orgId));
   await channel.publish(topic, payload);
   L.debug(`Published "${topic}" to org:${orgId}`);
 }

@@ -1,7 +1,7 @@
 import { command, computed } from "ccstate";
 import { apiClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
-import { textToMessageDocument } from "../zero-page/user-message-document-codec.ts";
+import { textToMessageDocument } from "../okou-page/user-message-document-codec.ts";
 import { sendChatEvent } from "./chat-event-api.ts";
 import {
   chatActionIdMatches,

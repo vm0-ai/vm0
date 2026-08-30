@@ -7,16 +7,15 @@ import os
 import py_compile
 import subprocess
 import sys
-import threading
 import urllib.error
 from collections.abc import Iterable
 from email.message import Message
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
 from scripts import update_x_tlds
+from tests.threaded_http_test_server import ThreadedHttpTestServer
 from usage.providers.connectors.x_tlds import IANA_TLD_VERSION, IANA_TLDS
 
 _ADDON_ROOT = Path(__file__).resolve().parents[1]
@@ -334,36 +333,27 @@ def test_fetch_source_preserves_http_error_status_message(monkeypatch):
 
 
 def test_fetch_source_rejects_cross_origin_redirect_without_requesting_target(monkeypatch):
-    requested_paths: list[str] = []
+    server = ThreadedHttpTestServer[str](
+        request_factory=lambda _method, path, _headers, _body: path,
+        default_status=500,
+        thread_name="x-tld-redirect-test-server",
+    )
+    server.queue_response(
+        302,
+        headers=(("Location", "https://unexpected.example/TLD/tlds-alpha-by-domain.txt"),),
+    )
 
-    class RedirectHandler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            requested_paths.append(self.path)
-            self.send_response(302)
-            self.send_header("Location", "https://unexpected.example/TLD/tlds-alpha-by-domain.txt")
-            self.end_headers()
-
-        def log_message(self, fmt: str, *args: object) -> None:
-            return None
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
+    with server.run():
         monkeypatch.setattr(
             update_x_tlds,
             "SOURCE_URL",
-            f"http://127.0.0.1:{server.server_port}{update_x_tlds.SOURCE_PATH}",
+            f"{server.api_url}{update_x_tlds.SOURCE_PATH}",
         )
 
         with pytest.raises(update_x_tlds.TldFetchError, match=r"HTTP 302"):
             update_x_tlds.fetch_source()
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
 
-    assert requested_paths == [update_x_tlds.SOURCE_PATH]
+    assert server.requests == (update_x_tlds.SOURCE_PATH,)
 
 
 def test_fetch_source_reports_response_read_failure_as_fetch_error(monkeypatch):
@@ -625,6 +615,28 @@ def test_check_cli_ignores_stale_timestamp_bytecode(tmp_path, monkeypatch, capsy
     captured = capsys.readouterr()
     assert captured.out == f"{output} is canonical for IANA TLD version 222\n"
     assert captured.err == ""
+
+
+def test_check_cli_reports_noncanonical_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "x_tlds.py"
+    noncanonical = "# manually edited\n" + update_x_tlds.render_module("111", ("aaa",))
+    output.write_text(noncanonical, encoding="utf-8")
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT), "--check"])
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith(f"{output} is not canonical\n")
+    assert f"--- {output}\n" in captured.err
+    assert f"+++ {output} (expected)\n" in captured.err
+    assert "-# manually edited\n" in captured.err
+    assert output.read_text(encoding="utf-8") == noncanonical
 
 
 def test_compare_snapshot_to_source_accepts_version_only_drift():

@@ -22,6 +22,7 @@ from firewall_auth_config import auth_config_injects_ordinary_upstream_credentia
 from firewall_matching import base_url as _firewall_base_url
 from firewall_matching import patterns as _firewall_patterns
 from firewall_matching.base_url import (
+    _BaseSpecificity,
     _BaseUrlParts,
     _compile_firewall_config_base,
     _CompiledBase,
@@ -77,6 +78,24 @@ _RESERVED_DECLARED_FIREWALL_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 _VALID_AUTH_BASE_SCHEME = "https"
 _AUTH_TEMPLATE_START = "${{"
 _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
+
+# Path-rule specificity is a Python tuple compared lexicographically from left to right. Keep
+# these coordinates aligned with the labeled TypeScript ``PathSpecificity`` tuple in
+# ``turbo/packages/connectors/src/firewall-rule-matcher.ts``:
+#
+# 1. ``literal_segments`` (``literalSegments``): number of fully literal path segments.
+# 2. ``mixed_param_segments`` (``mixedParamSegments``): number of parameter segments with a
+#    literal prefix or suffix.
+# 3. ``plain_param_segments`` (``plainParamSegments``): number of non-greedy parameter segments
+#    without a literal prefix or suffix.
+# 4. ``plus_greedy_segments`` (``plusGreedySegments``): number of ``+`` greedy parameter segments.
+# 5. ``negative_star_greedy_segments`` (``negativeStarGreedySegments``): the negated number of
+#    ``*`` greedy parameter segments, so fewer ``*`` segments are more specific after earlier
+#    coordinates tie.
+# 6. ``literal_chars`` (``literalChars``): number of Unicode code points in literal text, including
+#    mixed-segment prefixes and suffixes. Python ``len()`` has the same code-point meaning as the
+#    TypeScript matcher’s ``codePointLength()`` for this contract.
+# 7. ``segment_count`` (``segmentCount``): total number of path segments.
 _PathSpecificity = tuple[int, int, int, int, int, int, int]
 
 
@@ -429,11 +448,12 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
             return False
         if not raw_aws_sigv4["secretAccessKey"]:
             return False
-        optional_value = raw_aws_sigv4.get("sessionToken")
-        if optional_value is not None and not isinstance(optional_value, str):
-            return False
-        if optional_value == "":
-            return False
+        if "sessionToken" in raw_aws_sigv4:
+            optional_value = raw_aws_sigv4["sessionToken"]
+            if not isinstance(optional_value, str):
+                return False
+            if not optional_value:
+                return False
         if raw_auth.get("headers"):
             return False
         if raw_auth.get("query"):
@@ -804,7 +824,7 @@ def declared_firewall_permission_name_invalid_reason(
 # match a base and must fail closed at match time.
 #
 # Registry loading rejects explicit non-null, non-list firewalls payloads for
-# registered VMs before request handling. Direct compile_firewalls callers still
+# registered sandboxes before request handling. Direct compile_firewalls callers still
 # get None for missing, empty, or non-list payloads. compile_firewalls skips raw
 # entries that cannot participate in base matching: non-object firewall entries,
 # firewalls whose "apis" is not a list, non-object APIs, non-string bases, bases
@@ -834,6 +854,15 @@ def declared_firewall_permission_name_invalid_reason(
 # no allow/deny resolved, malformed network policy resolves before malformed
 # firewall config; malformed unknownPolicy only affects unknown-endpoint
 # resolution.
+#
+# Path-rule specificity is applied after the best matching base specificity has selected the API
+# tier. The tuple documented above is compared lexicographically, and only rules with the highest
+# matching tuple are evaluated. APIs and rules tied at that tuple remain candidates for the later
+# connector-owner and network-policy reduction; equal-specificity candidates are not discarded
+# during specificity selection. The focused contract is covered by
+# ``tests/test_compiled_firewall_rule_specificity_precedence.py``,
+# ``tests/test_compiled_firewall_cross_firewall_precedence.py``, and the parity cases in
+# ``turbo/packages/connectors/src/__tests__/firewall-rule-matcher.test.ts``.
 def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
     """Compile one firewall into reusable matcher data.
 
@@ -1001,16 +1030,16 @@ def bind_compiled_firewall_core(
     )
 
 
-def compile_firewalls(vm_firewalls: object | None) -> CompiledFirewallSet | None:
+def compile_firewalls(sandbox_firewalls: object | None) -> CompiledFirewallSet | None:
     """Compile firewall data and retain selected malformed state.
 
     See the compiled matcher contract above for skipped versus retained inputs.
     """
-    if not isinstance(vm_firewalls, list) or not vm_firewalls:
+    if not isinstance(sandbox_firewalls, list) or not sandbox_firewalls:
         return None
 
     compiled_firewalls: list[_CompiledFirewall] = []
-    for fw_entry in vm_firewalls:
+    for fw_entry in sandbox_firewalls:
         core = compile_firewall_core(fw_entry)
         if core is None or not isinstance(fw_entry, dict):
             continue
@@ -1216,7 +1245,7 @@ class _FirewallMatchCollection:
     )
 
     api_matches: list[_MatchedApi]
-    best_base_specificity: int | None
+    best_base_specificity: _BaseSpecificity | None
     best_rule_specificity: _PathSpecificity | None
     winning_rule_api_orders: set[int]
 
@@ -1266,7 +1295,7 @@ class _FirewallDecisionState:
 
     allowed_match: _AllowedRuleMatch | None
     base_match: _BaseMatch | None
-    best_base_specificity: int | None
+    best_base_specificity: _BaseSpecificity | None
     denied_match: _BlockMatch | None
     # Dict keys act as an ordered set of first-seen denied permission names.
     denied_permission_names: dict[str, None]

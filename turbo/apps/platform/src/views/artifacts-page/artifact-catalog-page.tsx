@@ -11,7 +11,7 @@ import {
   Video,
   Globe,
 } from "lucide-react";
-import { r2ImageTransformUrl } from "@okouai/core";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { cn } from "@okouai/ui";
@@ -22,6 +22,7 @@ import {
   artifactCatalog$,
   loadMoreArtifactCatalog$,
   openArtifact$,
+  scrollArtifactCardIntoViewRef$,
   selectedArtifactCatalogKind$,
   setArtifactCatalogKind$,
 } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
@@ -29,14 +30,12 @@ import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifa
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { AttachmentLightbox } from "../zero-page/zero-attachment-chips.tsx";
-import { ArtifactThumbnailImage } from "../zero-page/zero-artifact-thumbnail.tsx";
-import { emptyArtifactImg } from "../zero-page/platform-assets.ts";
+import { ArtifactThumbnailImage } from "../okou-page/artifact-thumbnail.tsx";
+import { emptyArtifactImg } from "../okou-page/platform-assets.ts";
 import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
-} from "../zero-page/zero-file-preview-icon.tsx";
+} from "../okou-page/file-preview-icon.tsx";
 
 // Distance from the bottom of the scroll container at which the next page is
 // requested. The signal layer deduplicates repeated requests for one cursor.
@@ -144,15 +143,20 @@ function ArtifactCatalogFallbackPreview({
 function ArtifactCatalogCard({
   artifact,
   onOpen,
+  scrollIntoView,
 }: {
   readonly artifact: CatalogArtifact;
   readonly onOpen: (artifactId: string) => void;
+  readonly scrollIntoView: boolean;
 }) {
   const { t } = useTranslation();
+  const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
   return (
     <article
+      ref={scrollIntoView ? scrollArtifactCardIntoViewRef : undefined}
       role="button"
       tabIndex={0}
+      data-artifact-id={artifact.id}
       aria-label={t(
         ($) => {
           return $.artifacts.catalog.cardPreview;
@@ -210,18 +214,27 @@ function ArtifactCatalogCard({
 function ArtifactSharedConversationList({
   artifacts,
   onOpen,
+  scrollToArtifactId,
 }: {
   readonly artifacts: readonly CatalogArtifact[];
   readonly onOpen: (artifactId: string) => void;
+  readonly scrollToArtifactId: string | null;
 }) {
   const { t } = useTranslation();
+  const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
   return (
     <ul className="zero-card divide-y divide-border overflow-hidden">
       {artifacts.map((artifact) => {
         return (
           <li key={artifact.id}>
             <button
+              ref={
+                artifact.id === scrollToArtifactId
+                  ? scrollArtifactCardIntoViewRef
+                  : undefined
+              }
               type="button"
+              data-artifact-id={artifact.id}
               aria-label={t(
                 ($) => {
                   return $.artifacts.catalog.cardPreview;
@@ -258,9 +271,11 @@ function ArtifactSharedConversationList({
 export function ArtifactCatalogGrid({
   artifacts,
   onOpen,
+  scrollToArtifactId = null,
 }: {
   readonly artifacts: readonly CatalogArtifact[];
   readonly onOpen: (artifactId: string) => void;
+  readonly scrollToArtifactId?: string | null;
 }) {
   return (
     <div
@@ -276,6 +291,7 @@ export function ArtifactCatalogGrid({
             key={artifact.id}
             artifact={artifact}
             onOpen={onOpen}
+            scrollIntoView={artifact.id === scrollToArtifactId}
           />
         );
       })}
@@ -375,21 +391,16 @@ export function ArtifactCatalogEmpty() {
 
 function ArtifactCatalogKindFilter({
   selectedKind,
-  avatarEnabled,
   sharedConversationEnabled,
   onKindChange,
 }: {
   readonly selectedKind: ArtifactCatalogKind | null;
-  readonly avatarEnabled: boolean;
   readonly sharedConversationEnabled: boolean;
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
   const { t } = useTranslation();
   const options = ARTIFACT_KIND_OPTIONS.filter((kind) => {
-    return (
-      (kind !== "avatar" || avatarEnabled) &&
-      (kind !== "shared-thread" || sharedConversationEnabled)
-    );
+    return kind !== "shared-thread" || sharedConversationEnabled;
   });
   return (
     <div
@@ -481,21 +492,23 @@ function ArtifactCatalogKindFilter({
   );
 }
 
-export function ArtifactCatalogPage() {
+export function ArtifactCatalogPage({
+  scrollToArtifactId,
+}: {
+  readonly scrollToArtifactId: string | null;
+}) {
   const { t } = useTranslation();
   const selectedKind = useGet(selectedArtifactCatalogKind$);
   const setKind = useSet(setArtifactCatalogKind$);
   const openArtifact = useSet(openArtifact$);
   const loadMore = useSet(loadMoreArtifactCatalog$);
   const pageSignal = useGet(pageSignal$);
-  const lightboxUrl = useGet(lightboxUrl$);
   const featureSwitches = useGet(featureSwitch$);
   const catalog = useLoadable(artifactCatalog$);
   const artifacts = catalog.state === "hasData" ? catalog.data.artifacts : [];
   const sharedConversationLayout = selectedKind === "shared-thread";
   const hasMore =
     catalog.state === "hasData" && catalog.data.nextCursor !== null;
-
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     if (!hasMore) {
       return;
@@ -513,7 +526,6 @@ export function ArtifactCatalogPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {lightboxUrl && <AttachmentLightbox />}
       {/* The header sits outside the scroll container so the kind filter stays
           pinned to the top while the catalog scrolls under it. */}
       <header className="shrink-0 bg-transparent px-4 pb-3 pt-3 sm:px-6 md:pt-10">
@@ -532,9 +544,6 @@ export function ArtifactCatalogPage() {
           </div>
           <ArtifactCatalogKindFilter
             selectedKind={selectedKind}
-            avatarEnabled={
-              featureSwitches[FeatureSwitchKey.JoggAiBuiltIn] ?? false
-            }
             sharedConversationEnabled={
               featureSwitches[FeatureSwitchKey.SharedThreadSharing] ?? false
             }
@@ -559,6 +568,7 @@ export function ArtifactCatalogPage() {
           ) : sharedConversationLayout ? (
             <ArtifactSharedConversationList
               artifacts={artifacts}
+              scrollToArtifactId={scrollToArtifactId}
               onOpen={(artifactId) => {
                 detach(
                   openArtifact(artifactId, pageSignal),
@@ -570,6 +580,7 @@ export function ArtifactCatalogPage() {
           ) : (
             <ArtifactCatalogGrid
               artifacts={artifacts}
+              scrollToArtifactId={scrollToArtifactId}
               onOpen={(artifactId) => {
                 detach(
                   openArtifact(artifactId, pageSignal),

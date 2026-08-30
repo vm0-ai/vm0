@@ -1,5 +1,11 @@
 """Indexed compiled firewall matcher compatibility and scan guardrails."""
 
+import hashlib
+import json
+from copy import deepcopy
+from functools import partial
+from itertools import product
+
 import pytest
 
 import connector_intent
@@ -44,6 +50,385 @@ def _assert_indexed_matches_linear(
 
     assert indexed == linear
     return indexed
+
+
+_GENERATED_CASE_SEED = 28934
+_GENERATED_CASE_COUNT = 256
+_GENERATED_AXIS_VALUES = (
+    (
+        "base",
+        (
+            "static-root",
+            "static-nested",
+            "parameterized-host",
+            "repeated-slash",
+        ),
+    ),
+    (
+        "topology",
+        (
+            "single-owner",
+            "unrelated-owner",
+            "unrelated-api",
+            "overlapping-api",
+            "shared-owner",
+            "shared-owner-with-unrelated-api",
+        ),
+    ),
+    (
+        "rule",
+        (
+            "literal",
+            "segment-parameter",
+            "mixed-parameter",
+            "greedy-parameter",
+            "any-before-exact",
+            "competing-specificity",
+        ),
+    ),
+    (
+        "policy",
+        (
+            "allow-permissions",
+            "deny-permissions",
+            "ask-permissions",
+            "unknown-allow",
+            "unknown-deny",
+            "unknown-ask",
+            "absent",
+            "malformed-permissions",
+        ),
+    ),
+    (
+        "request",
+        (
+            "matching",
+            "lowercase-method",
+            "method-mismatch",
+            "unknown-path",
+            "unmatched-authority",
+            "encoded-slash",
+            "unsafe-path",
+            "asterisk-form",
+        ),
+    ),
+    (
+        "intent",
+        (
+            "absent",
+            "target-owner",
+            "non-candidate",
+            "malformed",
+        ),
+    ),
+    (
+        "malformed",
+        (
+            "none",
+            "auth",
+            "rule",
+            "base",
+            "firewall-name",
+        ),
+    ),
+)
+
+_GENERATED_BASES = {
+    "static-root": ("https://api.example.com", "https://api.example.com"),
+    "static-nested": ("https://api.example.com/v1", "https://api.example.com/v1"),
+    "parameterized-host": (
+        "https://{tenant}.example.com/v1",
+        "https://acme.example.com/v1",
+    ),
+    "repeated-slash": ("https://api.example.com//v1", "https://api.example.com//v1"),
+}
+
+_GENERATED_INTENTS = {
+    "absent": connector_intent.ABSENT,
+    "target-owner": connector_intent.ConnectorIntent("present", "target"),
+    "non-candidate": connector_intent.ConnectorIntent("present", "missing"),
+    "malformed": connector_intent.MALFORMED,
+}
+
+
+def _generated_position_key(axis_salt, position):
+    # A stable hash permutation is reproducible without random.Random, which
+    # the add-on's security lint correctly rejects through S311. The even axis
+    # salts make this committed 256-row corpus pairwise-complete; the coverage
+    # assertion below guards that property if the axes change.
+    payload = f"{_GENERATED_CASE_SEED}:{axis_salt}:{position}".encode()
+    return hashlib.sha256(payload).digest()
+
+
+def _generated_variant_rows():
+    decks = []
+    for axis_index, (_axis_name, values) in enumerate(_GENERATED_AXIS_VALUES):
+        repeat_count = (_GENERATED_CASE_COUNT + len(values) - 1) // len(values)
+        balanced_values = (values * repeat_count)[:_GENERATED_CASE_COUNT]
+        positions = list(range(_GENERATED_CASE_COUNT))
+        positions.sort(key=partial(_generated_position_key, (axis_index + 1) * 2))
+        decks.append(tuple(balanced_values[position] for position in positions))
+    return tuple(zip(*decks, strict=True))
+
+
+def _assert_generated_pairwise_coverage(variant_rows):
+    for left_index, (left_name, left_values) in enumerate(_GENERATED_AXIS_VALUES):
+        for right_index in range(left_index + 1, len(_GENERATED_AXIS_VALUES)):
+            right_name, right_values = _GENERATED_AXIS_VALUES[right_index]
+            expected = set(product(left_values, right_values))
+            observed = {(row[left_index], row[right_index]) for row in variant_rows}
+            missing = expected - observed
+            assert not missing, f"missing generated {left_name}/{right_name} pairs: {missing}"
+
+
+def _generated_permissions(rule_variant, name_prefix="target"):
+    if rule_variant == "literal":
+        return [firewall_permission(f"{name_prefix}-primary", "GET /items/item-7")], "/items/item-7"
+    if rule_variant == "segment-parameter":
+        return [firewall_permission(f"{name_prefix}-primary", "GET /items/{id}")], "/items/7"
+    if rule_variant == "mixed-parameter":
+        return [
+            firewall_permission(f"{name_prefix}-primary", "GET /items/item-{id}")
+        ], "/items/item-7"
+    if rule_variant == "greedy-parameter":
+        return [
+            firewall_permission(f"{name_prefix}-primary", "GET /files/{path+}")
+        ], "/files/reports/7"
+    if rule_variant == "any-before-exact":
+        return [
+            firewall_permission(
+                f"{name_prefix}-primary",
+                "ANY /items/{id}",
+                "GET /items/{id}",
+            )
+        ], "/items/7"
+    if rule_variant == "competing-specificity":
+        return [
+            firewall_permission(f"{name_prefix}-first", "GET /items/{id}"),
+            firewall_permission(f"{name_prefix}-second", "GET /items/{item}"),
+        ], "/items/7"
+    raise AssertionError(f"unknown generated rule variant: {rule_variant}")
+
+
+def _generated_firewalls(base, request_prefix, permissions, topology, malformed):
+    target_api = firewall_api(base, deepcopy(permissions))
+    target_firewall = firewall_entry("target", target_api)
+    firewalls = [target_firewall]
+
+    if topology == "single-owner":
+        pass
+    elif topology == "unrelated-owner":
+        firewalls.insert(
+            0,
+            firewall_entry(
+                "unrelated",
+                firewall_api(
+                    "https://unrelated.example.com/v9",
+                    deepcopy(permissions),
+                    auth_label="unrelated",
+                ),
+            ),
+        )
+    elif topology == "unrelated-api":
+        target_firewall["apis"].insert(
+            0,
+            firewall_api(
+                "https://unrelated.example.com/v9",
+                deepcopy(permissions),
+                auth_label="unrelated",
+            ),
+        )
+    elif topology == "overlapping-api":
+        target_firewall["apis"].append(
+            firewall_api(
+                f"{base}/nested",
+                deepcopy(permissions),
+                auth_label="nested",
+            )
+        )
+        request_prefix = f"{request_prefix}/nested"
+    elif topology == "shared-owner":
+        firewalls.append(
+            firewall_entry(
+                "secondary",
+                firewall_api(base, deepcopy(permissions), auth_label="secondary"),
+            )
+        )
+    elif topology == "shared-owner-with-unrelated-api":
+        target_firewall["apis"].insert(
+            0,
+            firewall_api(
+                "https://unrelated.example.com/v9",
+                deepcopy(permissions),
+                auth_label="unrelated",
+            ),
+        )
+        firewalls.append(
+            firewall_entry(
+                "secondary",
+                firewall_api(base, deepcopy(permissions), auth_label="secondary"),
+            )
+        )
+    else:
+        raise AssertionError(f"unknown generated topology variant: {topology}")
+
+    if malformed == "none":
+        pass
+    elif malformed == "auth":
+        target_api["auth"] = {"headers": None}
+    elif malformed == "rule":
+        target_api["permissions"][0]["rules"].insert(0, None)
+    elif malformed == "base":
+        target_api["base"] = f"{base}?source=malformed"
+    elif malformed == "firewall-name":
+        target_firewall["name"] = ""
+    else:
+        raise AssertionError(f"unknown generated malformed variant: {malformed}")
+
+    return firewalls, request_prefix
+
+
+def _generated_permission_names(firewall):
+    names = []
+    for api_entry in firewall["apis"]:
+        for permission in api_entry["permissions"]:
+            name = permission["name"]
+            if name not in names:
+                names.append(name)
+    return names
+
+
+def _generated_policies(firewalls, policy_variant):
+    if policy_variant == "absent":
+        return None
+
+    policies = {}
+    for firewall in firewalls:
+        name = firewall["name"]
+        permission_names = _generated_permission_names(firewall)
+        if policy_variant == "allow-permissions":
+            policy = network_policy(allow=permission_names, unknown_policy="deny")
+        elif policy_variant == "deny-permissions":
+            policy = network_policy(deny=permission_names, unknown_policy="deny")
+        elif policy_variant == "ask-permissions":
+            policy = network_policy(ask=permission_names, unknown_policy="deny")
+        elif policy_variant == "unknown-allow":
+            policy = network_policy(unknown_policy="allow")
+        elif policy_variant == "unknown-deny":
+            policy = network_policy(unknown_policy="deny")
+        elif policy_variant == "unknown-ask":
+            policy = network_policy(unknown_policy="ask")
+        elif policy_variant == "malformed-permissions":
+            policy = {
+                "allow": permission_names[0],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            }
+        else:
+            raise AssertionError(f"unknown generated policy variant: {policy_variant}")
+        policies[name] = policy
+    return policies
+
+
+def _generated_request(request_variant, request_prefix, matching_suffix):
+    if request_variant == "matching":
+        return f"{request_prefix}{matching_suffix}", "GET", False
+    if request_variant == "lowercase-method":
+        return f"{request_prefix}{matching_suffix}", "get", False
+    if request_variant == "method-mismatch":
+        return f"{request_prefix}{matching_suffix}", "POST", False
+    if request_variant == "unknown-path":
+        return f"{request_prefix}/unknown/7", "GET", False
+    if request_variant == "unmatched-authority":
+        return f"https://outside.example.com{matching_suffix}", "GET", False
+    if request_variant == "encoded-slash":
+        return f"{request_prefix}/items/acme%2Fteam", "GET", False
+    if request_variant == "unsafe-path":
+        return f"{request_prefix}/items/%2e%2e/secret", "GET", False
+    if request_variant == "asterisk-form":
+        return request_prefix, "OPTIONS", True
+    raise AssertionError(f"unknown generated request variant: {request_variant}")
+
+
+def _generated_match_case(variants):
+    (
+        base_variant,
+        topology_variant,
+        rule_variant,
+        policy_variant,
+        request_variant,
+        intent_variant,
+        malformed_variant,
+    ) = variants
+    base, request_prefix = _GENERATED_BASES[base_variant]
+    permissions, matching_suffix = _generated_permissions(rule_variant)
+    firewalls, request_prefix = _generated_firewalls(
+        base,
+        request_prefix,
+        permissions,
+        topology_variant,
+        malformed_variant,
+    )
+    network_policies = _generated_policies(firewalls, policy_variant)
+    url, method, is_asterisk_form = _generated_request(
+        request_variant,
+        request_prefix,
+        matching_suffix,
+    )
+    return (
+        firewalls,
+        network_policies,
+        url,
+        method,
+        _GENERATED_INTENTS[intent_variant],
+        is_asterisk_form,
+    )
+
+
+def test_generated_indexed_matching_matches_linear():
+    variant_rows = _generated_variant_rows()
+    _assert_generated_pairwise_coverage(variant_rows)
+
+    for case_index, variants in enumerate(variant_rows):
+        firewalls, network_policies, url, method, intent, is_asterisk_form = _generated_match_case(
+            variants
+        )
+        compiled = compile_firewalls_or_fail(firewalls)
+        indexed = matching.match_compiled_firewall_request(
+            url,
+            method,
+            compiled,
+            network_policies,
+            intent,
+            is_asterisk_form=is_asterisk_form,
+        )
+        linear = matching._match_compiled_firewall_request_linear(
+            url,
+            method,
+            compiled,
+            network_policies,
+            intent,
+            is_asterisk_form=is_asterisk_form,
+        )
+        failure_input = {
+            "seed": _GENERATED_CASE_SEED,
+            "caseIndex": case_index,
+            "variants": dict(
+                zip(
+                    (axis_name for axis_name, _values in _GENERATED_AXIS_VALUES),
+                    variants,
+                    strict=True,
+                )
+            ),
+            "url": url,
+            "method": method,
+            "isAsteriskForm": is_asterisk_form,
+            "intent": {"status": intent.status, "value": intent.value},
+            "firewalls": firewalls,
+            "networkPolicies": network_policies,
+        }
+        assert indexed == linear, json.dumps(failure_input, indent=2, sort_keys=True)
 
 
 def test_indexed_matches_linear_for_asterisk_form_unknown_policy():

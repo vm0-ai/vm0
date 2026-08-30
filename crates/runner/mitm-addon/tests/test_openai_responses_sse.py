@@ -6,6 +6,24 @@ import usage.openai_responses as openai_responses
 from usage import (
     create_openai_responses_sse_usage_extractor,
 )
+from usage.model_http import ModelHttpFailureEvidence
+
+
+class _IgnoringDeltaFailureObserver:
+    def __init__(self) -> None:
+        self.observed: list[ModelHttpFailureEvidence] = []
+
+    def needs_sse_event(self, event_name: str | None) -> bool:
+        return event_name != "response.output_text.delta"
+
+    def observe(self, evidence: ModelHttpFailureEvidence) -> None:
+        self.observed.append(evidence)
+
+    def observe_json(self, evidence: ModelHttpFailureEvidence) -> None:
+        self.observed.append(evidence)
+
+    def finish(self) -> None:
+        return None
 
 
 class TestOpenAIResponsesSseUsageExtractor:
@@ -615,7 +633,7 @@ class TestOpenAIResponsesSseUsageExtractor:
             pytest.param(b"event: response.completed\n", id="named"),
         ],
     )
-    def test_tiny_chunks_classify_late_terminal_type_once(self, event_prefix, monkeypatch):
+    def test_tiny_chunks_probe_late_terminal_type_once(self, event_prefix, monkeypatch):
         metadata = b",".join(f'"key_{index}":{index}'.encode() for index in range(250))
         payload = (
             b"{"
@@ -625,17 +643,17 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         assert len(payload) < openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES
 
-        real_classify = openai_responses._classify_responses_event_type
-        classified_prefixes: list[bytes] = []
+        real_probe = openai_responses._probe_responses_event_type
+        probed_prefixes: list[bytes] = []
 
-        def track_classification(body: bytes):
-            classified_prefixes.append(body)
-            return real_classify(body)
+        def track_probe(body: bytes):
+            probed_prefixes.append(body)
+            return real_probe(body)
 
         monkeypatch.setattr(
             openai_responses,
-            "_classify_responses_event_type",
-            track_classification,
+            "_probe_responses_event_type",
+            track_probe,
         )
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(event_prefix + b"data: ")
@@ -644,7 +662,45 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(b"\n\n")
 
         assert usage == {"model": "gpt-5.6", "tokens.output": 17}
-        assert classified_prefixes == [payload]
+        assert probed_prefixes == [payload]
+
+    @pytest.mark.parametrize(
+        ("event_prefix", "payload"),
+        [
+            pytest.param(
+                b"",
+                b'{"type":"response.output_text.delta","delta":"hello"}',
+                id="eventless-event-end",
+            ),
+            pytest.param(
+                b"event: vendor.delta\n",
+                b'{"type":"response.output_text.delta","padding":"'
+                + b"x" * openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES
+                + b'"}',
+                id="named-prefix-cap",
+            ),
+        ],
+    )
+    def test_failure_filter_probes_known_non_usage_prefix_once(
+        self, event_prefix, payload, monkeypatch
+    ):
+        real_probe = openai_responses._probe_responses_event_type
+        probed_prefixes: list[bytes] = []
+
+        def track_probe(body: bytes):
+            probed_prefixes.append(body)
+            return real_probe(body)
+
+        monkeypatch.setattr(openai_responses, "_probe_responses_event_type", track_probe)
+        failure_observer = _IgnoringDeltaFailureObserver()
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            failure_observer=failure_observer
+        )
+        parse(event_prefix + b"data: " + payload + b"\n\n")
+
+        assert probed_prefixes == [payload[: openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES]]
+        assert usage == {}
+        assert failure_observer.observed == []
 
     def test_eventless_incomplete_terminal_reports_parse_error(self):
         parse_errors: list[tuple[str, str]] = []

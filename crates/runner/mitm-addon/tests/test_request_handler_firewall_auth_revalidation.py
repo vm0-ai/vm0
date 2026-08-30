@@ -19,7 +19,7 @@ from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_helpers import cancel_pending_task
 from tests.registry_builtin_helpers import write_registry_with_cache
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import _assert_no_request_stream, await_requestheaders_result
 from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
@@ -36,7 +36,7 @@ _CANDIDATE_BUILTIN_NAME = "github"
 _CANDIDATE_CUSTOM_NAME = "custom_connector_550e8400e29b41d4a716446655440000"
 
 
-def _registry_vm(
+def _registry_sandbox(
     tmp_path: Path,
     *,
     run_id: str = _ORIGINAL_RUN_ID,
@@ -73,7 +73,7 @@ def _registry_vm(
     if enforce_public_destination:
         api_entry["hostPolicy"] = {"kind": "publicDestination"}
 
-    return _single_firewall_vm(
+    return _single_firewall_sandbox(
         tmp_path,
         run_id=run_id,
         firewall_name=_FIREWALL_NAME,
@@ -85,11 +85,11 @@ def _registry_vm(
             "unknownPolicy": "deny",
         },
         billable_firewalls=[_FIREWALL_NAME],
-        vm_fields={"captureNetworkBodies": True, "modelUsageProvider": "test"},
+        sandbox_fields={"captureNetworkBodies": True, "modelUsageProvider": "test"},
     )
 
 
-def _switchable_permission_vm(
+def _switchable_permission_sandbox(
     tmp_path: Path,
     *,
     allowed_permission: str,
@@ -98,7 +98,7 @@ def _switchable_permission_vm(
     denied_permission = next(
         permission for permission in permissions if permission != allowed_permission
     )
-    return _single_firewall_vm(
+    return _single_firewall_sandbox(
         tmp_path,
         run_id=_ORIGINAL_RUN_ID,
         firewall_name=_FIREWALL_NAME,
@@ -119,11 +119,11 @@ def _switchable_permission_vm(
             "unknownPolicy": "deny",
         },
         billable_firewalls=[_FIREWALL_NAME],
-        vm_fields={"captureNetworkBodies": True, "modelUsageProvider": "test"},
+        sandbox_fields={"captureNetworkBodies": True, "modelUsageProvider": "test"},
     )
 
 
-def _candidate_precedence_vm(tmp_path: Path, *, custom_available: bool) -> dict[str, object]:
+def _candidate_precedence_sandbox(tmp_path: Path, *, custom_available: bool) -> dict[str, object]:
     firewalls: list[dict[str, object]] = [{"kind": "builtin", "name": _CANDIDATE_BUILTIN_NAME}]
     network_policies: dict[str, dict[str, object]] = {
         _CANDIDATE_BUILTIN_NAME: {
@@ -133,7 +133,7 @@ def _candidate_precedence_vm(tmp_path: Path, *, custom_available: bool) -> dict[
             "unknownPolicy": "deny",
         }
     }
-    vm: dict[str, object] = {
+    sandbox: dict[str, object] = {
         "runId": _ORIGINAL_RUN_ID,
         "cliAgentType": "claude-code",
         "sandboxToken": "candidate-precedence-token",
@@ -150,8 +150,8 @@ def _candidate_precedence_vm(tmp_path: Path, *, custom_available: bool) -> dict[
         "billableFirewalls": [_CANDIDATE_BUILTIN_NAME],
     }
     if not custom_available:
-        vm["omittedCustomConnectorIds"] = [_CUSTOM_CONNECTOR_ID]
-        return vm
+        sandbox["omittedCustomConnectorIds"] = [_CUSTOM_CONNECTOR_ID]
+        return sandbox
 
     firewalls.append(
         {
@@ -182,7 +182,7 @@ def _candidate_precedence_vm(tmp_path: Path, *, custom_available: bool) -> dict[
         "ask": [],
         "unknownPolicy": "deny",
     }
-    return vm
+    return sandbox
 
 
 def _candidate_builtin_firewall() -> dict[str, object]:
@@ -198,11 +198,11 @@ def _candidate_builtin_firewall() -> dict[str, object]:
     }
 
 
-def _publish_registry(registry_path: Path, *, vm_info: dict[str, object] | None) -> None:
+def _publish_registry(registry_path: Path, *, sandbox_info: dict[str, object] | None) -> None:
     """Publish a complete registry snapshot with the runner's atomic-replace shape."""
     next_path = registry_path.with_name("registry.next.json")
-    vms = {} if vm_info is None else {_CLIENT_IP: vm_info}
-    next_path.write_text(json.dumps({"vms": vms}), encoding="utf-8")
+    sandboxes = {} if sandbox_info is None else {_CLIENT_IP: sandbox_info}
+    next_path.write_text(json.dumps({"sandboxes": sandboxes}), encoding="utf-8")
     next_path.replace(registry_path)
 
 
@@ -214,12 +214,12 @@ def _mutate_registry(
     auth_base: bool = False,
 ) -> None:
     if mutation == "remove":
-        _publish_registry(registry_path, vm_info=None)
+        _publish_registry(registry_path, sandbox_info=None)
         return
     if mutation == "replace_run":
         _publish_registry(
             registry_path,
-            vm_info=_registry_vm(
+            sandbox_info=_registry_sandbox(
                 tmp_path,
                 run_id="run-replacement-after-auth-wait",
                 auth_base=auth_base,
@@ -228,7 +228,7 @@ def _mutate_registry(
         return
     _publish_registry(
         registry_path,
-        vm_info=_registry_vm(tmp_path, allow_repos=False, auth_base=auth_base),
+        sandbox_info=_registry_sandbox(tmp_path, allow_repos=False, auth_base=auth_base),
     )
 
 
@@ -275,6 +275,7 @@ def _firewall_flow(
 
 
 def _resolved_firewall_auth(*, auth_base: bool = False) -> dict[str, object]:
+    cache_entry_identity = auth.FirewallAuthCacheEntryIdentity()
     if auth_base:
         return {
             "headers": {},
@@ -283,6 +284,7 @@ def _resolved_firewall_auth(*, auth_base: bool = False) -> dict[str, object]:
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
+            "cache_entry_identity": cache_entry_identity,
         }
     return {
         "headers": {"Authorization": _RESOLVED_AUTHORIZATION},
@@ -291,6 +293,7 @@ def _resolved_firewall_auth(*, auth_base: bool = False) -> dict[str, object]:
         "refreshed_connectors": [],
         "refreshed_secrets": [],
         "cache_hit": False,
+        "cache_entry_identity": cache_entry_identity,
     }
 
 
@@ -302,18 +305,18 @@ def _assert_current_denial(flow: http.HTTPFlow, mutation: RegistryMutation) -> N
         assert flow.response.status_code == 503
         assert body["error"] == "stale_tls_admission"
         assert body["reason"] == "registry_entry_missing"
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     elif mutation == "replace_run":
         assert flow.response.status_code == 503
         assert body["error"] == "stale_tls_admission"
         assert body["reason"] == "run_id_mismatch"
-        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     else:
         assert flow.response.status_code == 403
         assert body["error"] == "permission_denied"
         assert body["reason"] == "permission_denied"
         assert body["permissions"] == ["repos-write"]
-        assert flow.metadata[metadata_keys.VM_RUN_ID] == _ORIGINAL_RUN_ID
+        assert flow.metadata[metadata_keys.SANDBOX_RUN_ID] == _ORIGINAL_RUN_ID
 
     assert flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_KEY) is None
     assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
@@ -337,7 +340,7 @@ async def test_registry_change_during_auth_blocks_old_authorization(
     registry_path = _write_registry(
         tmp_path,
         client_ip=_CLIENT_IP,
-        vm_info=_registry_vm(tmp_path),
+        sandbox_info=_registry_sandbox(tmp_path),
     )
     flow, tls_data = _firewall_flow(real_flow, make_tls_data)
     flow.metadata["preexisting"] = "keep"
@@ -412,7 +415,7 @@ async def test_public_destination_policy_added_during_auth_blocks_private_destin
     registry_path = _write_registry(
         tmp_path,
         client_ip=_CLIENT_IP,
-        vm_info=_registry_vm(tmp_path),
+        sandbox_info=_registry_sandbox(tmp_path),
     )
     private_endpoint = ("10.0.0.1", 443)
     flow, tls_data = _firewall_flow(
@@ -440,7 +443,7 @@ async def test_public_destination_policy_added_during_auth_blocks_private_destin
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
             _publish_registry(
                 registry_path,
-                vm_info=_registry_vm(tmp_path, enforce_public_destination=True),
+                sandbox_info=_registry_sandbox(tmp_path, enforce_public_destination=True),
             )
             release_auth_resolution.set()
             await asyncio.gather(request_task)
@@ -488,7 +491,7 @@ async def test_unrelated_same_run_policy_change_keeps_equivalent_authorization(
     registry_path = _write_registry(
         tmp_path,
         client_ip=_CLIENT_IP,
-        vm_info=_registry_vm(tmp_path),
+        sandbox_info=_registry_sandbox(tmp_path),
     )
     flow, tls_data = _firewall_flow(real_flow, make_tls_data)
     auth_resolution_entered = asyncio.Event()
@@ -515,7 +518,7 @@ async def test_unrelated_same_run_policy_change_keeps_equivalent_authorization(
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
             _publish_registry(
                 registry_path,
-                vm_info=_registry_vm(tmp_path, allow_unrelated_orgs=True),
+                sandbox_info=_registry_sandbox(tmp_path, allow_unrelated_orgs=True),
             )
             release_auth_resolution.set()
             await asyncio.gather(hook_task)
@@ -530,7 +533,7 @@ async def test_unrelated_same_run_policy_change_keeps_equivalent_authorization(
     assert flow.response is None
     assert flow.request.headers["Authorization"] == _RESOLVED_AUTHORIZATION
     assert flow.request.query["managed"] == "resolved-for-old-authorization"
-    assert flow.metadata[metadata_keys.VM_RUN_ID] == _ORIGINAL_RUN_ID
+    assert flow.metadata[metadata_keys.SANDBOX_RUN_ID] == _ORIGINAL_RUN_ID
 
 
 async def test_different_same_run_allow_decision_fails_closed_without_old_credentials(
@@ -543,7 +546,7 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
     registry_path = _write_registry(
         tmp_path,
         client_ip=_CLIENT_IP,
-        vm_info=_switchable_permission_vm(tmp_path, allowed_permission="repos-primary"),
+        sandbox_info=_switchable_permission_sandbox(tmp_path, allowed_permission="repos-primary"),
     )
     flow, tls_data = _firewall_flow(real_flow, make_tls_data)
     original_path = flow.request.path
@@ -566,7 +569,7 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
             _publish_registry(
                 registry_path,
-                vm_info=_switchable_permission_vm(
+                sandbox_info=_switchable_permission_sandbox(
                     tmp_path,
                     allowed_permission="repos-secondary",
                 ),
@@ -606,7 +609,7 @@ async def test_custom_owner_change_during_auth_discards_builtin_credentials(
 ):
     registry_path, cache_path = write_registry_with_cache(
         tmp_path,
-        {_CLIENT_IP: _candidate_precedence_vm(tmp_path, custom_available=False)},
+        {_CLIENT_IP: _candidate_precedence_sandbox(tmp_path, custom_available=False)},
         {_CANDIDATE_BUILTIN_NAME: _candidate_builtin_firewall()},
     )
     flow, tls_data = _firewall_flow(real_flow, make_tls_data)
@@ -633,7 +636,7 @@ async def test_custom_owner_change_during_auth_discards_builtin_credentials(
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
             _publish_registry(
                 registry_path,
-                vm_info=_candidate_precedence_vm(tmp_path, custom_available=True),
+                sandbox_info=_candidate_precedence_sandbox(tmp_path, custom_available=True),
             )
             release_auth_resolution.set()
             await asyncio.gather(request_task)
@@ -668,7 +671,7 @@ async def test_auth_base_registry_change_during_auth_blocks_resolved_forward(
     registry_path = _write_registry(
         tmp_path,
         client_ip=_CLIENT_IP,
-        vm_info=_registry_vm(tmp_path, auth_base=True),
+        sandbox_info=_registry_sandbox(tmp_path, auth_base=True),
     )
     flow, tls_data = _firewall_flow(real_flow, make_tls_data, auth_base=True)
     original_path = flow.request.path
@@ -737,7 +740,7 @@ async def test_auth_base_unrelated_policy_change_keeps_equivalent_authorization(
     registry_path = _write_registry(
         tmp_path,
         client_ip=_CLIENT_IP,
-        vm_info=_registry_vm(tmp_path, auth_base=True),
+        sandbox_info=_registry_sandbox(tmp_path, auth_base=True),
     )
     flow, tls_data = _firewall_flow(real_flow, make_tls_data, auth_base=True)
     auth_resolution_entered = asyncio.Event()
@@ -763,7 +766,7 @@ async def test_auth_base_unrelated_policy_change_keeps_equivalent_authorization(
             await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
             _publish_registry(
                 registry_path,
-                vm_info=_registry_vm(
+                sandbox_info=_registry_sandbox(
                     tmp_path,
                     allow_unrelated_orgs=True,
                     auth_base=True,
@@ -779,7 +782,7 @@ async def test_auth_base_unrelated_policy_change_keeps_equivalent_authorization(
         assert flow.response.status_code == 202
         assert flow.response.content == b"accepted"
         assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
-        assert flow.metadata[metadata_keys.VM_RUN_ID] == _ORIGINAL_RUN_ID
+        assert flow.metadata[metadata_keys.SANDBOX_RUN_ID] == _ORIGINAL_RUN_ID
         assert upstream.resolve_calls == ["webhook.example.com"]
         assert upstream.connect_calls == [("93.184.216.34", 443)]
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)

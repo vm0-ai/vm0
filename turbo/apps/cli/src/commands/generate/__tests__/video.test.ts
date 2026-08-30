@@ -113,7 +113,7 @@ describe("okou generate video command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     server.use(stubBillingStatus(true));
   });
@@ -473,5 +473,28 @@ describe("okou generate video command", () => {
     expect(stderr).toContain("Paid plan required");
     expect(stderr).toContain("okou upgrade pro");
     expect(generationRequests).toBe(0);
+  });
+
+  it("names the catalog default as the model an omitted --model falls back to", () => {
+    // The help used to spell the default out by hand, and kept naming
+    // seedance 2.0 fast for a while after the catalog moved off it.
+    let help = "";
+    videoCommand.configureOutput({
+      writeOut: (text: string) => {
+        help += text;
+      },
+    });
+    videoCommand.outputHelp();
+    videoCommand.configureOutput({
+      writeOut: (text: string) => {
+        process.stdout.write(text);
+      },
+    });
+
+    const collapsed = help.replace(/\s+/g, " ");
+    expect(collapsed).toContain(
+      "Omitting --model generates with dreamina-seedance-2.0 ",
+    );
+    expect(collapsed).not.toContain("dreamina-seedance-2.0-fast (default)");
   });
 });

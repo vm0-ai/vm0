@@ -27,6 +27,7 @@ class TestDoneHook:
         with (
             patch.object(usage, "flush_usage_events") as flush_usage_events,
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(usage.webhook, "model_usage_observation_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
                 "shutdown_forward_request_workers",
@@ -89,6 +90,7 @@ class TestDoneHook:
             patch.object(runner_flush_lifecycle, "_usage_flush_signal_lock", lock),
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(usage.webhook, "model_usage_observation_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
                 "shutdown_forward_request_workers",
@@ -216,6 +218,7 @@ class TestDoneHook:
                 patch.object(runner_flush_lifecycle, "__file__", str(lifecycle_file)),
                 patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
                 patch.object(usage.webhook, "usage_executor", mock_executor),
+                patch.object(usage.webhook, "model_usage_observation_executor", mock_executor),
                 patch.object(
                     mitm_addon.auth_base_forwarder,
                     "shutdown_forward_request_workers",
@@ -291,6 +294,7 @@ class TestDoneHook:
                 side_effect=flush_usage_for_runner_request,
             ),
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(usage.webhook, "model_usage_observation_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
                 "shutdown_forward_request_workers",
@@ -316,6 +320,7 @@ class TestDoneHook:
         with (
             patch.object(usage, "flush_usage_events"),
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(usage.webhook, "model_usage_observation_executor", mock_executor),
             patch.object(mitm_addon.auth_base_forwarder, "shutdown_forward_request_workers"),
             patch.object(mitm_addon, "shutdown_log_writer"),
         ):
@@ -346,6 +351,7 @@ class TestDoneHook:
                 "_flush_usage_for_runner_request",
             ) as flush_runner_usage,
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(usage.webhook, "model_usage_observation_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
                 "shutdown_forward_request_workers",
@@ -374,6 +380,7 @@ class TestDoneHook:
                 (
                     "usage-executor:shutdown:wait=True",
                     "auth-base:shutdown:wait=False",
+                    "model-provider:shutdown",
                     "jsonl:shutdown",
                 ),
                 id="usage-executor-shutdown",
@@ -384,6 +391,7 @@ class TestDoneHook:
                     "usage-executor:shutdown:wait=True",
                     "usage:drain",
                     "auth-base:shutdown:wait=False",
+                    "model-provider:shutdown",
                     "jsonl:shutdown",
                 ),
                 id="post-executor-usage-drain",
@@ -394,9 +402,21 @@ class TestDoneHook:
                     "usage-executor:shutdown:wait=True",
                     "usage:drain",
                     "auth-base:shutdown:wait=False",
+                    "model-provider:shutdown",
                     "jsonl:shutdown",
                 ),
                 id="auth-base-worker-shutdown",
+            ),
+            pytest.param(
+                "model-provider",
+                (
+                    "usage-executor:shutdown:wait=True",
+                    "usage:drain",
+                    "auth-base:shutdown:wait=False",
+                    "model-provider:shutdown",
+                    "jsonl:shutdown",
+                ),
+                id="model-provider-reporter-shutdown",
             ),
         ],
     )
@@ -423,6 +443,11 @@ class TestDoneHook:
             if failure_point == "auth-base":
                 raise failure
 
+        def shutdown_model_provider() -> None:
+            calls.append("model-provider:shutdown")
+            if failure_point == "model-provider":
+                raise failure
+
         def shutdown_jsonl() -> None:
             calls.append("jsonl:shutdown")
 
@@ -432,6 +457,7 @@ class TestDoneHook:
         with (
             patch.object(runner_flush_lifecycle, "drain_and_close") as drain_and_close,
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(usage.webhook, "model_usage_observation_executor", mock_executor),
             patch.object(
                 usage,
                 "drain_usage_events_after_executor_shutdown",
@@ -441,6 +467,11 @@ class TestDoneHook:
                 mitm_addon.auth_base_forwarder,
                 "shutdown_forward_request_workers",
                 side_effect=shutdown_auth_base,
+            ),
+            patch.object(
+                mitm_addon.model_provider_failure,
+                "shutdown",
+                side_effect=shutdown_model_provider,
             ),
             patch.object(mitm_addon, "shutdown_log_writer", side_effect=shutdown_jsonl),
             pytest.raises(RuntimeError) as exc_info,
@@ -607,6 +638,7 @@ class TestDoneHook:
 
         with (
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(usage.webhook, "model_usage_observation_executor", mock_executor),
             patch.object(mitm_addon.auth_base_forwarder, "shutdown_forward_request_workers"),
             patch.object(mitm_addon, "shutdown_log_writer"),
         ):

@@ -1,4 +1,4 @@
-import { zeroConnectorOauthDeviceAuthSessionContract } from "@okouai/api-contracts/contracts/zero-connectors";
+import { connectorOauthDeviceAuthSessionContract } from "@okouai/api-contracts/contracts/connectors";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -19,10 +19,10 @@ const startConnectorOauthDeviceAuthSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(zeroConnectorOauthDeviceAuthSessionContract.create),
+      pathParamsOf(connectorOauthDeviceAuthSessionContract.create),
     );
     const body = await get(
-      bodyResultOf(zeroConnectorOauthDeviceAuthSessionContract.create),
+      bodyResultOf(connectorOauthDeviceAuthSessionContract.create),
     );
     signal.throwIfAborted();
     if (!body.ok) {
@@ -50,10 +50,10 @@ const pollConnectorOauthDeviceAuthSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(zeroConnectorOauthDeviceAuthSessionContract.poll),
+      pathParamsOf(connectorOauthDeviceAuthSessionContract.poll),
     );
     const body = await get(
-      bodyResultOf(zeroConnectorOauthDeviceAuthSessionContract.poll),
+      bodyResultOf(connectorOauthDeviceAuthSessionContract.poll),
     );
     signal.throwIfAborted();
     if (!body.ok) {
@@ -76,14 +76,14 @@ const pollConnectorOauthDeviceAuthSessionInner$ = command(
 
 export const connectorsOauthDeviceAuthRoutes: readonly RouteEntry[] = [
   {
-    route: zeroConnectorOauthDeviceAuthSessionContract.create,
+    route: connectorOauthDeviceAuthSessionContract.create,
     handler: authRoute(
       connectorWriteAuth,
       startConnectorOauthDeviceAuthSessionInner$,
     ),
   },
   {
-    route: zeroConnectorOauthDeviceAuthSessionContract.poll,
+    route: connectorOauthDeviceAuthSessionContract.poll,
     handler: authRoute(
       connectorWriteAuth,
       pollConnectorOauthDeviceAuthSessionInner$,

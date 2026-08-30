@@ -6,13 +6,13 @@
  * runner state. Keep the exception at this narrow service boundary and assert
  * product behavior through the remaining production routes.
  */
-import { createStore } from "ccstate";
+import { randomUUID } from "node:crypto";
+
+import { createStore, state } from "ccstate";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@okouai/db/schema/agent-compose";
+import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -30,6 +30,7 @@ import {
   createAgentRun$,
   type CreateAgentRunArgs,
 } from "../signals/services/agent-run-create.service";
+import { buildAgentExecutionConfig } from "../signals/services/agent-execution-config";
 import { agentRunList } from "../signals/services/agent-runs.service";
 import {
   isCompressedSessionHistoryBlobEncoding,
@@ -39,25 +40,86 @@ import { projectLegacyWritebackArtifacts } from "../signals/services/storage-leg
 
 const store = createStore();
 
-type LegacyDirectRunResolver = NonNullable<
-  CreateAgentRunArgs["testOnlyResolveLegacyDirectRunCompose"]
->;
-type LegacyDirectRunResolution = Awaited<ReturnType<LegacyDirectRunResolver>>;
-type LegacyDirectRunResolverArgs = Parameters<LegacyDirectRunResolver>[0];
-type LegacyResolvedCompose = Extract<
-  LegacyDirectRunResolution,
-  { readonly composeId: string }
->;
+export async function clearRunLaunchSnapshotFixture(
+  runId: string,
+): Promise<void> {
+  const rows = await db()
+    .update(agentRuns)
+    .set({ launchSnapshot: null })
+    .where(eq(agentRuns.id, runId))
+    .returning({ id: agentRuns.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one Run launch snapshot to clear");
+  }
+}
 
-const MISSING_AGENT_CONFIGURATION_MESSAGE =
-  "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
+type DirectRunResolver = NonNullable<
+  CreateAgentRunArgs["testOnlyResolveDirectRun"]
+>;
+type DirectRunResolution = Awaited<ReturnType<DirectRunResolver>>;
+type DirectRunResolverArgs = Parameters<DirectRunResolver>[0];
+type ResolvedDirectRun = Extract<
+  DirectRunResolution,
+  { readonly agentId: string }
+>;
+export type DirectAgentExecutionConfig = ResolvedDirectRun["content"];
 
-async function measureLegacyDirectResolution<T>(
-  timing: LegacyDirectRunResolverArgs["timing"],
+const directAgentExecutionConfigs$ = state<
+  ReadonlyMap<string, DirectAgentExecutionConfig>
+>(new Map());
+
+export async function createDirectAgentExecutionFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly content: DirectAgentExecutionConfig;
+  readonly signal: AbortSignal;
+}): Promise<{ readonly agentId: string; readonly name: string }> {
+  const names = Object.keys(args.content.agents ?? {});
+  if (names.length !== 1 || !names[0]) {
+    throw new Error(
+      "Direct Agent execution fixtures require exactly one Agent",
+    );
+  }
+  const name = names[0].toLowerCase();
+  const [agent] = await db()
+    .insert(agents)
+    .values({
+      id: randomUUID(),
+      orgId: args.orgId,
+      owner: args.userId,
+      name,
+      displayName: "Direct run fixture",
+      visibility: "private",
+    })
+    .onConflictDoUpdate({
+      target: [agents.orgId, agents.name],
+      set: {
+        owner: args.userId,
+        displayName: "Direct run fixture",
+        visibility: "private",
+      },
+    })
+    .returning({ id: agents.id });
+  if (!agent) {
+    throw new Error("Expected the direct Agent fixture to be persisted");
+  }
+  args.signal.throwIfAborted();
+  store.set(
+    directAgentExecutionConfigs$,
+    new Map(store.get(directAgentExecutionConfigs$)).set(
+      agent.id,
+      args.content,
+    ),
+  );
+  return { agentId: agent.id, name };
+}
+
+async function measureDirectResolution<T>(
+  timing: DirectRunResolverArgs["timing"],
   actionType:
-    | "api_dispatch_resolve_compose_lookup_agent"
-    | "api_dispatch_resolve_compose_lookup_session_snapshot"
-    | "api_dispatch_resolve_compose_resolve_session_history",
+    | "api_dispatch_resolve_agent_execution_lookup_agent"
+    | "api_dispatch_resolve_agent_execution_lookup_session_snapshot"
+    | "api_dispatch_resolve_agent_execution_resolve_session_history",
   work: () => Promise<T> | T,
 ): Promise<T> {
   return timing
@@ -65,13 +127,13 @@ async function measureLegacyDirectResolution<T>(
     : await Promise.resolve(work());
 }
 
-function resumeSessionFromLegacySnapshot(snapshot: {
+function resumeSessionFromSnapshotFixture(snapshot: {
   readonly runId: string;
   readonly cliAgentSessionId: string;
   readonly cliAgentSessionHistory: string | null;
   readonly cliAgentSessionHistoryHash: string | null;
   readonly sessionHistoryBlobEncoding: string | null;
-}): LegacyResolvedCompose["resumeSession"] {
+}): ResolvedDirectRun["resumeSession"] {
   const hash = snapshot.cliAgentSessionHistoryHash;
   let encoding;
   if (snapshot.sessionHistoryBlobEncoding !== null) {
@@ -102,57 +164,48 @@ function resumeSessionFromLegacySnapshot(snapshot: {
   return undefined;
 }
 
-async function resolveLegacyDirectAgentRun(
-  args: LegacyDirectRunResolverArgs,
+async function resolveDirectAgentRun(
+  args: DirectRunResolverArgs,
   agentId: string,
-): Promise<LegacyDirectRunResolution> {
-  const [row] = await measureLegacyDirectResolution(
+): Promise<DirectRunResolution> {
+  const [agent] = await measureDirectResolution(
     args.timing,
-    "api_dispatch_resolve_compose_lookup_agent",
+    "api_dispatch_resolve_agent_execution_lookup_agent",
     async () => {
       return await args.db
         .select({
-          composeId: agentComposes.id,
-          composeName: agentComposes.name,
-          composeOrgId: agentComposes.orgId,
-          composeUserId: agentComposes.userId,
-          headVersionId: agentComposes.headVersionId,
-          versionId: agentComposeVersions.id,
-          versionContent: agentComposeVersions.content,
+          id: agents.id,
+          name: agents.name,
+          orgId: agents.orgId,
+          owner: agents.owner,
         })
-        .from(agentComposes)
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentComposeVersions.id, agentComposes.headVersionId),
-        )
-        .where(eq(agentComposes.id, agentId))
+        .from(agents)
+        .where(eq(agents.id, agentId))
         .limit(1);
     },
   );
-  if (!row) {
-    return notFound("Agent compose not found");
-  }
-  if (!row.headVersionId || !row.versionId) {
-    return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
+  if (!agent) {
+    return notFound("Agent not found");
   }
   return {
-    agentComposeVersionId: row.versionId,
-    composeId: row.composeId,
-    composeUserId: row.composeUserId,
-    agentName: row.composeName || undefined,
-    orgId: row.composeOrgId,
-    content: row.versionContent as LegacyResolvedCompose["content"],
+    agentId: agent.id,
+    ownerUserId: agent.owner,
+    agentName: agent.name || undefined,
+    orgId: agent.orgId,
+    content:
+      store.get(directAgentExecutionConfigs$).get(agent.id) ??
+      buildAgentExecutionConfig(agent.name),
     artifacts: [],
   };
 }
 
-async function loadLegacyDirectSessionSnapshot(
-  args: LegacyDirectRunResolverArgs,
+async function loadDirectSessionSnapshot(
+  args: DirectRunResolverArgs,
   sessionId: string,
 ) {
-  return await measureLegacyDirectResolution(
+  return await measureDirectResolution(
     args.timing,
-    "api_dispatch_resolve_compose_lookup_session_snapshot",
+    "api_dispatch_resolve_agent_execution_lookup_session_snapshot",
     async () => {
       return await args.db
         .select({
@@ -160,16 +213,11 @@ async function loadLegacyDirectSessionSnapshot(
             id: agentSessions.id,
             storageMounts: agentSessions.storageMounts,
           },
-          compose: {
-            id: agentComposes.id,
-            name: agentComposes.name,
-            orgId: agentComposes.orgId,
-            userId: agentComposes.userId,
-            headVersionId: agentComposes.headVersionId,
-          },
-          version: {
-            id: agentComposeVersions.id,
-            content: agentComposeVersions.content,
+          agent: {
+            id: agents.id,
+            name: agents.name,
+            orgId: agents.orgId,
+            owner: agents.owner,
           },
           conversation: {
             id: conversations.id,
@@ -189,14 +237,7 @@ async function loadLegacyDirectSessionSnapshot(
           },
         })
         .from(agentSessions)
-        .leftJoin(
-          agentComposes,
-          eq(agentSessions.agentComposeId, agentComposes.id),
-        )
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentComposeVersions.id, agentComposes.headVersionId),
-        )
+        .leftJoin(agents, eq(agentSessions.agentId, agents.id))
         .leftJoin(
           conversations,
           eq(agentSessions.conversationId, conversations.id),
@@ -218,19 +259,16 @@ async function loadLegacyDirectSessionSnapshot(
   );
 }
 
-async function resolveLegacyDirectSessionRun(
-  args: LegacyDirectRunResolverArgs,
+async function resolveDirectSessionRun(
+  args: DirectRunResolverArgs,
   sessionId: string,
-): Promise<LegacyDirectRunResolution> {
-  const [snapshot] = await loadLegacyDirectSessionSnapshot(args, sessionId);
+): Promise<DirectRunResolution> {
+  const [snapshot] = await loadDirectSessionSnapshot(args, sessionId);
   if (!snapshot) {
     return notFound("Agent session not found");
   }
-  if (!snapshot.compose) {
-    return notFound("Agent compose not found");
-  }
-  if (!snapshot.compose.headVersionId || !snapshot.version) {
-    return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
+  if (!snapshot.agent) {
+    return notFound("Agent not found");
   }
   if (snapshot.session.storageMounts === null) {
     throw new Error(
@@ -240,11 +278,11 @@ async function resolveLegacyDirectSessionRun(
 
   const conversation = snapshot.conversation;
   const resumeSession = conversation
-    ? await measureLegacyDirectResolution(
+    ? await measureDirectResolution(
         args.timing,
-        "api_dispatch_resolve_compose_resolve_session_history",
+        "api_dispatch_resolve_agent_execution_resolve_session_history",
         () => {
-          return resumeSessionFromLegacySnapshot({
+          return resumeSessionFromSnapshotFixture({
             ...conversation,
             sessionHistoryBlobEncoding: snapshot.historyBlob?.encoding ?? null,
           });
@@ -252,12 +290,13 @@ async function resolveLegacyDirectSessionRun(
       )
     : undefined;
   return {
-    agentComposeVersionId: snapshot.version.id,
-    composeId: snapshot.compose.id,
-    composeUserId: snapshot.compose.userId,
-    agentName: snapshot.compose.name || undefined,
-    orgId: snapshot.compose.orgId,
-    content: snapshot.version.content as LegacyResolvedCompose["content"],
+    agentId: snapshot.agent.id,
+    ownerUserId: snapshot.agent.owner,
+    agentName: snapshot.agent.name || undefined,
+    orgId: snapshot.agent.orgId,
+    content:
+      store.get(directAgentExecutionConfigs$).get(snapshot.agent.id) ??
+      buildAgentExecutionConfig(snapshot.agent.name),
     artifacts: projectLegacyWritebackArtifacts(snapshot.session.storageMounts),
     persistedStorageMounts: snapshot.session.storageMounts,
     vars:
@@ -272,12 +311,12 @@ async function resolveLegacyDirectSessionRun(
   };
 }
 
-const resolveLegacyDirectRunCompose: LegacyDirectRunResolver = async (args) => {
+const resolveDirectRun: DirectRunResolver = async (args) => {
   if (args.body.sessionId) {
-    return await resolveLegacyDirectSessionRun(args, args.body.sessionId);
+    return await resolveDirectSessionRun(args, args.body.sessionId);
   }
   return args.body.agentId
-    ? await resolveLegacyDirectAgentRun(args, args.body.agentId)
+    ? await resolveDirectAgentRun(args, args.body.agentId)
     : badRequestMessage("Missing agentId or sessionId");
 };
 
@@ -360,7 +399,7 @@ export async function createDirectRunFixture(args: {
       orgId: args.orgId,
       apiStartTime: now(),
       modelProviderType: body.modelProviderType,
-      testOnlyResolveLegacyDirectRunCompose: resolveLegacyDirectRunCompose,
+      testOnlyResolveDirectRun: resolveDirectRun,
       connectorScope: connectorScope ?? {
         allowedConnectorSlugs: [],
         allowedCustomConnectorIds: [],
@@ -479,13 +518,13 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
       selectedModel: agentRuns.selectedModel,
       modelRuntimeProvider: agentRuns.modelRuntimeProvider,
       modelRuntimeModel: agentRuns.modelRuntimeModel,
-      vm0ModelKeyId: agentRuns.vm0ModelKeyId,
-      modelKeyVendor: builtInModelKeys.vendor,
+      builtInModelKeyId: agentRuns.builtInModelKeyId,
+      builtInModelKeyVendor: builtInModelKeys.vendor,
     })
     .from(agentRuns)
     .leftJoin(
       builtInModelKeys,
-      eq(builtInModelKeys.id, agentRuns.vm0ModelKeyId),
+      eq(builtInModelKeys.id, agentRuns.builtInModelKeyId),
     )
     .where(eq(agentRuns.id, runId))
     .limit(1);
@@ -495,7 +534,7 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
   return run;
 }
 
-/** Simulate historical or alternate managed-route metadata not constructible through current policy. */
+/** Simulate historical or alternate built-in model route metadata not constructible through current policy. */
 export async function setRunModelRuntimeRouteFixture(args: {
   readonly runId: string;
   readonly modelRuntimeProvider: string | null;
@@ -511,5 +550,25 @@ export async function setRunModelRuntimeRouteFixture(args: {
     .returning({ id: agentRuns.id });
   if (updated.length !== 1) {
     throw new Error("Expected one run runtime route to update");
+  }
+}
+
+/**
+ * Simulate a persisted discriminator written by a later release. The current
+ * production API intentionally cannot construct this canonical row because
+ * its write fence still rejects `built-in`; compatibility reads still require
+ * permanent coverage before that later writer exists.
+ */
+export async function setRunModelProviderFixture(args: {
+  readonly runId: string;
+  readonly modelProvider: ModelProviderType;
+}): Promise<void> {
+  const updated = await db()
+    .update(agentRuns)
+    .set({ modelProvider: args.modelProvider })
+    .where(eq(agentRuns.id, args.runId))
+    .returning({ id: agentRuns.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one run model provider to update");
   }
 }

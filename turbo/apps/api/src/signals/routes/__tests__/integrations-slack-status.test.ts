@@ -28,7 +28,7 @@ describe("GET /api/zero/integrations/slack", () => {
 
   beforeEach(() => {
     mockEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -85,6 +85,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     expect(connectUrl.searchParams.get("orgId")).toBe(orgId);
     expect(connectUrl.searchParams.get("userId")).toBe(userId);
+    expect(connectUrl.searchParams.get("publicBrand")).toBe("vm0");
   });
 
   it("returns install URLs on the web origin when Slack is not installed", async () => {
@@ -110,6 +111,32 @@ describe("GET /api/zero/integrations/slack", () => {
     );
     expect(installUrl.searchParams.get("orgId")).toBe(orgId);
     expect(installUrl.searchParams.get("userId")).toBe(userId);
+    expect(installUrl.searchParams.get("publicBrand")).toBe("vm0");
+  });
+
+  it("preserves the Okou request brand in the shared-origin install URL", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const client = setupApp({
+      baseUrl: "https://api.okou.ai",
+      context,
+      routes: integrationsSlackRoutes,
+    })(integrationsSlackContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const installUrl = new URL(response.body.installUrl!);
+    expect(`${installUrl.origin}${installUrl.pathname}`).toBe(
+      "https://www.vm0.ai/api/slack/oauth/install",
+    );
+    expect(installUrl.searchParams.get("publicBrand")).toBe("okou");
   });
 
   it("returns workspace info for connected user", async () => {
@@ -341,6 +368,7 @@ describe("GET /api/zero/integrations/slack", () => {
     expect(response.body.scopeMismatch).toBeTruthy();
     expect(response.body.reinstallUrl).toContain("/api/slack/oauth/install");
     expect(response.body.reinstallUrl).toContain("reinstall=1");
+    expect(response.body.reinstallUrl).toContain("publicBrand=vm0");
   });
 
   it("treats null bot_scopes as mismatch (requires reinstall)", async () => {

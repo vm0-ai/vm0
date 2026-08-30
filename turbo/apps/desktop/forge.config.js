@@ -3,6 +3,15 @@ const path = require("node:path");
 
 const packageMetadata = require("./package.json");
 const { resolveDesktopBuildConfig } = require("./scripts/desktop-build-config");
+const {
+  resolveDesktopNotarizeApiEnvironment,
+} = require("./scripts/desktop-notarize-api-environment");
+const {
+  resolveDesktopNotarizeKeychainEnvironment,
+} = require("./scripts/desktop-notarize-keychain-environment");
+const {
+  resolveDesktopSigningIdentityEnvironment,
+} = require("./scripts/desktop-signing-identity-environment");
 
 const MINIMUM_MACOS_VERSION = "14.0";
 const DEFAULT_NOTARIZE_KEYCHAIN_PROFILE = "vm0-desktop-notary";
@@ -15,42 +24,30 @@ const DEFAULT_NOTARIZE_KEYCHAIN = path.join(
 const DEVELOPER_ID_APPLICATION_IDENTITY =
   "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)";
 const codeSigningIdentity =
-  process.env.VM0_DESKTOP_SIGNING_IDENTITY ??
+  resolveDesktopSigningIdentityEnvironment() ??
   (process.env.CI === "true" ? "-" : DEVELOPER_ID_APPLICATION_IDENTITY);
 
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
-}
-
 function desktopNotarizeOptions() {
-  if (process.env.VM0_DESKTOP_NOTARIZE !== "true") {
+  if (process.env.OKOU_DESKTOP_NOTARIZE !== "true") {
     return undefined;
   }
 
-  if (process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE?.trim()) {
+  const keychainEnvironment = resolveDesktopNotarizeKeychainEnvironment();
+  if (keychainEnvironment) {
     return {
-      keychainProfile: process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE,
-      keychain:
-        process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN?.trim() ||
-        DEFAULT_NOTARIZE_KEYCHAIN,
+      keychainProfile: keychainEnvironment.keychainProfile,
+      keychain: keychainEnvironment.keychain ?? DEFAULT_NOTARIZE_KEYCHAIN,
     };
   }
 
-  if (!process.env.VM0_DESKTOP_NOTARIZE_API_KEY_PATH) {
-    return {
-      keychainProfile: DEFAULT_NOTARIZE_KEYCHAIN_PROFILE,
-      keychain: DEFAULT_NOTARIZE_KEYCHAIN,
-    };
+  const apiEnvironment = resolveDesktopNotarizeApiEnvironment();
+  if (apiEnvironment) {
+    return apiEnvironment;
   }
 
   return {
-    appleApiKey: requiredEnv("VM0_DESKTOP_NOTARIZE_API_KEY_PATH"),
-    appleApiKeyId: requiredEnv("VM0_DESKTOP_NOTARIZE_API_KEY_ID"),
-    appleApiIssuer: requiredEnv("VM0_DESKTOP_NOTARIZE_API_ISSUER"),
+    keychainProfile: DEFAULT_NOTARIZE_KEYCHAIN_PROFILE,
+    keychain: DEFAULT_NOTARIZE_KEYCHAIN,
   };
 }
 
@@ -61,7 +58,7 @@ const osxNotarize = desktopNotarizeOptions();
 async function signPackagedDarwinApps(_forgeConfig, packageResult) {
   if (
     packageResult.platform !== "darwin" ||
-    process.env.VM0_DESKTOP_SKIP_SIGNING === "true"
+    process.env.OKOU_DESKTOP_SKIP_SIGNING === "true"
   ) {
     return;
   }

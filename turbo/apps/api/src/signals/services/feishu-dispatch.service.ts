@@ -96,6 +96,7 @@ export interface FeishuDispatchInstallation {
   readonly orgId: string;
   readonly ownerUserId: string | null;
   readonly defaultAgentId: string;
+  readonly botName: string | null;
   readonly messageReceivedAt: Date | null;
   readonly publicBrand: PublicBrand;
 }
@@ -211,6 +212,7 @@ export async function replyToUnconnectedFeishuMessage(
     readonly db: Db;
     readonly message: FeishuInboundMessage;
     readonly publicBrand: PublicBrand;
+    readonly botName: string | null;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -220,7 +222,10 @@ export async function replyToUnconnectedFeishuMessage(
       {
         db: args.db,
         message: args.message,
-        outbound: buildFeishuHelpMessage(args.publicBrand),
+        outbound: buildFeishuHelpMessage({
+          publicBrand: args.publicBrand,
+          botName: args.botName,
+        }),
       },
       signal,
     );
@@ -337,7 +342,7 @@ async function setUserAgentPreference(args: {
     .values({
       userId: args.userId,
       orgId: args.orgId,
-      selectedComposeId: args.composeId,
+      selectedAgentId: args.composeId,
     })
     .onConflictDoUpdate({
       target: [
@@ -345,7 +350,7 @@ async function setUserAgentPreference(args: {
         feishuUserAgentPreferences.orgId,
       ],
       set: {
-        selectedComposeId: args.composeId,
+        selectedAgentId: args.composeId,
         updatedAt: nowDate(),
       },
     });
@@ -1077,7 +1082,10 @@ const handleConnectedCommand$ = command(
           {
             db: args.db,
             message: args.message,
-            outbound: buildFeishuHelpMessage(args.installation.publicBrand),
+            outbound: buildFeishuHelpMessage({
+              publicBrand: args.installation.publicBrand,
+              botName: args.installation.botName,
+            }),
           },
           signal,
         );
@@ -1113,7 +1121,10 @@ const handleConnectedCommand$ = command(
           {
             db: args.db,
             message: args.message,
-            outbound: buildFeishuHelpMessage(args.installation.publicBrand),
+            outbound: buildFeishuHelpMessage({
+              publicBrand: args.installation.publicBrand,
+              botName: args.installation.botName,
+            }),
           },
           signal,
         );

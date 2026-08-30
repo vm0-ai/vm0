@@ -9,17 +9,14 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@okouai/ui/components/ui/dialog";
-import { AccountDropdown } from "../zero-page/zero-sidebar-account";
-import {
-  ZeroOrgSwitcher,
-  ZeroOrgSwitcherCompact,
-} from "../zero-page/zero-org-switcher.tsx";
-import { SettingsDialog } from "../zero-page/components/settings/settings-dialog.tsx";
-import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
+import { AccountDropdown } from "../okou-page/sidebar-account";
+import { OrgSwitcher, OrgSwitcherCompact } from "../okou-page/org-switcher.tsx";
+import { SettingsDialog } from "../okou-page/components/settings/settings-dialog.tsx";
+import { handleAccountAction$ } from "../../signals/okou-page/nav.ts";
 import {
   closeSettingsModal$,
   settingsDialogOpen$,
-} from "../../signals/zero-page/settings/settings-dialog.ts";
+} from "../../signals/okou-page/settings/settings-dialog.ts";
 
 /**
  * Onboarding uses a softer, larger surface than the rest of the app: a wider
@@ -31,7 +28,7 @@ export const ONBOARDING_TEXTAREA_CLASS =
   "rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/15";
 
 function OnboardingAccount({ collapsed }: { readonly collapsed: boolean }) {
-  const onAccountAction = useSet(handleZeroAccountAction$);
+  const onAccountAction = useSet(handleAccountAction$);
   return (
     <AccountDropdown
       onAccountAction={onAccountAction}
@@ -151,7 +148,7 @@ export function OnboardingDialog({
         }
       }}
     >
-      <DialogContent className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-4xl flex-col gap-0 overflow-hidden rounded-lg border-border bg-background p-5 sm:p-6">
+      <DialogContent className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-4xl flex-col gap-0 overflow-hidden border-border bg-background p-5 sm:p-6">
         <header className="shrink-0 pr-9">
           <div className="min-w-0">
             <DialogTitle className="text-lg font-semibold leading-6">
@@ -214,10 +211,10 @@ export function OnboardingShell({
         }}
       />
       <div className="fixed left-4 top-4 z-20 hidden w-60 sm:left-6 sm:top-6 sm:block">
-        <ZeroOrgSwitcher />
+        <OrgSwitcher />
       </div>
       <div className="fixed left-4 top-4 z-20 sm:hidden">
-        <ZeroOrgSwitcherCompact />
+        <OrgSwitcherCompact />
       </div>
       <div className="fixed bottom-6 left-4 z-20 hidden w-60 sm:block">
         <OnboardingAccount collapsed={false} />

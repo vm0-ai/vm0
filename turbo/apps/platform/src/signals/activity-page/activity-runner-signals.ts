@@ -5,22 +5,26 @@ import type {
   WorkspaceReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
 import { apiClient$ } from "../api-client.ts";
-import { currentRunId$, zeroActivityDetail$ } from "./activity-signals.ts";
+import { currentRunId$, activityDetail$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
-import type { LogStatus } from "../zero-page/log-types.ts";
+import type { LogStatus } from "../okou-page/log-types.ts";
 
-interface ZeroActivityRunner {
+interface ActivityRunner {
   runId: string;
   status: LogStatus;
   runner: {
     sandboxReuseResult: SandboxReuseResult | null;
     workspaceReuseResult: WorkspaceReuseResult | null;
+    runnerHostname: string | null;
+    runnerVersion: string | null;
+    runnerId: string | null;
+    runnerHeartbeatGeneration: number | null;
   };
 }
 
-export const zeroActivityRunner$ = computed(async (get) => {
+export const activityRunner$ = computed(async (get) => {
   const runId = get(currentRunId$);
-  const detail = await get(zeroActivityDetail$);
+  const detail = await get(activityDetail$);
   if (!runId || !detail || detail.id !== runId) {
     return null;
   }
@@ -36,6 +40,10 @@ export const zeroActivityRunner$ = computed(async (get) => {
     runner: {
       sandboxReuseResult: result.body.sandboxReuseResult,
       workspaceReuseResult: result.body.workspaceReuseResult ?? null,
+      runnerHostname: result.body.runnerHostname ?? null,
+      runnerVersion: result.body.runnerVersion ?? null,
+      runnerId: result.body.runnerId ?? null,
+      runnerHeartbeatGeneration: result.body.runnerHeartbeatGeneration ?? null,
     },
-  } satisfies ZeroActivityRunner;
+  } satisfies ActivityRunner;
 });

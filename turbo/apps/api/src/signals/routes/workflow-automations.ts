@@ -156,7 +156,7 @@ const createAutomationInner$ = command(
 
     let autonomyBudget: number | undefined;
     const db = get(db$);
-    if (auth.tokenType === "zero") {
+    if (auth.tokenType === "agent") {
       const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(db, {
         runId: auth.runId,
         orgId: auth.orgId,
@@ -183,7 +183,7 @@ const createAutomationInner$ = command(
     const result = await set(
       createWorkflowAutomation$,
       { ...bodyResult.data, ...automationInputBase },
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
       signal,
     );
     signal.throwIfAborted();
@@ -223,7 +223,7 @@ const revealWebhookSecretInner$ = computed(async (get) => {
     member: memberFromAuth(auth),
     automationId: params.id,
     publicBrand:
-      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
   });
   if (!secret) {
     return notFound("Workflow webhook automation not found");
@@ -293,7 +293,7 @@ const enableAutomationInner$ = command(
     const params = get(pathParamsOf(workflowAutomationsContract.enable));
     let inheritedAutonomyBudget: number | undefined;
     const db = get(db$);
-    if (auth.tokenType === "zero") {
+    if (auth.tokenType === "agent") {
       const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(db, {
         runId: auth.runId,
         orgId: auth.orgId,
@@ -360,7 +360,9 @@ const runAutomationInner$ = command(
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         automationId: params.id,
-        ...(auth.tokenType === "zero" ? { sourceRunId: auth.runId } : {}),
+        ...(auth.tokenType === "agent" ? { sourceRunId: auth.runId } : {}),
+        publicBrand:
+          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
       },
       signal,
     );

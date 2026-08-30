@@ -13,7 +13,7 @@ A feature switch is required when adding:
 - New UI pages, sections, or sidebar navigation items
 - New API endpoints exposed to users or agents
 - New integrations (connectors, Slack, Telegram, etc.)
-- New zero token capabilities
+- New agent token capabilities
 
 A feature switch is **not** required for:
 - Internal refactors or code cleanup
@@ -98,39 +98,49 @@ const showMyFeature = features?.[FeatureSwitchKey.MyFeature] ?? false;
 
 #### Sidebar navigation gating
 
-In `turbo/apps/platform/src/views/zero-page/zero-sidebar.tsx`, add a `featureGate` to the sidebar item:
+Sidebar entries are not gated declaratively. The nav item records in
+`turbo/apps/platform/src/views/okou-page/sidebar.tsx` (`MANAGE_NAV`,
+`FOOTER_NAV`) carry no feature-switch field. Read `featureSwitch$` in the
+component that renders the entry and omit the item when the switch is off —
+`turbo/apps/platform/src/views/okou-page/sidebar-account.tsx` gates the Lab
+entry this way:
 
 ```typescript
-{
-  id: "my-feature",
-  label: "My Feature",
-  icon: MyIcon,
-  featureGate: FeatureSwitchKey.MyFeature,
-}
+const features = useLastResolved(featureSwitch$);
+const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
+
+// In the render:
+{labEnabled && <DropdownMenuItem>{/* ... */}</DropdownMenuItem>}
 ```
 
 #### Connector gating
 
-In `turbo/packages/core/src/contracts/connectors.ts`, add `featureFlag` to the connector config:
+Connector definitions live in `vm0-ai/vm0-connectors`, but vm0 owns the rollout
+association. Add an entry to `FEATURE_SWITCH_BY_AUTH_METHOD` in
+`turbo/apps/api/src/signals/services/connector-auth-method-feature-switches.ts`,
+keyed by `` `${connectorSlug}\0${authMethodId}` ``:
 
 ```typescript
-myConnector: {
-  label: "My Connector",
-  featureFlag: FeatureSwitchKey.MyConnector,
-  // ...
-}
+const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<
+  Record<string, FeatureSwitchKey | undefined>
+>({
+  // ... existing entries
+  "my-connector\0oauth": FeatureSwitchKey.MyConnector,
+});
 ```
 
-#### Zero token capability gating
+Deploy the association before publishing a method that should be gated, and
+remove it once the switch graduates.
+
+#### Agent token capability gating
 
 In `turbo/apps/api/src/signals/auth/tokens.ts`, add to `CONDITIONAL_CAPABILITIES`:
 
 ```typescript
-const CONDITIONAL_CAPABILITIES: ReadonlyMap<Capability, FeatureSwitchKey> =
-  new Map([
-    // ... existing entries
-    ["my-feature:write", FeatureSwitchKey.MyFeature],
-  ]);
+const CONDITIONAL_CAPABILITIES = [
+  // ... existing entries
+  ["my-feature:write", FeatureSwitchKey.MyFeature],
+] as const satisfies readonly (readonly [Capability, FeatureSwitchKey])[];
 ```
 
 ## Key Files
@@ -140,8 +150,9 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<Capability, FeatureSwitchKey> =
 | `turbo/packages/core/src/feature-switch-key.ts` | Enum of all feature switch keys |
 | `turbo/packages/core/src/feature-switch.ts` | Registry and evaluation logic |
 | `turbo/apps/platform/src/signals/external/feature-switch.ts` | Client-side reactive state with override layers |
-| `turbo/apps/platform/src/views/zero-page/zero-sidebar.tsx` | Sidebar nav items with `featureGate` |
-| `turbo/apps/api/src/signals/services/connector-catalog-artifacts/source.ts` | External connector auth-method schema with `featureSwitch` field |
+| `turbo/apps/platform/src/views/okou-page/sidebar.tsx` | Sidebar nav item records (`MANAGE_NAV`, `FOOTER_NAV`) |
+| `turbo/apps/api/src/signals/services/connector-auth-method-feature-switches.ts` | Connector auth-method → feature switch rollout associations |
+| `turbo/apps/api/src/signals/services/feature-switches.service.ts` | Override loading/writing and the org-scoped key list |
 | `turbo/apps/api/src/signals/auth/tokens.ts` | Token capability gating |
 
 ## Override Layers
@@ -151,14 +162,16 @@ Evaluation has two layers (lowest to highest priority):
 1. **Core registry** — static config in source code, evaluated against `userId` / `email` / `orgId` hashes.
 2. **DB overrides** — most switches are per-user rows in
    `user_feature_switches` keyed by `(orgId, userId)`. Some switches are
-   org-scoped and stored under the org sentinel user id (`__org__`); currently
-   `ChatErrorRecovery` and `PiLoop` are org-scoped. Written via the Lab page
-   toggles or `window._vm0.featureSwitches.myFeature = true` (both call
-   `POST /api/zero/feature-switches`). Cleared via the Lab page "Reset all"
-   button (`DELETE /api/zero/feature-switches`).
+   org-scoped and stored under the org sentinel user id (`ORG_SENTINEL_USER_ID`,
+   `"__org__"`); `ORG_SCOPED_FEATURE_SWITCH_KEYS` currently holds
+   `ChatErrorRecovery`, `BuiltInModelProviderFallback`, and `PiLoop`. Written
+   via the Lab page toggles or
+   `window._vm0.featureSwitches.myFeature = true` (both call
+   `POST /api/feature-switches`). Cleared via the Lab page "Reset all"
+   button (`DELETE /api/feature-switches`).
 
 The same two-layer resolution applies on the server: route handlers that call
-`isFeatureEnabled(..., { userId, orgId, overrides })` pass overrides loaded via
-`loadFeatureSwitchOverrides(orgId, userId)`.
+`isFeatureEnabled(..., { userId, orgId, overrides })` pass a context built by
+`loadUserFeatureSwitchContext(db, orgId, userId)`.
 
 There is **no** client-only layer. `window._vm0.featureSwitches` requires auth and persists across refreshes; there is no device-local override.

@@ -13,7 +13,10 @@ async fn execution_timeout_reaps_a_sigterm_deaf_cli() -> Result<(), Box<dyn std:
     let tmp = tempfile::tempdir()?;
     unsafe {
         common::setup_env(&mock, tmp.path(), "@stuck-tool-deaf", 1, 1)?;
-        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "1");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "1",
+        );
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let masker = SecretMasker::from_raw("");

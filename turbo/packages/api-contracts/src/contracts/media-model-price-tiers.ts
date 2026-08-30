@@ -8,11 +8,11 @@
  * resolution. Revisit a tier when its pricing row moves.
  */
 import type { ImageModelId } from "./image-models";
-import type { Vm0ModelPriceTier } from "./model-price-tiers";
+import type { ModelPriceTier } from "./model-price-tiers";
 import type { VideoModelId } from "./video-models";
 
 export const IMAGE_MODEL_PRICE_TIER = Object.freeze<
-  Record<ImageModelId, Vm0ModelPriceTier>
+  Record<ImageModelId, ModelPriceTier>
 >({
   "gpt-image-1": "$$",
   "gpt-image-2": "$$$",
@@ -30,7 +30,7 @@ export const IMAGE_MODEL_PRICE_TIER = Object.freeze<
 });
 
 export const VIDEO_MODEL_PRICE_TIER = Object.freeze<
-  Record<VideoModelId, Vm0ModelPriceTier>
+  Record<VideoModelId, ModelPriceTier>
 >({
   "dreamina-seedance-2-5-260628": "$$$",
   "dreamina-seedance-2-0-260128": "$$",

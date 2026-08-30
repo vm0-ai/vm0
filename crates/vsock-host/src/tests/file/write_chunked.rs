@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::io;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -76,11 +77,7 @@ impl ChunkedWriteFixture {
             assert_eq!(frame.path.as_str(), temp_path);
             assert!(frame.append);
         } else {
-            assert!(
-                frame
-                    .path
-                    .starts_with(&format!("{}.vm0tmp-", self.target_path))
-            );
+            assert_chunked_temp_path(self.target_path, &frame.path);
             assert!(!frame.append);
             self.temp_path = Some(frame.path.clone());
         }
@@ -124,6 +121,18 @@ impl ChunkedWriteFixture {
     fn temp_path(&self) -> &str {
         self.temp_path.as_deref().expect("temp path")
     }
+}
+
+fn assert_chunked_temp_path(target_path: &str, temp_path: &str) {
+    let target = Path::new(target_path);
+    let temp = Path::new(temp_path);
+    assert_eq!(temp.parent(), target.parent());
+    let temp_name = temp
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("UTF-8 temp file name");
+    assert!(temp_name.starts_with(".vm0tmp-"));
+    assert!(temp_name.len() <= 255);
 }
 
 async fn write_file_with_small_chunks(
@@ -332,7 +341,7 @@ async fn write_file_chunked_connection_close_while_waiting_for_writer_returns_co
 
 #[tokio::test]
 async fn write_file_chunked_frame_builder_request_times_out_waiting_for_writer() {
-    // The public chunked-write path fixes each request timeout at 300 seconds,
+    // The public chunked-write path uses the shared production request timeout,
     // so exercise its composite request seam with a practical test deadline.
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
@@ -454,41 +463,6 @@ async fn write_file_chunked_rejects_invalid_guest_path_before_cleanup_or_write()
     let err = file_impl::test_support::write_file_with_small_chunks(
         &host,
         "/tmp/has\0nul",
-        &content,
-        false,
-        FrameWriteObserver::new({
-            let write_start_count = Arc::clone(&write_start_count);
-            move || {
-                write_start_count.fetch_add(1, Ordering::SeqCst);
-                Ok(())
-            }
-        }),
-    )
-    .await
-    .unwrap_err();
-
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
-    assert_eq!(operation_count(&host), 0);
-
-    assert_connection_accepts_exec_operation(&host, &mut guest).await;
-}
-
-#[tokio::test]
-async fn write_file_chunked_rejects_temp_path_overflow_before_cleanup_or_write() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let write_start_count = Arc::new(AtomicUsize::new(0));
-    let path = format!("/{}", "a".repeat(u16::MAX as usize - 1));
-    let content = ChunkedWriteFixture::two_chunk_content();
-
-    let err = file_impl::test_support::write_file_with_small_chunks(
-        &host,
-        &path,
         &content,
         false,
         FrameWriteObserver::new({
@@ -1013,7 +987,7 @@ async fn write_file_chunked_quotes_target_path_with_single_quote() {
     send_write_file_success(&mut fixture.guest, second.seq()).await;
 
     let rename = fixture.expect_rename().await;
-    assert!(rename.command.contains("'/tmp/big'\\''quote.bin.vm0tmp-"));
+    assert!(rename.command.starts_with("mv -fT -- '/tmp/.vm0tmp-"));
     assert!(rename.command.ends_with(" '/tmp/big'\\''quote.bin'"));
     send_exec_result(
         &mut fixture.guest,
@@ -1025,11 +999,7 @@ async fn write_file_chunked_quotes_target_path_with_single_quote() {
     .await;
 
     let cleanup = fixture.expect_cleanup().await;
-    assert!(
-        cleanup
-            .command
-            .starts_with("rm -f -- '/tmp/big'\\''quote.bin.vm0tmp-")
-    );
+    assert!(cleanup.command.starts_with("rm -f -- '/tmp/.vm0tmp-"));
     send_exec_result(
         &mut fixture.guest,
         cleanup.seq(),
@@ -1074,7 +1044,7 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
                     vsock_proto::decode_write_file(&msg.payload).unwrap();
                 assert!(!sudo);
                 assert!(!private);
-                assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
+                assert_chunked_temp_path(target_path, path);
                 let marker = *content.first().expect("chunk content");
                 assert!(matches!(marker, 0xAA | 0xBB));
                 assert!(content.iter().all(|byte| *byte == marker));
@@ -1170,7 +1140,7 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
                     vsock_proto::decode_write_file(&msg.payload).unwrap();
                 assert!(!sudo);
                 assert!(!private);
-                assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
+                assert_chunked_temp_path(target_path, path);
                 let marker = *content.first().expect("chunk content");
                 assert!(matches!(marker, 0xAA | 0xBB));
                 assert!(content.iter().all(|byte| *byte == marker));
@@ -1886,7 +1856,7 @@ async fn write_file_production_chunk_boundaries() {
         );
 
         let first = expect_write_file(&mut guest).await;
-        assert!(first.path.starts_with(&format!("{target_path}.vm0tmp-")));
+        assert_chunked_temp_path(target_path, &first.path);
         let temp_path = first.path.clone();
         assert_eq!(first.content.len(), chunk_limit);
         assert!(first.content.iter().all(|byte| *byte == marker));
@@ -2052,7 +2022,7 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
                         continue;
                     }
 
-                    assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                    assert_chunked_temp_path("/tmp/big.bin", path);
                     assert!(!append);
                     temp_path = Some(path.to_string());
                     send_write_file_success(guest.stream_mut(), msg.seq).await;

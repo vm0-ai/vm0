@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
 import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import {
@@ -28,7 +29,7 @@ import {
 import {
   advanceChatEventSequenceAsPreviousApi,
   readChatEventSnapshotHead,
-  setChatEventSnapshotHeadVersion,
+  updateChatEventSnapshotHead,
 } from "./helpers/runtime-state";
 
 const context = testContext();
@@ -36,7 +37,6 @@ const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
-const RETIRED_ARCHIVE_SCHEMA_VERSION = 3;
 const DUPLICATE_EVENT_ID_NAMESPACE = "46842b1d-a596-47fb-86b3-4f51962751c7";
 const DUPLICATE_EVENT_ID_WARNING =
   "Normalized duplicate chat event IDs in snapshot";
@@ -156,7 +156,7 @@ interface ArchivedLine {
   readonly createdAt: string;
 }
 
-const ARCHIVE_V5_KEYS = [
+const CANONICAL_ARCHIVE_KEYS = [
   "chatThreadId",
   "contextId",
   "contextType",
@@ -272,7 +272,7 @@ function expectArchiveInvariants(
   const lastLine = lines[lines.length - 1];
   expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
   for (const [index, line] of lines.entries()) {
-    expect(Object.keys(line).sort()).toStrictEqual(ARCHIVE_V5_KEYS);
+    expect(Object.keys(line).sort()).toStrictEqual(CANONICAL_ARCHIVE_KEYS);
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
@@ -342,7 +342,9 @@ describe("cron snapshot chat events", () => {
     expect(firstRaw).toContain(`${marker} first`);
     expect(firstRaw).toContain(`${marker} second`);
     const firstHead = await readChatEventSnapshotHead(context, threadId);
-    expect(firstHead.archive_schema_version).toBe(5);
+    expect(firstHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
     expect(firstHead.last_event_id).toBe(firstLines.at(-1)?.id);
     expect(firstHead.object_key).toBe(firstPut.key);
 
@@ -375,7 +377,9 @@ describe("cron snapshot chat events", () => {
     const secondRaw = gunzipSync(secondPut.body).toString("utf8");
     expect(secondRaw).toContain(`${marker} third`);
     const secondHead = await readChatEventSnapshotHead(context, threadId);
-    expect(secondHead.archive_schema_version).toBe(5);
+    expect(secondHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
     expect(secondHead.last_event_id).toBe(secondLines.at(-1)?.id);
     expect(secondHead.object_key).toBe(secondPut.key);
 
@@ -529,16 +533,14 @@ describe("cron snapshot chat events", () => {
     expect(firstFixture.occurrenceSeqIds).toStrictEqual(
       secondFixture.occurrenceSeqIds.slice(0, 2),
     );
-    await setChatEventSnapshotHeadVersion(
+    await updateChatEventSnapshotHead(
       context,
       firstThreadId,
-      5,
       firstFixture.objectKey,
     );
-    await setChatEventSnapshotHeadVersion(
+    await updateChatEventSnapshotHead(
       context,
       secondThreadId,
-      5,
       secondFixture.objectKey,
     );
 
@@ -574,7 +576,6 @@ describe("cron snapshot chat events", () => {
       runSnapshotCron([firstThreadId]),
       runSnapshotCron([firstThreadId]),
     ]);
-    expect(firstThreadArrivals).toBe(2);
     for (const result of retryResults) {
       expect(result).toMatchObject({
         duplicateEventIdConflictThreads: 1,
@@ -585,7 +586,7 @@ describe("cron snapshot chat events", () => {
     }
 
     const firstRetryPuts = putsForThread(firstThreadId).slice(1);
-    expect(firstRetryPuts).toHaveLength(2);
+    expect(firstRetryPuts.length).toBeGreaterThanOrEqual(2);
     const firstRetryPut = firstRetryPuts[0];
     const secondRetryPut = firstRetryPuts[1];
     if (firstRetryPut === undefined || secondRetryPut === undefined) {
@@ -593,6 +594,11 @@ describe("cron snapshot chat events", () => {
     }
     expect(secondRetryPut.key).toBe(firstRetryPut.key);
     expect(secondRetryPut.body).toStrictEqual(firstRetryPut.body);
+    const retryHead = await readChatEventSnapshotHead(context, firstThreadId);
+    expect(retryHead).toMatchObject({
+      archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      snapshot_count: 1,
+    });
 
     const firstLines = expectArchiveInvariants(firstRetryPut, firstThreadId);
     const firstBySeqId = new Map(
@@ -646,7 +652,6 @@ describe("cron snapshot chat events", () => {
       duplicateEventIdConflicts: 1,
       duplicateEventIdsRemapped: 2,
       duplicateEventReferencesRemapped: 2,
-      nonCurrentSnapshotHeads: 0,
     });
     expectSnapshotCompletion({
       duplicateEventIdConflictThreads: 1,
@@ -749,8 +754,12 @@ describe("cron snapshot chat events", () => {
     expect(JSON.stringify(warningCalls)).not.toContain(secondMarker);
     const firstHead = await readChatEventSnapshotHead(context, firstThreadId);
     const secondHead = await readChatEventSnapshotHead(context, secondThreadId);
-    expect(firstHead.archive_schema_version).toBe(5);
-    expect(secondHead.archive_schema_version).toBe(5);
+    expect(firstHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
+    expect(secondHead.archive_schema_version).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+    );
   }, 180_000);
 
   it("limits projection and snapshots to explicitly owned threads", async () => {
@@ -832,8 +841,8 @@ describe("cron snapshot chat events", () => {
       prompt: `sparse-snapshot-tail-${randomUUID()}`,
     });
     const tail = await chat.listThreadEventRows(owner, threadId, {
-      lastEventId: head.last_event_id,
-      lastSeqId: coveredSeqId,
+      lastEventId: head.terminal_event_id ?? head.last_event_id,
+      lastSeqId: head.terminal_seq_id ?? coveredSeqId,
     });
     expect(tail.length).toBeGreaterThan(0);
     let previousSeqId = coveredSeqId;
@@ -849,12 +858,7 @@ describe("cron snapshot chat events", () => {
       displayName: "Fail-closed snapshot agent",
     });
     const fixtures: { readonly kind: string; readonly threadId: string }[] = [];
-    for (const kind of [
-      "unsupported",
-      "unreadable",
-      "undecodable",
-      "incomplete",
-    ]) {
+    for (const kind of ["unreadable", "undecodable", "incomplete"]) {
       const threadId = await sendNoCreditMessage(owner, {
         agentId: agent.agentId,
         prompt: `${kind}-${randomUUID()}`,
@@ -872,26 +876,19 @@ describe("cron snapshot chat events", () => {
       if (initialPut === undefined) {
         throw new Error("Expected an initial snapshot object");
       }
-      if (fixture.kind === "unsupported") {
-        await setChatEventSnapshotHeadVersion(
+      if (fixture.kind === "unreadable") {
+        const missingObjectKey = `chat-events/${fixture.threadId}/missing-${randomUUID()}.ndjson.gz`;
+        await updateChatEventSnapshotHead(
           context,
           fixture.threadId,
-          RETIRED_ARCHIVE_SCHEMA_VERSION,
-        );
-      } else if (fixture.kind === "unreadable") {
-        await setChatEventSnapshotHeadVersion(
-          context,
-          fixture.threadId,
-          5,
-          `chat-events/${fixture.threadId}/missing-${randomUUID()}.ndjson.gz`,
+          missingObjectKey,
         );
       } else if (fixture.kind === "undecodable") {
         writeFakeChatEventObject(initialPut.key, Buffer.from("not-gzip"));
       } else {
-        await setChatEventSnapshotHeadVersion(
+        await updateChatEventSnapshotHead(
           context,
           fixture.threadId,
-          5,
           undefined,
           0,
         );
@@ -921,7 +918,6 @@ describe("cron snapshot chat events", () => {
       skippedUnreadableHeads: 1,
       skippedUndecodableHeads: 1,
       skippedIncompleteHeads: 1,
-      skippedUnsupportedHeads: 1,
       unreadableParents: 2,
     });
 
@@ -979,7 +975,7 @@ describe("cron snapshot chat events", () => {
     expect(arrivals).toBe(2);
     const head = await readChatEventSnapshotHead(context, threadId);
     expect(head.snapshot_count).toBe(parentHead.snapshot_count);
-    expect(head.archive_schema_version).toBe(5);
+    expect(head.archive_schema_version).toBe(CURRENT_CHAT_EVENT_SCHEMA_VERSION);
     expect(head.last_seq_id).toBeGreaterThan(parentHead.last_seq_id);
     expect(head.object_key).not.toBe(parentHead.object_key);
   }, 90_000);

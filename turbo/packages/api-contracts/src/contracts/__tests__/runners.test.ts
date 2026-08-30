@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   activeInputDeliveryReserveResponseSchema,
   compatibleStoredExecutionContextSchema,
@@ -15,6 +16,8 @@ import {
   heldSandboxStateSchema,
   heldWorkspaceStateSchema,
   jobSchema,
+  piApiFirstTurnConfigSchema,
+  piApiFirstTurnManifestSchema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -24,6 +27,7 @@ import {
   runnersBuiltinFirewallsResolveContract,
   runnersConnectorRuntimeSyncContract,
   runnersJobClaimContract,
+  runnersModelUsageObservationsContract,
   runnersPollContract,
   storageMountEntrySchema,
   storageManifestSchema,
@@ -31,6 +35,60 @@ import {
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
+import { runRunnerContract } from "../run-routes";
+import { MAX_EVENT_SEQUENCE_NUMBER } from "../runs";
+
+describe("runner model usage observations contract", () => {
+  const event = {
+    idempotencyKey: "00000000-0000-4000-8000-000000000000",
+    model: "gpt-5.6-sol",
+    inputTokens: 1,
+    outputTokens: 2,
+    cacheReadInputTokens: 3,
+    cacheCreationInputTokens: 4,
+  };
+
+  it("accepts an events-only cross-job payload", () => {
+    expect(
+      runnersModelUsageObservationsContract.report.body.parse({
+        events: [event],
+      }),
+    ).toStrictEqual({ events: [event] });
+  });
+
+  it("rejects invalid observation batches", () => {
+    const invalidBodies = [
+      { events: [] },
+      { events: [{ ...event, inputTokens: Number.MAX_SAFE_INTEGER + 1 }] },
+      {
+        events: [
+          {
+            ...event,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        ],
+      },
+      { events: [event, event] },
+      { events: [event], runId: "run-partition-is-not-accepted" },
+    ];
+
+    for (const body of invalidBodies) {
+      expect(
+        runnersModelUsageObservationsContract.report.body.safeParse(body)
+          .success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("agent execution timing contract", () => {
+  it("keeps one run bounded to two hours", () => {
+    expect(AGENT_EXECUTION_TIMEOUT_SECONDS).toBe(2 * 60 * 60);
+  });
+});
 
 describe("active-input reservation contract", () => {
   const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
@@ -73,6 +131,48 @@ describe("cancellation recovery timing contract", () => {
       CANCELLATION_RECOVERY_STALE_AFTER_MS -
         RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
     ).toBe(30_000);
+  });
+});
+
+describe("runner claim attribution contract", () => {
+  it("accepts an optional bounded runner hostname", () => {
+    const previousRequest = runnersJobClaimContract.claim.body.parse({});
+    expect(previousRequest).not.toHaveProperty("runnerHostname");
+
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        runnerHostname: "prod-1.aws.vm3.ai",
+      }),
+    ).toMatchObject({ runnerHostname: "prod-1.aws.vm3.ai" });
+
+    for (const runnerHostname of ["", "x".repeat(256)]) {
+      expect(
+        runnersJobClaimContract.claim.body.safeParse({ runnerHostname })
+          .success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("run runner response compatibility", () => {
+  it("accepts the previous response and current explicit-null attribution", () => {
+    expect(
+      runRunnerContract.getRunner.responses[200].parse({
+        sandboxReuseResult: null,
+      }),
+    ).toStrictEqual({ sandboxReuseResult: null });
+
+    const currentResponse = {
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
+    };
+    expect(
+      runRunnerContract.getRunner.responses[200].parse(currentResponse),
+    ).toStrictEqual(currentResponse);
   });
 });
 
@@ -124,25 +224,9 @@ describe("runner claim response contract", () => {
       runId: "00000000-0000-4000-8000-000000020985",
       reuseKey: "thread:00000000-0000-4000-8000-000000020986",
       modelUsageProvider: "fixture-model",
+      platformEnvironment: { OKOU_AGENT_ID: "fixture-agent-id" },
     });
-    expect(context).not.toHaveProperty("agentComposeVersionId");
     expect(context).not.toHaveProperty("experimentalProfile");
-  });
-
-  it("normalizes the retired version field out of queued contexts", () => {
-    const context = compatibleStoredExecutionContextSchema.parse({
-      storageMounts: [],
-      connectorRuntimeTargets: [],
-      environment: null,
-      secretValueEnvironmentKeys: null,
-      resumeSession: null,
-      encryptedSecrets: null,
-      cliAgentType: "claude-code",
-      agentComposeVersionId:
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    });
-
-    expect(context).not.toHaveProperty("agentComposeVersionId");
   });
 
   it("does not expose the API-only connector permission baseline", () => {
@@ -156,9 +240,61 @@ describe("runner claim response contract", () => {
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
   });
+
+  it("keeps old API and old runner claim shapes compatible", () => {
+    const current = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const previousApiResponse: Record<string, unknown> = { ...current };
+    Reflect.deleteProperty(previousApiResponse, "platformEnvironment");
+    expect(
+      executionContextSchema.parse(previousApiResponse),
+    ).not.toHaveProperty("platformEnvironment");
+
+    const previousRunnerSchema = z
+      .object(executionContextSchema.shape)
+      .omit({ platformEnvironment: true });
+    expect(previousRunnerSchema.parse(current)).not.toHaveProperty(
+      "platformEnvironment",
+    );
+  });
+
+  it("round-trips the optional trusted environment through stored contexts", () => {
+    const storedContext = storedExecutionContextSchema.parse({
+      storageMounts: [],
+      connectorRuntimeTargets: [],
+      environment: {
+        OKOU_AGENT_ID: "stored-agent-id",
+        USER_VALUE: "user-value",
+      },
+      platformEnvironment: { OKOU_AGENT_ID: "stored-agent-id" },
+      secretValueEnvironmentKeys: null,
+      resumeSession: null,
+      encryptedSecrets: null,
+      cliAgentType: "claude-code",
+    });
+    const roundTripped = compatibleStoredExecutionContextSchema.parse(
+      JSON.parse(JSON.stringify(storedContext)),
+    );
+
+    expect(roundTripped.platformEnvironment).toStrictEqual({
+      OKOU_AGENT_ID: "stored-agent-id",
+    });
+    expect(roundTripped.environment).toMatchObject({
+      OKOU_AGENT_ID: "stored-agent-id",
+    });
+
+    const previousStoredContextSchema = z
+      .object(storedExecutionContextSchema.shape)
+      .omit({ platformEnvironment: true });
+    expect(previousStoredContextSchema.parse(storedContext)).not.toHaveProperty(
+      "platformEnvironment",
+    );
+  });
 });
 
 describe("Pi sandbox execution contract", () => {
+  const piSessionId = "22222222-2222-4222-8222-222222222222";
   const storedContext = {
     storageMounts: [],
     connectorRuntimeTargets: [],
@@ -169,7 +305,7 @@ describe("Pi sandbox execution contract", () => {
     cliAgentType: "pi",
   };
   const piStoredContext = {
-    piSessionId: "22222222-2222-4222-8222-222222222222",
+    piSessionId,
     piLaunchConfig: {
       schemaVersion: 2 as const,
       apiFirstTurn: {
@@ -179,7 +315,7 @@ describe("Pi sandbox execution contract", () => {
         sessionUrl: "https://storage.example/session.jsonl",
         deadlineAt: 2_000_000_000_000,
         baseSession: {
-          sessionId: "22222222-2222-4222-8222-222222222222",
+          sessionId: piSessionId,
           sha256: null,
         },
         sandboxEventSequenceStart: 1 as const,
@@ -209,6 +345,82 @@ describe("Pi sandbox execution contract", () => {
       reason: "noReuseKey" as const,
     },
   };
+
+  const handoffSession = {
+    sessionId: piSessionId,
+    sha256: "b".repeat(64),
+    rawSize: 1024,
+  };
+
+  it("accepts manifest v1 as the implicit start-at-1 contract", () => {
+    const manifest = piApiFirstTurnManifestSchema.parse({
+      schemaVersion: 1,
+      outcome: "handoff",
+      baseSession: { sessionId: piSessionId, sha256: null },
+      session: handoffSession,
+    });
+
+    expect(manifest.schemaVersion).toBe(1);
+    expect(manifest).not.toHaveProperty("sandboxEventSequenceStart");
+    expect(
+      piApiFirstTurnManifestSchema.safeParse({
+        ...manifest,
+        sandboxEventSequenceStart: 1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts an authoritative future manifest boundary after launch", () => {
+    const sandboxEventSequenceStart = 4;
+    const manifest = piApiFirstTurnManifestSchema.parse({
+      schemaVersion: 2,
+      outcome: "handoff",
+      baseSession: { sessionId: piSessionId, sha256: null },
+      session: handoffSession,
+      sandboxEventSequenceStart,
+    });
+    const config = piApiFirstTurnConfigSchema.parse(
+      piStoredContext.piLaunchConfig.apiFirstTurn,
+    );
+
+    expect(manifest).toMatchObject({
+      schemaVersion: 2,
+      sandboxEventSequenceStart,
+    });
+    expect(config.sandboxEventSequenceStart).toBe(1);
+  });
+
+  it.each([0, -1, 1.5, MAX_EVENT_SEQUENCE_NUMBER + 1])(
+    "rejects invalid dynamic boundary %s in both manifest and launch config",
+    (sandboxEventSequenceStart) => {
+      expect(
+        piApiFirstTurnManifestSchema.safeParse({
+          schemaVersion: 2,
+          outcome: "handoff",
+          baseSession: { sessionId: piSessionId, sha256: null },
+          session: handoffSession,
+          sandboxEventSequenceStart,
+        }).success,
+      ).toBe(false);
+      expect(
+        piApiFirstTurnConfigSchema.safeParse({
+          ...piStoredContext.piLaunchConfig.apiFirstTurn,
+          sandboxEventSequenceStart,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("rejects a future manifest without its dynamic boundary", () => {
+    expect(
+      piApiFirstTurnManifestSchema.safeParse({
+        schemaVersion: 2,
+        outcome: "handoff",
+        baseSession: { sessionId: piSessionId, sha256: null },
+        session: handoffSession,
+      }).success,
+    ).toBe(false);
+  });
 
   it("preserves the Chat Thread session across stored and Runner-facing contexts", () => {
     const stored = storedExecutionContextSchema.parse({
@@ -765,12 +977,14 @@ describe("runner storage manifest contract", () => {
         versionId: "version-1",
         mountPath: "/workspace",
         archiveUrl: "https://storage.example/workspace.tar.gz",
+        baselineCandidate: true,
       }),
     ).toMatchObject({
       name: "workspace",
       storageId: "storage-id-1",
       versionId: "version-1",
       mountPath: "/workspace",
+      baselineCandidate: true,
     });
 
     expect(
@@ -810,6 +1024,21 @@ describe("runner storage manifest contract", () => {
         ...base,
         archiveUrl: "https://storage.example/workspace.tar.gz",
         missingRootPolicy: "fail",
+      }).success,
+    ).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        archiveUrl: "https://storage.example/workspace.tar.gz",
+        baselineCandidate: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        empty: true,
+        writeback: true,
+        baselineCandidate: true,
       }).success,
     ).toBe(false);
     expect(
@@ -1095,7 +1324,6 @@ describe("runner resume session contract", () => {
   it("accepts ordered heartbeat snapshots", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,
@@ -1159,7 +1387,6 @@ describe("runner resume session contract", () => {
   it("requires canonical heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,
@@ -1199,7 +1426,6 @@ describe("runner resume session contract", () => {
   it("bounds profile-qualified workspace cache heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,

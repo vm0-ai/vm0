@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { agentDefinitionSchema } from "@okouai/api-contracts/contracts/composes";
 import {
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
@@ -21,13 +20,6 @@ describe("frameworks", () => {
 
     it("has exactly 2 frameworks", () => {
       expect(SUPPORTED_FRAMEWORKS).toHaveLength(2);
-    });
-
-    it("matches the composes contract framework enum", () => {
-      const schemaFrameworks = agentDefinitionSchema.shape.framework.options;
-      expect([...SUPPORTED_FRAMEWORKS].sort()).toEqual(
-        [...schemaFrameworks].sort(),
-      );
     });
   });
 

@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.23.42](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.41...guest-download-v0.23.42) (2026-08-30)
+
+## [0.23.41](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.40...guest-download-v0.23.41) (2026-08-30)
+
+## [0.23.40](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.39...guest-download-v0.23.40) (2026-08-30)
+
+## [0.23.39](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.38...guest-download-v0.23.39) (2026-08-29)
+
+## [0.23.38](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.37...guest-download-v0.23.38) (2026-08-28)
+
+## [0.23.37](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.36...guest-download-v0.23.37) (2026-08-28)
+
+## [0.23.36](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.35...guest-download-v0.23.36) (2026-08-28)
+
+## [0.23.35](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.34...guest-download-v0.23.35) (2026-08-28)
+
+## [0.23.34](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.33...guest-download-v0.23.34) (2026-08-28)
+
+## [0.23.33](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.32...guest-download-v0.23.33) (2026-08-28)
+
+
+### Refactoring
+
+* **test:** cut guest runtime directory writers to canonical alias ([#30000](https://github.com/vm0-ai/vm0/issues/30000)) ([89c3cdc](https://github.com/vm0-ai/vm0/commit/89c3cdc8c5c7abd4cade63cc0debe62cbd909ca4))
+
+## [0.23.32](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.31...guest-download-v0.23.32) (2026-08-28)
+
+## [0.23.31](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.30...guest-download-v0.23.31) (2026-08-27)
+
+## [0.23.30](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.29...guest-download-v0.23.30) (2026-08-27)
+
+## [0.23.29](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.28...guest-download-v0.23.29) (2026-08-27)
+
+## [0.23.28](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.27...guest-download-v0.23.28) (2026-08-26)
+
+## [0.23.27](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.26...guest-download-v0.23.27) (2026-08-26)
+
+## [0.23.26](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.25...guest-download-v0.23.26) (2026-08-25)
+
+## [0.23.25](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.24...guest-download-v0.23.25) (2026-08-25)
+
+## [0.23.24](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.23...guest-download-v0.23.24) (2026-08-25)
+
+## [0.23.23](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.22...guest-download-v0.23.23) (2026-08-25)
+
+## [0.23.22](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.21...guest-download-v0.23.22) (2026-08-25)
+
+
+### Performance Improvements
+
+* **guest-download:** release slots during retry backoff ([#29216](https://github.com/vm0-ai/vm0/issues/29216)) ([974d5e6](https://github.com/vm0-ai/vm0/commit/974d5e6cbe8387297c0fafb089ed5f7245ee6469))
+
+## [0.23.21](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.20...guest-download-v0.23.21) (2026-08-24)
+
+
+### Refactoring
+
+* **runtime:** dual-read guest runtime directory aliases ([#29101](https://github.com/vm0-ai/vm0/issues/29101)) ([3bb5b28](https://github.com/vm0-ai/vm0/commit/3bb5b2807090c3cf48650b917ccca00bdb44f370))
+
+## [0.23.20](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.19...guest-download-v0.23.20) (2026-08-24)
+
+## [0.23.19](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.18...guest-download-v0.23.19) (2026-08-24)
+
+## [0.23.18](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.17...guest-download-v0.23.18) (2026-08-24)
+
 ## [0.23.17](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.16...guest-download-v0.23.17) (2026-08-23)
 
 ## [0.23.16](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.15...guest-download-v0.23.16) (2026-08-21)

@@ -71,13 +71,14 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
     let snapshot = idle_pool.lock().await.status_snapshot();
     assert!(
         status
-            .set_idle_info_at_revision(snapshot.revision, snapshot.idle_vms)
+            .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
             .await
+            .unwrap()
     );
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
         vec!["sess-reuse-status".to_string()],
-        "pre-run status should list the seeded idle VM",
+        "pre-run status should list the seeded idle sandbox",
     );
 
     let run_handle = tokio::spawn(run(config));
@@ -155,7 +156,7 @@ async fn profile_mismatch_status_switches_from_idle_to_active_while_job_runs() {
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
         vec!["sess-mm-status".to_string()],
-        "pre-run status should list the stale idle VM",
+        "pre-run status should list the stale idle sandbox",
     );
 
     let run_handle = tokio::spawn(run(config));

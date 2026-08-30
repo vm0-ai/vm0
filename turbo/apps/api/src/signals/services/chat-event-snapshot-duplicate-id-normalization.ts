@@ -31,6 +31,9 @@ function encodeArchiveLine(line: ChatEventRow): Buffer {
 
 function archiveEventIds(body: Buffer): readonly string[] {
   const raw = body.toString("utf8");
+  if (raw.length === 0) {
+    return [];
+  }
   if (!raw.endsWith("\n")) {
     throw new Error("chat event snapshot archive must end with a newline");
   }
@@ -51,6 +54,9 @@ function archiveEventIds(body: Buffer): readonly string[] {
 
 function decodeArchiveLines(body: Buffer): readonly ChatEventRow[] {
   const raw = body.toString("utf8");
+  if (raw.length === 0) {
+    return [];
+  }
   if (!raw.endsWith("\n")) {
     throw new Error("chat event snapshot archive must end with a newline");
   }

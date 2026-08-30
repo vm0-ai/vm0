@@ -29,8 +29,8 @@ from tests.jsonl_log_helpers import (
     read_jsonl_text_after_flush,
 )
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
-    _vm_without_firewalls,
+    _sandbox_without_firewalls,
+    _single_firewall_sandbox,
     _write_registry,
 )
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
@@ -69,7 +69,7 @@ class TestErrorHandler:
     ):
         reg_path = _write_registry(
             tmp_path,
-            vm_info=_single_firewall_vm(
+            sandbox_info=_single_firewall_sandbox(
                 tmp_path,
                 firewall_name="webhook",
                 api_entry={
@@ -212,7 +212,9 @@ class TestErrorHandler:
     ):
         reg_path = _write_registry(
             tmp_path,
-            vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+            sandbox_info=_sandbox_without_firewalls(
+                tmp_path, sandbox_fields={"captureNetworkBodies": True}
+            ),
         )
         flow = real_flow(
             with_response=False,
@@ -247,7 +249,7 @@ class TestErrorHandler:
     async def test_browser_connector_candidate_error_keeps_original_error(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -278,7 +280,7 @@ class TestErrorHandler:
     async def test_authenticated_connector_candidate_error_keeps_original_error(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
-        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        reg_path = _write_registry(tmp_path, sandbox_info=_sandbox_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -304,10 +306,10 @@ class TestErrorHandler:
 
     def test_cleans_up_start_time(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False)
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
         # Matches the request handler's invariant: original_url is set
-        # alongside vm_run_id.
+        # alongside sandbox_run_id.
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://example.com/"
         http_network_log.set_target(
             flow,
@@ -326,9 +328,9 @@ class TestErrorHandler:
     def test_error_releases_unfinished_json_streaming_state(self, tmp_path, real_flow, mitm_ctx):
         """Connection errors should drop unfinished JSON parser closures."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
         http_network_log.set_target(
@@ -402,10 +404,10 @@ class TestErrorHandler:
     ):
         """Interrupted non-stream JSON must not be billed via request-hint fallback."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets?ids=1,2,3")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "test-token"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(tmp_path / "net.jsonl")
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(tmp_path / "proxy.jsonl")
+        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "test-token"
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.x.com/2/tweets?ids=1,2,3"
         http_network_log.set_target(
@@ -447,8 +449,8 @@ class TestErrorHandler:
         flow.request.method = "POST"
         log_path = str(tmp_path / "network.jsonl")
         raw_url = "https://slack.com/api/chat.postMessage?token=secret#frag"
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
         http_network_log.set_target(
             flow,
@@ -484,8 +486,8 @@ class TestErrorHandler:
         raw_url = "https://target.example.com/path?payload=" + ("\\" * 600_000)
         flow = real_flow(with_response=False, host="target.example.com")
         log_path = tmp_path / "network.jsonl"
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
         flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         http_network_log.set_target(
@@ -538,8 +540,8 @@ class TestErrorHandler:
     def test_error_logs_typed_target_port_zero(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="request.example.com", port=9443)
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://target.example.com:0/path"
         http_network_log.set_target(
             flow,
@@ -562,8 +564,8 @@ class TestErrorHandler:
     def test_missing_network_log_target_fails_error(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://invalid.example.com:bad/path"
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
@@ -590,8 +592,8 @@ class TestErrorHandler:
         log_path = str(tmp_path / "network.jsonl")
         body = b"abcdef"
 
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
         http_network_log.set_target(
             flow,
@@ -621,8 +623,8 @@ class TestErrorHandler:
     def test_error_includes_firewall_context(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="slack.com")
         log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://slack.com/api/chat.postMessage"
         http_network_log.set_target(
             flow,
@@ -651,9 +653,9 @@ class TestErrorHandler:
     def test_error_logs_warning_to_proxy_log_without_network_log(self, tmp_path, real_flow):
         flow = real_flow(with_response=False, host="slack.com")
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log)
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://slack.com/api/test?api_key=secret#frag"
         flow.error = Error("connection reset by peer")
 
@@ -673,9 +675,9 @@ class TestErrorHandler:
         network_log_path = tmp_path / "network.jsonl"
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow = real_flow(with_response=False, host="target.example.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(network_log_path)
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(network_log_path)
+        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log_path)
         flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         http_network_log.set_target(
@@ -709,14 +711,14 @@ class TestErrorHandler:
         Verifies that error() hook delivers partial usage through loopback HTTP.
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-int-002"
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-int-002"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = ""
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "claude-sonnet-4-6",
             "tokens.input": 80,
@@ -731,7 +733,7 @@ class TestErrorHandler:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/runners/model-usage-observations",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-002"
@@ -748,10 +750,8 @@ class TestErrorHandler:
         ]
         billing_key = body["events"][0]["idempotencyKey"]
         uuid.UUID(billing_key)
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
-        assert observation_body["runId"] == "run-int-002"
+        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
+        assert set(observation_body) == {"events"}
         assert [
             {key: value for key, value in event.items() if key != "idempotencyKey"}
             for event in observation_body["events"]

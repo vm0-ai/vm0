@@ -1,5 +1,34 @@
+# Codex restore cleanup contract
+#
+# This helper is embedded by the runner and runs before history restoration
+# only when an idle sandbox is reused. It is destructive within the canonical
+# $codex_home/sessions tree: matching regular files and symlinks are removed,
+# while unrelated entries and directories are preserved.
+#
+# OKOU_CODEX_RESTORE_SESSION_ID and
+# OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY identify the dashed and undashed
+# session-name forms. OKOU_CODEX_RESTORE_SESSION_PATH supplies the caller's
+# canonical sessions/YYYY/MM/DD restore path. The helper validates these
+# inputs' shape and the session root's directory components before scanning;
+# Rust independently validates any logical path returned by the helper.
+#
+# The collection pass walks the whole sessions tree, not only the fallback date
+# directory, and is bounded by OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET (default
+# 16384 entries). It records matching .jsonl, .jsonl.zst,
+# .jsonl.vm0tmp-*, and .jsonl.zst.vm0tmp-* entries first; only file-like
+# entries are later deleted. A canonical regular-file .jsonl or .jsonl.zst
+# match produces one logical path, with raw/zstd siblings normalized together.
+# No canonical match produces empty stdout; distinct canonical paths are
+# ambiguous and fail before deletion.
+#
+# On success, stdout is empty or exactly one LF-terminated logical path. The
+# Rust caller validates that path independently before writing. Validation,
+# scan, budget, ambiguity, temporary-file, or deletion failure exits nonzero;
+# collection completes before deletion, and any such failure prevents the
+# caller from writing replacement history. Exit traps remove helper temp files.
+
 root="$codex_home/sessions"
-restore_path="$VM0_CODEX_RESTORE_SESSION_PATH"
+restore_path="$OKOU_CODEX_RESTORE_SESSION_PATH"
 restore_dir="${restore_path%/*}"
 case "$restore_dir" in
   "$root"/*/*/*) ;;
@@ -41,7 +70,7 @@ while [ -n "$remaining" ]; do
   current="$current/$component"
   check_restore_dir_component "$current"
 done
-id="$VM0_CODEX_RESTORE_SESSION_ID"
+id="$OKOU_CODEX_RESTORE_SESSION_ID"
 case "$id" in
   ""|*[!0123456789abcdefABCDEF-]*)
     echo "invalid codex restore session id" >&2
@@ -52,7 +81,7 @@ if [ "${#id}" -ne 36 ]; then
   echo "invalid codex restore session id" >&2
   exit 1
 fi
-id_no_dashes="$VM0_CODEX_RESTORE_SESSION_FILENAME_KEY"
+id_no_dashes="$OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY"
 case "$id_no_dashes" in
   ""|*[!0123456789abcdefABCDEF]*)
     echo "invalid codex restore session id" >&2
@@ -63,7 +92,7 @@ if [ "${#id_no_dashes}" -ne 32 ]; then
   echo "invalid codex restore session id" >&2
   exit 1
 fi
-scan_budget="${VM0_CODEX_SESSION_CLEANUP_SCAN_BUDGET:-16384}"
+scan_budget="${OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET:-16384}"
 case "$scan_budget" in
   ""|*[!0123456789]*)
     echo "invalid codex session cleanup scan budget" >&2

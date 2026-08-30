@@ -7,7 +7,7 @@ WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
 RUNNER_START_HELPER="${REPO_ROOT}/.github/scripts/reconcile-and-start-runner-groups.sh"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
 REAL_CLAUDE_TEST="${RUNNER_TESTS}/run-t10-real-claude-smoke.bats"
-MANAGED_FALLBACK_TEST="${RUNNER_TESTS}/run-t24-managed-provider-fallback.bats"
+BUILT_IN_FALLBACK_TEST="${RUNNER_TESTS}/run-t24-built-in-provider-fallback.bats"
 RUNNER_HELPERS=(
   "${REPO_ROOT}/e2e/helpers/runner-api.bash"
   "${REPO_ROOT}/e2e/helpers/runner-chat.bash"
@@ -27,6 +27,8 @@ grep -Fq "local RUNNER_DIRNAME=\"\${RUNNER_DIR##*/}\"" "$RUNNER_START_HELPER" ||
   fail "runner config dirname must come from the manifest runner directory"
 grep -Fq -- "--runner-dirname \${RUNNER_DIRNAME}" "$RUNNER_START_HELPER" ||
   fail "runner config must be written beneath the manifest runner directory"
+grep -Fq -- "--hostname \${HOST}" "$RUNNER_START_HELPER" ||
+  fail "runner config must use the metal host for attribution"
 grep -Fq -- "--config \${RUNNER_DIR}/runner.yaml" "$RUNNER_START_HELPER" ||
   fail "runner service must read the config from the manifest runner directory"
 if grep -Fq -- "--runner-dirname \${RUNNER_SERVICE_REF}" "$RUNNER_START_HELPER"; then
@@ -43,6 +45,18 @@ grep -Fq '["list"]' "$PLAYWRIGHT_CONFIG" ||
   fail "Playwright CI must retain human-readable list reporting"
 grep -Fq '["blob", { outputDir: "blob-report" }]' "$PLAYWRIGHT_CONFIG" ||
   fail "Playwright CI must emit mergeable blob reports"
+grep -Fq 'name: "auth-v2"' "$PLAYWRIGHT_CONFIG" ||
+  fail "Playwright must register the dedicated Auth v2 project"
+grep -Fq 'testMatch: "auth-v2.spec.ts"' "$PLAYWRIGHT_CONFIG" ||
+  fail "the Auth v2 project must remain isolated from existing test specs"
+grep -Fq 'workers: 1' "$PLAYWRIGHT_CONFIG" ||
+  fail "the Auth v2 project must use one worker"
+grep -Fq 'trace: "off"' "$PLAYWRIGHT_CONFIG" ||
+  fail "the Auth v2 project must not retain credential-bearing traces"
+grep -Fq 'process.env.PLAYWRIGHT_PROJECT !== "auth-v2"' "$PLAYWRIGHT_CONFIG" ||
+  fail "the Auth v2 project must not retain credential-bearing blob reports"
+grep -Fq "if: always() && matrix.project != 'auth-v2'" "$WORKFLOW" ||
+  fail "the Auth v2 lane must not upload a Playwright blob report"
 if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "${RUNNER_HELPERS[@]}"; then
   fail "runner E2E coverage must use supported public APIs"
 fi
@@ -54,8 +68,8 @@ fi
 if grep -Fq 'claude-sonnet-4-6' "$REAL_CLAUDE_TEST"; then
   fail "real Claude E2E must not retain the Sonnet 4.6 pin"
 fi
-grep -Fq 'VM0_MITM_RUNNER_TOKEN' "$MANAGED_FALLBACK_TEST" ||
-  fail "managed fallback E2E must require trusted failure authentication"
+grep -Fq 'OKOU_MITM_RUNNER_TOKEN' "$BUILT_IN_FALLBACK_TEST" ||
+  fail "built-in fallback E2E must require trusted failure authentication"
 grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must upgrade through public paid onboarding"
 grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
@@ -78,6 +92,42 @@ account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
 account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
+pnpm_setup_action =
+  "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86"
+pnpm_version = "10.33.4"
+{
+  "runner E2E preparation" => account_prepare,
+  "runner E2E shards" => runner,
+  "runner E2E cleanup" => account_cleanup,
+}.each do |job_name, job|
+  steps = job.fetch("steps")
+  pnpm_setup_index = steps.index do |step|
+    step["uses"] == pnpm_setup_action
+  end
+  node_setup_index = steps.index do |step|
+    step.fetch("uses", "").start_with?("actions/setup-node@")
+  end
+  unless pnpm_setup_index && node_setup_index &&
+      pnpm_setup_index < node_setup_index
+    raise "#{job_name} must install pnpm before selecting Node.js 22"
+  end
+  pnpm_setup_step = steps.fetch(pnpm_setup_index)
+  unless pnpm_setup_step.dig("with", "version") == pnpm_version
+    raise "#{job_name} must install the pinned pnpm version"
+  end
+  if steps.any? do |step|
+      step.fetch("run", "").include?("corepack enable pnpm")
+    end
+    raise "#{job_name} must not download pnpm through Node.js 22 Corepack"
+  end
+  dependency_install = steps.find do |step|
+    step["name"] == "Install E2E dependencies"
+  end
+  unless dependency_install&.fetch("run", nil) ==
+      "cd e2e && pnpm install --frozen-lockfile"
+    raise "#{job_name} must keep the frozen E2E dependency install"
+  end
+end
 
 playwright_step_names = playwright.fetch("steps").map { |step| step["name"] }
 browser_install_index = playwright_step_names.index("Install Playwright browsers")
@@ -95,6 +145,7 @@ end
 expected_playwright_lanes = [
   { "lane" => "features", "project" => "features" },
   { "lane" => "paid-onboarding", "project" => "paid-onboarding" },
+  { "lane" => "auth-v2", "project" => "auth-v2" },
 ]
 unless playwright.dig("strategy", "matrix", "include") ==
     expected_playwright_lanes
@@ -117,15 +168,26 @@ unless playwright_run&.fetch("shell") == "bash" &&
       "${{ matrix.project }}"
   raise "each Playwright lane must select its matrix project"
 end
+unless playwright_run.fetch("run").include?(
+    'if [[ "$PLAYWRIGHT_PROJECT" == "auth-v2" ]]',
+  ) && playwright_run.fetch("run").include?("__clerk_db_jwt") &&
+    playwright_run.fetch("run").include?("masked-clerk-test-email") &&
+    playwright_run.fetch("run").include?("masked-clerk-resource-id") &&
+    playwright_run.fetch("run").include?("sess|user|org|sia|sua") &&
+    playwright_run.fetch("run").include?("set -o pipefail")
+  raise "the Auth v2 lane must redact Clerk secrets and identifiers"
+end
 playwright_blob_upload = playwright.fetch("steps").find do |step|
   step["name"] == "Upload Playwright blob report"
 end
-unless playwright_blob_upload && playwright_blob_upload.fetch("if") == "always()" &&
+unless playwright_blob_upload &&
+    playwright_blob_upload.fetch("if") ==
+      "always() && matrix.project != 'auth-v2'" &&
     playwright_blob_upload.dig("with", "name") ==
       "playwright-blob-${{ matrix.lane }}" &&
     playwright_blob_upload.dig("with", "path") ==
       "e2e/playwright/blob-report/"
-  raise "each Playwright lane must always upload its uniquely named blob report"
+  raise "non-sensitive Playwright lanes must upload uniquely named blob reports"
 end
 
 unless Array(playwright_finalizer["needs"]).include?("cli-e2e-02-playwright")
@@ -298,9 +360,8 @@ raise "missing runner E2E token generation" unless token_step
 unless token_step.fetch("run").end_with?("runner-token.ts /tmp")
   raise "runner E2E tokens must use the public device-flow entry point"
 end
-unless token_step.dig("env", "OKOU_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}" &&
-    token_step.dig("env", "ZERO_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
-  raise "runner E2E token generation must emit both branded app preview URLs"
+unless token_step.dig("env", "OKOU_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
+  raise "runner E2E token generation must emit the app preview URL"
 end
 unless token_step.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID") ==
     "${{ steps.account.outputs.mock-claude-organization-id }}"
@@ -355,13 +416,34 @@ unless bootstrap_steps.any? do |step|
   end
   raise "runner bootstrap must download the token artifact"
 end
+connector_accounts_step = bootstrap_steps.find do |step|
+  step["name"] == "Enable runner connector account coverage"
+end
+raise "missing runner connector account bootstrap" unless connector_accounts_step
+connector_accounts_script = connector_accounts_step.fetch("run")
+unless connector_accounts_step.fetch("shell") == "bash" &&
+    connector_accounts_script.include?('/api/feature-switches') &&
+    connector_accounts_script.include?(
+      '{"switches":{"connectorAccounts":true}}',
+    ) &&
+    connector_accounts_script.include?(
+      '.effectiveSwitches.connectorAccounts == true',
+    )
+  raise "runner connector account bootstrap must enable and verify the public feature switch"
+end
+unless connector_accounts_step.dig(
+    "env",
+    "VERCEL_AUTOMATION_BYPASS_SECRET",
+  ) == "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+  raise "runner connector account bootstrap must receive the preview bypass secret"
+end
 model_defaults_step = bootstrap_steps.find do |step|
   step["name"] == "Reset runner model defaults"
 end
 raise "missing runner model policy bootstrap" unless model_defaults_step
 model_defaults_script = model_defaults_step.fetch("run")
-unless model_defaults_script.include?("/api/okou/model-policies") &&
-    model_defaults_script.include?("/api/okou/user-model-preference") &&
+unless model_defaults_script.include?("/api/model-policies") &&
+    model_defaults_script.include?("/api/user-model-preference") &&
     model_defaults_script.include?("deepseek-v4-flash") &&
     model_defaults_script.include?("gpt-5.6-luna") &&
     model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
@@ -396,9 +478,9 @@ unless mock_claude_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
 end
 mock_claude_script = File.read(ARGV.fetch(1))
 %w[
-  /api/zero/me/model-providers
-  /api/zero/model-policies
-  /api/zero/feature-switches
+  /api/me/model-providers
+  /api/model-policies
+  /api/feature-switches
   claude-code-oauth-token
   claude-sonnet-4-6
   realAgentInPreview
@@ -422,9 +504,9 @@ end
 raise "missing real Codex account bootstrap" unless codex_step
 codex_script = codex_step.fetch("run")
 %w[
-  /api/okou/model-providers
-  /api/okou/model-policies
-  /api/okou/feature-switches
+  /api/model-providers
+  /api/model-policies
+  /api/feature-switches
   gpt-5.6-luna
   realAgentInPreview
 ].each do |required_fragment|
@@ -442,10 +524,10 @@ end
 raise "missing real Claude account bootstrap" unless claude_step
 claude_script = claude_step.fetch("run")
 %w[
-  /api/okou/model-policies
-  /api/okou/feature-switches
+  /api/model-policies
+  /api/feature-switches
   realAgentInPreview
-  managedModelProviderFallback
+  builtInModelProviderFallback
 ].each do |required_fragment|
   unless claude_script.include?(required_fragment)
     raise "real Claude bootstrap must include #{required_fragment}"
@@ -462,7 +544,7 @@ if claude_script.include?("claude-sonnet-4-6")
 end
 unless claude_script.include?('defaultProviderType: "vm0"') &&
     claude_script.include?("modelProviderId: null")
-  raise "real Claude bootstrap must use the VM0-managed provider"
+  raise "real Claude bootstrap must use the built-in provider"
 end
 
 shard_step = runner.fetch("steps").find do |step|
@@ -495,9 +577,9 @@ unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
     "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
   raise "runner E2E tests must receive the preview bypass secret"
 end
-expected_failure_token = "${{ contains(matrix.files, 'tests/03-runner/run-t24-managed-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}"
-unless run_step.dig("env", "VM0_MITM_RUNNER_TOKEN") == expected_failure_token
-  raise "only the managed fallback shard may receive trusted failure authentication"
+expected_failure_token = "${{ contains(matrix.files, 'tests/03-runner/run-t24-built-in-provider-fallback.bats') && format('vm0_official_{0}', secrets.OFFICIAL_RUNNER_SECRET) || '' }}"
+unless run_step.dig("env", "OKOU_MITM_RUNNER_TOKEN") == expected_failure_token
+  raise "only the built-in fallback shard may receive trusted failure authentication"
 end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
@@ -579,10 +661,17 @@ unless retain_step &&
   raise "failed runner work must retain reusable accounts explicitly"
 end
 
+cleanup_pnpm_setup_step = cleanup_steps.find do |step|
+  step["uses"] == pnpm_setup_action
+end
+cleanup_node_setup_step = cleanup_steps.find do |step|
+  step.fetch("uses", "").start_with?("actions/setup-node@")
+end
+
 conditional_setup_steps = [
   cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/checkout@") },
-  cleanup_steps.find { |step| step.fetch("uses", "").start_with?("actions/setup-node@") },
-  cleanup_steps.find { |step| step["name"] == "Install pnpm" },
+  cleanup_pnpm_setup_step,
+  cleanup_node_setup_step,
   cleanup_steps.find { |step| step["name"] == "Install E2E dependencies" },
 ]
 unless conditional_setup_steps.all? do |step|

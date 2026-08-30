@@ -129,13 +129,13 @@ async fn run_event_failure_case(
             .json_body_includes(format!(r#"{{"cliAgentSessionId":"{THREAD_ID}"}}"#));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "event-delivery-recovery-checkpoint"}));
+            .json_body(json!({"checkpointId": "event-delivery-recovery-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
     });
 
     let output = common::command_output_with_timeout(
         Command::new(env!("CARGO_BIN_EXE_guest-agent"))
             .env_clear()
-            .env("VM0_TEST_DISABLE_HTTP_RETRY_DELAY", "1")
+            .env("OKOU_TEST_DISABLE_HTTP_RETRY_DELAY", "1")
             .env(
                 "PATH",
                 std::env::var("PATH")
@@ -143,26 +143,38 @@ async fn run_event_failure_case(
             )
             .env("SHELL", "/bin/sh")
             .env("HOME", &home)
-            .env(guest_contracts::env::API_URL_ENV, server.base_url())
-            .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+            .env(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            )
+            .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
             .env(guest_contracts::env::RUN_ID_ENV, run_id)
             .env(
-                guest_contracts::env::SANDBOX_ID_ENV,
+                guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
                 "00000000-0000-4000-8000-000000000abc",
             )
-            .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
+            .env(
+                guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+                "reused",
+            )
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
-            .env("VM0_TEST_CODEX_HOME_DIR", home.join(".codex"))
+            .env("OKOU_TEST_CODEX_HOME_DIR", home.join(".codex"))
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
-            .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
-            .env(guest_contracts::env::RESUME_SESSION_ID_ENV, THREAD_ID)
+            .env(
+                guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+                &mock_codex,
+            )
+            .env(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                THREAD_ID,
+            )
             .env("MOCK_CODEX_APP_SERVER_SCENARIO", mock_scenario)
             .env(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 &run_payload_file,
             )
             .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
             ),
         Duration::from_secs(20),

@@ -2,7 +2,6 @@ import * as userSchema from "./schema/user";
 import * as deviceCodesSchema from "./schema/device-codes";
 import * as cliTokensSchema from "./schema/cli-tokens";
 import * as desktopAuthHandoffCodeSchema from "./schema/desktop-auth-handoff-code";
-import * as agentComposeSchema from "./schema/agent-compose";
 import * as agentSchema from "./schema/agent";
 import * as agentRunSchema from "./schema/agent-run";
 import * as conversationSchema from "./schema/conversation";
@@ -88,14 +87,13 @@ import * as exportJobSchema from "./schema/export-job";
 import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as usagePricingSchema from "./schema/usage-pricing";
-import * as zeroAgentSchema from "./schema/zero-agent";
 import * as agentDraftSchema from "./schema/agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as builtInModelKeySchema from "./schema/built-in-model-key";
-import * as managedModelCooldownSchema from "./schema/managed-model-cooldown";
+import * as builtInModelCooldownSchema from "./schema/built-in-model-cooldown";
 import * as workflowSchema from "./schema/workflow";
 import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
@@ -116,6 +114,7 @@ import * as artifactSchema from "./schema/artifact";
 import * as sharedThreadSchema from "./schema/shared-thread";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
+import * as socialKitDownloadJobSchema from "./schema/socialkit-download-job";
 import * as bankingSchema from "./schema/banking";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
@@ -125,6 +124,7 @@ import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleFormsEventSchema from "./schema/google-forms-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
+import * as officialWorkflowCatalogSchema from "./schema/official-workflow-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
 import * as presentationTemplateSchema from "./schema/presentation-template";
@@ -135,7 +135,6 @@ export const schema = {
   ...deviceCodesSchema,
   ...cliTokensSchema,
   ...desktopAuthHandoffCodeSchema,
-  ...agentComposeSchema,
   ...agentSchema,
   ...agentRunSchema,
   ...conversationSchema,
@@ -221,14 +220,13 @@ export const schema = {
   ...emailSuppressionSchema,
   ...skillSchema,
   ...usagePricingSchema,
-  ...zeroAgentSchema,
   ...agentDraftSchema,
   ...userPermissionGrantSchema,
   ...threadGoalSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
   ...builtInModelKeySchema,
-  ...managedModelCooldownSchema,
+  ...builtInModelCooldownSchema,
   ...workflowSchema,
   ...morningBriefSchema,
   ...computerUseHostSchema,
@@ -249,6 +247,7 @@ export const schema = {
   ...sharedThreadSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
+  ...socialKitDownloadJobSchema,
   ...bankingSchema,
   ...gmailEventSchema,
   ...notionEventSchema,
@@ -258,6 +257,7 @@ export const schema = {
   ...googleFormsEventSchema,
   ...googleWorkspaceEventSchema,
   ...connectorCatalogSchema,
+  ...officialWorkflowCatalogSchema,
   ...mailDraftSchema,
   ...browserSessionSchema,
   ...presentationTemplateSchema,

@@ -249,11 +249,6 @@ describe("GET /api/zero/integrations/slack", () => {
   });
 
   describe("environment field", () => {
-    const dol = "\x24";
-    const composeContent = JSON.parse(
-      `{"settings":{"api_key":"${dol}{{ secrets.SEC_A }}","region":"${dol}{{ vars.VAR_A }}"}}`,
-    ) as Record<string, unknown>;
-
     async function seedEnvironmentVersion(): Promise<void> {
       await postSlackState({
         org_id: fixture.orgId,
@@ -261,7 +256,6 @@ describe("GET /api/zero/integrations/slack", () => {
         seed_default_agent: true,
         default_agent_name: "slack-bot",
         default_agent_display_name: "Slack Bot",
-        compose_content: composeContent,
       });
     }
 
@@ -297,7 +291,7 @@ describe("GET /api/zero/integrations/slack", () => {
       });
     }
 
-    it("ignores legacy environment when canonical runtime bindings are provided", async () => {
+    it("reports no user requirements for application-owned runtime bindings", async () => {
       await seedEnvironmentVersion();
       await seedUserSecret("SEC_A");
       await seedUserVariable("VAR_A", "us-east-1");
@@ -760,7 +754,7 @@ function requestDownloadFile(
     ? { authorization }
     : {};
   return Promise.resolve(
-    app.request(`/api/okou/integrations/slack/download-file${query}`, {
+    app.request(`/api/integrations/slack/download-file${query}`, {
       method: "GET",
       headers,
     }),
@@ -779,7 +773,7 @@ async function expectErrorResponse(
   expect(body.error?.code).toBe(code);
 }
 
-describe("GET /api/okou/integrations/slack/download-file", () => {
+describe("GET /api/integrations/slack/download-file", () => {
   const trackSlackFixture = createFixtureTracker<SlackIntegrationFixture>(
     (fixture) => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
@@ -813,7 +807,7 @@ describe("GET /api/okou/integrations/slack/download-file", () => {
     await expectErrorResponse(response, 401, "UNAUTHORIZED");
   });
 
-  it("rejects a zero token without slack:write capability", async () => {
+  it("rejects an agent token without slack:write capability", async () => {
     const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,

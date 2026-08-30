@@ -295,7 +295,7 @@ class TestOpenAIChatCompletionsUsage:
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("message") == "Model provider SSE usage extraction failed"
         ]
@@ -322,7 +322,7 @@ class TestOpenAIChatCompletionsUsage:
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("message") == "Model provider SSE usage extraction failed"
         ]
@@ -366,7 +366,7 @@ class TestOpenAIChatCompletionsUsage:
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("message") == "Model provider SSE usage extraction failed"
         ]
@@ -403,7 +403,7 @@ class TestOpenAIChatCompletionsUsage:
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
-                Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+                Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
             )
             if entry.get("message") == "Model provider SSE usage extraction failed"
         ]

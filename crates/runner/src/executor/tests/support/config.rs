@@ -17,7 +17,7 @@ use crate::types::ExecutionContext;
 pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> ExecutorConfig {
     let registry_path = dir.join("proxy-registry.json");
     let lock_path = dir.join("proxy-registry.json.lock");
-    tokio::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#)
+    tokio::fs::write(&registry_path, r#"{"sandboxes":{},"updatedAt":0}"#)
         .await
         .unwrap();
     let log_dir = dir.join("logs");
@@ -25,7 +25,7 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
 
     ExecutorConfig {
         api_url: "http://localhost:9999".into(),
-        runner_name: "test-runner".into(),
+        runner_hostname: None,
         registry: proxy::ProxyRegistryHandle::new(registry_path, lock_path),
         http: crate::http::HttpClient::new(HttpClientConfig {
             api_url: "http://localhost:9999".into(),
@@ -43,6 +43,8 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()
             .unwrap(),
+        pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission::new(2).unwrap(),
+        storage_baseline_observer: Default::default(),
         home: HomePaths::with_root(dir.to_path_buf()),
         workspace_cache: None,
     }
@@ -117,7 +119,7 @@ pub(in crate::executor::tests) fn test_telemetry(
         config.http.clone(),
         ctx.run_id,
         ctx.sandbox_token.clone(),
-        config.runner_name.clone(),
+        config.runner_hostname.clone(),
     )
 }
 
@@ -127,9 +129,11 @@ pub(in crate::executor::tests) async fn assert_proxy_registry_empty(dir: &Path) 
         .unwrap();
     let registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(
-        registry["vms"].as_object().map(|vms| vms.len()),
+        registry["sandboxes"]
+            .as_object()
+            .map(|sandboxes| sandboxes.len()),
         Some(0),
-        "proxy registry should not retain a VM after executor cleanup: {registry}",
+        "proxy registry should not retain a sandbox after executor cleanup: {registry}",
     );
     assert!(
         registry["updatedAt"]

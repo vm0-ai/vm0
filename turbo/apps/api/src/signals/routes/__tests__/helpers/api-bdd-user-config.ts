@@ -29,11 +29,8 @@ import { agentsRoutes } from "../../agents";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { userModelPreferenceRoutes } from "../../user-model-preference";
 import { userPreferencesRoutes } from "../../user-preferences";
-import {
-  healthAuthProbeContract,
-  healthAuthProbeRoutes,
-} from "../../health-auth-probe";
 import type { ApiTestUser } from "./api-bdd";
+import { testAuthProbeContract, testAuthProbeRoutes } from "./auth-probe";
 import { createRouteMocks } from "./route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -65,7 +62,6 @@ interface ProbeHeaders {
 
 interface ProbeQuery {
   readonly acceptAnySandboxCapability?: string;
-  readonly requiredCapability?: string;
 }
 
 interface RegisterPushBody {
@@ -103,7 +99,7 @@ const rawModelPreferenceContract = c.router({
 });
 
 const userConfigRoutes = [
-  ...healthAuthProbeRoutes,
+  ...testAuthProbeRoutes,
   ...authMeRoutes,
   ...agentsRoutes,
   ...userModelPreferenceRoutes,
@@ -234,7 +230,7 @@ export function createUserConfigBddApi(context: TestContext) {
       const client = setupAppWithRoutes({
         context,
         routes: userConfigRoutes,
-      })(healthAuthProbeContract);
+      })(testAuthProbeContract);
       return await accept(client.check({ headers, query }), statuses);
     },
 

@@ -1,12 +1,9 @@
 import { command } from "ccstate";
 import { billingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/billing";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { db$ } from "../external/db";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   getOrganizationUsagePackCreditBalances,
   getUsagePackCreditBalance,
@@ -14,32 +11,8 @@ import {
 } from "../services/usage-pack-credit.service";
 import type { RouteEntry } from "../route-entry";
 
-const usagePackCreditsDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Usage pack credits are not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
 const getUsagePackCredits$ = command(async ({ get }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return usagePackCreditsDisabled;
-  }
-
   const db = get(db$);
   const hasUsagePack = await hasActiveUsagePackAllocation(db, {
     orgId: auth.orgId,

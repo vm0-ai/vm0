@@ -2,6 +2,7 @@ export interface OAuthRefreshResult {
   readonly accessToken: string;
   readonly refreshToken: string | null;
   readonly expiresIn?: number;
+  readonly scopes: readonly string[] | null;
 }
 
 export function oauthRefreshResultToProviderResult(
@@ -12,6 +13,7 @@ export function oauthRefreshResultToProviderResult(
     readonly refreshToken?: string;
   };
   readonly expiresIn?: number;
+  readonly scopes?: readonly string[];
 } {
   return {
     outputs: {
@@ -19,5 +21,6 @@ export function oauthRefreshResultToProviderResult(
       ...(result.refreshToken ? { refreshToken: result.refreshToken } : {}),
     },
     ...(result.expiresIn === undefined ? {} : { expiresIn: result.expiresIn }),
+    ...(result.scopes === null ? {} : { scopes: result.scopes }),
   };
 }

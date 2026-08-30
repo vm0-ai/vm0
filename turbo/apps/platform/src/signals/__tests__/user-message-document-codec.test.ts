@@ -9,14 +9,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { initializeI18n } from "../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { testContext } from "./test-helpers.ts";
-import { createDraftSignals } from "../zero-page/chat-draft.ts";
-import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+import { createDraftSignals } from "../okou-page/chat-draft.ts";
+import { createWorkflowComposerSignals } from "../okou-page/tiptap-workflow-composer.ts";
 import {
   editorDocToMessageDocument,
   messageDocumentToDisplayText,
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
-} from "../zero-page/user-message-document-codec.ts";
+} from "../okou-page/user-message-document-codec.ts";
 
 const context = testContext();
 const THREAD_ID = "1fe7f3cc-40b9-49f2-8f86-5f07d8d8dfd8";
@@ -707,20 +707,7 @@ describe("user message document codec", () => {
       ],
     });
 
-    expect(editorDocToMessageDocument(editorDocument)).toStrictEqual({
-      version: 1,
-      parts: [
-        {
-          type: "feedback",
-          quote: "First quote",
-          note: [{ type: "text", text: "First note" }],
-        },
-      ],
-    });
-
-    const structured = editorDocToMessageDocument(editorDocument, {
-      includeQuoteOnlyFeedback: true,
-    });
+    const structured = editorDocToMessageDocument(editorDocument);
     expect(structured).toStrictEqual({
       version: 1,
       parts: [
@@ -750,9 +737,7 @@ describe("user message document codec", () => {
       throw new Error("Expected quote-only feedback document to restore");
     }
     expect(
-      editorDocToMessageDocument(workflowComposerDocument(restored), {
-        includeQuoteOnlyFeedback: true,
-      }),
+      editorDocToMessageDocument(workflowComposerDocument(restored)),
     ).toStrictEqual(structured);
   });
 

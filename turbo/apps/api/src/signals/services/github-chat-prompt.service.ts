@@ -1,20 +1,38 @@
 import { optionalEnv } from "../../lib/env";
+import {
+  githubAppBotUsername,
+  resolveGithubAppIdentity,
+} from "../../lib/github-official-app";
 
-function githubAppBotUsername(): string | undefined {
-  const appSlug = optionalEnv("GITHUB_APP_SLUG")?.trim();
+function configuredAppIdentity(args: {
+  readonly appId: string | null;
+  readonly appSlug: string | null;
+}) {
+  const { appId, appSlug } = resolveGithubAppIdentity({
+    configuredAppId: optionalEnv("GITHUB_APP_ID"),
+    configuredAppSlug: optionalEnv("GITHUB_APP_SLUG"),
+    installationAppId: args.appId,
+    installationAppSlug: args.appSlug,
+  });
   if (!appSlug) {
-    return undefined;
+    return { appId, botUsername: undefined };
   }
-  return `@${appSlug}[bot]`;
+  return { appId, botUsername: githubAppBotUsername(appSlug) };
 }
 
-function buildIntegrationPrompt(): string {
+function buildIntegrationPrompt(args: {
+  readonly appId: string | null;
+  readonly appSlug: string | null;
+}): string {
   const headerParts = [
     "# Current Integration",
     "You are currently running inside: GitHub",
-    "GitHub comments run agents when issues or pull requests mention Zero.",
+    "GitHub comments run agents when issues or pull requests address the installed GitHub App.",
   ];
-  const botUsername = githubAppBotUsername();
+  const { appId, botUsername } = configuredAppIdentity(args);
+  if (appId) {
+    headerParts.push(`GitHub App ID: ${appId}`);
+  }
   if (botUsername) {
     headerParts.push(`Bot username: ${botUsername}`);
   }
@@ -26,8 +44,10 @@ export function buildGitHubPrompt(args: {
   readonly repo: string;
   readonly issueNumber: number;
   readonly subjectKind: "issue" | "pull_request";
+  readonly appId: string | null;
+  readonly appSlug: string | null;
 }): string {
-  return [buildIntegrationPrompt(), args.issueContext]
+  return [buildIntegrationPrompt(args), args.issueContext]
     .filter((part): part is string => {
       return Boolean(part);
     })

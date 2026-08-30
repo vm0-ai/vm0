@@ -1,0 +1,1 @@
+ALTER TABLE "runner_state" ALTER COLUMN "runner_name" DROP NOT NULL;

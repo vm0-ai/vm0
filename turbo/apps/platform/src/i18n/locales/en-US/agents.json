@@ -465,11 +465,6 @@
     },
     "chat": "Chat",
     "description": "Click any card to start a conversation. It could become an on-demand task, a recurring workflow, or a subagent.",
-    "entry": {
-      "description": "Browse use cases across all connectors",
-      "title": "Ideas & use cases",
-      "viewAll": "View all"
-    },
     "search": {
       "accessibilityLabel": "Search use cases",
       "empty": "No use cases match your search.",
@@ -619,20 +614,24 @@
     "pinAgentDescription": "Choose an agent to pin to the sidebar.",
     "pinned": "Pinned",
     "pinnedAgents": "Pinned agents",
+    "pinSuccess": "{{agentName}} pinned",
     "resultCount_one": "{{count}} result",
     "resultCount_other": "{{count}} results",
     "searchAgents": "Search agents...",
     "searchAgentsAndChats": "Search agents and chats...",
-    "searchChatsAndMessages": "Search chats and messages...",
     "searching": "Searching...",
+    "searchWorkspace": "Search chats, messages, workflows, and artifacts...",
     "sections": {
+      "artifacts": "Artifacts",
       "chats": "Chats",
       "lead": "Lead",
       "messages": "Messages",
-      "others": "Others"
+      "others": "Others",
+      "workflows": "Workflows"
     },
     "talkTo": "Talk to",
-    "unpin": "Unpin"
+    "unpin": "Unpin",
+    "unpinSuccess": "{{agentName}} unpinned"
   },
   "status": {
     "unread": "Unread"

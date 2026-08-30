@@ -2,6 +2,7 @@ import { userMessageDocumentSchema } from "@okouai/api-contracts/contracts/chat-
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { sql, type SQLWrapper } from "drizzle-orm";
+import { z } from "zod";
 
 import {
   nullableDriverValueDecoder,
@@ -11,6 +12,14 @@ import {
 
 const chatEventUserMessageDecoder = zodDriverValueDecoder(
   userMessageDocumentSchema,
+);
+const requiredOfficialWorkflowIdsDecoder = zodDriverValueDecoder(
+  z
+    .array(z.string().uuid())
+    .min(1)
+    .refine((workflowIds) => {
+      return new Set(workflowIds).size === workflowIds.length;
+    }, "Official Workflow source IDs must be unique"),
 );
 
 /** Canonical payload leaves projected from chat_events.payload. */
@@ -28,6 +37,15 @@ export function canonicalChatEventUserMessage(
   return sql`${payload}->'userMessage'`.mapWith(
     nullableDriverValueDecoder(chatEventUserMessageDecoder),
   );
+}
+
+/** Validate the strict server-owned authority read from its private column. */
+export function parseCanonicalChatEventRequiredOfficialWorkflowIds(
+  workflowIds: readonly string[] | null,
+): readonly string[] | null {
+  return workflowIds === null
+    ? null
+    : requiredOfficialWorkflowIdsDecoder.mapFromDriverValue(workflowIds);
 }
 
 export function canonicalChatEventError(

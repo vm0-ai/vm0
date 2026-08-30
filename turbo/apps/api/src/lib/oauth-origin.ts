@@ -1,10 +1,11 @@
-import { env } from "./env";
+import { apiBackendUrl } from "./api-backend-url";
+import { webUrl } from "./web-url";
 
 const WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 
-type Vm0HostRole = "api" | "www";
+type HostRole = "api" | "www";
 
-function isVm0Host(hostname: string, role: Vm0HostRole): boolean {
+function isVm0Host(hostname: string, role: HostRole): boolean {
   return (
     (role === "www" &&
       (hostname === "okou.ai" || hostname.endsWith(".okou.ai"))) ||
@@ -16,7 +17,7 @@ function isVm0Host(hostname: string, role: Vm0HostRole): boolean {
   );
 }
 
-function isTrustedOrigin(origin: string, role: Vm0HostRole): boolean {
+function isTrustedOrigin(origin: string, role: HostRole): boolean {
   if (!URL.canParse(origin)) {
     return false;
   }
@@ -33,7 +34,7 @@ function isTrustedOrigin(origin: string, role: Vm0HostRole): boolean {
   return url.protocol === "https:" && isVm0Host(url.hostname, role);
 }
 
-function isTrustedHostedOrigin(origin: string, role: Vm0HostRole): boolean {
+function isTrustedHostedOrigin(origin: string, role: HostRole): boolean {
   if (!URL.canParse(origin)) {
     return false;
   }
@@ -58,8 +59,8 @@ function isTrustedApiOrigin(origin: string): boolean {
 
 function canonicalSiblingOriginForHost(
   url: URL,
-  fromRole: Vm0HostRole,
-  toRole: Vm0HostRole,
+  fromRole: HostRole,
+  toRole: HostRole,
 ): string | null {
   const leadingRole = `${fromRole}.`;
   const delimitedRole = `-${fromRole}.`;
@@ -99,11 +100,11 @@ function canonicalSiblingOriginForHost(
 }
 
 export function getOAuthWebOrigin(_request: Request): string {
-  return new URL(env("VM0_WEB_URL")).origin;
+  return new URL(webUrl()).origin;
 }
 
 export function getOAuthApiOrigin(_request: Request): string {
-  const backendUrl = env("VM0_API_BACKEND_URL");
+  const backendUrl = apiBackendUrl();
   if (backendUrl) {
     const configuredApiOrigin = new URL(backendUrl).origin;
     if (isTrustedHostedOrigin(configuredApiOrigin, "api")) {
@@ -112,7 +113,7 @@ export function getOAuthApiOrigin(_request: Request): string {
   }
 
   const canonicalApiOrigin = canonicalSiblingOriginForHost(
-    new URL(env("VM0_WEB_URL")),
+    new URL(webUrl()),
     "www",
     "api",
   );
@@ -120,7 +121,7 @@ export function getOAuthApiOrigin(_request: Request): string {
     return canonicalApiOrigin;
   }
 
-  return new URL(env("VM0_WEB_URL")).origin;
+  return new URL(webUrl()).origin;
 }
 
 export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
@@ -130,7 +131,7 @@ export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
   }
 
   const requestUrl = new URL(request.url);
-  if (requestUrl.origin === new URL(env("VM0_WEB_URL")).origin) {
+  if (requestUrl.origin === new URL(webUrl()).origin) {
     return null;
   }
 

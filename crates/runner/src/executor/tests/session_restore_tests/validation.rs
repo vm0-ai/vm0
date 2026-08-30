@@ -1,4 +1,3 @@
-use super::super::super::session_restore::restore_session;
 use super::*;
 
 #[tokio::test]

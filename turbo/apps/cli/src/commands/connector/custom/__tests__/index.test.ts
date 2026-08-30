@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CustomConnectorMcpResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorMcpResponse } from "@okouai/api-contracts/contracts/custom-connectors";
 
 import { server } from "../../../../mocks/server";
 import {
@@ -19,7 +19,7 @@ describe("okou connector custom readers", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 

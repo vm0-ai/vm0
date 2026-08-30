@@ -1,4 +1,4 @@
 def function_case(*, metadata=flow.metadata):
-    return metadata["vm_run_id"]
+    return metadata["sandbox_run_id"]
 
 lambda_case = lambda *, metadata=flow.metadata: metadata["firewall_name"]

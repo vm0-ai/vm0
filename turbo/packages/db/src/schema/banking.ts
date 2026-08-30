@@ -10,8 +10,8 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
-import { zeroAgents } from "./zero-agent";
 import { agents } from "./agent";
 import type {
   BankingAccessAuditMetadata,
@@ -30,6 +30,13 @@ export type BankingConnectionStatus =
   | "revoked"
   | "deleted";
 export type BankingAuditStatus = "allowed" | "denied";
+export type BankingConnectSessionMode = "connect" | "fix";
+export type BankingConnectSessionStatus =
+  | "pending"
+  | "completed"
+  | "cancelled"
+  | "failed"
+  | "superseded";
 
 export const bankingConnections = pgTable(
   "banking_connections",
@@ -90,9 +97,11 @@ export const bankingAccounts = pgTable(
     }).notNull(),
     displayName: varchar("display_name", { length: 256 }),
     institutionName: varchar("institution_name", { length: 256 }),
+    institutionLoginId: varchar("institution_login_id", { length: 128 }),
     accountType: varchar("account_type", { length: 64 }),
     accountNumberLast4: varchar("account_number_last4", { length: 8 }),
     enabled: boolean("enabled").notNull().default(true),
+    repairRequiredAt: timestamp("repair_required_at"),
     metadata: jsonb("metadata")
       .$type<BankingAccountMetadata>()
       .notNull()
@@ -117,14 +126,7 @@ export const bankingAgentEnablements = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroAgents.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    agentId: uuid("agent_id").notNull(),
     connectionId: uuid("connection_id")
       .notNull()
       .references(
@@ -145,6 +147,8 @@ export const bankingAgentEnablements = pgTable(
     allowAutomationRuns: boolean("allow_automation_runs")
       .notNull()
       .default(false),
+    purpose: text("purpose"),
+    expiresAt: timestamp("expires_at"),
     revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -165,6 +169,83 @@ export const bankingAgentEnablements = pgTable(
       index("idx_banking_agent_enablements_agent_user").on(
         table.agentId,
         table.userId,
+      ),
+    ];
+  },
+);
+
+export const bankingConnectSessions = pgTable(
+  "banking_connect_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(
+        () => {
+          return bankingConnections.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    mode: varchar("mode", { length: 16 })
+      .$type<BankingConnectSessionMode>()
+      .notNull(),
+    status: varchar("status", { length: 16 })
+      .$type<BankingConnectSessionStatus>()
+      .notNull()
+      .default("pending"),
+    institutionLoginId: varchar("institution_login_id", { length: 128 }),
+    addedAt: timestamp("added_at"),
+    doneAt: timestamp("done_at"),
+    completedAt: timestamp("completed_at"),
+    endReason: varchar("end_reason", { length: 64 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_banking_connect_sessions_owner").on(
+        table.orgId,
+        table.userId,
+        table.createdAt,
+      ),
+      index("idx_banking_connect_sessions_connection").on(
+        table.connectionId,
+        table.createdAt,
+      ),
+      uniqueIndex("idx_banking_connect_sessions_one_pending")
+        .on(table.connectionId)
+        .where(sql`${table.status} = 'pending'`),
+    ];
+  },
+);
+
+export const bankingConnectEvents = pgTable(
+  "banking_connect_events",
+  {
+    eventId: varchar("event_id", { length: 128 }).primaryKey(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(
+        () => {
+          return bankingConnectSessions.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    connectionId: uuid("connection_id").notNull(),
+    eventType: varchar("event_type", { length: 64 }).notNull(),
+    endReason: varchar("end_reason", { length: 64 }),
+    providerOccurredAt: timestamp("provider_occurred_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_banking_connect_events_session").on(
+        table.sessionId,
+        table.createdAt,
       ),
     ];
   },

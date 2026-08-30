@@ -52,6 +52,11 @@ export interface PreparedServerSideVolume {
   readonly updatedAt: Date;
 }
 
+interface PrepareVolumeServerSideWithDbInput {
+  readonly db: Db;
+  readonly input: PrepareVolumeServerSideInput;
+}
+
 interface S3StorageManifest {
   readonly version: string;
   readonly createdAt: string;
@@ -202,13 +207,14 @@ const uploadAndVerifyVolumeObjects$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    await Promise.all([
+    const uploadResults = await Promise.allSettled([
       get(
         putS3Object(
           args.bucketName,
           `${args.s3Key}/archive.tar.gz`,
           args.archiveBuffer,
           "application/gzip",
+          signal,
         ),
       ),
       get(
@@ -217,10 +223,16 @@ const uploadAndVerifyVolumeObjects$ = command(
           `${args.s3Key}/manifest.json`,
           JSON.stringify(args.manifest),
           "application/json",
+          signal,
         ),
       ),
     ]);
     signal.throwIfAborted();
+    for (const uploadResult of uploadResults) {
+      if (uploadResult.status === "rejected") {
+        throw uploadResult.reason;
+      }
+    }
 
     const uploadVerified = await get(
       verifyS3FilesExist(args.bucketName, args.s3Key, args.fileCount),
@@ -391,13 +403,15 @@ async function resolveCanonicalVolumeStorage(
   return storage;
 }
 
-export const prepareVolumeServerSide$ = command(
+export const prepareVolumeServerSideWithDb$ = command(
   async (
     { set },
-    args: PrepareVolumeServerSideInput,
+    args: PrepareVolumeServerSideWithDbInput,
     signal: AbortSignal,
   ): Promise<PreparedServerSideVolume> => {
-    const files = materializeFiles(args.files);
+    const input = args.input;
+    const writeDb = args.db;
+    const files = materializeFiles(input.files);
     const totalSize = files.reduce((sum, file) => {
       return sum + file.size;
     }, 0);
@@ -409,8 +423,7 @@ export const prepareVolumeServerSide$ = command(
       };
     });
     const updatedAt = nowDate();
-    const writeDb = set(writeDb$);
-    const storage = await resolveCanonicalVolumeStorage(writeDb, args, signal);
+    const storage = await resolveCanonicalVolumeStorage(writeDb, input, signal);
 
     const versionId = computeContentHashFromHashes(storage.id, fileEntries);
     const s3Key = `${storage.s3Prefix}/${versionId}`;
@@ -448,7 +461,7 @@ export const prepareVolumeServerSide$ = command(
                 signal,
               );
         return {
-          storageName: args.storageName,
+          storageName: input.storageName,
           version: version ?? {
             ...expectedVersion,
             archiveSize: objects.archiveSize,
@@ -474,7 +487,7 @@ export const prepareVolumeServerSide$ = command(
         archiveBuffer,
         manifest,
         fileCount: files.length,
-        storageName: args.storageName,
+        storageName: input.storageName,
       },
       signal,
     );
@@ -492,10 +505,36 @@ export const prepareVolumeServerSide$ = command(
         )
       : undefined;
     return {
-      storageName: args.storageName,
+      storageName: input.storageName,
       version: version ?? uploadedVersion,
       updatedAt,
     };
+  },
+);
+
+export const ensureVolumeStorage$ = command(
+  async (
+    { set },
+    args: Pick<PrepareVolumeServerSideInput, "orgId" | "storageName">,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await resolveCanonicalVolumeStorage(writeDb, args, signal);
+  },
+);
+
+export const prepareVolumeServerSide$ = command(
+  async (
+    { set },
+    args: PrepareVolumeServerSideInput,
+    signal: AbortSignal,
+  ): Promise<PreparedServerSideVolume> => {
+    const writeDb = set(writeDb$);
+    return await set(
+      prepareVolumeServerSideWithDb$,
+      { db: writeDb, input: args },
+      signal,
+    );
   },
 );
 

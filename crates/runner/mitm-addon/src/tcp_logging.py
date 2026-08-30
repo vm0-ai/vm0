@@ -4,6 +4,7 @@ import time
 
 from mitmproxy import tcp
 
+import connection_endpoints
 import deferred_callbacks
 import flow_metadata
 import flow_metadata_keys as metadata_keys
@@ -20,17 +21,18 @@ _TCP_RESPONSE_SIZE = "_tcp_response_size"
 
 
 def start(flow: tcp.TCPFlow, *, registry_path: str) -> None:
-    """Apply registry admission and install TCP logging metadata for a valid VM.
+    """Apply registry admission and install TCP logging metadata for a valid sandbox.
 
     Outcomes:
     - A missing client peer address is a no-op.
     - An unregistered client is a no-op.
     - An unavailable registry calls ``flow.kill()`` without installing TCP logging metadata.
-    - An invalid VM entry calls ``flow.kill()`` without installing TCP logging metadata.
-    - A valid registered VM installs the run ID, network and proxy log paths, and
+    - An invalid sandbox entry calls ``flow.kill()`` without installing TCP logging metadata.
+    - A valid registered sandbox installs the run ID, network and proxy log paths, and
       ``TCP_START_MONOTONIC``.
     """
-    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    client_peername = connection_endpoints.client_peername(flow.client_conn)
+    client_ip = client_peername[0] if client_peername is not None else None
     if not client_ip:
         return
 
@@ -39,15 +41,15 @@ def start(flow: tcp.TCPFlow, *, registry_path: str) -> None:
         flow.kill()
         return
 
-    vm_info = registry_state.vms.get(client_ip)
-    if vm_info is None:
-        if client_ip in registry_state.invalid_vms:
+    sandbox_info = registry_state.sandboxes.get(client_ip)
+    if sandbox_info is None:
+        if client_ip in registry_state.invalid_sandboxes:
             flow.kill()
         return
 
-    flow.metadata[metadata_keys.VM_RUN_ID] = vm_info.get("runId", "")
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
+    flow.metadata[metadata_keys.SANDBOX_RUN_ID] = sandbox_info.get("runId", "")
+    flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = sandbox_info.get("networkLogPath", "")
+    flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = sandbox_info.get("proxyLogPath", "")
     flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
 
 

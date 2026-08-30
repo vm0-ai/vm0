@@ -7,12 +7,13 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
+use guest_contracts::file_write::WRITE_FILE_HELPER_TIMEOUT_MS;
 use vsock_proto::{
     self, BorrowedRawMessage, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
     MSG_WRITE_FILES_RESULT,
 };
 
-use crate::drain::drain_into_vec_cancellable;
+use crate::drain::{DrainCancellation, drain_into_vec_cancellable};
 use crate::error::to_io_error;
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
@@ -25,7 +26,6 @@ use crate::wait::{
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
-const WRITE_TIMEOUT_MS: u32 = 30_000;
 const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
 #[cfg(any(debug_assertions, feature = "test-support"))]
 static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -82,14 +82,20 @@ fn handle_write_files(
     payload: &[u8],
     file_count: usize,
     content_bytes: usize,
+    private: bool,
     connection_cancel: &AtomicBool,
 ) -> (bool, String) {
+    let operation = if private {
+        "write_private_files"
+    } else {
+        "write_files"
+    };
     log(
         "INFO",
-        &format!("write_files: files={file_count} content_bytes={content_bytes}"),
+        &format!("{operation}: files={file_count} content_bytes={content_bytes}"),
     );
 
-    let child = match spawn_write_files_command() {
+    let child = match spawn_write_files_command(private) {
         Ok(c) => c,
         Err(e) => return (false, format!("Failed to spawn batch write command: {e}")),
     };
@@ -106,7 +112,13 @@ fn wait_write_file_child<S>(
 where
     S: ThreadSpawner,
 {
-    wait_write_file_child_with_timeout(child, content, WRITE_TIMEOUT_MS, connection_cancel, spawner)
+    wait_write_file_child_with_timeout(
+        child,
+        content,
+        WRITE_FILE_HELPER_TIMEOUT_MS,
+        connection_cancel,
+        spawner,
+    )
 }
 
 fn wait_write_file_child_with_timeout<S>(
@@ -119,6 +131,16 @@ fn wait_write_file_child_with_timeout<S>(
 where
     S: ThreadSpawner,
 {
+    let cancel = match DrainCancellation::new() {
+        Ok(cancel) => Arc::new(cancel),
+        Err(error) => {
+            kill_and_reap_child(child);
+            return (
+                false,
+                format!("Failed to initialize stderr drain cancellation: {error}"),
+            );
+        }
+    };
     let stdin_pipe = match child.stdin.take() {
         Some(p) => p,
         None => {
@@ -142,7 +164,6 @@ where
             return (false, "missing stderr pipe".to_string());
         }
     };
-    let cancel = Arc::new(AtomicBool::new(false));
     let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
     let stderr_handle = {
         let drain_cancel = cancel.clone();
@@ -156,7 +177,7 @@ where
         ) {
             Ok(handle) => handle,
             Err(e) => {
-                cancel.store(true, std::sync::atomic::Ordering::Release);
+                cancel.cancel();
                 drop(stdin_pipe);
                 kill_and_reap_child(child);
                 return (false, format!("Failed to spawn stderr drain thread: {e}"));
@@ -174,7 +195,7 @@ where
         }) {
             Ok(handle) => handle,
             Err(e) => {
-                cancel.store(true, std::sync::atomic::Ordering::Release);
+                cancel.cancel();
                 kill_and_reap_child(child);
                 let _ = await_drain_deadline(&done_rx, 1, &cancel, EXEC_OUTPUT_DRAIN_DEADLINE);
                 let _ = stderr_handle.join();
@@ -264,10 +285,13 @@ fn spawn_write_file_command(
     spawn_in_own_process_group(&mut command)
 }
 
-fn spawn_write_files_command() -> io::Result<Child> {
+fn spawn_write_files_command(private: bool) -> io::Result<Child> {
     let mut command = Command::new(guest_write_file_path());
+    command.arg("--batch");
+    if private {
+        command.arg("--private");
+    }
     command
-        .arg("--batch")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
@@ -343,12 +367,14 @@ pub(crate) fn handle_decoded_write_file_message(
 pub(crate) fn handle_decoded_write_files_message(
     seq: u32,
     decoded: DecodedWriteFilesMessage<'_>,
+    private: bool,
     connection_cancel: &AtomicBool,
 ) -> io::Result<Vec<u8>> {
     let (success, error) = handle_write_files(
         decoded.payload,
         decoded.file_count,
         decoded.content_bytes,
+        private,
         connection_cancel,
     );
     let payload = vsock_proto::encode_write_files_result(success, &error);

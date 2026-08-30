@@ -57,7 +57,9 @@ use crate::config::{self, ProfileConfig};
 use crate::deps;
 use crate::dns;
 use crate::error::{RunnerError, RunnerResult};
-use crate::executor::{ExecutorConfig, SessionHistoryCpuPool, SessionHistoryProbe};
+use crate::executor::{
+    ExecutorConfig, RunnerPreSpawnConcurrency, SessionHistoryCpuPool, SessionHistoryProbe,
+};
 use crate::host;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
@@ -67,6 +69,7 @@ use crate::lock;
 use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainCoordinator};
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
+use crate::pre_spawn_admission::PreSpawnAdmission;
 use crate::prefetch;
 use crate::provider::{
     ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, ConnectorRuntimeSyncHandle,
@@ -78,8 +81,9 @@ use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::status::{StatusTracker, remove_stale_status_file};
-use crate::workspace_image_cache::WorkspaceCacheWatcher;
-use crate::workspace_image_cache::WorkspaceImageCache;
+use crate::workspace_image_cache::{
+    WorkspaceCacheChange, WorkspaceCacheWatcher, WorkspaceImageCache,
+};
 
 mod active_runs;
 mod factory_lifecycle;
@@ -122,6 +126,10 @@ use signals::{
 const READY_DIRECT_CANDIDATE_DRAIN_LIMIT: usize = 8;
 /// Bounds routine cache-budget and stale-state cleanup without returning full scans to promotions.
 const WORKSPACE_CACHE_GC_PERIOD: Duration = Duration::from_secs(60);
+/// Bounds authoritative state recovery from missed workspace-cache observations.
+const WORKSPACE_CACHE_RECONCILIATION_PERIOD: Duration = Duration::from_secs(60);
+/// Staggers the first state inventory from the first routine cache GC.
+const WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY: Duration = Duration::from_secs(30);
 
 fn candidate_for_admission(
     candidate: JobCandidate,
@@ -158,6 +166,38 @@ async fn sleep_until_optional_instant(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
         None => std::future::pending().await,
+    }
+}
+
+enum RoutineHeartbeatTrigger {
+    Interval(tokio::time::Interval),
+    #[cfg(test)]
+    Manual(mpsc::UnboundedReceiver<()>),
+}
+
+impl RoutineHeartbeatTrigger {
+    fn interval() -> Self {
+        let mut interval = tokio::time::interval_at(
+            tokio::time::Instant::now() + HEARTBEAT_PERIOD,
+            HEARTBEAT_PERIOD,
+        );
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        Self::Interval(interval)
+    }
+
+    async fn tick(&mut self) {
+        match self {
+            Self::Interval(interval) => {
+                interval.tick().await;
+            }
+            #[cfg(test)]
+            Self::Manual(receiver) => {
+                receiver
+                    .recv()
+                    .await
+                    .expect("manual routine heartbeat sender should remain open");
+            }
+        }
     }
 }
 
@@ -257,15 +297,34 @@ pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
     pub(crate) config: PathBuf,
-    /// vm0 API URL (overrides config)
-    #[arg(long, env = "VM0_API_BACKEND_URL")]
+    /// vm0 API URL (overrides config; `OKOU_API_BACKEND_URL`; legacy: `VM0_API_BACKEND_URL`)
+    #[arg(
+        long,
+        env = crate::operator_api_url::clap_environment_name(),
+        hide_env_values = true
+    )]
     api_url: Option<String>,
-    /// Runner authentication token (overrides config)
-    #[arg(long, env = "VM0_RUNNER_TOKEN", hide_env_values = true)]
+    /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
+    #[arg(
+        long,
+        env = crate::runner_token::clap_environment_name(),
+        hide_env_values = true
+    )]
     token: Option<String>,
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
     local: bool,
+}
+
+#[cfg(test)]
+impl StartArgs {
+    pub(crate) fn api_url_for_test(&self) -> Option<&str> {
+        self.api_url.as_deref()
+    }
+
+    pub(crate) fn token_for_test(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
 }
 
 struct LiveRunnerPublishResources<'a> {
@@ -309,7 +368,12 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
             }
             resources.kmsg_handle.stop().await;
             resources.memory_prefetch.drain().await;
-            resources.status.set_mode(RunnerMode::Stopped).await;
+            if let Err(status_error) = resources.status.set_mode(RunnerMode::Stopped).await {
+                warn!(
+                    error = %status_error,
+                    "failed to persist stopped status after live runner publication failure"
+                );
+            }
             Err(e)
         }
     }
@@ -330,7 +394,9 @@ async fn shutdown_startup_resources_after_startup_failure(
     }
     resources.kmsg_handle.stop().await;
     resources.memory_prefetch.drain().await;
-    resources.status.set_mode(RunnerMode::Stopped).await;
+    if let Err(error) = resources.status.set_mode(RunnerMode::Stopped).await {
+        warn!(%error, context, "failed to persist stopped status after startup failure");
+    }
 }
 
 async fn abort_signal_handler_task(handler_task: SignalHandlerTask, context: &'static str) {
@@ -389,14 +455,16 @@ async fn run_start_with_home(
 
     // Validate required server fields
     if server.url.is_empty() {
-        return Err(RunnerError::Config(
-            "server.url is required (set in config or via --api-url / VM0_API_BACKEND_URL)".into(),
-        ));
+        return Err(RunnerError::Config(format!(
+            "server.url is required (set in config or via --api-url / {} / {})",
+            crate::operator_api_url::CANONICAL_ENV,
+            crate::operator_api_url::LEGACY_ENV
+        )));
     }
     server.url = config::normalize_api_base_url(&server.url)?;
     if server.token.is_empty() {
         return Err(RunnerError::Config(
-            "server.token is required (set in config or via --token / VM0_RUNNER_TOKEN)".into(),
+            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN / VM0_RUNNER_TOKEN)".into(),
         ));
     }
 
@@ -463,7 +531,7 @@ async fn run_start_with_home(
     let runner_identity = load_runner_process_identity(&runner_config.base_dir).await?;
     info!(
         runner_id = %runner_identity.runner_id(),
-        runner_name = %runner_config.name,
+        runner_release = crate::RUNNER_RELEASE,
         "runner identity"
     );
 
@@ -494,7 +562,7 @@ async fn run_start_with_home(
         client_session_id: runner_client_session_id.clone(),
     })?;
     let background_fill = crate::storage_cache::StorageCacheBackgroundFillCoordinator::new()?;
-    let name = runner_config.name;
+    let hostname = runner_config.hostname;
     let group = runner_config.group;
     let cancel_tokens = RunCancellationRegistry::new();
     let local_group_dir = if args.local {
@@ -512,12 +580,69 @@ async fn run_start_with_home(
         None
     };
 
-    // Start background prefetch of snapshot memory for all profiles.
-    let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
-        resource_locks
-            .profile_paths()
-            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory()),
+    // Resource budget from host resources + config.
+    let host_cpus = host::cpu_count()?;
+    let host_memory_mb = u32::try_from(host::memory_mb()?).map_err(|_| {
+        RunnerError::Internal("host memory exceeds supported runner capacity".into())
+    })?;
+    let pre_spawn_capacity = host::pre_spawn_cpu_capacity(host_cpus)?;
+    let pre_spawn_vcpu_tokens = pre_spawn_capacity.tokens();
+    let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
+    let budget = Arc::new(ResourceBudget::new(
+        host_cpus as u32,
+        host_memory_mb,
+        concurrency_factor,
+        max_concurrent,
+    ));
+    info!(
+        host_cpus,
+        host_memory_mb,
+        concurrency_factor,
+        concurrency_factor_source = concurrency_factor_source.label(),
+        yaml_concurrency_factor,
+        max_concurrent,
+        effective_vcpu = budget.effective_vcpu(),
+        effective_memory_mb = budget.effective_memory_mb(),
+        profiles = runner_config.profiles.len(),
+        "resource budget initialized"
     );
+    match pre_spawn_capacity {
+        host::PreSpawnCpuCapacity::ExactPhysical(_) => {
+            info!(
+                capacity_source = "physical_topology",
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+        host::PreSpawnCpuCapacity::ConservativeLogical(_) => {
+            warn!(
+                capacity_source = "logical_cpu_fallback",
+                reason = "topology directories are absent for all online CPUs",
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+    }
+
+    let memory_prefetch_candidates = resource_locks
+        .profile_paths()
+        .map(|(name, profile_paths)| {
+            let profile = runner_config.profiles.get(name).ok_or_else(|| {
+                RunnerError::Internal(format!(
+                    "missing runner profile for locked image artifacts {name}"
+                ))
+            })?;
+            Ok(prefetch::MemoryPrefetchCandidate {
+                path: profile_paths.snapshot_paths().memory(),
+                memory_mb: profile.memory_mb,
+            })
+        })
+        .collect::<RunnerResult<Vec<_>>>()?;
+    let memory_prefetch_budget_mb = u64::from(budget.effective_memory_mb().min(host_memory_mb));
+    let mut memory_prefetch =
+        prefetch::MemoryPrefetchTasks::spawn(memory_prefetch_candidates, memory_prefetch_budget_mb);
 
     // Compute the smallest profile resources for budget pre-check.
     // When budget is exhausted for all profiles, we wait instead of polling.
@@ -560,27 +685,6 @@ async fn run_start_with_home(
     let kmsg_handle = kmsg_log::spawn(network_log_manager.clone())
         .map_err(|e| RunnerError::Internal(format!("kmsg monitor: {e}")))?;
 
-    // Resource budget from host resources + config.
-    let host_cpus = host::cpu_count()?;
-    let host_memory_mb = host::memory_mb()?;
-    let budget = Arc::new(ResourceBudget::new(
-        host_cpus as u32,
-        host_memory_mb as u32,
-        concurrency_factor,
-        max_concurrent,
-    ));
-    info!(
-        host_cpus,
-        host_memory_mb,
-        concurrency_factor,
-        concurrency_factor_source = concurrency_factor_source.label(),
-        yaml_concurrency_factor,
-        max_concurrent,
-        effective_vcpu = budget.effective_vcpu(),
-        effective_memory_mb = budget.effective_memory_mb(),
-        profiles = runner_config.profiles.len(),
-        "resource budget initialized"
-    );
     let io_limit_resolution =
         crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env);
     let device_rate_limits = io_limit_resolution.device_rate_limits();
@@ -606,7 +710,7 @@ async fn run_start_with_home(
         }
     }
 
-    // Idle sandbox pool for VM reuse across conversation turns.
+    // Idle sandbox pool for sandbox reuse across conversation turns.
     let parking_gate = ParkingGate::new_open();
     let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
         IdlePoolConfig { max_idle },
@@ -743,6 +847,7 @@ async fn run_start_with_home(
             server.token,
             ApiProviderConfig {
                 runner_identity,
+                runner_hostname: hostname.clone(),
                 group,
                 supported_profiles: profiles,
             },
@@ -759,7 +864,7 @@ async fn run_start_with_home(
 
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
-        runner_name: name.clone(),
+        runner_hostname: hostname,
         registry: registry_handle,
         http,
         log_paths,
@@ -771,6 +876,8 @@ async fn run_start_with_home(
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),
         background_fill,
+        pre_spawn_admission,
+        storage_baseline_observer: Default::default(),
         home: home.clone(),
         workspace_cache: Some(WorkspaceImageCache::shared(
             paths.clone(),
@@ -782,7 +889,6 @@ async fn run_start_with_home(
     let live_runner_instance_metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
         config_path: registry_config_path,
         base_dir: base_dir_canonical.clone(),
-        runner_name: name.clone(),
         runner_group: group_name.clone(),
         subcommand: "start".into(),
     };
@@ -808,7 +914,6 @@ async fn run_start_with_home(
     let config = RunConfig {
         runner: RunnerInfo {
             identity: runner_identity,
-            name,
             group: group_name,
             profiles: runner_config.profiles,
         },
@@ -862,6 +967,7 @@ async fn run_start_with_home(
             test_observer: StartLoopTestObserver::default(),
             before_initial_workspace_cache_scan: None,
             after_initial_workspace_cache_scan: None,
+            manual_routine_heartbeat_rx: None,
         },
     };
 
@@ -893,7 +999,6 @@ struct RunConfig {
 
 struct RunnerInfo {
     identity: RunnerProcessIdentity,
-    name: String,
     group: String,
     profiles: BTreeMap<String, ProfileConfig>,
 }
@@ -962,6 +1067,7 @@ struct RunTestHooks {
     test_observer: StartLoopTestObserver,
     before_initial_workspace_cache_scan: Option<StartLoopTestGate>,
     after_initial_workspace_cache_scan: Option<StartLoopTestGate>,
+    manual_routine_heartbeat_rx: Option<mpsc::UnboundedReceiver<()>>,
 }
 
 enum SignalSource {
@@ -984,9 +1090,10 @@ enum StartLoopEvent {
     DestroyTasksDrainEntered,
     DestroyTasksDrainCompleted,
     FinalizingCapacityWaitEntered { run_id: RunId },
+    ReservedPreparingCommitted { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
-    VmParkedForReuse { run_id: RunId, reuse_key: String },
+    SandboxParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
 }
 
@@ -1030,6 +1137,7 @@ struct StartLoopTestObserver {
 struct StartLoopTestObserverInner {
     events: std::sync::Mutex<Vec<StartLoopEvent>>,
     notify: tokio::sync::Notify,
+    reserved_preparing_gate: std::sync::Mutex<Option<StartLoopTestGate>>,
 }
 
 #[cfg(test)]
@@ -1150,6 +1258,29 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::ActiveRunStatusPublished { run_id });
     }
 
+    fn gate_reserved_preparing_commit(&self) -> StartLoopTestGate {
+        let gate = StartLoopTestGate::default();
+        *self
+            .inner
+            .reserved_preparing_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(gate.clone());
+        gate
+    }
+
+    async fn notify_reserved_preparing_committed(&self, run_id: RunId) {
+        self.record(StartLoopEvent::ReservedPreparingCommitted { run_id });
+        let gate = self
+            .inner
+            .reserved_preparing_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        if let Some(gate) = gate {
+            gate.enter_and_wait().await;
+        }
+    }
+
     fn active_run_status_was_published(&self, run_id: RunId) -> bool {
         self.inner
             .events
@@ -1166,8 +1297,8 @@ impl StartLoopTestObserver {
             })
     }
 
-    fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
-        self.record(StartLoopEvent::VmParkedForReuse { run_id, reuse_key });
+    fn notify_sandbox_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
+        self.record(StartLoopEvent::SandboxParkedForReuse { run_id, reuse_key });
     }
 
     fn notify_usage_flush_requested(&self) {
@@ -1252,9 +1383,9 @@ impl StartLoopTestObserver {
         .await
     }
 
-    async fn wait_vm_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
-        self.wait_for(timeout, "VM parked for reuse", |event| match event {
-            StartLoopEvent::VmParkedForReuse {
+    async fn wait_sandbox_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
+        self.wait_for(timeout, "sandbox parked for reuse", |event| match event {
+            StartLoopEvent::SandboxParkedForReuse {
                 run_id: observed_run_id,
                 reuse_key,
             } if *observed_run_id == run_id => Some(reuse_key.clone()),
@@ -1366,6 +1497,7 @@ mod start_loop_observer_tests {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OuterJobPanicPoint {
     ClaimedWithoutSandbox,
+    ClaimedActivation,
     ActiveOrUnknown,
     IdlePoolOwned,
     HandoffOwned,
@@ -1482,7 +1614,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         signals,
         orphan_reap,
         #[cfg(test)]
-        test_hooks,
+        mut test_hooks,
     } = config;
     let SandboxRuntimeConfig {
         mut runtime,
@@ -1514,7 +1646,27 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let lifecycle = signal.lifecycle;
     let mut signal_handler_task = signal.handler_task;
 
-    shared.status.write_initial().await;
+    if let Err(error) = shared.status.write_initial().await {
+        shutdown_startup_resources_after_startup_failure(
+            StartupFailureResources {
+                provider: provider_state.provider.as_ref(),
+                runtime: Some(runtime.as_mut()),
+                mitm: &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                memory_prefetch: &mut memory_prefetch,
+                status: shared.status.as_ref(),
+            },
+            "initial_status_persistence_failure",
+        )
+        .await;
+        if let Some(handler_task) = signal_handler_task.take() {
+            abort_signal_handler_task(handler_task, "initial_status_persistence_failure").await;
+        }
+        return Err(RunnerError::Internal(format!(
+            "persist initial runner status: {error}"
+        )));
+    }
 
     if let Err(e) = provider_state.provider.prepare_startup_readiness().await {
         let startup_readiness_cancelled = provider_state.cancel.is_cancelled();
@@ -1576,13 +1728,46 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         }
     };
     let startup_mode = lifecycle.mark_startup_ready();
-    shared.status.set_mode(startup_mode).await;
+    if let Err(error) = shared.status.set_mode(startup_mode).await {
+        handle_stopping_signal(
+            "startup status persistence failure",
+            &provider_state.cancel,
+            &provider_state.cancel_tokens,
+            &lifecycle,
+        )
+        .await;
+        if let Err(factory_error) = shutdown_factory_instances(&mut factories, None).await {
+            warn!(
+                error = %factory_error,
+                "failed to shut down factories after startup status persistence failure"
+            );
+        }
+        shutdown_startup_resources_after_startup_failure(
+            StartupFailureResources {
+                provider: provider_state.provider.as_ref(),
+                runtime: Some(runtime.as_mut()),
+                mitm: &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                memory_prefetch: &mut memory_prefetch,
+                status: shared.status.as_ref(),
+            },
+            "startup_status_persistence_failure",
+        )
+        .await;
+        if let Some(handler_task) = signal_handler_task.take() {
+            abort_signal_handler_task(handler_task, "startup_status_persistence_failure").await;
+        }
+        return Err(RunnerError::Internal(format!(
+            "persist ready runner status: {error}"
+        )));
+    }
 
     let mut jobs: JoinSet<RunCancellationRegistration> = JoinSet::new();
 
     if startup_mode == RunnerMode::Running {
         info!(
-            name = %runner.name,
+            runner_release = crate::RUNNER_RELEASE,
             group = %runner.group,
             effective_vcpu = capacity.budget.effective_vcpu(),
             effective_memory_mb = capacity.budget.effective_memory_mb(),
@@ -1591,7 +1776,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         );
     } else {
         info!(
-            name = %runner.name,
+            runner_release = crate::RUNNER_RELEASE,
             group = %runner.group,
             mode = ?startup_mode,
             "runner startup completed after lifecycle signal"
@@ -1608,13 +1793,17 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
 
     // -----------------------------------------------------------------------
-    // Heartbeat interval — same first-tick delay as above.
+    // Heartbeat interval — same first-tick delay as above. One integration
+    // test injects manual ticks so its coalescing assertions do not advance
+    // unrelated Runner timers.
     // -----------------------------------------------------------------------
-    let mut heartbeat_tick = tokio::time::interval_at(
-        tokio::time::Instant::now() + HEARTBEAT_PERIOD,
-        HEARTBEAT_PERIOD,
-    );
-    heartbeat_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    #[cfg(test)]
+    let mut heartbeat_tick = match test_hooks.manual_routine_heartbeat_rx.take() {
+        Some(receiver) => RoutineHeartbeatTrigger::Manual(receiver),
+        None => RoutineHeartbeatTrigger::interval(),
+    };
+    #[cfg(not(test))]
+    let mut heartbeat_tick = RoutineHeartbeatTrigger::interval();
 
     // -----------------------------------------------------------------------
     // Main loop
@@ -1638,7 +1827,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         Some(cache) => match WorkspaceCacheWatcher::new(cache).await {
             Ok(watcher) => Some(watcher),
             Err(error) => {
-                warn!(error = %error, "workspace cache watcher unavailable; using routine reconciliation");
+                warn!(error = %error, "workspace cache watcher unavailable; using periodic reconciliation");
                 None
             }
         },
@@ -1651,7 +1840,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
         idle_pool: &shared.idle_pool,
         runner_identity: runner.identity,
-        name: &runner.name,
         group: &runner.group,
         profiles: &runner.profiles,
         budget: &capacity.budget,
@@ -1680,7 +1868,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         {
             Ok(change) => change,
             Err(error) => {
-                warn!(error = %error, "workspace cache watcher failed during startup reconciliation; using routine reconciliation");
+                warn!(error = %error, "workspace cache watcher failed during startup reconciliation; using periodic reconciliation");
                 workspace_cache_watcher = None;
                 Some(crate::workspace_image_cache::WorkspaceCacheChange {
                     observed_at: tokio::time::Instant::now(),
@@ -1717,8 +1905,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, lifecycle changes, etc.). Without pinning, heartbeat
-    // (10s) cancels discover() on every tick, restarting its internal poll
-    // sleep (30s) from scratch — so poll never fires. See #8747.
+    // (10s) cancels discover() on every tick, restarting its provider-owned
+    // wait from scratch before reconciliation can run. See #8747.
     let mut discover_fut = Box::pin(provider_state.provider.discover());
 
     let mut current_mode = startup_mode;
@@ -1734,6 +1922,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         reuse_state_notify: Arc::clone(&reuse_state_notify),
         usage_flush_tx,
         active_runs: active_runs.clone(),
+        pre_spawn_concurrency: RunnerPreSpawnConcurrency::default(),
         budget: Arc::clone(&capacity.budget),
         workspace_cache_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
@@ -1747,6 +1936,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         WORKSPACE_CACHE_GC_PERIOD,
     );
     workspace_cache_gc_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut workspace_cache_reconciliation_tick = tokio::time::interval_at(
+        tokio::time::Instant::now() + WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY,
+        WORKSPACE_CACHE_RECONCILIATION_PERIOD,
+    );
+    workspace_cache_reconciliation_tick
+        .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut workspace_cache_gc_fut = None;
     let mut draining_idle_pool_drained = false;
     let mut pending_finalizing_candidate = None;
@@ -1755,7 +1950,19 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
-            shared.status.set_mode(mode).await;
+            if let Err(error) = shared.status.set_mode(mode).await {
+                handle_stopping_signal(
+                    "status persistence failure",
+                    &provider_state.cancel,
+                    &provider_state.cancel_tokens,
+                    &lifecycle,
+                )
+                .await;
+                terminal_error = Some(RunnerError::Internal(format!(
+                    "persist runner mode {mode:?}: {error}"
+                )));
+                break;
+            }
         }
         if mode != RunnerMode::Running {
             pending_finalizing_candidate = None;
@@ -1820,9 +2027,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             .and_then(JobCandidate::runner_preference)
             .map(crate::provider::ActiveRunnerPreference::deadline);
         tokio::select! {
-            // Job discovery via provider (Ably wakeups + HTTP poll).
+            // Job discovery via provider (Ably/filesystem wakeups + reconciliation).
             // The future is pinned outside the loop so other reactor branches
-            // do not cancel and restart its internal poll timer. See #8747.
+            // do not cancel and restart its internal wait timer. See #8747.
             discovered = &mut discover_fut, if can_discover => {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
@@ -1927,14 +2134,28 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                             .test_observer
                             .notify_workspace_cache_change_observed();
                         let live_mode = *mode_rx.borrow();
-                        if live_mode == RunnerMode::Running {
+                        if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
                             heartbeat.request_workspace_cache(live_mode, change)?;
                         }
                     }
                     Err(error) => {
-                        warn!(error = %error, "workspace cache watcher failed; using routine reconciliation");
+                        warn!(error = %error, "workspace cache watcher failed; using periodic reconciliation");
                         workspace_cache_change_fut = None;
                     }
+                }
+            }
+            _ = workspace_cache_reconciliation_tick.tick(),
+                if exec_config.workspace_cache.is_some() =>
+            {
+                let live_mode = *mode_rx.borrow();
+                if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
+                    heartbeat.request_workspace_cache(
+                        live_mode,
+                        WorkspaceCacheChange {
+                            observed_at: tokio::time::Instant::now(),
+                            committed_cache_keys: std::collections::BTreeSet::new(),
+                        },
+                    )?;
                 }
             }
             result = next_workspace_cache_gc(&mut workspace_cache_gc_fut) => {
@@ -2155,8 +2376,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.event("drop_discover_fut");
     drop(workspace_cache_change_fut);
 
-    // Drain idle pool first — these VMs hold budget reservations. This
-    // also clears `idle_vms` in status.json so the final snapshot is
+    // Drain idle pool first — these sandboxes hold budget reservations. This
+    // also clears `idle_sandboxes` in status.json so the final snapshot is
     // consistent with the empty pool.
     lifecycle.close_parking();
     let phase = teardown.phase_start("drain_idle_pool");
@@ -2175,7 +2396,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let state = collect_heartbeat_state(
             HeartbeatSnapshotMetadata {
                 runner_identity: runner.identity,
-                runner_name: &runner.name,
                 group: &runner.group,
                 sequence: final_heartbeat_sequence,
             },
@@ -2344,7 +2564,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.phase_complete("memory_prefetch_drain", phase);
 
     let phase = teardown.phase_start("status_stopped");
-    shared.status.set_mode(RunnerMode::Stopped).await;
+    if let Err(error) = shared.status.set_mode(RunnerMode::Stopped).await {
+        warn!(%error, "failed to persist final stopped runner status");
+    }
     teardown.phase_complete("status_stopped", phase);
     info!(total_teardown_ms = teardown.elapsed_ms(), "runner stopped");
 

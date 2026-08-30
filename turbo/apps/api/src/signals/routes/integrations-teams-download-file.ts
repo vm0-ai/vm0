@@ -1,7 +1,5 @@
 import { command } from "ccstate";
-import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
-import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
-import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
+import { integrationsTeamsDownloadFileContract } from "@okouai/api-contracts/contracts/integrations";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -22,34 +20,9 @@ import { teamsDeliveryTargetSchema } from "../services/teams-chat-callback-paylo
 import type { RouteEntry } from "../route-entry";
 import { safeUriComponentDecode } from "../utils";
 
-const c = initContract();
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const teamsChatCallbackPayloadSchema = z.object({
   teamsDelivery: teamsDeliveryTargetSchema.optional(),
-});
-
-const teamsDownloadFileContract = c.router({
-  download: {
-    method: "GET",
-    path: "/api/okou/integrations/teams/download-file",
-    headers: authHeadersSchema,
-    query: z.object({
-      file_id: z.string().optional(),
-    }),
-    responses: {
-      200: c.otherResponse({
-        contentType: "application/octet-stream",
-        body: z.unknown(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      413: apiErrorSchema,
-      502: apiErrorSchema,
-    },
-    summary: "Download a Microsoft Teams file from a signed file id",
-  },
 });
 
 const ALLOWED_TEAMS_FILE_HOSTS = [
@@ -207,7 +180,7 @@ function resolveFilename(args: {
 }
 
 const download$ = command(async ({ get }, signal: AbortSignal) => {
-  const query = get(queryOf(teamsDownloadFileContract.download));
+  const query = get(queryOf(integrationsTeamsDownloadFileContract.download));
   if (!query.file_id) {
     return jsonResponse(400, "file_id is required", "BAD_REQUEST");
   }
@@ -315,7 +288,7 @@ const teamsWriteAuth = {
 
 export const integrationsTeamsDownloadFileRoutes: readonly RouteEntry[] = [
   {
-    route: teamsDownloadFileContract.download,
+    route: integrationsTeamsDownloadFileContract.download,
     handler: authRoute(teamsWriteAuth, download$),
   },
 ];

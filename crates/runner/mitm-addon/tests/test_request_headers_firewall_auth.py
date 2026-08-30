@@ -13,8 +13,8 @@ import request_classification
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import (
-    _shared_route_vm,
-    _single_firewall_vm,
+    _shared_route_sandbox,
+    _single_firewall_sandbox,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -38,7 +38,7 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -90,7 +90,7 @@ async def test_capture_enabled_reflection_method_with_managed_auth_defers_to_req
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -103,7 +103,7 @@ async def test_capture_enabled_reflection_method_with_managed_auth_defers_to_req
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -148,7 +148,7 @@ async def test_firewall_allow_header_auth_requestheaders_strips_connector_intent
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -188,7 +188,7 @@ async def test_shared_route_intent_selects_requestheaders_auth_in_both_orders(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_shared_route_vm(tmp_path, reverse=reverse),
+        sandbox_info=_shared_route_sandbox(tmp_path, reverse=reverse),
     )
     flow = real_flow(
         with_response=False,
@@ -227,7 +227,7 @@ async def test_shared_route_intent_selects_requestheaders_auth_in_both_orders(
 async def test_ambiguous_shared_route_requestheaders_never_fetches_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    reg_path = _write_registry(tmp_path, sandbox_info=_shared_route_sandbox(tmp_path))
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -264,7 +264,7 @@ def test_capture_enabled_firewall_allow_small_bounded_body_does_not_install_requ
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -283,7 +283,7 @@ def test_capture_enabled_firewall_allow_small_bounded_body_does_not_install_requ
 
     auth_fetch.assert_not_called()
     _assert_no_request_stream(flow)
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 
@@ -300,7 +300,7 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -348,7 +348,7 @@ async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -376,7 +376,7 @@ async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
     _assert_no_request_stream(flow)
     assert flow.request.headers["X-Client"] == "original"
     assert "Authorization" not in flow.request.headers
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
@@ -402,7 +402,7 @@ async def test_capture_enabled_body_dependent_firewall_auth_does_not_install_req
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -415,7 +415,7 @@ async def test_capture_enabled_body_dependent_firewall_auth_does_not_install_req
                 "ask": [],
                 "unknownPolicy": "allow",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -449,7 +449,7 @@ async def test_capture_enabled_body_dependent_firewall_auth_does_not_install_req
     _assert_no_request_stream(flow)
     assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
     assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
-    assert metadata_keys.VM_RUN_ID in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID in flow.metadata
     assert metadata_keys.ORIGINAL_URL in flow.metadata
 
 
@@ -458,7 +458,7 @@ def test_capture_enabled_firewall_block_does_not_install_request_stream(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             api_entry={
                 "base": "https://api.github.com",
@@ -471,7 +471,7 @@ def test_capture_enabled_firewall_block_does_not_install_request_stream(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -485,7 +485,7 @@ def test_capture_enabled_firewall_block_does_not_install_request_stream(
         mitm_addon.requestheaders(flow)
 
     _assert_no_request_stream(flow)
-    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
     assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 
@@ -494,7 +494,7 @@ def test_auth_base_requestheaders_rejection_does_not_install_request_stream(
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
+        sandbox_info=_single_firewall_sandbox(
             tmp_path,
             firewall_name="webhook",
             api_entry={
@@ -508,7 +508,7 @@ def test_auth_base_requestheaders_rejection_does_not_install_request_stream(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            vm_fields={"captureNetworkBodies": True},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(

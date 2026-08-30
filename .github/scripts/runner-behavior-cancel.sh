@@ -21,7 +21,7 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --profile vm0/default \
   --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
   --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-  --name ${SVC} \
+  --hostname ${HOST} \
   --group ${GROUP} \
   --runner-dirname ${SVC} \
   --max-concurrent 1 \
@@ -297,16 +297,16 @@ case "$COMMAND_NAME" in
     SNAPSHOT_CAPTURE=false
     SNAPSHOT_MARKER=""
     if [ "${1:-}" = "-t" ] && [ -n "${2:-}" ]; then
-      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/${COMMAND_NAME}.${2}"
-      SNAPSHOT_MARKER="$VM0_RECONCILE_COUNT_DIR/snapshot-${COMMAND_NAME}.${2}"
+      printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/${COMMAND_NAME}.${2}"
+      SNAPSHOT_MARKER="$OKOU_RECONCILE_COUNT_DIR/snapshot-${COMMAND_NAME}.${2}"
       if mkdir "$SNAPSHOT_MARKER" 2>/dev/null; then
         SNAPSHOT_CAPTURE=true
       fi
     fi
     if [ "$COMMAND_NAME" = "iptables-save" ]; then
-      REAL_COMMAND=$VM0_RECONCILE_REAL_IPTABLES_SAVE
+      REAL_COMMAND=$OKOU_RECONCILE_REAL_IPTABLES_SAVE
     else
-      REAL_COMMAND=$VM0_RECONCILE_REAL_IP6TABLES_SAVE
+      REAL_COMMAND=$OKOU_RECONCILE_REAL_IP6TABLES_SAVE
     fi
     if "$REAL_COMMAND" "$@"; then
       STATUS=0
@@ -318,14 +318,14 @@ case "$COMMAND_NAME" in
     fi
     if [ "$STATUS" -eq 0 ] && [ "${1:-}" = "-t" ] && [ "${2:-}" = "filter" ]; then
       OWN_POOL_HEX=$(find_own_pool_hex)
-      printf '%s\n' "$OWN_POOL_HEX" >"$VM0_RECONCILE_COUNT_DIR/own-pool"
+      printf '%s\n' "$OWN_POOL_HEX" >"$OKOU_RECONCILE_COUNT_DIR/own-pool"
       if [ "$COMMAND_NAME" = "iptables-save" ] \
-        && [ ! -e "$VM0_RECONCILE_COUNT_DIR/firewall-snapshot-seeded" ]; then
-        touch "$VM0_RECONCILE_COUNT_DIR/firewall-snapshot-seeded"
+        && [ ! -e "$OKOU_RECONCILE_COUNT_DIR/firewall-snapshot-seeded" ]; then
+        touch "$OKOU_RECONCILE_COUNT_DIR/firewall-snapshot-seeded"
         printf '%s\n' \
           "-A VM0-RECONCILE-OWN -m comment --comment \"vm0-ns-${OWN_POOL_HEX}-fd\" -j ACCEPT" \
-          "-A VM0-RECONCILE-IDLE -m comment --comment \"vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns\" -j REJECT" \
-          "-A VM0-RECONCILE-DECOY -m comment --comment \"vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns-extra\" -j REJECT"
+          "-A VM0-RECONCILE-IDLE -m comment --comment \"vm0-ns-${OKOU_RECONCILE_FIREWALL_POOL_HEX}-dns\" -j REJECT" \
+          "-A VM0-RECONCILE-DECOY -m comment --comment \"vm0-ns-${OKOU_RECONCILE_FIREWALL_POOL_HEX}-dns-extra\" -j REJECT"
       fi
     fi
     exit "$STATUS"
@@ -333,34 +333,34 @@ case "$COMMAND_NAME" in
   iptables-restore | ip6tables-restore)
     RESTORE_FILE=${!#}
     if [ "$COMMAND_NAME" = "iptables-restore" ]; then
-      REAL_COMMAND=$VM0_RECONCILE_REAL_IPTABLES_RESTORE
+      REAL_COMMAND=$OKOU_RECONCILE_REAL_IPTABLES_RESTORE
     else
-      REAL_COMMAND=$VM0_RECONCILE_REAL_IP6TABLES_RESTORE
+      REAL_COMMAND=$OKOU_RECONCILE_REAL_IP6TABLES_RESTORE
     fi
 
-    if grep -F -- "vm0-ns-$(<"$VM0_RECONCILE_COUNT_DIR/own-pool")-fd" \
+    if grep -F -- "vm0-ns-$(<"$OKOU_RECONCILE_COUNT_DIR/own-pool")-fd" \
       "$RESTORE_FILE" >/dev/null; then
-      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.own-delete"
+      printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/iptables.own-delete"
     fi
-    if grep -F -- "vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns" \
+    if grep -F -- "vm0-ns-${OKOU_RECONCILE_FIREWALL_POOL_HEX}-dns" \
       "$RESTORE_FILE" >/dev/null; then
-      if flock -n "/var/lock/vm0-netns-pool-${VM0_RECONCILE_FIREWALL_POOL_INDEX}.lock" true; then
-        printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.firewall-only-unlocked"
+      if flock -n "/var/lock/vm0-netns-pool-${OKOU_RECONCILE_FIREWALL_POOL_INDEX}.lock" true; then
+        printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/iptables.firewall-only-unlocked"
       fi
-      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.firewall-only-delete"
-      touch "$VM0_RECONCILE_FIREWALL_DELETE_STARTED"
+      printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/iptables.firewall-only-delete"
+      touch "$OKOU_RECONCILE_FIREWALL_DELETE_STARTED"
       for _ in $(seq 1 1200); do
-        [ -e "$VM0_RECONCILE_FIREWALL_DELETE_RELEASE" ] && break
+        [ -e "$OKOU_RECONCILE_FIREWALL_DELETE_RELEASE" ] && break
         sleep 0.05
       done
-      [ -e "$VM0_RECONCILE_FIREWALL_DELETE_RELEASE" ] || exit 1
+      [ -e "$OKOU_RECONCILE_FIREWALL_DELETE_RELEASE" ] || exit 1
     fi
-    if grep -F -- "vm0-ns-${VM0_RECONCILE_FIREWALL_POOL_HEX}-dns-extra" \
+    if grep -F -- "vm0-ns-${OKOU_RECONCILE_FIREWALL_POOL_HEX}-dns-extra" \
       "$RESTORE_FILE" >/dev/null; then
-      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/iptables.decoy-delete"
+      printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/iptables.decoy-delete"
     fi
 
-    SANITIZED_RESTORE_FILE=$(mktemp "$VM0_RECONCILE_COUNT_DIR/restore.XXXXXX")
+    SANITIZED_RESTORE_FILE=$(mktemp "$OKOU_RECONCILE_COUNT_DIR/restore.XXXXXX")
     grep -F -v \
       -e 'VM0-RECONCILE-OWN' \
       -e 'VM0-RECONCILE-IDLE' \
@@ -377,55 +377,55 @@ case "$COMMAND_NAME" in
     exit "$STATUS"
     ;;
   iptables)
-    exec "$VM0_RECONCILE_REAL_IPTABLES" "$@"
+    exec "$OKOU_RECONCILE_REAL_IPTABLES" "$@"
     ;;
   ip)
     if [ "${1:-}" = "netns" ] && [ "${2:-}" = "list" ]; then
-      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.netns-list"
-      if REAL_OUTPUT=$("$VM0_RECONCILE_REAL_IP" "$@"); then
+      printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/ip.netns-list"
+      if REAL_OUTPUT=$("$OKOU_RECONCILE_REAL_IP" "$@"); then
         STATUS=0
       else
         STATUS=$?
       fi
       if [ "$STATUS" -eq 0 ]; then
         OWN_POOL_HEX=$(find_own_pool_hex)
-        printf '%s\n' "$OWN_POOL_HEX" >"$VM0_RECONCILE_COUNT_DIR/own-pool"
+        printf '%s\n' "$OWN_POOL_HEX" >"$OKOU_RECONCILE_COUNT_DIR/own-pool"
         [ -z "$REAL_OUTPUT" ] || printf '%s\n' "$REAL_OUTPUT"
         if ! awk -v name="vm0-ns-${OWN_POOL_HEX}-fd" \
           '$1 == name { found = 1 } END { exit !found }' <<<"$REAL_OUTPUT"; then
           printf '%s\n' "vm0-ns-${OWN_POOL_HEX}-fd"
         fi
-        if ! awk -v name="vm0-ns-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc" \
+        if ! awk -v name="vm0-ns-${OKOU_RECONCILE_ACTIVE_POOL_HEX}-fc" \
           '$1 == name { found = 1 } END { exit !found }' <<<"$REAL_OUTPUT"; then
-          printf '%s\n' "vm0-ns-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc"
+          printf '%s\n' "vm0-ns-${OKOU_RECONCILE_ACTIVE_POOL_HEX}-fc"
         fi
       fi
       exit "$STATUS"
     fi
 
-    OWN_POOL_HEX=$(<"$VM0_RECONCILE_COUNT_DIR/own-pool")
+    OWN_POOL_HEX=$(<"$OKOU_RECONCILE_COUNT_DIR/own-pool")
     if [ "${1:-}" = "link" ] && [ "${2:-}" = "del" ] \
       && [ "${3:-}" = "vm0-ve-${OWN_POOL_HEX}-fd" ]; then
-      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.own-link-delete"
-      exec "$VM0_RECONCILE_REAL_IP" "$@"
+      printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/ip.own-link-delete"
+      exec "$OKOU_RECONCILE_REAL_IP" "$@"
     fi
     if [ "${1:-}" = "netns" ] && [ "${2:-}" = "del" ] \
       && [ "${3:-}" = "vm0-ns-${OWN_POOL_HEX}-fd" ]; then
-      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.own-netns-delete"
-      touch "$VM0_RECONCILE_IDLE_RELEASE"
+      printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/ip.own-netns-delete"
+      touch "$OKOU_RECONCILE_IDLE_RELEASE"
       for _ in $(seq 1 200); do
-        [ -e "$VM0_RECONCILE_IDLE_RELEASED" ] && break
+        [ -e "$OKOU_RECONCILE_IDLE_RELEASED" ] && break
         sleep 0.05
       done
-      [ -e "$VM0_RECONCILE_IDLE_RELEASED" ] || exit 1
-      exec "$VM0_RECONCILE_REAL_IP" "$@"
+      [ -e "$OKOU_RECONCILE_IDLE_RELEASED" ] || exit 1
+      exec "$OKOU_RECONCILE_REAL_IP" "$@"
     fi
-    if contains_argument "vm0-ns-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc" "$@" \
-      || contains_argument "vm0-ve-${VM0_RECONCILE_ACTIVE_POOL_HEX}-fc" "$@"; then
-      printf '1\n' >>"$VM0_RECONCILE_COUNT_DIR/ip.active-delete"
+    if contains_argument "vm0-ns-${OKOU_RECONCILE_ACTIVE_POOL_HEX}-fc" "$@" \
+      || contains_argument "vm0-ve-${OKOU_RECONCILE_ACTIVE_POOL_HEX}-fc" "$@"; then
+      printf '1\n' >>"$OKOU_RECONCILE_COUNT_DIR/ip.active-delete"
       exit 0
     fi
-    exec "$VM0_RECONCILE_REAL_IP" "$@"
+    exec "$OKOU_RECONCILE_REAL_IP" "$@"
     ;;
 esac
 
@@ -449,20 +449,20 @@ sudo "$BIN_DIR/runner" service start --name "$SVC" \
   --env USE_MOCK_CLAUDE=true \
   --env USE_MOCK_CODEX=true \
   --env "PATH=$RECONCILE_BIN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  --env "VM0_RECONCILE_COUNT_DIR=$RECONCILE_COUNT_DIR" \
-  --env "VM0_RECONCILE_REAL_IP=$REAL_IP" \
-  --env "VM0_RECONCILE_REAL_IPTABLES=$REAL_IPTABLES" \
-  --env "VM0_RECONCILE_REAL_IPTABLES_SAVE=$REAL_IPTABLES_SAVE" \
-  --env "VM0_RECONCILE_REAL_IPTABLES_RESTORE=$REAL_IPTABLES_RESTORE" \
-  --env "VM0_RECONCILE_REAL_IP6TABLES_SAVE=$REAL_IP6TABLES_SAVE" \
-  --env "VM0_RECONCILE_REAL_IP6TABLES_RESTORE=$REAL_IP6TABLES_RESTORE" \
-  --env "VM0_RECONCILE_FIREWALL_POOL_INDEX=${RECONCILE_POOL_INDEXES[2]}" \
-  --env "VM0_RECONCILE_FIREWALL_POOL_HEX=$RECONCILE_FIREWALL_POOL_HEX" \
-  --env "VM0_RECONCILE_FIREWALL_DELETE_STARTED=$RECONCILE_FIREWALL_DELETE_STARTED" \
-  --env "VM0_RECONCILE_FIREWALL_DELETE_RELEASE=$RECONCILE_FIREWALL_DELETE_RELEASE" \
-  --env "VM0_RECONCILE_ACTIVE_POOL_HEX=$RECONCILE_ACTIVE_POOL_HEX" \
-  --env "VM0_RECONCILE_IDLE_RELEASE=$RECONCILE_IDLE_RELEASE" \
-  --env "VM0_RECONCILE_IDLE_RELEASED=$RECONCILE_IDLE_RELEASED"
+  --env "OKOU_RECONCILE_COUNT_DIR=$RECONCILE_COUNT_DIR" \
+  --env "OKOU_RECONCILE_REAL_IP=$REAL_IP" \
+  --env "OKOU_RECONCILE_REAL_IPTABLES=$REAL_IPTABLES" \
+  --env "OKOU_RECONCILE_REAL_IPTABLES_SAVE=$REAL_IPTABLES_SAVE" \
+  --env "OKOU_RECONCILE_REAL_IPTABLES_RESTORE=$REAL_IPTABLES_RESTORE" \
+  --env "OKOU_RECONCILE_REAL_IP6TABLES_SAVE=$REAL_IP6TABLES_SAVE" \
+  --env "OKOU_RECONCILE_REAL_IP6TABLES_RESTORE=$REAL_IP6TABLES_RESTORE" \
+  --env "OKOU_RECONCILE_FIREWALL_POOL_INDEX=${RECONCILE_POOL_INDEXES[2]}" \
+  --env "OKOU_RECONCILE_FIREWALL_POOL_HEX=$RECONCILE_FIREWALL_POOL_HEX" \
+  --env "OKOU_RECONCILE_FIREWALL_DELETE_STARTED=$RECONCILE_FIREWALL_DELETE_STARTED" \
+  --env "OKOU_RECONCILE_FIREWALL_DELETE_RELEASE=$RECONCILE_FIREWALL_DELETE_RELEASE" \
+  --env "OKOU_RECONCILE_ACTIVE_POOL_HEX=$RECONCILE_ACTIVE_POOL_HEX" \
+  --env "OKOU_RECONCILE_IDLE_RELEASE=$RECONCILE_IDLE_RELEASE" \
+  --env "OKOU_RECONCILE_IDLE_RELEASED=$RECONCILE_IDLE_RELEASED"
 
 sudo touch "$RECONCILE_CAPACITY_RELEASE"
 for _ in $(seq 1 200); do

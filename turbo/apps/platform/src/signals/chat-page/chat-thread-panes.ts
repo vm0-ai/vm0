@@ -15,11 +15,11 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
-import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
+import { createRestoredAttachment } from "../okou-page/chat-draft.ts";
 import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
-} from "../zero-page/user-message-document-codec.ts";
+} from "../okou-page/user-message-document-codec.ts";
 import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
@@ -78,7 +78,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
 interface PaneSpec {
   setPane$: Command<void, [ChatThreadPaneState]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
-  onReady$?: Command<void, [AbortSignal]>;
+  onNotFoundReady$?: Command<void, [AbortSignal]>;
 }
 
 interface RestoredDraftState {
@@ -152,12 +152,19 @@ const loadDraft$ = command(
       const restoredAttachments = restoredDraft.attachments.map(
         createRestoredAttachment,
       );
-      set(thread.composer.draft.seed$, {
-        content: restoredDraft.content,
-        userMessage: restoredDraft.userMessage,
-        generationTemplate: undefined,
-        attachments: restoredAttachments,
-      });
+      const removedUnavailableAttachments = await set(
+        thread.composer.draft.seed$,
+        {
+          content: restoredDraft.content,
+          userMessage: restoredDraft.userMessage,
+          generationTemplate: undefined,
+          attachments: restoredAttachments,
+        },
+        signal,
+      );
+      if (removedUnavailableAttachments) {
+        await set(thread.composer.draft.save$, signal);
+      }
     }
   },
 );
@@ -224,9 +231,6 @@ const setupPaneThread$ = command(
       signal,
     );
     set(spec.setPane$, { kind: "thread", thread });
-    if (spec.onReady$) {
-      set(spec.onReady$, signal);
-    }
 
     await set(
       resolvePaneThread$,
@@ -248,8 +252,8 @@ const setupPaneNotFound$ = command(
   ): void => {
     const signal = set(beginPaneSetup$, spec, parentSignal);
     set(spec.setPane$, { kind: "not-found", threadId });
-    if (spec.onReady$) {
-      set(spec.onReady$, signal);
+    if (spec.onNotFoundReady$) {
+      set(spec.onNotFoundReady$, signal);
     }
   },
 );
@@ -267,7 +271,6 @@ export const setupLeftThread$ = command(
         {
           setPane$: setCurrentLeftPane$,
           resetSetupSignal$: resetLeftSetupSignal$,
-          onReady$: hideAppSkeleton$,
         },
         meta,
         parentSignal,
@@ -288,7 +291,7 @@ export const setupLeftThreadNotFound$ = command(
       {
         setPane$: setCurrentLeftPane$,
         resetSetupSignal$: resetLeftSetupSignal$,
-        onReady$: hideAppSkeleton$,
+        onNotFoundReady$: hideAppSkeleton$,
       },
       threadId,
       parentSignal,

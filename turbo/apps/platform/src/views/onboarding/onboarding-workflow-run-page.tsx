@@ -28,6 +28,7 @@ import {
   WorkflowPreview,
 } from "./onboarding-workflow-picker-page.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 function workflowRunTitle(custom: boolean, t: TFunction<"common">): string {
   return custom
@@ -80,7 +81,7 @@ export function OnboardingWorkflowRunPage() {
             runLabel={
               custom
                 ? t(($) => {
-                    return $.onboarding.workflowRun.continueWithZero;
+                    return $.onboarding.workflowRun.continueWithAssistant;
                   })
                 : t(($) => {
                     return $.onboarding.workflowRun.createWorkflow;
@@ -104,7 +105,7 @@ export function OnboardingWorkflowRunPage() {
               <WorkflowConnectorPills
                 connectorSlugs={workflow.connectorSlugs}
               />
-              <button
+              <IconTooltipButton
                 type="button"
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:text-primary"
                 aria-label={t(($) => {
@@ -115,7 +116,7 @@ export function OnboardingWorkflowRunPage() {
                 }}
               >
                 <ScanEye size={16} aria-hidden="true" />
-              </button>
+              </IconTooltipButton>
             </div>
           </section>
         ) : null}

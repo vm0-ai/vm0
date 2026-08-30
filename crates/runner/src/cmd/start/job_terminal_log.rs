@@ -182,7 +182,7 @@ fn log_job_execution_failed(
     match failure.kind {
         ExecutionFailureKind::RunnerJobTimeout { .. } => {
             emit_job_execution_failed!(
-                tracing::Level::ERROR,
+                tracing::Level::INFO,
                 "runner job reached execution time limit"
             );
         }
@@ -587,6 +587,30 @@ mod tests {
     }
 
     #[test]
+    fn pi_result_source_logs_pi_attribution() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Pi,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::PiResult)
+        .with_session_history_status(SessionHistoryStatus::NotApplicable);
+        let failure = executor::ExecutionFailure::new(1, "provider failed", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_field_eq(&event, "failure_class", "cli_nonzero");
+        assert_field_eq(&event, "failure_framework", "pi");
+        assert_field_eq(&event, "failure_detail_source", "pi_result");
+    }
+
+    #[test]
     fn claude_result_provider_overloaded_logs_job_execution_failed_at_info() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
@@ -848,13 +872,25 @@ mod tests {
     #[test]
     fn diagnostic_failure_logs_bounded_event_delivery_fields() {
         let failed_attempt = EventDeliveryCompletedAttemptDiagnostic {
-            attempt: 3,
+            attempt: 4,
             client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
-            elapsed_ms: 30_000,
+            elapsed_ms: 30_001,
             failure_kind: EventDeliveryAttemptFailureKind::HttpStatus,
             http_status: Some(500),
             timeout_observed: None,
             connect_observed: None,
+        };
+        let first_active_completed_attempt = EventDeliveryCompletedAttemptDiagnostic {
+            attempt: 1,
+            client_request_id: "33333333-3333-4333-8333-333333333333".to_string(),
+            elapsed_ms: 1_001,
+            ..failed_attempt.clone()
+        };
+        let second_active_completed_attempt = EventDeliveryCompletedAttemptDiagnostic {
+            attempt: 2,
+            client_request_id: "44444444-4444-4444-8444-444444444444".to_string(),
+            elapsed_ms: 2_001,
+            ..failed_attempt.clone()
         };
         let diagnostic = FailureDiagnostic::new(
             FailureClass::EventUploadFailed,
@@ -863,33 +899,36 @@ mod tests {
         )
         .with_cli_exit_code(0)
         .with_event_delivery(EventDeliveryDiagnostic {
-            total_events: 40,
+            total_events: 43,
             total_batches: 2,
             failed_batches: 1,
             last_acknowledged_sequence: Some(7),
             first_failed_batch: Some(EventDeliveryFailedBatchDiagnostic {
                 first_sequence: 8,
-                last_sequence: 15,
-                event_count: 8,
+                last_sequence: 18,
+                event_count: 11,
                 conservative_bytes: 2_048,
                 outcome: EventDeliveryAcceptanceOutcome::ConfirmedRejection,
                 attempts: vec![failed_attempt.clone()],
             }),
             drain_timeout: Some(EventDeliveryDrainTimeoutDiagnostic {
-                queued_events: 0,
-                queued_bytes: 0,
-                carried_events: 1,
-                carried_bytes: 128,
+                queued_events: 5,
+                queued_bytes: 256,
+                carried_events: 6,
+                carried_bytes: 129,
                 active_batch: Some(EventDeliveryActiveBatchDiagnostic {
-                    first_sequence: 16,
-                    last_sequence: 39,
+                    first_sequence: 19,
+                    last_sequence: 42,
                     event_count: 24,
-                    conservative_bytes: 8_192,
-                    completed_attempts: vec![failed_attempt],
+                    conservative_bytes: 8_193,
+                    completed_attempts: vec![
+                        first_active_completed_attempt,
+                        second_active_completed_attempt,
+                    ],
                     active_attempt: Some(EventDeliveryActiveAttemptDiagnostic {
-                        attempt: 2,
+                        attempt: 3,
                         client_request_id: "22222222-2222-4222-8222-222222222222".to_string(),
-                        elapsed_ms: 4_000,
+                        elapsed_ms: 4_001,
                     }),
                     outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
                 }),
@@ -899,12 +938,13 @@ mod tests {
 
         let event = capture_job_failure_log(&failure);
 
-        assert_field_eq(&event, "event_delivery_total_events", "40");
+        assert_field_eq(&event, "event_delivery_total_events", "43");
         assert_field_eq(&event, "event_delivery_total_batches", "2");
         assert_field_eq(&event, "event_delivery_failed_batches", "1");
         assert_field_eq(&event, "event_delivery_last_acknowledged_sequence", "7");
         assert_field_eq(&event, "event_delivery_first_failure_first_sequence", "8");
-        assert_field_eq(&event, "event_delivery_first_failure_last_sequence", "15");
+        assert_field_eq(&event, "event_delivery_first_failure_last_sequence", "18");
+        assert_field_eq(&event, "event_delivery_first_failure_event_count", "11");
         assert_field_eq(
             &event,
             "event_delivery_first_failure_conservative_bytes",
@@ -914,6 +954,12 @@ mod tests {
             &event,
             "event_delivery_first_failure_outcome",
             "confirmed_rejection",
+        );
+        assert_field_eq(&event, "event_delivery_first_failure_attempt_count", "1");
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_final_attempt_number",
+            "4",
         );
         assert_field_eq(
             &event,
@@ -940,10 +986,30 @@ mod tests {
             "event_delivery_first_failure_final_attempt_request_id",
             "11111111-1111-4111-8111-111111111111",
         );
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_final_attempt_elapsed_ms",
+            "30001",
+        );
         assert_field_eq(&event, "event_delivery_drain_timeout", "true");
-        assert_field_eq(&event, "event_delivery_drain_queued_events", "0");
-        assert_field_eq(&event, "event_delivery_drain_carried_events", "1");
-        assert_field_eq(&event, "event_delivery_drain_active_first_sequence", "16");
+        assert_field_eq(&event, "event_delivery_drain_queued_events", "5");
+        assert_field_eq(&event, "event_delivery_drain_queued_bytes", "256");
+        assert_field_eq(&event, "event_delivery_drain_carried_events", "6");
+        assert_field_eq(&event, "event_delivery_drain_carried_bytes", "129");
+        assert_field_eq(&event, "event_delivery_drain_active_first_sequence", "19");
+        assert_field_eq(&event, "event_delivery_drain_active_last_sequence", "42");
+        assert_field_eq(&event, "event_delivery_drain_active_event_count", "24");
+        assert_field_eq(
+            &event,
+            "event_delivery_drain_active_conservative_bytes",
+            "8193",
+        );
+        assert_field_eq(
+            &event,
+            "event_delivery_drain_active_completed_attempt_count",
+            "2",
+        );
+        assert_field_eq(&event, "event_delivery_drain_active_attempt_number", "3");
         assert_field_eq(
             &event,
             "event_delivery_drain_active_attempt_request_id",
@@ -952,13 +1018,28 @@ mod tests {
         assert_field_eq(
             &event,
             "event_delivery_drain_active_attempt_elapsed_ms",
-            "4000",
+            "4001",
         );
         assert_field_eq(
             &event,
             "event_delivery_drain_active_outcome",
             "outcome_unknown",
         );
+        for field in [
+            "event_delivery_first_failure_event_count",
+            "event_delivery_first_failure_attempt_count",
+            "event_delivery_first_failure_final_attempt_number",
+            "event_delivery_first_failure_final_attempt_elapsed_ms",
+            "event_delivery_drain_queued_bytes",
+            "event_delivery_drain_carried_bytes",
+            "event_delivery_drain_active_last_sequence",
+            "event_delivery_drain_active_event_count",
+            "event_delivery_drain_active_conservative_bytes",
+            "event_delivery_drain_active_completed_attempt_count",
+            "event_delivery_drain_active_attempt_number",
+        ] {
+            assert_field_kind(&event, field, "u64");
+        }
         assert!(!event.fields.contains_key("event_delivery_attempts"));
         assert!(!event.fields.contains_key("event_delivery_body"));
     }
@@ -1144,7 +1225,7 @@ mod tests {
 
         let event = capture_job_failure_log(&failure);
 
-        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(event.level, Level::INFO);
         assert_eq!(
             event.fields.get("message").map(String::as_str),
             Some("runner job reached execution time limit")
@@ -1192,7 +1273,7 @@ mod tests {
         let timeout_event = capture_job_failure_log(&timeout_failure);
 
         assert_eq!(generic_event.level, Level::INFO);
-        assert_eq!(timeout_event.level, Level::ERROR);
+        assert_eq!(timeout_event.level, Level::INFO);
         assert_eq!(
             generic_event.fields.get("message").map(String::as_str),
             Some("job execution failed")

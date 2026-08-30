@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
 
 const AUTHORIZATION_URL = "https://app.datadoghq.com/oauth2/v1/authorize";
 const DATADOG_DOMAINS = new Set([
@@ -138,7 +139,7 @@ export async function exchangeDatadogCode(args: {
     accessToken: token.access_token,
     refreshToken: token.refresh_token ?? null,
     expiresIn: token.expires_in,
-    scopes: token.scope ? token.scope.split(" ") : args.grant.scopes,
+    scopes: effectiveOAuthScopes(token.scope, args.grant.scopes, " "),
     domain,
   };
 }
@@ -169,5 +170,6 @@ export async function refreshDatadogToken(
     accessToken: token.access_token,
     refreshToken: token.refresh_token ?? null,
     expiresIn: token.expires_in,
+    scopes: reportedOAuthScopes(token.scope, " "),
   };
 }

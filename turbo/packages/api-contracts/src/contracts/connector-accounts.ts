@@ -60,6 +60,40 @@ export const connectorAccountSelectionSchema = z
   })
   .strict();
 
+export const CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS = 256;
+export const CONNECTOR_ACCOUNT_LIST_MAX_LIMIT = 100;
+
+const connectorAccountInspectionAvailableSchema = z
+  .object({
+    kind: z.literal("available"),
+    connectionId: z.uuid(),
+    target: connectorAccountTargetSchema,
+    authMethod: connectorAuthMethodIdSchema,
+    displayName: z.string().min(1).max(255).nullable(),
+    externalId: z.string().nullable(),
+    externalUsername: z.string().nullable(),
+    externalEmail: z.string().nullable(),
+    connectionStatus: connectorResponseConnectionStatusSchema,
+    reconnectReason: connectorReconnectReasonSchema.nullable(),
+  })
+  .strict();
+
+const connectorAccountInspectionUnavailableSchema = z
+  .object({
+    kind: z.literal("unavailable"),
+    connectionId: z.uuid(),
+    target: connectorAccountTargetSchema,
+  })
+  .strict();
+
+export const connectorAccountInspectionResultSchema = z.discriminatedUnion(
+  "kind",
+  [
+    connectorAccountInspectionAvailableSchema,
+    connectorAccountInspectionUnavailableSchema,
+  ],
+);
+
 export const connectorAccountMutationIntentSchema = z.discriminatedUnion(
   "intent",
   [
@@ -100,7 +134,12 @@ export const connectorAccountTargetQuerySchema = z.discriminatedUnion("kind", [
 
 const connectorAccountListQueryFields = {
   cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(CONNECTOR_ACCOUNT_LIST_MAX_LIMIT)
+    .default(50),
   search: z.string().trim().min(1).max(255).optional(),
 } as const;
 
@@ -139,6 +178,30 @@ const connectorAccountExactTargetBodySchema = z
   .strict();
 
 export const connectorAccountsContract = c.router({
+  inspect: {
+    method: "POST",
+    path: "/api/connector-accounts/inspect",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        selections: z
+          .array(connectorAccountSelectionSchema)
+          .max(CONNECTOR_ACCOUNT_INSPECTION_MAX_SELECTIONS),
+      })
+      .strict(),
+    responses: {
+      200: z
+        .object({
+          results: z.array(connectorAccountInspectionResultSchema),
+        })
+        .strict(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Inspect exact connector accounts",
+  },
   summaries: {
     method: "GET",
     path: "/api/connector-accounts",
@@ -167,6 +230,21 @@ export const connectorAccountsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "List one target's connector accounts",
+  },
+  connection: {
+    method: "GET",
+    path: "/api/connector-accounts/:connectionId",
+    headers: authHeadersSchema,
+    pathParams: connectorAccountPathParamsSchema,
+    query: connectorAccountTargetQuerySchema,
+    responses: {
+      200: connectorAccountConnectionSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get one exact connector account",
   },
   rename: {
     method: "PATCH",
@@ -261,11 +339,45 @@ export const connectorAccountsContract = c.router({
 export type ConnectorAccountTarget = z.infer<
   typeof connectorAccountTargetSchema
 >;
+export function connectorAccountTargetKey(
+  target: ConnectorAccountTarget,
+): string {
+  return target.kind === "builtin"
+    ? `builtin:${target.connectorSlug}`
+    : `custom:${target.customConnectorId}`;
+}
 export type ConnectorAccountConnection = z.infer<
   typeof connectorAccountConnectionSchema
 >;
+export type ConnectorAccountIdentityFields = Pick<
+  ConnectorAccountConnection,
+  "displayName" | "externalEmail" | "externalId" | "externalUsername"
+>;
+export function connectorAccountExternalIdentity(
+  account: Omit<ConnectorAccountIdentityFields, "displayName">,
+): string | null {
+  return (
+    account.externalEmail ||
+    account.externalUsername ||
+    account.externalId ||
+    null
+  );
+}
+export function connectorAccountEffectiveLabel(
+  account: ConnectorAccountIdentityFields,
+  fallbackLabel: string,
+): string {
+  return (
+    account.displayName ??
+    connectorAccountExternalIdentity(account) ??
+    fallbackLabel
+  );
+}
 export type ConnectorAccountSelection = z.infer<
   typeof connectorAccountSelectionSchema
+>;
+export type ConnectorAccountInspectionResult = z.infer<
+  typeof connectorAccountInspectionResultSchema
 >;
 export type ConnectorAccountMutationIntent = z.infer<
   typeof connectorAccountMutationIntentSchema

@@ -1,9 +1,10 @@
 """Cross-provider integration tests for provider-output timing stores."""
 
+import sys
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from types import TracebackType
+from types import FrameType, TracebackType
 from typing import Self
 from unittest.mock import patch
 
@@ -305,7 +306,7 @@ def test_provider_stores_keep_independent_lru_capacity(
             cli_agent_type="claude-code",
             model_usage_provider="claude-sonnet-4-6",
         )
-        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
         return flow
 
     with (
@@ -319,7 +320,7 @@ def test_provider_stores_keep_independent_lru_capacity(
         patch.object(claude_output_timing._store, "_max_tracked_runs", 1),
     ):
         codex_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        codex_flow.metadata[metadata_keys.VM_RUN_ID] = "run-shared"
+        codex_flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-shared"
         codex_output_timing.observe_server_event(codex_flow, "response.created")
         codex_output_timing.observe_server_event(codex_flow, "response.output_item.added")
 
@@ -374,6 +375,122 @@ def test_provider_stores_keep_independent_lru_capacity(
         ("claude_output_timing", "run-claude-recent"),
         ("codex_output_timing", "run-shared"),
     ]
+
+
+def test_retry_all_pending_visits_only_retryable_runs_in_current_lru_order(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+) -> None:
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    delivery_available = True
+    admission_results: list[bool] = []
+    attempted_run_ids: list[str] = []
+    admitted_run_ids: list[str] = []
+
+    def enqueue_timing_delivery(
+        _url: str,
+        _sandbox_token: str,
+        payload: dict[str, object],
+        _proxy_log_path: str,
+        _log_type: str,
+    ) -> bool:
+        run_id = payload["runId"]
+        assert isinstance(run_id, str)
+        attempted_run_ids.append(run_id)
+        admitted = admission_results.pop(0) if admission_results else delivery_available
+        if admitted:
+            admitted_run_ids.append(run_id)
+        return admitted
+
+    def codex_flow(run_id: str) -> http.HTTPFlow:
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = run_id
+        return flow
+
+    def observe_generated_response(flow: http.HTTPFlow) -> None:
+        codex_output_timing.observe_server_event(flow, "response.created")
+        codex_output_timing.observe_server_event(flow, "response.output_item.added")
+
+    admission_code = type(codex_output_timing._store)._admit_retained_locked.__code__
+
+    def retry_and_capture_visits() -> list[str]:
+        visited_run_ids: list[str] = []
+
+        def capture_visit(frame: FrameType, event: str, _arg: object) -> None:
+            if event != "call" or frame.f_code is not admission_code:
+                return
+            run_id = frame.f_locals.get("run_id")
+            assert isinstance(run_id, str)
+            visited_run_ids.append(run_id)
+
+        previous_profile = sys.getprofile()
+        sys.setprofile(capture_visit)
+        try:
+            codex_output_timing.retry_all_pending()
+        finally:
+            sys.setprofile(previous_profile)
+        return visited_run_ids
+
+    with (
+        mitm_ctx(api_url="https://api.test"),
+        patch.object(
+            usage.webhook,
+            "enqueue_webhook_delivery",
+            side_effect=enqueue_timing_delivery,
+        ),
+    ):
+        for index in range(128):
+            observe_generated_response(codex_flow(f"run-completed-{index}"))
+
+        delivery_available = False
+        older_pending_flow = codex_flow("run-pending-older")
+        newer_pending_flow = codex_flow("run-pending-newer")
+        observe_generated_response(older_pending_flow)
+        observe_generated_response(newer_pending_flow)
+
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=2,
+            reports=0,
+            flush_request_id="before-pending-touch",
+        )
+
+        codex_output_timing.observe_server_event(older_pending_flow, "response.completed")
+
+        attempted_run_ids.clear()
+        admitted_run_ids.clear()
+        admission_results.extend((True, False))
+        assert retry_and_capture_visits() == ["run-pending-newer", "run-pending-older"]
+        assert attempted_run_ids == ["run-pending-newer", "run-pending-older"]
+        assert admitted_run_ids == ["run-pending-newer"]
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="after-saturated-retry",
+        )
+
+        attempted_run_ids.clear()
+        admission_results.append(True)
+        assert retry_and_capture_visits() == ["run-pending-older"]
+        assert attempted_run_ids == ["run-pending-older"]
+        assert admitted_run_ids == ["run-pending-newer", "run-pending-older"]
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-final-retry",
+        )
+
+        attempted_run_ids.clear()
+        assert retry_and_capture_visits() == []
+        assert attempted_run_ids == []
+        assert admitted_run_ids == ["run-pending-newer", "run-pending-older"]
 
 
 @pytest.mark.parametrize(

@@ -38,6 +38,7 @@ type TeamsLaunchContextRow = Pick<
   | "activityId"
   | "serviceUrl"
   | "teamsAppId"
+  | "publicBrand"
   | "senderUserId"
   | "senderDisplayName"
   | "senderPrincipalName"
@@ -48,7 +49,6 @@ type TeamsLaunchContextRow = Pick<
 > & {
   readonly installationBotId: string | null;
   readonly installationBotName: string | null;
-  readonly publicBrand: PublicBrand;
 };
 
 function requiredTeamsLaunchContext(row: TeamsLaunchContextRow | undefined) {
@@ -98,6 +98,7 @@ async function loadTeamsLaunchContext(
       activityId: chatTeamsContext.activityId,
       serviceUrl: chatTeamsContext.serviceUrl,
       teamsAppId: chatTeamsContext.teamsAppId,
+      publicBrand: chatTeamsContext.publicBrand,
       senderUserId: chatTeamsContext.senderUserId,
       senderDisplayName: chatTeamsContext.senderDisplayName,
       senderPrincipalName: chatTeamsContext.senderPrincipalName,
@@ -107,7 +108,6 @@ async function loadTeamsLaunchContext(
       messageFiles: chatTeamsContext.messageFiles,
       installationBotId: teamsOrgInstallations.botId,
       installationBotName: teamsOrgInstallations.botName,
-      publicBrand: teamsOrgInstallations.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(
@@ -233,6 +233,7 @@ export async function loadTeamsQueuedLaunchMaterial(
       teamsUserPrincipalName: context.senderPrincipalName,
       botId,
       botName,
+      publicBrand: context.publicBrand,
       files: context.messageFiles.map((file) => {
         return { fileId: file.fileId, ...file.payload };
       }),

@@ -1,8 +1,8 @@
 
-flow.metadata["vm_run_id"] = "run-1"
-flow.metadata[f"vm_run_id"] = "run-1"
-flow.metadata["vm_" + "run_id"] = "run-1"
-flow.metadata["vm_run_id" if condition else "firewall_name"] = "run-1"
+flow.metadata["sandbox_run_id"] = "run-1"
+flow.metadata[f"sandbox_run_id"] = "run-1"
+flow.metadata["sandbox_" + "run_id"] = "run-1"
+flow.metadata["sandbox_run_id" if condition else "firewall_name"] = "run-1"
 flow.metadata.get("firewall_action")
 flow.metadata.get(f"firewall_action")
 flow.metadata.get(f"{'firewall_action'}")
@@ -17,14 +17,14 @@ flow.metadata.update({"firewall_base": "https://api.example.com"})
 flow.metadata.update({f"firewall_base": "https://api.example.com"})
 flow.metadata.update({("auth_cache_hit" if condition else "auth_url_rewrite"): True})
 flow.metadata.update(firewall_permission="read")
-flow.metadata |= {"vm_network_log_path": "network.jsonl"}
-flow.metadata = dict(vm_proxy_log_path="proxy.jsonl")
-flow.metadata = dict(flow.metadata, vm_run_id="run-1")
-flow.metadata = {"vm_run_id": "run-1"} if condition else {}
-flow.metadata.update({"vm_run_id": "run-1"} if condition else {})
-flow.metadata.update(fallback_update or {"vm_run_id": "run-1"})
-flow.metadata.update([("vm_run_id", "run-1")] if condition else [])
-flow.metadata.update((named_update := {"vm_run_id": "run-1"}))
+flow.metadata |= {"sandbox_network_log_path": "network.jsonl"}
+flow.metadata = dict(sandbox_proxy_log_path="proxy.jsonl")
+flow.metadata = dict(flow.metadata, sandbox_run_id="run-1")
+flow.metadata = {"sandbox_run_id": "run-1"} if condition else {}
+flow.metadata.update({"sandbox_run_id": "run-1"} if condition else {})
+flow.metadata.update(fallback_update or {"sandbox_run_id": "run-1"})
+flow.metadata.update([("sandbox_run_id", "run-1")] if condition else [])
+flow.metadata.update((named_update := {"sandbox_run_id": "run-1"}))
 flow.metadata.update(flow.metadata | {"auth_cache_hit": False})
 flow.metadata.update({"firewall_params": {}}.items())
 flow.metadata.update({("firewall_billable", True)})
@@ -33,15 +33,15 @@ flow.metadata.update(set([("firewall_permission", "read")]))
 flow.metadata.update(frozenset([("connector_diagnostic_slug", "github")]))
 flow.metadata.update(sorted([("connector_diagnostic_reason", "missing")]))
 flow.metadata.update(reversed([("connector_diagnostic_base", "https://api.example.com")]))
-flow.metadata = {**({"vm_run_id": "run-1"} if condition else {})}
+flow.metadata = {**({"sandbox_run_id": "run-1"} if condition else {})}
 flow.metadata = dict({"auth_url_rewrite": True}.items())
-flow.metadata = {"vm_run_id": "run-1"}.copy()
+flow.metadata = {"sandbox_run_id": "run-1"}.copy()
 flow.metadata.update([("firewall_name", "github")].copy())
 flow.metadata = dict.fromkeys(["auth_refreshed_connectors"], [])
 flow.metadata.update(dict.fromkeys(("auth_refreshed_secrets",), []))
 flow.metadata.update(dict.fromkeys({"auth_resolved_secrets": []}, []))
 flow.metadata.update(dict.fromkeys({"model_usage_provider": "gpt-5.5"}.keys(), "gpt-5.5"))
-flow.metadata.update(dict.fromkeys(dict(vm_run_id="run-1"), "run-1"))
+flow.metadata.update(dict.fromkeys(dict(sandbox_run_id="run-1"), "run-1"))
 flow.metadata.update(dict.fromkeys(dict([("firewall_action", "ALLOW")]).keys(), "ALLOW"))
 flow.metadata.update(dict.fromkeys(tuple(dict(firewall_billable=True)), False))
 flow.metadata.update(dict.fromkeys(set(["auth_cache_hit"]), False))
@@ -51,29 +51,29 @@ flow.metadata.update(dict.fromkeys(reversed(["auth_refreshed_secrets"]), []))
 flow.metadata.update(dict.fromkeys({"firewall_base": "https://api.example.com"} | {}, "base"))
 flow.metadata.update(dict.fromkeys(({"firewall_action": "ALLOW"} | {}).keys(), "ALLOW"))
 flow.metadata.update(dict.fromkeys({"firewall_error": "auth_failed"}.copy(), "auth_failed"))
-flow.metadata.update(zip(["vm_run_id"], ["run-1"]))
+flow.metadata.update(zip(["sandbox_run_id"], ["run-1"]))
 flow.metadata = dict(zip(["firewall_name"], ["github"]))
 flow.metadata.update(dict(zip(("firewall_action",), ("ALLOW",))))
 flow.metadata.update([*[("firewall_permission", "read")]])
 flow.metadata.update((*[("firewall_base", "https://api.example.com")],))
 flow.metadata.update([*{"auth_url_rewrite": True}.items()])
 flow.metadata.update([*zip(["network_log_target"], [{}])])
-flow.metadata.update([*sorted([("vm_network_log_path", "network.jsonl")])])
-flow.metadata.update([*[("vm_proxy_log_path", "proxy.jsonl")].copy()])
+flow.metadata.update([*sorted([("sandbox_network_log_path", "network.jsonl")])])
+flow.metadata.update([*[("sandbox_proxy_log_path", "proxy.jsonl")].copy()])
 flow.metadata.update(dict.fromkeys([*["firewall_error"]], "auth_failed"))
 flow.metadata.update(dict.fromkeys([f"firewall_error"], "auth_failed"))
 flow.metadata.update(dict.fromkeys((*["auth_cache_hit"],), False))
 flow.metadata.update([(f"firewall_permission", "read")])
-flow.metadata.update({"vm_run_id": value for value in rows})
+flow.metadata.update({"sandbox_run_id": value for value in rows})
 flow.metadata = {"firewall_name": value for value in rows}
-flow.metadata.update(*[{"vm_run_id": "run-1"}])
+flow.metadata.update(*[{"sandbox_run_id": "run-1"}])
 flow.metadata.update(*[dict(firewall_name="github")])
 flow.metadata.update(*[[("firewall_action", "ALLOW")]])
 flow.metadata = dict(*[{"firewall_permission": "read"}])
 flow.metadata.get(*["firewall_base"])
 flow.metadata.update(dict.fromkeys(*[["firewall_error"], "auth_failed"]))
 flow.metadata.update(dict.fromkeys(*[["auth_cache_hit"]], False))
-flow.metadata.update(*[], {"vm_run_id": "run-1"})
+flow.metadata.update(*[], {"sandbox_run_id": "run-1"})
 flow.metadata.update(*[], [("firewall_name", "github")])
 flow.metadata = dict(*[], {"firewall_action": "ALLOW"})
 flow.metadata.get(*[], "firewall_permission")
@@ -85,21 +85,21 @@ flow.metadata = dict((("auth_url_rewrite", value) for value in rows))
 flow.metadata.update(dict.fromkeys(("firewall_error" for value in rows), "auth_failed"))
 flow.metadata.update(dict.fromkeys(["auth_cache_hit" for value in rows], False))
 flow.metadata.update(dict.fromkeys({"network_log_target" for value in rows}, {}))
-flow.metadata.update(dict.fromkeys({"vm_network_log_path": value for value in rows}, "path"))
+flow.metadata.update(dict.fromkeys({"sandbox_network_log_path": value for value in rows}, "path"))
 flow.metadata.update(dict([("stream_buffer", bytearray())]))
 flow.metadata.update({**{"capture_body": True}})
 flow.metadata = {"request_stream_buffer": bytearray()} | {"request_stream_buffer_state": {}}
 flow.metadata.update(**{"trusted_authority_host": "api.example.com"})
 flow.metadata.update([("http_request_start_monotonic", 1.0)])
-flow.metadata.__getitem__("vm_sandbox_token")
+flow.metadata.__getitem__("sandbox_token")
 flow.metadata.__setitem__("firewall_api_id", "run-1:0")
 flow.metadata.__delitem__("network_log_target")
 flow.metadata.__contains__("browser_user_agent")
 flow.metadata.__ior__({"suppress_request_body_capture": True})
-http_flow.metadata["vm_run_id"] = "run-2"
+http_flow.metadata["sandbox_run_id"] = "run-2"
 meta = flow.metadata
-meta["vm_proxy_log_path"] = "proxy.jsonl"
-meta.get("vm_network_log_path")
+meta["sandbox_proxy_log_path"] = "proxy.jsonl"
+meta.get("sandbox_network_log_path")
 "firewall_name" in meta
 meta.update({"firewall_permission": "read"})
 meta |= {"firewall_rule_match": "GET /items"}
@@ -109,42 +109,42 @@ def nested_alias():
         inner_meta["auth_cache_hit"] = False
 def local_function_assigns_metadata():
     local_function_meta = flow.metadata
-    local_function_meta["vm_run_id"] = "run-1"
+    local_function_meta["sandbox_run_id"] = "run-1"
 class ClassBodyAssignsMetadata:
     class_body_meta = flow.metadata
-    class_body_meta["vm_run_id"] = "run-1"
+    class_body_meta["sandbox_run_id"] = "run-1"
 def class_body_reads_closure_metadata():
     class_closure_meta = flow.metadata
     class ReadsClosure:
-        class_closure_meta["vm_run_id"] = "run-1"
+        class_closure_meta["sandbox_run_id"] = "run-1"
 class_module_fallback_meta = flow.metadata
 def class_body_binding_reads_module_metadata():
     class_module_fallback_meta = {}
     class ReadsModuleFallback:
-        class_module_fallback_meta["vm_run_id"] = "run-1"
+        class_module_fallback_meta["sandbox_run_id"] = "run-1"
         class_module_fallback_meta = {}
 class_global_meta = flow.metadata
 def class_body_global_reads_module_metadata():
     class_global_meta = {}
     class ReadsGlobal:
         global class_global_meta
-        class_global_meta["vm_run_id"] = "run-1"
+        class_global_meta["sandbox_run_id"] = "run-1"
 def nested_class_reads_closure_metadata():
     nested_class_closure_meta = flow.metadata
     class Outer:
         class Inner:
-            nested_class_closure_meta["vm_run_id"] = "run-1"
+            nested_class_closure_meta["sandbox_run_id"] = "run-1"
 nested_class_module_meta = flow.metadata
 class NestedClassReadsModuleFallback:
     nested_class_module_meta = {}
     class Inner:
-        nested_class_module_meta["vm_run_id"] = "run-1"
+        nested_class_module_meta["sandbox_run_id"] = "run-1"
 def class_method_reads_outer_metadata():
     method_outer_meta = flow.metadata
     class MethodReadsOuter:
         method_outer_meta = {}
         def method(self):
-            method_outer_meta["vm_run_id"] = "run-1"
+            method_outer_meta["sandbox_run_id"] = "run-1"
 annotated_meta = flow.metadata
 annotated_meta: dict[str, object]
 annotated_meta["auth_url_rewrite"] = True
@@ -156,35 +156,35 @@ reassigned_meta = reassigned_meta["connector_diagnostic_env_names"]
 merged_meta = flow.metadata | {"firewall_base": "https://api.example.com"}
 merged_meta = {**merged_meta, "firewall_api_id": "run-1:0"}
 merged_meta = dict(merged_meta, firewall_action="ALLOW")
-kwargs_merged_meta = dict(**flow.metadata, vm_run_id="run-1")
-dict_inner_union_meta = dict(flow.metadata | {"vm_run_id": "run-1"})
+kwargs_merged_meta = dict(**flow.metadata, sandbox_run_id="run-1")
+dict_inner_union_meta = dict(flow.metadata | {"sandbox_run_id": "run-1"})
 dict_unpack_union_meta = dict(**(flow.metadata | {"firewall_name": "github"}))
 dict_second_positional_meta = dict(flow.metadata, flow.metadata | {"firewall_action": "ALLOW"})
 kwargs_alias_meta = dict(**flow.metadata)
-kwargs_alias_meta["vm_run_id"] = "run-1"
+kwargs_alias_meta["sandbox_run_id"] = "run-1"
 conditional_expr_meta = flow.metadata if condition else {}
-conditional_expr_meta["vm_run_id"] = "run-1"
+conditional_expr_meta["sandbox_run_id"] = "run-1"
 bool_expr_meta = fallback_meta or flow.metadata
 bool_expr_meta["firewall_name"] = "github"
 conditional_merge_meta = (flow.metadata | {"firewall_action": "ALLOW"}) if condition else {}
 conditional_rhs_merge_meta = flow.metadata | ({"firewall_action": "ALLOW"} if condition else {})
-chained_merge_meta = flow.metadata | {"vm_run_id": "run-1"} | {}
+chained_merge_meta = flow.metadata | {"sandbox_run_id": "run-1"} | {}
 copy_meta = flow.metadata.copy()
-copy_meta["vm_run_id"] = "run-1"
+copy_meta["sandbox_run_id"] = "run-1"
 (flow.metadata if condition else {})["firewall_base"] = "https://api.example.com"
 (flow.metadata if condition else {}).get("firewall_action")
 "firewall_name" in (flow.metadata if condition else {})
 (merged_named_expr_meta := flow.metadata | {"firewall_name": "github"})
-(inline_conditional_meta := flow.metadata if condition else {})["vm_run_id"] = "run-1"
+(inline_conditional_meta := flow.metadata if condition else {})["sandbox_run_id"] = "run-1"
 (inline_meta := flow.metadata)["connector_diagnostic_slug"] = "github"
 (call_meta := flow.metadata).get("connector_diagnostic_reason")
 def function_default_meta(default_meta=flow.metadata):
-    default_meta["vm_run_id"] = "run-1"
-lambda_default_meta = lambda default_meta=flow.metadata: default_meta["vm_network_log_path"]
-lambda_metadata_merge = lambda: flow.metadata | {"vm_run_id": "run-1"}
+    default_meta["sandbox_run_id"] = "run-1"
+lambda_default_meta = lambda default_meta=flow.metadata: default_meta["sandbox_network_log_path"]
+lambda_metadata_merge = lambda: flow.metadata | {"sandbox_run_id": "run-1"}
 def function_annotation_meta(
-    arg: flow.metadata["vm_run_id"],
-    *args: flow.metadata["vm_network_log_path"],
+    arg: flow.metadata["sandbox_run_id"],
+    *args: flow.metadata["sandbox_network_log_path"],
     kw: flow.metadata["firewall_action"],
     **kwargs: flow.metadata["firewall_name"],
 ) -> flow.metadata["firewall_base"]:
@@ -194,21 +194,21 @@ async def async_function_annotation_meta(arg: flow.metadata["firewall_error"]):
 def function_annotation_alias_leaks():
     def inner(arg: (annotation_alias_meta := flow.metadata)):
         pass
-    annotation_alias_meta["vm_run_id"] = "run-1"
+    annotation_alias_meta["sandbox_run_id"] = "run-1"
 def vararg_annotation_alias_order(
     *args: (vararg_annotation_meta := flow.metadata),
-    kw: vararg_annotation_meta["vm_run_id"],
+    kw: vararg_annotation_meta["sandbox_run_id"],
 ):
     pass
 def call_argument_metadata_merge():
-    send(flow.metadata | {"vm_run_id": "run-1"})
+    send(flow.metadata | {"sandbox_run_id": "run-1"})
 def return_metadata_merge():
     return dict(flow.metadata, firewall_name="github")
 def assert_metadata_merge():
     assert flow.metadata | {"firewall_base": "https://api.example.com"}
-assert condition, flow.metadata | {"vm_run_id": "run-1"}
+assert condition, flow.metadata | {"sandbox_run_id": "run-1"}
 (flow.metadata | {"firewall_action": "ALLOW"})
-(flow.metadata | {"vm_run_id": "run-1"})()
+(flow.metadata | {"sandbox_run_id": "run-1"})()
 try:
     pass
 except flow.metadata | {"firewall_name": "github"}:
@@ -217,18 +217,18 @@ raise RuntimeError from (flow.metadata | {"firewall_error": "auth_failed"})
 raise flow.metadata | {"firewall_permission": "read"}
 def yield_metadata_merge():
     yield flow.metadata | {"firewall_error": "auth_failed"}
-values = [flow.metadata | {"vm_run_id": "run-1"}]
+values = [flow.metadata | {"sandbox_run_id": "run-1"}]
 values = (flow.metadata | {"firewall_action": "ALLOW"},)
 values = {flow.metadata | {"firewall_error": "auth_failed"}}
 payload = {"metadata": flow.metadata | {"firewall_base": "https://api.example.com"}}
 value = (flow.metadata | {"firewall_permission": "read"})["x"]
 value = rows[flow.metadata | {"firewall_rule_match": "GET /items"}]
 message = f"{flow.metadata | {'network_log_target': {}}}"
-value = (flow.metadata | {"vm_network_log_path": "network.jsonl"}) + other
+value = (flow.metadata | {"sandbox_network_log_path": "network.jsonl"}) + other
 async def await_metadata_merge():
-    return await (flow.metadata | {"vm_proxy_log_path": "proxy.jsonl"})
+    return await (flow.metadata | {"sandbox_proxy_log_path": "proxy.jsonl"})
 async def await_metadata_precedence_merge():
-    await flow.metadata | {"vm_run_id": "run-1"}
+    await flow.metadata | {"sandbox_run_id": "run-1"}
 value = +flow.metadata | {"firewall_base": "https://api.example.com"}
 value = -flow.metadata | {"firewall_action": "ALLOW"}
 value = ~flow.metadata | {"firewall_error": "auth_failed"}
@@ -238,7 +238,7 @@ value = (flow.metadata | {"firewall_api_id": "run-1:0"}).items
 values = [*(flow.metadata | {"suppress_request_body_capture": True})]
 value = rows[:(flow.metadata | {"capture_body": True})]
 values = [{**(flow.metadata | {"connector_diagnostic_base": "https://api.example.com"})}]
-values = {**flow.metadata, "payload": flow.metadata | {"vm_run_id": "run-1"}}
+values = {**flow.metadata, "payload": flow.metadata | {"sandbox_run_id": "run-1"}}
 values = [flow.metadata | {"firewall_permission": "read"} for item in rows]
 for item in flow.metadata | {"firewall_rule_match": "GET /items"}:
     pass
@@ -248,13 +248,13 @@ def nested_function_global_reads_module_metadata():
     function_global_meta = {}
     def inner():
         global function_global_meta
-        function_global_meta["vm_run_id"] = "run-1"
+        function_global_meta["sandbox_run_id"] = "run-1"
 if conditional_meta := flow.metadata:
     conditional_meta["connector_diagnostic_base"] = "https://api.example.com"
 branch_meta = flow.metadata
 if condition:
     branch_meta = {}
-branch_meta["vm_proxy_log_path"] = "proxy.jsonl"
+branch_meta["sandbox_proxy_log_path"] = "proxy.jsonl"
 while_meta = flow.metadata
 while condition:
     while_meta = {}
@@ -262,7 +262,7 @@ while_meta["capture_body"] = True
 loop_meta = flow.metadata
 for loop_meta in rows:
     pass
-loop_meta["vm_sandbox_token"] = "sandbox"
+loop_meta["sandbox_token"] = "sandbox"
 try_meta = flow.metadata
 try:
     try_meta = {}
@@ -279,13 +279,13 @@ break_exit_meta = {}
 for item in rows:
     break_exit_meta = flow.metadata
     break
-break_exit_meta["vm_run_id"] = "run-1"
+break_exit_meta["sandbox_run_id"] = "run-1"
 def finalbody_alias_after_return():
     finalbody_meta = flow.metadata
     try:
         return None
     finally:
-        finalbody_meta["vm_run_id"] = "run-1"
+        finalbody_meta["sandbox_run_id"] = "run-1"
 aug_merged_meta = {}
 aug_merged_meta |= flow.metadata | {"firewall_action": "ALLOW"}
 aug_merged_meta["firewall_name"] = "github"
@@ -314,14 +314,14 @@ match match_payload:
         match_alias_after_case = flow.metadata
     case _:
         pass
-match_alias_after_case["vm_run_id"] = "run-1"
+match_alias_after_case["sandbox_run_id"] = "run-1"
 match match_payload:
     case _ if (guard_case_meta := flow.metadata) and False:
         pass
     case _:
-        guard_case_meta["vm_run_id"] = "run-1"
+        guard_case_meta["sandbox_run_id"] = "run-1"
 match flow.metadata:
-    case {"vm_run_id": run_id}:
+    case {"sandbox_run_id": run_id}:
         pass
 meta = flow.metadata
 match meta:
@@ -329,7 +329,7 @@ match meta:
         pass
 match flow.metadata:
     case captured_match_meta:
-        captured_match_meta["vm_run_id"] = "run-1"
+        captured_match_meta["sandbox_run_id"] = "run-1"
 match flow.metadata:
     case _ as as_match_meta:
         as_match_meta.get("firewall_name")
@@ -343,5 +343,5 @@ match flow.metadata:
     case {"payload": payload} as matched_meta:
         matched_meta["firewall_base"] = "https://api.example.com"
 match flow.metadata:
-    case guarded_match_meta if guarded_match_meta["vm_run_id"]:
+    case guarded_match_meta if guarded_match_meta["sandbox_run_id"]:
         pass

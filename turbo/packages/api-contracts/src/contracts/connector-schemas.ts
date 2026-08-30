@@ -123,6 +123,7 @@ export type ScopeDiffResponse = z.infer<typeof scopeDiffResponseSchema>;
 
 export const connectorOauthStartResponseSchema = z.object({
   authorizationUrl: z.string(),
+  connectionId: z.uuid().optional(),
 });
 
 export type ConnectorOauthStartResponse = z.infer<

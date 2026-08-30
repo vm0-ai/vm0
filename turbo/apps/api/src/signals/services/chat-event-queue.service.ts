@@ -194,24 +194,6 @@ export async function loadPendingChatQueueEvent(
   return { ...event, eventType: event.eventType };
 }
 
-export async function hasPendingUserChatQueueEvent(
-  db: ChatQueueReadDb,
-  chatThreadId: string,
-): Promise<boolean> {
-  const [event] = await db
-    .select({ id: chatEvents.id })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, chatThreadId),
-        pendingChatQueueEventCondition(db),
-        chatEventTypeIn(["input.prompt"]),
-      ),
-    )
-    .limit(1);
-  return event !== undefined;
-}
-
 /** Shared row lock for every authoritative queue claim or revocation. */
 export async function lockChatQueueThread(
   db: ChatQueueReadDb,

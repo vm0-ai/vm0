@@ -1,5 +1,98 @@
 # Changelog
 
+## [0.17.114](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.113...vsock-host-v0.17.114) (2026-08-30)
+
+## [0.17.113](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.112...vsock-host-v0.17.113) (2026-08-30)
+
+## [0.17.112](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.111...vsock-host-v0.17.112) (2026-08-30)
+
+## [0.17.111](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.110...vsock-host-v0.17.111) (2026-08-29)
+
+## [0.17.110](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.109...vsock-host-v0.17.110) (2026-08-28)
+
+## [0.17.109](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.108...vsock-host-v0.17.109) (2026-08-28)
+
+## [0.17.108](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.107...vsock-host-v0.17.108) (2026-08-28)
+
+## [0.17.107](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.106...vsock-host-v0.17.107) (2026-08-28)
+
+
+### Documentation
+
+* **vsock-host:** document copy byte limit ([#30058](https://github.com/vm0-ai/vm0/issues/30058)) ([fbdae7a](https://github.com/vm0-ai/vm0/commit/fbdae7a49e02e0df37eaa5fb2701e8d9a082257e))
+
+## [0.17.106](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.105...vsock-host-v0.17.106) (2026-08-28)
+
+## [0.17.105](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.104...vsock-host-v0.17.105) (2026-08-28)
+
+## [0.17.104](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.103...vsock-host-v0.17.104) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
+## [0.17.103](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.102...vsock-host-v0.17.103) (2026-08-28)
+
+## [0.17.102](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.101...vsock-host-v0.17.102) (2026-08-27)
+
+## [0.17.101](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.100...vsock-host-v0.17.101) (2026-08-27)
+
+## [0.17.100](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.99...vsock-host-v0.17.100) (2026-08-27)
+
+## [0.17.99](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.98...vsock-host-v0.17.99) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+* **rust:** avoid duplicating process stream capacity ([#29784](https://github.com/vm0-ai/vm0/issues/29784)) ([30918ec](https://github.com/vm0-ai/vm0/commit/30918ec96e76b1498fded4d16943fa6f005ae1bb))
+
+## [0.17.98](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.97...vsock-host-v0.17.98) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
+## [0.17.97](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.96...vsock-host-v0.17.97) (2026-08-26)
+
+## [0.17.96](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.95...vsock-host-v0.17.96) (2026-08-26)
+
+
+### Bug Fixes
+
+* **vsock:** bound file write response waits ([#29455](https://github.com/vm0-ai/vm0/issues/29455)) ([f9d9692](https://github.com/vm0-ai/vm0/commit/f9d9692d06e8f9574d2888397e0ab38ec2adc029))
+
+## [0.17.95](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.94...vsock-host-v0.17.95) (2026-08-26)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest state restore operation ([#29398](https://github.com/vm0-ai/vm0/issues/29398)) ([89521f7](https://github.com/vm0-ai/vm0/commit/89521f769af74c43034f04e5f7decc537ebff628))
+
+## [0.17.94](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.93...vsock-host-v0.17.94) (2026-08-25)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound chunked write temp names ([#29318](https://github.com/vm0-ai/vm0/issues/29318)) ([b13dcbb](https://github.com/vm0-ai/vm0/commit/b13dcbb28d961a8e30cbab4fdfafe19a30fa30dd))
+
+## [0.17.93](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.92...vsock-host-v0.17.93) (2026-08-25)
+
+## [0.17.92](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.91...vsock-host-v0.17.92) (2026-08-24)
+
+## [0.17.91](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.90...vsock-host-v0.17.91) (2026-08-24)
+
+## [0.17.90](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.89...vsock-host-v0.17.90) (2026-08-24)
+
+## [0.17.89](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.88...vsock-host-v0.17.89) (2026-08-24)
+
+
+### Performance Improvements
+
+* **runner:** specialize guest storage manifest invocation ([#28734](https://github.com/vm0-ai/vm0/issues/28734)) ([0255e57](https://github.com/vm0-ai/vm0/commit/0255e57603d27fe97ac342c97af98921dabf2ae9))
+
 ## [0.17.88](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.87...vsock-host-v0.17.88) (2026-08-21)
 
 ## [0.17.87](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.86...vsock-host-v0.17.87) (2026-08-21)

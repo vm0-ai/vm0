@@ -8,6 +8,7 @@ import { agents } from "@okouai/db/schema/agent";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
+import { webUrl } from "../../lib/web-url";
 import { db$ } from "../external/db";
 import { listConversations } from "../../lib/slack-client";
 import { decryptPersistentSecretValue } from "./crypto.utils";
@@ -54,10 +55,11 @@ function buildSlackInstallUrl(args: {
     return null;
   }
   const url = new URL(
-    `${apiUrlForPublicBrand(env("VM0_WEB_URL"), args.publicBrand)}/api/slack/oauth/install`,
+    `${apiUrlForPublicBrand(webUrl(), args.publicBrand)}/api/slack/oauth/install`,
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
+  url.searchParams.set("publicBrand", args.publicBrand);
   if (args.reinstall) {
     url.searchParams.set("reinstall", "1");
   }
@@ -74,10 +76,11 @@ function buildSlackConnectUrl(args: {
     return null;
   }
   const url = new URL(
-    `${apiUrlForPublicBrand(env("VM0_WEB_URL"), args.publicBrand)}/api/slack/oauth/connect`,
+    `${apiUrlForPublicBrand(webUrl(), args.publicBrand)}/api/slack/oauth/connect`,
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
+  url.searchParams.set("publicBrand", args.publicBrand);
   return url.toString();
 }
 

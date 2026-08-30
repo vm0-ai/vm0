@@ -1,4 +1,4 @@
-//! Claude Code result parsing and tool tracking.
+//! Claude Code tool tracking.
 
 use crate::events;
 use std::collections::HashMap;
@@ -113,67 +113,6 @@ impl StuckToolTracker {
     }
 }
 
-/// Summary of Claude Code's terminal `type=result` event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ClaudeResultSummary {
-    /// Claude Code's reported turn count for the run, when present.
-    pub num_turns: Option<u64>,
-
-    /// Semantic status of Claude Code's terminal result event.
-    pub status: ClaudeResultStatus,
-}
-
-/// Semantic status derived from Claude Code's terminal `type=result` event.
-///
-/// This describes only the event's recognized semantic evidence. It is
-/// independent of the CLI process exit status and the outcome of any later
-/// post-result cleanup. When the event contains conflicting evidence,
-/// recognized error evidence takes precedence over recognized success evidence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClaudeResultStatus {
-    /// The event contains recognized success evidence (`is_error` is `false` or
-    /// `subtype` is `"success"`) and no recognized error evidence.
-    Success,
-
-    /// The event contains recognized error evidence (`is_error` is `true` or
-    /// `subtype` is `"error"`).
-    ///
-    /// This status takes precedence over [`Self::Success`] when both kinds of
-    /// evidence are present.
-    Error,
-
-    /// The event contains neither recognized success nor recognized error
-    /// evidence.
-    ///
-    /// This status does not assert either success or failure.
-    Unknown,
-}
-
-impl ClaudeResultSummary {
-    pub(super) fn from_event(event: &serde_json::Value) -> Self {
-        Self {
-            num_turns: event.get("num_turns").and_then(|v| v.as_u64()),
-            status: ClaudeResultStatus::from_event(event),
-        }
-    }
-}
-
-impl ClaudeResultStatus {
-    fn from_event(event: &serde_json::Value) -> Self {
-        let is_error = event.get("is_error").and_then(|v| v.as_bool());
-        let subtype = event.get("subtype").and_then(|v| v.as_str());
-
-        if is_error == Some(true) || subtype == Some("error") {
-            return Self::Error;
-        }
-        if is_error == Some(false) || subtype == Some("success") {
-            return Self::Success;
-        }
-
-        Self::Unknown
-    }
-}
-
 pub(super) fn track_claude_tool_events(event: &serde_json::Value, tracker: &mut StuckToolTracker) {
     tracker.track_event(event)
 }
@@ -181,89 +120,114 @@ pub(super) fn track_claude_tool_events(event: &serde_json::Value, tracker: &mut 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
-    #[test]
-    fn claude_result_summary_captures_terminal_result_metadata() {
+    fn track_tool_use(tracker: &mut StuckToolTracker, id: &str, name: &str) {
         let event = serde_json::json!({
-            "type": "result",
-            "num_turns": 0,
-            "is_error": false,
-            "result": "done"
-        });
-
-        assert_eq!(
-            ClaudeResultSummary::from_event(&event),
-            ClaudeResultSummary {
-                num_turns: Some(0),
-                status: ClaudeResultStatus::Success,
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "id": id, "name": name}]
             }
-        );
-    }
-
-    #[test]
-    fn claude_result_summary_marks_is_error_result_as_error() {
-        let event = serde_json::json!({
-            "type": "result",
-            "num_turns": 1,
-            "is_error": true,
-            "result": "Error."
         });
 
-        assert_eq!(
-            ClaudeResultSummary::from_event(&event).status,
-            ClaudeResultStatus::Error
-        );
+        track_claude_tool_events(&event, tracker);
     }
 
-    #[test]
-    fn claude_result_summary_marks_error_subtype_as_error() {
+    fn track_tool_result(tracker: &mut StuckToolTracker, id: &str) {
         let event = serde_json::json!({
-            "type": "result",
-            "num_turns": 1,
-            "subtype": "error",
-            "result": "Error."
+            "type": "user",
+            "message": {
+                "content": [{"type": "tool_result", "tool_use_id": id}]
+            }
         });
 
-        assert_eq!(
-            ClaudeResultSummary::from_event(&event).status,
-            ClaudeResultStatus::Error
-        );
+        track_claude_tool_events(&event, tracker);
     }
 
-    #[test]
-    fn claude_result_summary_marks_ambiguous_result_as_unknown() {
-        let event = serde_json::json!({
-            "type": "result",
-            "num_turns": 1,
-            "result": "Done."
-        });
-
-        assert_eq!(
-            ClaudeResultSummary::from_event(&event).status,
-            ClaudeResultStatus::Unknown
-        );
+    fn fill_stuck_tool_tracker(tracker: &mut StuckToolTracker) {
+        for index in 0..MAX_TRACKED_STUCK_TOOLS {
+            track_tool_use(tracker, &format!("tool-{index}"), "WebFetch");
+        }
     }
 
     #[test]
     fn track_claude_tools_updates_in_flight_state() {
-        let tool_use = serde_json::json!({
-            "type": "assistant",
-            "message": {
-                "content": [{"type": "tool_use", "id": "tool-1", "name": "WebFetch"}]
-            }
-        });
-        let tool_result = serde_json::json!({
-            "type": "user",
-            "message": {
-                "content": [{"type": "tool_result", "tool_use_id": "tool-1"}]
-            }
-        });
         let mut tracker = StuckToolTracker::new();
 
-        track_claude_tool_events(&tool_use, &mut tracker);
+        track_tool_use(&mut tracker, "tool-1", "WebFetch");
         assert!(tracker.contains_key("tool-1"));
 
-        track_claude_tool_events(&tool_result, &mut tracker);
+        track_tool_result(&mut tracker, "tool-1");
         assert_eq!(tracker.len(), 0);
+    }
+
+    #[test]
+    fn stuck_tool_tracker_enforces_capacity_and_reuses_freed_slot() {
+        let mut tracker = StuckToolTracker::new();
+        fill_stuck_tool_tracker(&mut tracker);
+
+        assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS);
+
+        track_tool_use(&mut tracker, "overflow", "WebSearch");
+
+        assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS);
+        assert!(!tracker.contains_key("overflow"));
+        for index in 0..MAX_TRACKED_STUCK_TOOLS {
+            assert!(tracker.contains_key(&format!("tool-{index}")));
+        }
+
+        track_tool_result(&mut tracker, "tool-0");
+
+        assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS - 1);
+        assert!(!tracker.contains_key("tool-0"));
+
+        track_tool_use(&mut tracker, "later", "WebSearch");
+
+        assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS);
+        assert!(tracker.contains_key("later"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stuck_tool_tracker_refreshes_duplicate_at_capacity() {
+        let mut tracker = StuckToolTracker::new();
+        fill_stuck_tool_tracker(&mut tracker);
+        tokio::time::advance(Duration::from_secs(1)).await;
+
+        track_tool_use(&mut tracker, "tool-0", "WebSearch");
+
+        assert_eq!(tracker.len(), MAX_TRACKED_STUCK_TOOLS);
+        for index in 1..MAX_TRACKED_STUCK_TOOLS {
+            track_tool_result(&mut tracker, &format!("tool-{index}"));
+        }
+        assert_eq!(tracker.len(), 1);
+        assert_eq!(tracker.oldest_expired(1), None);
+        assert_eq!(
+            tracker.oldest_expired(0).map(|(name, _)| name),
+            Some(StuckToolName::WebSearch)
+        );
+    }
+
+    #[test]
+    fn stuck_tool_tracker_ignores_unsupported_tools() {
+        let mut tracker = StuckToolTracker::new();
+
+        track_tool_use(&mut tracker, "unsupported", "Bash");
+
+        assert_eq!(tracker.len(), 0);
+        assert!(!tracker.contains_key("unsupported"));
+    }
+
+    #[test]
+    fn stuck_tool_tracker_enforces_id_size_limit() {
+        let mut tracker = StuckToolTracker::new();
+        let maximum_id = "x".repeat(MAX_TRACKED_STUCK_TOOL_ID_BYTES);
+        let oversized_id = "y".repeat(MAX_TRACKED_STUCK_TOOL_ID_BYTES + 1);
+
+        track_tool_use(&mut tracker, &maximum_id, "WebFetch");
+        track_tool_use(&mut tracker, &oversized_id, "WebFetch");
+
+        assert_eq!(tracker.len(), 1);
+        assert!(tracker.contains_key(&maximum_id));
+        assert!(!tracker.contains_key(&oversized_id));
     }
 }

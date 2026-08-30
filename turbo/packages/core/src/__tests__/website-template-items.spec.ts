@@ -47,52 +47,27 @@ const EXPECTED_OPEN_DESIGN_WEBSITE_TEMPLATE_IDS = [
 
 const EXPECTED_WEBSITE_TEMPLATE_SHA256: Record<string, string> = {
   "black-slabs":
-    "38b2f826a86901e113b6e96b52563a839b729fc025fa793b1816d6149221bcf9",
+    "a2ba4a18fe6be58a05a99fcf755f696629c7cbfe295ec9e4f7685bef1eebff79",
   "blueprint-grid":
-    "b5f058f3ec7881e642e31e44e7de1f94465bae783de7fc2d42727bbfd109fad2",
+    "b0312334dd8ad42f2e8b219cc0522bd11b0de1d246d133b34d9b832352286468",
   "coastal-hotel":
-    "6bba8c10b85a248a475624767616280fa5d29b757ce230fb4115d746b8b61386",
+    "4df5f2099cee35c286af6af9e3413f496a6b45b9423d7308336ad8372468efa3",
   "dot-matrix":
-    "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+    "5d9f69b7f9625681b5b6183623cbece78c4f40dc6fe585ca799212d05e589623",
   "frame-stack":
-    "642db1ff8e1c98e4c390245cb0fcda5ce29503721bc2a513c38448b9d4e2d01c",
+    "b00cbbe2a39486545d695986b6d2be2def28916d4d21fc80591c64d326ddaa5a",
   "frosted-scatter":
-    "548a1faf423baa1c7c11befe41a54ae398cfb5c94df7f957eff108e2afcd613a",
+    "3aa13240db1b905b8222c3eb7eccacfeec44f93aba30e3f495e0e2f1dc395e58",
   "gallery-wall":
-    "b477b2f05c266eccbd2ab3b822744873dd8a31db03981283688549f2936bd5c6",
+    "41941dd3c92814efc30a36ec8c4929aecda48335619c8684c2e0d3c3d0cbd1fa",
   "glass-bloom":
-    "8707cce50c5477d43912fd18aa5ab6973aae4fd2287a092967fa25bf4ea38e7c",
+    "455acd8f36c55a30b3a58654f3f2d5d20b58fcef379b99a28c52aac54246eaf6",
   "serif-stack":
-    "718d617efd92033a68c476e85bb9231b1e0ff580c08a1f6bedf1b86058e97f13",
+    "f6eb7b64155f25e9361fbe4f6ea3eb5e7ed626445472e38d15af52b99204036a",
   "sticker-pop":
-    "8145c78f932ae942108fba00c5de367958f12b4c492d61bc1310892abe51ca66",
+    "3f7fb7f11dcf6524eec1aa2f94fb3df145ae78fc21b7797c23fdfd2ec5ec481a",
   "warm-cards":
-    "a795ef022e672d364c7a966eb042d38e460d4dcb996d5eecb0647aac5dd259df",
-};
-
-const EXPECTED_PREVIOUS_WEBSITE_TEMPLATE_SHA256: Record<string, string> = {
-  "black-slabs":
-    "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
-  "blueprint-grid":
-    "97c2edd94467bc414f0d9fc27cafa048cb2a7aaba3df5159df519a2bb2b97a4e",
-  "coastal-hotel":
-    "9633475124da5728cbf99a7333b494f74842232faaf675bc7878a3ebcdf59bcb",
-  "dot-matrix":
-    "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
-  "frame-stack":
-    "4587e93da51652c0c16c2d0706e8437001305214e4e6b8b1c18a6538b3daa127",
-  "frosted-scatter":
-    "00e343ace0673ece5903a2b6abbad6bb960c17796e0cfa5cce0bcab7e6bcdd7b",
-  "gallery-wall":
-    "c90332053b24572feadecb3994925ed317957e1cb17b0080cfebc6f4d9e93bd1",
-  "glass-bloom":
-    "0c61488baa294fb13c58aa129e3ae99f0cd4ff9125459761a1b2c1390b860f93",
-  "serif-stack":
-    "cf5137a7b6788f4d7cb24bda358a8e1971c0e7ed026d50e6cf292f6bf0cd0c14",
-  "sticker-pop":
-    "2086113018279f28e23489cf7a0f3663c37a23210fb106c4ed48d8c19923f78f",
-  "warm-cards":
-    "2721c013f76e1b2eea09282269b33d7f143b7e83ee3e701e83a0fcf7773852dd",
+    "52f5f9670b3d0fba697635d35784bc021a2150f1c84cc73af87c6fd049ed8234",
 };
 
 const EXPECTED_WEBSITE_TEMPLATE_V2_SHA256: Record<string, string> = {
@@ -291,34 +266,6 @@ describe("website template items", () => {
         return template.id.endsWith("-v2");
       }),
     ).toBe(false);
-  });
-
-  it("resolves every pre-cutover stable SHA for the disabled rollout", () => {
-    for (const item of WEBSITE_TEMPLATE_ITEMS) {
-      expect(
-        findWebsiteTemplatePackage(item.templateId, "previous"),
-      ).toMatchObject({
-        templateId: item.templateId,
-        resourceId: item.resourceId,
-        source: {
-          archive: {
-            type: "tar.gz",
-            sha256: EXPECTED_PREVIOUS_WEBSITE_TEMPLATE_SHA256[item.slug],
-          },
-        },
-      });
-      expect(
-        findWebsiteTemplateResource(item.resourceId, "previous"),
-      ).toMatchObject({
-        id: item.resourceId,
-        source: {
-          archive: {
-            type: "tar.gz",
-            sha256: EXPECTED_PREVIOUS_WEBSITE_TEMPLATE_SHA256[item.slug],
-          },
-        },
-      });
-    }
   });
 
   it("keeps built-in R2 website packages out of the unscoped generic template list", () => {

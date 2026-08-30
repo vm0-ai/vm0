@@ -28,7 +28,7 @@ interface SeedTelegramInstallationValues {
   readonly ownerUserId: string;
   readonly telegramBotId: string;
   readonly botUsername?: string | null;
-  readonly defaultComposeId?: string;
+  readonly defaultAgentId?: string;
   readonly composeUserId?: string;
   readonly composeName?: string;
   readonly agentName?: string;
@@ -111,7 +111,7 @@ export const seedTelegramInstallation$ = command(
       owner_user_id: values.ownerUserId,
       telegram_bot_id: values.telegramBotId,
       bot_username: values.botUsername,
-      default_compose_id: values.defaultComposeId,
+      default_agent_id: values.defaultAgentId,
       compose_user_id: values.composeUserId,
       compose_name: values.composeName,
       agent_name: values.agentName,

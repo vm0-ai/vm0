@@ -9,9 +9,9 @@ import {
   type SessionManager,
 } from "@earendil-works/pi-coding-agent";
 
+import type { PiPreheatedResourceSnapshot } from "./api-types";
 import { piAgentStream, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
-import type { PiPreheatedResourceSnapshot } from "./resources";
 import type { PiAgentModelConfig } from "./types";
 
 function registeredModelConfig(

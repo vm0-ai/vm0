@@ -713,7 +713,7 @@ mod tests {
     use api_contracts::generated::constants::client::headers::CLIENT_REQUEST_ID_HEADER;
     use httpmock::prelude::*;
     use serde_json::json;
-    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    use tokio::io::AsyncWriteExt as _;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 

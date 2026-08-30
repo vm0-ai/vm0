@@ -1,11 +1,13 @@
 """Authority validation request hook integration tests."""
 
+import encodings.punycode
 import json
 from unittest.mock import patch
 
 import pytest
 
 import flow_metadata_keys as metadata_keys
+import host_normalization
 import mitm_addon
 import request_authority
 import upstream_destination_binding
@@ -241,6 +243,72 @@ async def test_valid_pseudo_authority_allows_firewall_auth(
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
     assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+@pytest.mark.parametrize("http_version", ["HTTP/1.1", "HTTP/2.0", "HTTP/3"])
+async def test_rejects_oversized_unicode_authority_before_punycode_encoding(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    http_version,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    oversized_label = "".join(chr(0x4E00 + index) for index in range(1365))
+    assert len(oversized_label.encode()) == _MAX_HOST_HEADER_BYTES - 1
+    request_headers = (
+        headers(
+            ("Host", oversized_label),
+            ("Authorization", "Bearer sandbox-token"),
+        )
+        if http_version == "HTTP/1.1"
+        else headers(("Authorization", "Bearer sandbox-token"))
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=request_headers,
+    )
+    flow.request.http_version = http_version
+    if flow.request.is_http2 or flow.request.is_http3:
+        flow.request.authority = oversized_label
+    original_headers = tuple(flow.request.headers.fields)
+    real_normalize_label_text = host_normalization._normalize_label_text
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        patch.object(
+            host_normalization,
+            "_normalize_label_text",
+            wraps=real_normalize_label_text,
+        ) as normalize_label_text,
+        patch.object(
+            host_normalization,
+            "_validate_normalized_label_text",
+            side_effect=AssertionError("oversized authority reached normalized text validation"),
+        ) as validate_normalized_label_text,
+        patch.object(
+            encodings.punycode,
+            "punycode_encode",
+            side_effect=AssertionError("oversized authority reached punycode encoder"),
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert json.loads(flow.response.content)["error"] == "invalid_authority"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
+    assert tuple(flow.request.headers.fields) == original_headers
+    assert flow.request.headers["Authorization"] == "Bearer sandbox-token"
+    auth_fetch.assert_not_called()
+    normalize_label_text.assert_called_once_with(oversized_label)
+    validate_normalized_label_text.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -608,7 +676,7 @@ async def test_redacts_over_budget_host_from_network_log(
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_fields={"captureNetworkBodies": True},
+        sandbox_fields={"captureNetworkBodies": True},
     )
     oversized_host = b"a" * (_MAX_HOST_HEADER_BYTES + 1)
     flow = real_flow(

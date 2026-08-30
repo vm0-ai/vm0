@@ -4,12 +4,14 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishOrgSignal, publishUserSignal } from "../external/realtime";
@@ -60,6 +62,7 @@ const updateOfficialBot$ = command(
       readonly auth: TelegramRouteAuth;
       readonly botId: string;
       readonly selectedAgentId: string | null;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -88,7 +91,7 @@ const updateOfficialBot$ = command(
       .values({
         userId: args.auth.userId,
         orgId: args.auth.orgId,
-        selectedComposeId: args.selectedAgentId,
+        selectedAgentId: args.selectedAgentId,
       })
       .onConflictDoUpdate({
         target: [
@@ -96,7 +99,7 @@ const updateOfficialBot$ = command(
           telegramUserAgentPreferences.orgId,
         ],
         set: {
-          selectedComposeId: args.selectedAgentId,
+          selectedAgentId: args.selectedAgentId,
           updatedAt: nowDate(),
         },
       });
@@ -110,6 +113,7 @@ const updateOfficialBot$ = command(
         orgId: args.auth.orgId,
         userId: args.auth.userId,
         botId: args.botId,
+        publicBrand: args.publicBrand,
       }),
     );
     signal.throwIfAborted();
@@ -127,6 +131,7 @@ const updateCustomBot$ = command(
       readonly auth: TelegramRouteAuth;
       readonly botId: string;
       readonly defaultAgentId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -170,7 +175,7 @@ const updateCustomBot$ = command(
 
     await writeDb
       .update(telegramInstallations)
-      .set({ defaultComposeId: compose.id, updatedAt: nowDate() })
+      .set({ defaultAgentId: compose.id, updatedAt: nowDate() })
       .where(
         eq(telegramInstallations.telegramBotId, installation.telegramBotId),
       );
@@ -187,6 +192,7 @@ const updateCustomBot$ = command(
         orgId: args.auth.orgId,
         userId: args.auth.userId,
         botId: args.botId,
+        publicBrand: args.publicBrand,
       }),
     );
     signal.throwIfAborted();
@@ -199,6 +205,8 @@ const updateCustomBot$ = command(
 
 const updateBotInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand =
+    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   const { botId } = get(pathParamsOf(integrationsTelegramContract.updateBot));
   const bodyResult = await get(
     bodyResultOf(integrationsTelegramContract.updateBot),
@@ -220,6 +228,7 @@ const updateBotInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         auth,
         botId,
         selectedAgentId: bodyResult.data.selectedAgentId ?? null,
+        publicBrand,
       },
       signal,
     );
@@ -231,7 +240,12 @@ const updateBotInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return await set(
     updateCustomBot$,
-    { auth, botId, defaultAgentId: bodyResult.data.defaultAgentId },
+    {
+      auth,
+      botId,
+      defaultAgentId: bodyResult.data.defaultAgentId,
+      publicBrand,
+    },
     signal,
   );
 });

@@ -78,7 +78,7 @@ describe("custom connector auth storage schema", () => {
 
     expect(connectorOauthStates.connectorSlug.notNull).toBe(false);
     expect(connectorOauthStates.accountMutation.name).toBe("account_mutation");
-    expect(connectorOauthStates.accountMutation.notNull).toBe(false);
+    expect(connectorOauthStates.accountMutation.notNull).toBe(true);
     expect(connectorOauthStates.storageVersion.notNull).toBe(false);
     expect(connectorOauthStates.storageVersion.columnType).toBe("PgBigInt53");
     expect(names(stateConfig.checks)).toEqual(

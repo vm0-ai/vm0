@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { authRecovery$, clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
@@ -16,7 +16,7 @@ import {
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
 const apiFeatureSwitchClient$ = computed((get) => {
-  return createAuthedContractClient(zeroFeatureSwitchesContract, {
+  return createAuthedContractClient(featureSwitchesContract, {
     baseUrl: resolveApiBaseForTarget("api"),
     getAuthRecovery: () => {
       return get(authRecovery$);
@@ -51,26 +51,8 @@ export const imageRecognitionAvailable$ = computed((): boolean => {
   return true;
 });
 
-export const avatarTemplatesEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.JoggAiBuiltIn] ?? false;
-});
-
-export const homeStartCardsEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.HomeStartCards] ?? false;
-});
-
-export const videoModelSelectionEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.VideoModelSelection] ?? false;
-});
-
-export const imageModelSelectionEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.ImageModelSelection] ?? false;
-});
-
-export const composerSubmitDomReconcileEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.ComposerSubmitDomReconcile] ?? false
-  );
+export const composerImageAnnotationEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
 export const codexFastModeEnabled$ = computed((get): boolean => {
@@ -113,7 +95,7 @@ export const reloadFeatureSwitch$ = command(
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
-      enabled: combined[FeatureSwitchKey.ZeroDebug],
+      enabled: combined[FeatureSwitchKey.OkouDebug],
     });
   },
 );

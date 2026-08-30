@@ -143,7 +143,7 @@ async fn claim_marks_unreadable_job_path_failed() {
 /// Malformed .job is a permanent error (submit writes atomically, so it
 /// can't be "half-written"). claim() must delete the .job + .claim and
 /// write a .result so the submitter unblocks and discover stops returning
-/// the poisoned job on every poll.
+/// the poisoned job on every scan.
 #[tokio::test]
 async fn claim_handles_poison_job_json() {
     let dir = tempfile::tempdir().unwrap();

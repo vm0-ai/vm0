@@ -16,6 +16,8 @@ mod exec_output;
 mod exec_stdin;
 mod exec_validation;
 mod guest_dns_readiness;
+mod guest_state_restore;
+mod guest_storage_manifest;
 mod quiesce;
 mod reconnect;
 mod shutdown;

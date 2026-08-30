@@ -2,7 +2,7 @@ import type { Root } from "hast";
 import { command } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { navigateToChat$ } from "../zero-page/zero-nav.ts";
+import { navigateToChat$ } from "../okou-page/nav.ts";
 import { currentChatThreadId$, chatThreads$ } from "../agent-chat.ts";
 import {
   chatThreadByIdContract,
@@ -125,6 +125,8 @@ export interface UserMessageRenderDocument {
 export type EnrichedChatEvent = ChatEvent & {
   /** The parsed body, present once the event entered the render window. */
   tree: Root | undefined;
+  /** The current rich body failed to load and can be retried locally. */
+  richContentError: boolean;
   isQueued: boolean;
   userMessageRenderDocument: UserMessageRenderDocument | undefined;
 };

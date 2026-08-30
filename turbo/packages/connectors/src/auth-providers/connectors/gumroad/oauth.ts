@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
 
 const GUMROAD_TOKEN_URL = "https://gumroad.com/oauth/token";
 
@@ -28,6 +29,7 @@ interface GumroadRefreshResult {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
 }
 
 export function buildGumroadAuthorizationUrl(
@@ -97,7 +99,7 @@ export async function exchangeGumroadCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in ?? undefined,
-    scopes: data.scope ? data.scope.split(" ") : [],
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }
@@ -131,6 +133,7 @@ export async function refreshGumroadToken(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().nullable().optional(),
+      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -148,6 +151,7 @@ export async function refreshGumroadToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in ?? undefined,
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }
 

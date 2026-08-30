@@ -13,6 +13,7 @@ import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "./chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "./chat-thread-organization.service";
 import {
   isCodexFastServiceTierSupported,
   resolveDefaultModelFirstPin,
@@ -60,7 +61,7 @@ export function persistedChatThreadModelSnapshotColumns() {
     modelProviderType: chatThreads.modelProviderType,
     modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
     codexServiceTier: chatThreads.codexServiceTier,
-    agentComposeId: chatThreads.agentId,
+    agentId: chatThreads.agentId,
   };
 }
 
@@ -70,7 +71,7 @@ interface PersistedChatThreadModelSnapshot {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
   readonly codexServiceTier: CodexServiceTier | null;
-  readonly agentComposeId: string;
+  readonly agentId: string;
 }
 
 export type PersistedChatThreadModelResolutionPath =
@@ -139,7 +140,10 @@ function transactionResultWithoutPublish(
 
 async function loadLockedChatThreadModel(
   tx: ChatThreadModelTransaction,
-  params: Pick<ResolvePersistedChatThreadModelParams, "threadId" | "userId">,
+  params: Pick<
+    ResolvePersistedChatThreadModelParams,
+    "orgId" | "threadId" | "userId"
+  >,
 ): Promise<PersistedChatThreadModelSnapshot | undefined> {
   const [thread] = await tx
     .select(persistedChatThreadModelSnapshotColumns())
@@ -148,18 +152,20 @@ async function loadLockedChatThreadModel(
       and(
         eq(chatThreads.id, params.threadId),
         eq(chatThreads.userId, params.userId),
+        chatThreadOrganizationCondition(tx, params.orgId),
       ),
     )
     .limit(1)
     .for("update");
-  return thread?.agentComposeId
-    ? { ...thread, agentComposeId: thread.agentComposeId }
-    : undefined;
+  return thread?.agentId ? { ...thread, agentId: thread.agentId } : undefined;
 }
 
 async function loadChatThreadModel(
   db: Db,
-  params: Pick<ResolvePersistedChatThreadModelParams, "threadId" | "userId">,
+  params: Pick<
+    ResolvePersistedChatThreadModelParams,
+    "orgId" | "threadId" | "userId"
+  >,
 ): Promise<PersistedChatThreadModelSnapshot | undefined> {
   const [thread] = await db
     .select(persistedChatThreadModelSnapshotColumns())
@@ -168,12 +174,11 @@ async function loadChatThreadModel(
       and(
         eq(chatThreads.id, params.threadId),
         eq(chatThreads.userId, params.userId),
+        chatThreadOrganizationCondition(db, params.orgId),
       ),
     )
     .limit(1);
-  return thread?.agentComposeId
-    ? { ...thread, agentComposeId: thread.agentComposeId }
-    : undefined;
+  return thread?.agentId ? { ...thread, agentId: thread.agentId } : undefined;
 }
 
 function resolveCodexTier(args: {
@@ -246,10 +251,14 @@ async function persistReconciledChatThreadModel(args: {
   }
 
   const updatedAt = nowDate();
+  const pinColumns = chatThreadModelPinColumns(args.pin);
   await args.tx
     .update(chatThreads)
     .set({
-      ...chatThreadModelPinColumns(args.pin),
+      modelProviderId: pinColumns.modelProviderId,
+      modelProviderType: pinColumns.modelProviderType,
+      modelProviderCredentialScope: pinColumns.modelProviderCredentialScope,
+      selectedModel: pinColumns.selectedModel,
       codexServiceTier: args.persistedCodexServiceTier,
       updatedAt,
     })
@@ -257,6 +266,7 @@ async function persistReconciledChatThreadModel(args: {
       and(
         eq(chatThreads.id, args.params.threadId),
         eq(chatThreads.userId, args.params.userId),
+        chatThreadOrganizationCondition(args.tx, args.params.orgId),
       ),
     );
   if (args.selectedModelChanged) {
@@ -265,7 +275,7 @@ async function persistReconciledChatThreadModel(args: {
       userId: args.params.userId,
       orgId: args.params.orgId,
       chatThreadId: args.params.threadId,
-      agentComposeId: args.thread.agentComposeId,
+      agentId: args.thread.agentId,
       selectedModel: args.pin.selectedModel,
       createdAt: updatedAt,
     });
@@ -276,7 +286,7 @@ async function persistReconciledChatThreadModel(args: {
       userId: args.params.userId,
       orgId: args.params.orgId,
       chatThreadId: args.params.threadId,
-      agentComposeId: args.thread.agentComposeId,
+      agentId: args.thread.agentId,
       serviceTier: chatThreadServiceTierFromCodex(
         args.persistedCodexServiceTier,
       ),
@@ -458,7 +468,10 @@ export async function resolvePersistedChatThreadModel(
 
   await Promise.all([
     result.publishThreadList
-      ? publishThreadListChangedSafely(params.userId)
+      ? publishThreadListChangedSafely({
+          userId: params.userId,
+          orgId: params.orgId,
+        })
       : Promise.resolve(),
     result.publishThreadDetail
       ? publishChatThreadDetailChangedSafely(params.userId, params.threadId)

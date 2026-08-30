@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes } from "../../oauth/scope";
 
 const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 
@@ -94,7 +95,11 @@ export async function exchangeSlackCode(
 
   return {
     accessToken: data.authed_user.access_token,
-    scopes: data.authed_user.scope?.split(",") ?? [],
+    scopes: effectiveOAuthScopes(
+      data.authed_user.scope,
+      authCodeGrant.scopes,
+      ",",
+    ),
     userId: data.authed_user.id,
   };
 }

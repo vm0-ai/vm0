@@ -17,11 +17,11 @@ import { showAppSkeleton$ } from "../app-skeleton.ts";
 import {
   onboardGuard$,
   redirectToConfiguredOnboarding$,
-} from "../zero-page/onboard-guard.ts";
+} from "../okou-page/onboard-guard.ts";
 import {
   resetChatPageModelSelection$,
   setChatPageModelSelection$,
-} from "../zero-page/zero-chat-page.ts";
+} from "../okou-page/chat-page.ts";
 import { withCleanup } from "../utils.ts";
 
 interface ResolvedGenerationTemplate {

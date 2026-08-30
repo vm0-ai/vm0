@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { billingRedeemCodeContract } from "@okouai/api-contracts/contracts/billing";
 import { http, HttpResponse } from "msw";
@@ -21,6 +21,20 @@ interface SessionFixture {
   readonly userId: string;
   readonly orgId: string;
   readonly email: string;
+}
+
+function expectValueFree(diagnostics: string, values: readonly string[]): void {
+  for (const value of values) {
+    const forbiddenDerivatives = [
+      value,
+      String(value.length),
+      createHash("sha256").update(value).digest("hex"),
+      JSON.stringify(value),
+    ];
+    for (const derivative of forbiddenDerivatives) {
+      expect(diagnostics).not.toContain(derivative);
+    }
+  }
 }
 
 function setAdminSession(): SessionFixture {
@@ -51,7 +65,7 @@ function setAdminSession(): SessionFixture {
 describe("POST /api/billing/redeem-code", () => {
   beforeEach(() => {
     mockOptionalEnv("ATOM_URL", ATOM_URL);
-    mockOptionalEnv("VM0_MACHINE_SECRET_KEY", ATOM_MACHINE_SECRET_KEY);
+    mockOptionalEnv("OKOU_MACHINE_SECRET_KEY", ATOM_MACHINE_SECRET_KEY);
     context.mocks.clerk.m2m.createToken.mockResolvedValue({
       token: ATOM_M2M_TOKEN,
     });
@@ -139,7 +153,7 @@ describe("POST /api/billing/redeem-code", () => {
   });
 
   it("returns 503 when Atom Clerk M2M auth is not configured", async () => {
-    mockOptionalEnv("VM0_MACHINE_SECRET_KEY", undefined);
+    mockOptionalEnv("OKOU_MACHINE_SECRET_KEY", undefined);
     setAdminSession();
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
@@ -334,7 +348,7 @@ describe("POST /api/billing/redeem-code", () => {
     });
   });
 
-  it("redeems a code through Atom", async () => {
+  it("redeems a code with the canonical machine secret configuration", async () => {
     const fixture = setAdminSession();
     let requestedBody: unknown = null;
     let requestedAuthorization: string | null = null;
@@ -370,5 +384,17 @@ describe("POST /api/billing/redeem-code", () => {
       org_id: fixture.orgId,
       user_id: fixture.userId,
     });
+    expectValueFree(
+      JSON.stringify({
+        response: response.body,
+        logs: {
+          debug: context.mocks.axiomLogging.debug.mock.calls,
+          info: context.mocks.axiomLogging.info.mock.calls,
+          warn: context.mocks.axiomLogging.warn.mock.calls,
+          error: context.mocks.axiomLogging.error.mock.calls,
+        },
+      }),
+      [ATOM_MACHINE_SECRET_KEY],
+    );
   });
 });

@@ -412,7 +412,7 @@ When the operation does not need to be tied to the page lifecycle and only needs
 **Example 1: Cancel button for file upload** (`chat-draft.ts`)
 
 ```typescript
-function createChatAttachment(file: File): ZeroChatAttachment {
+function createChatAttachment(file: File): ChatAttachment {
   const resetSignal$ = resetSignal();
 
   // Explicit cancel: no new task started, just abort the current upload
@@ -751,7 +751,7 @@ Each factory call returns fresh `state()`/`computed()`/`command()` instances, so
 
 ```typescript
 // chat-message.ts
-const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+const internalLocalMessages$ = state<ChatEvent[]>([]);
 export const resetLocalMessages$ = command(({ set }) => {
   set(internalLocalMessages$, []);
 });
@@ -810,7 +810,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef } from "../utils.ts";
 
 export interface ChatThreadSignals {
-  messages$: Computed<Promise<ZeroChatMessage[]>>;
+  messages$: Computed<Promise<ChatEvent[]>>;
   allFinished$: Computed<Promise<boolean>>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
@@ -822,7 +822,7 @@ export interface ChatThreadSignals {
 
 ```typescript
 function createMessageState(threadData$: Computed<Promise<ThreadData | null>>) {
-  const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+  const internalLocalMessages$ = state<ChatEvent[]>([]);
 
   const messages$ = computed(async (get) => {
     const serverMsgs = (await get(threadData$))?.chatMessages ?? [];
@@ -911,7 +911,7 @@ export const setupChatPage$ = command(
 
     set(
       updatePage$,
-      createElement(ZeroChatThreadPage, { key: threadId, thread }),
+      createElement(ChatThreadPage, { key: threadId, thread }),
     );
     // ...
     await set(thread.loadMessages$, signal);
@@ -924,7 +924,7 @@ No manual cache needed — ccstate `computed` memoizes the last result. As long 
 **Step 5 — Components consume via props:**
 
 ```typescript
-export function ZeroChatThreadPage({ thread }: { thread: ChatThreadSignals }) {
+export function ChatThreadPage({ thread }: { thread: ChatThreadSignals }) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   // ... pass thread down to children ...

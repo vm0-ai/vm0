@@ -97,13 +97,13 @@ afterEach(() => {
 
 it("should write file", () => {
   const testPath = join(tempDir, "registry.json");
-  const registry = new VMRegistry(testPath);
+  const registry = new SandboxRegistry(testPath);
 
   registry.register("172.16.0.2", "run-123", "token-abc");
 
   // Verify actual file was written
   const content = JSON.parse(readFileSync(testPath, "utf-8"));
-  expect(content.vms["172.16.0.2"]).toMatchObject({
+  expect(content.sandboxes["172.16.0.2"]).toMatchObject({
     runId: "run-123",
     sandboxToken: "token-abc",
   });
@@ -376,15 +376,17 @@ When an API route wraps a service function, test through the route — not the s
 
 ```typescript
 // ❌ Bad — testing service function directly
-import { upsertOrgModelProvider } from "../../../lib/zero/model-provider/org-model-provider";
+import { createStore } from "ccstate";
+
+import { upsertOrgModelProvider$ } from "../../services/model-provider.service";
 
 it("should create a provider", async () => {
-  const result = await upsertOrgModelProvider(
-    orgId,
-    "anthropic-api-key",
-    "sk-test",
+  const result = await createStore().set(
+    upsertOrgModelProvider$,
+    { orgId, type: "anthropic-api-key", secret: "sk-test" },
+    signal,
   );
-  expect(result.type).toBe("anthropic-api-key");
+  expect(result.provider.type).toBe("anthropic-api-key");
 });
 ```
 
@@ -392,10 +394,14 @@ it("should create a provider", async () => {
 // ✅ Good — testing through the API endpoint
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { modelProvidersRoutes } from "../model-providers";
 
 const context = testContext();
-const client = setupApp({ context })(modelProvidersMainContract);
+const client = setupApp({ context, routes: modelProvidersRoutes })(
+  modelProvidersMainContract,
+);
 
 it("should create a provider", async () => {
   context.mocks.clerk.session(userId, orgId);

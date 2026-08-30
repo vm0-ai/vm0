@@ -23,7 +23,7 @@ import {
   type RedeemRequest,
 } from "@okouai/api-contracts/contracts/billing";
 import { builtInGenerationContract } from "@okouai/api-contracts/contracts/built-in-generation";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { imageIoGenerateContract } from "@okouai/api-contracts/contracts/image-io-generate";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
@@ -261,14 +261,14 @@ export function createBillingMediaApi(context: TestContext) {
   }
 
   function configureBillingPrices(): void {
-    mockEnv("ZERO_PRICE_PRO", "price_bdd_pro");
-    mockEnv("ZERO_PRICE_TEAM", "price_bdd_team");
-    mockEnv("ZERO_PRICE_CUSTOM_CREDIT_UNIT", "price_bdd_custom_credit_unit");
+    mockEnv("OKOU_PRICE_PRO", "price_bdd_pro");
+    mockEnv("OKOU_PRICE_TEAM", "price_bdd_team");
+    mockEnv("OKOU_PRICE_CUSTOM_CREDIT_UNIT", "price_bdd_custom_credit_unit");
   }
 
   function configureCampaign(): void {
     mockEnv(
-      "ZERO_ONE_TIME_CAMPAIGN",
+      "OKOU_ONE_TIME_CAMPAIGN",
       JSON.stringify({
         ZERO100: {
           priceId: "price_bdd_campaign",
@@ -590,7 +590,7 @@ export function createBillingMediaApi(context: TestContext) {
       switches: Readonly<Record<string, boolean>>,
     ) {
       const client = setupApp({ context, routes: featureSwitchesRoutes })(
-        zeroFeatureSwitchesContract,
+        featureSwitchesContract,
       );
       return await accept(
         client.update({

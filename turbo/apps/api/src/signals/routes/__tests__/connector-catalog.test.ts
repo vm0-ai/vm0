@@ -5,7 +5,7 @@ import {
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -44,7 +44,7 @@ async function enableFeatureSwitches(
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
   const client = setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
   await accept(
     client.update({
@@ -61,7 +61,7 @@ async function deleteFeatureSwitches(
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
   const client = setupApp({ context, routes: featureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
+    featureSwitchesContract,
   );
   await accept(
     client.delete({ headers: { authorization: "Bearer clerk-session" } }),
@@ -420,7 +420,7 @@ describe("GET /api/connector-catalog", () => {
     expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
-  it("returns 403 for diagnostics when ZeroDebug is disabled", async () => {
+  it("returns 403 for diagnostics when OkouDebug is disabled", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
@@ -440,11 +440,11 @@ describe("GET /api/connector-catalog", () => {
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
-  it("returns sanitized DB diagnostics when ZeroDebug is enabled", async () => {
+  it("returns sanitized DB diagnostics when OkouDebug is enabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ZeroDebug]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
     mocks.clerk.session(userId, orgId);
 
@@ -500,30 +500,8 @@ describe("GET /api/connector-catalog", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("hides connector discovery when its feature switch is disabled", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context, routes: connectorCatalogRoutes })(
-      connectorCatalogContract,
-    );
-    const response = await accept(
-      client.discovery({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
   it("returns bounded featured connectors and searches only slug or label", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ConnectorDiscovery]: true,
-    });
-    mocks.clerk.session(userId, orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
       connectorCatalogContract,
@@ -658,9 +636,14 @@ describe("GET /api/connector-catalog", () => {
 
   it("returns connected manual grant status from public API-created state", async () => {
     const actor = bdd.user();
-    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
-      apiKey: "sk-public-status",
-    });
+    const connection = await connectorsApi.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      {
+        apiKey: "sk-public-status",
+      },
+    );
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
@@ -684,6 +667,7 @@ describe("GET /api/connector-catalog", () => {
       tokenExpiresAt: null,
     });
     expect(openai?.connection).toStrictEqual({
+      id: connection.id,
       authMethod: "api-token",
       externalUsername: null,
       externalEmail: null,
@@ -848,9 +832,14 @@ describe("GET /api/connector-catalog", () => {
 
   it("returns exact connector metadata with the current connection status", async () => {
     const actor = bdd.user();
-    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
-      apiKey: "sk-public-detail-status",
-    });
+    const connection = await connectorsApi.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      {
+        apiKey: "sk-public-detail-status",
+      },
+    );
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
@@ -870,6 +859,7 @@ describe("GET /api/connector-catalog", () => {
       connected: true,
       connectionStatus: "connected",
       connection: {
+        id: connection.id,
         authMethod: "api-token",
         externalUsername: null,
         externalEmail: null,

@@ -1,10 +1,27 @@
 use crate::support::*;
-use ably_subscriber::protocol::{ProtocolMessage, action, encode_msg};
-use ably_subscriber::{Event, SubscribeConfig, TimingConfig, subscribe};
+use ably_subscriber::protocol::{ProtocolMessage, action, encode_msg, error_code};
+use ably_subscriber::{Error, Event, SubscribeConfig, Subscription, TimingConfig, subscribe};
 use futures_util::SinkExt;
 use httpmock::prelude::*;
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 use tokio_tungstenite::tungstenite;
+
+const TOKEN_EXCHANGE_RESPONSE_MAX_BYTES: usize = 64 * 1024;
+
+fn token_response_limit_error(result: Result<Subscription, Error>) -> Result<String, String> {
+    match result {
+        Err(Error::Protocol { code, message }) => {
+            assert_eq!(code, error_code::FAILED);
+            assert_eq!(message, "Token exchange response body exceeds 64 KiB limit");
+            Ok(message)
+        }
+        Err(other) => Err(format!(
+            "expected token response limit error, got {other:?}"
+        )),
+        Ok(_) => Err("expected token response limit error, got subscription".to_string()),
+    }
+}
 
 #[tokio::test]
 async fn http_token_exchange_error() {
@@ -63,7 +80,7 @@ async fn token_exchange_encodes_key_name_as_path_segment() {
 }
 
 #[tokio::test]
-async fn token_exchange_invalid_json_response_is_http_error() {
+async fn token_exchange_invalid_json_response_is_protocol_error() {
     let http = MockServer::start();
     http.mock(|when, then| {
         when.method(POST).path("/keys/testKey.testId/requestToken");
@@ -74,10 +91,143 @@ async fn token_exchange_invalid_json_response_is_http_error() {
 
     let result = subscribe(test_config(19999, http.port(), "ch")).await;
     match result {
-        Err(ably_subscriber::Error::Http(_)) => {}
-        Err(other) => panic!("expected Http error, got {other:?}"),
+        Err(Error::Protocol { code, message }) => {
+            assert_eq!(code, error_code::FAILED);
+            assert!(
+                message.starts_with("Token exchange response JSON decode failed:"),
+                "got: {message}"
+            );
+        }
+        Err(other) => panic!("expected Protocol error, got {other:?}"),
         Ok(_) => panic!("expected error, got Ok"),
     }
+}
+
+#[tokio::test]
+async fn token_exchange_rejects_declared_response_over_limit_without_body() {
+    let http = RawTokenServer::start().await.unwrap();
+    let http_port = http.port();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let server_task = tokio::spawn(async move {
+        let mut stream = http.accept_request().await.unwrap();
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    TOKEN_EXCHANGE_RESPONSE_MAX_BYTES + 1
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+        let _ = release_rx.await;
+    });
+
+    let result = tokio::time::timeout(
+        TEST_IO_TIMEOUT,
+        subscribe(test_config(19999, http_port, "ch")),
+    )
+    .await
+    .expect("token exchange waited for an oversized declared body");
+    token_response_limit_error(result).unwrap();
+
+    release_tx.send(()).unwrap();
+    join_server_task(server_task, "declared oversized token response")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn token_exchange_rejects_chunked_response_over_limit() {
+    const RESPONSE_MARKER: &[u8] = b"token-response-secret-marker";
+
+    let http = RawTokenServer::start().await.unwrap();
+    let http_port = http.port();
+    let server_task = tokio::spawn(async move {
+        let mut stream = http.accept_request().await.unwrap();
+        stream
+            .write_all(
+                b"HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+            )
+            .await
+            .unwrap();
+
+        let mut first = vec![b'a'; TOKEN_EXCHANGE_RESPONSE_MAX_BYTES / 2];
+        first[..RESPONSE_MARKER.len()].copy_from_slice(RESPONSE_MARKER);
+        let second = vec![b'b'; TOKEN_EXCHANGE_RESPONSE_MAX_BYTES + 1 - first.len()];
+        for chunk in [&first, &second] {
+            stream
+                .write_all(format!("{:X}\r\n", chunk.len()).as_bytes())
+                .await
+                .unwrap();
+            stream.write_all(chunk).await.unwrap();
+            stream.write_all(b"\r\n").await.unwrap();
+        }
+        let _ = stream.write_all(b"0\r\n\r\n").await;
+    });
+
+    let result = subscribe(test_config(19999, http_port, "ch")).await;
+    let message = token_response_limit_error(result).unwrap();
+    assert!(!message.contains("token-response-secret-marker"));
+
+    join_server_task(server_task, "chunked oversized token response")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn token_exchange_accepts_valid_response_at_limit() {
+    let http = RawTokenServer::start().await.unwrap();
+    let ws = MockAblyServer::start().await.unwrap();
+    let now = now_ms();
+    let token_body = |capability: &str| {
+        serde_json::to_vec(&serde_json::json!({
+            "token": "mock-token-abc",
+            "expires": now + 3_600_000,
+            "issued": now,
+            "capability": capability,
+        }))
+        .unwrap()
+    };
+    let base_body = token_body("");
+    let body = token_body(&"x".repeat(TOKEN_EXCHANGE_RESPONSE_MAX_BYTES - base_body.len()));
+    assert_eq!(body.len(), TOKEN_EXCHANGE_RESPONSE_MAX_BYTES);
+
+    let http_port = http.port();
+    let token_server_task = tokio::spawn(async move {
+        let mut stream = http.accept_request().await.unwrap();
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+        stream.write_all(&body).await.unwrap();
+    });
+
+    let ws_port = ws.port;
+    let websocket_server_task = tokio::spawn(async move {
+        let _conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http_port, "ch"))
+        .await
+        .unwrap();
+    expect_connected(&mut sub, "exact-limit token response")
+        .await
+        .unwrap();
+    sub.close();
+
+    join_server_task(token_server_task, "exact-limit token response")
+        .await
+        .unwrap();
+    join_server_task(websocket_server_task, "exact-limit token websocket")
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -212,6 +362,103 @@ async fn token_renewal() {
         "subscriber should stop renewing after receiving the long-lived token",
     )
     .await;
+}
+
+#[tokio::test]
+async fn repeated_short_lived_tokens_are_spaced_without_starving_messages() {
+    const SHORT_TOKEN_TTL_MS: i64 = 4_000;
+    const PRE_EXPIRY_RENEWAL_TIMEOUT: Duration = Duration::from_secs(3);
+
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+
+    let call_count = std::sync::Mutex::new(0u32);
+    let token_mock = http.mock(|when, then| {
+        when.method(POST).path("/keys/testKey.testId/requestToken");
+        then.respond_with(move |_req: &HttpMockRequest| {
+            let mut calls = call_count.lock().unwrap();
+            let call = *calls;
+            *calls += 1;
+
+            let now = now_ms();
+            let expires = if call == 0 {
+                now
+            } else {
+                now + SHORT_TOKEN_TTL_MS
+            };
+            let body = serde_json::to_vec(&serde_json::json!({
+                "token": format!("short-lived-token-{call}"),
+                "expires": expires,
+                "issued": now,
+            }))
+            .unwrap();
+
+            HttpMockResponse::builder()
+                .status(201)
+                .header("content-type", "application/json")
+                .body(body)
+                .build()
+        });
+    });
+
+    let ws_port = ws.port;
+    let (second_renewal_tx, second_renewal_rx) = tokio::sync::oneshot::channel::<()>();
+    let (test_complete_tx, test_complete_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+
+        let first_auth = expect_protocol_msg(&mut conn, "first short-token AUTH")
+            .await
+            .unwrap();
+        assert_eq!(first_auth.action, action::AUTH);
+
+        send_message(&mut conn, "ch", "between-renewals", serde_json::json!("ok"))
+            .await
+            .unwrap();
+
+        let second_auth = expect_protocol_msg(&mut conn, "second short-token AUTH")
+            .await
+            .unwrap();
+        assert_eq!(second_auth.action, action::AUTH);
+        second_renewal_tx.send(()).unwrap();
+        wait_for_test_observation(test_complete_rx, "short-token renewal assertions").await;
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event_with_timeout(
+        &mut sub,
+        RECONNECT_EVENT_TIMEOUT,
+        "message between short-token renewals",
+    )
+    .await
+    .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("between-renewals"));
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    assert_value_stable_for(
+        Duration::from_millis(250),
+        || token_mock.calls(),
+        2,
+        "short-lived replacement token should schedule a future renewal",
+    )
+    .await;
+
+    tokio::time::timeout(PRE_EXPIRY_RENEWAL_TIMEOUT, second_renewal_rx)
+        .await
+        .expect("short-lived replacement token should renew before expiry")
+        .unwrap();
+    assert_eq!(token_mock.calls(), 3);
+
+    test_complete_tx.send(()).unwrap();
+    join_server_task(server_task, "mock server").await.unwrap();
 }
 
 #[tokio::test]

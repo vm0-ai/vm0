@@ -287,6 +287,18 @@ describe("billing entitlement reconciliation", () => {
       [200],
     );
     expect(response.body).toStrictEqual({ success: true, downgraded: 2 });
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.anything(),
+    );
 
     const selected = await readState(selectedMarker);
     expect(statuses(selected)).toStrictEqual(RECONCILED_STATUSES);
@@ -455,10 +467,10 @@ describe("billing entitlement reconciliation", () => {
     "discovers an unbound $label subscription and replays its paid invoice",
     async ({ tier, priceId, credits }) => {
       mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-      mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
-      mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
-      mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_USAGE_PACK_PRO);
-      mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_USAGE_PACK_TEAM);
+      mockEnv("OKOU_PRICE_PRO", TEST_PRICE_PRO);
+      mockEnv("OKOU_PRICE_TEAM", TEST_PRICE_TEAM);
+      mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_PRO", TEST_PRICE_USAGE_PACK_PRO);
+      mockEnv("OKOU_PRICE_USAGE_PACK_PLAN_TEAM", TEST_PRICE_USAGE_PACK_TEAM);
       mockEnv("OKOU_PRICE_CUSTOM", TEST_PRICE_CUSTOM);
       const marker = randomUUID();
       onTestFinished(async () => {
@@ -507,10 +519,10 @@ describe("billing entitlement reconciliation", () => {
   it("deactivates usage packs removed from a shared Custom subscription", async () => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
     mockEnv(
-      "ZERO_PRICE_USAGE_PACK_PLAN_PRO",
+      "OKOU_PRICE_USAGE_PACK_PLAN_PRO",
       "price_plan_usage-pack-subscription",
     );
-    mockEnv("ZERO_PRICE_USAGE_PACK_20", TEST_PRICE_USAGE_PACK_20);
+    mockEnv("OKOU_PRICE_USAGE_PACK_20", TEST_PRICE_USAGE_PACK_20);
     mockEnv("OKOU_PRICE_CUSTOM", TEST_PRICE_CUSTOM);
     const marker = randomUUID();
     onTestFinished(async () => {
@@ -572,7 +584,7 @@ describe("billing entitlement reconciliation", () => {
 
   it("continues after individual Stripe subscription failures", async () => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
-    mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
+    mockEnv("OKOU_PRICE_PRO", TEST_PRICE_PRO);
     const retrievalMarker = randomUUID();
     const projectionMarker = randomUUID();
     const canceledMarker = randomUUID();
@@ -654,6 +666,24 @@ describe("billing entitlement reconciliation", () => {
       [200],
     );
     expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.anything(),
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Stripe subscription retrieval failed during discovery",
+      expect.objectContaining({
+        subscriptionId: retrievalPlan.stripeSubscriptionId,
+      }),
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Stripe subscription snapshots reconciled",
+      expect.anything(),
+    );
 
     await expect(readState(retrievalMarker)).resolves.toContainEqual({
       kind: "plan-subscription",

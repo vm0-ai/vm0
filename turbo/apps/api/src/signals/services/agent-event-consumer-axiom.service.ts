@@ -2,7 +2,6 @@ import type {
   AgentEvent,
   EventConsumerPayload,
 } from "../../lib/event-consumer/verify";
-import { logger } from "../../lib/log";
 import { getDatasetName, ingestAxiomDirect } from "../external/axiom";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -10,8 +9,6 @@ const AXIOM_EVENT_INGEST_TIMEOUT_MS = 10_000;
 const AXIOM_EVENT_DATA_MAX_BYTES = 900_000;
 const AXIOM_TRUNCATED_STRING_VALUE = "[truncated]";
 const AXIOM_TRUNCATED_STRING_SUFFIX = `\n\n${AXIOM_TRUNCATED_STRING_VALUE}`;
-
-const L = logger("agent-event-consumer:axiom");
 
 function serializedUtf8Bytes(
   value: unknown,
@@ -209,7 +206,6 @@ function reducedEventData(
 }
 
 function eventDataForAxiom(
-  runId: string,
   event: AgentEvent,
   encoder: InstanceType<typeof TextEncoder>,
 ): AgentEvent {
@@ -222,22 +218,7 @@ function eventDataForAxiom(
     return event;
   }
 
-  const reducedEvent = reducedEventData(
-    event,
-    serialized,
-    originalBytes,
-    encoder,
-  );
-  const deliveredBytes = serializedUtf8Bytes(reducedEvent, encoder);
-  L.warn("Reduced oversized agent event for Axiom", {
-    runId,
-    sequenceNumber: event.sequenceNumber,
-    eventType: event.type,
-    originalBytes,
-    deliveredBytes,
-    budgetBytes: AXIOM_EVENT_DATA_MAX_BYTES,
-  });
-  return reducedEvent;
+  return reducedEventData(event, serialized, originalBytes, encoder);
 }
 
 export async function ingestAxiomEvents(
@@ -252,7 +233,7 @@ export async function ingestAxiomEvents(
       userId: payload.context.userId,
       sequenceNumber: event.sequenceNumber,
       eventType: event.type,
-      eventData: eventDataForAxiom(payload.runId, event, encoder),
+      eventData: eventDataForAxiom(event, encoder),
     };
   });
   const result = await ingestAxiomDirect(

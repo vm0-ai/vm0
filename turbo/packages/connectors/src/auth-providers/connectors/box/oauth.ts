@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
 
 const BOX_TOKEN_URL = "https://api.box.com/oauth2/token";
 
@@ -27,6 +28,7 @@ interface BoxRefreshResult {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
 }
 
 export function buildBoxAuthorizationUrl(
@@ -98,7 +100,7 @@ export async function exchangeBoxCode(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: data.scope ? data.scope.split(" ") : authCodeGrant.scopes,
+    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
     userInfo,
   };
 }
@@ -132,6 +134,7 @@ export async function refreshBoxToken(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
+      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -148,6 +151,7 @@ export async function refreshBoxToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }
 

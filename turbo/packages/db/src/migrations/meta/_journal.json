@@ -1163,6 +1163,412 @@
       "when": 1787488401126,
       "tag": "0973_backfill_agent_run_built_in_model_key_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 974,
+      "version": "7",
+      "when": 1787494027221,
+      "tag": "0974_canonical_agent_writes",
+      "breakpoints": true
+    },
+    {
+      "idx": 975,
+      "version": "7",
+      "when": 1787535383123,
+      "tag": "0975_connector_authorization_account_mutation_not_null",
+      "breakpoints": true
+    },
+    {
+      "idx": 976,
+      "version": "7",
+      "when": 1787539555559,
+      "tag": "0976_contract_legacy_agent_run_model_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 977,
+      "version": "7",
+      "when": 1787543128609,
+      "tag": "0977_rename_zero_debug_feature_switch_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 978,
+      "version": "7",
+      "when": 1787547905480,
+      "tag": "0978_remove_retired_agent_compose_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 979,
+      "version": "7",
+      "when": 1787563682443,
+      "tag": "0979_expand_built_in_model_candidate_cooldown",
+      "breakpoints": true
+    },
+    {
+      "idx": 980,
+      "version": "7",
+      "when": 1787563692115,
+      "tag": "0980_backfill_built_in_model_candidate_cooldown",
+      "breakpoints": true
+    },
+    {
+      "idx": 981,
+      "version": "7",
+      "when": 1787569903484,
+      "tag": "0981_mean_sheva_callister",
+      "breakpoints": true
+    },
+    {
+      "idx": 982,
+      "version": "7",
+      "when": 1787573806810,
+      "tag": "0982_cloudy_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 983,
+      "version": "7",
+      "when": 1787573826867,
+      "tag": "0983_backfill_teams_okou_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 984,
+      "version": "7",
+      "when": 1787573857390,
+      "tag": "0984_rich_hemingway",
+      "breakpoints": true
+    },
+    {
+      "idx": 985,
+      "version": "7",
+      "when": 1787575492892,
+      "tag": "0985_dusty_johnny_blaze",
+      "breakpoints": true
+    },
+    {
+      "idx": 986,
+      "version": "7",
+      "when": 1787575504501,
+      "tag": "0986_backfill_official_slack_installation_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 987,
+      "version": "7",
+      "when": 1787577316793,
+      "tag": "0987_jittery_professor_monster",
+      "breakpoints": true
+    },
+    {
+      "idx": 988,
+      "version": "7",
+      "when": 1787579809905,
+      "tag": "0988_lyrical_baron_strucker",
+      "breakpoints": true
+    },
+    {
+      "idx": 989,
+      "version": "7",
+      "when": 1787581731852,
+      "tag": "0989_brief_crusher_hogan",
+      "breakpoints": true
+    },
+    {
+      "idx": 990,
+      "version": "7",
+      "when": 1787583884495,
+      "tag": "0990_robust_sauron",
+      "breakpoints": true
+    },
+    {
+      "idx": 991,
+      "version": "7",
+      "when": 1787586144704,
+      "tag": "0991_cutover_built_in_model_terminology",
+      "breakpoints": true
+    },
+    {
+      "idx": 992,
+      "version": "7",
+      "when": 1787605616998,
+      "tag": "0992_pink_forgotten_one",
+      "breakpoints": true
+    },
+    {
+      "idx": 993,
+      "version": "7",
+      "when": 1787638553789,
+      "tag": "0993_contract_legacy_built_in_model_cooldown_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 994,
+      "version": "7",
+      "when": 1787646537746,
+      "tag": "0994_last_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 995,
+      "version": "7",
+      "when": 1787649591954,
+      "tag": "0995_canonicalize_official_slack_installation_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 996,
+      "version": "7",
+      "when": 1787656280903,
+      "tag": "0996_curvy_ben_urich",
+      "breakpoints": true
+    },
+    {
+      "idx": 997,
+      "version": "7",
+      "when": 1787673905270,
+      "tag": "0997_agent_drafts_compatibility_relation",
+      "breakpoints": true
+    },
+    {
+      "idx": 998,
+      "version": "7",
+      "when": 1787714630974,
+      "tag": "0998_agent_drafts_physical_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 999,
+      "version": "7",
+      "when": 1787718296818,
+      "tag": "0999_cutover_connector_runtime_projections_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 1000,
+      "version": "7",
+      "when": 1787723858866,
+      "tag": "1000_wild_dagger",
+      "breakpoints": true
+    },
+    {
+      "idx": 1001,
+      "version": "7",
+      "when": 1787726838608,
+      "tag": "1001_contract_legacy_agent_drafts_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 1002,
+      "version": "7",
+      "when": 1787732005880,
+      "tag": "1002_opposite_dark_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 1003,
+      "version": "7",
+      "when": 1787734359079,
+      "tag": "1003_rich_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 1004,
+      "version": "7",
+      "when": 1787742799829,
+      "tag": "1004_workflow_compatibility_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 1005,
+      "version": "7",
+      "when": 1787742799830,
+      "tag": "1005_gorgeous_karma",
+      "breakpoints": true
+    },
+    {
+      "idx": 1006,
+      "version": "7",
+      "when": 1787742799831,
+      "tag": "1006_bridge_builtin_oauth_granted_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 1007,
+      "version": "7",
+      "when": 1787750541538,
+      "tag": "1007_flat_starhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 1008,
+      "version": "7",
+      "when": 1787794381799,
+      "tag": "1008_spotty_legion",
+      "breakpoints": true
+    },
+    {
+      "idx": 1009,
+      "version": "7",
+      "when": 1787809366082,
+      "tag": "1009_drop_builtin_oauth_scope_bridge",
+      "breakpoints": true
+    },
+    {
+      "idx": 1010,
+      "version": "7",
+      "when": 1787813971397,
+      "tag": "1010_late_odin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1011,
+      "version": "7",
+      "when": 1787818418078,
+      "tag": "1011_conscious_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 1012,
+      "version": "7",
+      "when": 1787820730994,
+      "tag": "1012_yellow_spyke",
+      "breakpoints": true
+    },
+    {
+      "idx": 1013,
+      "version": "7",
+      "when": 1787834151155,
+      "tag": "1013_calm_darwin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1014,
+      "version": "7",
+      "when": 1787839916785,
+      "tag": "1014_built_in_provider_bridge_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 1015,
+      "version": "7",
+      "when": 1787839938017,
+      "tag": "1015_canonical_built_in_provider_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1016,
+      "version": "7",
+      "when": 1787848958062,
+      "tag": "1016_short_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 1017,
+      "version": "7",
+      "when": 1787858160467,
+      "tag": "1017_vengeful_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 1018,
+      "version": "7",
+      "when": 1787870435556,
+      "tag": "1018_broad_maestro",
+      "breakpoints": true
+    },
+    {
+      "idx": 1019,
+      "version": "7",
+      "when": 1787884012384,
+      "tag": "1019_sturdy_firestar",
+      "breakpoints": true
+    },
+    {
+      "idx": 1020,
+      "version": "7",
+      "when": 1787886691692,
+      "tag": "1020_refresh_workflow_compatibility_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 1021,
+      "version": "7",
+      "when": 1787891848957,
+      "tag": "1021_bizarre_ronan",
+      "breakpoints": true
+    },
+    {
+      "idx": 1022,
+      "version": "7",
+      "when": 1787903227138,
+      "tag": "1022_workflow_physical_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1023,
+      "version": "7",
+      "when": 1787964065933,
+      "tag": "1023_org_plan_entitlement_restriction_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 1024,
+      "version": "7",
+      "when": 1787976463633,
+      "tag": "1024_org_plan_entitlement_restriction_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 1025,
+      "version": "7",
+      "when": 1787985501082,
+      "tag": "1025_curved_wither",
+      "breakpoints": true
+    },
+    {
+      "idx": 1026,
+      "version": "7",
+      "when": 1787991804403,
+      "tag": "1026_org_plan_entitlement_restriction_not_null",
+      "breakpoints": true
+    },
+    {
+      "idx": 1027,
+      "version": "7",
+      "when": 1787997705357,
+      "tag": "1027_remove_chat_event_legacy_snapshot_fallbacks",
+      "breakpoints": true
+    },
+    {
+      "idx": 1028,
+      "version": "7",
+      "when": 1787997747018,
+      "tag": "1028_contract_chat_event_snapshot_v7",
+      "breakpoints": true
+    },
+    {
+      "idx": 1029,
+      "version": "7",
+      "when": 1788048199922,
+      "tag": "1029_morning_brief_phase_a_cutover",
+      "breakpoints": true
+    },
+    {
+      "idx": 1030,
+      "version": "7",
+      "when": 1788059979897,
+      "tag": "1030_contract_legacy_workflow_compatibility_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 1031,
+      "version": "7",
+      "when": 1788068208560,
+      "tag": "1031_assert_legacy_workflow_routine_references",
+      "breakpoints": true
     }
   ]
 }

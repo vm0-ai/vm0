@@ -1,6 +1,6 @@
 {
   "name": "@okouai/api-contracts",
-  "version": "1.355.1",
+  "version": "1.381.9",
   "private": true,
   "type": "module",
   "exports": {
@@ -28,7 +28,6 @@
     "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.python-bindings.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit && tsc -p tsconfig.runtime-api-schema.json --noEmit"
   },
   "dependencies": {
-    "@trpc/server": "11.18.0",
     "@okouai/connectors": "workspace:*",
     "zod": "^4.3.6"
   },
