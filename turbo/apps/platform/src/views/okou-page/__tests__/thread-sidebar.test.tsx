@@ -36,6 +36,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
+import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import {
   chatEventRowsResponse,
   testContext,
@@ -321,9 +322,7 @@ function setupChatThread({
       if (syncThroughSeqId === undefined) {
         throw new Error("Published chat messages need a seqId");
       }
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
-        syncThroughSeqId,
-      });
+      createChatEvent(THREAD_ID, { syncThroughSeqId });
     },
   };
 }

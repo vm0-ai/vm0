@@ -120,10 +120,20 @@ async function publishChatDatabaseSignalNow(
   topic: string,
   payload: unknown,
 ): Promise<void> {
-  const channelName = getUserOrgChannelName(target.userId, target.orgId);
-  const channel = ablyClient().channels.get(channelName);
-  await channel.publish(topic, payload);
-  L.debug(`Published "${topic}" to ${channelName}`);
+  const channelNames = [
+    getUserOrgChannelName(target.userId, target.orgId),
+    // Old App -> new API rollout fallback: App builds loaded before #30272
+    // subscribe to the user channel. Remove after the replacement App is live
+    // and the client-version floor excludes those builds; follow-up #30334.
+    getUserChannelName(target.userId),
+  ];
+  const client = ablyClient();
+  await Promise.all(
+    channelNames.map(async (channelName) => {
+      await client.channels.get(channelName).publish(topic, payload);
+    }),
+  );
+  L.debug(`Published "${topic}" to ${channelNames.join(", ")}`);
 }
 
 function publishChatDatabaseSignal(

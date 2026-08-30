@@ -35,6 +35,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { foregroundReady$ } from "../../../signals/auth-retry.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 
 const context = testContext();
 
@@ -392,7 +393,7 @@ describe("zero sidebar account menu", () => {
     }
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
+        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
       ).toBeTruthy();
       expect(within(accountButton).queryByRole("status")).toBeNull();
     });
@@ -405,7 +406,7 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(
         within(accountButton).getByRole("status", {
-          name: "Realtime reconnecting",
+          name: "Realtime disconnected",
         }),
       ).toBeInTheDocument();
     });
@@ -449,7 +450,7 @@ describe("zero sidebar account menu", () => {
     }
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
+        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
       ).toBeTruthy();
     });
 
@@ -686,9 +687,7 @@ describe("zero sidebar account menu", () => {
       expect(
         context.mocks.ably.hasSubscription("billing:changed"),
       ).toBeTruthy();
-      expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
-      ).toBeTruthy();
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
       expect(
         context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
       ).toBeTruthy();
@@ -697,7 +696,7 @@ describe("zero sidebar account menu", () => {
     });
 
     let previousIndicatorRequests = indicatorRequests;
-    context.mocks.ably.trigger("threadListChanged");
+    changeChatThreadList();
     await waitFor(() => {
       expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
     });

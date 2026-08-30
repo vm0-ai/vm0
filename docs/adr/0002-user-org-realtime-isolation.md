@@ -20,7 +20,9 @@ client-side filtering or thread-to-organization inference.
 
 ## Consequences
 
-The API publishes `chatThreadMessageCreated` and `threadListChanged` exclusively
-to the `user-org:<userId>:<orgId>` channel for each user-org identity. The
-existing user channel remains available for unrelated user-scoped signals, but
-it no longer carries chat database invalidations.
+The permanent App consumes `chatThreadMessageCreated` and `threadListChanged`
+from the `user-org:<userId>:<orgId>` channel for each user-org identity. During
+the old-App rollout window, the API also mirrors those signals to the existing
+user channel for already-loaded clients. Follow-up #30334 removes that bounded
+compatibility publish after the client-version floor excludes pre-cutover App
+builds; the user-org channel remains the canonical topology.

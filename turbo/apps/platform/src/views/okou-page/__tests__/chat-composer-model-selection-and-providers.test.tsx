@@ -38,6 +38,7 @@ import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/wor
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
 import {
@@ -90,6 +91,8 @@ import {
   composerElementFrom,
   findComposerEditor,
 } from "./chat-composer-test-helpers.ts";
+
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
@@ -881,6 +884,8 @@ describe("chat composer models", () => {
         }
       | undefined;
     let modelSelectionUpdateCount = 0;
+    let threadEventRequests = 0;
+    let reconciledThreadEvent: ChatThreadEvent | null = null;
 
     mockBuiltInFastModel();
     mockChatLifecycle(context, {
@@ -894,11 +899,21 @@ describe("chat composer models", () => {
         sentBody = body;
       },
     });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      threadEventRequests += 1;
+      return respond(200, {
+        events: reconciledThreadEvent ? [reconciledThreadEvent] : [],
+        hasMore: false,
+      });
+    });
 
     detachedSetupPage({
       context,
       featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
       path: `/agents/${AGENT_ID}/chat`,
+    });
+    await waitFor(() => {
+      expect(threadEventRequests).toBeGreaterThan(0);
     });
 
     await user.click(await findComposerModel("GPT 5.6 Sol"));
@@ -932,27 +947,33 @@ describe("chat composer models", () => {
     const reconciledTitle = "Reconciled Fast thread";
     const reconciledSelectedModel = createdBody?.model ?? null;
     const reconciledServiceTier = createdBody?.serviceTier ?? null;
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      return respond(200, {
-        events: [
-          {
-            id: reconciledCreateEventId,
-            seqId: 1,
-            kind: "created",
-            chatThreadId: reconciledThreadId,
-            agentId: AGENT_ID,
-            title: reconciledTitle,
-            selectedModel: reconciledSelectedModel,
-            serviceTier: reconciledServiceTier,
-            computerUseHostId: null,
-            cloudBrowserEnabled: false,
-            createdAt: "2026-08-12T09:00:00Z",
-          },
-        ],
-        hasMore: false,
-      });
+    reconciledThreadEvent = {
+      id: reconciledCreateEventId,
+      seqId: 2,
+      kind: "created",
+      chatThreadId: reconciledThreadId,
+      agentId: AGENT_ID,
+      title: reconciledTitle,
+      selectedModel: reconciledSelectedModel,
+      serviceTier: reconciledServiceTier,
+      computerUseHostId: null,
+      cloudBrowserEnabled: false,
+      createdAt: "2026-08-12T09:00:00Z",
+    };
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
-    triggerAblyEvent("threadListChanged");
+    const threadEventRequestsBeforeInvalidation = threadEventRequests;
+    changeChatThreadList();
+    await waitFor(() => {
+      expect(threadEventRequests).toBeGreaterThan(
+        threadEventRequestsBeforeInvalidation,
+      );
+    });
     await waitFor(() => {
       expect(document.title).toBe(`${reconciledTitle} | VM0`);
     });
@@ -1572,8 +1593,15 @@ describe("chat composer models", () => {
     await expectComposerModel("GPT 5.6 Sol Fast");
 
     lifecycle.setCodexServiceTier(null);
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
     act(() => {
-      triggerAblyEvent("threadListChanged");
+      changeChatThreadList();
     });
     await expectComposerModel("GPT 5.6 Sol");
     await sendMessageInUI(
@@ -3535,7 +3563,14 @@ describe("chat composer models", () => {
       computerUseHostId: null,
       createdAt: "2026-07-22T09:00:00.000Z",
     };
-    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
+    changeChatThreadList();
     await waitFor(() => {
       expect(
         within(sideThread).getByText("Renamed other agent thread"),
