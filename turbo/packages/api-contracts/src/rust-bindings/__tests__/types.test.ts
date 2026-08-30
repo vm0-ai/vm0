@@ -103,6 +103,11 @@ const expectedBindings = [
     direction: "request",
   },
   {
+    rustModulePath: ["webhooks", "agent", "complete"],
+    rustTypeName: "Request",
+    direction: "request",
+  },
+  {
     rustModulePath: ["webhooks", "agent", "storages"],
     rustTypeName: "FileEntryWithHash",
     direction: "request",
@@ -238,6 +243,7 @@ describe("Rust type bindings", () => {
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod webhooks {");
     expect(firstRender).toContain("pub mod checkpoints {");
+    expect(firstRender).toContain("pub mod complete {");
     expect(firstRender).toContain("pub mod prepare_history {");
     expect(firstRender).toContain("pub mod prepare {");
     expect(firstRender).toContain("pub struct FileEntryWithHash {");
@@ -319,6 +325,10 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain(
       "pub versions: std::collections::BTreeMap<String, String>,",
     );
+    expect(firstRender).toContain("pub struct RequestCheckpoint {");
+    expect(firstRender).toContain("pub checkpoint: Option<RequestCheckpoint>,");
+    expect(firstRender).toContain("pub exit_code: i32,");
+    expect(firstRender).toContain("pub last_event_sequence: Option<u32>,");
     expect(firstRender).toContain("pub enum SessionHistoryEncoding {");
     expect(firstRender).toContain(
       "pub encoding: Option<SessionHistoryEncoding>,",

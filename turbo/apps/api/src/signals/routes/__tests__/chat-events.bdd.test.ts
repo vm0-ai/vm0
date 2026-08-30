@@ -2510,8 +2510,25 @@ describe("CHAT-02: queueing and recalling messages", () => {
       throw new Error("Expected terminal input to be reserved");
     }
 
-    await completeChatRunOk(active.runId, claimed.sandboxHeaders, {
-      activeInputDeliveryIds: [reserved.deliveryId],
+    const history = `bdd combined delivery history ${active.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const completed = await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 0,
+        activeInputDeliveryIds: [reserved.deliveryId],
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-combined-delivery-${active.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(completed.body).toStrictEqual({
+      success: true,
+      status: "completed",
     });
     await flushWaitUntilForTest();
 
@@ -5607,6 +5624,25 @@ describe("CHAT-02: model-first provider policies", () => {
       `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
       Buffer.from(h2, "utf8"),
     );
+    const combinedH2 = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(combinedH2.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
     const committedH2 = await webhooks.requestAgentCheckpoint(
       {
         runId: run.runId,
@@ -5623,13 +5659,6 @@ describe("CHAT-02: model-first provider policies", () => {
         `Expected H2 checkpoint success: ${committedH2Body.error.message}`,
       );
     }
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await waitForRunStatus(actor, run.runId, "completed");
-    await flushWaitUntilForTest();
     expect(modelCalls).toBe(1);
     expect(checkpointObjects.has(manifestKey)).toBeFalsy();
     expect(
@@ -5746,12 +5775,16 @@ describe("CHAT-02: model-first provider policies", () => {
       `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${invalidH2Hash}.blob`,
       invalidH2,
     );
-    const invalidCheckpoint = await webhooks.requestAgentCheckpoint(
+    const invalidCheckpoint = await webhooks.requestAgentComplete(
       {
         runId: failedHandoff.runId,
-        cliAgentType: "pi",
-        cliAgentSessionId: run.threadId,
-        cliAgentSessionHistoryHash: invalidH2Hash,
+        exitCode: 1,
+        error: "reject invalid native checkpoint",
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: invalidH2Hash,
+        },
       },
       failedClaim.sandboxHeaders,
       [400],
@@ -5772,12 +5805,15 @@ describe("CHAT-02: model-first provider policies", () => {
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(2);
     expect(checkpointObjects.has(failedManifestKey)).toBeFalsy();
-    const lateFailedH2 = await webhooks.requestAgentCheckpoint(
+    const lateFailedH2 = await webhooks.requestAgentComplete(
       {
         runId: failedHandoff.runId,
-        cliAgentType: "pi",
-        cliAgentSessionId: run.threadId,
-        cliAgentSessionHistoryHash: h2Hash,
+        exitCode: 1,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
       },
       failedClaim.sandboxHeaders,
       [400],
@@ -5841,12 +5877,15 @@ describe("CHAT-02: model-first provider policies", () => {
       cancelledHandoff.runId,
       cancelledClaim.sandboxHeaders,
     );
-    const lateCancelledH2 = await webhooks.requestAgentCheckpoint(
+    const lateCancelledH2 = await webhooks.requestAgentComplete(
       {
         runId: cancelledHandoff.runId,
-        cliAgentType: "pi",
-        cliAgentSessionId: run.threadId,
-        cliAgentSessionHistoryHash: h2Hash,
+        exitCode: 1,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
       },
       cancelledClaim.sandboxHeaders,
       [400],
