@@ -152,8 +152,8 @@ function checkpointInputForCompletion(
   return {
     auth: input.auth,
     body: {
-      runId: input.body.runId,
       ...input.body.checkpoint,
+      runId: input.body.runId,
     },
   };
 }
