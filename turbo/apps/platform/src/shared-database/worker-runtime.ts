@@ -7,7 +7,11 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  LEGACY_CHAT_EVENT_PROJECTION,
+  withoutLegacyChatEventProjection,
+  type ChatEventCursor,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import type { InboundMessage, TokenRequest } from "ably";
 import type { IDBPDatabase } from "idb";
@@ -75,7 +79,8 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
     : {
         sinceSeqId: cursor.lastSeqId,
         sinceEventId: cursor.lastEventId,
-        sinceProjection: cursor.projection,
+        // Keep the current SharedWorker compatible with the pre-Stage-1 API.
+        sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
         limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
       };
 }
@@ -984,7 +989,7 @@ export class SharedDatabaseWorkerRuntime {
       }
       const pageRows = page.body.rows;
       remoteRows = mergeChatEventRows([remoteRows, pageRows]);
-      cursor = page.body.cursor;
+      cursor = withoutLegacyChatEventProjection(page.body.cursor);
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
       loadNextPage = confirmColdStartTail || page.body.hasMore;
@@ -1055,7 +1060,6 @@ export class SharedDatabaseWorkerRuntime {
           : {
               lastEventId: snapshot.body.lastEventId,
               lastSeqId: snapshot.body.lastSeqId,
-              projection: snapshot.body.projection,
             },
     };
   }

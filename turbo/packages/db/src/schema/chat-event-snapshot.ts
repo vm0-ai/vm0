@@ -10,7 +10,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { LegacyChatEventProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreads } from "./chat-thread";
 
 /**
@@ -32,7 +32,7 @@ export const chatEventSnapshots = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    /** Highest physical stream position covered, including projection-omitted rows. */
+    /** Highest physical stream position covered, including body-omitted rows. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
     /** Last physical event observed through the coverage watermark. */
     lastEventId: uuid("last_event_id").notNull(),
@@ -44,9 +44,9 @@ export const chatEventSnapshots = pgTable(
     archiveSchemaVersion: integer("archive_schema_version")
       .default(7)
       .notNull(),
-    /** Canonical output.tool-free projection. */
+    /** Stage 1 tombstone for the still-physical legacy projection column. */
     projection: text("projection")
-      .$type<ChatEventSnapshotProjection>()
+      .$type<LegacyChatEventProjection>()
       .default("tool-redacted")
       .notNull(),
     /** Immutable content-addressed object referenced by this pointer. */

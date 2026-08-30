@@ -4,10 +4,9 @@ import {
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
-  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  withLegacyChatEventProjection,
   type ChatEventCursor,
-  type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { logger } from "../log.ts";
 import { onRejection } from "../utils.ts";
@@ -54,14 +53,6 @@ function storedChatEventRow(raw: unknown): ChatEventRow {
   return chatEventRowSchema.parse(raw);
 }
 
-function isChatEventSnapshotProjection(
-  value: unknown,
-): value is ChatEventSnapshotProjection {
-  return CHAT_EVENT_SNAPSHOT_PROJECTIONS.some((projection) => {
-    return projection === value;
-  });
-}
-
 function storedChatEventCursor(raw: unknown): ChatEventCursor {
   if (
     typeof raw !== "object" ||
@@ -85,16 +76,9 @@ function storedChatEventCursor(raw: unknown): ChatEventCursor {
   if (typeof raw.lastEventId !== "string" || raw.lastSeqId === 0) {
     throw new Error("Invalid cached Chat Event cursor");
   }
-  if (
-    !("projection" in raw) ||
-    !isChatEventSnapshotProjection(raw.projection)
-  ) {
-    throw new Error("Invalid cached Chat Event cursor");
-  }
   return {
     lastEventId: raw.lastEventId,
     lastSeqId: raw.lastSeqId,
-    projection: raw.projection,
   };
 }
 
@@ -135,7 +119,7 @@ function createRowReadStore(
         return [];
       }
       // A cursor versions the whole row generation. Reject it before exposing
-      // rows so a retired cache shape cannot enter the current projection.
+      // rows so a retired cache shape cannot enter the current row stream.
       storedChatEventCursor(rawCursor);
       const index = tx
         .objectStore(storeName)
@@ -171,11 +155,8 @@ function createRowWriteStore(
         tx.objectStore(cursorStoreName).put({
           threadId,
           schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          lastEventId: cursor.lastEventId,
-          lastSeqId: cursor.lastSeqId,
-          ...(cursor.lastEventId === null || cursor.projection === undefined
-            ? {}
-            : { projection: cursor.projection }),
+          // Keep the pre-Stage-1 shape writable until old App readers drain.
+          ...withLegacyChatEventProjection(cursor),
         }),
       );
       await Promise.all([...requests, tx.done]);
@@ -202,11 +183,8 @@ function createRowWriteStore(
         tx.objectStore(cursorStoreName).put({
           threadId,
           schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          lastEventId: cursor.lastEventId,
-          lastSeqId: cursor.lastSeqId,
-          ...(cursor.lastEventId === null || cursor.projection === undefined
-            ? {}
-            : { projection: cursor.projection }),
+          // Keep the pre-Stage-1 shape writable until old App readers drain.
+          ...withLegacyChatEventProjection(cursor),
         }),
         tx.done,
       ]);

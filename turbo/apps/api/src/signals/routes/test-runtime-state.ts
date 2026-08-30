@@ -9,10 +9,7 @@ import {
   type TestRuntimeStateActionBody,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
@@ -1874,10 +1871,6 @@ async function updateChatEventSnapshotHeadFixture(
           chatEventSnapshots.archiveSchemaVersion,
           CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         ),
-        eq(
-          chatEventSnapshots.projection,
-          CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-        ),
       ),
     )
     .limit(1);
@@ -2005,10 +1998,6 @@ async function chatEventFixtureActionResponse(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           ),
-          eq(
-            chatEventSnapshots.projection,
-            CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-          ),
         ),
       )
       .limit(1),
@@ -2021,10 +2010,6 @@ async function chatEventFixtureActionResponse(
           eq(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
-          eq(
-            chatEventSnapshots.projection,
-            CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
           ),
         ),
       ),

@@ -136,6 +136,12 @@ describe("Chat Event Raw Event cursor contract", () => {
       querySchema.safeParse({
         sinceSeqId: 9,
         sinceEventId: "00000000-0000-4000-8000-000000000009",
+      }).success,
+    ).toBeTruthy();
+    expect(
+      querySchema.safeParse({
+        sinceSeqId: 9,
+        sinceEventId: "00000000-0000-4000-8000-000000000009",
         sinceProjection: "tool-redacted",
       }).success,
     ).toBeTruthy();

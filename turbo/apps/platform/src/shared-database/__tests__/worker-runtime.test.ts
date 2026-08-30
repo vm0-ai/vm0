@@ -8,6 +8,7 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { openDB } from "idb";
@@ -633,6 +634,9 @@ describe("shared database worker runtime", () => {
       chatThreadEventsContract.rows,
       ({ query, query: requestQuery, respond }) => {
         requestedSeqIds.push(requestQuery.sinceSeqId);
+        expect(query).toMatchObject({
+          sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
+        });
         return respond(
           200,
           chatEventRowsResponse(

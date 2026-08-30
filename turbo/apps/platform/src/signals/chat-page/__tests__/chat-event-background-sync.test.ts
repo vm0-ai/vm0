@@ -289,7 +289,6 @@ describe("chat event background sync", () => {
         cursor: {
           lastEventId: lastCachedRow.id,
           lastSeqId: lastCachedRow.seqId,
-          projection: "tool-redacted",
         },
       },
       context.signal,
@@ -344,7 +343,6 @@ describe("chat event background sync", () => {
         cursor: {
           lastEventId: lastCachedRow.id,
           lastSeqId: lastCachedRow.seqId,
-          projection: "tool-redacted",
         },
       },
       context.signal,

@@ -11,8 +11,8 @@ import { join } from "node:path";
 
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
@@ -28,7 +28,12 @@ const EVENT_FILE_PATTERN = /^event-SEQ_ID_(\d+)\.json$/;
 const CACHE_FORMAT_FILE = ".okou-chat-event-schema-version";
 
 function cacheFormatBody(): string {
-  return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION}\n`;
+  // Keep the pre-Stage-1 writer shape until older CLI readers drain.
+  return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${LEGACY_CHAT_EVENT_PROJECTION}\n`;
+}
+
+function versionOnlyCacheFormatBody(): string {
+  return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
 }
 
 type ManagedHistoryFile =
@@ -105,10 +110,8 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 
 async function hasCurrentCacheFormat(directory: string): Promise<boolean> {
   try {
-    return (
-      (await readFile(join(directory, CACHE_FORMAT_FILE), "utf8")) ===
-      cacheFormatBody()
-    );
+    const body = await readFile(join(directory, CACHE_FORMAT_FILE), "utf8");
+    return body === cacheFormatBody() || body === versionOnlyCacheFormatBody();
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
       return false;
@@ -194,7 +197,6 @@ async function localSnapshotCursor(args: {
       cursor: {
         lastEventId: parsed.lastEventId,
         lastSeqId: args.snapshot.seqId,
-        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
       },
     };
   } catch {
@@ -253,7 +255,6 @@ async function localHistoryState(args: {
       cursor = {
         lastEventId: row.id,
         lastSeqId: row.seqId,
-        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
       };
     } catch {
       return { kind: "invalid" };
@@ -325,7 +326,6 @@ async function syncRows(args: {
             threadId: args.threadId,
             sinceEventId: cursor.lastEventId,
             sinceSeqId: cursor.lastSeqId,
-            sinceProjection: cursor.projection,
             limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
           },
     );
@@ -424,7 +424,6 @@ async function rebuildRawChatHistory(args: {
           : {
               lastEventId: snapshot.lastEventId,
               lastSeqId: snapshot.lastSeqId,
-              projection: snapshot.projection,
             };
     }
 

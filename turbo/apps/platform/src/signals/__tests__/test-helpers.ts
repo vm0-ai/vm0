@@ -1,8 +1,10 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
+  LEGACY_CHAT_EVENT_PROJECTION,
+  withLegacyChatEventProjection,
   type ChatEventCursor,
-  type ChatEventSnapshotProjection,
+  type LegacyChatEventCursor,
+  type LegacyChatEventProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { createStore, type Store } from "ccstate";
 import { afterEach, beforeAll } from "vitest";
@@ -32,21 +34,20 @@ export function chatEventRowsResponse(
   query: {
     readonly sinceSeqId: number;
     readonly sinceEventId?: string;
-    readonly sinceProjection?: ChatEventSnapshotProjection;
+    readonly sinceProjection?: LegacyChatEventProjection;
   },
   options: {
-    readonly cursor?: ChatEventCursor;
+    readonly cursor?: ChatEventCursor | LegacyChatEventCursor;
     readonly hasMore?: boolean;
-    readonly projection?: ChatEventSnapshotProjection;
+    readonly projection?: LegacyChatEventProjection;
   } = {},
 ): {
   readonly rows: ChatEventRow[];
-  readonly cursor: ChatEventCursor;
+  readonly cursor: LegacyChatEventCursor;
   readonly hasMore: boolean;
-  readonly projection: ChatEventSnapshotProjection;
+  readonly projection: LegacyChatEventProjection;
 } {
-  const projection =
-    options.projection ?? CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION;
+  const projection = options.projection ?? LEGACY_CHAT_EVENT_PROJECTION;
   const lastRow = rows.at(-1);
   let cursor: ChatEventCursor;
   if (options.cursor !== undefined) {
@@ -57,23 +58,18 @@ export function chatEventRowsResponse(
       // cursors are UUIDs. Normalize only the mock cursor boundary.
       lastEventId: testCursorEventId(lastRow),
       lastSeqId: lastRow.seqId,
-      projection,
     };
   } else if (query.sinceEventId !== undefined) {
-    if (query.sinceProjection === undefined) {
-      throw new Error("Current Chat Event row cursors require a projection");
-    }
     cursor = {
       lastEventId: query.sinceEventId,
       lastSeqId: query.sinceSeqId,
-      projection: query.sinceProjection,
     };
   } else {
     cursor = { lastEventId: null, lastSeqId: 0 };
   }
   return {
     rows: [...rows],
-    cursor,
+    cursor: withLegacyChatEventProjection(cursor),
     hasMore: options.hasMore ?? false,
     projection,
   };

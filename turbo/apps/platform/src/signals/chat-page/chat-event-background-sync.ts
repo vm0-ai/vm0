@@ -85,7 +85,6 @@ const coldStartChatThreadRows$ = command(
         : {
             lastEventId: snapshot.lastEventId,
             lastSeqId: snapshot.lastSeqId,
-            projection: snapshot.projection,
           };
     await set(
       replaceIndexedDbChatEventRows$,

@@ -3,6 +3,7 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
@@ -12,7 +13,10 @@ import {
   testContext,
   chatEventRowsResponse,
 } from "../../__tests__/test-helpers.ts";
-import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
+import {
+  CHAT_EVENT_CURSOR_STORE,
+  CHAT_EVENT_ROWS_STORE,
+} from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
@@ -128,7 +132,6 @@ async function writeCachedRows(rows: readonly ChatEventRow[]): Promise<void> {
       cursor: {
         lastEventId: lastRow.id,
         lastSeqId: lastRow.seqId,
-        projection: "tool-redacted",
       },
     },
     context.signal,
@@ -382,9 +385,25 @@ describe("chat event snapshot read", () => {
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const appDb = await openTestChatDb();
-    await writeCachedRows([promptEventRow, assistantEventRow]);
+    const seed = appDb.transaction(
+      [CHAT_EVENT_ROWS_STORE, CHAT_EVENT_CURSOR_STORE],
+      "readwrite",
+    );
+    await Promise.all([
+      seed.objectStore(CHAT_EVENT_ROWS_STORE).put(promptEventRow),
+      seed.objectStore(CHAT_EVENT_ROWS_STORE).put(assistantEventRow),
+      seed.objectStore(CHAT_EVENT_CURSOR_STORE).put({
+        threadId,
+        schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        lastEventId: assistantEventRow.id,
+        lastSeqId: assistantEventRow.seqId,
+      }),
+      seed.done,
+    ]);
+    const positiveCursorProjections: (string | undefined)[] = [];
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === 2) {
+        positiveCursorProjections.push(query.sinceProjection);
         return respond(200, chatEventRowsResponse([tailEventRow], query));
       }
       return respond(200, chatEventRowsResponse([], query));
@@ -412,6 +431,18 @@ describe("chat event snapshot read", () => {
         appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
       ).resolves.toStrictEqual(tailEventRow);
     });
+    await expect(
+      appDb.get(CHAT_EVENT_CURSOR_STORE, threadId),
+    ).resolves.toStrictEqual({
+      threadId,
+      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      lastEventId: tailEventRow.id,
+      lastSeqId: tailEventRow.seqId,
+      projection: LEGACY_CHAT_EVENT_PROJECTION,
+    });
+    expect(positiveCursorProjections).toStrictEqual([
+      LEGACY_CHAT_EVENT_PROJECTION,
+    ]);
   });
 
   it("background-cold-starts raw rows and forwards them to an active thread", async () => {
