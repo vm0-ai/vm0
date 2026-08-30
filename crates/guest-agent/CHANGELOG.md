@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.82.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.21...guest-agent-v0.82.22) (2026-08-30)
+
+
+### Bug Fixes
+
+* interrupt active codex turns before shutdown ([#30344](https://github.com/vm0-ai/vm0/issues/30344)) ([2270569](https://github.com/vm0-ai/vm0/commit/2270569209f12ec58078cee520878409b4f15041))
+* preserve codex per-turn token usage ([#30337](https://github.com/vm0-ai/vm0/issues/30337)) ([c9ef6c1](https://github.com/vm0-ai/vm0/commit/c9ef6c1e407cf07ca71a1ac7bc0bfccfad3bf205))
+
 ## [0.82.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.20...guest-agent-v0.82.21) (2026-08-30)
 
 

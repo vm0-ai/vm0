@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.812.3](https://github.com/vm0-ai/vm0/compare/app-v0.812.2...app-v0.812.3) (2026-08-30)
+
+
+### Bug Fixes
+
+* **platform:** align pinned agent shortcuts with sidebar navigation ([#30338](https://github.com/vm0-ai/vm0/issues/30338)) ([81834c3](https://github.com/vm0-ai/vm0/commit/81834c35a51d4ce5920946acdd3712d4c8c9a21d))
+
+
+### Refactoring
+
+* clear app and connector lint warnings ([#30350](https://github.com/vm0-ai/vm0/issues/30350)) ([36e363e](https://github.com/vm0-ai/vm0/commit/36e363e2bd57c38ba82c541cb80e17c568551364))
+* remove shared chat database feature switch ([#30272](https://github.com/vm0-ai/vm0/issues/30272)) ([2210065](https://github.com/vm0-ai/vm0/commit/221006596f337e8d50882a3c427b2cdd56619d87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.11
+    * @okouai/connectors bumped to 1.210.8
+    * @okouai/core bumped to 8.603.3
+
 ## [0.812.2](https://github.com/vm0-ai/vm0/compare/app-v0.812.1...app-v0.812.2) (2026-08-30)
 
 
