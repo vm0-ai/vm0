@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.14](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.13...guest-contracts-v0.12.14) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api url root legacy reader ([#30293](https://github.com/vm0-ai/vm0/issues/30293)) ([acf0976](https://github.com/vm0-ai/vm0/commit/acf09762659b1c0c112e51948b2dda9670fe5240))
+* **guest:** retire timing tuning legacy readers ([#30303](https://github.com/vm0-ai/vm0/issues/30303)) ([27477c4](https://github.com/vm0-ai/vm0/commit/27477c4cea651fc86fbea0194bd438946e6581ad))
+
 ## [0.12.13](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.12...guest-contracts-v0.12.13) (2026-08-30)
 
 
