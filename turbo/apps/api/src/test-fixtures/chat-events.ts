@@ -1083,6 +1083,59 @@ export async function holdCheckpointReadsFixture(args: {
 }
 
 /**
+ * Holds one run row so a route test can order terminal transitions that take
+ * the checkpoint lifecycle lock before the row lock.
+ */
+export async function holdRunTransitionRowFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the Run transition lock holder pid");
+    }
+    const [run] = await tx
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, args.runId))
+      .for("update")
+      .limit(1);
+    if (!run) {
+      throw new Error("Expected the Run transition fixture to exist");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
  * Holds chat-event reads so a route test can order one physical deletion
  * between two database statements. Product APIs cannot pause at this boundary.
  */

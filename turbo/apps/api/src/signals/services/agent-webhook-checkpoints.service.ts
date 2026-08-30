@@ -887,14 +887,17 @@ async function persistAgentCheckpoint(
       target: checkpoints.runId,
       set: checkpointFields,
     })
-    .returning({ id: checkpoints.id });
+    .returning({
+      agentSessionPromotionPending: checkpoints.agentSessionPromotionPending,
+      id: checkpoints.id,
+    });
   signal.throwIfAborted();
 
   if (!checkpoint) {
     throw new Error("Failed to upsert checkpoint record");
   }
 
-  if (!deferSessionPromotion) {
+  if (!deferSessionPromotion && !checkpoint.agentSessionPromotionPending) {
     const [agentSession] = await tx
       .update(agentSessions)
       .set({

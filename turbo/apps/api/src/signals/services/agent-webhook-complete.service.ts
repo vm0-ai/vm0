@@ -8,7 +8,6 @@ import {
 } from "@okouai/api-contracts/contracts/runs";
 import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { agentSessions } from "@okouai/db/schema/agent-session";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 
 import { notFound } from "../../lib/error";
@@ -38,6 +37,7 @@ import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.serv
 import { maybeEmitRunUsageEvent$ } from "./chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { lockAgentRunCheckpointLifecycle } from "./agent-run-checkpoint-lifecycle-lock.service";
+import { promoteAgentRunCheckpoint } from "./agent-run-checkpoint-promotion.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -320,21 +320,21 @@ async function applyTerminalCompletion(
   run: RunRecord,
   prepared: PreparedCompletion,
 ): Promise<void> {
-  if (
-    run.launchSnapshot?.framework === "pi" &&
-    prepared.status === "completed"
-  ) {
-    const conversationId = prepared.result?.conversationId;
-    if (!conversationId) {
+  const shouldPromoteCheckpoint =
+    prepared.status === "completed" || prepared.failureKind === "reported";
+  if (shouldPromoteCheckpoint) {
+    const promoted = await promoteAgentRunCheckpoint(
+      tx,
+      input.body.runId,
+      run.sessionId,
+      prepared.status === "completed" ? "completion" : "generic-terminal",
+    );
+    if (
+      run.launchSnapshot?.framework === "pi" &&
+      prepared.status === "completed" &&
+      !promoted
+    ) {
       throw new Error("Completed Pi run is missing its canonical conversation");
-    }
-    const [session] = await tx
-      .update(agentSessions)
-      .set({ conversationId, updatedAt: nowDate() })
-      .where(eq(agentSessions.id, run.sessionId))
-      .returning({ id: agentSessions.id });
-    if (!session) {
-      throw new Error("Completed Pi run is missing its AgentSession");
     }
   }
 

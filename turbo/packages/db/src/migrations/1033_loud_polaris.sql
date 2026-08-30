@@ -1,0 +1,1 @@
+ALTER TABLE "checkpoints" ADD COLUMN "agent_session_promotion_pending" boolean DEFAULT false NOT NULL;

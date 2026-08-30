@@ -40,6 +40,67 @@ import { projectLegacyWritebackArtifacts } from "../signals/services/storage-leg
 
 const store = createStore();
 
+export async function deferRunCheckpointPromotionFixture(args: {
+  readonly runId: string;
+  readonly canonicalConversationId: string | null;
+}): Promise<void> {
+  await db().transaction(async (tx) => {
+    const [run] = await tx
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, args.runId))
+      .for("update")
+      .limit(1);
+    if (!run) {
+      throw new Error("Expected the candidate Run fixture to exist");
+    }
+    const [checkpoint] = await tx
+      .update(checkpoints)
+      .set({ agentSessionPromotionPending: true })
+      .where(eq(checkpoints.runId, args.runId))
+      .returning({ id: checkpoints.id });
+    if (!checkpoint) {
+      throw new Error("Expected the candidate Checkpoint fixture to exist");
+    }
+    const [session] = await tx
+      .update(agentSessions)
+      .set({ conversationId: args.canonicalConversationId })
+      .where(eq(agentSessions.id, run.sessionId))
+      .returning({ id: agentSessions.id });
+    if (!session) {
+      throw new Error("Expected the candidate AgentSession fixture to exist");
+    }
+  });
+}
+
+export async function readRunCheckpointPromotionPendingFixture(
+  runId: string,
+): Promise<boolean> {
+  const [checkpoint] = await db()
+    .select({ pending: checkpoints.agentSessionPromotionPending })
+    .from(checkpoints)
+    .where(eq(checkpoints.runId, runId))
+    .limit(1);
+  if (!checkpoint) {
+    throw new Error("Expected the candidate Checkpoint fixture to exist");
+  }
+  return checkpoint.pending;
+}
+
+export async function readSessionHistoryBlobRefCountFixture(
+  hash: string,
+): Promise<number> {
+  const [blob] = await db()
+    .select({ refCount: blobs.refCount })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  if (!blob) {
+    throw new Error("Expected the Session history Blob fixture to exist");
+  }
+  return blob.refCount;
+}
+
 export async function clearRunLaunchSnapshotFixture(
   runId: string,
 ): Promise<void> {

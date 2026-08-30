@@ -54,6 +54,30 @@ Cancellation is visible immediately, and heartbeat timeout records an unknown
 consumer state, but neither path releases a reservation. Cooperative Guest
 completion and Runner post-exit completion are the existing quiescence signals.
 
+### Checkpoint Promotion Cutover
+
+Checkpoint promotion is staged across backend releases because outgoing and
+newly promoted API handlers can overlap on persisted state. The compatibility
+release keeps active Claude Code and Codex checkpoints immediately canonical,
+and records those eager checkpoints with
+`agent_session_promotion_pending=false`. A later writer marks a deferred
+candidate `true`; compatibility checkpoint retries preserve that state and do
+not update the AgentSession. Successful completion and generic reported failure
+or cancellation promote a marked candidate and clear the marker atomically.
+Successful Pi completion also promotes legacy unmarked Pi candidates during
+the rollout drain. Cancellation shares the run's checkpoint lifecycle lock
+before taking the run-row lock. Pi keeps its narrower failed/cancelled policy.
+
+After the preceding API target no longer serves or drains requests and the
+compatibility release is the minimum rollback target, #30348 can defer active
+generic checkpoint promotion. Rolling back below the compatibility release
+while marked candidates can exist is unsafe. Atomic timeout remains separately
+blocked until that candidate release is deployed, the pre-cutover active cohort
+has drained for at least the maximum 7,200-second execution window, and the
+cohort is confirmed empty. Until then, timeout remains eligible for the
+existing late-completion transition and delivery finalization and does not
+release an active input delivery.
+
 ### Post-timeout Webhook Admission
 
 While timeout still represents an uncertain consumer state, runtime mutation

@@ -23,6 +23,8 @@ import {
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { drainOrgQueue$ } from "./agent-run-lifecycle.service";
+import { lockAgentRunCheckpointLifecycle } from "./agent-run-checkpoint-lifecycle-lock.service";
+import { promoteAgentRunCheckpoint } from "./agent-run-checkpoint-promotion.service";
 
 const L = logger("RunCancel");
 
@@ -58,9 +60,9 @@ function isActiveStatus(status: string): status is ActiveStatus {
  * user) tuple. Returns runNotCancellable for non-cancellable terminal
  * statuses.
  *
- * The transactional shape locks the run row first, classifies the
- * current status under that lock, then updates status and removes
- * derived queue/job rows. Side effects use the committed transition.
+ * The transactional shape locks the checkpoint lifecycle and then the run
+ * row, classifies the current status under that lock, then updates status and
+ * removes derived queue/job rows. Side effects use the committed transition.
  */
 export const cancelRun$ = command(
   async (
@@ -80,6 +82,8 @@ export const cancelRun$ = command(
     const writeDb = set(writeDb$);
 
     const result = await writeDb.transaction(async (tx) => {
+      await lockAgentRunCheckpointLifecycle(tx, args.runId);
+      signal.throwIfAborted();
       const [run] = await tx
         .select({
           id: agentRuns.id,
@@ -91,6 +95,7 @@ export const cancelRun$ = command(
           chatThreadId: agentRuns.chatThreadId,
           cancellationRecoveryCompleted:
             agentRuns.cancellationRecoveryCompleted,
+          sessionId: agentRuns.sessionId,
         })
         .from(agentRuns)
         .where(
@@ -126,6 +131,14 @@ export const cancelRun$ = command(
           `Run cannot be cancelled: current status is '${run.status}'`,
         );
       }
+
+      await promoteAgentRunCheckpoint(
+        tx,
+        args.runId,
+        run.sessionId,
+        "generic-terminal",
+      );
+      signal.throwIfAborted();
 
       const [updated] = await tx
         .update(agentRuns)

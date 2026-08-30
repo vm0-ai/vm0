@@ -1,4 +1,4 @@
-import { pgTable, uuid, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
 import { conversations } from "./conversation";
 import type { CheckpointStorageMounts } from "@okouai/db/jsonb-contracts/checkpoint";
@@ -28,5 +28,8 @@ export const checkpoints = pgTable("checkpoints", {
     .notNull(),
   // Canonical exact mount snapshot.
   storageMounts: jsonb("storage_mounts").$type<CheckpointStorageMounts>(),
+  agentSessionPromotionPending: boolean("agent_session_promotion_pending")
+    .default(false)
+    .notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

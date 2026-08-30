@@ -79,6 +79,9 @@ import {
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
+  deferRunCheckpointPromotionFixture,
+  readRunCheckpointPromotionPendingFixture,
+  readSessionHistoryBlobRefCountFixture,
   readRunIdentityMismatchWriteCountsFixture,
   readRunModelRuntimeRouteFixture,
   setRunModelProviderFixture,
@@ -5352,6 +5355,387 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, first.runId, [200]);
     const cancelled = await api.readRun(actor, first.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("does not rewind a newer unmarked eager checkpoint on older completion", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const older = await api.createRun(actor, {
+      agentId,
+      prompt: "persist the older eager checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const olderClaim = await api.claimRunnerJob(older.runId);
+    const cliAgentSessionId = `bdd-eager-order-cli-${older.runId}`;
+    const olderHistory = `bdd older eager history ${older.runId}`;
+    const olderHistoryHash = createHash("sha256")
+      .update(olderHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(olderHistoryHash, olderHistory);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: older.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: olderHistoryHash,
+      },
+      { authorization: `Bearer ${olderClaim.sandboxToken}` },
+      [200],
+    );
+
+    const newer = await api.createRun(actor, {
+      agentId,
+      sessionId: older.sessionId,
+      prompt: "persist the newer eager checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const newerClaim = await api.claimRunnerJob(newer.runId);
+    expect(newerClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: olderHistoryHash },
+    });
+    const newerHistory = `bdd newer eager history ${newer.runId}`;
+    const newerHistoryHash = createHash("sha256")
+      .update(newerHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(newerHistoryHash, newerHistory);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: newer.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: newerHistoryHash,
+      },
+      { authorization: `Bearer ${newerClaim.sandboxToken}` },
+      [200],
+    );
+
+    await webhooks.requestAgentComplete(
+      { runId: older.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${olderClaim.sandboxToken}` },
+      [200],
+    );
+    const continued = await api.createRun(actor, {
+      agentId,
+      sessionId: older.sessionId,
+      prompt: "observe the newer eager checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: newerHistoryHash },
+    });
+
+    await api.requestCancelRun(actor, newer.runId, [200]);
+    await api.requestCancelRun(actor, continued.runId, [200]);
+  });
+
+  it("keeps active generic promotion eager while terminal promotion is compatible", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const source = await api.createRun(actor, {
+      agentId,
+      prompt: "establish a canonical CLI checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const sourceClaim = await api.claimRunnerJob(source.runId);
+    const cliAgentSessionId = `bdd-candidate-cli-${source.runId}`;
+    const sourceHistory = `bdd canonical history ${source.runId}`;
+    const sourceHistoryHash = createHash("sha256")
+      .update(sourceHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(sourceHistoryHash, sourceHistory);
+    const sourceCheckpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: source.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: sourceHistoryHash,
+      },
+      { authorization: `Bearer ${sourceClaim.sandboxToken}` },
+      [200],
+    );
+    if ("error" in sourceCheckpoint.body) {
+      throw new Error("Expected the source checkpoint to be created");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: source.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${sourceClaim.sandboxToken}` },
+      [200],
+    );
+
+    const candidate = await api.createRun(actor, {
+      agentId,
+      sessionId: source.sessionId,
+      prompt: "persist the next active candidate",
+      modelProvider: "anthropic-api-key",
+    });
+    const candidateClaim = await api.claimRunnerJob(candidate.runId);
+    expect(candidateClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: sourceHistoryHash },
+    });
+    const candidateHistory = `bdd candidate history ${candidate.runId}`;
+    const candidateHistoryHash = createHash("sha256")
+      .update(candidateHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(candidateHistoryHash, candidateHistory);
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: candidate.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: candidateHistoryHash,
+      },
+      { authorization: `Bearer ${candidateClaim.sandboxToken}` },
+      [200],
+    );
+    const checkpointRetry = await webhooks.requestAgentCheckpoint(
+      {
+        runId: candidate.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: candidateHistoryHash,
+      },
+      { authorization: `Bearer ${candidateClaim.sandboxToken}` },
+      [200],
+    );
+    expect(checkpointRetry.body).toMatchObject(checkpoint.body);
+    await expect(
+      readSessionHistoryBlobRefCountFixture(candidateHistoryHash),
+    ).resolves.toBe(1);
+
+    const beforePromotion = await api.createRun(actor, {
+      agentId,
+      sessionId: source.sessionId,
+      prompt: "observe the canonical checkpoint before promotion",
+      modelProvider: "anthropic-api-key",
+    });
+    const beforePromotionClaim = await api.claimRunnerJob(
+      beforePromotion.runId,
+    );
+    expect(beforePromotionClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: candidateHistoryHash },
+    });
+    await api.requestCancelRun(actor, beforePromotion.runId, [200]);
+
+    await deferRunCheckpointPromotionFixture({
+      runId: candidate.runId,
+      canonicalConversationId: sourceCheckpoint.body.conversationId,
+    });
+    await expect(
+      readRunCheckpointPromotionPendingFixture(candidate.runId),
+    ).resolves.toBeTruthy();
+    const deferredRetry = await webhooks.requestAgentCheckpoint(
+      {
+        runId: candidate.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: candidateHistoryHash,
+      },
+      { authorization: `Bearer ${candidateClaim.sandboxToken}` },
+      [200],
+    );
+    expect(deferredRetry.body).toMatchObject(checkpoint.body);
+    await expect(
+      readRunCheckpointPromotionPendingFixture(candidate.runId),
+    ).resolves.toBeTruthy();
+    await expect(
+      readSessionHistoryBlobRefCountFixture(candidateHistoryHash),
+    ).resolves.toBe(1);
+    const whileDeferred = await api.createRun(actor, {
+      agentId,
+      sessionId: source.sessionId,
+      prompt: "observe the canonical checkpoint while promotion is pending",
+      modelProvider: "anthropic-api-key",
+    });
+    const whileDeferredClaim = await api.claimRunnerJob(whileDeferred.runId);
+    expect(whileDeferredClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: sourceHistoryHash },
+    });
+    await api.requestCancelRun(actor, whileDeferred.runId, [200]);
+
+    await webhooks.requestAgentComplete(
+      { runId: candidate.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${candidateClaim.sandboxToken}` },
+      [200],
+    );
+    await expect(
+      readRunCheckpointPromotionPendingFixture(candidate.runId),
+    ).resolves.toBeFalsy();
+    await webhooks.requestAgentComplete(
+      { runId: candidate.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${candidateClaim.sandboxToken}` },
+      [200],
+    );
+
+    const afterPromotion = await api.createRun(actor, {
+      agentId,
+      sessionId: source.sessionId,
+      prompt: "observe the promoted checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const afterPromotionClaim = await api.claimRunnerJob(afterPromotion.runId);
+    expect(afterPromotionClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: candidateHistoryHash },
+    });
+    await api.requestCancelRun(actor, afterPromotion.runId, [200]);
+  });
+
+  it("promotes an active generic checkpoint when reported failure wins", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const failed = await api.createRun(actor, {
+      agentId,
+      prompt: "checkpoint before reporting failure",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(failed.runId);
+    const cliAgentSessionId = `bdd-failed-candidate-cli-${failed.runId}`;
+    const history = `bdd failed candidate history ${failed.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: failed.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await deferRunCheckpointPromotionFixture({
+      runId: failed.runId,
+      canonicalConversationId: null,
+    });
+    await expect(
+      readRunCheckpointPromotionPendingFixture(failed.runId),
+    ).resolves.toBeTruthy();
+    await webhooks.requestAgentComplete(
+      {
+        runId: failed.runId,
+        exitCode: 1,
+        error: "reported failure after checkpoint",
+        lastEventSequence: 0,
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await expect(
+      readRunCheckpointPromotionPendingFixture(failed.runId),
+    ).resolves.toBeFalsy();
+
+    const continued = await api.createRun(actor, {
+      agentId,
+      sessionId: failed.sessionId,
+      prompt: "continue from the failed candidate",
+      modelProvider: "anthropic-api-key",
+    });
+    const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: historyHash },
+    });
+    await api.requestCancelRun(actor, continued.runId, [200]);
+  });
+
+  it("preserves generic cancellation recovery in both checkpoint orderings", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const checkpointFirst = await api.createRun(actor, {
+      agentId,
+      prompt: "checkpoint before cancellation",
+      modelProvider: "anthropic-api-key",
+    });
+    const checkpointFirstClaim = await api.claimRunnerJob(
+      checkpointFirst.runId,
+    );
+    const cliAgentSessionId = `bdd-cancel-candidate-cli-${checkpointFirst.runId}`;
+    const firstHistory = `bdd pre-cancel history ${checkpointFirst.runId}`;
+    const firstHistoryHash = createHash("sha256")
+      .update(firstHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(firstHistoryHash, firstHistory);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: checkpointFirst.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: firstHistoryHash,
+      },
+      { authorization: `Bearer ${checkpointFirstClaim.sandboxToken}` },
+      [200],
+    );
+    await deferRunCheckpointPromotionFixture({
+      runId: checkpointFirst.runId,
+      canonicalConversationId: null,
+    });
+    await expect(
+      readRunCheckpointPromotionPendingFixture(checkpointFirst.runId),
+    ).resolves.toBeTruthy();
+    await api.requestCancelRun(actor, checkpointFirst.runId, [200]);
+    await expect(
+      readRunCheckpointPromotionPendingFixture(checkpointFirst.runId),
+    ).resolves.toBeFalsy();
+
+    const cancellationFirst = await api.createRun(actor, {
+      agentId,
+      sessionId: checkpointFirst.sessionId,
+      prompt: "cancel before the recovery checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const cancellationFirstClaim = await api.claimRunnerJob(
+      cancellationFirst.runId,
+    );
+    expect(cancellationFirstClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: firstHistoryHash },
+    });
+    await api.requestCancelRun(actor, cancellationFirst.runId, [200]);
+    const secondHistory = `bdd post-cancel history ${cancellationFirst.runId}`;
+    const secondHistoryHash = createHash("sha256")
+      .update(secondHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(secondHistoryHash, secondHistory);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: cancellationFirst.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: secondHistoryHash,
+      },
+      { authorization: `Bearer ${cancellationFirstClaim.sandboxToken}` },
+      [200],
+    );
+    await expect(
+      readRunCheckpointPromotionPendingFixture(cancellationFirst.runId),
+    ).resolves.toBeFalsy();
+
+    const continued = await api.createRun(actor, {
+      agentId,
+      sessionId: checkpointFirst.sessionId,
+      prompt: "continue from the post-cancel checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: secondHistoryHash },
+    });
+    await api.requestCancelRun(actor, continued.runId, [200]);
   });
 
   it("resumes a CLI session without a reuse key when no chat thread exists", async () => {
