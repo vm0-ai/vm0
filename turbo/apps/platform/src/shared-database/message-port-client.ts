@@ -9,6 +9,7 @@ import type {
   SharedDatabaseBridgeEvents,
   SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
+  SharedDatabaseSubscriptionCallback,
 } from "./bridge.ts";
 import {
   sharedDatabaseHeartbeatResultSchema,
@@ -25,7 +26,7 @@ interface PendingRequest {
 
 interface Subscription {
   readonly dataKey: SharedDatabaseDataKey;
-  readonly callback: () => void;
+  readonly callback: SharedDatabaseSubscriptionCallback;
 }
 
 export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
@@ -46,7 +47,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       if (message.type === "append" || message.type === "invalidate") {
         const subscription = this.subscriptions.get(message.subscriptionId);
         if (subscription) {
-          subscription.callback();
+          subscription.callback(message.type);
         }
         return;
       }
@@ -120,7 +121,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
 
   async on(
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void> {
     signal.throwIfAborted();

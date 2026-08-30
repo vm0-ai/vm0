@@ -120,11 +120,12 @@ async function publishChatDatabaseSignalNow(
   topic: string,
   payload: unknown,
 ): Promise<void> {
+  // Version-migration fallback: already-loaded App clients can keep the
+  // pre-SharedWorker user-channel subscription for up to two days. Remove the
+  // duplicate publish after the replacement App is live and the client-version
+  // floor excludes pre-#30272 builds; follow-up #30334.
   const channelNames = [
     getUserOrgChannelName(target.userId, target.orgId),
-    // Old App -> new API rollout fallback: App builds loaded before #30272
-    // subscribe to the user channel. Remove after the replacement App is live
-    // and the client-version floor excludes those builds; follow-up #30334.
     getUserChannelName(target.userId),
   ];
   const client = ablyClient();
@@ -172,10 +173,10 @@ export async function publishUserPreferenceChangedForUserSafely(
 }
 
 /**
- * Fire the user-level "thread list shape changed" signal. The sidebar
- * subscribes to this topic and reloads the full list on any delivery —
- * payload is intentionally empty because the server is authoritative and
- * the client already has a cheap list endpoint to re-fetch.
+ * Fire the per-user-org "thread list shape changed" signal. The SharedWorker
+ * consumes this topic to invalidate its local thread-event view; the App then
+ * reloads derived thread and indicator state. The payload is intentionally
+ * empty because the server is authoritative.
  */
 export async function publishThreadListChanged(target: {
   readonly userId: string;

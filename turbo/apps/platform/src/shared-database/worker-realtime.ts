@@ -36,12 +36,7 @@ function connectionStatus(
   if (state === "connected") {
     return "connected";
   }
-  if (
-    state === "closed" ||
-    state === "disconnected" ||
-    state === "failed" ||
-    state === "suspended"
-  ) {
+  if (state === "closed" || state === "closing" || state === "failed") {
     return "disconnected";
   }
   return "connecting";

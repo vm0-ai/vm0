@@ -15,11 +15,11 @@ import { activeRoute$ } from "../active-route.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { apiClient$ } from "../api-client.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
+import { reloadChatIndicators$ } from "../chat-thread-list-reload.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
+import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
-import { reloadChatIndicators$ } from "../chat-thread-list-reload.ts";
-import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
@@ -259,9 +259,7 @@ const applySharedChatThreadEventResult$ = command(
     }
     set(clearBootstrapThreadMeta$);
     const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
-    if (synced.settled()) {
-      set(reloadChatIndicators$);
-    } else {
+    if (!synced.settled()) {
       synced.resolve();
     }
     set(resolveNextChatThreadEventSync$);
@@ -306,17 +304,20 @@ const syncSharedEventDrivenChatThreads$ = command(
 
 const subscribeSharedEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const dataKey = await get(sharedChatThreadEventDataKey$);
-    signal.throwIfAborted();
     set(
       subscribeRealtimeReadyCatchUp$,
       syncSharedEventDrivenChatThreads$,
       signal,
     );
+    const dataKey = await get(sharedChatThreadEventDataKey$);
+    signal.throwIfAborted();
     await set(
       onSharedDatabase$,
       dataKey,
-      () => {
+      (kind) => {
+        if (kind === "invalidate") {
+          set(reloadChatIndicators$);
+        }
         set(markChatThreadEventSyncPending$);
         set(enqueueSharedDatabaseInvalidation$, dataKey);
       },

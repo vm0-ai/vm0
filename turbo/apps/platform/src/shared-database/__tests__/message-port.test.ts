@@ -16,6 +16,7 @@ import {
 } from "../../signals/shared-database.ts";
 import type {
   SharedDatabaseBridgeEvents,
+  SharedDatabaseChangeKind,
   SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
 } from "../bridge.ts";
@@ -537,15 +538,15 @@ describe("shared database MessagePort protocol", () => {
     });
 
     const subscription = createChildAbortController(context.signal);
-    let callbacks = 0;
+    const changes: SharedDatabaseChangeKind[] = [];
     await bridge.on(
       key,
-      () => {
-        callbacks += 1;
+      (kind) => {
+        changes.push(kind);
       },
       subscription.signal,
     );
-    expect(callbacks).toBe(1);
+    expect(changes).toStrictEqual(["append"]);
     expect(subscriptionId).not.toBeNull();
     if (subscriptionId === null) {
       throw new Error("Expected a protocol subscription ID");
@@ -556,7 +557,7 @@ describe("shared database MessagePort protocol", () => {
       dataKey: key,
     });
     await vi.waitFor(() => {
-      expect(callbacks).toBe(2);
+      expect(changes).toStrictEqual(["append", "invalidate"]);
     });
 
     subscription.abort(new DOMException("listener removed", "AbortError"));
@@ -569,7 +570,7 @@ describe("shared database MessagePort protocol", () => {
       dataKey: key,
     });
     await Promise.resolve();
-    expect(callbacks).toBe(2);
+    expect(changes).toStrictEqual(["append", "invalidate"]);
 
     await expect(
       bridge.query(

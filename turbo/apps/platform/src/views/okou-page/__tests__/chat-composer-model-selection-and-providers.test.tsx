@@ -884,8 +884,6 @@ describe("chat composer models", () => {
         }
       | undefined;
     let modelSelectionUpdateCount = 0;
-    let threadEventRequests = 0;
-    let reconciledThreadEvent: ChatThreadEvent | null = null;
 
     mockBuiltInFastModel();
     mockChatLifecycle(context, {
@@ -899,21 +897,11 @@ describe("chat composer models", () => {
         sentBody = body;
       },
     });
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      threadEventRequests += 1;
-      return respond(200, {
-        events: reconciledThreadEvent ? [reconciledThreadEvent] : [],
-        hasMore: false,
-      });
-    });
 
     detachedSetupPage({
       context,
       featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
       path: `/agents/${AGENT_ID}/chat`,
-    });
-    await waitFor(() => {
-      expect(threadEventRequests).toBeGreaterThan(0);
     });
 
     await user.click(await findComposerModel("GPT 5.6 Sol"));
@@ -947,19 +935,28 @@ describe("chat composer models", () => {
     const reconciledTitle = "Reconciled Fast thread";
     const reconciledSelectedModel = createdBody?.model ?? null;
     const reconciledServiceTier = createdBody?.serviceTier ?? null;
-    reconciledThreadEvent = {
-      id: reconciledCreateEventId,
-      seqId: 2,
-      kind: "created",
-      chatThreadId: reconciledThreadId,
-      agentId: AGENT_ID,
-      title: reconciledTitle,
-      selectedModel: reconciledSelectedModel,
-      serviceTier: reconciledServiceTier,
-      computerUseHostId: null,
-      cloudBrowserEnabled: false,
-      createdAt: "2026-08-12T09:00:00Z",
-    };
+    let reconciliationEventRequests = 0;
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      reconciliationEventRequests++;
+      return respond(200, {
+        events: [
+          {
+            id: reconciledCreateEventId,
+            seqId: (query.sinceSeqId ?? 0) + 1,
+            kind: "created",
+            chatThreadId: reconciledThreadId,
+            agentId: AGENT_ID,
+            title: reconciledTitle,
+            selectedModel: reconciledSelectedModel,
+            serviceTier: reconciledServiceTier,
+            computerUseHostId: null,
+            cloudBrowserEnabled: false,
+            createdAt: "2026-08-12T09:00:00Z",
+          },
+        ],
+        hasMore: false,
+      });
+    });
     await waitFor(() => {
       expect(
         context.mocks.ably.hasChannelSubscriptionOnChannel(
@@ -967,14 +964,9 @@ describe("chat composer models", () => {
         ),
       ).toBeTruthy();
     });
-    const threadEventRequestsBeforeInvalidation = threadEventRequests;
-    changeChatThreadList();
+    triggerAblyEvent("threadListChanged");
     await waitFor(() => {
-      expect(threadEventRequests).toBeGreaterThan(
-        threadEventRequestsBeforeInvalidation,
-      );
-    });
-    await waitFor(() => {
+      expect(reconciliationEventRequests).toBeGreaterThan(0);
       expect(document.title).toBe(`${reconciledTitle} | VM0`);
     });
     await expectComposerModel("GPT 5.6 Sol Fast");

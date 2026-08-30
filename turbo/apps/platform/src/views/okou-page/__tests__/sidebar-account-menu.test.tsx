@@ -40,6 +40,7 @@ import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 function connectedPersonalCodexProvider(
   overrides: Partial<ModelProviderResponse> = {},
@@ -393,7 +394,9 @@ describe("zero sidebar account menu", () => {
     }
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
       ).toBeTruthy();
       expect(within(accountButton).queryByRole("status")).toBeNull();
     });
@@ -406,7 +409,7 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(
         within(accountButton).getByRole("status", {
-          name: "Realtime disconnected",
+          name: "Realtime reconnecting",
         }),
       ).toBeInTheDocument();
     });
@@ -450,7 +453,9 @@ describe("zero sidebar account menu", () => {
     }
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
       ).toBeTruthy();
     });
 
@@ -687,7 +692,11 @@ describe("zero sidebar account menu", () => {
       expect(
         context.mocks.ably.hasSubscription("billing:changed"),
       ).toBeTruthy();
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
       expect(
         context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
       ).toBeTruthy();

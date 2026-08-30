@@ -20,9 +20,11 @@ client-side filtering or thread-to-organization inference.
 
 ## Consequences
 
-The permanent App consumes `chatThreadMessageCreated` and `threadListChanged`
-from the `user-org:<userId>:<orgId>` channel for each user-org identity. During
-the old-App rollout window, the API also mirrors those signals to the existing
-user channel for already-loaded clients. Follow-up #30334 removes that bounded
-compatibility publish after the client-version floor excludes pre-cutover App
-builds; the user-org channel remains the canonical topology.
+The permanent App path consumes `chatThreadMessageCreated` and
+`threadListChanged` exclusively from the `user-org:<userId>:<orgId>` channel
+through the SharedWorker. During rollout, the API also publishes those two
+topics to the existing `user:<userId>` channel so already-loaded App clients
+compiled against the disabled switch continue receiving invalidations.
+Follow-up #30334 removes that duplicate publication after the two-day stale-App
+window has drained and the client-version floor excludes pre-cutover builds;
+the user channel otherwise remains reserved for unrelated user-scoped signals.
