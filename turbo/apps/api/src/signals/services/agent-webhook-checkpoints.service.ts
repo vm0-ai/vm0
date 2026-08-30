@@ -966,8 +966,7 @@ async function completedGenericCheckpointRetryResponse(
     existing?.type === body.cliAgentType &&
     existing.sessionId === body.cliAgentSessionId &&
     existing.historyHash === (body.cliAgentSessionHistoryHash ?? null) &&
-    isDeepStrictEqual(existing.storageMounts, storageMounts) &&
-    run.agentSessionConversationId === existing.conversationId;
+    isDeepStrictEqual(existing.storageMounts, storageMounts);
   if (!exactRetry) {
     return badRequestMessage(
       "[CHECKPOINT_ALREADY_COMMITTED] Final checkpoint does not exactly match the completed run",

@@ -18166,7 +18166,45 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         sessionId: cliAgentSessionId,
         historyRef: { kind: "blob", hash: historyHash },
       });
-      await api.requestCancelRun(actor, continued.runId, [200]);
+      const successorHistory = `bdd successor ${cliAgentType} history ${continued.runId}`;
+      const successorHistoryHash = createHash("sha256")
+        .update(successorHistory)
+        .digest("hex");
+      const successorCliAgentSessionId = `bdd-successor-${cliAgentType}-${continued.runId}`;
+      mockSessionHistoryBlob(successorHistoryHash, successorHistory);
+      await webhooks.requestAgentComplete(
+        {
+          runId: continued.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType,
+            cliAgentSessionId: successorCliAgentSessionId,
+            cliAgentSessionHistoryHash: successorHistoryHash,
+          },
+        },
+        { authorization: `Bearer ${continuedClaim.sandboxToken}` },
+        [200],
+      );
+
+      const repeatedAfterSuccessor = await webhooks.requestAgentComplete(
+        body,
+        sandboxHeaders,
+        [200],
+      );
+      expect(repeatedAfterSuccessor.body).toStrictEqual(completed.body);
+
+      const afterRetry = await api.createRun(actor, {
+        agentId,
+        sessionId: run.sessionId,
+        prompt: `resume successor ${cliAgentType} checkpoint`,
+        modelProvider: "anthropic-api-key",
+      });
+      const afterRetryClaim = await api.claimRunnerJob(afterRetry.runId);
+      expect(afterRetryClaim.resumeSession).toMatchObject({
+        sessionId: successorCliAgentSessionId,
+        historyRef: { kind: "blob", hash: successorHistoryHash },
+      });
+      await api.requestCancelRun(actor, afterRetry.runId, [200]);
     },
   );
 
