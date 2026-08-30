@@ -349,8 +349,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the Forward action in the assistant text-selection pill.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",
