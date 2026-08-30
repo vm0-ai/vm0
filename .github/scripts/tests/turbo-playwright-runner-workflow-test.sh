@@ -757,6 +757,10 @@ gate_step = jobs.fetch("ci-gate-turbo").fetch("steps").find do |step|
 end
 raise "missing Turbo CI gate validation" unless gate_step
 gate_script = gate_step.fetch("run")
+if gate_script.include?('[ "$result" = "cancelled" ]') ||
+    gate_script.include?("cancelled by concurrency group, allowed")
+  raise "CI gate must reject cancelled required jobs"
+end
 unless gate_script.include?("RUNNER_E2E_SKIP_ALLOWED=\"true\"") &&
     gate_script.include?("needs.prepare.outputs.turbo-runner-consumer-needed")
   raise "CI gate must restore the runner-specific E2E skip policy"

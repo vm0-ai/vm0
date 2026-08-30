@@ -1,5 +1,6 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test as base } from "@playwright/test";
+import { SharedWorkerRoutes } from "./lib/shared-worker-routes";
 
 import { resolveApiBackendUrl } from "./api-backend-url";
 
@@ -7,7 +8,7 @@ export { expect };
 
 const apiUrl = resolveApiBackendUrl();
 
-export const test = base.extend({
+export const test = base.extend<{ sharedWorkerRoutes: SharedWorkerRoutes }>({
   context: async ({ context }, use) => {
     // Every page load runs `clerk.load()`, which handshakes with the Clerk
     // Frontend API — including tests that only restore a saved storage
@@ -41,6 +42,22 @@ export const test = base.extend({
       await use(page);
     } finally {
       await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
+  },
+  sharedWorkerRoutes: async ({ browser, page }, use) => {
+    const apiUrl = process.env.VM0_API_BACKEND_URL;
+    if (!apiUrl) {
+      throw new Error("VM0_API_BACKEND_URL environment variable is required");
+    }
+    const routes = await SharedWorkerRoutes.create(
+      browser,
+      page,
+      new URL(apiUrl).origin,
+    );
+    try {
+      await use(routes);
+    } finally {
+      await routes.close();
     }
   },
 });

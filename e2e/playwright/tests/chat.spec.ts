@@ -1,6 +1,11 @@
 import type { Locator, Page, Request, Response } from "@playwright/test";
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
+import type {
+  SharedWorkerRequest,
+  SharedWorkerRouteRegistration,
+  SharedWorkerRoutes,
+} from "../lib/shared-worker-routes";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
@@ -60,7 +65,7 @@ function mockChatEventCursorId(seqId: number): string {
 }
 
 async function negotiatedChatEventHeaders(
-  request: Request,
+  request: Request | SharedWorkerRequest,
 ): Promise<Record<string, string>> {
   const version = await request.headerValue(chatEventSchemaVersionHeader);
   if (version === null) {
@@ -114,35 +119,13 @@ async function waitForAgentDraftClear(
   await draftCleared;
 }
 
-function isChatThreadEventRowsResponse(
-  response: Response,
-  threadId: string,
-): boolean {
-  const request = response.request();
-  const url = new URL(response.url());
-  const rawSinceSeqId = url.searchParams.get("sinceSeqId");
-  const sinceEventId = url.searchParams.get("sinceEventId");
-  const sinceSeqId = Number(rawSinceSeqId);
-  return (
-    response.ok() &&
-    request.method() === "GET" &&
-    url.pathname === `/api/chat-threads/${threadId}/event-rows` &&
-    rawSinceSeqId !== null &&
-    Number.isSafeInteger(sinceSeqId) &&
-    ((sinceSeqId === 0 && sinceEventId === null) ||
-      (sinceSeqId > 0 && sinceEventId !== null))
-  );
-}
-
 async function navigateToMockChatThread(
   page: Page,
   threadId: string,
+  eventRows: SharedWorkerRouteRegistration,
 ): Promise<void> {
-  const rowsLoaded = page.waitForResponse((response) => {
-    return isChatThreadEventRowsResponse(response, threadId);
-  });
   await page.goto(new URL(`/chats/${threadId}`, appUrl).href);
-  await rowsLoaded;
+  await eventRows.handled;
 }
 
 async function clearComposerEditor(editor: Locator): Promise<void> {
@@ -421,6 +404,10 @@ interface MockChatThreadOptions {
   readonly title: string;
 }
 
+interface MockChatThreadRoutes {
+  readonly eventRows: SharedWorkerRouteRegistration;
+}
+
 function toMockChatEventRow(
   event: Readonly<Record<string, unknown>>,
   threadId: string,
@@ -453,21 +440,25 @@ function toMockChatEventRow(
 
 async function mockChatThread(
   page: Page,
+  sharedWorkerRoutes: SharedWorkerRoutes,
   options: MockChatThreadOptions,
-): Promise<void> {
+): Promise<MockChatThreadRoutes> {
   const createdEventId = `d${options.threadId.slice(1)}`;
   let createdEventSeqId: number | null = null;
 
-  await page.route("**/api/chat-threads/snapshot", async (route) => {
-    await route.fulfill({
-      json: {
-        chatThreads: [],
-        latestEventId: null,
-        latestSeqId: null,
-      },
-    });
-  });
-  await page.route(
+  sharedWorkerRoutes.route(
+    (url) => url.pathname === "/api/chat-threads/snapshot",
+    async (route) => {
+      await route.fulfill({
+        json: {
+          chatThreads: [],
+          latestEventId: null,
+          latestSeqId: null,
+        },
+      });
+    },
+  );
+  sharedWorkerRoutes.route(
     (url) => url.pathname === "/api/chat-threads/events",
     async (route) => {
       const requestUrl = new URL(route.request().url());
@@ -503,7 +494,7 @@ async function mockChatThread(
       await route.fulfill({ json: { events, hasMore: false } });
     },
   );
-  await page.route(
+  const eventRows = sharedWorkerRoutes.route(
     (url) =>
       url.pathname === `/api/chat-threads/${options.threadId}/event-rows`,
     async (route) => {
@@ -571,7 +562,7 @@ async function mockChatThread(
       });
     },
   );
-  await page.route(
+  sharedWorkerRoutes.route(
     (url) =>
       url.pathname === `/api/chat-threads/${options.threadId}/event-snapshot`,
     async (route) => {
@@ -593,12 +584,14 @@ async function mockChatThread(
       });
     },
   );
+  return { eventRows };
 }
 
 async function mockResponsiveFollowupThread(
   page: Page,
+  sharedWorkerRoutes: SharedWorkerRoutes,
   agentId: string,
-): Promise<void> {
+): Promise<MockChatThreadRoutes> {
   const createdAt = "2026-06-09T10:01:01Z";
   const runId = "run-responsive-followups";
   const events = [
@@ -637,7 +630,7 @@ async function mockResponsiveFollowupThread(
     },
   ];
 
-  await mockChatThread(page, {
+  return await mockChatThread(page, sharedWorkerRoutes, {
     agentId,
     createdAt,
     events,
@@ -649,11 +642,12 @@ async function mockResponsiveFollowupThread(
 
 async function mockForwardLayoutThread(
   page: Page,
+  sharedWorkerRoutes: SharedWorkerRoutes,
   agentId: string,
-): Promise<void> {
+): Promise<MockChatThreadRoutes> {
   const createdAt = "2026-08-13T08:00:01Z";
   const runId = "run-forward-layout";
-  await mockChatThread(page, {
+  return await mockChatThread(page, sharedWorkerRoutes, {
     agentId,
     createdAt,
     selectedModel: null,
@@ -685,8 +679,9 @@ async function mockForwardLayoutThread(
 
 async function mockModelChangeThread(
   page: Page,
+  sharedWorkerRoutes: SharedWorkerRoutes,
   agentId: string,
-): Promise<void> {
+): Promise<MockChatThreadRoutes> {
   const createdAt = "2026-08-06T09:02:01Z";
   const events = [
     {
@@ -786,7 +781,7 @@ async function mockModelChangeThread(
       createdAt,
     },
   ];
-  await mockChatThread(page, {
+  return await mockChatThread(page, sharedWorkerRoutes, {
     agentId,
     createdAt,
     events,
@@ -798,8 +793,9 @@ async function mockModelChangeThread(
 
 async function mockCardSpacingThread(
   page: Page,
+  sharedWorkerRoutes: SharedWorkerRoutes,
   agentId: string,
-): Promise<void> {
+): Promise<MockChatThreadRoutes> {
   const createdAt = "2026-08-13T06:00:02Z";
   const runId = "run-card-spacing";
   const events = [
@@ -829,7 +825,7 @@ async function mockCardSpacingThread(
       createdAt,
     },
   ];
-  await mockChatThread(page, {
+  return await mockChatThread(page, sharedWorkerRoutes, {
     agentId,
     createdAt,
     events,
@@ -895,9 +891,10 @@ async function setupDelayedImageRoutes(
 
 async function mockDelayedImageLayoutThread(
   page: Page,
+  sharedWorkerRoutes: SharedWorkerRoutes,
   agentId: string,
   routes: DelayedImageRoutes,
-): Promise<void> {
+): Promise<MockChatThreadRoutes> {
   await page.route(
     (url) =>
       url.pathname === `/api/chat-threads/${imageLayoutThreadId}/artifacts`,
@@ -906,7 +903,7 @@ async function mockDelayedImageLayoutThread(
     },
   );
   const runId = "run-delayed-image-layout";
-  await mockChatThread(page, {
+  return await mockChatThread(page, sharedWorkerRoutes, {
     agentId,
     createdAt: "2026-08-12T09:00:03Z",
     selectedModel: null,
@@ -1759,19 +1756,29 @@ test("chat composer keeps standard tool icons and Send inside on narrow screens"
 
 test("forward composer stays inside the modal on narrow screens", async ({
   page,
+  sharedWorkerRoutes,
 }) => {
   await enableChatForward(page);
   await page.setViewportSize({ width: 360, height: 780 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  await sharedWorkerRoutes.waitForWorker();
   const agentId = new URL(page.url()).pathname.match(
     /^\/agents\/([^/]+)\/chat\/?$/,
   )?.[1];
   if (!agentId) {
     throw new Error("Could not resolve the active agent from the chat URL");
   }
-  await mockForwardLayoutThread(page, agentId);
-  await navigateToMockChatThread(page, forwardLayoutThreadId);
+  const mockRoutes = await mockForwardLayoutThread(
+    page,
+    sharedWorkerRoutes,
+    agentId,
+  );
+  await navigateToMockChatThread(
+    page,
+    forwardLayoutThreadId,
+    mockRoutes.eventRows,
+  );
 
   const assistantReply = page.getByText(
     "Keep the forward composer within the modal.",
@@ -1813,18 +1820,28 @@ test("forward composer stays inside the modal on narrow screens", async ({
 
 test("model change labels follow the divider at the right edge", async ({
   page,
+  sharedWorkerRoutes,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  await sharedWorkerRoutes.waitForWorker();
   const agentId = new URL(page.url()).pathname.match(
     /^\/agents\/([^/]+)\/chat\/?$/,
   )?.[1];
   if (!agentId) {
     throw new Error("Could not resolve the active agent from the chat URL");
   }
-  await mockModelChangeThread(page, agentId);
-  await navigateToMockChatThread(page, modelChangeThreadId);
+  const mockRoutes = await mockModelChangeThread(
+    page,
+    sharedWorkerRoutes,
+    agentId,
+  );
+  await navigateToMockChatThread(
+    page,
+    modelChangeThreadId,
+    mockRoutes.eventRows,
+  );
 
   await expectRightAlignedDivider(
     page.getByText("Model changed to Claude Sonnet 4.6", { exact: true }),
@@ -1836,18 +1853,28 @@ test("model change labels follow the divider at the right edge", async ({
 
 test("consecutive body cards keep a block gap between them", async ({
   page,
+  sharedWorkerRoutes,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  await sharedWorkerRoutes.waitForWorker();
   const agentId = new URL(page.url()).pathname.match(
     /^\/agents\/([^/]+)\/chat\/?$/,
   )?.[1];
   if (!agentId) {
     throw new Error("Could not resolve the active agent from the chat URL");
   }
-  await mockCardSpacingThread(page, agentId);
-  await navigateToMockChatThread(page, cardSpacingThreadId);
+  const mockRoutes = await mockCardSpacingThread(
+    page,
+    sharedWorkerRoutes,
+    agentId,
+  );
+  await navigateToMockChatThread(
+    page,
+    cardSpacingThreadId,
+    mockRoutes.eventRows,
+  );
 
   const cards = page.getByTestId("computer-use-authorization-card");
   await expect(cards).toHaveCount(2);
@@ -1870,9 +1897,11 @@ test("consecutive body cards keep a block gap between them", async ({
 
 test("image preview frames stay fixed while delayed images load", async ({
   page,
+  sharedWorkerRoutes,
 }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  await sharedWorkerRoutes.waitForWorker();
   const agentId = new URL(page.url()).pathname.match(
     /^\/agents\/([^/]+)\/chat\/?$/,
   )?.[1];
@@ -1880,15 +1909,17 @@ test("image preview frames stay fixed while delayed images load", async ({
     throw new Error("Could not resolve the active agent from the chat URL");
   }
   const routes = await setupDelayedImageRoutes(page);
-  await mockDelayedImageLayoutThread(page, agentId, routes);
+  const mockRoutes = await mockDelayedImageLayoutThread(
+    page,
+    sharedWorkerRoutes,
+    agentId,
+    routes,
+  );
 
-  const rowsLoaded = page.waitForResponse((response) => {
-    return isChatThreadEventRowsResponse(response, imageLayoutThreadId);
-  });
   await page.goto(new URL(`/chats/${imageLayoutThreadId}`, appUrl).href, {
     waitUntil: "domcontentloaded",
   });
-  await rowsLoaded;
+  await mockRoutes.eventRows.handled;
 
   const user = delayedImagePreview(
     page,
@@ -1945,11 +1976,13 @@ test.describe("mobile follow-up card rail", () => {
 
   test("responsive follow-up rail aligns its edges and equalizes card heights", async ({
     page,
+    sharedWorkerRoutes,
   }) => {
     await enableResponsiveFollowupCards(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(appUrl);
     await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+    await sharedWorkerRoutes.waitForWorker();
 
     const agentId = new URL(page.url()).pathname.match(
       /^\/agents\/([^/]+)\/chat\/?$/,
@@ -1957,8 +1990,16 @@ test.describe("mobile follow-up card rail", () => {
     if (!agentId) {
       throw new Error("Could not resolve the active agent from the chat URL");
     }
-    await mockResponsiveFollowupThread(page, agentId);
-    await navigateToMockChatThread(page, responsiveFollowupThreadId);
+    const mockRoutes = await mockResponsiveFollowupThread(
+      page,
+      sharedWorkerRoutes,
+      agentId,
+    );
+    await navigateToMockChatThread(
+      page,
+      responsiveFollowupThreadId,
+      mockRoutes.eventRows,
+    );
 
     const rail = page.getByRole("group", { name: "Keep going" });
     const cards = responsiveFollowupPrompts.map((prompt) => {
@@ -2055,11 +2096,13 @@ test.describe("mobile follow-up card rail", () => {
 
 test("keeps the flat follow-up list in a narrow desktop window", async ({
   page,
+  sharedWorkerRoutes,
 }) => {
   await enableResponsiveFollowupCards(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  await sharedWorkerRoutes.waitForWorker();
 
   const agentId = new URL(page.url()).pathname.match(
     /^\/agents\/([^/]+)\/chat\/?$/,
@@ -2067,8 +2110,16 @@ test("keeps the flat follow-up list in a narrow desktop window", async ({
   if (!agentId) {
     throw new Error("Could not resolve the active agent from the chat URL");
   }
-  await mockResponsiveFollowupThread(page, agentId);
-  await navigateToMockChatThread(page, responsiveFollowupThreadId);
+  const mockRoutes = await mockResponsiveFollowupThread(
+    page,
+    sharedWorkerRoutes,
+    agentId,
+  );
+  await navigateToMockChatThread(
+    page,
+    responsiveFollowupThreadId,
+    mockRoutes.eventRows,
+  );
 
   const list = page.getByRole("group", { name: "Keep going" });
   const rows = responsiveFollowupPrompts.map((prompt) => {

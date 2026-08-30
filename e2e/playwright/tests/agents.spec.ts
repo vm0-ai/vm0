@@ -1,6 +1,10 @@
 import type { Locator, Page } from "@playwright/test";
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
+import type {
+  SharedWorkerRouteRegistration,
+  SharedWorkerRoutes,
+} from "../lib/shared-worker-routes";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
@@ -28,6 +32,10 @@ type PinnedAgentStoryControls = {
   readonly setGradientColorThemes: (enabled: boolean) => void;
   readonly setPinnedAgents: (agents: readonly PinnedAgentStoryEntry[]) => void;
 };
+interface UnreadThreadMocks {
+  readonly events: SharedWorkerRouteRegistration;
+  readonly snapshot: SharedWorkerRouteRegistration;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -118,32 +126,36 @@ async function mockPinnedAgentGrid(
 
 async function mockUnreadThread(
   page: Page,
+  sharedWorkerRoutes: SharedWorkerRoutes,
   defaultAgentId: string,
-): Promise<void> {
-  await page.route("**/api/chat-threads/snapshot", async (route) => {
-    await route.fulfill({
-      json: {
-        chatThreads: [
-          {
-            id: unreadThreadStory.id,
-            agentId: defaultAgentId,
-            title: unreadThreadStory.title,
-            sortAt: unreadThreadStory.createdAt,
-            createdAt: unreadThreadStory.createdAt,
-            updatedAt: unreadThreadStory.createdAt,
-            pinnedAt: null,
-            renamedAt: null,
-            selectedModel: null,
-            serviceTier: null,
-            computerUseHostId: null,
-          },
-        ],
-        latestEventId: null,
-        latestSeqId: null,
-      },
-    });
-  });
-  await page.route(
+): Promise<UnreadThreadMocks> {
+  const snapshot = sharedWorkerRoutes.route(
+    (url) => url.pathname === "/api/chat-threads/snapshot",
+    async (route) => {
+      await route.fulfill({
+        json: {
+          chatThreads: [
+            {
+              id: unreadThreadStory.id,
+              agentId: defaultAgentId,
+              title: unreadThreadStory.title,
+              sortAt: unreadThreadStory.createdAt,
+              createdAt: unreadThreadStory.createdAt,
+              updatedAt: unreadThreadStory.createdAt,
+              pinnedAt: null,
+              renamedAt: null,
+              selectedModel: null,
+              serviceTier: null,
+              computerUseHostId: null,
+            },
+          ],
+          latestEventId: null,
+          latestSeqId: null,
+        },
+      });
+    },
+  );
+  const events = sharedWorkerRoutes.route(
     (url) => url.pathname === "/api/chat-threads/events",
     async (route) => {
       await route.fulfill({ json: { events: [], hasMore: false } });
@@ -172,6 +184,7 @@ async function mockUnreadThread(
       });
     },
   );
+  return { events, snapshot };
 }
 
 async function visibleIndicatorStyle(locator: Locator): Promise<{
@@ -333,6 +346,7 @@ test("onboarding workflow preview uses the shared dialog radius", async ({
 
 test("three-column rail and unread indicators preserve their visual hierarchy", async ({
   page,
+  sharedWorkerRoutes,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
@@ -343,6 +357,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
   });
   await page.goto(appUrl);
   await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await sharedWorkerRoutes.waitForWorker();
   const defaultAgentId = new URL(page.url()).pathname.match(
     /^\/agents\/([^/]+)\/chat\/?$/,
   )?.[1];
@@ -354,14 +369,19 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
     page,
     defaultAgentId,
   );
-  await mockUnreadThread(page, defaultAgentId);
+  const unreadThreadMocks = await mockUnreadThread(
+    page,
+    sharedWorkerRoutes,
+    defaultAgentId,
+  );
   await Promise.all([
+    unreadThreadMocks.snapshot.handled,
+    unreadThreadMocks.events.handled,
     ...[
       "/api/feature-switches",
       "/api/onboarding/status",
       "/api/agents",
       "/api/user-preferences",
-      "/api/chat-threads/snapshot",
       "/api/indicators",
       "/api/chat-thread-unreads",
     ].map((pathname) => {
