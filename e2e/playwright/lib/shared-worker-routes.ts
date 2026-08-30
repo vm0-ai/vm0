@@ -26,23 +26,11 @@ export interface SharedWorkerRequest {
   headerValue(name: string): Promise<string | null>;
 }
 
-interface SharedWorkerJsonFulfillOptions {
+export interface SharedWorkerFulfillOptions {
   readonly status?: number;
   readonly headers?: Readonly<Record<string, string>>;
   readonly json: unknown;
-  readonly body?: never;
 }
-
-interface SharedWorkerBodyFulfillOptions {
-  readonly status?: number;
-  readonly headers?: Readonly<Record<string, string>>;
-  readonly body?: string;
-  readonly json?: never;
-}
-
-export type SharedWorkerFulfillOptions =
-  | SharedWorkerJsonFulfillOptions
-  | SharedWorkerBodyFulfillOptions;
 
 export interface SharedWorkerRoute {
   request(): SharedWorkerRequest;
@@ -342,13 +330,11 @@ export class SharedWorkerRoutes {
     options: SharedWorkerFulfillOptions,
   ): Promise<void> {
     const headers = { ...options.headers };
-    const body =
-      "json" in options ? JSON.stringify(options.json) : (options.body ?? "");
+    const body = JSON.stringify(options.json);
     if (body === undefined) {
       throw new Error("SharedWorker JSON response is not serializable");
     }
     if (
-      "json" in options &&
       !Object.keys(headers).some(
         (name) => name.toLowerCase() === "content-type",
       )
