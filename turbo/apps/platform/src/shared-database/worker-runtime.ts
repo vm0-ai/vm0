@@ -86,6 +86,7 @@ type WorkerClientEvent = Extract<
       | "append"
       | "invalidate"
       | "authentication-required"
+      | "indicators-invalidated"
       | "reload-required"
       | "status";
   }
@@ -1539,6 +1540,20 @@ export class SharedDatabaseWorkerRuntime {
     }
   }
 
+  private notifyIndicatorsInvalidated(
+    credential: CredentialState,
+    payload: unknown,
+  ): void {
+    for (const client of this.clients.values()) {
+      if (
+        client.identity?.userId === credential.userId &&
+        client.identity.orgId === credential.orgId
+      ) {
+        client.emit({ type: "indicators-invalidated", payload });
+      }
+    }
+  }
+
   private ensureRealtimeForCredential(credential: CredentialState): void {
     const credentialId = sharedDatabaseCredentialId(credential);
     if (this.realtimeSessions.has(credentialId) || credential.authBlocked) {
@@ -1641,9 +1656,14 @@ export class SharedDatabaseWorkerRuntime {
       );
       return;
     }
+    if (topic === "chatThreadReadCursorUpdated") {
+      this.notifyIndicatorsInvalidated(credential, message.data ?? null);
+      return;
+    }
     if (topic !== "threadListChanged") {
       return;
     }
+    this.notifyIndicatorsInvalidated(credential, null);
     for (const [id, actor] of this.actors) {
       const matches =
         actor.kind === "chat-thread-event" &&

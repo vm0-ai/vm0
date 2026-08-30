@@ -58,6 +58,7 @@ type WorkerEvent = Extract<
       | "append"
       | "invalidate"
       | "authentication-required"
+      | "indicators-invalidated"
       | "reload-required"
       | "status";
   }
@@ -957,6 +958,68 @@ describe("shared database worker runtime", () => {
         realtimeStatuses: new Map(),
       });
     });
+  });
+
+  it("forwards indicator invalidations only to the matching user-org clients", async () => {
+    const sharedUserId = `indicator-user-${context.resourceId}`;
+    const orgAIdentity: SharedDatabaseIdentity = {
+      userId: sharedUserId,
+      orgId: `indicator-org-a-${context.resourceId}`,
+      token: "indicator-org-a-token",
+    };
+    const orgBIdentity: SharedDatabaseIdentity = {
+      userId: sharedUserId,
+      orgId: `indicator-org-b-${context.resourceId}`,
+      token: "indicator-org-b-token",
+    };
+    const orgAEvents: WorkerEvent[] = [];
+    const orgBEvents: WorkerEvent[] = [];
+    await connectRuntimeWithIdentity(orgAIdentity, orgAEvents);
+    await connectRuntimeWithIdentity(orgBIdentity, orgBEvents);
+
+    await vi.waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          realtimeChannel(orgAIdentity),
+        ),
+      ).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          realtimeChannel(orgBIdentity),
+        ),
+      ).toBeTruthy();
+    });
+
+    const readCursorPayload = {
+      threadId: crypto.randomUUID(),
+      agentId: crypto.randomUUID(),
+      lastReadAt: null,
+    };
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(orgAIdentity),
+      "threadListChanged",
+    );
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(orgAIdentity),
+      "chatThreadReadCursorUpdated",
+      readCursorPayload,
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        orgAEvents.filter((event) => {
+          return event.type === "indicators-invalidated";
+        }),
+      ).toStrictEqual([
+        { type: "indicators-invalidated", payload: null },
+        { type: "indicators-invalidated", payload: readCursorPayload },
+      ]);
+    });
+    expect(
+      orgBEvents.filter((event) => {
+        return event.type === "indicators-invalidated";
+      }),
+    ).toStrictEqual([]);
   });
 
   it("isolates realtime sessions and background caches by user and org", async () => {

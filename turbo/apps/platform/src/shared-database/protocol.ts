@@ -124,6 +124,13 @@ const authenticationRequiredMessageSchema = z
   .object({ type: z.literal("authentication-required") })
   .strict();
 
+const indicatorsInvalidatedMessageSchema = z
+  .object({
+    type: z.literal("indicators-invalidated"),
+    payload: z.unknown(),
+  })
+  .strict();
+
 export const sharedDatabaseConnectionStatusSchema = z.enum([
   "connecting",
   "connected",
@@ -148,6 +155,7 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   invalidateMessageSchema,
   reloadRequiredMessageSchema,
   authenticationRequiredMessageSchema,
+  indicatorsInvalidatedMessageSchema,
   statusMessageSchema,
 ]);
 

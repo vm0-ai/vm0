@@ -27,6 +27,7 @@ import {
   installSharedDatabaseBridge$,
   setSharedDatabaseConnectionStatus$,
 } from "../signals/shared-database.ts";
+import { invalidateChatIndicatorsFromRealtime$ } from "../signals/chat-thread-list-reload.ts";
 import { resolveApiBaseForTarget } from "../signals/api-base.ts";
 import { createDeferredPromise } from "../signals/utils.ts";
 
@@ -37,6 +38,7 @@ type DirectWorkerEvent = Extract<
       | "append"
       | "invalidate"
       | "authentication-required"
+      | "indicators-invalidated"
       | "reload-required"
       | "status";
   }
@@ -86,6 +88,13 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       return;
     }
     if (event.type === "authentication-required") {
+      return;
+    }
+    if (event.type === "indicators-invalidated") {
+      this.platformStore.set(
+        invalidateChatIndicatorsFromRealtime$,
+        event.payload,
+      );
       return;
     }
     this.platformStore.set(setSharedDatabaseConnectionStatus$, event.status);
