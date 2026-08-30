@@ -457,7 +457,7 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "tok"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert!(!env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV)
             .unwrap(),
@@ -760,7 +760,7 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             guest_contracts::env::PROMPT_ENV.into(),
             "user prompt".into(),
         ),
-        (guest_contracts::env::API_TOKEN_ENV.into(), "stolen".into()),
+        ("VM0_API_TOKEN".into(), "stolen".into()),
         (
             guest_contracts::env::WORKING_DIR_ENV.into(),
             "/legacy".into(),
@@ -820,7 +820,7 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             .unwrap(),
         "tok"
     );
-    assert!(!bootstrap_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert!(!bootstrap_env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         bootstrap_env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &ctx.run_id.to_string()
@@ -842,7 +842,7 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         guest_contracts::env::PI_LAUNCH_CONFIG_ENV,
         guest_contracts::env::PI_MODEL_CONFIG_ENV,
         guest_contracts::env::PROMPT_ENV,
-        guest_contracts::env::API_TOKEN_ENV,
+        "VM0_API_TOKEN",
         guest_contracts::env::WORKING_DIR_ENV,
         "VM0_GUEST_RUNTIME_DIR",
         guest_contracts::env::FEATURE_FLAGS_ENV,
@@ -1703,7 +1703,7 @@ fn build_env_json_environment_cannot_override_system() {
             .unwrap(),
         "tok"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert!(!env.contains_key("VM0_API_TOKEN"));
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert!(!user_env.contains_key("VM0_PROMPT"));

@@ -33,7 +33,7 @@ const SOURCE_EVENT_FAMILIES: [&str; 5] = [
     "guest_agent_tuning_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 9] = [
+const SOURCE_EVENTS: [(&str, &str); 8] = [
     (
         "api_url_env_source",
         guest_contracts::env::CANONICAL_API_URL_ENV,
@@ -61,10 +61,6 @@ const SOURCE_EVENTS: [(&str, &str); 9] = [
     (
         "private_payload_file_env_source",
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-    ),
-    (
-        "api_token_env_source",
-        guest_contracts::env::CANONICAL_API_TOKEN_ENV,
     ),
     (
         "agent_execution_timeout_env_source",

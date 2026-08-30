@@ -246,7 +246,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
     for key in [
-        guest_contracts::env::API_TOKEN_ENV,
+        "VM0_API_TOKEN",
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
     ] {
