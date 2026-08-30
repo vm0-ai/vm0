@@ -3,10 +3,7 @@ import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { computed, type Computed } from "ccstate";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -133,10 +130,6 @@ function readCurrentChatEventHistoryAtSnapshot(
           eq(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
-          eq(
-            chatEventSnapshots.projection,
-            CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
           ),
         ),
       )

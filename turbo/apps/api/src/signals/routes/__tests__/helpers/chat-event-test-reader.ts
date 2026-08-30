@@ -1,9 +1,10 @@
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
+  withoutLegacyChatEventProjection,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
@@ -57,7 +58,6 @@ export async function readProjectedChatEvents(
     cursor = {
       lastEventId: args.sinceEventId,
       lastSeqId: args.sinceSeqId,
-      projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
     };
   }
 
@@ -79,7 +79,7 @@ export async function readProjectedChatEvents(
             : {
                 sinceSeqId: cursor.lastSeqId,
                 sinceEventId: cursor.lastEventId,
-                sinceProjection: cursor.projection,
+                sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
                 limit,
               },
       }),
@@ -99,6 +99,6 @@ export async function readProjectedChatEvents(
         `Chat event row cursor did not advance for ${args.threadId}`,
       );
     }
-    cursor = nextCursor;
+    cursor = withoutLegacyChatEventProjection(nextCursor);
   }
 }

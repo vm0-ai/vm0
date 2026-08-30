@@ -1,10 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { and, desc, eq, inArray, lte, max } from "drizzle-orm";
 import {
   activeInputDeliveries,
@@ -372,10 +369,6 @@ export const coverRetentionThread$ = command(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           ),
-          eq(
-            chatEventSnapshots.projection,
-            CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-          ),
         ),
       )
       .limit(1);
@@ -391,7 +384,6 @@ export const coverRetentionThread$ = command(
         lastEventId: terminal.id,
         ...terminalCursor,
         archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
         objectKey,
       });
     } else {

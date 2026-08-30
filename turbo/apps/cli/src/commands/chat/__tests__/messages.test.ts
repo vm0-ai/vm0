@@ -9,9 +9,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  LEGACY_CHAT_EVENT_PROJECTION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { HttpResponse, http } from "msw";
 import {
@@ -37,7 +37,7 @@ const CHAT_EVENT_SCHEMA_HEADERS = {
     CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
 };
 const CACHE_SCHEMA_VERSION_FILE = ".okou-chat-event-schema-version";
-const CACHE_SCHEMA_VERSION_BODY = `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION}\n`;
+const CACHE_SCHEMA_VERSION_BODY = `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${LEGACY_CHAT_EVENT_PROJECTION}\n`;
 
 function rawEventRow(seqId: number) {
   return {
@@ -134,6 +134,9 @@ describe("okou chat messages command", () => {
         );
         expect(url.searchParams.get("sinceSeqId")).toBe("2");
         expect(url.searchParams.get("sinceEventId")).toBe(snapshotLastRow.id);
+        expect(url.searchParams.get("sinceProjection")).toBe(
+          LEGACY_CHAT_EVENT_PROJECTION,
+        );
         expect(url.searchParams.get("limit")).toBe("50");
         return HttpResponse.json(
           {
@@ -488,7 +491,7 @@ describe("okou chat messages command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("rebuilds a version-only cache before interpreting its cursor", async () => {
+  it("continues a version-only cache and preserves the legacy writer shape", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
@@ -503,38 +506,33 @@ describe("okou chat messages command", () => {
       "utf8",
     );
     await writeFile(join(threadDirectory, "notes.txt"), "keep me", "utf8");
-    const freshSnapshotRow = rawEventRow(10);
-    const rowCursors: string[] = [];
-    let snapshotRequests = 0;
+    const nextRow = rawEventRow(5);
+    const rowCursors: {
+      readonly eventId: string | null;
+      readonly seqId: string | null;
+      readonly projection: string | null;
+    }[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
-        snapshotRequests += 1;
-        return HttpResponse.json(
-          {
-            url: SNAPSHOT_DOWNLOAD_URL,
-            expiresInSeconds: 900,
-            lastEventId: freshSnapshotRow.id,
-            lastSeqId: freshSnapshotRow.seqId,
-            projection: "tool-redacted",
-          },
-          { headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-      http.get(SNAPSHOT_DOWNLOAD_URL, () => {
-        return new HttpResponse(snapshotNdjson([freshSnapshotRow]));
+        throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, ({ request }) => {
-        const cursor = new URL(request.url).searchParams.get("sinceSeqId");
-        if (cursor === null) {
+        const url = new URL(request.url);
+        const seqId = url.searchParams.get("sinceSeqId");
+        if (seqId === null) {
           throw new Error("Expected a rows cursor");
         }
-        rowCursors.push(cursor);
+        rowCursors.push({
+          eventId: url.searchParams.get("sinceEventId"),
+          seqId,
+          projection: url.searchParams.get("sinceProjection"),
+        });
         return HttpResponse.json(
           {
-            rows: [],
+            rows: [nextRow],
             cursor: {
-              lastEventId: freshSnapshotRow.id,
-              lastSeqId: freshSnapshotRow.seqId,
+              lastEventId: nextRow.id,
+              lastSeqId: nextRow.seqId,
               projection: "tool-redacted",
             },
             hasMore: false,
@@ -553,12 +551,18 @@ describe("okou chat messages command", () => {
       outputDirectory,
     ]);
 
-    expect(snapshotRequests).toBe(1);
-    expect(rowCursors).toStrictEqual(["10"]);
+    expect(rowCursors).toStrictEqual([
+      {
+        eventId: rawEventRow(4).id,
+        seqId: "4",
+        projection: LEGACY_CHAT_EVENT_PROJECTION,
+      },
+    ]);
     expect((await readdir(threadDirectory)).sort()).toStrictEqual([
       CACHE_SCHEMA_VERSION_FILE,
+      "event-SEQ_ID_4.json",
+      "event-SEQ_ID_5.json",
       "notes.txt",
-      "snapshot-tool-redacted-to-10.ndjson",
     ]);
     await expect(
       readFile(join(threadDirectory, CACHE_SCHEMA_VERSION_FILE), "utf8"),

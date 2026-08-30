@@ -1,6 +1,7 @@
 import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  LEGACY_CHAT_EVENT_PROJECTION,
+  withLegacyChatEventProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed } from "ccstate";
 import {
@@ -147,6 +148,12 @@ const listChatIndicatorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: indicators };
 });
 
+/**
+ * Stage 1 API-to-client adapter for strict pre-Stage-1 Snapshot readers.
+ * Stale App/SharedWorker clients can remain for about two days, while CLI
+ * artifacts use the queue plus claimed execution/finalization drain gate.
+ * Remove the fixed response field under vm0-ai/vm0#30329 after both close.
+ */
 const getChatEventSnapshotInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
@@ -166,7 +173,6 @@ const getChatEventSnapshotInner$ = command(
       chatThreadEventSnapshot({
         threadId: params.threadId,
         userId: auth.userId,
-        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
       }),
       signal,
     );
@@ -192,12 +198,18 @@ const getChatEventSnapshotInner$ = command(
         expiresInSeconds: snapshot.expiresInSeconds,
         lastEventId: snapshot.lastEventId,
         lastSeqId: snapshot.lastSeqId,
-        projection: snapshot.projection,
+        projection: LEGACY_CHAT_EVENT_PROJECTION,
       },
     };
   },
 );
 
+/**
+ * Stage 1 API-to-client adapter: ignore the optional legacy request field and
+ * emit the fixed response shape for pre-Stage-1 App/SharedWorker clients
+ * (about two days) and CLI artifacts (queue plus execution/finalization).
+ * Remove both wire fields under vm0-ai/vm0#30329 after those gates close.
+ */
 const listChatEventRowsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
@@ -218,8 +230,13 @@ const listChatEventRowsInner$ = command(
       chatThreadEventRows({
         threadId: params.threadId,
         userId: auth.userId,
-        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-        ...query,
+        limit: query.limit,
+        ...(query.sinceEventId === undefined
+          ? { sinceSeqId: 0 as const }
+          : {
+              sinceSeqId: query.sinceSeqId,
+              sinceEventId: query.sinceEventId,
+            }),
       }),
     );
     signal.throwIfAborted();
@@ -242,9 +259,9 @@ const listChatEventRowsInner$ = command(
       status: 200 as const,
       body: {
         rows: [...page.rows],
-        cursor: page.cursor,
+        cursor: withLegacyChatEventProjection(page.cursor),
         hasMore: page.hasMore,
-        projection: page.projection,
+        projection: LEGACY_CHAT_EVENT_PROJECTION,
       },
     };
   },
