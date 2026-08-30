@@ -36,10 +36,10 @@ BEGIN
 			"legacy_identifier"."identifier" AS legacy_identifier
 		FROM routine_definition
 		CROSS JOIN legacy_identifier
-		WHERE pg_catalog.strpos(
-			"routine_definition"."definition",
-			pg_catalog.format('"%s"', "legacy_identifier"."identifier")
-		) > 0
+		WHERE "routine_definition"."definition" ~ pg_catalog.format(
+			'(^|[^"])"%s"([^"]|$)',
+			"legacy_identifier"."identifier"
+		)
 			OR pg_catalog.regexp_replace(
 				"routine_definition"."definition",
 				'"([^"]|"")*"',

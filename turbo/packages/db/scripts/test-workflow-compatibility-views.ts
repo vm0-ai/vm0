@@ -498,6 +498,7 @@ interface RoutineReferenceProbeCatalog {
   readonly languageName: string;
   readonly relationEdgeCount: number;
   readonly returnType: string;
+  readonly routineDefinition: string;
   readonly routineKind: string;
   readonly routineName: string;
   readonly routineOid: string;
@@ -1017,6 +1018,7 @@ async function validateRoutineAssertionMigrationArtifacts(): Promise<void> {
   );
   assert.match(assertionStatement, /pg_catalog\.pg_get_functiondef/u);
   assert.match(assertionStatement, /pg_catalog\.regexp_replace/u);
+  assert.ok(assertionStatement.includes('(^|[^"])"%s"([^"]|$)'));
   assert.match(assertionStatement, /"routine"\."prokind" IN \('f', 'p'\)/u);
   assert.match(
     assertionStatement,
@@ -5053,8 +5055,11 @@ async function createRoutineReferenceProbes(client: Client): Promise<void> {
     LANGUAGE plpgsql
     AS $workflow_probe$
     BEGIN
-      RETURN (SELECT count(*) FROM public."prefix zero_workflows suffix");
+      PERFORM count(*) FROM public."prefix zero_workflows suffix";
+      PERFORM count(*) FROM public."prefix""zero_workflows";
+      PERFORM count(*) FROM public."zero_workflows""suffix";
       -- archive_zero_workflows zero_workflows_archive zero_workflows$archive
+      RETURN 0;
     END
     $workflow_probe$
   `);
@@ -5080,6 +5085,7 @@ async function readRoutineReferenceProbeCatalog(
             AND "referenced_relation"."relname" = ANY($2::text[])
         ) AS "relationEdgeCount",
         "format_type"("routine"."prorettype", NULL) AS "returnType",
+        "pg_get_functiondef"("routine"."oid") AS "routineDefinition",
         "routine"."prokind"::text AS "routineKind",
         "routine"."proname" AS "routineName",
         "routine"."oid"::text AS "routineOid",
@@ -5152,6 +5158,16 @@ async function validateRoutineReferenceCatalogBlindSpot(
   assert.equal(nearTokenProbe.languageName, "plpgsql");
   assert.equal(nearTokenProbe.relationEdgeCount, 0);
   assert.equal(nearTokenProbe.stringBody, true);
+  assert.ok(
+    nearTokenProbe.routineDefinition.includes(
+      'public."prefix""zero_workflows"',
+    ),
+  );
+  assert.ok(
+    nearTokenProbe.routineDefinition.includes(
+      'public."zero_workflows""suffix"',
+    ),
+  );
 
   await client.query(
     `DROP FUNCTION "public"."${routineReferenceSqlStandardProbe}"()`,
