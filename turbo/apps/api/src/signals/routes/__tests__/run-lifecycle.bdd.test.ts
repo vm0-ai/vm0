@@ -18112,6 +18112,16 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       await expect(
         readSessionHistoryBlobRefCountFixture(historyHash),
       ).resolves.toBe(1);
+      const conflictingExitDuplicate = await webhooks.requestAgentComplete(
+        {
+          ...body,
+          exitCode: 1,
+          error: "response-loss retry reported a failure",
+        },
+        sandboxHeaders,
+        [200],
+      );
+      expect(conflictingExitDuplicate.body).toStrictEqual(completed.body);
       const conflictingCheckpoint = await webhooks.requestAgentComplete(
         {
           ...body,
