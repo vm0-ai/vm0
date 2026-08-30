@@ -19,8 +19,6 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  LEGACY_CHAT_EVENT_PROJECTION,
-  withoutLegacyChatEventProjection,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -305,9 +303,6 @@ export async function listChatEventRows(
         : {
             sinceSeqId: options.sinceSeqId,
             sinceEventId: options.sinceEventId,
-            // Stage 1 CLI-to-API adapter for retained pre-Stage-1 targets.
-            // Remove under vm0-ai/vm0#30329 when that API gate closes.
-            sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
             limit: options.limit,
           },
   });
@@ -316,7 +311,7 @@ export async function listChatEventRows(
     return {
       kind: "rows",
       rows: result.body.rows,
-      cursor: withoutLegacyChatEventProjection(result.body.cursor),
+      cursor: result.body.cursor,
       hasMore: result.body.hasMore,
     };
   }

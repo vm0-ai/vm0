@@ -3,7 +3,6 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  LEGACY_CHAT_EVENT_PROJECTION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { describe, expect, it, vi } from "vitest";
@@ -173,7 +172,6 @@ describe("chat event snapshot read", () => {
         return respond(200, {
           url: SNAPSHOT_URL,
           expiresInSeconds: 900,
-          projection: "tool-redacted",
           lastEventId: assistantEventRow.id,
           lastSeqId: assistantEventRow.seqId,
         });
@@ -342,7 +340,6 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
-        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: 2,
       });
@@ -400,10 +397,8 @@ describe("chat event snapshot read", () => {
       }),
       seed.done,
     ]);
-    const positiveCursorProjections: (string | undefined)[] = [];
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === 2) {
-        positiveCursorProjections.push(query.sinceProjection);
         return respond(200, chatEventRowsResponse([tailEventRow], query));
       }
       return respond(200, chatEventRowsResponse([], query));
@@ -438,11 +433,7 @@ describe("chat event snapshot read", () => {
       schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       lastEventId: tailEventRow.id,
       lastSeqId: tailEventRow.seqId,
-      projection: LEGACY_CHAT_EVENT_PROJECTION,
     });
-    expect(positiveCursorProjections).toStrictEqual([
-      LEGACY_CHAT_EVENT_PROJECTION,
-    ]);
   });
 
   it("background-cold-starts raw rows and forwards them to an active thread", async () => {
@@ -455,7 +446,6 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
-        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: assistantEventRow.seqId,
       });
@@ -570,7 +560,6 @@ describe("chat event snapshot read", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
-        projection: "tool-redacted",
         lastEventId: assistantEventRow.id,
         lastSeqId: assistantEventRow.seqId,
       });

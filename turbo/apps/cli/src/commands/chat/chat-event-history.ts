@@ -12,7 +12,6 @@ import { join } from "node:path";
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  LEGACY_CHAT_EVENT_PROJECTION,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
@@ -23,21 +22,11 @@ import {
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
-// Stage 1 CLI-cache filename fallback for pre-Stage-1 artifacts. Remove under
-// vm0-ai/vm0#30329 after the queue plus execution/finalization gate closes.
-const SNAPSHOT_FILE_PATTERN = /^snapshot-tool-redacted-to-(\d+)\.ndjson$/;
+const SNAPSHOT_FILE_PATTERN = /^snapshot-to-(\d+)\.ndjson$/;
 const EVENT_FILE_PATTERN = /^event-SEQ_ID_(\d+)\.json$/;
 const CACHE_FORMAT_FILE = ".okou-chat-event-schema-version";
 
 function cacheFormatBody(): string {
-  // Stage 1 CLI-cache writer fallback for pre-Stage-1 readers. Remove under
-  // vm0-ai/vm0#30329 after the queue plus execution/finalization gate closes.
-  return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${LEGACY_CHAT_EVENT_PROJECTION}\n`;
-}
-
-function versionOnlyCacheFormatBody(): string {
-  // Accept the projection-free peer shape during the same Stage 1 CLI gate;
-  // vm0-ai/vm0#30329 removes the dual-shape compatibility branch afterward.
   return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
 }
 
@@ -116,7 +105,7 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 async function hasCurrentCacheFormat(directory: string): Promise<boolean> {
   try {
     const body = await readFile(join(directory, CACHE_FORMAT_FILE), "utf8");
-    return body === cacheFormatBody() || body === versionOnlyCacheFormatBody();
+    return body === cacheFormatBody();
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
       return false;
@@ -417,9 +406,7 @@ async function rebuildRawChatHistory(args: {
         expectedLastEventId: snapshot.lastEventId,
         expectedLastSeqId: snapshot.lastSeqId,
       });
-      // Stage 1 legacy writer paired with SNAPSHOT_FILE_PATTERN. Remove under
-      // vm0-ai/vm0#30329 after the CLI artifact drain gate closes.
-      const snapshotFileName = `snapshot-tool-redacted-to-${snapshot.lastSeqId}.ndjson`;
+      const snapshotFileName = `snapshot-to-${snapshot.lastSeqId}.ndjson`;
       await writeFile(
         join(temporaryDirectory, snapshotFileName),
         downloaded,
