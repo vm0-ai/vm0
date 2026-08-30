@@ -148,6 +148,12 @@ const listChatIndicatorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: indicators };
 });
 
+/**
+ * Stage 1 API-to-client adapter for strict pre-Stage-1 Snapshot readers.
+ * Stale App/SharedWorker clients can remain for about two days, while CLI
+ * artifacts use the queue plus claimed execution/finalization drain gate.
+ * Remove the fixed response field under vm0-ai/vm0#30329 after both close.
+ */
 const getChatEventSnapshotInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
@@ -198,6 +204,12 @@ const getChatEventSnapshotInner$ = command(
   },
 );
 
+/**
+ * Stage 1 API-to-client adapter: ignore the optional legacy request field and
+ * emit the fixed response shape for pre-Stage-1 App/SharedWorker clients
+ * (about two days) and CLI artifacts (queue plus execution/finalization).
+ * Remove both wire fields under vm0-ai/vm0#30329 after those gates close.
+ */
 const listChatEventRowsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);

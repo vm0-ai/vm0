@@ -549,8 +549,9 @@ async function mockChatThread(
               };
       await route.fulfill({
         headers: await negotiatedChatEventHeaders(route.request()),
-        // Mirror the temporary Stage 1 wire boundary; current App logic strips
-        // the fixed projection before using this cursor for continuation.
+        // Mirror the Stage 1 API-to-App fallback for the about-two-day stale
+        // client window. Current App logic strips projection before cursor
+        // continuation; vm0-ai/vm0#30329 removes this fixture field afterward.
         json: {
           rows,
           cursor,

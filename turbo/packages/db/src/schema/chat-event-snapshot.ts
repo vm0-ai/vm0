@@ -44,7 +44,11 @@ export const chatEventSnapshots = pgTable(
     archiveSchemaVersion: integer("archive_schema_version")
       .default(7)
       .notNull(),
-    /** Stage 1 tombstone for the still-physical legacy projection column. */
+    /**
+     * Stage 1 DB/API tombstone for the still-physical legacy column. Remove it
+     * via the vm0-ai/vm0#30329 migration only after retained old API targets
+     * can no longer read or write this table.
+     */
     projection: text("projection")
       .$type<LegacyChatEventProjection>()
       .default("tool-redacted")

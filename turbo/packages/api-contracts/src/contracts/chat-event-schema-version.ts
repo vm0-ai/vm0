@@ -8,9 +8,13 @@ export const CURRENT_CHAT_EVENT_SCHEMA_VERSION = 7 as const;
 export const CHAT_EVENT_SCHEMA_VERSION_HEADER = "X-Chat-Event-Schema-Version";
 
 /**
- * Temporary Stage 1 mixed-deployment adapter for pre-detachment App, API, and
- * CLI readers. Runtime cursor and Snapshot selection must not consult it.
- * Stage 2 removes the legacy wire/cache field after those readers drain.
+ * Stage 1 mixed-deployment adapter for pre-detachment App, API, and CLI
+ * readers. Stale App/SharedWorker clients can remain for about two days; CLI
+ * artifacts use the queue plus claimed execution/finalization drain gate, and
+ * current clients may still reach retained pre-Stage-1 API targets. Runtime
+ * cursor and Snapshot selection must not consult this value. Remove the
+ * wire/cache adapter under https://github.com/vm0-ai/vm0/issues/30329 only
+ * after every listed gate closes.
  */
 export const LEGACY_CHAT_EVENT_PROJECTION = "tool-redacted" as const;
 export const LEGACY_CHAT_EVENT_PROJECTIONS = [

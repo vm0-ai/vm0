@@ -79,7 +79,8 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
     : {
         sinceSeqId: cursor.lastSeqId,
         sinceEventId: cursor.lastEventId,
-        // Keep the current SharedWorker compatible with the pre-Stage-1 API.
+        // Stage 1 SharedWorker-to-API adapter for retained pre-Stage-1 targets.
+        // Remove under vm0-ai/vm0#30329 when that API gate closes.
         sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
         limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
       };

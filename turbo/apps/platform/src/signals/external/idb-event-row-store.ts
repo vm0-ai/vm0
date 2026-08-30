@@ -155,7 +155,8 @@ function createRowWriteStore(
         tx.objectStore(cursorStoreName).put({
           threadId,
           schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          // Keep the pre-Stage-1 shape writable until old App readers drain.
+          // Stage 1 App-to-IDB writer fallback for stale App readers (about two
+          // days). Remove under vm0-ai/vm0#30329 after that client gate closes.
           ...withLegacyChatEventProjection(cursor),
         }),
       );
@@ -183,7 +184,8 @@ function createRowWriteStore(
         tx.objectStore(cursorStoreName).put({
           threadId,
           schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          // Keep the pre-Stage-1 shape writable until old App readers drain.
+          // Stage 1 App-to-IDB writer fallback for stale App readers (about two
+          // days). Remove under vm0-ai/vm0#30329 after that client gate closes.
           ...withLegacyChatEventProjection(cursor),
         }),
         tx.done,

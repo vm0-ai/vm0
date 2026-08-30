@@ -305,7 +305,8 @@ export async function listChatEventRows(
         : {
             sinceSeqId: options.sinceSeqId,
             sinceEventId: options.sinceEventId,
-            // Keep the current CLI compatible with the pre-Stage-1 API.
+            // Stage 1 CLI-to-API adapter for retained pre-Stage-1 targets.
+            // Remove under vm0-ai/vm0#30329 when that API gate closes.
             sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
             limit: options.limit,
           },

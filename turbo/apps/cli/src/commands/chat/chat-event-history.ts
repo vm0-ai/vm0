@@ -23,16 +23,21 @@ import {
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
+// Stage 1 CLI-cache filename fallback for pre-Stage-1 artifacts. Remove under
+// vm0-ai/vm0#30329 after the queue plus execution/finalization gate closes.
 const SNAPSHOT_FILE_PATTERN = /^snapshot-tool-redacted-to-(\d+)\.ndjson$/;
 const EVENT_FILE_PATTERN = /^event-SEQ_ID_(\d+)\.json$/;
 const CACHE_FORMAT_FILE = ".okou-chat-event-schema-version";
 
 function cacheFormatBody(): string {
-  // Keep the pre-Stage-1 writer shape until older CLI readers drain.
+  // Stage 1 CLI-cache writer fallback for pre-Stage-1 readers. Remove under
+  // vm0-ai/vm0#30329 after the queue plus execution/finalization gate closes.
   return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${LEGACY_CHAT_EVENT_PROJECTION}\n`;
 }
 
 function versionOnlyCacheFormatBody(): string {
+  // Accept the projection-free peer shape during the same Stage 1 CLI gate;
+  // vm0-ai/vm0#30329 removes the dual-shape compatibility branch afterward.
   return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
 }
 
@@ -412,6 +417,8 @@ async function rebuildRawChatHistory(args: {
         expectedLastEventId: snapshot.lastEventId,
         expectedLastSeqId: snapshot.lastSeqId,
       });
+      // Stage 1 legacy writer paired with SNAPSHOT_FILE_PATTERN. Remove under
+      // vm0-ai/vm0#30329 after the CLI artifact drain gate closes.
       const snapshotFileName = `snapshot-tool-redacted-to-${snapshot.lastSeqId}.ndjson`;
       await writeFile(
         join(temporaryDirectory, snapshotFileName),
