@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.511.7](https://github.com/vm0-ai/vm0/compare/api-v1.511.6...api-v1.511.7) (2026-08-30)
+
+
+### Bug Fixes
+
+* **api:** stop sandbox authority after run timeout ([#30324](https://github.com/vm0-ai/vm0/issues/30324)) ([93c36ff](https://github.com/vm0-ai/vm0/commit/93c36ff94a3da6714ce97ebf40d14f907cac4464))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.10
+    * @okouai/connector-catalog-validation bumped to 2.0.13
+    * @okouai/core bumped to 8.603.2
+    * @okouai/db bumped to 1.228.18
+
 ## [1.511.6](https://github.com/vm0-ai/vm0/compare/api-v1.511.5...api-v1.511.6) (2026-08-30)
 
 
