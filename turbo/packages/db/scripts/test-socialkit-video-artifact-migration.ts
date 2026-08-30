@@ -8,7 +8,7 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration = "1032_remove_chat_event_projection_metadata";
-export const SOCIALKIT_VIDEO_ARTIFACT_MIGRATION =
+const SOCIALKIT_VIDEO_ARTIFACT_MIGRATION =
   "1033_socialkit_video_artifact_marker";
 const testDatabase = "migration_socialkit_video_artifact_30349";
 const VIDEO_MARKER = "zero-official-video";
@@ -194,7 +194,7 @@ function requiredFile(
   return row;
 }
 
-export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
+async function validateSocialKitVideoArtifactMigration(): Promise<void> {
   console.log("=== Validate SocialKit video artifact migration ===\n");
 
   const baseUrl = process.env.DATABASE_URL;
