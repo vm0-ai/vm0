@@ -1,4 +1,4 @@
-//! Bootstrap alias source evidence is persisted only after runtime sink setup.
+//! Retired bootstrap alias source evidence stays absent after runtime sink setup.
 
 #![cfg(unix)]
 
@@ -24,31 +24,15 @@ const SANDBOX_REUSE_VALUE: &str = "sandbox-reuse-value-must-not-leak";
 const WORKSPACE_REUSE_VALUE: &str = "workspace-reuse-value-must-not-leak";
 const RESUME_SESSION_VALUE: &str = "resume-session-value-must-not-leak";
 const API_START_TIME_VALUE: &str = "api-start-time-value-must-not-leak";
+const RETIRED_TIMING_SOURCE_EVENT: &str = "guest_agent_tuning_env_source";
 
 const SOURCE_EVENT_FAMILIES: [&str; 3] = [
     "api_url_env_source",
     "api_token_env_source",
-    "guest_agent_tuning_env_source",
+    "agent_execution_timeout_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 4] = [
-    (
-        "guest_agent_tuning_env_source",
-        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-    ),
-    (
-        "guest_agent_tuning_env_source",
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    ),
-    (
-        "guest_agent_tuning_env_source",
-        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-    ),
-    (
-        "guest_agent_tuning_env_source",
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    ),
-];
+const SOURCE_EVENTS: [(&str, &str); 0] = [];
 
 struct PrivateFiles {
     user_env_path: PathBuf,
@@ -111,8 +95,18 @@ fn assert_value_free(text: &str, runtime_dir: &Path) {
     );
 }
 
+fn assert_timing_source_absent(text: &str) {
+    assert!(!text.contains(RETIRED_TIMING_SOURCE_EVENT));
+    for (_, canonical_key) in guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS {
+        assert!(
+            !text.contains(canonical_key),
+            "source evidence retained timing key {canonical_key}"
+        );
+    }
+}
+
 #[tokio::test]
-async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult {
+async fn runtime_bootstrap_emits_no_retired_source_events() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let runtime_dir = tmp.path().join("runtime-path-value-must-not-leak");
     let private_files = write_private_files(&runtime_dir)?;
@@ -202,9 +196,12 @@ async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult
     );
     assert!(stdout.contains(CHILD_MARKER), "stdout:\n{stdout}");
 
-    let system_log = std::fs::read_to_string(guest_contracts::runtime_paths::system_log_file(
-        &runtime_dir,
-    ))?;
+    let system_log_path = guest_contracts::runtime_paths::system_log_file(&runtime_dir);
+    let system_log = match std::fs::read_to_string(system_log_path) {
+        Ok(system_log) => system_log,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.into()),
+    };
     let expected = expected_source_messages();
     let expected = expected.iter().map(String::as_str).collect::<Vec<_>>();
     assert_eq!(source_messages(&stderr), expected, "stderr source events");
@@ -219,6 +216,8 @@ async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult
     assert!(!system_log.contains("private_payload_file_env_source"));
     assert!(!stderr.contains("run_metadata_env_source"));
     assert!(!system_log.contains("run_metadata_env_source"));
+    assert_timing_source_absent(&stderr);
+    assert_timing_source_absent(&system_log);
     assert!(!private_files.user_env_path.exists());
     assert!(!private_files.run_payload_path.exists());
     Ok(())
@@ -241,6 +240,19 @@ fn bootstrap_alias_source_events_isolated_child() -> TestResult {
     assert_eq!(runtime.config.workspace_reuse_result, WORKSPACE_REUSE_VALUE);
     assert_eq!(runtime.config.resume_session_id, RESUME_SESSION_VALUE);
     assert_eq!(runtime.config.api_start_time, API_START_TIME_VALUE);
+    assert_eq!(runtime.config.stuck_tool_timeout_secs, 38);
+    assert_eq!(
+        runtime.config.post_result_sigterm_grace,
+        Duration::from_secs(39)
+    );
+    assert_eq!(
+        runtime.config.post_result_total_cap,
+        Duration::from_secs(40)
+    );
+    assert_eq!(
+        runtime.config.post_result_sigkill_grace,
+        Duration::from_secs(41)
+    );
     assert_eq!(
         runtime.config.agent_execution_timeout,
         Some(Duration::from_secs(37))

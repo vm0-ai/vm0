@@ -1,4 +1,4 @@
-//! Guest Agent timing aliases are resolved once at the process-env boundary.
+//! Guest Agent timing controls are captured only from canonical bootstrap keys.
 
 #![cfg(unix)]
 
@@ -11,10 +11,10 @@ use guest_agent::env::{GuestConfig, GuestConfigRaw};
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const VALID_VALUE: &str = "37";
+const LEGACY_VALUE: &str = "91";
 const OUT_OF_RANGE_VALUE: &str = "3601";
-const CANONICAL_CONFLICT_VALUE: &str = "canonical-tuning-value-must-not-leak";
-const LEGACY_CONFLICT_VALUE: &str = "legacy-tuning-value-must-not-leak";
-const SOURCE_EVENT: &str = "guest_agent_tuning_env_source";
+const INVALID_VALUE: &str = "canonical-invalid-tuning";
+const RETIRED_SOURCE_EVENT: &str = "guest_agent_tuning_env_source";
 
 #[derive(Clone, Copy)]
 struct TuningEnvPair {
@@ -67,219 +67,108 @@ const TUNING_ENV_PAIRS: [TuningEnvPair; 4] = [
 ];
 
 #[derive(Clone, Copy)]
-enum AliasInput {
+enum EnvInput {
     Absent,
     Readable(&'static str),
     NonUnicode,
 }
 
 #[derive(Clone, Copy)]
-struct SuccessCase {
-    name: &'static str,
-    canonical: AliasInput,
-    legacy: AliasInput,
-    expected_raw: &'static str,
-    expected_source: Option<&'static str>,
-}
-
-const SUCCESS_CASES: [SuccessCase; 14] = [
-    SuccessCase {
-        name: "both-absent",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Absent,
-        expected_raw: "",
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "canonical-only",
-        canonical: AliasInput::Readable(VALID_VALUE),
-        legacy: AliasInput::Absent,
-        expected_raw: VALID_VALUE,
-        expected_source: Some("canonical-only"),
-    },
-    SuccessCase {
-        name: "legacy-only",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable(VALID_VALUE),
-        expected_raw: VALID_VALUE,
-        expected_source: Some("legacy-only"),
-    },
-    SuccessCase {
-        name: "equal-dual",
-        canonical: AliasInput::Readable(VALID_VALUE),
-        legacy: AliasInput::Readable(VALID_VALUE),
-        expected_raw: VALID_VALUE,
-        expected_source: Some("dual"),
-    },
-    SuccessCase {
-        name: "canonical-empty-only",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::Absent,
-        expected_raw: "",
-        expected_source: Some("canonical-only"),
-    },
-    SuccessCase {
-        name: "legacy-empty-only",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable(""),
-        expected_raw: "",
-        expected_source: Some("legacy-only"),
-    },
-    SuccessCase {
-        name: "equal-dual-empty",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::Readable(""),
-        expected_raw: "",
-        expected_source: Some("dual"),
-    },
-    SuccessCase {
-        name: "canonical-non-unicode-only",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::Absent,
-        expected_raw: "",
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "legacy-non-unicode-only",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::NonUnicode,
-        expected_raw: "",
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "both-non-unicode",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::NonUnicode,
-        expected_raw: "",
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "canonical-with-unreadable-legacy",
-        canonical: AliasInput::Readable(VALID_VALUE),
-        legacy: AliasInput::NonUnicode,
-        expected_raw: VALID_VALUE,
-        expected_source: Some("canonical-only"),
-    },
-    SuccessCase {
-        name: "legacy-with-unreadable-canonical",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::Readable(VALID_VALUE),
-        expected_raw: VALID_VALUE,
-        expected_source: Some("legacy-only"),
-    },
-    SuccessCase {
-        name: "canonical-empty-with-unreadable-legacy",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::NonUnicode,
-        expected_raw: "",
-        expected_source: Some("canonical-only"),
-    },
-    SuccessCase {
-        name: "legacy-empty-with-unreadable-canonical",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::Readable(""),
-        expected_raw: "",
-        expected_source: Some("legacy-only"),
-    },
-];
-
-#[derive(Clone, Copy)]
-struct RawSemanticsCase {
-    name: &'static str,
-    canonical: AliasInput,
-    legacy: AliasInput,
-    expected_raw: &'static str,
-    expected_source: &'static str,
-    expectation: ConfigExpectation,
-}
-
-#[derive(Clone, Copy)]
 enum ConfigExpectation {
     Default,
+    Exact(u64),
     OutOfRange,
 }
 
-const RAW_SEMANTICS_CASES: [RawSemanticsCase; 7] = [
-    RawSemanticsCase {
-        name: "canonical-whitespace",
-        canonical: AliasInput::Readable(" 37 "),
-        legacy: AliasInput::Absent,
-        expected_raw: " 37 ",
-        expected_source: "canonical-only",
-        expectation: ConfigExpectation::Default,
-    },
-    RawSemanticsCase {
-        name: "legacy-whitespace",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable("37 "),
-        expected_raw: "37 ",
-        expected_source: "legacy-only",
-        expectation: ConfigExpectation::Default,
-    },
-    RawSemanticsCase {
-        name: "equal-dual-whitespace",
-        canonical: AliasInput::Readable(" 37 "),
-        legacy: AliasInput::Readable(" 37 "),
-        expected_raw: " 37 ",
-        expected_source: "dual",
-        expectation: ConfigExpectation::Default,
-    },
-    RawSemanticsCase {
-        name: "canonical-invalid",
-        canonical: AliasInput::Readable("canonical-invalid-tuning"),
-        legacy: AliasInput::Absent,
-        expected_raw: "canonical-invalid-tuning",
-        expected_source: "canonical-only",
-        expectation: ConfigExpectation::Default,
-    },
-    RawSemanticsCase {
-        name: "legacy-invalid",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable("legacy-invalid-tuning"),
-        expected_raw: "legacy-invalid-tuning",
-        expected_source: "legacy-only",
-        expectation: ConfigExpectation::Default,
-    },
-    RawSemanticsCase {
-        name: "canonical-out-of-range",
-        canonical: AliasInput::Readable(OUT_OF_RANGE_VALUE),
-        legacy: AliasInput::Absent,
-        expected_raw: OUT_OF_RANGE_VALUE,
-        expected_source: "canonical-only",
-        expectation: ConfigExpectation::OutOfRange,
-    },
-    RawSemanticsCase {
-        name: "legacy-out-of-range",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable(OUT_OF_RANGE_VALUE),
-        expected_raw: OUT_OF_RANGE_VALUE,
-        expected_source: "legacy-only",
-        expectation: ConfigExpectation::OutOfRange,
-    },
-];
-
 #[derive(Clone, Copy)]
-struct ConflictCase {
-    name: &'static str,
-    canonical: &'static str,
-    legacy: &'static str,
+enum DiagnosticExpectation {
+    None,
+    Invalid,
+    OutOfRange,
 }
 
-const CONFLICT_CASES: [ConflictCase; 3] = [
-    ConflictCase {
-        name: "different-readable-values",
-        canonical: CANONICAL_CONFLICT_VALUE,
-        legacy: LEGACY_CONFLICT_VALUE,
+#[derive(Clone, Copy)]
+struct CanonicalCase {
+    name: &'static str,
+    canonical: EnvInput,
+    legacy: EnvInput,
+    expected_raw: &'static str,
+    config: ConfigExpectation,
+    diagnostic: DiagnosticExpectation,
+}
+
+const CANONICAL_CASES: [CanonicalCase; 9] = [
+    CanonicalCase {
+        name: "both-absent",
+        canonical: EnvInput::Absent,
+        legacy: EnvInput::Absent,
+        expected_raw: "",
+        config: ConfigExpectation::Default,
+        diagnostic: DiagnosticExpectation::None,
     },
-    ConflictCase {
-        name: "canonical-empty-legacy-non-empty",
-        canonical: "",
-        legacy: LEGACY_CONFLICT_VALUE,
+    CanonicalCase {
+        name: "legacy-only-is-inert",
+        canonical: EnvInput::Absent,
+        legacy: EnvInput::Readable(LEGACY_VALUE),
+        expected_raw: "",
+        config: ConfigExpectation::Default,
+        diagnostic: DiagnosticExpectation::None,
     },
-    ConflictCase {
-        name: "canonical-non-empty-legacy-empty",
-        canonical: CANONICAL_CONFLICT_VALUE,
-        legacy: "",
+    CanonicalCase {
+        name: "canonical-only-exact-value",
+        canonical: EnvInput::Readable(VALID_VALUE),
+        legacy: EnvInput::Absent,
+        expected_raw: VALID_VALUE,
+        config: ConfigExpectation::Exact(37),
+        diagnostic: DiagnosticExpectation::None,
+    },
+    CanonicalCase {
+        name: "canonical-wins-unequal-dual",
+        canonical: EnvInput::Readable(VALID_VALUE),
+        legacy: EnvInput::Readable(LEGACY_VALUE),
+        expected_raw: VALID_VALUE,
+        config: ConfigExpectation::Exact(37),
+        diagnostic: DiagnosticExpectation::None,
+    },
+    CanonicalCase {
+        name: "canonical-empty-does-not-fallback",
+        canonical: EnvInput::Readable(""),
+        legacy: EnvInput::Readable(LEGACY_VALUE),
+        expected_raw: "",
+        config: ConfigExpectation::Default,
+        diagnostic: DiagnosticExpectation::None,
+    },
+    CanonicalCase {
+        name: "canonical-non-unicode-does-not-fallback",
+        canonical: EnvInput::NonUnicode,
+        legacy: EnvInput::Readable(LEGACY_VALUE),
+        expected_raw: "",
+        config: ConfigExpectation::Default,
+        diagnostic: DiagnosticExpectation::None,
+    },
+    CanonicalCase {
+        name: "canonical-whitespace-is-not-normalized",
+        canonical: EnvInput::Readable(" 37 "),
+        legacy: EnvInput::Readable(LEGACY_VALUE),
+        expected_raw: " 37 ",
+        config: ConfigExpectation::Default,
+        diagnostic: DiagnosticExpectation::Invalid,
+    },
+    CanonicalCase {
+        name: "canonical-invalid-uses-default",
+        canonical: EnvInput::Readable(INVALID_VALUE),
+        legacy: EnvInput::Readable(LEGACY_VALUE),
+        expected_raw: INVALID_VALUE,
+        config: ConfigExpectation::Default,
+        diagnostic: DiagnosticExpectation::Invalid,
+    },
+    CanonicalCase {
+        name: "canonical-out-of-range-preserves-existing-bound",
+        canonical: EnvInput::Readable(OUT_OF_RANGE_VALUE),
+        legacy: EnvInput::Readable(VALID_VALUE),
+        expected_raw: OUT_OF_RANGE_VALUE,
+        config: ConfigExpectation::OutOfRange,
+        diagnostic: DiagnosticExpectation::OutOfRange,
     },
 ];
 
@@ -299,12 +188,12 @@ fn remove_test_env(key: impl AsRef<OsStr>) {
     }
 }
 
-fn apply_alias(key: &str, input: AliasInput) {
+fn apply_input(key: &str, input: EnvInput) {
     remove_test_env(key);
     match input {
-        AliasInput::Absent => {}
-        AliasInput::Readable(value) => set_test_env(key, value),
-        AliasInput::NonUnicode => set_test_env(key, OsString::from_vec(vec![0xff])),
+        EnvInput::Absent => {}
+        EnvInput::Readable(value) => set_test_env(key, value),
+        EnvInput::NonUnicode => set_test_env(key, OsString::from_vec(vec![0xff])),
     }
 }
 
@@ -315,64 +204,13 @@ fn clear_tuning_env() {
     }
 }
 
-fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
-    guest_common::log::clear_system_log_file();
-    let raw = GuestConfigRaw::from_process_env();
-    assert!(
-        !log_path.exists(),
-        "raw capture installed or wrote a system-log sink"
-    );
-    let evidence = raw
-        .as_ref()
-        .map(|raw| {
-            raw.bootstrap_alias_source_events()
-                .map(|(family, key, source)| {
-                    format!("[captured] {family} key={key} source={source}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_default();
-    Ok((raw, evidence))
-}
-
-fn assert_source_evidence(
-    log: &str,
-    pair: TuningEnvPair,
-    case_name: &str,
-    expected_source: Option<&str>,
-) {
-    let source_messages = log
-        .lines()
-        .filter(|line| line.contains(SOURCE_EVENT))
-        .filter_map(|line| line.rsplit_once("] ").map(|(_, message)| message))
-        .collect::<Vec<_>>();
-
-    match expected_source {
-        Some(source) => {
-            let expected = format!("{SOURCE_EVENT} key={} source={source}", pair.canonical);
-            assert_eq!(
-                source_messages,
-                [expected.as_str()],
-                "{} {case_name} emitted incorrect fixed source evidence",
-                pair.name
-            );
-        }
-        None => assert!(
-            source_messages.is_empty(),
-            "{} {case_name} emitted source evidence for unreadable aliases",
-            pair.name
-        ),
-    }
-}
-
 fn materialize_config(
     tmp: &Path,
     pair: TuningEnvPair,
-    case_name: &str,
+    case: CanonicalCase,
     raw: GuestConfigRaw,
-) -> Result<GuestConfig, String> {
-    let runtime_dir = tmp.join(format!("{}-{case_name}-runtime", pair.name));
+) -> Result<(GuestConfig, String), String> {
+    let runtime_dir = tmp.join(format!("{}-{}-runtime", pair.name, case.name));
     let payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
     let payload_path = payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
     std::fs::create_dir_all(&payload_dir)
@@ -382,199 +220,114 @@ fn materialize_config(
     std::fs::write(&payload_path, payload)
         .map_err(|error| format!("write run payload: {error}"))?;
 
-    GuestConfig::from_raw(GuestConfigRaw {
-        run_id: format!("guest-agent-tuning-alias-{}-{case_name}", pair.name),
+    let log_path = tmp.join(format!("{}-{}.log", pair.name, case.name));
+    guest_common::log::clear_system_log_file();
+    guest_common::log::set_system_log_file(&log_path);
+    let config = GuestConfig::from_raw(GuestConfigRaw {
+        run_id: format!("guest-agent-canonical-tuning-{}-{}", pair.name, case.name),
         home: Some(tmp.to_string_lossy().into_owned()),
         guest_runtime_dir: Some(runtime_dir),
         run_payload_file: payload_path.to_string_lossy().into_owned(),
         ..raw
-    })
+    });
+    guest_common::log::clear_system_log_file();
+    let config = config?;
+    let log = match std::fs::read_to_string(log_path) {
+        Ok(log) => log,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("read diagnostic log: {error}")),
+    };
+    Ok((config, log))
 }
 
-fn expected_conflict_error(pair: TuningEnvPair) -> String {
-    format!(
-        "conflicting guest agent tuning environment aliases: canonical_key={} \
-         legacy_key={} state=conflict",
-        pair.canonical, pair.legacy
-    )
-}
+fn assert_diagnostic(log: &str, pair: TuningEnvPair, case: CanonicalCase) {
+    let mut diagnostic_lines = log.lines().filter(|line| line.contains(pair.legacy));
+    let diagnostic_line = diagnostic_lines.next();
+    let expected_message = match case.diagnostic {
+        DiagnosticExpectation::None => None,
+        DiagnosticExpectation::Invalid => Some("is not a valid u64"),
+        DiagnosticExpectation::OutOfRange if pair.bounded => Some("exceeds maximum 3600s"),
+        DiagnosticExpectation::OutOfRange => None,
+    };
 
-fn assert_success_matrix(tmp: &Path, pair: TuningEnvPair) -> TestResult {
-    for case in SUCCESS_CASES {
-        clear_tuning_env();
-        apply_alias(pair.canonical, case.canonical);
-        apply_alias(pair.legacy, case.legacy);
-        let log_path = tmp.join(format!("{}-{}.log", pair.name, case.name));
-        let (raw, log) = capture_raw(&log_path)?;
-        let raw = raw.map_err(std::io::Error::other)?;
-
-        assert_eq!(
-            (pair.raw_value)(&raw),
-            case.expected_raw,
-            "{} {} resolved the wrong raw value",
-            pair.name,
-            case.name
-        );
-        assert_source_evidence(&log, pair, case.name, case.expected_source);
-
-        let config =
-            materialize_config(tmp, pair, case.name, raw).map_err(std::io::Error::other)?;
-        let expected_secs = if case.expected_raw.is_empty() {
-            pair.default_secs
-        } else {
-            VALID_VALUE.parse::<u64>()?
-        };
-        assert_eq!(
-            (pair.configured_secs)(&config),
-            expected_secs,
-            "{} {} changed existing default or parsing behavior",
-            pair.name,
-            case.name
-        );
-    }
-    Ok(())
-}
-
-fn assert_raw_semantics(tmp: &Path, pair: TuningEnvPair) -> TestResult {
-    for case in RAW_SEMANTICS_CASES {
-        clear_tuning_env();
-        apply_alias(pair.canonical, case.canonical);
-        apply_alias(pair.legacy, case.legacy);
-        let log_path = tmp.join(format!("{}-{}.log", pair.name, case.name));
-        let (raw, log) = capture_raw(&log_path)?;
-        let raw = raw.map_err(std::io::Error::other)?;
-
-        assert_eq!(
-            (pair.raw_value)(&raw),
-            case.expected_raw,
-            "{} {} trimmed or normalized the selected raw value",
-            pair.name,
-            case.name
-        );
-        assert_source_evidence(&log, pair, case.name, Some(case.expected_source));
-
-        let config =
-            materialize_config(tmp, pair, case.name, raw).map_err(std::io::Error::other)?;
-        let expected_secs = match case.expectation {
-            ConfigExpectation::Default => pair.default_secs,
-            ConfigExpectation::OutOfRange if pair.bounded => pair.default_secs,
-            ConfigExpectation::OutOfRange => OUT_OF_RANGE_VALUE.parse::<u64>()?,
-        };
-        assert_eq!(
-            (pair.configured_secs)(&config),
-            expected_secs,
-            "{} {} changed existing bounds or parsing behavior",
-            pair.name,
-            case.name
-        );
-    }
-    Ok(())
-}
-
-fn assert_conflicts_fail_closed(tmp: &Path, pair: TuningEnvPair) -> TestResult {
-    let expected_error = expected_conflict_error(pair);
-    for case in CONFLICT_CASES {
-        clear_tuning_env();
-        set_test_env(pair.canonical, case.canonical);
-        set_test_env(pair.legacy, case.legacy);
-        let log_path = tmp.join(format!("{}-{}.log", pair.name, case.name));
-        let (raw, log) = capture_raw(&log_path)?;
-        let error = match raw {
-            Ok(_) => {
-                return Err(std::io::Error::other(format!(
-                    "{} {} accepted conflicting readable aliases",
-                    pair.name, case.name
-                ))
-                .into());
-            }
-            Err(error) => error,
-        };
-
-        assert_eq!(
-            error, expected_error,
-            "{} {} returned the wrong fixed conflict error",
-            pair.name, case.name
-        );
-        for value in [CANONICAL_CONFLICT_VALUE, LEGACY_CONFLICT_VALUE] {
+    match expected_message {
+        Some(message) => {
             assert!(
-                !error.contains(value) && !log.contains(value),
-                "{} {} exposed conflicting value material",
+                diagnostic_line.is_some_and(|line| line.contains(message)),
+                "{} {} omitted or changed the operator diagnostic: {diagnostic_line:?}",
+                pair.name,
+                case.name
+            );
+            assert!(
+                diagnostic_lines.next().is_none(),
+                "{} {} emitted duplicate operator diagnostics",
                 pair.name,
                 case.name
             );
         }
-        assert!(
-            !log.contains(SOURCE_EVENT),
-            "{} {} emitted success evidence for a conflict",
+        None => assert!(
+            diagnostic_line.is_none(),
+            "{} {} emitted an unexpected operator diagnostic: {diagnostic_line:?}",
             pair.name,
             case.name
-        );
+        ),
     }
-    Ok(())
-}
-
-fn assert_conflict_precedes_private_file_consumption(
-    tmp: &Path,
-    pair: TuningEnvPair,
-) -> TestResult {
-    clear_tuning_env();
-    let runtime_dir = tmp.join(format!("{}-capture-boundary-runtime", pair.name));
-    let payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
-    let payload_path = payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
-    std::fs::create_dir_all(&payload_dir)?;
-    std::fs::write(
-        &payload_path,
-        serde_json::to_vec(&guest_contracts::env::RunPayload::default())?,
-    )?;
-
-    for key in [
-        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-        "VM0_RUN_PAYLOAD_FILE",
-    ] {
-        remove_test_env(key);
-    }
-    set_test_env(
-        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        &runtime_dir,
-    );
-    set_test_env(
-        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-        &payload_path,
-    );
-    set_test_env(pair.canonical, CANONICAL_CONFLICT_VALUE);
-    set_test_env(pair.legacy, LEGACY_CONFLICT_VALUE);
-
-    let error = match GuestConfig::from_process_env() {
-        Ok(_) => {
-            return Err(std::io::Error::other(format!(
-                "{} conflict reached configuration materialization",
-                pair.name
-            ))
-            .into());
-        }
-        Err(error) => error,
-    };
-    assert_eq!(error, expected_conflict_error(pair));
     assert!(
-        payload_path.exists(),
-        "{} conflict consumed the private run payload",
-        pair.name
+        !log.contains(pair.canonical),
+        "{} {} replaced the retained local-input diagnostic label",
+        pair.name,
+        case.name
     );
-    Ok(())
 }
 
 #[test]
-fn process_env_dual_reads_guest_agent_tuning_aliases_without_value_leaks() -> TestResult {
+fn process_env_reads_only_canonical_guest_agent_tuning_keys() -> TestResult {
     let tmp = tempfile::tempdir()?;
 
     for pair in TUNING_ENV_PAIRS {
-        assert_success_matrix(tmp.path(), pair)?;
-        assert_raw_semantics(tmp.path(), pair)?;
-        assert_conflicts_fail_closed(tmp.path(), pair)?;
-        assert_conflict_precedes_private_file_consumption(tmp.path(), pair)?;
+        for case in CANONICAL_CASES {
+            clear_tuning_env();
+            apply_input(pair.canonical, case.canonical);
+            apply_input(pair.legacy, case.legacy);
+            let raw = GuestConfigRaw::from_process_env().map_err(std::io::Error::other)?;
+
+            assert_eq!(
+                (pair.raw_value)(&raw),
+                case.expected_raw,
+                "{} {} captured the wrong raw value",
+                pair.name,
+                case.name
+            );
+            let source_events = raw.bootstrap_alias_source_events().collect::<Vec<_>>();
+            assert!(
+                source_events.iter().all(|(family, key, _)| {
+                    *family != RETIRED_SOURCE_EVENT && *key != pair.canonical
+                }),
+                "{} {} retained timing source evidence: {source_events:?}",
+                pair.name,
+                case.name
+            );
+
+            let (config, log) =
+                materialize_config(tmp.path(), pair, case, raw).map_err(std::io::Error::other)?;
+            let expected_secs = match case.config {
+                ConfigExpectation::Default => pair.default_secs,
+                ConfigExpectation::Exact(value) => value,
+                ConfigExpectation::OutOfRange if pair.bounded => pair.default_secs,
+                ConfigExpectation::OutOfRange => OUT_OF_RANGE_VALUE.parse::<u64>()?,
+            };
+            assert_eq!(
+                (pair.configured_secs)(&config),
+                expected_secs,
+                "{} {} changed parsing, defaults, or bounds",
+                pair.name,
+                case.name
+            );
+            assert_diagnostic(&log, pair, case);
+        }
     }
 
     clear_tuning_env();
+    guest_common::log::clear_system_log_file();
     Ok(())
 }

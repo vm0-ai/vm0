@@ -14,7 +14,7 @@ use api_contracts::generated::{
 };
 
 use crate::constants;
-use guest_common::{log_info, log_warn};
+use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
@@ -26,143 +26,22 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 4;
-
-#[derive(Clone, Copy)]
-struct BootstrapAliasSourceEventSpec {
-    family: &'static str,
-    canonical_key: &'static str,
-}
-
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
-    BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT] = [
-    BootstrapAliasSourceEventSpec {
-        family: "guest_agent_tuning_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "guest_agent_tuning_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "guest_agent_tuning_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "guest_agent_tuning_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    },
-];
-
-#[derive(Clone, Copy)]
-enum BootstrapAlias {
-    StuckToolTimeout,
-    PostResultSigtermGrace,
-    PostResultTotalCap,
-    PostResultSigkillGrace,
-}
-
-#[derive(Clone, Copy)]
-enum BootstrapAliasSource {
-    CanonicalOnly,
-    LegacyOnly,
-    Dual,
-}
-
-impl BootstrapAliasSource {
-    fn label(self) -> &'static str {
-        match self {
-            Self::CanonicalOnly => "canonical-only",
-            Self::LegacyOnly => "legacy-only",
-            Self::Dual => "dual",
-        }
-    }
-}
-
-/// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
+/// Empty value-free source evidence retained across capture and runtime sink setup.
 ///
-/// The internal slots correspond exactly to the four canonical keys in
-/// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
-/// resolvers can populate them.
+/// All staged bootstrap alias source slots have been retired.
 #[derive(Clone, Default)]
-pub struct BootstrapAliasSourceEvents {
-    stuck_tool_timeout: Option<BootstrapAliasSource>,
-    post_result_sigterm_grace: Option<BootstrapAliasSource>,
-    post_result_total_cap: Option<BootstrapAliasSource>,
-    post_result_sigkill_grace: Option<BootstrapAliasSource>,
-}
+pub struct BootstrapAliasSourceEvents;
 
 impl BootstrapAliasSourceEvents {
-    fn record(&mut self, alias: BootstrapAlias, source: BootstrapAliasSource) {
-        let slot = match alias {
-            BootstrapAlias::StuckToolTimeout => &mut self.stuck_tool_timeout,
-            BootstrapAlias::PostResultSigtermGrace => &mut self.post_result_sigterm_grace,
-            BootstrapAlias::PostResultTotalCap => &mut self.post_result_total_cap,
-            BootstrapAlias::PostResultSigkillGrace => &mut self.post_result_sigkill_grace,
-        };
-        *slot = Some(source);
-    }
-
-    fn sources(&self) -> [Option<BootstrapAliasSource>; BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT] {
-        [
-            self.stuck_tool_timeout,
-            self.post_result_sigterm_grace,
-            self.post_result_total_cap,
-            self.post_result_sigkill_grace,
-        ]
-    }
-
     fn iter(&self) -> impl Iterator<Item = (&'static str, &'static str, &'static str)> + '_ {
-        BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY
-            .into_iter()
-            .zip(self.sources())
-            .filter_map(|(event, source)| {
-                source.map(|source| (event.family, event.canonical_key, source.label()))
-            })
+        std::iter::empty()
     }
 
-    fn emit(&self) {
-        for (family, canonical_key, source) in self.iter() {
-            log_info!(LOG_TAG, "{family} key={canonical_key} source={source}");
-        }
-    }
+    fn emit(&self) {}
 }
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
-}
-
-/// Resolve one Guest Agent timing alias pair at the single process-env capture
-/// boundary. Canonical aliases are reader-only during #28914 Stage 1; the
-/// runner writer and supported local tuning interface remain legacy-only.
-/// Remove the legacy reader only after #28914's existing runner/sandbox drain
-/// and rollback gates close and source telemetry shows zero legacy-only reads.
-fn guest_agent_tuning_env_or_empty(
-    alias: BootstrapAlias,
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-    events: &mut BootstrapAliasSourceEvents,
-) -> Result<String, String> {
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting guest agent tuning environment aliases: \
-                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(alias, source);
-    Ok(value)
 }
 
 /// CLI framework dispatched by the runner via `CLI_AGENT_TYPE`. Unknown
@@ -340,8 +219,8 @@ pub struct GuestConfigRaw {
     pub post_result_sigterm_grace_secs: String,
     pub post_result_total_cap_secs: String,
     pub post_result_sigkill_grace_secs: String,
-    /// Opaque, value-free bootstrap alias source state retained until the
-    /// run-scoped system-log sink is installed.
+    /// Empty bootstrap alias source state retained until the run-scoped
+    /// system-log sink is installed.
     #[doc(hidden)]
     pub bootstrap_alias_sources: BootstrapAliasSourceEvents,
 }
@@ -349,8 +228,7 @@ pub struct GuestConfigRaw {
 impl GuestConfigRaw {
     /// Capture raw startup values from the current process environment.
     ///
-    /// Returns an error when a canonical and legacy bootstrap alias pair
-    /// contains conflicting values.
+    /// Returns an error when the canonical runtime directory cannot be resolved.
     pub fn from_process_env() -> Result<Self, String> {
         let guest_runtime_dir =
             guest_contracts::runtime_paths::guest_runtime_dir_env_from_process_env()
@@ -363,33 +241,17 @@ impl GuestConfigRaw {
     pub(crate) fn from_process_env_with_guest_runtime_dir(
         guest_runtime_dir: Option<PathBuf>,
     ) -> Result<Self, String> {
-        let mut bootstrap_alias_sources = BootstrapAliasSourceEvents::default();
+        let bootstrap_alias_sources = BootstrapAliasSourceEvents;
         let api_url = env_or_empty(guest_contracts::env::CANONICAL_API_URL_ENV);
 
-        let stuck_tool_timeout_secs = guest_agent_tuning_env_or_empty(
-            BootstrapAlias::StuckToolTimeout,
-            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-            &mut bootstrap_alias_sources,
-        )?;
-        let post_result_sigterm_grace_secs = guest_agent_tuning_env_or_empty(
-            BootstrapAlias::PostResultSigtermGrace,
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            &mut bootstrap_alias_sources,
-        )?;
-        let post_result_total_cap_secs = guest_agent_tuning_env_or_empty(
-            BootstrapAlias::PostResultTotalCap,
-            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-            guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
-            &mut bootstrap_alias_sources,
-        )?;
-        let post_result_sigkill_grace_secs = guest_agent_tuning_env_or_empty(
-            BootstrapAlias::PostResultSigkillGrace,
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            &mut bootstrap_alias_sources,
-        )?;
+        let stuck_tool_timeout_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV);
+        let post_result_sigterm_grace_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV);
+        let post_result_total_cap_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV);
+        let post_result_sigkill_grace_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV);
 
         let user_env_file = env_or_empty(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV);
         let run_payload_file = env_or_empty(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV);
