@@ -8,6 +8,7 @@ import {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
+  SharedDatabaseSubscriptionCallback,
 } from "./bridge.ts";
 import type {
   SharedDatabaseHeartbeatResult,
@@ -34,6 +35,7 @@ type DirectWorkerEvent = Extract<
   {
     readonly type:
       | "append"
+      | "invalidate"
       | "authentication-required"
       | "reload-required"
       | "status";
@@ -53,7 +55,10 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly clientId = crypto.randomUUID();
   private readonly subscriptions = new Map<
     string,
-    { readonly callback: () => void; readonly dataKey: SharedDatabaseDataKey }
+    {
+      readonly callback: SharedDatabaseSubscriptionCallback;
+      readonly dataKey: SharedDatabaseDataKey;
+    }
   >();
   private ownerSignal: AbortSignal | null = null;
 
@@ -72,8 +77,8 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   }
 
   private readonly emit = (event: DirectWorkerEvent): void => {
-    if (event.type === "append") {
-      this.subscriptions.get(event.subscriptionId)?.callback();
+    if (event.type === "append" || event.type === "invalidate") {
+      this.subscriptions.get(event.subscriptionId)?.callback(event.type);
       return;
     }
     if (event.type === "reload-required") {
@@ -129,7 +134,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
 
   on(
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void> {
     signal.throwIfAborted();

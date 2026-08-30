@@ -58,6 +58,7 @@ import {
 } from "../../../signals/okou-page/sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
@@ -85,6 +86,7 @@ const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 const WORKFLOW_ID = "d0000000-0000-4000-a000-000000000001";
 const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 interface SidebarThread {
   readonly id: string;
@@ -679,6 +681,64 @@ describe("zero sidebar", () => {
         "Running",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("refreshes rendered unread indicators from shared thread invalidations", async () => {
+    prepareAgents();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
+    ]);
+    let hasUnread = false;
+    let indicatorRequests = 0;
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      indicatorRequests += 1;
+      return respond(200, {
+        agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
+        threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
+      });
+    });
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: hasUnread
+          ? [
+              {
+                threadId: EXISTING_THREAD_ID,
+                unreadAt: "2026-03-10T00:05:00Z",
+              },
+            ]
+          : [],
+      });
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const nav = await waitFor(() => {
+      const current = mobileSidebar();
+      expect(within(current).getByText("Zero")).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+      return current;
+    });
+    const agentRow = agentRowByName(nav, "Zero");
+    const threadRow = threadRowByTitle("Remote unread conversation");
+    await waitFor(() => {
+      expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
+      expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
+      expect(indicatorRequests).toBeGreaterThan(0);
+    });
+
+    const requestsBeforeInvalidation = indicatorRequests;
+    hasUnread = true;
+    changeChatThreadList();
+
+    await waitFor(() => {
+      expect(indicatorRequests).toBeGreaterThan(requestsBeforeInvalidation);
+      expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
+      expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
+    });
   });
 
   it("keeps the sidebar responsive when a draft membership request rejects", async () => {

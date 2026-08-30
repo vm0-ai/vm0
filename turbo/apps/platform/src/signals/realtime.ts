@@ -214,8 +214,7 @@ interface RealtimeLoopArgs {
 
 interface RealtimePayloadLoopArgs {
   readonly channel: StableRealtimeChannel;
-  readonly topic: string | null;
-  readonly passMessage?: boolean;
+  readonly topic: string;
   readonly loopCommand$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
@@ -239,14 +238,6 @@ interface SetAblyPayloadLoopArgs {
   >;
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
-}
-
-interface SetAblyMessageLoopArgs {
-  readonly loopCommand$: Command<
-    Promise<boolean> | boolean,
-    [unknown, AbortSignal]
-  >;
-  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
 }
 
 interface RealtimePayloadLoopState {
@@ -571,16 +562,9 @@ const runWithChannelPayload$ = command(
     args: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
-    const {
-      channel,
-      topic,
-      passMessage,
-      loopCommand$,
-      catchUpCommand$,
-      options,
-    } = args;
+    const { channel, topic, loopCommand$, catchUpCommand$, options } = args;
     signal.throwIfAborted();
-    const subscriptionLabel = topic ?? "all user channel messages";
+    const subscriptionLabel = topic;
     const state: RealtimePayloadLoopState = {
       deferred: createDeferredPromise(signal),
       poked: false,
@@ -609,7 +593,7 @@ const runWithChannelPayload$ = command(
         return;
       }
       L.debug("got queued message from topic", subscriptionLabel, message);
-      state.pendingPayloads.push(passMessage ? message : message.data);
+      state.pendingPayloads.push(message.data);
       pokeLoop();
     };
     await subscribeChannel(
@@ -1436,34 +1420,6 @@ export const setAblyPayloadLoop$ = command(
     await set(
       runWithChannelPayload$,
       { channel, topic, loopCommand$, catchUpCommand$, options },
-      signal,
-    );
-    signal.throwIfAborted();
-  },
-);
-
-export const setAblyMessageLoop$ = command(
-  async (
-    { set },
-    { loopCommand$, catchUpCommand$ }: SetAblyMessageLoopArgs,
-    signal: AbortSignal,
-  ) => {
-    const channel = await set(
-      realtimeChannel$,
-      "user",
-      "all user channel messages",
-      signal,
-    );
-    signal.throwIfAborted();
-    await set(
-      runWithChannelPayload$,
-      {
-        channel,
-        topic: null,
-        passMessage: true,
-        loopCommand$,
-        catchUpCommand$,
-      },
       signal,
     );
     signal.throwIfAborted();

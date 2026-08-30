@@ -9,6 +9,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
   mockChatEventRows,
@@ -459,7 +460,7 @@ function mockLiveThread({
   return {
     publishAppendedEvents: async () => {
       await prepareAppend();
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+      createChatEvent(threadId);
     },
     publishAppendedEventsOnReconnect: async () => {
       await prepareAppend();
@@ -641,9 +642,7 @@ function mockKeyboardThreadScrollLayout({
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
       });
       currentThreadTargetPublished = true;
-      context.mocks.ably.trigger(
-        `chatThreadMessageCreated:${KEYBOARD_CURRENT_THREAD_ID}`,
-      );
+      createChatEvent(KEYBOARD_CURRENT_THREAD_ID);
     },
   };
 }
