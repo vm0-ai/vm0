@@ -21,7 +21,7 @@ pub(crate) mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
-use serde_json::Value;
+use serde_json::{Value, json};
 use shell_quote::quote_shell_arg;
 use std::collections::HashMap;
 use std::ffi::{CString, OsStr};
@@ -1274,6 +1274,17 @@ pub fn read_codex_session_history_events_for_runtime(
         .lines()
         .map(|line| serde_json::from_str(line).map_err(Into::into))
         .collect()
+}
+
+pub fn expected_codex_turn_usage() -> Value {
+    json!({
+        "input_tokens": 12,
+        "cached_input_tokens": 3,
+        "cache_write_input_tokens": 3,
+        "output_tokens": 24,
+        "reasoning_output_tokens": 7,
+        "total_tokens": 36
+    })
 }
 
 /// Configure the process environment for one mock-Claude CLI integration-test

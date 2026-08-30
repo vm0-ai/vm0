@@ -1,12 +1,14 @@
 use super::messages::{
     agent_message_item_started_notification, assistant_item_completed_notification,
-    initialize_response, large_server_notification, large_warning_notification,
-    reasoning_item_started_notification, server_notification, server_notification_with_index,
+    historical_token_usage_notification, initialize_response, large_server_notification,
+    large_warning_notification, reasoning_item_started_notification,
+    secondary_token_usage_notification, server_notification, server_notification_with_index,
     server_request, thread_response, thread_started_notification, turn,
     turn_completed_notification, turn_failed_notification, turn_started_notification,
     warning_notification, write_error, write_json_line, write_oversized_delivery_notifications,
-    write_split_json_line_prefix, write_success, write_turn_completion_notifications,
-    write_turn_notifications, write_turn_start_notifications,
+    write_resumed_turn_notifications, write_split_json_line_prefix, write_success,
+    write_turn_completion_notifications, write_turn_notifications, write_turn_start_notifications,
+    write_turn_usage_notifications,
 };
 use super::persistence::{InputEventContext, persist_input_events, session_rollout_timestamp};
 use super::scenario::Scenario;
@@ -235,6 +237,9 @@ impl AppServerState {
             thread_id
         };
         write_success(output, id, thread_response(response_thread_id, true))?;
+        if self.scenario == Scenario::RuntimeTurnUsageResumeReplay {
+            write_json_line(output, &historical_token_usage_notification(thread_id))?;
+        }
         Ok(ServerAction::Continue)
     }
 
@@ -374,11 +379,27 @@ impl AppServerState {
         }
         if matches!(
             self.scenario,
-            Scenario::RuntimeTurnComplete | Scenario::RuntimeTurnCompleteWithoutThreadStarted
+            Scenario::RuntimeTurnComplete
+                | Scenario::RuntimeTurnCompleteWithoutThreadStarted
+                | Scenario::RuntimeTurnUsageResumeNoReplay
+                | Scenario::RuntimeTurnUsageResumeReplay
         ) {
             match turn_output {
                 MockTurnOutput::Complete(response_text) => {
-                    write_turn_notifications(output, &thread_id, &turn_id, &response_text)?;
+                    if matches!(
+                        self.scenario,
+                        Scenario::RuntimeTurnUsageResumeNoReplay
+                            | Scenario::RuntimeTurnUsageResumeReplay
+                    ) {
+                        write_resumed_turn_notifications(
+                            output,
+                            &thread_id,
+                            &turn_id,
+                            &response_text,
+                        )?;
+                    } else {
+                        write_turn_notifications(output, &thread_id, &turn_id, &response_text)?;
+                    }
                 }
                 MockTurnOutput::Checkpoint {
                     checkpoint_text,
@@ -410,6 +431,7 @@ impl AppServerState {
         }
         if self.scenario == Scenario::RuntimeTurnFailed {
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
+            write_turn_usage_notifications(output, &thread_id, &turn_id)?;
             write_json_line(output, &turn_failed_notification(&thread_id, &turn_id))?;
         }
         if self.scenario == Scenario::RuntimeEventFlood {
@@ -638,6 +660,10 @@ fn write_secondary_thread_notifications<W: Write>(
     write_json_line(output, &warning_notification(SECONDARY_THREAD_ID, 1))?;
     write_json_line(
         output,
+        &secondary_token_usage_notification(SECONDARY_THREAD_ID, turn_id),
+    )?;
+    write_json_line(
+        output,
         &assistant_item_completed_notification(
             SECONDARY_THREAD_ID,
             turn_id,
@@ -648,6 +674,7 @@ fn write_secondary_thread_notifications<W: Write>(
         output,
         &turn_completed_notification(SECONDARY_THREAD_ID, turn_id),
     )?;
+    write_turn_usage_notifications(output, thread_id, turn_id)?;
     write_json_line(output, &turn_completed_notification(thread_id, turn_id))
 }
 

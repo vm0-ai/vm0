@@ -547,6 +547,9 @@ fn app_server_turn_steer_can_complete_runtime_turn_after_success() -> std::io::R
             "item/started",
             "item/started",
             "item/completed",
+            "thread/tokenUsage/updated",
+            "thread/tokenUsage/updated",
+            "thread/tokenUsage/updated",
             "turn/completed",
         ]
     );
@@ -746,13 +749,21 @@ fn app_server_checkpointed_shell_emits_output_before_continuing() -> std::io::Re
 
     std::fs::write(release_file, "continue")?;
     let completed_item = server.read_required()?;
-    let completed_turn = server.read_required()?;
     assert_eq!(completed_item["method"], "item/completed");
     assert_eq!(
         completed_item["params"]["item"]["text"],
         "continuation-finished"
     );
-    assert_eq!(completed_turn["method"], "turn/completed");
+    let mut usage_notifications = 0;
+    loop {
+        let notification = server.read_required()?;
+        match notification["method"].as_str() {
+            Some("thread/tokenUsage/updated") => usage_notifications += 1,
+            Some("turn/completed") => break,
+            method => panic!("unexpected completion notification: {method:?}"),
+        }
+    }
+    assert_eq!(usage_notifications, 3);
 
     assert_eq!(server.close_and_wait()?, 0);
     Ok(())
@@ -886,9 +897,17 @@ fn app_server_can_start_runtime_turn_before_steer_completion() -> std::io::Resul
     assert_eq!(steered["result"]["turnId"], turn_id);
 
     let item_completed_notification = server.read_required()?;
-    let turn_completed_notification = server.read_required()?;
     assert_eq!(item_completed_notification["method"], "item/completed");
-    assert_eq!(turn_completed_notification["method"], "turn/completed");
+    let mut usage_notifications = 0;
+    loop {
+        let notification = server.read_required()?;
+        match notification["method"].as_str() {
+            Some("thread/tokenUsage/updated") => usage_notifications += 1,
+            Some("turn/completed") => break,
+            method => panic!("unexpected completion notification: {method:?}"),
+        }
+    }
+    assert_eq!(usage_notifications, 3);
     assert_eq!(server.close_and_wait()?, 0);
     Ok(())
 }

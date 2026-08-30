@@ -86,6 +86,10 @@ async fn codex_app_server_backend_ignores_secondary_thread_notifications()
     assert!(events.iter().all(|event| {
         event.get("thread_id").and_then(Value::as_str) != Some(SECONDARY_THREAD_ID)
     }));
+    assert_eq!(
+        events.last().ok_or("missing terminal event")?["usage"],
+        common::expected_codex_turn_usage()
+    );
 
     let sandbox_ops = std::fs::read_to_string(runtime.paths.sandbox_ops_file()).unwrap_or_default();
     assert!(!sandbox_ops.contains("api_to_codex_output_item_started"));
