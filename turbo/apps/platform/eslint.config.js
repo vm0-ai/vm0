@@ -374,24 +374,12 @@ export default [
                 "Wallet support is not part of the platform auth surface.",
             },
             {
-              name: "highlight.js",
-              message: "Code syntax highlighting is intentionally disabled.",
-            },
-            {
               name: "katex",
               message: "Markdown math rendering is intentionally disabled.",
             },
             {
-              name: "lowlight",
-              message: "Code syntax highlighting is intentionally disabled.",
-            },
-            {
               name: "rehype-katex",
               message: "Markdown math rendering is intentionally disabled.",
-            },
-            {
-              name: "rehype-prism-plus",
-              message: "Code syntax highlighting is intentionally disabled.",
             },
             {
               name: "remark-math",

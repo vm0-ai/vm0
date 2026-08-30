@@ -14,12 +14,8 @@ const FORBIDDEN_BUNDLED_PACKAGES = [
   "@coinbase",
   "@solana",
   "@wallet-standard",
-  "highlight.js",
   "katex",
-  "lowlight",
-  "prismjs",
   "rehype-katex",
-  "rehype-prism-plus",
   "remark-math",
   "tr46",
 ] as const;

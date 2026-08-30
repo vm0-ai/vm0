@@ -1018,126 +1018,35 @@ body {
 }
 
 /* ==========================================================================
-   Markdown Preview — full theme override for @uiw/react-markdown-preview.
-   We set data-color-mode on the wrapper (via React prop) so the library's
-   [data-color-mode] selectors activate. Then we override with the same
-   selector pattern (same specificity, later source order wins).
+   Markdown presentation
    ========================================================================== */
 
-/* --- Color Variables (Light) -------------------------------------------- */
-[data-color-mode*="light"] .wmde-markdown,
-.wmde-markdown[data-color-mode*="light"] {
-  --color-fg-default: hsl(var(--foreground));
-  --color-fg-muted: hsl(var(--muted-foreground));
-  --color-fg-subtle: hsl(var(--gray-600));
-  --color-canvas-default: transparent;
-  --color-canvas-subtle: hsl(var(--gray-50));
-  --color-border-default: hsl(var(--border));
-  --color-border-muted: hsl(var(--border));
-  --color-neutral-muted: hsl(var(--gray-100));
-  --color-accent-fg: hsl(var(--primary-700));
-  --color-accent-emphasis: hsl(var(--primary-700));
-  --color-attention-subtle: hsl(var(--primary-50));
-  --color-attention-fg: hsl(var(--primary-800));
-  --color-attention-emphasis: hsl(var(--primary-800));
-  --color-danger-fg: hsl(var(--destructive));
-  --color-danger-emphasis: hsl(var(--destructive));
-  --color-success-fg: #2a7a4b;
-  --color-success-emphasis: #2a7a4b;
-  --color-done-fg: #6a5acd;
-  --color-done-emphasis: #6a5acd;
-  --color-copied-active-bg: hsl(var(--gray-400));
-
-  /* Syntax — muted earth tones on cool-neutral background */
-  --color-prettylights-syntax-comment: hsl(var(--gray-600));
-  --color-prettylights-syntax-constant: #6a5acd;
-  --color-prettylights-syntax-entity: #7c5cbf;
-  --color-prettylights-syntax-storage-modifier-import: hsl(var(--foreground));
-  --color-prettylights-syntax-entity-tag: #2a7a4b;
-  --color-prettylights-syntax-keyword: #b35a00;
-  --color-prettylights-syntax-string: #4a6fa5;
-  --color-prettylights-syntax-variable: hsl(var(--gray-800));
-  --color-prettylights-syntax-string-regexp: #2a7a4b;
-  --color-prettylights-syntax-brackethighlighter-unmatched: hsl(
-    var(--destructive)
-  );
-  --color-prettylights-syntax-brackethighlighter-angle: hsl(var(--gray-600));
-  --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
-  --color-prettylights-syntax-constant-other-reference-link: #4a6fa5;
-  --color-prettylights-syntax-meta-diff-range: #6a5acd;
-  --color-prettylights-syntax-markup-heading: hsl(var(--primary-800));
-  --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
-  --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
-  --color-prettylights-syntax-markup-deleted-text: #8b2020;
-  --color-prettylights-syntax-markup-deleted-bg: #fce8e8;
-  --color-prettylights-syntax-markup-inserted-text: #2a7a4b;
-  --color-prettylights-syntax-markup-inserted-bg: #e6f6ed;
-  --color-prettylights-syntax-markup-changed-text: #b35a00;
-  --color-prettylights-syntax-markup-changed-bg: hsl(var(--primary-50));
-  --color-prettylights-syntax-markup-list: #b35a00;
-}
-
-/* --- Color Variables (Dark) --------------------------------------------- */
-[data-color-mode*="dark"] .wmde-markdown,
-.wmde-markdown[data-color-mode*="dark"] {
-  --color-fg-default: hsl(var(--foreground));
-  --color-fg-muted: hsl(var(--muted-foreground));
-  --color-fg-subtle: hsl(var(--gray-600));
-  --color-canvas-default: transparent;
-  --color-canvas-subtle: hsl(var(--gray-100));
-  --color-border-default: hsl(var(--border));
-  --color-border-muted: hsl(var(--border));
-  --color-neutral-muted: hsl(var(--gray-200));
-  --color-accent-fg: hsl(var(--primary-900));
-  --color-accent-emphasis: hsl(var(--primary-700));
-  --color-attention-subtle: hsl(var(--primary-100));
-  --color-attention-fg: hsl(var(--primary-900));
-  --color-attention-emphasis: hsl(var(--primary-700));
-  --color-danger-fg: hsl(var(--destructive));
-  --color-danger-emphasis: hsl(var(--destructive));
-  --color-success-fg: #7dba97;
-  --color-success-emphasis: #7dba97;
-  --color-done-fg: #b8a0d8;
-  --color-done-emphasis: #b8a0d8;
-  --color-copied-active-bg: hsl(var(--gray-400));
-
-  /* Syntax — softer tones for dark backgrounds */
-  --color-prettylights-syntax-comment: hsl(var(--gray-600));
-  --color-prettylights-syntax-constant: #d4976c;
-  --color-prettylights-syntax-entity: #b8a0d8;
-  --color-prettylights-syntax-storage-modifier-import: hsl(var(--foreground));
-  --color-prettylights-syntax-entity-tag: #7dba97;
-  --color-prettylights-syntax-keyword: #d4976c;
-  --color-prettylights-syntax-string: #8aabcc;
-  --color-prettylights-syntax-variable: hsl(var(--gray-900));
-  --color-prettylights-syntax-string-regexp: #7dba97;
-  --color-prettylights-syntax-brackethighlighter-unmatched: hsl(
-    var(--destructive)
-  );
-  --color-prettylights-syntax-brackethighlighter-angle: hsl(var(--gray-600));
-  --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
-  --color-prettylights-syntax-constant-other-reference-link: #8aabcc;
-  --color-prettylights-syntax-meta-diff-range: #b8a0d8;
-  --color-prettylights-syntax-markup-heading: hsl(var(--primary-900));
-  --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
-  --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
-  --color-prettylights-syntax-markup-deleted-text: #e8a0a0;
-  --color-prettylights-syntax-markup-deleted-bg: hsl(var(--gray-200));
-  --color-prettylights-syntax-markup-inserted-text: #7dba97;
-  --color-prettylights-syntax-markup-inserted-bg: hsl(var(--gray-200));
-  --color-prettylights-syntax-markup-changed-text: #d4976c;
-  --color-prettylights-syntax-markup-changed-bg: hsl(var(--gray-200));
-  --color-prettylights-syntax-markup-list: #d4976c;
-}
-
 /* --- Spacing ------------------------------------------------------------ */
-.wmde-markdown {
+.zero-markdown {
   min-width: 0;
   max-width: 100%;
+  color: hsl(var(--foreground));
+  overflow-wrap: break-word;
 }
 
-.wmde-markdown p,
-.wmde-markdown .zero-markdown-card {
+.zero-markdown::after {
+  display: table;
+  clear: both;
+  content: "";
+}
+
+.zero-markdown img,
+.zero-markdown video {
+  max-width: 100%;
+  height: auto;
+}
+
+.zero-markdown strong {
+  font-weight: 600;
+}
+
+.zero-markdown p,
+.zero-markdown .zero-markdown-card {
   margin-top: 6px;
   margin-bottom: 6px;
 }
@@ -1145,166 +1054,220 @@ body {
 /* Chat bubbles: relax paragraph spacing so 15px text doesn't read cramped.
    Line-height is owned by the bubble container (leading-[1.7]) and inherited
    by the markdown body, mirroring how the bubble owns the font size. */
-.zero-chat-bubble-assistant .wmde-markdown p,
-.zero-chat-bubble-user .wmde-markdown p,
-.zero-chat-bubble-assistant .wmde-markdown .zero-markdown-card,
-.zero-chat-bubble-user .wmde-markdown .zero-markdown-card {
+.zero-chat-bubble-assistant .zero-markdown p,
+.zero-chat-bubble-user .zero-markdown p,
+.zero-chat-bubble-assistant .zero-markdown .zero-markdown-card,
+.zero-chat-bubble-user .zero-markdown .zero-markdown-card {
   margin-top: 8px;
   margin-bottom: 8px;
 }
 
-.wmde-markdown h1,
-.wmde-markdown h2,
-.wmde-markdown h3,
-.wmde-markdown h4,
-.wmde-markdown h5,
-.wmde-markdown h6 {
+.zero-markdown h1,
+.zero-markdown h2,
+.zero-markdown h3,
+.zero-markdown h4,
+.zero-markdown h5,
+.zero-markdown h6 {
   margin-top: 20px;
   margin-bottom: 6px;
 }
 
-.wmde-markdown blockquote,
-.wmde-markdown table,
-.wmde-markdown pre,
-.wmde-markdown details {
+.zero-markdown blockquote,
+.zero-markdown table,
+.zero-markdown pre,
+.zero-markdown details {
   margin-top: 14px;
   margin-bottom: 14px;
 }
 
-.wmde-markdown ul,
-.wmde-markdown ol,
-.wmde-markdown dl {
+.zero-markdown ul,
+.zero-markdown ol,
+.zero-markdown dl {
   margin-top: 8px;
   margin-bottom: 8px;
 }
 
-.wmde-markdown > :first-child {
+.zero-markdown > :first-child {
   margin-top: 0;
 }
 
-.wmde-markdown > :last-child {
+.zero-markdown > :last-child {
   margin-bottom: 0;
 }
 
-.wmde-markdown li > p {
+.zero-markdown li > p {
   margin-top: 0;
   margin-bottom: 0;
 }
 
 /* --- Headings ----------------------------------------------------------- */
-.wmde-markdown h1 {
+.zero-markdown h1 {
   font-size: 16px;
   padding-bottom: 0;
   border-bottom: none;
   font-weight: 600;
 }
 
-.wmde-markdown h2 {
+.zero-markdown h2 {
   font-size: 15px;
   padding-bottom: 0;
   border-bottom: none;
   font-weight: 600;
 }
 
-.wmde-markdown h3 {
+.zero-markdown h3 {
   font-size: 14px;
   font-weight: 600;
 }
 
-.wmde-markdown h4 {
+.zero-markdown h4 {
   font-size: 13px;
   font-weight: 600;
 }
 
-.wmde-markdown h5 {
+.zero-markdown h5 {
   font-size: 12px;
   font-weight: 600;
 }
 
-.wmde-markdown h6 {
+.zero-markdown h6 {
   font-size: 12px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
 }
 
+.zero-markdown h1,
+.zero-markdown h2,
+.zero-markdown h3,
+.zero-markdown h4,
+.zero-markdown h5,
+.zero-markdown h6 {
+  line-height: 1.25;
+}
+
+.zero-markdown .octicon {
+  display: inline-block;
+  overflow: visible;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.zero-markdown a.anchor {
+  float: left;
+  padding-right: 4px;
+  margin-left: -20px;
+  line-height: 1;
+}
+
+.zero-markdown h1 .octicon-link,
+.zero-markdown h2 .octicon-link,
+.zero-markdown h3 .octicon-link,
+.zero-markdown h4 .octicon-link,
+.zero-markdown h5 .octicon-link,
+.zero-markdown h6 .octicon-link {
+  color: hsl(var(--foreground));
+  visibility: hidden;
+}
+
+.zero-markdown h1:hover .octicon-link,
+.zero-markdown h2:hover .octicon-link,
+.zero-markdown h3:hover .octicon-link,
+.zero-markdown h4:hover .octicon-link,
+.zero-markdown h5:hover .octicon-link,
+.zero-markdown h6:hover .octicon-link,
+.zero-markdown .anchor:focus .octicon-link {
+  visibility: visible;
+}
+
 /* --- Links -------------------------------------------------------------- */
-.wmde-markdown a {
+.zero-markdown a {
   color: hsl(216 70% 45%);
   text-decoration: none;
   overflow-wrap: break-word;
 }
 
-.wmde-markdown a:hover {
+.zero-markdown a:hover {
   text-decoration: underline;
   color: hsl(216 75% 38%);
 }
 
-:where([data-theme="dark"]) .wmde-markdown a {
+:where([data-theme="dark"]) .zero-markdown a {
   color: hsl(216 65% 62%);
 }
 
-:where([data-theme="dark"]) .wmde-markdown a:hover {
+:where([data-theme="dark"]) .zero-markdown a:hover {
   color: hsl(216 70% 70%);
 }
 
 /* --- Blockquote --------------------------------------------------------- */
-.wmde-markdown blockquote {
+.zero-markdown blockquote {
   padding-left: 10px;
   color: hsl(var(--muted-foreground));
   border-left: 3px solid hsl(var(--gray-300));
 }
 
 /* --- Lists -------------------------------------------------------------- */
-.wmde-markdown ul,
-.wmde-markdown ol {
+.zero-markdown ul,
+.zero-markdown ol {
   padding-left: 8px;
 }
 
-.wmde-markdown ul ul,
-.wmde-markdown ol ul,
-.wmde-markdown ul ol,
-.wmde-markdown ol ol {
+.zero-markdown ul ul,
+.zero-markdown ol ul,
+.zero-markdown ul ol,
+.zero-markdown ol ol {
   padding-left: 6px;
 }
 
-.wmde-markdown ul {
+.zero-markdown ul {
   list-style-type: disc;
   padding-left: 20px;
 }
 
-.wmde-markdown ol {
+.zero-markdown ol {
   list-style-type: decimal;
   padding-left: 24px;
 }
 
-.wmde-markdown ul ul {
+.zero-markdown ul ul {
   list-style-type: circle;
   padding-left: 18px;
 }
 
-.wmde-markdown ol ol {
+.zero-markdown ol ol {
   list-style-type: lower-alpha;
   padding-left: 22px;
 }
 
-/* --- Horizontal Rule ---------------------------------------------------- */
-.wmde-markdown hr {
-  background-color: hsl(var(--border));
-  border-bottom-color: hsl(var(--border));
+.zero-markdown .task-list-item {
+  list-style-type: none;
 }
 
-.zero-chat-bubble-assistant .wmde-markdown hr {
+.zero-markdown .task-list-item-checkbox,
+.zero-markdown .contains-task-list input[type="checkbox"] {
+  margin: 0 0.2em 0.25em -1.6em;
+  vertical-align: middle;
+}
+
+/* --- Horizontal Rule ---------------------------------------------------- */
+.zero-markdown hr {
+  height: 1px;
+  background-color: hsl(var(--border));
+  border: 0;
+}
+
+.zero-chat-bubble-assistant .zero-markdown hr {
   display: none;
 }
 
 /* --- Mark / highlight --------------------------------------------------- */
-.wmde-markdown mark {
+.zero-markdown mark {
   background-color: hsl(var(--primary-100));
   color: hsl(var(--foreground));
 }
 
 /* --- Tables ------------------------------------------------------------- */
-.wmde-markdown table {
+.zero-markdown table {
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
@@ -1314,31 +1277,36 @@ body {
   border-radius: 8px;
 }
 
-.wmde-markdown table th,
-.wmde-markdown table td {
+.zero-markdown table th,
+.zero-markdown table td {
   border: none;
   padding: 8px 12px;
   text-align: left;
   color: hsl(var(--foreground));
 }
 
-.wmde-markdown table th {
+.zero-markdown table th {
   font-weight: 600;
   background-color: hsl(var(--gray-100));
 }
 
-.wmde-markdown table tr {
+.zero-markdown table tr {
   border: none;
   background-color: transparent;
 }
 
-.wmde-markdown table tr:nth-child(2n) {
+.zero-markdown table tr:nth-child(2n) {
   background-color: hsl(var(--gray-100) / 0.5);
 }
 
 /* --- Inline Code -------------------------------------------------------- */
-.wmde-markdown code,
-.wmde-markdown tt {
+.zero-markdown code,
+.zero-markdown tt {
+  padding: 2px 4px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 0.875em;
   background-color: hsl(var(--gray-100));
   color: hsl(var(--foreground));
   border-radius: 4px;
@@ -1346,28 +1314,37 @@ body {
 }
 
 /* --- Code Blocks -------------------------------------------------------- */
-.wmde-markdown pre {
+.zero-markdown pre {
+  position: relative;
   overflow-x: auto;
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
+  background-color: hsl(var(--gray-50));
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: 8px;
 }
 
-.wmde-markdown pre code,
-.wmde-markdown pre tt {
+.zero-markdown pre code,
+.zero-markdown pre tt {
+  display: block;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-wrap: normal;
   background-color: transparent;
   border: 0;
 }
 
 /* Code block scrollbar */
-.wmde-markdown pre > code::-webkit-scrollbar-thumb {
+.zero-markdown pre > code::-webkit-scrollbar-thumb {
   background: hsl(var(--gray-400));
 }
 
 /* --- Mermaid Diagrams --------------------------------------------------- */
-.wmde-markdown .mermaid-block {
+.zero-markdown .mermaid-block {
   margin-bottom: 16px;
 }
 
@@ -1375,13 +1352,13 @@ body {
    in a thread is the same height and none of them changes the height of the
    message it sits in once it appears. Below the max width the box keeps its
    ratio, so diagrams stay equally tall as the column narrows. */
-.wmde-markdown .mermaid-block > .icon-tooltip-trigger {
+.zero-markdown .mermaid-block > .icon-tooltip-trigger {
   display: block;
   width: 100%;
   max-width: 420px;
 }
 
-.wmde-markdown .mermaid-diagram-expand {
+.zero-markdown .mermaid-diagram-expand {
   position: relative;
   display: block;
   width: 100%;
@@ -1396,7 +1373,7 @@ body {
   cursor: zoom-in;
 }
 
-.wmde-markdown .mermaid-diagram-expand:disabled {
+.zero-markdown .mermaid-diagram-expand:disabled {
   cursor: default;
 }
 
@@ -1405,16 +1382,16 @@ body {
    wide would win over `aspect-ratio` through its content-based minimum size.
    Letterboxed rather than stretched, since a single box can only hold diagrams
    of different aspect ratios undistorted by leaving margins. */
-.wmde-markdown .mermaid-diagram-image,
-.wmde-markdown .mermaid-diagram-pending,
-.wmde-markdown .mermaid-diagram-invalid {
+.zero-markdown .mermaid-diagram-image,
+.zero-markdown .mermaid-diagram-pending,
+.zero-markdown .mermaid-diagram-invalid {
   /* Inset by the box's own padding: an absolutely positioned child is placed
      against the padding box, which the padding would otherwise not clear. */
   position: absolute;
   inset: 8px;
 }
 
-.wmde-markdown .mermaid-diagram-image {
+.zero-markdown .mermaid-diagram-image {
   /* An absolutely positioned <img> whose width and height are `auto` is laid
      out at its own intrinsic size, so `inset` alone leaves the diagram at
      lightbox scale and `object-fit` has nothing to fit into. The size is
@@ -1423,70 +1400,182 @@ body {
   width: calc(100% - 16px);
   height: calc(100% - 16px);
   object-fit: contain;
-  /* github-markdown-css paints every image on an opaque canvas colour, which
-     would cover the box behind the letterboxed diagram. */
-  background: none;
 }
 
-.wmde-markdown .mermaid-diagram-pending,
-.wmde-markdown .mermaid-diagram-invalid {
+.zero-markdown .mermaid-diagram-pending,
+.zero-markdown .mermaid-diagram-invalid {
   display: flex;
   align-items: center;
   justify-content: center;
   color: hsl(var(--muted-foreground));
 }
 
-.wmde-markdown .mermaid-diagram-invalid {
+.zero-markdown .mermaid-diagram-invalid {
   font-size: 0.875rem;
 }
 
-.wmde-markdown .mermaid-diagram-source > summary {
+.zero-markdown .mermaid-diagram-source > summary {
   cursor: pointer;
   color: hsl(var(--muted-foreground));
   font-size: 0.8125rem;
 }
 
-.wmde-markdown .mermaid-diagram-source > pre {
+.zero-markdown .mermaid-diagram-source > pre {
   margin-top: 8px;
 }
 
 /* --- Code Block Copy Button --------------------------------------------- */
-.wmde-markdown pre .copied {
+.zero-markdown pre .copied {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  visibility: hidden;
+  padding: 6px;
+  cursor: pointer;
   background: hsl(var(--gray-200));
   color: hsl(var(--muted-foreground));
   border-radius: 6px;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
-.wmde-markdown pre:hover .copied:hover {
+.zero-markdown pre:hover .copied,
+.zero-markdown pre .copied:focus-visible {
+  visibility: visible;
+}
+
+.zero-markdown pre:hover .copied:hover {
   background: hsl(var(--gray-300));
   color: hsl(var(--foreground));
 }
 
-.wmde-markdown pre:hover .copied:active,
-.wmde-markdown pre .copied.active {
+.zero-markdown pre:hover .copied:active,
+.zero-markdown pre .copied.active {
   background: hsl(var(--gray-400));
   color: hsl(var(--foreground));
 }
 
 /* --- KBD ---------------------------------------------------------------- */
-.wmde-markdown kbd {
+.zero-markdown kbd {
+  display: inline-block;
+  padding: 3px 5px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 11px;
+  line-height: 10px;
+  vertical-align: middle;
   color: hsl(var(--foreground));
   background-color: hsl(var(--gray-50));
-  border-color: hsl(var(--gray-300));
+  border: 1px solid hsl(var(--gray-300));
+  border-radius: 6px;
   box-shadow: inset 0 -1px 0 hsl(var(--gray-300));
 }
 
 /* --- Alerts ------------------------------------------------------------- */
-.wmde-markdown .markdown-alert {
-  border-left-color: hsl(var(--border));
+.zero-markdown .markdown-alert {
+  padding: 0.5rem 1em;
+  margin-bottom: 16px;
+  border-left: 3px solid hsl(var(--border));
 }
 
-.wmde-markdown .markdown-alert.markdown-alert-note {
+.zero-markdown .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.zero-markdown .markdown-alert .markdown-alert-title {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.zero-markdown .markdown-alert .markdown-alert-title .octicon {
+  margin-right: 8px;
+}
+
+.zero-markdown .markdown-alert.markdown-alert-note {
   border-left-color: hsl(var(--primary-600));
 }
 
-.wmde-markdown .markdown-alert.markdown-alert-note .markdown-alert-title {
+.zero-markdown .markdown-alert.markdown-alert-note .markdown-alert-title {
   color: hsl(var(--primary-700));
+}
+
+.zero-markdown .markdown-alert.markdown-alert-tip {
+  border-left-color: #2a7a4b;
+}
+
+.zero-markdown .markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: #2a7a4b;
+}
+
+.zero-markdown .markdown-alert.markdown-alert-important {
+  border-left-color: #6a5acd;
+}
+
+.zero-markdown .markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: #6a5acd;
+}
+
+.zero-markdown .markdown-alert.markdown-alert-warning {
+  border-left-color: #b35a00;
+}
+
+.zero-markdown .markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: #b35a00;
+}
+
+.zero-markdown .markdown-alert.markdown-alert-caution {
+  border-left-color: hsl(var(--destructive));
+}
+
+.zero-markdown .markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: hsl(var(--destructive));
+}
+
+:where([data-theme="dark"]) .zero-markdown .markdown-alert.markdown-alert-tip {
+  border-left-color: #7dba97;
+}
+
+:where([data-theme="dark"])
+  .zero-markdown
+  .markdown-alert.markdown-alert-tip
+  .markdown-alert-title {
+  color: #7dba97;
+}
+
+:where([data-theme="dark"])
+  .zero-markdown
+  .markdown-alert.markdown-alert-important {
+  border-left-color: #b8a0d8;
+}
+
+:where([data-theme="dark"])
+  .zero-markdown
+  .markdown-alert.markdown-alert-important
+  .markdown-alert-title {
+  color: #b8a0d8;
+}
+
+:where([data-theme="dark"])
+  .zero-markdown
+  .markdown-alert.markdown-alert-warning {
+  border-left-color: #d4976c;
+}
+
+:where([data-theme="dark"])
+  .zero-markdown
+  .markdown-alert.markdown-alert-warning
+  .markdown-alert-title {
+  color: #d4976c;
+}
+
+.zero-markdown details > summary {
+  cursor: pointer;
 }
 
 /* Details/summary animation */

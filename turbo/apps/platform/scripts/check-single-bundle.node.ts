@@ -160,13 +160,13 @@ await test("rejects worker chunks with imports or forbidden packages", () => {
         code: "worker",
         fileName: "assets/shared-database-worker.js",
         imports: ["assets/worker-dependency.js"],
-        moduleIds: ["/repo/node_modules/lowlight/lib/index.js"],
+        moduleIds: ["/repo/node_modules/katex/dist/katex.mjs"],
         type: "chunk",
       },
     ]),
     [
       "assets/shared-database-worker.js: unexpected JavaScript imports: assets/worker-dependency.js",
-      "assets/shared-database-worker.js: forbidden packages reached the bundle: lowlight",
+      "assets/shared-database-worker.js: forbidden packages reached the bundle: katex",
     ],
   );
 });

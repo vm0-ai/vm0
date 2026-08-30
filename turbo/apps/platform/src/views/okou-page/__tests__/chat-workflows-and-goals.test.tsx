@@ -923,7 +923,7 @@ describe("chat lifecycle", () => {
     await expect(
       within(dialog).findByRole("heading", { name: "Full goal" }),
     ).resolves.toBeInTheDocument();
-    expect(dialog.querySelector(".wmde-markdown")).not.toBeNull();
+    expect(dialog.querySelector(".zero-markdown")).not.toBeNull();
   });
 
   it("hides the goal row once a completion marker folds in", async () => {

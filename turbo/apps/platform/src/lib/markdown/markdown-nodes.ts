@@ -2,15 +2,12 @@ import type { Element, Root, RootContent } from "hast";
 import { getCodeString } from "rehype-rewrite";
 
 /**
- * Pieces of `@uiw/react-markdown-preview` that its `exports` map does not
- * expose (`./esm/plugins/*`, `./esm/nodes/*`). The markdown pipeline builds
- * the same hast tree that `<MarkdownPreview />` used to build, so these have
- * to be reproduced here.
- *
- * Ported from @uiw/react-markdown-preview@5.2.0, MIT licensed.
+ * App-owned Markdown tree augmentations for heading anchors and code-copy
+ * controls. The behavior was ported from @uiw/react-markdown-preview@5.2.0
+ * under its MIT license.
  */
 
-/** `esm/nodes/octiconLink.js` — the anchor icon injected into headings. */
+/** The anchor icon injected into headings. */
 function octiconLink(): Element {
   return {
     type: "element",
@@ -38,8 +35,8 @@ function octiconLink(): Element {
 }
 
 /**
- * `esm/nodes/copy.js` — a marker for the copy button appended to every code
- * block. Only the marker lives in the tree; the button itself is a React
+ * A marker for the copy button appended to every code block. Only the marker
+ * lives in the tree; the button itself is a React
  * component, so the click handler is an ordinary `onClick`. The payload rides
  * on `data`, which parsed HTML cannot produce, so quoted HTML cannot forge it.
  */
@@ -60,9 +57,8 @@ type RewriteHandler = (
 ) => void;
 
 /**
- * `esm/rehypePlugins.js` — swaps the autolink-headings anchor content for the
- * octicon and appends a copy button to every code block. `disableCopy` is
- * always false here, matching how `<MarkdownPreview />` was used.
+ * Swaps the autolink-headings anchor content for the octicon and appends a copy
+ * button to every code block.
  */
 export function rehypeRewriteHandle(rewrite: RewriteHandler): RewriteHandler {
   return (node, index, parent) => {

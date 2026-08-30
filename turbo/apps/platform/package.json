@@ -50,7 +50,6 @@
     "@tiptap/markdown": "3.21.0",
     "@tiptap/pm": "3.21.0",
     "@tiptap/react": "3.21.0",
-    "@uiw/react-markdown-preview": "^5.1.5",
     "ably": "^2.21.0",
     "ccstate": "^5.4.0",
     "ccstate-react": "^5.4.0",

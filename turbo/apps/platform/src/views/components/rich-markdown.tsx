@@ -1,4 +1,3 @@
-import "@uiw/react-markdown-preview/markdown.css";
 import { CopyButton } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";
@@ -155,8 +154,8 @@ function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
   );
 }
 
-// Module-scope renderers passed into MarkdownPreview's `components` map.
-// Function identity is stable across renders, which keeps MarkdownPreview
+// Module-scope renderers passed into the Markdown component map.
+// Function identity is stable across renders, which keeps React
 // from re-mounting the children at <a>/<img> positions on parent re-render.
 function PlainLinkRenderer(
   props: { children?: ReactNode } & MarkdownAnchorProps,

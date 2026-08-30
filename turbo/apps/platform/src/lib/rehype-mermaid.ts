@@ -6,7 +6,7 @@
  * have settled, so it can recognize the final fenced-code node without a view
  * component needing to inspect Markdown source.
  *
- * The placeholder must use a plain HTML tag name: react-markdown drops
+ * The placeholder must use a plain HTML tag name: the tree post-processor drops
  * elements whose tag name does not match `/^[A-Za-z0-9]+$/`.
  */
 
