@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
@@ -251,7 +251,11 @@ describe("chat start cards", () => {
 
     expect(startCards()).toHaveLength(3);
     expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
-    expect(screen.getByTestId("start-cards")).toHaveClass("sm:grid-cols-3");
+    expect(screen.getByTestId("start-cards")).toHaveClass(
+      "sm:grid-cols-2",
+      "lg:grid-cols-3",
+    );
+    expect(screen.getByTestId("start-cards")).not.toHaveClass("sm:grid-cols-3");
   });
 
   it("uploads an intro video source and creates its chat thread", async () => {
@@ -544,6 +548,61 @@ describe("chat start cards", () => {
         screen.queryByRole("dialog", { name: "Create an intro video" }),
       ).not.toBeInTheDocument();
     });
+    click(screen.getByTestId("intro-video-start-card"));
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    expect(
+      buttonWithText("Choose screen and start", reopenedDialog),
+    ).toBeInTheDocument();
+    click(screen.getByLabelText("Close"));
+  });
+
+  it("resets screen recording after navigating away during countdown", async () => {
+    mockChatLifecycle(context);
+    const recording = installRecordingMocks();
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+    const recordingDialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    click(buttonWithText("Record your screen", recordingDialog, false));
+    click(buttonWithText("Choose screen and start", recordingDialog));
+
+    await expect(
+      screen.findByText("Recording starts after the countdown"),
+    ).resolves.toBeInTheDocument();
+    const agentsLink = await waitFor(() => {
+      const link = document.querySelector('a[href="/agents"]');
+      expect(link).not.toBeNull();
+      return link as HTMLElement;
+    });
+    click(agentsLink);
+
+    await expect(
+      screen.findByRole("heading", { name: "Agents" }),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(recording.displayTrackStop).toHaveBeenCalledWith();
+    });
+
+    act(() => {
+      window.history.back();
+    });
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByTestId("intro-video-start-card"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Create an intro video" }),
+    ).not.toBeInTheDocument();
+
     click(screen.getByTestId("intro-video-start-card"));
     const reopenedDialog = await screen.findByRole("dialog", {
       name: "Create an intro video",

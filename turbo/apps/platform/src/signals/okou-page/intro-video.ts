@@ -15,7 +15,14 @@ import {
   type IntroVideoSourceKind,
 } from "../external/intro-video-draft-store.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
-import { createDeferredPromise, onRef, resetSignal, settle } from "../utils.ts";
+import {
+  createDeferredPromise,
+  onRef,
+  onRejection,
+  resetSignal,
+  settle,
+  withCleanup,
+} from "../utils.ts";
 
 export type IntroVideoWizardStep =
   | "avatar"
@@ -736,6 +743,19 @@ function createStartRecordingCommand(
   resetRecordingAttempt$: ReturnType<typeof resetSignal>,
   performRecordingAttempt$: ReturnType<typeof createRecordingAttemptCommand>,
 ) {
+  const abortRecording$ = command(({ set }, generation: number): void => {
+    if (generation !== runtime.generation) {
+      return;
+    }
+    runtime.generation += 1;
+    releaseRecordingRuntime(runtime, true);
+    set(internal.busy$, false);
+    set(internal.countdown$, 3);
+    set(internal.recordingSeconds$, 0);
+    set(internal.error$, null);
+    set(internal.step$, "record-setup");
+    set(internal.open$, false);
+  });
   return command(async ({ set }, parentSignal: AbortSignal): Promise<void> => {
     if (
       !navigator.mediaDevices?.getDisplayMedia ||
@@ -755,20 +775,27 @@ function createStartRecordingCommand(
     set(internal.busy$, true);
     set(internal.error$, null);
     set(internal.recordingSeconds$, 0);
-    signal.addEventListener(
-      "abort",
+    const aborted = createDeferredPromise<never>(signal);
+    const attempt = await onRejection(
+      settle(
+        withCleanup(
+          Promise.race([
+            set(performRecordingAttempt$, generation, signal),
+            aborted.promise,
+          ]),
+          () => {
+            if (!aborted.settled()) {
+              aborted.reject(
+                new DOMException("Recording attempt settled", "AbortError"),
+              );
+            }
+          },
+        ),
+        signal,
+      ),
       () => {
-        if (generation !== runtime.generation) {
-          return;
-        }
-        runtime.generation += 1;
-        releaseRecordingRuntime(runtime, true);
+        set(abortRecording$, generation);
       },
-      { once: true },
-    );
-    const attempt = await settle(
-      set(performRecordingAttempt$, generation, signal),
-      signal,
     );
     if (generation !== runtime.generation) {
       return;

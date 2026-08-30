@@ -538,7 +538,9 @@ export function StartCards({
         data-testid="start-cards"
         className={cn(
           "grid w-full grid-cols-1 gap-3",
-          introVideoEnabled ? "sm:grid-cols-2" : "sm:grid-cols-3",
+          introVideoEnabled
+            ? "sm:grid-cols-2"
+            : "sm:grid-cols-2 lg:grid-cols-3",
         )}
       >
         {kinds.map((kind) => {
