@@ -124,6 +124,7 @@ describe("connection diagnostics settings", () => {
 
     act(() => {
       context.mocks.ably.triggerConnectionState("disconnected", {
+        channelPrefix: "user:",
         code: 80_003,
         message:
           "request for user_test-user-123 and person@example.test failed at https://realtime.example.test/client/123e4567-e89b-42d3-a456-426614174000",
@@ -175,6 +176,7 @@ describe("connection diagnostics settings", () => {
       for (let index = 0; index < 510; index += 1) {
         context.mocks.ably.triggerConnectionState(
           index % 2 === 0 ? "disconnected" : "suspended",
+          { channelPrefix: "user:" },
         );
       }
     });
