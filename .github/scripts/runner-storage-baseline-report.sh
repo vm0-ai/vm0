@@ -67,7 +67,7 @@ jq -s '
           sandbox_create_ms: distribution($successful; "sandbox_create_ms"),
           agent_spawn_ms: distribution($successful; "agent_spawn_ms"),
           cpu_usec: distribution($successful; "cpu_usec"),
-          attestation_ms: distribution($successful; "attestation_ms"),
+          candidate_gate_overhead_ms: distribution($successful; "candidate_gate_overhead_ms"),
           candidate_ready_proxy_ms: distribution($successful; "candidate_ready_proxy_ms"),
           at_or_below_1s: at_or_below_1s($successful; "api_to_spawn_ms"),
           candidate_ready_at_or_below_1s: at_or_below_1s($successful; "candidate_ready_proxy_ms")
@@ -109,6 +109,6 @@ jq -s '
         ),
         failure_free: ($fresh.failures == 0 and $prepared.failures == 0)
       },
-      interpretation: "Prepared exact reuse also avoids sandbox creation; observed api_to_spawn is not a storage-only estimate. candidate_gate_adjusted_delta adds measured harness attestation after spawn as a conservative ready proxy, not a production timing boundary."
+      interpretation: "Prepared exact reuse also avoids sandbox creation; observed api_to_spawn is not a storage-only estimate. candidate_gate_adjusted_delta uses paired controlled-turn completion as a conservative ready proxy, not a production timing boundary."
     }
 ' "$RAW_SAMPLES"

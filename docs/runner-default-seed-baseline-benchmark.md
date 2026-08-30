@@ -15,8 +15,8 @@ complete and unmodified.
 The descriptor contains:
 
 - the full `vm0-ai/vm0-skills` source commit;
-- a deterministic checksum list and digest for `computer-use`, `gen`, and
-  `workflow-setup`;
+- a deterministic exact path-and-checksum manifest and digest for
+  `computer-use`, `gen`, and `workflow-setup`;
 - the `claude-code` framework and its exact guest mount paths;
 - the Runner profile;
 - the Runner binary digest;
@@ -24,13 +24,17 @@ The descriptor contains:
 - a digest of the complete descriptor.
 
 Changing any input invalidates the candidate. A parked sandbox intentionally
-rejects `runner exec`, so the harness starts a controlled reuse turn whose mock
-agent blocks without performing benchmark work. It waits for the Runner's real
-agent-spawn boundary, checks the descriptor marker and every seed file with
-`runner exec`, and only then releases that controlled turn. The attestation
-duration is recorded separately and added to a candidate-ready comparison
-proxy. This ordering avoids competing with the Runner's own pre-spawn vsock
-operations.
+rejects `runner exec`, and normal guest operations are not reliably available
+after the agent connection starts. The harness therefore starts a controlled
+reuse turn whose mock agent performs the attestation as its only command. A
+dedicated exit code distinguishes an expected candidate rejection from a
+Runner lifecycle failure. The fixture rejects non-regular source entries, and
+attestation requires the retained file set to match exactly before checking
+content.
+
+The candidate-ready comparison uses the controlled turn's measured completion
+time. Its post-spawn component includes attestation and Runner finalization, so
+it is a conservative paired overhead rather than an isolated checksum timer.
 
 The controlled checker is the only process allowed to observe an invalid
 candidate. Missing, stale, incomplete, corrupt, or mismatched state rejects the
@@ -66,12 +70,12 @@ The worker runs three phases:
 2. The fresh cohort repeatedly uses a new reuse key, a cold sandbox, and the
    complete manifest with the same warm host archive cache.
 3. The prepared cohort constructs one exact sandbox and repeatedly resumes it
-   for controlled, blocking turns. Each turn reaches real agent spawn, is
-   attested before release, and uses the unchanged complete manifest. Exact
-   storage fingerprints make the storage plan no-work; the independent tree
-   attestation determines whether the candidate may be accepted. The cohort
-   stops and records a failure if the same candidate can no longer reach the
-   real-spawn boundary.
+   for controlled attestation-only turns. Each turn reaches real agent spawn
+   and uses the unchanged complete manifest. Exact storage fingerprints make
+   the storage plan no-work; the mock agent's independent tree attestation
+   determines whether the candidate may be accepted. The cohort stops and
+   records a failure if the same candidate can no longer complete the
+   controlled turn.
 
 Each successful sample records the complete local-submit-to-real-guest-spawn
 `api_to_spawn` duration. This has the same Runner telemetry action name but its
@@ -82,7 +86,7 @@ also records:
 - sandbox creation when present;
 - the real guest-agent process spawn boundary;
 - service CPU delta;
-- candidate attestation duration;
+- conservative post-spawn candidate-gate overhead;
 - service current and peak memory;
 - fixture and Runner logical and allocated disk; and
 - terminal failure, cancellation, queue cleanup, and service cleanup evidence.
@@ -90,9 +94,9 @@ also records:
 The report calculates p50, p90, p95, and p99 directly from complete per-sample
 durations with nearest-rank percentiles. It also reports the fraction at or below
 one second, sample range, mean, and failure count. In addition to the observed
-`api_to_spawn` distribution, it reports a candidate-ready proxy computed per
-sample as observed spawn plus that sample's attestation. It never sums or
-subtracts independently aggregated component percentiles.
+`api_to_spawn` distribution, it reports the paired controlled-turn completion
+time as a candidate-ready proxy. It never sums or subtracts independently
+aggregated component percentiles.
 
 Exact prepared reuse avoids sandbox creation as well as storage application.
 The reported whole-path difference is therefore relevant to a
@@ -108,6 +112,7 @@ each invalidation probe and verifies:
 - a stale descriptor uses the fresh complete path;
 - a deleted seed file uses the fresh complete path;
 - a modified seed file uses the fresh complete path;
+- an unexpected seed file uses the fresh complete path;
 - a changed fixture version/environment descriptor uses the fresh complete
   path;
 - a missing current archive fails the complete path closed;
@@ -116,7 +121,7 @@ each invalidation probe and verifies:
   cancel ownership files.
 
 Separate candidates prevent a measured sandbox's lifecycle failure or prior
-mutation from contaminating the correctness probes. The first five cases have a
+mutation from contaminating the correctness probes. The first six cases have a
 valid current manifest and test rejection of prepared state. The missing and
 corrupt archive cases are different: the current authority itself is
 unavailable, so the run fails instead of granting the rejected prepared files.

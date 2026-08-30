@@ -111,6 +111,9 @@ git -C "$SOURCE_DIR" checkout -q --detach FETCH_HEAD
 
 for skill in computer-use gen workflow-setup; do
   [ -d "$SOURCE_DIR/$skill" ] || fail "Source revision is missing seed skill: $skill"
+  unexpected_entry=$(find "$SOURCE_DIR/$skill" ! -type d ! -type f -print -quit)
+  [ -z "$unexpected_entry" ] \
+    || fail "Source seed skill contains a non-regular entry: $unexpected_entry"
   tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
     -C "$SOURCE_DIR/$skill" -cf - . \
     | gzip -n > "$ARCHIVE_DIR/$skill.tar.gz"
@@ -121,6 +124,7 @@ for skill in computer-use gen workflow-setup; do
       >> "$CHECKSUMS"
   done < <(find "$SOURCE_DIR/$skill" -type f -print0 | sort -z)
 done
+EXPECTED_FILE_COUNT=$(wc -l < "$CHECKSUMS")
 TREE_DIGEST=$(sha256sum "$CHECKSUMS" | awk '{print $1}')
 RUNNER_DIGEST=$(sudo sha256sum "$BIN_DIR/runner" | awk '{print $1}')
 CONFIG_DIGEST=$(sudo sha256sum "$RUNNER_DIR/runner.yaml" | awk '{print $1}')
@@ -329,7 +333,7 @@ record_completed_sample() {
   local cohort=$1
   local chat_thread_id=$2
   local expected_reuse=$3
-  local attestation_ms=$4
+  local candidate_gate_overhead_ms=$4
   local cpu_usec=$5
   local submit_status=$6
   local submit_output=$7
@@ -415,7 +419,7 @@ record_completed_sample() {
     --argjson sandbox_create_ms "${sandbox_create_ms:-null}" \
     --argjson agent_spawn_ms "$agent_spawn_ms" \
     --argjson cpu_usec "$cpu_usec" \
-    --argjson attestation_ms "${attestation_ms:-null}" \
+    --argjson candidate_gate_overhead_ms "${candidate_gate_overhead_ms:-null}" \
     '{
       kind:"sample",
       cohort:$cohort,
@@ -429,9 +433,9 @@ record_completed_sample() {
       sandbox_create_ms:$sandbox_create_ms,
       agent_spawn_ms:$agent_spawn_ms,
       cpu_usec:$cpu_usec,
-      attestation_ms:$attestation_ms,
+      candidate_gate_overhead_ms:$candidate_gate_overhead_ms,
       candidate_ready_proxy_ms: (
-        $api_to_spawn_ms + (if $attestation_ms == null then 0 else $attestation_ms end)
+        $api_to_spawn_ms + (if $candidate_gate_overhead_ms == null then 0 else $candidate_gate_overhead_ms end)
       )
     }' >> "$RAW_SAMPLES"
 }
@@ -442,7 +446,7 @@ record_sample() {
   local chat_thread_id=$3
   local session_id=$4
   local expected_reuse=$5
-  local attestation_ms=${6:-}
+  local candidate_gate_overhead_ms=${6:-}
   local prompt=${7:-true}
   local cpu_before
   local cpu_after
@@ -465,176 +469,47 @@ record_sample() {
   fi
   cpu_after=$(cpu_usage_usec)
   record_completed_sample "$cohort" "$chat_thread_id" "$expected_reuse" \
-    "$attestation_ms" "$((cpu_after - cpu_before))" "$submit_status" "$submit_output"
+    "$candidate_gate_overhead_ms" "$((cpu_after - cpu_before))" "$submit_status" "$submit_output"
 }
 
 CHECKSUMS_BASE64=$(base64 -w0 "$CHECKSUMS")
-ATTEST_COMMAND='test "$(cat /tmp/vm0-default-seed-baseline-descriptor 2>/dev/null)" = "$EXPECTED_DESCRIPTOR" && printf %s "$EXPECTED_CHECKSUMS" | base64 -d | sha256sum -c - >/dev/null'
-
-attest_candidate() {
-  local sandbox_id=$1
-  local started_ns
-  local finished_ns
-  local output
-  local status=0
-  local attempt
-  started_ns=$(date +%s%N)
-  for attempt in $(seq 1 10); do
-    if output=$(sudo timeout 4 "$BIN_DIR/runner" exec --timeout 2 \
-      --sandbox "$sandbox_id" -- \
-      env \
-      "EXPECTED_DESCRIPTOR=$DESCRIPTOR_DIGEST" \
-      "EXPECTED_CHECKSUMS=$CHECKSUMS_BASE64" \
-      bash -lc "$ATTEST_COMMAND" 2>&1); then
-      status=0
-    else
-      status=$?
-    fi
-    if [ "$status" -eq 0 ]; then
-      finished_ns=$(date +%s%N)
-      ATTESTATION_MS=$(((finished_ns - started_ns) / 1000000))
-      return 0
-    fi
-    if [ "$status" -eq 1 ] \
-      && ! grep -Eq 'error: (exec failed|sandbox operation gate|config error)' <<<"$output"; then
-      finished_ns=$(date +%s%N)
-      ATTESTATION_MS=$(((finished_ns - started_ns) / 1000000))
-      echo "Prepared candidate attestation command failed for $sandbox_id:" >&2
-      printf '%s\n' "$output" | tail -c 4096 >&2
-      return 1
-    fi
-    sleep 0.1
-  done
-  finished_ns=$(date +%s%N)
-  ATTESTATION_MS=$(((finished_ns - started_ns) / 1000000))
-  echo "Prepared candidate attestation transport failed for $sandbox_id:" >&2
-  printf '%s\n' "$output" | tail -c 4096 >&2
-  return 2
-}
-
-release_candidate_gate() {
-  local sandbox_id=$1
-  local release_path=$2
-  local attempt
-
-  for attempt in $(seq 1 20); do
-    if sudo timeout 4 "$BIN_DIR/runner" exec --timeout 2 \
-      --sandbox "$sandbox_id" -- touch "$release_path" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  return 1
-}
-
-wait_for_agent_spawn() {
-  local run_id=$1
-  local submit_pid=$2
-  local deadline=$((SECONDS + 115))
-
-  while [ "$SECONDS" -lt "$deadline" ]; do
-    if sudo journalctl -u "$UNIT" --since '2 minutes ago' --no-pager -o cat \
-      --grep "agent startup timing run_id=$run_id" 2>/dev/null \
-      | grep -Fq "agent startup timing run_id=$run_id"; then
-      return 0
-    fi
-    if ! kill -0 "$submit_pid" 2>/dev/null; then
-      return 1
-    fi
-    sleep 0.25
-  done
-  return 1
-}
+ATTEST_PROMPT='test "$(cat /tmp/vm0-default-seed-baseline-descriptor 2>/dev/null)" = "$EXPECTED_DESCRIPTOR" || exit 91; test -z "$(find /home/user/.claude/skills/computer-use /home/user/.claude/skills/gen /home/user/.claude/skills/workflow-setup ! -type d ! -type f -print -quit)" || exit 92; actual_count=$(find /home/user/.claude/skills/computer-use /home/user/.claude/skills/gen /home/user/.claude/skills/workflow-setup -type f -print | wc -l); [ "$actual_count" -eq "$EXPECTED_FILE_COUNT" ] || exit 93; printf %s "$EXPECTED_CHECKSUMS" | base64 -d | sha256sum -c - >/dev/null || exit 94'
 
 run_candidate_gate() {
   local candidate_sandbox_id=$1
   local chat_thread_id=$2
   local session_id=$3
-  local release_path="/tmp/vm0-default-seed-baseline-release-$session_id"
-  local output_file="$BENCHMARK_DIR/$session_id.submit"
-  local submit_pid
   local cpu_before
   local cpu_after
   local started_ns
   local finished_ns
-  local attempt
-  local active=false
   local submit_json
-  local completed_run_id
+  local job_exit_code
   local operations
+  local reuse_result
+  local api_to_spawn_ms
   local published_sandbox_id
-  local attestation_status=0
 
   GATE_ATTESTED=false
-  GATE_ATTESTATION_MS=""
+  GATE_OVERHEAD_MS=""
   GATE_OUTPUT=""
   GATE_STATUS=0
   GATE_ERROR=""
   GATE_ELAPSED_MS=""
   cpu_before=$(cpu_usage_usec)
   started_ns=$(date +%s%N)
-  sudo "$BIN_DIR/runner" local submit \
+  if GATE_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
     --group "$GROUP" \
     --profile "$PROFILE" \
     --chat-thread-id "$chat_thread_id" \
     --session-id "$session_id" \
     --feature-flag sandboxReuse=true \
     --storage-manifest "$MANIFEST" \
+    --env "EXPECTED_DESCRIPTOR=$DESCRIPTOR_DIGEST" \
+    --env "EXPECTED_CHECKSUMS=$CHECKSUMS_BASE64" \
+    --env "EXPECTED_FILE_COUNT=$EXPECTED_FILE_COUNT" \
     --timeout 120 \
-    --prompt "for _ in \$(seq 1 600); do [ -e '$release_path' ] && exit 0; sleep 0.05; done; exit 98" \
-    >"$output_file" 2>&1 &
-  submit_pid=$!
-
-  for attempt in $(seq 1 200); do
-    GATE_RUN_ID=$(sudo jq -r --arg sandbox_id "$candidate_sandbox_id" \
-      '.active_runs[]? | select(.sandbox_id == $sandbox_id) | .run_id' \
-      "$RUNNER_DIR/status.json" 2>/dev/null || true)
-    if [ -n "$GATE_RUN_ID" ]; then
-      active=true
-      break
-    fi
-    if ! kill -0 "$submit_pid" 2>/dev/null; then
-      break
-    fi
-    sleep 0.05
-  done
-  if [ "$active" != true ]; then
-    wait "$submit_pid" 2>/dev/null || true
-    cat "$output_file" >&2
-    fail "Prepared candidate did not become active: $candidate_sandbox_id"
-  fi
-  if ! wait_for_agent_spawn "$GATE_RUN_ID" "$submit_pid"; then
-    if wait "$submit_pid"; then
-      GATE_STATUS=0
-    else
-      GATE_STATUS=$?
-    fi
-    cpu_after=$(cpu_usage_usec)
-    finished_ns=$(date +%s%N)
-    GATE_CPU_USEC=$((cpu_after - cpu_before))
-    GATE_ELAPSED_MS=$(((finished_ns - started_ns) / 1000000))
-    GATE_OUTPUT=$(<"$output_file")
-    rm -f "$output_file"
-    GATE_ERROR=candidate_agent_spawn_unavailable
-    return 2
-  fi
-
-  ATTESTATION_MS=""
-  if attest_candidate "$candidate_sandbox_id"; then
-    attestation_status=0
-  else
-    attestation_status=$?
-  fi
-  case "$attestation_status" in
-    0) GATE_ATTESTED=true ;;
-    1) ;;
-    *) fail "Prepared candidate attestation could not reach the guest" ;;
-  esac
-  GATE_ATTESTATION_MS=$ATTESTATION_MS
-  release_candidate_gate "$candidate_sandbox_id" "$release_path" \
-    || fail "Prepared candidate gate could not release its controlled job"
-
-  if wait "$submit_pid"; then
+    --prompt "$ATTEST_PROMPT" 2>&1); then
     GATE_STATUS=0
   else
     GATE_STATUS=$?
@@ -643,24 +518,53 @@ run_candidate_gate() {
   finished_ns=$(date +%s%N)
   GATE_CPU_USEC=$((cpu_after - cpu_before))
   GATE_ELAPSED_MS=$(((finished_ns - started_ns) / 1000000))
-  GATE_OUTPUT=$(<"$output_file")
-  rm -f "$output_file"
-  [ "$GATE_STATUS" -eq 0 ] || fail "Prepared candidate gate job failed"
 
   submit_json=$(awk '/^\{/{line=$0} END{print line}' <<<"$GATE_OUTPUT")
-  completed_run_id=$(jq -r '.run_id // empty' <<<"$submit_json" 2>/dev/null || true)
-  [ -n "$completed_run_id" ] || fail "Prepared candidate gate omitted its run ID"
-  [ "$completed_run_id" = "$GATE_RUN_ID" ] \
-    || fail "Prepared candidate gate completed a different run"
-  wait_for_telemetry "$GATE_RUN_ID" || fail "Prepared candidate gate telemetry is missing"
+  GATE_RUN_ID=$(jq -r '.run_id // empty' <<<"$submit_json" 2>/dev/null || true)
+  job_exit_code=$(jq -r '.exit_code // empty' <<<"$submit_json" 2>/dev/null || true)
+  if [ -z "$GATE_RUN_ID" ] || [ -z "$job_exit_code" ]; then
+    GATE_ERROR=candidate_result_unavailable
+    return 2
+  fi
+  if ! wait_for_telemetry "$GATE_RUN_ID"; then
+    GATE_ERROR=candidate_telemetry_unavailable
+    return 2
+  fi
   operations=$(operations_for_run "$GATE_RUN_ID")
-  [ "$(operation_reuse_result "$operations")" = reused ] \
-    || fail "Prepared candidate gate did not reuse the expected sandbox"
-  published_sandbox_id=$(sandbox_for_thread "$chat_thread_id") \
-    || fail "Prepared candidate was not returned to the idle pool"
-  [ "$published_sandbox_id" = "$candidate_sandbox_id" ] \
-    || fail "Prepared candidate gate changed sandbox identity"
-  [ "$GATE_ATTESTED" = true ]
+  reuse_result=$(operation_reuse_result "$operations")
+  if [ "$reuse_result" != reused ]; then
+    GATE_ERROR=candidate_not_reused
+    return 2
+  fi
+  api_to_spawn_ms=$(operation_duration "$operations" api_to_spawn)
+  if [ -z "$api_to_spawn_ms" ]; then
+    GATE_ERROR=candidate_agent_spawn_unavailable
+    return 2
+  fi
+  case "$job_exit_code" in
+    91) GATE_ERROR=candidate_descriptor_rejected; return 1 ;;
+    92) GATE_ERROR=candidate_entry_type_rejected; return 1 ;;
+    93) GATE_ERROR=candidate_file_set_rejected; return 1 ;;
+    94) GATE_ERROR=candidate_checksum_rejected; return 1 ;;
+  esac
+  if [ "$GATE_STATUS" -ne 0 ] || [ "$job_exit_code" -ne 0 ]; then
+    GATE_ERROR=candidate_execution_failed
+    return 2
+  fi
+  if [ "$GATE_ELAPSED_MS" -gt "$api_to_spawn_ms" ]; then
+    GATE_OVERHEAD_MS=$((GATE_ELAPSED_MS - api_to_spawn_ms))
+  else
+    GATE_OVERHEAD_MS=0
+  fi
+  if ! published_sandbox_id=$(sandbox_for_thread "$chat_thread_id"); then
+    GATE_ERROR=candidate_not_republished
+    return 2
+  fi
+  if [ "$published_sandbox_id" != "$candidate_sandbox_id" ]; then
+    GATE_ERROR=candidate_identity_changed
+    return 2
+  fi
+  GATE_ATTESTED=true
 }
 
 assert_candidate_rejected_then_fresh() {
@@ -760,9 +664,9 @@ for index in $(seq 1 "$SAMPLES"); do
     break
   fi
   [ "$gate_status" -eq 0 ] \
-    || fail "Prepared candidate attestation failed before sample $index"
+    || fail "Prepared candidate attestation failed before sample $index: $GATE_ERROR"
   record_completed_sample prepared "$PREPARED_THREAD" reused \
-    "$GATE_ATTESTATION_MS" "$GATE_CPU_USEC" "$GATE_STATUS" "$GATE_OUTPUT" \
+    "$GATE_OVERHEAD_MS" "$GATE_CPU_USEC" "$GATE_STATUS" "$GATE_OUTPUT" \
     || fail "Prepared sample $index failed: $LAST_SUBMIT_ERROR"
   PREPARED_SANDBOX_ID=$LAST_SANDBOX_ID
 done
@@ -792,6 +696,10 @@ assert_candidate_rejected_then_fresh incomplete-tree \
 prepare_validation_candidate corrupt-tree
 assert_candidate_rejected_then_fresh corrupt-tree \
   "find '$SKILLS_ROOT/gen' -type f -print -quit | xargs -r sh -c 'printf corrupt >> \"\$1\"' sh" \
+  "$VALIDATION_SANDBOX_ID" "$VALIDATION_THREAD"
+prepare_validation_candidate unexpected-file
+assert_candidate_rejected_then_fresh unexpected-file \
+  "touch '$SKILLS_ROOT/workflow-setup/.vm0-unexpected'" \
   "$VALIDATION_SANDBOX_ID" "$VALIDATION_THREAD"
 
 CHANGED_MANIFEST="$BENCHMARK_DIR/storage-manifest-changed.json"

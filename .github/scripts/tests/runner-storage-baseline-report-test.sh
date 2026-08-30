@@ -26,7 +26,7 @@ for value in 700 900 1100 1300; do
       sandbox_create_ms: 400,
       agent_spawn_ms: 10,
       cpu_usec: 1000,
-      attestation_ms: null,
+      candidate_gate_overhead_ms: null,
       candidate_ready_proxy_ms: $value
     }' >> "$raw"
 done
@@ -44,7 +44,7 @@ for value in 600 700 800 900; do
       sandbox_create_ms: null,
       agent_spawn_ms: 8,
       cpu_usec: 500,
-      attestation_ms: 12,
+      candidate_gate_overhead_ms: 12,
       candidate_ready_proxy_ms: ($value + 12)
     }' >> "$raw"
 done
@@ -65,7 +65,7 @@ jq -e '
   and .prepared.failures == 1
   and .prepared.api_to_spawn_ms.p90 == 900
   and .prepared.at_or_below_1s.fraction == 1
-  and .prepared.attestation_ms.p95 == 12
+  and .prepared.candidate_gate_overhead_ms.p95 == 12
   and .prepared.candidate_ready_proxy_ms.p90 == 912
   and .observed_total_path_delta.p90_ms == 400
   and .observed_total_path_delta.at_or_below_1s_percentage_points == 50
