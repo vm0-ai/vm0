@@ -23,7 +23,6 @@ import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custo
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { selectSharedDatabaseMode$ } from "./shared-database-mode.ts";
 import {
-  heartbeatSharedDatabaseNow$,
   runSharedDatabaseHeartbeatLoop$,
   setupSharedDatabaseBridge$,
 } from "./shared-database-browser.ts";
@@ -55,14 +54,13 @@ export const setupAuthenticatedDaemons$ = command(
 
     const sharedDatabaseEnabled =
       get(featureSwitch$)[FeatureSwitchKey.SharedChatDatabase] ?? false;
-    set(selectSharedDatabaseMode$, sharedDatabaseEnabled);
     if (sharedDatabaseEnabled) {
       const authRecovery = await get(authRecovery$);
       signal.throwIfAborted();
-      set(setupSharedDatabaseBridge$, authRecovery, signal);
-      await set(heartbeatSharedDatabaseNow$, signal);
+      await set(setupSharedDatabaseBridge$, authRecovery, signal);
       signal.throwIfAborted();
     }
+    set(selectSharedDatabaseMode$, sharedDatabaseEnabled);
 
     await Promise.all([
       set(setupRealtime$, signal),

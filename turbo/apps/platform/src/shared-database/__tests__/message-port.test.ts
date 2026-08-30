@@ -14,7 +14,6 @@ import {
 import { mockNow } from "../../lib/time.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import {
-  heartbeatSharedDatabase$,
   installSharedDatabaseBridge$,
   queryChatEventSharedDatabase$,
   sharedDatabaseChatThreadIndicators$,
@@ -176,12 +175,12 @@ function row(threadId: string, seqId: number): ChatEventRow {
   };
 }
 
-function installProtocolBridge(): {
+async function installProtocolBridge(): Promise<{
   readonly platformStore: Store;
   readonly boundary: SharedDatabaseWorkerMaps;
   readonly platformPort: InMemoryMessagePort;
   readonly workerPort: InMemoryMessagePort;
-} {
+}> {
   const platformStore = context.store;
   platformStore.set(setRootSignal$, context.signal);
   const boundary = workerBoundaryState();
@@ -200,7 +199,12 @@ function installProtocolBridge(): {
       statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
     },
   );
-  platformStore.set(installSharedDatabaseBridge$, bridge);
+  await platformStore.set(
+    installSharedDatabaseBridge$,
+    bridge,
+    heartbeat(),
+    context.signal,
+  );
   return { platformStore, boundary, platformPort, workerPort };
 }
 
@@ -273,7 +277,7 @@ describe("shared database MessagePort protocol", () => {
   });
 
   it("reads and refreshes the worker-owned indicator computed", async () => {
-    const { platformStore } = installProtocolBridge();
+    const { platformStore } = await installProtocolBridge();
     const threadId = crypto.randomUUID();
     let requests = 0;
     let indicators: {
@@ -284,11 +288,6 @@ describe("shared database MessagePort protocol", () => {
       requests += 1;
       return respond(200, indicators);
     });
-    await platformStore.set(
-      heartbeatSharedDatabase$,
-      heartbeat(),
-      context.signal,
-    );
     await vi.waitFor(() => {
       expect(
         context.mocks.ably.hasSubscription("threadListChanged"),
@@ -315,12 +314,7 @@ describe("shared database MessagePort protocol", () => {
   });
 
   it("correlates out-of-order queries across structured-cloned independent stores", async () => {
-    const { platformStore, boundary } = installProtocolBridge();
-    await platformStore.set(
-      heartbeatSharedDatabase$,
-      heartbeat(),
-      context.signal,
-    );
+    const { platformStore, boundary } = await installProtocolBridge();
     expect(boundary.credentialStores.size).toBe(1);
     expect(platformStore).not.toBe(
       Array.from(boundary.credentialStores.values())[0],
@@ -389,12 +383,7 @@ describe("shared database MessagePort protocol", () => {
   });
 
   it("cancels one RPC wait without cancelling worker-owned catch-up", async () => {
-    const { platformStore } = installProtocolBridge();
-    await platformStore.set(
-      heartbeatSharedDatabase$,
-      heartbeat(),
-      context.signal,
-    );
+    const { platformStore } = await installProtocolBridge();
     const key = dataKey(crypto.randomUUID());
     const canonicalRow = row(key.threadId, 1);
     const pageGate = context.mocks.deferred<void>();

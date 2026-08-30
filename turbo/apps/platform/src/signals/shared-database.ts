@@ -34,9 +34,15 @@ export const setSharedDatabaseConnectionStatus$ = command(
 );
 
 export const installSharedDatabaseBridge$ = command(
-  ({ set }, bridge: SharedDatabaseBridge): void => {
+  async (
+    { set },
+    bridge: SharedDatabaseBridge,
+    heartbeat: SharedDatabaseHeartbeat,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await bridge.heartbeat(heartbeat, signal);
+    signal.throwIfAborted();
     set(sharedDatabaseBridgeState$, bridge);
-    set(sharedDatabaseConnectionStatusState$, "connecting");
   },
 );
 

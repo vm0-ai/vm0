@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { command, state } from "ccstate";
 import SharedDatabaseWorker from "virtual:shared-database-worker";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
@@ -17,6 +17,10 @@ import {
 } from "./utils.ts";
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
 import { AuthRecoveringSharedDatabaseBridge } from "../shared-database/auth-recovering-client.ts";
+import type {
+  SharedDatabaseBridge,
+  SharedDatabaseBridgeEvents,
+} from "../shared-database/bridge.ts";
 import {
   ReconnectingSharedDatabaseBridge,
   SharedDatabaseTransportError,
@@ -33,6 +37,14 @@ import { reloadChatIndicators$ } from "./chat-thread-list-reload.ts";
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
 const AUTHENTICATION_REQUIRED_EVENT = "authentication-required";
 const L = logger("SharedDatabaseBrowser");
+
+export interface SharedDatabaseBridgeHost {
+  createBridge(
+    apiBaseUrl: string,
+    events: SharedDatabaseBridgeEvents,
+    signal: AbortSignal,
+  ): SharedDatabaseBridge;
+}
 
 interface JwtLifetime {
   readonly exp: number;
@@ -142,54 +154,82 @@ async function resolveWorkerRecovery(
   return "reconnect";
 }
 
+function createBrowserSharedDatabaseBridge(
+  apiBaseUrl: string,
+  events: SharedDatabaseBridgeEvents,
+  signal: AbortSignal,
+): SharedDatabaseBridge {
+  const worker = new SharedDatabaseWorker({ name: "okou core service" });
+  const portBridge = new MessagePortSharedDatabaseBridge(
+    worker.port,
+    apiBaseUrl,
+    events,
+  );
+  let recoveryStarted = false;
+  worker.addEventListener(
+    "error",
+    (event) => {
+      if (recoveryStarted) {
+        return;
+      }
+      recoveryStarted = true;
+      const workerError: unknown = event.error;
+      const workerUrl = event.filename;
+      L.error(
+        "Shared database worker failed to load",
+        workerError instanceof Error ? workerError : event.message,
+        sentryLogContext({
+          tags: {
+            runtime: "shared-worker",
+            worker: "shared-database",
+          },
+        }),
+      );
+      portBridge.fail(
+        new SharedDatabaseTransportError(
+          "Shared database worker failed to load",
+          async () => {
+            return await resolveWorkerRecovery(workerUrl, signal);
+          },
+        ),
+      );
+    },
+    { signal },
+  );
+  return portBridge;
+}
+
+const sharedDatabaseBridgeHostState$ = state<SharedDatabaseBridgeHost>({
+  createBridge: createBrowserSharedDatabaseBridge,
+});
+
+export const setSharedDatabaseBridgeHostForTest$ = command(
+  ({ set }, host: SharedDatabaseBridgeHost): void => {
+    set(sharedDatabaseBridgeHostState$, host);
+  },
+);
+
 export const setupSharedDatabaseBridge$ = command(
-  ({ get, set }, authRecovery: AuthRecovery, signal: AbortSignal): void => {
+  async (
+    { get, set },
+    authRecovery: AuthRecovery,
+    signal: AbortSignal,
+  ): Promise<void> => {
     signal.throwIfAborted();
     if (get(sharedDatabaseBridgeInstalled$)) {
       return;
     }
+    const token = await authRecovery.getToken(signal);
+    signal.throwIfAborted();
+    if (!token) {
+      throw new Error("Clerk token is required for the shared database");
+    }
     const apiBaseUrl = resolveApiBaseForTarget("api");
+    const bridgeHost = get(sharedDatabaseBridgeHostState$);
     const authenticationRequiredTarget = new EventTarget();
     const reconnectingBridge = new ReconnectingSharedDatabaseBridge({
       createBridge: (events) => {
-        const worker = new SharedDatabaseWorker({ name: "okou core service" });
-        const portBridge = new MessagePortSharedDatabaseBridge(
-          worker.port,
-          apiBaseUrl,
-          events,
-        );
-        let recoveryStarted = false;
-        worker.addEventListener(
-          "error",
-          (event) => {
-            if (recoveryStarted) {
-              return;
-            }
-            recoveryStarted = true;
-            const workerError: unknown = event.error;
-            const workerUrl = event.filename;
-            L.error(
-              "Shared database worker failed to load",
-              workerError instanceof Error ? workerError : event.message,
-              sentryLogContext({
-                tags: {
-                  runtime: "shared-worker",
-                  worker: "shared-database",
-                },
-              }),
-            );
-            portBridge.fail(
-              new SharedDatabaseTransportError(
-                "Shared database worker failed to load",
-                async () => {
-                  return await resolveWorkerRecovery(workerUrl, signal);
-                },
-              ),
-            );
-          },
-          { signal },
-        );
-        return portBridge;
+        return bridgeHost.createBridge(apiBaseUrl, events, signal);
       },
       events: {
         authenticationRequired: () => {
@@ -222,7 +262,17 @@ export const setupSharedDatabaseBridge$ = command(
       }),
       { signal },
     );
-    set(installSharedDatabaseBridge$, bridge);
+    const vercelProtectionBypass =
+      getCapturedPreviewBypassForTarget(apiBaseUrl);
+    await set(
+      installSharedDatabaseBridge$,
+      bridge,
+      {
+        token,
+        ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+      },
+      signal,
+    );
   },
 );
 

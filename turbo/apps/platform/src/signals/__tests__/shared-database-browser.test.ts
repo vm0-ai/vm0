@@ -170,12 +170,7 @@ function authRecovery(replacementToken = "replacement-token"): AuthRecovery {
 }
 
 async function setupBridge(recovery = authRecovery()): Promise<void> {
-  context.store.set(setupSharedDatabaseBridge$, recovery, context.signal);
-  await context.store.set(
-    heartbeatSharedDatabase$,
-    sharedDatabaseHeartbeat(),
-    context.signal,
-  );
+  await context.store.set(setupSharedDatabaseBridge$, recovery, context.signal);
 }
 
 describe("shared database browser bridge", () => {

@@ -1,11 +1,9 @@
 import { command, type Store } from "ccstate";
 
-import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
-  installSharedDatabaseBridge$,
-  setSharedDatabaseConnectionStatus$,
-} from "../signals/shared-database.ts";
-import { resolveApiBaseForTarget } from "../signals/api-base.ts";
+  setSharedDatabaseBridgeHostForTest$,
+  type SharedDatabaseBridgeHost,
+} from "../signals/shared-database-browser.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
@@ -18,7 +16,6 @@ import type {
 } from "./data-key.ts";
 import { MessagePortSharedDatabaseBridge } from "./message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "./message-port-server.ts";
-import { ReconnectingSharedDatabaseBridge } from "./reconnecting-client.ts";
 import type { SharedDatabaseHeartbeatResult } from "./protocol.ts";
 import type { TabId } from "./worker-context.ts";
 
@@ -69,32 +66,20 @@ export const setupSharedWorkerTestBootstrap$ = command(
       tabCredentialIds: new Map<TabId, string>(),
       tabHeartbeatAts: new Map<TabId, number>(),
     };
-    const bridge = new ReconnectingSharedDatabaseBridge({
-      createBridge: (events) => {
+    const host: SharedDatabaseBridgeHost = {
+      createBridge: (apiBaseUrl, events) => {
         const channel = new MessageChannel();
         new SharedDatabaseMessagePortServer(channel.port1, signal, maps);
-        return new MessagePortSharedDatabaseBridge(
-          channel.port2,
-          resolveApiBaseForTarget("api"),
-          events,
+        return new TestSharedDatabaseBridge(
+          new MessagePortSharedDatabaseBridge(
+            channel.port2,
+            apiBaseUrl,
+            events,
+          ),
+          afterWorkerHeartbeat,
         );
       },
-      events: {
-        authenticationRequired: () => {},
-        indicatorsInvalidated: () => {
-          set(reloadChatIndicators$);
-        },
-        reloadRequired: () => {
-          globalThis.location.reload();
-        },
-        statusChanged: (status) => {
-          set(setSharedDatabaseConnectionStatus$, status);
-        },
-      },
-    });
-    set(
-      installSharedDatabaseBridge$,
-      new TestSharedDatabaseBridge(bridge, afterWorkerHeartbeat),
-    );
+    };
+    set(setSharedDatabaseBridgeHostForTest$, host);
   },
 );

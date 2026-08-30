@@ -44,8 +44,6 @@ interface DurableSubscription {
   registrationController: AbortController | null;
 }
 
-type HeartbeatWaiter = ReturnType<typeof createDeferredPromise<void>>;
-
 class SharedDatabaseTransportTimeoutError extends Error {
   constructor() {
     super("Shared database worker transport timed out");
@@ -112,7 +110,6 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly subscriptions = new Map<string, DurableSubscription>();
   private readonly subscriptionSignals = new Map<string, AbortSignal>();
   private readonly controlRequestTimeoutMs: number;
-  private readonly heartbeatWaiters = new Set<HeartbeatWaiter>();
   private connection: Connection | null = null;
   private connecting: Promise<Connection> | null = null;
   private heartbeatRegistration: SharedDatabaseHeartbeat | null = null;
@@ -132,11 +129,6 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
   ): Promise<SharedDatabaseHeartbeatResult> {
     this.bindOwner(signal);
     this.heartbeatRegistration = heartbeat;
-    for (const waiter of this.heartbeatWaiters) {
-      if (!waiter.settled()) {
-        waiter.resolve(undefined);
-      }
-    }
 
     const connectionToRenew = this.connection;
     await this.runWithReconnect(async (connection) => {
@@ -174,6 +166,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     signal: AbortSignal,
   ): Promise<void> {
     signal.throwIfAborted();
+    this.requireHeartbeatRegistration();
     const id = crypto.randomUUID();
     const subscription: DurableSubscription = {
       callback,
@@ -374,8 +367,6 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     operation: (connection: Connection) => Promise<T>,
     signal: AbortSignal,
   ): Promise<T> {
-    await this.waitForHeartbeat(signal);
-    signal.throwIfAborted();
     let attemptedConnection: Connection | null = null;
     const run = async (): Promise<T> => {
       attemptedConnection = await this.ensureConnection();
@@ -405,17 +396,6 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
       await this.waitForTransportRecovery(second.error, signal);
     }
     throw second.error;
-  }
-
-  private async waitForHeartbeat(signal: AbortSignal): Promise<void> {
-    if (this.ownerSignal && this.heartbeatRegistration) {
-      return;
-    }
-    const waiter = createDeferredPromise<void>(signal);
-    this.heartbeatWaiters.add(waiter);
-    await withCleanup(waiter.promise, () => {
-      this.heartbeatWaiters.delete(waiter);
-    });
   }
 
   private async waitForTransportRecovery(
