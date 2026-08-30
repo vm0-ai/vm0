@@ -11,7 +11,6 @@ import {
   cronConnectorOauthStateCleanupContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
-  cronExecuteMorningBriefsContract,
   cronExecuteWorkflowAutomationsContract,
   cronMonitorChatEventQueueContract,
   cronOfficialWorkflowCatalogContract,
@@ -73,10 +72,6 @@ const expectedVercelCrons = [
   },
   {
     path: cronExecuteWorkflowAutomationsContract.execute.path,
-    schedule: "* * * * *",
-  },
-  {
-    path: cronExecuteMorningBriefsContract.execute.path,
     schedule: "* * * * *",
   },
   {
@@ -198,5 +193,22 @@ describe("vercel cron config", () => {
     expect(
       routePaths.has("/api/internal/cron/aggregate-model-stats"),
     ).toBeFalsy();
+  });
+
+  it("does not register retired Morning Brief launch paths", () => {
+    const routePaths = new Set(
+      ROUTES.map(({ route }) => {
+        return route.path;
+      }),
+    );
+    const cronPaths = new Set(
+      (readVercelConfig().crons ?? []).map(({ path }) => {
+        return path;
+      }),
+    );
+
+    expect(routePaths.has("/api/cron/execute-morning-briefs")).toBeFalsy();
+    expect(cronPaths.has("/api/cron/execute-morning-briefs")).toBeFalsy();
+    expect(routePaths.has("/api/morning-brief/trigger")).toBeFalsy();
   });
 });

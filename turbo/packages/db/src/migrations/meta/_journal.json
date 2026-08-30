@@ -1548,6 +1548,13 @@
       "when": 1787997747018,
       "tag": "1028_contract_chat_event_snapshot_v7",
       "breakpoints": true
+    },
+    {
+      "idx": 1029,
+      "version": "7",
+      "when": 1788048199922,
+      "tag": "1029_morning_brief_phase_a_cutover",
+      "breakpoints": true
     }
   ]
 }

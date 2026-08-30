@@ -51,12 +51,14 @@ export const userPreferencesResponseSchema = z.object({
   sendMode: sendModeSchema,
   theme: themePreferenceSchema.nullable(),
   colorTheme: colorThemeSchema.nullable(),
-  morningBriefEnabled: z.boolean(),
   /**
-   * Next scheduled Morning Brief send (ISO instant), or null when no run is
-   * scheduled (preference off, timezone missing, or schedule not synced).
+   * Phase-A response fallback for old App bundles; always false. Phase B
+   * removes it after #30264's released zero-traffic gate and replacement App
+   * version floor close the retained-client window.
    */
-  morningBriefNextRunAt: z.string().nullable(),
+  morningBriefEnabled: z.literal(false),
+  /** Same phase-A old-App fallback and phase-B gate; always null. */
+  morningBriefNextRunAt: z.null(),
   captureNetworkBodiesRemaining: z.number().int().min(0),
 });
 
@@ -73,6 +75,10 @@ export const updateUserPreferencesRequestSchema = z
     sendMode: sendModeSchema.optional(),
     theme: themePreferenceSchema.optional(),
     colorTheme: colorThemeSchema.optional(),
+    /**
+     * Phase-A old-App request fallback; accepted as a no-op. Phase B removes
+     * it at #30264's released zero-traffic and replacement-App version gate.
+     */
     morningBriefEnabled: z.boolean().optional(),
     captureNetworkBodiesRemaining: z.number().int().min(0).optional(),
   })

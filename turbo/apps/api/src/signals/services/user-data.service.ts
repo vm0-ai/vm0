@@ -24,15 +24,13 @@ import type {
   SecretType,
 } from "@okouai/api-contracts/contracts/secrets";
 import type { VariableListResponse } from "@okouai/api-contracts/contracts/variables";
-import { morningBriefSchedules } from "@okouai/db/schema/morning-brief";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { secrets } from "@okouai/db/schema/secret";
 import { variables } from "@okouai/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
-import { db$, writeDb$, type ReadonlyDb } from "../external/db";
-import { syncMorningBriefSchedule } from "./morning-brief-schedule.service";
+import { db$, writeDb$ } from "../external/db";
 import { isValidTimeZone } from "../utils";
 
 interface UserScopedQuery {
@@ -98,24 +96,6 @@ function parseSecretType(value: string): SecretType {
   throw new Error(`Unexpected secret type: ${value}`);
 }
 
-async function loadMorningBriefNextRunAt(
-  db: ReadonlyDb,
-  orgId: string,
-  userId: string,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ nextRunAt: morningBriefSchedules.nextRunAt })
-    .from(morningBriefSchedules)
-    .where(
-      and(
-        eq(morningBriefSchedules.orgId, orgId),
-        eq(morningBriefSchedules.userId, userId),
-      ),
-    )
-    .limit(1);
-  return row?.nextRunAt?.toISOString() ?? null;
-}
-
 export function userPreferences({
   orgId,
   userId,
@@ -130,7 +110,6 @@ export function userPreferences({
         sendMode: orgMembersMetadata.sendMode,
         theme: orgMembersMetadata.theme,
         colorTheme: orgMembersMetadata.colorTheme,
-        morningBriefEnabled: orgMembersMetadata.morningBriefEnabled,
         captureNetworkBodiesRemaining:
           orgMembersMetadata.captureNetworkBodiesRemaining,
       })
@@ -168,8 +147,11 @@ export function userPreferences({
       sendMode: parseSendMode(row.sendMode),
       theme: parseThemePreference(row.theme),
       colorTheme: parseColorTheme(row.colorTheme),
-      morningBriefEnabled: row.morningBriefEnabled,
-      morningBriefNextRunAt: await loadMorningBriefNextRunAt(db, orgId, userId),
+      // Deployment fallback for old App bundles: keep the deprecated response
+      // shape terminal until phase B, after the replacement App version floor
+      // and the released legacy zero-traffic gate tracked by #30264.
+      morningBriefEnabled: false,
+      morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
   });
@@ -256,8 +238,9 @@ function mergeUserPreferences(
     sendMode: preferences.sendMode ?? existing.sendMode,
     theme: preferences.theme ?? existing.theme ?? null,
     colorTheme: preferences.colorTheme ?? existing.colorTheme ?? null,
-    morningBriefEnabled:
-      preferences.morningBriefEnabled ?? existing.morningBriefEnabled,
+    // Old App bundles may still send this deprecated field. Accept it as a
+    // no-op until phase B; no request may reactivate the legacy runtime.
+    morningBriefEnabled: false,
     captureNetworkBodiesRemaining:
       preferences.captureNetworkBodiesRemaining ??
       existing.captureNetworkBodiesRemaining,
@@ -281,9 +264,6 @@ function userPreferenceUpdateColumns(
     ...(preferences.theme !== undefined && { theme: preferences.theme }),
     ...(preferences.colorTheme !== undefined && {
       colorTheme: preferences.colorTheme,
-    }),
-    ...(preferences.morningBriefEnabled !== undefined && {
-      morningBriefEnabled: preferences.morningBriefEnabled,
     }),
     ...(preferences.captureNetworkBodiesRemaining !== undefined && {
       captureNetworkBodiesRemaining: preferences.captureNetworkBodiesRemaining,
@@ -328,7 +308,7 @@ export const updateUserPreferences$ = command(
         sendMode: merged.sendMode,
         theme: merged.theme,
         colorTheme: merged.colorTheme,
-        morningBriefEnabled: merged.morningBriefEnabled,
+        morningBriefEnabled: false,
         captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
         createdAt: updatedAt,
         updatedAt,
@@ -342,30 +322,11 @@ export const updateUserPreferences$ = command(
       });
     signal.throwIfAborted();
 
-    if (
-      preferences.timezone !== undefined ||
-      preferences.morningBriefEnabled !== undefined
-    ) {
-      await syncMorningBriefSchedule(writeDb, {
-        orgId: args.orgId,
-        userId: args.userId,
-        timezone: merged.timezone,
-        enabled: merged.morningBriefEnabled,
-        currentTime: updatedAt,
-        publicBrand: args.publicBrand,
-      });
-      signal.throwIfAborted();
-    }
-
     return {
       ok: true,
       data: {
         ...merged,
-        morningBriefNextRunAt: await loadMorningBriefNextRunAt(
-          writeDb,
-          args.orgId,
-          args.userId,
-        ),
+        morningBriefNextRunAt: null,
       },
     };
   },

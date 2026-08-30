@@ -2138,6 +2138,7 @@
       "message_one": "{{count}} messaggio",
       "message_many": "{{count}} messaggi",
       "message_other": "{{count}} messaggi",
+      "morningBrief": "Riepilogo mattutino",
       "openGoalDetails": "Apri i dettagli dell'obiettivo",
       "pendingAutomationEvent": "Evento di automazione in sospeso",
       "queuedMessage": "Messaggio in coda",
@@ -3290,15 +3291,6 @@
       "doneTitle": "Iscrizione annullata",
       "errorBody": "Questo collegamento per annullare l'iscrizione non è valido o è scaduto. Puoi gestire le notifiche email nelle Impostazioni.",
       "errorTitle": "Qualcosa è andato storto"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "Non riceverai più l'e-mail quotidiana del Morning Brief. Puoi riattivarla in qualsiasi momento nelle Impostazioni.",
-      "doneTitle": "Morning Brief è stato disattivato",
-      "errorBody": "Il link per annullare l'iscrizione non è valido o è incompleto. Apri l'ultima email di Morning Brief e utilizza il collegamento per annullare l'iscrizione oppure gestisci la preferenza in Impostazioni.",
-      "errorTitle": "Questo collegamento non è valido",
-      "loadingLabel": "Caricamento dello stato di annullamento dell'iscrizione",
-      "managePreferences": "Gestisci le preferenze"
     },
     "pwaInstall": {
       "banner": "Installa {{assistantName}} per un'esperienza migliore",
@@ -5149,16 +5141,6 @@
           "spanish": "Español"
         },
         "title": "Lingua"
-      },
-      "morningBrief": {
-        "description": "Un'email quotidiana alle 7:00 con agenda, attività e aggiornamenti da GitHub, Gmail e Google Calendar collegati",
-        "nextEmail": "Prossima email: {{date}}",
-        "nextEmailInTimezone": "Prossima email: {{date}} ({{timezone}})",
-        "notScheduled": "Prossima email: non ancora pianificata: spegni e riaccendi l'interruttore per riprogrammare",
-        "sending": "Invio...",
-        "sendNow": "Invia ora",
-        "title": "Riepilogo mattutino",
-        "triggeredToast": "Morning Brief attivato, l'email arriva a breve"
       },
       "pageDescription": "Gestisci l'aspetto e le preferenze di esecuzione degli agenti",
       "pageTitle": "Preferenze",

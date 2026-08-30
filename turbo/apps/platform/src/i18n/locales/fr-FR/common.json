@@ -2138,6 +2138,7 @@
       "message_one": "{{count}} message",
       "message_many": "{{count}} messages",
       "message_other": "{{count}} messages",
+      "morningBrief": "Résumé du matin",
       "openGoalDetails": "Ouvrir les détails de l'objectif",
       "pendingAutomationEvent": "Événement d'automatisation en attente",
       "queuedMessage": "Message en file d'attente",
@@ -3290,15 +3291,6 @@
       "doneTitle": "Désabonné",
       "errorBody": "Ce lien de désinscription est invalide ou expiré. Vous pouvez gérer les notifications par email dans les Paramètres.",
       "errorTitle": "Une erreur est survenue"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "Vous ne recevrez plus l'email quotidien Morning Brief. Vous pouvez le réactiver à tout moment dans les Paramètres.",
-      "doneTitle": "Morning Brief désactivé",
-      "errorBody": "Le lien de désinscription est invalide ou incomplet. Ouvrez le dernier email Morning Brief et utilisez son lien de désinscription, ou gérez la préférence dans les Paramètres.",
-      "errorTitle": "Ce lien est invalide",
-      "loadingLabel": "Chargement du statut de désinscription",
-      "managePreferences": "Gérer les préférences"
     },
     "pwaInstall": {
       "banner": "Installez {{assistantName}} pour une meilleure expérience",
@@ -5149,16 +5141,6 @@
           "spanish": "Español"
         },
         "title": "Langue"
-      },
-      "morningBrief": {
-        "description": "Un e-mail quotidien à 7h00 avec votre emploi du temps, vos actions à réaliser et les mises à jour de GitHub, Gmail et Google Calendar connectés",
-        "nextEmail": "Prochain e-mail : {{date}}",
-        "nextEmailInTimezone": "Prochain e-mail : {{date}} ({{timezone}})",
-        "notScheduled": "Prochain e-mail : pas encore programmé — éteignez et rallumez l'interrupteur pour reprogrammer",
-        "sending": "Envoi...",
-        "sendNow": "Envoyer maintenant",
-        "title": "Résumé du matin",
-        "triggeredToast": "Résumé du matin déclenché, l'e-mail arrive sous peu"
       },
       "pageDescription": "Gérez vos préférences d'apparence et d'exécution de l'agent",
       "pageTitle": "Préférences",

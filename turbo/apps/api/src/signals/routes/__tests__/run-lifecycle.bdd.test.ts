@@ -14934,11 +14934,11 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ManualMorningBrief]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
     onTestFinished(async () => {
       await connectors.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.ManualMorningBrief]: false,
+        [FeatureSwitchKey.OkouDebug]: false,
       });
     });
 
@@ -15001,7 +15001,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       queuedLaunchSnapshot.launch_snapshot?.framework,
     );
     expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ManualMorningBrief]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
     });
     expect(claim.apiStartTime).toBe(promotedAt);
 
@@ -15803,6 +15803,58 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
 });
 
 describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () => {
+  it("terminally acknowledges a persisted legacy Morning Brief callback exactly once", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const prompt = `legacy morning brief callback ${randomUUID()}`;
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+    await callbackStore.set(
+      seedAgentRunCallback$,
+      {
+        runId: created.runId,
+        internalKind: "morning-brief:email",
+        payload: { deliveryId: randomUUID() },
+      },
+      context.signal,
+    );
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+    await flushWaitUntilForTest();
+    await expect(
+      callbackStore.set(
+        readAgentRunCallbacks$,
+        { runId: created.runId, orgId: actor.orgId, userId: actor.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({
+        internalKind: "morning-brief:email",
+        status: "delivered",
+        attempts: 1,
+        lastError: null,
+      }),
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200, 400]);
+    await flushWaitUntilForTest();
+    await expect(
+      callbackStore.set(
+        readAgentRunCallbacks$,
+        { runId: created.runId, orgId: actor.orgId, userId: actor.userId },
+        context.signal,
+      ),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({ status: "delivered", attempts: 1 }),
+    ]);
+  });
+
   it("delivers chat run callbacks through cancellation side effects without HTTP self-dispatch", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);

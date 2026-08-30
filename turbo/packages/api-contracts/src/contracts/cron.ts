@@ -226,12 +226,6 @@ const cronExecuteWorkflowAutomationsResponseSchema = z.object({
   skipped: z.number(),
 });
 
-const cronExecuteMorningBriefsResponseSchema = z.object({
-  success: z.literal(true),
-  executed: z.number(),
-  skipped: z.number(),
-});
-
 const cronRenewGmailWatchesResponseSchema = z.object({
   success: z.literal(true),
   renewed: z.number(),
@@ -579,19 +573,6 @@ export const cronExecuteWorkflowAutomationsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Execute due workflow automations",
-  },
-});
-
-export const cronExecuteMorningBriefsContract = c.router({
-  execute: {
-    method: "GET",
-    path: "/api/cron/execute-morning-briefs",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronExecuteMorningBriefsResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Execute due morning briefs",
   },
 });
 

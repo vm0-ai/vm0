@@ -74,6 +74,8 @@ export const apiUserPreferencesHandlers = [
       ...(body.pinnedAgentIds !== undefined && {
         pinnedAgentIds: normalizePinnedAgentIds(body.pinnedAgentIds),
       }),
+      morningBriefEnabled: false,
+      morningBriefNextRunAt: null,
     });
     return respond(200, mockPreferences);
   }),

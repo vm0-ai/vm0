@@ -2098,6 +2098,7 @@
       "loadingGoal": "目標を読み込んでいます...",
       "message_one": "{{count}} メッセージ",
       "message_other": "{{count}} メッセージ",
+      "morningBrief": "モーニングブリーフ",
       "openGoalDetails": "目標の詳細を開く",
       "pendingAutomationEvent": "保留中のオートメーションイベント",
       "queuedMessage": "キューに入れられたメッセージ",
@@ -3231,15 +3232,6 @@
       "doneTitle": "購読解除済み",
       "errorBody": "この購読解除リンクは無効であるか、期限切れです。メール通知は設定で管理できます。",
       "errorTitle": "何か問題が発生しました"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "モーニングブリーフ",
-      "doneBody": "毎日の Morning Brief メールは受信されなくなります。設定でいつでもオンに戻すことができます。",
-      "doneTitle": "モーニングブリーフがオフになりました",
-      "errorBody": "購読解除リンクが無効か不完全です。最新の Morning Brief メールを開いて購読解除リンクを使用するか、設定で設定を管理します。",
-      "errorTitle": "このリンクは無効です",
-      "loadingLabel": "購読解除ステータスを読み込んでいます",
-      "managePreferences": "設定の管理"
     },
     "pwaInstall": {
       "banner": "{{assistantName}} をインストールするとエクスペリエンスが向上します",
@@ -5082,16 +5074,6 @@
           "spanish": "Español"
         },
         "title": "言語"
-      },
-      "morningBrief": {
-        "description": "接続されている GitHub、Gmail、Google Calendar からのスケジュール、アクション アイテム、更新情報を含む毎日午前 7 時のメール",
-        "nextEmail": "次のメール: {{date}}",
-        "nextEmailInTimezone": "次のメール: {{date}} ({{timezone}})",
-        "notScheduled": "次のメール: まだスケジュールされていません — スイッチをオフにしてからオンにし、スケジュールを変更してください",
-        "sending": "送信中...",
-        "sendNow": "今すぐ送信",
-        "title": "モーニングブリーフ",
-        "triggeredToast": "モーニング ブリーフがトリガーされ、すぐにメールが届きます"
       },
       "pageDescription": "外観とエージェントの実行時の設定を管理する",
       "pageTitle": "設定",

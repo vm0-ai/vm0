@@ -2098,6 +2098,7 @@
       "loadingGoal": "목표 불러오는 중...",
       "message_one": "{{count}}개 메시지",
       "message_other": "{{count}}개 메시지",
+      "morningBrief": "모닝 브리프",
       "openGoalDetails": "목표 세부 정보 열기",
       "pendingAutomationEvent": "대기 중인 자동화 이벤트",
       "queuedMessage": "대기 중인 메시지",
@@ -3231,15 +3232,6 @@
       "doneTitle": "구독이 취소되었습니다",
       "errorBody": "이 구독 취소 링크가 유효하지 않거나 만료되었습니다. 설정에서 이메일 알림을 관리할 수 있습니다.",
       "errorTitle": "문제가 발생했습니다"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "모닝 브리프",
-      "doneBody": "일일 모닝 브리프 이메일을 더 이상 받지 않습니다. 설정에서 언제든 다시 켤 수 있습니다.",
-      "doneTitle": "모닝 브리프가 꺼졌습니다",
-      "errorBody": "구독 취소 링크가 유효하지 않거나 불완전합니다. 최신 모닝 브리프 이메일에서 구독 취소 링크를 사용하거나 설정에서 환경설정을 관리하세요.",
-      "errorTitle": "이 링크는 유효하지 않습니다",
-      "loadingLabel": "구독 취소 상태를 불러오는 중입니다",
-      "managePreferences": "환경설정 관리"
     },
     "pwaInstall": {
       "banner": "더 나은 경험을 위해 {{assistantName}}를 설치하세요",
@@ -5082,16 +5074,6 @@
           "spanish": "Español"
         },
         "title": "언어"
-      },
-      "morningBrief": {
-        "description": "매일 오전 7시에 일정, 작업 항목, 연결된 GitHub, Gmail, Google 캘린더 업데이트를 이메일로 받기",
-        "nextEmail": "다음 이메일: {{date}}",
-        "nextEmailInTimezone": "다음 이메일: {{date}} ({{timezone}})",
-        "notScheduled": "다음 이메일: 아직 예약되지 않음 — 스위치를 껐다 켜서 다시 예약하세요",
-        "sending": "전송 중...",
-        "sendNow": "지금 보내기",
-        "title": "모닝 브리프",
-        "triggeredToast": "모닝 브리프가 실행되어 곧 이메일이 도착합니다"
       },
       "pageDescription": "외관 및 에이전트 실행 환경설정을 관리하세요",
       "pageTitle": "환경설정",

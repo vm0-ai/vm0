@@ -86,6 +86,8 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       sendMode: "enter",
       theme: null,
       colorTheme: null,
+      morningBriefEnabled: false,
+      morningBriefNextRunAt: null,
     });
 
     const firstPinnedAgentId = "00000000-0000-0000-0000-000000000001";
@@ -103,6 +105,8 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
           firstPinnedAgentId,
           secondPinnedAgentId,
         ],
+        // Simulate an old loaded App bundle during the rolling cutover.
+        morningBriefEnabled: true,
         captureNetworkBodiesRemaining: 3,
       },
       [200],
@@ -114,6 +118,8 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       sendMode: "cmd-enter",
       theme: "dark",
       colorTheme: "golden-hour",
+      morningBriefEnabled: false,
+      morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: 3,
     });
     const rereadPreferences = await api.readPreferences(admin);

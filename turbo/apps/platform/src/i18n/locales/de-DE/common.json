@@ -2101,6 +2101,7 @@
       "loadingGoal": "Ziel wird geladen...",
       "message_one": "{{count}} Nachricht",
       "message_other": "{{count}} Nachrichten",
+      "morningBrief": "Morgenbrief",
       "openGoalDetails": "Zieldetails öffnen",
       "pendingAutomationEvent": "Ausstehendes Automatisierungsereignis",
       "queuedMessage": "Nachricht in der Warteschlange",
@@ -3239,15 +3240,6 @@
       "doneTitle": "Abgemeldet",
       "errorBody": "Dieser Abmeldelink ist ungültig oder abgelaufen. Sie können E-Mail-Benachrichtigungen in den Einstellungen verwalten.",
       "errorTitle": "Etwas ist schief gelaufen"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "Sie erhalten nicht mehr die tägliche Morning Brief-E-Mail. Sie können es jederzeit in den Einstellungen wieder aktivieren.",
-      "doneTitle": "Morgenbrief ausgeschaltet",
-      "errorBody": "Der Abmeldelink ist ungültig oder unvollständig. Öffnen Sie die neueste Morning Brief-E-Mail und verwenden Sie den Abmeldelink oder verwalten Sie die Einstellungen in den Einstellungen.",
-      "errorTitle": "Dieser Link ist ungültig",
-      "loadingLabel": "Abmeldestatus wird geladen",
-      "managePreferences": "Einstellungen verwalten"
     },
     "pwaInstall": {
       "banner": "Installieren Sie {{assistantName}} für ein besseres Erlebnis",
@@ -5090,16 +5082,6 @@
           "spanish": "Español"
         },
         "title": "Sprache"
-      },
-      "morningBrief": {
-        "description": "Eine tägliche E-Mail um 7:00 Uhr mit Ihrem Zeitplan, Aktionspunkten und Updates von verbundenem GitHub, Gmail und Google Calendar",
-        "nextEmail": "Nächste E-Mail: {{date}}",
-        "nextEmailInTimezone": "Nächste E-Mail: {{date}} ({{timezone}})",
-        "notScheduled": "Nächste E-Mail: noch nicht geplant – schalten Sie den Schalter aus und wieder ein, um einen neuen Termin zu vereinbaren",
-        "sending": "Senden...",
-        "sendNow": "Jetzt senden",
-        "title": "Morgenbrief",
-        "triggeredToast": "Morning Brief ausgelöst, die E-Mail kommt in Kürze an"
       },
       "pageDescription": "Verwalten Sie Ihr Erscheinungsbild und die Laufzeiteinstellungen Ihres Agenten",
       "pageTitle": "Präferenzen",

@@ -2098,6 +2098,7 @@
       "loadingGoal": "Memuat tujuan...",
       "message_one": "{{count}} pesan",
       "message_other": "{{count}} pesan",
+      "morningBrief": "Brief Pagi",
       "openGoalDetails": "Buka detail tujuan",
       "pendingAutomationEvent": "Peristiwa otomatisasi tertunda",
       "queuedMessage": "Pesan dalam antrean",
@@ -3231,15 +3232,6 @@
       "doneTitle": "Berhenti berlangganan",
       "errorBody": "Tautan berhenti berlangganan ini tidak valid atau kedaluwarsa. Anda dapat mengelola notifikasi email di Setelan.",
       "errorTitle": "Terjadi kesalahan"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "Anda tidak akan lagi menerima email harian Morning Brief. Anda bisa mengaktifkannya kembali kapan saja di Setelan.",
-      "doneTitle": "Morning Brief dimatikan",
-      "errorBody": "Tautan berhenti berlangganan tidak valid atau tidak lengkap. Buka email Morning Brief terbaru dan gunakan tautan berhenti berlangganannya, atau kelola preferensi di Setelan.",
-      "errorTitle": "Tautan ini tidak valid",
-      "loadingLabel": "Memuat status berhenti berlangganan",
-      "managePreferences": "Kelola preferensi"
     },
     "pwaInstall": {
       "banner": "Instal {{assistantName}} untuk pengalaman yang lebih baik",
@@ -5082,16 +5074,6 @@
           "spanish": "Español"
         },
         "title": "Bahasa"
-      },
-      "morningBrief": {
-        "description": "Email harian pukul 07.00 berisi jadwal, item tindakan, dan pembaruan dari GitHub, Gmail, dan Google Calendar yang terhubung",
-        "nextEmail": "Email berikutnya: {{date}}",
-        "nextEmailInTimezone": "Email berikutnya: {{date}} ({{timezone}})",
-        "notScheduled": "Email berikutnya: belum dijadwalkan — matikan lalu nyalakan kembali untuk menjadwalkan ulang",
-        "sending": "Mengirim...",
-        "sendNow": "Kirim sekarang",
-        "title": "Brief Pagi",
-        "triggeredToast": "Brief Pagi dipicu, email akan segera tiba"
       },
       "pageDescription": "Kelola tampilan dan preferensi runtime agen Anda",
       "pageTitle": "Preferensi",

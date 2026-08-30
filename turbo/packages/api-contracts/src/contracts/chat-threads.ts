@@ -571,6 +571,9 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      // Phase-A historical-read fallback for stored Chat documents. Phase B
+      // may remove it only after #30264's released zero-traffic gate and a
+      // controller-approved historical readability contraction.
       type: z.literal("morning_brief"),
       briefDate: z.string(),
     })

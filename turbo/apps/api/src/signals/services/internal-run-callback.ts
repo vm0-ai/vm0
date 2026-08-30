@@ -2,6 +2,8 @@ export const internalRunCallbackKinds = [
   "agentphone:chat",
   "chat",
   "github:chat",
+  // Phase-A identity fallback for persisted callback rows. Phase B removes it
+  // after #30264's released zero-callback/retry observation gate.
   "morning-brief:email",
   "slack:chat",
   "feishu:chat",
