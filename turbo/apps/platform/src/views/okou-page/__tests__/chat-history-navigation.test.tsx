@@ -44,6 +44,7 @@ import {
 } from "./chat-lifecycle-test-helpers.ts";
 
 const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
+type RenameRequest = (threadId: string, title: string) => void;
 
 describe("chat lifecycle", () => {
   it("renders new messages after a payload-less created event", async () => {
@@ -1063,7 +1064,7 @@ describe("chat lifecycle", () => {
       threadTitle: "Thread detail should stay pending",
     });
     lifecycle.setThreadList([thread]);
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     let persistedRenameEvent: ChatThreadEvent | null = null;
 
     context.mocks.api(chatThreadByIdContract.get, ({ never }) => {
@@ -1262,7 +1263,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the current chat from the Shift+F2 picker", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1303,7 +1304,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the current chat directly with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1344,7 +1345,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the focused side chat directly with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1388,7 +1389,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji from the composer with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1428,7 +1429,7 @@ describe("chat lifecycle", () => {
   });
 
   it("clears the current chat emoji directly with Ctrl+Shift+0", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
@@ -1469,7 +1470,7 @@ describe("chat lifecycle", () => {
 
   it("keeps shifted digit input editable in the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1554,7 +1555,7 @@ describe("chat lifecycle", () => {
   });
 
   it("replaces the current chat emoji from the Shift+F2 picker", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥   Current keyboard thread",
@@ -1597,7 +1598,7 @@ describe("chat lifecycle", () => {
   });
 
   it("clears the current chat emoji from the picker Remove button", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
@@ -1635,7 +1636,7 @@ describe("chat lifecycle", () => {
   });
 
   it("does not clear the emoji when the chat has no other title text", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentTitle: "🔥" });
     context.mocks.api(
