@@ -1,8 +1,9 @@
 import type { Locator, Page, Request, Response } from "@playwright/test";
+import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
-const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const appUrl = deriveAppUrl(resolveApiBackendUrl());
 const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";

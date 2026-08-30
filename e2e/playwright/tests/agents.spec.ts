@@ -1,8 +1,9 @@
 import type { Locator, Page } from "@playwright/test";
+import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
-const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const appUrl = deriveAppUrl(resolveApiBackendUrl());
 const pinnedAgentStory = [
   {
     agentId: "c0000000-0000-4000-a000-000000000701",
@@ -617,9 +618,11 @@ test("reveal the default agent unread action from the whole row", async ({
   await page.getByRole("button", { name: "Open menu" }).click();
   const mobileSidebar = page.locator("aside.zero-pwa-fixed-cover");
   await expect(mobileSidebar).toBeVisible();
-  const defaultAgentRow = mobileSidebar.getByTestId("pinned-agent-card").filter({
-    has: page.locator(`a[href="/agents/${defaultAgentId}/chat"]`),
-  });
+  const defaultAgentRow = mobileSidebar
+    .getByTestId("pinned-agent-card")
+    .filter({
+      has: page.locator(`a[href="/agents/${defaultAgentId}/chat"]`),
+    });
   const unreadIndicator = defaultAgentRow.getByLabel("Unread");
   const unreadContainer = unreadIndicator.locator("..");
   const menuTrigger = defaultAgentRow.getByLabel("Open agent menu");
