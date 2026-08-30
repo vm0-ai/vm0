@@ -143,11 +143,8 @@ describe("chatEventSnapshots schema", () => {
   it("constrains pointers to the current canonical snapshot shape", () => {
     const config = getTableConfig(chatEventSnapshots);
 
-    expect(chatEventSnapshots.projection.notNull).toBe(true);
     expect(chatEventSnapshots.terminalEventId.notNull).toBe(false);
     expect(chatEventSnapshots.terminalSeqId.notNull).toBe(false);
-    expect(chatEventSnapshots.projection.hasDefault).toBe(true);
-    expect(chatEventSnapshots.projection.default).toBe("tool-redacted");
     expect(chatEventSnapshots.archiveSchemaVersion.default).toBe(7);
     expect(
       config.indexes.map((index) => {
@@ -160,7 +157,7 @@ describe("chatEventSnapshots schema", () => {
           unique: false,
         },
         {
-          name: "chat_event_snapshots_thread_version_projection_unique",
+          name: "chat_event_snapshots_thread_version_unique",
           unique: true,
         },
       ]),
@@ -171,7 +168,6 @@ describe("chatEventSnapshots schema", () => {
       }),
     ).toEqual(
       expect.arrayContaining([
-        "chat_event_snapshots_projection_check",
         "chat_event_snapshots_archive_schema_version_check",
         "chat_event_snapshots_terminal_cursor_check",
       ]),

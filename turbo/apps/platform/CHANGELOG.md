@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.812.2](https://github.com/vm0-ai/vm0/compare/app-v0.812.1...app-v0.812.2) (2026-08-30)
+
+
+### Refactoring
+
+* **platform:** remove markdown preview dependency ([#30330](https://github.com/vm0-ai/vm0/issues/30330)) ([ff2be93](https://github.com/vm0-ai/vm0/commit/ff2be93200242e4ab6b58cc673bac1853c84cc82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.10
+    * @okouai/core bumped to 8.603.2
+
 ## [0.812.1](https://github.com/vm0-ai/vm0/compare/app-v0.812.0...app-v0.812.1) (2026-08-30)
 
 

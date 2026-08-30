@@ -37,7 +37,6 @@ import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models"
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  LEGACY_CHAT_EVENT_PROJECTION,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
@@ -1104,7 +1103,6 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: query.sinceSeqId,
                   sinceEventId: query.sinceEventId,
-                  sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
                   ...(query.limit === undefined ? {} : { limit: query.limit }),
                 },
         }),
@@ -1134,7 +1132,6 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: cursor.lastSeqId,
                   sinceEventId: cursor.lastEventId,
-                  sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
                 },
         }),
         [200],

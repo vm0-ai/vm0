@@ -3,8 +3,6 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  LEGACY_CHAT_EVENT_PROJECTION,
-  withoutLegacyChatEventProjection,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
@@ -79,7 +77,6 @@ export async function readProjectedChatEvents(
             : {
                 sinceSeqId: cursor.lastSeqId,
                 sinceEventId: cursor.lastEventId,
-                sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
                 limit,
               },
       }),
@@ -99,6 +96,6 @@ export async function readProjectedChatEvents(
         `Chat event row cursor did not advance for ${args.threadId}`,
       );
     }
-    cursor = withoutLegacyChatEventProjection(nextCursor);
+    cursor = nextCursor;
   }
 }

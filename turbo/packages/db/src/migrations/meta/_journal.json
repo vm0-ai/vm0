@@ -1569,6 +1569,13 @@
       "when": 1788068208560,
       "tag": "1031_assert_legacy_workflow_routine_references",
       "breakpoints": true
+    },
+    {
+      "idx": 1032,
+      "version": "7",
+      "when": 1788086558358,
+      "tag": "1032_remove_chat_event_projection_metadata",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,6 @@ import { join } from "node:path";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  LEGACY_CHAT_EVENT_PROJECTION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { HttpResponse, http } from "msw";
 import {
@@ -37,7 +36,7 @@ const CHAT_EVENT_SCHEMA_HEADERS = {
     CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
 };
 const CACHE_SCHEMA_VERSION_FILE = ".okou-chat-event-schema-version";
-const CACHE_SCHEMA_VERSION_BODY = `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}:${LEGACY_CHAT_EVENT_PROJECTION}\n`;
+const CACHE_SCHEMA_VERSION_BODY = `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
 
 function rawEventRow(seqId: number) {
   return {
@@ -119,7 +118,6 @@ describe("okou chat messages command", () => {
             expiresInSeconds: 900,
             lastEventId: snapshotLastRow.id,
             lastSeqId: 2,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -134,9 +132,6 @@ describe("okou chat messages command", () => {
         );
         expect(url.searchParams.get("sinceSeqId")).toBe("2");
         expect(url.searchParams.get("sinceEventId")).toBe(snapshotLastRow.id);
-        expect(url.searchParams.get("sinceProjection")).toBe(
-          LEGACY_CHAT_EVENT_PROJECTION,
-        );
         expect(url.searchParams.get("limit")).toBe("50");
         return HttpResponse.json(
           {
@@ -144,10 +139,8 @@ describe("okou chat messages command", () => {
             cursor: {
               lastEventId: hotRow.id,
               lastSeqId: hotRow.seqId,
-              projection: "tool-redacted",
             },
             hasMore: false,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -166,21 +159,16 @@ describe("okou chat messages command", () => {
     expect((await readdir(threadDirectory)).sort()).toStrictEqual([
       CACHE_SCHEMA_VERSION_FILE,
       "event-SEQ_ID_3.json",
-      "snapshot-tool-redacted-to-2.ndjson",
+      "snapshot-to-2.ndjson",
     ]);
     await expect(
-      readFile(
-        join(threadDirectory, "snapshot-tool-redacted-to-2.ndjson"),
-        "utf8",
-      ),
+      readFile(join(threadDirectory, "snapshot-to-2.ndjson"), "utf8"),
     ).resolves.toBe(snapshotNdjson(snapshotRows));
     await expect(
       readFile(join(threadDirectory, "event-SEQ_ID_3.json"), "utf8"),
     ).resolves.toBe(`${JSON.stringify(hotRow)}\n`);
     const output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain(
-      join(threadDirectory, "snapshot-tool-redacted-to-2.ndjson"),
-    );
+    expect(output).toContain(join(threadDirectory, "snapshot-to-2.ndjson"));
     expect(output).toContain(join(threadDirectory, "event-SEQ_ID_3.json"));
   });
 
@@ -190,7 +178,6 @@ describe("okou chat messages command", () => {
     const cursors: {
       readonly eventId: string | null;
       readonly seqId: string | null;
-      readonly projection: string | null;
     }[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
@@ -200,7 +187,6 @@ describe("okou chat messages command", () => {
             expiresInSeconds: 900,
             lastEventId: null,
             lastSeqId: 0,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -213,7 +199,6 @@ describe("okou chat messages command", () => {
         cursors.push({
           eventId: url.searchParams.get("sinceEventId"),
           seqId: url.searchParams.get("sinceSeqId"),
-          projection: url.searchParams.get("sinceProjection"),
         });
         return HttpResponse.json(
           {
@@ -221,10 +206,8 @@ describe("okou chat messages command", () => {
             cursor: {
               lastEventId: visibleRow.id,
               lastSeqId: visibleRow.seqId,
-              projection: "tool-redacted",
             },
             hasMore: false,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -243,20 +226,16 @@ describe("okou chat messages command", () => {
       {
         eventId: null,
         seqId: "0",
-        projection: null,
       },
     ]);
     const threadDirectory = join(outputDirectory, THREAD_ID);
     expect((await readdir(threadDirectory)).sort()).toStrictEqual([
       CACHE_SCHEMA_VERSION_FILE,
       "event-SEQ_ID_4.json",
-      "snapshot-tool-redacted-to-0.ndjson",
+      "snapshot-to-0.ndjson",
     ]);
     await expect(
-      readFile(
-        join(threadDirectory, "snapshot-tool-redacted-to-0.ndjson"),
-        "utf8",
-      ),
+      readFile(join(threadDirectory, "snapshot-to-0.ndjson"), "utf8"),
     ).resolves.toBe("");
   });
 
@@ -266,7 +245,7 @@ describe("okou chat messages command", () => {
     await mkdir(threadDirectory, { recursive: true });
     await markCurrentCache(threadDirectory);
     await writeFile(
-      join(threadDirectory, "snapshot-tool-redacted-to-2.ndjson"),
+      join(threadDirectory, "snapshot-to-2.ndjson"),
       snapshotNdjson([rawEventRow(1), rawEventRow(2)]),
       "utf8",
     );
@@ -296,10 +275,8 @@ describe("okou chat messages command", () => {
             cursor: {
               lastEventId: rawEventRow(4).id,
               lastSeqId: 4,
-              projection: "tool-redacted",
             },
             hasMore: false,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -320,14 +297,14 @@ describe("okou chat messages command", () => {
       CACHE_SCHEMA_VERSION_FILE,
       "event-SEQ_ID_3.json",
       "event-SEQ_ID_4.json",
-      "snapshot-tool-redacted-to-2.ndjson",
+      "snapshot-to-2.ndjson",
     ]);
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
       {
         threadId: THREAD_ID,
         directory: threadDirectory,
         files: [
-          join(threadDirectory, "snapshot-tool-redacted-to-2.ndjson"),
+          join(threadDirectory, "snapshot-to-2.ndjson"),
           join(threadDirectory, "event-SEQ_ID_3.json"),
           join(threadDirectory, "event-SEQ_ID_4.json"),
         ],
@@ -341,7 +318,7 @@ describe("okou chat messages command", () => {
     await mkdir(threadDirectory, { recursive: true });
     await markCurrentCache(threadDirectory);
     await writeFile(
-      join(threadDirectory, "snapshot-tool-redacted-to-2.ndjson"),
+      join(threadDirectory, "snapshot-to-2.ndjson"),
       snapshotNdjson([rawEventRow(1), rawEventRow(2)]),
       "utf8",
     );
@@ -369,10 +346,8 @@ describe("okou chat messages command", () => {
             cursor: {
               lastEventId: rawEventRow(10).id,
               lastSeqId: 10,
-              projection: "tool-redacted",
             },
             hasMore: false,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -394,7 +369,7 @@ describe("okou chat messages command", () => {
       "event-SEQ_ID_4.json",
       "event-SEQ_ID_7.json",
       "notes.txt",
-      "snapshot-tool-redacted-to-2.ndjson",
+      "snapshot-to-2.ndjson",
     ]);
   });
 
@@ -419,10 +394,8 @@ describe("okou chat messages command", () => {
             cursor: {
               lastEventId: rawEventRow(6).id,
               lastSeqId: 6,
-              projection: "tool-redacted",
             },
             hasMore: false,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -467,10 +440,8 @@ describe("okou chat messages command", () => {
           cursor: {
             lastEventId: rawEventRow(4).id,
             lastSeqId: 4,
-            projection: "tool-redacted",
           },
           hasMore: false,
-          projection: "tool-redacted",
         });
       }),
     );
@@ -491,91 +462,13 @@ describe("okou chat messages command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("continues a version-only cache and preserves the legacy writer shape", async () => {
-    const outputDirectory = await createOutputDirectory();
-    const threadDirectory = join(outputDirectory, THREAD_ID);
-    await mkdir(threadDirectory, { recursive: true });
-    await writeFile(
-      join(threadDirectory, CACHE_SCHEMA_VERSION_FILE),
-      `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`,
-      "utf8",
-    );
-    await writeFile(
-      join(threadDirectory, "event-SEQ_ID_4.json"),
-      `${JSON.stringify(rawEventRow(4))}\n`,
-      "utf8",
-    );
-    await writeFile(join(threadDirectory, "notes.txt"), "keep me", "utf8");
-    const nextRow = rawEventRow(5);
-    const rowCursors: {
-      readonly eventId: string | null;
-      readonly seqId: string | null;
-      readonly projection: string | null;
-    }[] = [];
-    server.use(
-      http.get(SNAPSHOT_URL, () => {
-        throw new Error("Snapshot endpoint must not be called");
-      }),
-      http.get(ROWS_URL, ({ request }) => {
-        const url = new URL(request.url);
-        const seqId = url.searchParams.get("sinceSeqId");
-        if (seqId === null) {
-          throw new Error("Expected a rows cursor");
-        }
-        rowCursors.push({
-          eventId: url.searchParams.get("sinceEventId"),
-          seqId,
-          projection: url.searchParams.get("sinceProjection"),
-        });
-        return HttpResponse.json(
-          {
-            rows: [nextRow],
-            cursor: {
-              lastEventId: nextRow.id,
-              lastSeqId: nextRow.seqId,
-              projection: "tool-redacted",
-            },
-            hasMore: false,
-            projection: "tool-redacted",
-          },
-          { headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-    );
-
-    await chatCommand.parseAsync([
-      "node",
-      "cli",
-      "messages",
-      "--output-dir",
-      outputDirectory,
-    ]);
-
-    expect(rowCursors).toStrictEqual([
-      {
-        eventId: rawEventRow(4).id,
-        seqId: "4",
-        projection: LEGACY_CHAT_EVENT_PROJECTION,
-      },
-    ]);
-    expect((await readdir(threadDirectory)).sort()).toStrictEqual([
-      CACHE_SCHEMA_VERSION_FILE,
-      "event-SEQ_ID_4.json",
-      "event-SEQ_ID_5.json",
-      "notes.txt",
-    ]);
-    await expect(
-      readFile(join(threadDirectory, CACHE_SCHEMA_VERSION_FILE), "utf8"),
-    ).resolves.toBe(CACHE_SCHEMA_VERSION_BODY);
-  });
-
   it("rebuilds an expired local generation and preserves unmanaged files", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
     await markCurrentCache(threadDirectory);
     await writeFile(
-      join(threadDirectory, "snapshot-tool-redacted-to-2.ndjson"),
+      join(threadDirectory, "snapshot-to-2.ndjson"),
       snapshotNdjson([rawEventRow(1), rawEventRow(2)]),
       "utf8",
     );
@@ -596,7 +489,6 @@ describe("okou chat messages command", () => {
             expiresInSeconds: 900,
             lastEventId: freshSnapshotRow.id,
             lastSeqId: 10,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -633,10 +525,8 @@ describe("okou chat messages command", () => {
             cursor: {
               lastEventId: row.id,
               lastSeqId: row.seqId,
-              projection: "tool-redacted",
             },
             hasMore: false,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -659,7 +549,7 @@ describe("okou chat messages command", () => {
       CACHE_SCHEMA_VERSION_FILE,
       "event-SEQ_ID_11.json",
       "notes.txt",
-      "snapshot-tool-redacted-to-10.ndjson",
+      "snapshot-to-10.ndjson",
     ]);
     await expect(
       readFile(join(threadDirectory, "notes.txt"), "utf8"),

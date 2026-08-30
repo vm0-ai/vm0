@@ -2623,7 +2623,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps the chat list owner without carrying rows across agent scopes", async () => {
+  it("keeps the chat list owner when switching to a pinned agent chat", async () => {
     prepareAgents();
     const supportUnreadGate = context.mocks.deferred<void>();
     context.mocks.data.userPreferences({
@@ -2698,7 +2698,7 @@ describe("zero sidebar", () => {
     });
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${INCIDENT_THREAD_ID}`);
+      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
       expect(
         within(sidebar()).queryByText("Research kickoff"),
       ).not.toBeInTheDocument();
@@ -2714,7 +2714,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("falls back to the pinned agent chat when the next pinned agent has no thread", async () => {
+  it("opens the pinned agent chat even when the next agent has a thread", async () => {
     prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
@@ -2726,7 +2726,14 @@ describe("zero sidebar", () => {
         agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
       },
     );
-    mockSidebarThreadStory([researchThread]);
+    const supportThread = createThread(
+      INCIDENT_THREAD_ID,
+      "Support escalation",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      },
+    );
+    mockSidebarThreadStory([researchThread, supportThread]);
 
     setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
 
