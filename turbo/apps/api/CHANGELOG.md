@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.511.4](https://github.com/vm0-ai/vm0/compare/api-v1.511.3...api-v1.511.4) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/connector-catalog-validation bumped to 2.0.11
+    * @okouai/core bumped to 8.603.0
+    * @okouai/db bumped to 1.228.15
+
 ## [1.511.3](https://github.com/vm0-ai/vm0/compare/api-v1.511.2...api-v1.511.3) (2026-08-30)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.16](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.15...guest-mock-codex-v0.9.16) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** cut managed CLI API URL writer to canonical alias ([#30285](https://github.com/vm0-ai/vm0/issues/30285)) ([a9a071e](https://github.com/vm0-ai/vm0/commit/a9a071e78fb317292b8c712f2b5543949dcb5982)), closes [#30277](https://github.com/vm0-ai/vm0/issues/30277) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
 ## [0.9.15](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.14...guest-mock-codex-v0.9.15) (2026-08-29)
 
 ## [0.9.14](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.13...guest-mock-codex-v0.9.14) (2026-08-28)
