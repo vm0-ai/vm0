@@ -364,7 +364,7 @@ run_action() {
   fi
 
   repo_vars_json='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_BACKEND_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","STRIPE_OAUTH_CLIENT_ID":"ca_test_connect_client","STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID":"bpc_test_concurrency","MICROSOFT_TEAMS_BOT_APP_ID":"github-teams-bot-app-id","MICROSOFT_TEAMS_APP_TENANT_ID":"github-teams-app-tenant-id","OKOU_PRICE_PRO":"price_test_pro","OKOU_PRICE_TEAM":"price_test_team","OKOU_PRICE_USAGE_PACK_PLAN_PRO":"price_test_usage_pack_plan_pro","OKOU_PRICE_USAGE_PACK_PLAN_TEAM":"price_test_usage_pack_plan_team","OKOU_PRICE_USAGE_PACK_20":"price_test_usage_pack_20","OKOU_PRICE_USAGE_PACK_50":"price_test_usage_pack_50","OKOU_PRICE_USAGE_PACK_100":"price_test_usage_pack_100","OKOU_PRICE_USAGE_PACK_200":"price_test_usage_pack_200","ATOM_GRANT_PRICE":"price_test_atom_grant","OKOU_PRICE_CUSTOM_CREDITS":"price_test_custom_credits","OKOU_PRICE_CUSTOM_CREDIT_UNIT":"price_test_custom_credit_unit","OKOU_PRICE_CONCURRENCY":"price_test_concurrency","GMAIL_PUBSUB_TOPIC_NAME":"projects/github/topics/gmail","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-push@github.test","GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME":"projects/github/topics/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"workspace-events-push@github.test"}'
-  repo_vars_json="$(jq -c '. + {OKOU_PUBLIC_ARTIFACTS_BASE_URL: "https://cdn.okou.test", OKOU_PUBLIC_HOST_DOMAIN: "okou.app", OKOU_HOST_SCHEME: "https", OKOU_ONE_TIME_CAMPAIGN: "test-campaign"}' <<< "$repo_vars_json")"
+  repo_vars_json="$(jq -c '. + {OKOU_PUBLIC_ARTIFACTS_BASE_URL: "https://cdn.okou.test", OKOU_PUBLIC_HOST_DOMAIN: "okou.app", OKOU_HOST_SCHEME: "https", OKOU_ONE_TIME_CAMPAIGN: "test-campaign", VM0_DEFAULT_AGENT: "hostile-retired-default-agent"}' <<< "$repo_vars_json")"
   repo_secrets_json='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","OKOU_MAPS_GOOGLE_MAPS_TOKEN":"github-google-maps-token","OKOU_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","OKOU_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","OKOU_SEO_DATAFORSEO_LOGIN":"github-dataforseo-login","OKOU_SEO_DATAFORSEO_PASSWORD":"github-dataforseo-password","OKOU_BROWSER_USE_API_KEY":"github-browser-use-api-key","OKOU_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","OKOU_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","OKOU_SOCIAL_SOCIALKIT_TOKEN":"github-socialkit-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","UNSPLASH_ACCESS_KEY":"github-unsplash-access-key","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}'
   if [[ "$branded_config" == "empty" ]]; then
     repo_vars_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_vars_json")"
@@ -612,6 +612,7 @@ success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${succ
 assert_contains "$success_output" "Rendered"
 assert_no_fixture_secret_values "$success_output"
 assert_zero_keys_with_live_readers_absent "$success_env_file"
+assert_env_key_absent "$success_env_file" VM0_DEFAULT_AGENT
 assert_debug_canonical_only "$success_env_file"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_ID "doppler-GH_OAUTH_CLIENT_ID"
 assert_env_value "$success_env_file" GH_OAUTH_CLIENT_SECRET "doppler-GH_OAUTH_CLIENT_SECRET"
@@ -692,6 +693,7 @@ preview_web_output="$(run_action "$(build_doppler_secrets_json)" "$preview_web_d
 preview_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${preview_web_dir}/github-output")"
 assert_contains "$preview_web_output" "Rendered"
 assert_preview_job_ref_aliases_absent "$preview_web_env_file"
+assert_env_key_absent "$preview_web_env_file" VM0_DEFAULT_AGENT
 assert_debug_canonical_only "$preview_web_env_file"
 assert_api_backend_url_canonical_only "$preview_web_env_file" "https://pr-123-api-backend.vm0.test"
 assert_env_key_absent "$preview_web_env_file" OKOU_MACHINE_SECRET_KEY
@@ -733,6 +735,7 @@ production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' 
 assert_contains "$production_web_output" "Rendered"
 assert_no_fixture_secret_values "$production_web_output"
 assert_zero_keys_with_live_readers_absent "$production_web_env_file"
+assert_env_key_absent "$production_web_env_file" VM0_DEFAULT_AGENT
 assert_debug_aliases_absent "$production_web_env_file"
 assert_api_backend_url_canonical_only "$production_web_env_file" "https://pr-123-api-backend.vm0.test"
 assert_web_url_aliases_absent "$production_web_env_file"
@@ -762,6 +765,7 @@ production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' 
 assert_contains "$production_api_output" "Rendered"
 assert_no_fixture_secret_values "$production_api_output"
 assert_zero_keys_with_live_readers_absent "$production_api_env_file"
+assert_env_key_absent "$production_api_env_file" VM0_DEFAULT_AGENT
 assert_debug_aliases_absent "$production_api_env_file"
 assert_web_url_canonical_only "$production_api_env_file" "https://pr-123-www.vm0.test"
 assert_api_backend_url_canonical_only "$production_api_env_file" "https://pr-123-api-backend.vm0.test"
