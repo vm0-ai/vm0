@@ -130,6 +130,7 @@ const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
 const FIREWALL_AUTH_REFRESH_TIMEOUT_MS = 30_000;
 const REFRESH_TIMEOUT_ERROR_CODE = "oauth_refresh_timeout";
 const MAX_OAUTH_REFRESH_LOG_FIELD_LENGTH = 128;
+const ACTIVE_FIREWALL_AUTH_RUN_STATUSES = ["pending", "running"] as const;
 const databaseTimestampMicrosRowSchema = z.object({
   now: pgInt8ToBigIntSchema,
 });
@@ -291,6 +292,18 @@ function forbiddenModelProviderOwner(): ResolveFirewallAuthResult {
     body: {
       error: {
         message: "Invalid model-provider secret owner",
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
+function forbiddenTerminalRun(): ResolveFirewallAuthResult {
+  return {
+    status: 403,
+    body: {
+      error: {
+        message: "Agent run is no longer active",
         code: "FORBIDDEN",
       },
     },
@@ -4254,12 +4267,25 @@ function missingResolvedSecretsResponse(args: {
   );
 }
 
-async function findRefreshRunOrgId(
+interface FirewallAuthRun {
+  readonly orgId: string;
+  readonly status: typeof agentRuns.$inferSelect.status;
+}
+
+function firewallAuthRunIsActive(
+  status: typeof agentRuns.$inferSelect.status,
+): boolean {
+  return ACTIVE_FIREWALL_AUTH_RUN_STATUSES.some((activeStatus) => {
+    return status === activeStatus;
+  });
+}
+
+async function findFirewallAuthRun(
   db: Db,
   auth: SandboxAuth,
-): Promise<string | null> {
+): Promise<FirewallAuthRun | undefined> {
   const [run] = await db
-    .select({ orgId: agentRuns.orgId })
+    .select({ orgId: agentRuns.orgId, status: agentRuns.status })
     .from(agentRuns)
     .where(
       and(
@@ -4269,7 +4295,28 @@ async function findRefreshRunOrgId(
       ),
     )
     .limit(1);
-  return run?.orgId ?? null;
+  return run;
+}
+
+async function admitFirewallAuthResponse(
+  db: Db,
+  auth: SandboxAuth,
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    const [run] = await tx
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.id, auth.runId),
+          eq(agentRuns.userId, auth.userId),
+          eq(agentRuns.orgId, auth.orgId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    return run !== undefined && firewallAuthRunIsActive(run.status);
+  });
 }
 
 async function decryptFirewallAuthSecrets(
@@ -5563,15 +5610,19 @@ export async function resolveFirewallAuth(
 ): Promise<ResolveFirewallAuthResult> {
   const matchedFirewall = body.matchedFirewall;
   const customConnectorId = matchedFirewall?.customConnectorId;
+  const run = await findFirewallAuthRun(db, auth);
+  if (!run) {
+    L.warn(`[${auth.runId}] Run not found for firewall auth`);
+    return badRequestMessage("Run not found");
+  }
+  if (!firewallAuthRunIsActive(run.status)) {
+    return forbiddenTerminalRun();
+  }
+  const orgId = run.orgId;
   const forceRefreshStartedAtMicros =
     customConnectorId === undefined && body.forceRefresh === true
       ? await currentDatabaseTimestampMicros(db)
       : null;
-  const orgId = await findRefreshRunOrgId(db, auth);
-  if (!orgId) {
-    L.warn(`[${auth.runId}] Run not found for firewall auth`);
-    return badRequestMessage("Run not found");
-  }
   const referenced = collectReferencedKeys(
     body.authHeaders,
     body.authBase,
@@ -5635,10 +5686,16 @@ export async function resolveFirewallAuth(
   if (!resolution.ok) {
     return resolution.response;
   }
-  return finalizeFirewallAuth({
+  const finalized = finalizeFirewallAuth({
     body,
     referenced,
     material: resolution.material,
     billableExpiresAt: billableCacheExpiry.expiresAt,
   });
+  if (finalized.status !== 200) {
+    return finalized;
+  }
+  return (await admitFirewallAuthResponse(db, auth))
+    ? finalized
+    : forbiddenTerminalRun();
 }
