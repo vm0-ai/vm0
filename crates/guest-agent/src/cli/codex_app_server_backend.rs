@@ -36,6 +36,7 @@ use guest_contracts::diagnostics::{
 };
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
+const TURN_INTERRUPT_GRACE: Duration = Duration::from_secs(5);
 const API_TO_CODEX_OUTPUT_ITEM_STARTED: &str = "api_to_codex_output_item_started";
 const API_TO_CODEX_AGENT_MESSAGE_ITEM_STARTED: &str = "api_to_codex_agent_message_item_started";
 
@@ -65,6 +66,12 @@ struct CodexNotificationState {
 struct ThreadIdentity {
     wire_id: String,
     canonical_id: String,
+}
+
+struct ActiveTurnIdentity {
+    wire_thread_id: String,
+    canonical_thread_id: String,
+    turn_id: String,
 }
 
 struct EventIngestSink<'a, 'startup> {
@@ -195,6 +202,51 @@ async fn run_with_execution_deadline(
     }
 }
 
+async fn interrupt_active_turn(
+    client: &mut CodexAppServerClient,
+    active_turn: &ActiveTurnIdentity,
+    sink: &mut EventIngestSink<'_, '_>,
+    active_input: &ActiveInputWriter,
+    notification_state: &mut CodexNotificationState,
+) -> Result<(), AgentError> {
+    match client
+        .request_value(
+            "turn/interrupt",
+            json!({
+                "threadId": active_turn.wire_thread_id,
+                "turnId": active_turn.turn_id,
+            }),
+        )
+        .await
+    {
+        Ok(_) | Err(CodexAppServerError::Rpc { .. }) => {}
+        Err(error) => return Err(app_server_error(sink.masker, error)),
+    }
+
+    let notification_scope = CodexTurnScope {
+        thread_id: &active_turn.canonical_thread_id,
+        turn_id: &active_turn.turn_id,
+    };
+    loop {
+        let notification = client
+            .next_notification(TURN_NOTIFICATION_LABEL)
+            .await
+            .map_err(|error| app_server_error(sink.masker, error))?;
+        let is_turn_completed = notification.method == "turn/completed";
+        let ingest_result = ingest_run_notification(
+            notification,
+            sink,
+            active_input,
+            &notification_scope,
+            notification_state,
+        )
+        .await?;
+        if is_turn_completed && ingest_result.terminal_exit_code.is_some() {
+            return Ok(());
+        }
+    }
+}
+
 pub(super) async fn execute_codex_app_server_for_runtime(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
@@ -258,6 +310,11 @@ async fn run_codex_app_server(
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
     let can_replay_historical_usage = resume_thread_id.is_some();
+    let mut notification_state = CodexNotificationState {
+        allow_historical_usage: can_replay_historical_usage,
+        ..CodexNotificationState::default()
+    };
+    let mut active_turn = None;
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(
         runtime,
         workload_containment.cloned(),
@@ -283,10 +340,6 @@ async fn run_codex_app_server(
         .await?;
         let thread_identity = thread_identity_from_response(&thread_response)?;
         validate_resumed_thread_id(&thread_identity.canonical_id, resume_thread_id.as_deref())?;
-        let mut notification_state = CodexNotificationState {
-            allow_historical_usage: can_replay_historical_usage,
-            ..CodexNotificationState::default()
-        };
 
         while let Some(notification) = client.pop_notification() {
             let mut sink = EventIngestSink {
@@ -338,6 +391,11 @@ async fn run_codex_app_server(
         )
         .await?;
         let turn_id = turn_id_from_response(&turn_response)?;
+        active_turn = Some(ActiveTurnIdentity {
+            wire_thread_id: thread_identity.wire_id.clone(),
+            canonical_thread_id: thread_identity.canonical_id.clone(),
+            turn_id: turn_id.clone(),
+        });
         let mut active_input_open = active_input.is_enabled();
         let mut turn_started_observed = false;
         notification_state.allow_historical_usage = can_replay_historical_usage;
@@ -453,8 +511,69 @@ async fn run_codex_app_server(
     .await;
     active_input.close_terminal();
 
+    let interrupted_terminal = if matches!(
+        &run_outcome,
+        AppServerRunOutcome::ExecutionTimedOut { .. } | AppServerRunOutcome::UserCancelled
+    ) && let Some(active_turn) = active_turn.as_ref()
+    {
+        let mut sink = EventIngestSink {
+            ingestor: &mut ingestor,
+            output_timing: &mut output_timing,
+            agent_log: &mut agent_log,
+            masker,
+            should_send_events,
+            event_tx,
+        };
+        match tokio::time::timeout(
+            TURN_INTERRUPT_GRACE,
+            interrupt_active_turn(
+                &mut client,
+                active_turn,
+                &mut sink,
+                &active_input,
+                &mut notification_state,
+            ),
+        )
+        .await
+        {
+            Ok(Ok(())) => true,
+            Ok(Err(error)) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Codex active turn interruption failed; terminating app-server: {}",
+                    masker.mask_string(&error.to_string())
+                );
+                false
+            }
+            Err(_) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Codex active turn interruption timed out; terminating app-server"
+                );
+                false
+            }
+        }
+    } else {
+        false
+    };
+
     let shutdown_result = match &run_outcome {
         AppServerRunOutcome::Completed(result) if result.is_ok() => client.shutdown().await,
+        AppServerRunOutcome::ExecutionTimedOut { .. } | AppServerRunOutcome::UserCancelled
+            if interrupted_terminal =>
+        {
+            match client.shutdown().await {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Codex app-server shutdown failed after turn interruption; terminating: {}",
+                        masker.mask_string(&error.to_string())
+                    );
+                    client.terminate().await
+                }
+            }
+        }
         AppServerRunOutcome::Completed(_)
         | AppServerRunOutcome::ExecutionTimedOut { .. }
         | AppServerRunOutcome::UserCancelled => client.terminate().await,

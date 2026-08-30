@@ -33,6 +33,9 @@ pub(super) enum Scenario {
     RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnStartedBeforeSteer,
     WaitOnTurnSteerResponse,
+    WaitForTurnInterrupt,
+    HangOnTurnInterrupt,
+    CompleteBeforeTurnInterrupt,
     RuntimeTurnCompleteWithoutThreadStarted,
     RuntimeTurnUsageResumeNoReplay,
     RuntimeTurnUsageResumeReplay,
@@ -90,6 +93,9 @@ impl Scenario {
                 }
                 "runtime-turn-started-before-steer" => Ok(Self::RuntimeTurnStartedBeforeSteer),
                 "wait-on-turn-steer-response" => Ok(Self::WaitOnTurnSteerResponse),
+                "wait-for-turn-interrupt" => Ok(Self::WaitForTurnInterrupt),
+                "hang-on-turn-interrupt" => Ok(Self::HangOnTurnInterrupt),
+                "complete-before-turn-interrupt" => Ok(Self::CompleteBeforeTurnInterrupt),
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
@@ -118,11 +124,15 @@ impl Scenario {
     pub(super) fn accepts_client_response(self) -> bool {
         matches!(
             self,
-            Self::ServerRequestBeforeResponse | Self::NullIdServerRequestBeforeResponse
+            Self::ServerRequestBeforeResponse
+                | Self::NullIdServerRequestBeforeResponse
+                | Self::WaitForTurnInterrupt
+                | Self::HangOnTurnInterrupt
+                | Self::CompleteBeforeTurnInterrupt
         )
     }
 
-    pub(super) fn writes_turn_started_before_steer(self) -> bool {
+    pub(super) fn writes_turn_started_before_control(self) -> bool {
         matches!(
             self,
             Self::ExitOnTurnSteer
@@ -130,7 +140,19 @@ impl Scenario {
                 | Self::RuntimeTurnCompleteBeforeSteerResponse
                 | Self::RuntimeTurnStartedBeforeSteer
                 | Self::WaitOnTurnSteerResponse
+                | Self::WaitForTurnInterrupt
+                | Self::HangOnTurnInterrupt
+                | Self::CompleteBeforeTurnInterrupt
                 | Self::StaleTurn
+        )
+    }
+
+    pub(super) fn waits_for_turn_interrupt(self) -> bool {
+        matches!(
+            self,
+            Self::WaitForTurnInterrupt
+                | Self::HangOnTurnInterrupt
+                | Self::CompleteBeforeTurnInterrupt
         )
     }
 }
