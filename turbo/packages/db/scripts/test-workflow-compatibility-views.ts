@@ -14,6 +14,8 @@ const refreshPreviousMigration = "1019_sturdy_firestar";
 const refreshMigration = "1020_refresh_workflow_compatibility_views";
 const switchPreviousMigration = "1021_bizarre_ronan";
 const switchMigration = "1022_workflow_physical_switch";
+const contractPreviousMigration = "1029_morning_brief_phase_a_cutover";
+const contractMigration = "1030_contract_legacy_workflow_compatibility_views";
 const testDatabase = "migration_workflow_compatibility_views";
 const applicationRole = "workflow_switch_application";
 
@@ -347,6 +349,7 @@ interface RelationIdentity {
 interface ColumnDefinition {
   readonly attnum: number;
   readonly collation: string | null;
+  readonly columnAcl: string;
   readonly columnName: string;
   readonly compression: string;
   readonly defaultExpression: string | null;
@@ -418,6 +421,14 @@ interface BehaviorFixture {
   readonly deliveryId: string;
   readonly githubEventId: string;
   readonly workflowId: string;
+}
+
+interface LegacyViewCatalogIdentity {
+  readonly arrayTypeOid: string;
+  readonly relationName: LegacyRelationName;
+  readonly relationOid: string;
+  readonly rewriteRuleOid: string;
+  readonly rowTypeOid: string;
 }
 
 function databaseErrorCode(error: unknown): string | undefined {
@@ -817,6 +828,84 @@ async function validateSwitchMigrationArtifacts(): Promise<void> {
   assert.equal(journal.entries[switchPosition]?.idx, 1022);
 }
 
+async function validateContractMigrationArtifacts(): Promise<void> {
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${contractMigration}.sql`),
+    "utf8",
+  );
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map(normalizedSql)
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  assert.equal(statements.length, 3);
+  const [lockStatement, preflightStatement, dropStatement] = statements;
+  assert.ok(lockStatement);
+  assert.ok(preflightStatement);
+  assert.ok(dropStatement);
+  assert.equal(
+    lockStatement,
+    'LOCK TABLE "public"."workflow_automations", "public"."workflow_github_processed_events", "public"."workflow_strapi_automations", "public"."workflow_webhook_automations", "public"."workflow_webhook_deliveries", "public"."workflows", "public"."zero_workflow_automations", "public"."zero_workflow_github_processed_events", "public"."zero_workflow_strapi_automations", "public"."zero_workflow_webhook_automations", "public"."zero_workflow_webhook_deliveries", "public"."zero_workflows" IN ACCESS EXCLUSIVE MODE;',
+  );
+  assert.match(preflightStatement, /^DO \$workflow_contract\$/u);
+  assert.match(preflightStatement, /canonical column\/default mismatch/u);
+  assert.match(preflightStatement, /canonical index mismatch/u);
+  assert.match(preflightStatement, /canonical constraint\/FK mismatch/u);
+  assert.match(preflightStatement, /legacy view definition mismatch/u);
+  assert.match(preflightStatement, /relation owner mismatch/u);
+  assert.match(preflightStatement, /legacy view rule mismatch/u);
+  assert.match(preflightStatement, /unsupported or dangling grant/u);
+  assert.match(preflightStatement, /unexpected persisted dependency/u);
+  assert.equal(
+    dropStatement,
+    'DROP VIEW "public"."zero_workflow_automations", "public"."zero_workflow_github_processed_events", "public"."zero_workflow_strapi_automations", "public"."zero_workflow_webhook_automations", "public"."zero_workflow_webhook_deliveries", "public"."zero_workflows";',
+  );
+  assert.doesNotMatch(migrationSql, /\bCASCADE\b/iu);
+  assert.doesNotMatch(dropStatement, /\bIF\s+EXISTS\b/iu);
+  assert.doesNotMatch(migrationSql, /vm0:non-transactional/iu);
+  assert.doesNotMatch(
+    migrationSql,
+    /\b(?:INSERT\s+INTO|DELETE\s+FROM|TRUNCATE|ALTER\s+TABLE)\b/iu,
+  );
+  assert.equal(migrationSql.match(/\bDROP\s+VIEW\b/giu)?.length, 1);
+
+  const previousSnapshot = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/1029_snapshot.json"),
+      "utf8",
+    ),
+  ) as MigrationSnapshot;
+  const contractSnapshot = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/1030_snapshot.json"),
+      "utf8",
+    ),
+  ) as MigrationSnapshot;
+  assert.equal(contractSnapshot.prevId, previousSnapshot.id);
+  assert.deepEqual(
+    snapshotSchema(contractSnapshot),
+    snapshotSchema(previousSnapshot),
+  );
+
+  const journal = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/_journal.json"),
+      "utf8",
+    ),
+  ) as { entries: JournalEntry[] };
+  const previousPosition = journal.entries.findIndex(({ tag }) => {
+    return tag === contractPreviousMigration;
+  });
+  const contractPosition = journal.entries.findIndex(({ tag }) => {
+    return tag === contractMigration;
+  });
+  assert.notEqual(previousPosition, -1);
+  assert.equal(contractPosition, previousPosition + 1);
+  assert.equal(journal.entries[previousPosition]?.idx, 1029);
+  assert.equal(journal.entries[contractPosition]?.idx, 1030);
+}
+
 async function readPhysicalCatalog(
   client: Client,
   physicalRelationNames: readonly string[] = legacyRelationNames,
@@ -845,6 +934,7 @@ async function readPhysicalCatalog(
       SELECT
         "pg_attribute"."attnum" AS "attnum",
         "pg_collation"."collname" AS "collation",
+        COALESCE("pg_attribute"."attacl"::text, '') AS "columnAcl",
         "pg_attribute"."attname" AS "columnName",
         "pg_attribute"."attcompression"::text AS "compression",
         "pg_get_expr"(
@@ -1832,6 +1922,154 @@ async function validateSwitchedCatalog(client: Client): Promise<void> {
   assert.deepEqual(userTriggers.rows, [{ count: "0" }]);
 }
 
+async function readLegacyViewCatalogIdentities(
+  client: Client,
+): Promise<LegacyViewCatalogIdentity[]> {
+  const identities = await client.query<LegacyViewCatalogIdentity>(
+    `
+      SELECT
+        "row_type"."typarray"::text AS "arrayTypeOid",
+        "relation"."relname" AS "relationName",
+        "relation"."oid"::text AS "relationOid",
+        "rewrite_rule"."oid"::text AS "rewriteRuleOid",
+        "relation"."reltype"::text AS "rowTypeOid"
+      FROM "pg_class" AS "relation"
+      INNER JOIN "pg_type" AS "row_type"
+        ON "row_type"."oid" = "relation"."reltype"
+      INNER JOIN "pg_rewrite" AS "rewrite_rule"
+        ON "rewrite_rule"."ev_class" = "relation"."oid"
+        AND "rewrite_rule"."rulename" = '_RETURN'
+      WHERE "relation"."relnamespace" = 'public'::regnamespace
+        AND "relation"."relname" = ANY($1::text[])
+      ORDER BY "relation"."relname" COLLATE "C"
+    `,
+    [legacyRelationNames],
+  );
+  assert.equal(identities.rows.length, legacyRelationNames.length);
+  return identities.rows;
+}
+
+async function validateContractedCatalog(
+  client: Client,
+  legacyIdentities: readonly LegacyViewCatalogIdentity[],
+): Promise<void> {
+  const relations = await client.query<{
+    relationKind: string;
+    relationName: string;
+  }>(
+    `
+      SELECT
+        "relation"."relkind"::text AS "relationKind",
+        "relation"."relname" AS "relationName"
+      FROM "pg_class" AS "relation"
+      WHERE "relation"."relnamespace" = 'public'::regnamespace
+        AND "relation"."relname" = ANY($1::text[])
+      ORDER BY "relation"."relname" COLLATE "C"
+    `,
+    [allRelationNames],
+  );
+  assert.deepEqual(
+    relations.rows,
+    [...canonicalRelationNames].sort().map((relationName) => {
+      return { relationKind: "r", relationName };
+    }),
+  );
+
+  const missingLegacyRelations = await client.query<{
+    relationName: string | null;
+  }>(
+    `
+      SELECT to_regclass(format('public.%I', "legacy_name"))::text
+        AS "relationName"
+      FROM unnest($1::text[]) AS "legacy_relation"("legacy_name")
+      ORDER BY "legacy_name" COLLATE "C"
+    `,
+    [legacyRelationNames],
+  );
+  assert.deepEqual(
+    missingLegacyRelations.rows,
+    legacyRelationNames.map(() => {
+      return { relationName: null };
+    }),
+  );
+
+  const relationOids = legacyIdentities.map(({ relationOid }) => {
+    return relationOid;
+  });
+  const rewriteRuleOids = legacyIdentities.map(({ rewriteRuleOid }) => {
+    return rewriteRuleOid;
+  });
+  const typeOids = legacyIdentities.flatMap(({ arrayTypeOid, rowTypeOid }) => {
+    return [arrayTypeOid, rowTypeOid];
+  });
+  const residuals = await client.query<{ objectType: string }>(
+    `
+      SELECT 'relation'::text AS "objectType"
+      FROM "pg_class"
+      WHERE "oid" = ANY($1::oid[])
+      UNION ALL
+      SELECT 'rule'::text AS "objectType"
+      FROM "pg_rewrite"
+      WHERE "oid" = ANY($2::oid[])
+        OR "ev_class" = ANY($1::oid[])
+      UNION ALL
+      SELECT 'trigger'::text AS "objectType"
+      FROM "pg_trigger"
+      WHERE "tgrelid" = ANY($1::oid[])
+      UNION ALL
+      SELECT 'type'::text AS "objectType"
+      FROM "pg_type"
+      WHERE "oid" = ANY($3::oid[])
+      UNION ALL
+      SELECT 'dependency'::text AS "objectType"
+      FROM "pg_depend"
+      WHERE (
+          "classid" = 'pg_class'::regclass
+          AND "objid" = ANY($1::oid[])
+        ) OR (
+          "refclassid" = 'pg_class'::regclass
+          AND "refobjid" = ANY($1::oid[])
+        ) OR (
+          "classid" = 'pg_rewrite'::regclass
+          AND "objid" = ANY($2::oid[])
+        ) OR (
+          "refclassid" = 'pg_rewrite'::regclass
+          AND "refobjid" = ANY($2::oid[])
+        ) OR (
+          "classid" = 'pg_type'::regclass
+          AND "objid" = ANY($3::oid[])
+        ) OR (
+          "refclassid" = 'pg_type'::regclass
+          AND "refobjid" = ANY($3::oid[])
+        )
+      UNION ALL
+      SELECT 'shared-dependency'::text AS "objectType"
+      FROM "pg_shdepend"
+      WHERE (
+          "classid" = 'pg_class'::regclass
+          AND "objid" = ANY($1::oid[])
+        ) OR (
+          "refclassid" = 'pg_class'::regclass
+          AND "refobjid" = ANY($1::oid[])
+        ) OR (
+          "classid" = 'pg_rewrite'::regclass
+          AND "objid" = ANY($2::oid[])
+        ) OR (
+          "refclassid" = 'pg_rewrite'::regclass
+          AND "refobjid" = ANY($2::oid[])
+        ) OR (
+          "classid" = 'pg_type'::regclass
+          AND "objid" = ANY($3::oid[])
+        ) OR (
+          "refclassid" = 'pg_type'::regclass
+          AND "refobjid" = ANY($3::oid[])
+        )
+    `,
+    [relationOids, rewriteRuleOids, typeOids],
+  );
+  assert.deepEqual(residuals.rows, []);
+}
+
 function requiredMappedValue(
   mapping: ReadonlyMap<string, string>,
   sourceName: string,
@@ -2008,7 +2246,10 @@ function onlyRow<T>(rows: readonly T[]): T {
   return row;
 }
 
-async function insertBehaviorFixture(client: Client): Promise<BehaviorFixture> {
+async function insertBehaviorFixture(
+  client: Client,
+  includeLegacy = true,
+): Promise<BehaviorFixture> {
   const workflow = onlyRow(
     (
       await client.query<{
@@ -2140,31 +2381,33 @@ async function insertBehaviorFixture(client: Client): Promise<BehaviorFixture> {
   assert.ok(webhookAutomation.createdAt.length > 0);
   assert.equal(webhookAutomation.updatedAt, webhookAutomation.createdAt);
 
-  const webhookStorage = onlyRow(
-    (
-      await client.query<{
-        secretMatches: boolean;
-        tokenMatches: boolean;
-      }>(
-        `
-          SELECT
-            "encrypted_token" = $2 AS "tokenMatches",
-            "encrypted_secret" = $3 AS "secretMatches"
-          FROM "zero_workflow_webhook_automations"
-          WHERE "automation_id" = $1
-        `,
-        [
-          automation.id,
-          "compat-dml-encrypted-token",
-          "compat-dml-encrypted-secret",
-        ],
-      )
-    ).rows,
-  );
-  assert.deepEqual(webhookStorage, {
-    secretMatches: true,
-    tokenMatches: true,
-  });
+  if (includeLegacy) {
+    const webhookStorage = onlyRow(
+      (
+        await client.query<{
+          secretMatches: boolean;
+          tokenMatches: boolean;
+        }>(
+          `
+            SELECT
+              "encrypted_token" = $2 AS "tokenMatches",
+              "encrypted_secret" = $3 AS "secretMatches"
+            FROM "zero_workflow_webhook_automations"
+            WHERE "automation_id" = $1
+          `,
+          [
+            automation.id,
+            "compat-dml-encrypted-token",
+            "compat-dml-encrypted-secret",
+          ],
+        )
+      ).rows,
+    );
+    assert.deepEqual(webhookStorage, {
+      secretMatches: true,
+      tokenMatches: true,
+    });
+  }
 
   const delivery = onlyRow(
     (
@@ -2238,7 +2481,9 @@ async function insertBehaviorFixture(client: Client): Promise<BehaviorFixture> {
   assert.equal(strapiAutomation.automationId, automation.id);
   assert.ok(strapiAutomation.createdAt.length > 0);
 
-  await validateCompatibleReads(client);
+  if (includeLegacy) {
+    await validateCompatibleReads(client);
+  }
   return {
     automationId: automation.id,
     deliveryId: delivery.id,
@@ -2250,6 +2495,7 @@ async function insertBehaviorFixture(client: Client): Promise<BehaviorFixture> {
 async function updateBehaviorFixture(
   client: Client,
   fixture: BehaviorFixture,
+  includeLegacy = true,
 ): Promise<void> {
   const workflow = onlyRow(
     (
@@ -2323,31 +2569,33 @@ async function updateBehaviorFixture(
   );
   assert.equal(webhookAutomation.automationId, fixture.automationId);
 
-  const webhookStorage = onlyRow(
-    (
-      await client.query<{
-        secretMatches: boolean;
-        tokenMatches: boolean;
-      }>(
-        `
-          SELECT
-            "encrypted_token" = $2 AS "tokenMatches",
-            "encrypted_secret" = $3 AS "secretMatches"
-          FROM "zero_workflow_webhook_automations"
-          WHERE "automation_id" = $1
-        `,
-        [
-          fixture.automationId,
-          "compat-dml-updated-encrypted-token",
-          "compat-dml-updated-encrypted-secret",
-        ],
-      )
-    ).rows,
-  );
-  assert.deepEqual(webhookStorage, {
-    secretMatches: true,
-    tokenMatches: true,
-  });
+  if (includeLegacy) {
+    const webhookStorage = onlyRow(
+      (
+        await client.query<{
+          secretMatches: boolean;
+          tokenMatches: boolean;
+        }>(
+          `
+            SELECT
+              "encrypted_token" = $2 AS "tokenMatches",
+              "encrypted_secret" = $3 AS "secretMatches"
+            FROM "zero_workflow_webhook_automations"
+            WHERE "automation_id" = $1
+          `,
+          [
+            fixture.automationId,
+            "compat-dml-updated-encrypted-token",
+            "compat-dml-updated-encrypted-secret",
+          ],
+        )
+      ).rows,
+    );
+    assert.deepEqual(webhookStorage, {
+      secretMatches: true,
+      tokenMatches: true,
+    });
+  }
 
   const delivery = onlyRow(
     (
@@ -2402,7 +2650,9 @@ async function updateBehaviorFixture(
     ).rows,
   );
   assert.equal(strapiAutomation.automationId, fixture.automationId);
-  await validateCompatibleReads(client);
+  if (includeLegacy) {
+    await validateCompatibleReads(client);
+  }
 }
 
 async function validateViewRowLock(
@@ -2416,11 +2666,15 @@ async function validateViewRowLock(
     readonly mutableColumn: string;
   },
   reverse = false,
+  canonicalOnly = false,
 ): Promise<void> {
-  const lockedRelation = reverse ? lock.legacyRelation : lock.canonicalRelation;
-  const contenderRelation = reverse
+  const lockedRelation =
+    !canonicalOnly && reverse ? lock.legacyRelation : lock.canonicalRelation;
+  const contenderRelation = canonicalOnly
     ? lock.canonicalRelation
-    : lock.legacyRelation;
+    : reverse
+      ? lock.canonicalRelation
+      : lock.legacyRelation;
   const contender = new Client({ connectionString: databaseUrl });
   await contender.connect();
   await client.query("BEGIN");
@@ -2461,6 +2715,7 @@ async function validateAllViewRowLocks(
   databaseUrl: string,
   fixture: BehaviorFixture,
   reverse = false,
+  canonicalOnly = false,
 ): Promise<void> {
   const locks = [
     {
@@ -2507,13 +2762,20 @@ async function validateAllViewRowLocks(
     },
   ] as const;
   for (const lock of locks) {
-    await validateViewRowLock(client, databaseUrl, lock, reverse);
+    await validateViewRowLock(
+      client,
+      databaseUrl,
+      lock,
+      reverse,
+      canonicalOnly,
+    );
   }
 }
 
 async function deleteBehaviorFixture(
   client: Client,
   fixture: BehaviorFixture,
+  includeLegacy = true,
 ): Promise<void> {
   const deletedDelivery = onlyRow(
     (
@@ -2598,7 +2860,9 @@ async function deleteBehaviorFixture(
     ).rows,
   );
   assert.equal(deletedWorkflow.id, fixture.workflowId);
-  await validateCompatibleReads(client);
+  if (includeLegacy) {
+    await validateCompatibleReads(client);
+  }
 }
 
 async function createWorkflowAutomation(
@@ -3904,6 +4168,7 @@ interface ApplicationGrant {
 
 async function readApplicationRoleGrants(
   client: Client,
+  relationNames: readonly RelationName[] = allRelationNames,
 ): Promise<ApplicationGrant[]> {
   const grants = await client.query<ApplicationGrant>(
     `
@@ -3941,7 +4206,7 @@ async function readApplicationRoleGrants(
         "privilegeType" COLLATE "C",
         "isGrantable"
     `,
-    [allRelationNames, applicationRole],
+    [relationNames, applicationRole],
   );
   return grants.rows;
 }
@@ -4192,6 +4457,239 @@ async function validateSwitchFailureAtomicity(
   await assertPreSwitchStateUnchanged(client, catalog, rows);
 }
 
+async function assertContractNotApplied(client: Client): Promise<void> {
+  const applied = await client.query<{ count: string }>(
+    `
+      SELECT count(*)::text AS "count"
+      FROM "drizzle"."__drizzle_migrations"
+      WHERE "hash" = $1
+    `,
+    [contractMigration],
+  );
+  assert.deepEqual(applied.rows, [{ count: "0" }]);
+}
+
+async function assertPreContractStateUnchanged(
+  client: Client,
+  canonicalCatalog: PhysicalCatalog,
+  canonicalRows: Readonly<Record<string, string>>,
+  legacyIdentities: readonly LegacyViewCatalogIdentity[],
+  applicationGrants: readonly ApplicationGrant[],
+): Promise<void> {
+  await assertContractNotApplied(client);
+  await validateSwitchedCatalog(client);
+  await validateCompatibleReads(client);
+  assert.deepEqual(
+    await readPhysicalCatalog(client, canonicalRelationNames),
+    canonicalCatalog,
+  );
+  assert.deepEqual(
+    await readPhysicalRows(client, canonicalRelationNames),
+    canonicalRows,
+  );
+  assert.deepEqual(
+    await readLegacyViewCatalogIdentities(client),
+    legacyIdentities,
+  );
+  assert.deepEqual(await readApplicationRoleGrants(client), applicationGrants);
+}
+
+async function expectContractMigrationFailure(
+  client: Client,
+  message: RegExp,
+): Promise<void> {
+  await assert.rejects(
+    applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      contractMigration,
+    ),
+    message,
+  );
+}
+
+async function validateContractFailureAtomicity(
+  client: Client,
+  canonicalCatalog: PhysicalCatalog,
+  canonicalRows: Readonly<Record<string, string>>,
+  legacyIdentities: readonly LegacyViewCatalogIdentity[],
+  applicationGrants: readonly ApplicationGrant[],
+): Promise<void> {
+  const assertUnchanged = async (): Promise<void> => {
+    await assertPreContractStateUnchanged(
+      client,
+      canonicalCatalog,
+      canonicalRows,
+      legacyIdentities,
+      applicationGrants,
+    );
+  };
+
+  await client.query(`
+    CREATE VIEW "workflow_contract_dependency_probe" AS
+    SELECT "id" FROM "zero_workflows"
+  `);
+  try {
+    await expectContractMigrationFailure(client, /dependency count mismatch/u);
+  } finally {
+    await client.query(`DROP VIEW "workflow_contract_dependency_probe"`);
+  }
+  await assertUnchanged();
+
+  await client.query(`
+    CREATE INDEX "workflow_contract_index_probe"
+    ON "workflows" ("updated_at")
+  `);
+  try {
+    await expectContractMigrationFailure(client, /canonical index mismatch/u);
+  } finally {
+    await client.query(`DROP INDEX "workflow_contract_index_probe"`);
+  }
+  await assertUnchanged();
+
+  await client.query(
+    `ALTER VIEW "zero_workflows" RENAME COLUMN "description" TO "unexpected_description"`,
+  );
+  try {
+    await expectContractMigrationFailure(
+      client,
+      /legacy view column mismatch/u,
+    );
+  } finally {
+    await client.query(
+      `ALTER VIEW "zero_workflows" RENAME COLUMN "unexpected_description" TO "description"`,
+    );
+  }
+  await assertUnchanged();
+
+  const originalOwner = onlyRow(
+    (
+      await client.query<{ relationOwner: string }>(`
+        SELECT pg_get_userbyid("relowner") AS "relationOwner"
+        FROM "pg_class"
+        WHERE "oid" = 'public.zero_workflows'::regclass
+      `)
+    ).rows,
+  ).relationOwner;
+  await client.query(`CREATE ROLE "workflow_contract_owner_probe" NOLOGIN`);
+  try {
+    await client.query(
+      `ALTER VIEW "zero_workflows" OWNER TO "workflow_contract_owner_probe"`,
+    );
+    await expectContractMigrationFailure(client, /relation owner mismatch/u);
+  } finally {
+    await client.query(
+      `ALTER VIEW "zero_workflows" OWNER TO "${originalOwner}"`,
+    );
+    await client.query(`DROP ROLE "workflow_contract_owner_probe"`);
+  }
+  await assertUnchanged();
+
+  await client.query(
+    `GRANT TRUNCATE ON "zero_workflows" TO "${applicationRole}"`,
+  );
+  try {
+    await expectContractMigrationFailure(
+      client,
+      /unsupported or dangling grant/u,
+    );
+  } finally {
+    await client.query(
+      `REVOKE TRUNCATE ON "zero_workflows" FROM "${applicationRole}"`,
+    );
+  }
+  await assertUnchanged();
+
+  await client.query(`
+    CREATE RULE "workflow_contract_rule_probe"
+    AS ON UPDATE TO "zero_workflows"
+    DO ALSO NOTHING
+  `);
+  try {
+    await expectContractMigrationFailure(client, /legacy view rule mismatch/u);
+  } finally {
+    await client.query(
+      `DROP RULE "workflow_contract_rule_probe" ON "zero_workflows"`,
+    );
+  }
+  await assertUnchanged();
+}
+
+async function validateLegacyContractFailures(client: Client): Promise<void> {
+  for (const { columns, legacy } of relationDefinitions) {
+    const keyColumn = columns[0];
+    assert.ok(keyColumn);
+    const statements = [
+      `SELECT * FROM "${legacy}" LIMIT 1`,
+      `INSERT INTO "${legacy}" DEFAULT VALUES`,
+      `UPDATE "${legacy}" SET "${keyColumn}" = "${keyColumn}"`,
+      `DELETE FROM "${legacy}"`,
+    ];
+    for (const statement of statements) {
+      await expectDatabaseFailure(client.query(statement), "42P01");
+    }
+  }
+}
+
+async function validateCanonicalConflictStatements(
+  client: Client,
+  fixture: BehaviorFixture,
+): Promise<void> {
+  for (const relationName of canonicalRelationNames) {
+    await client.query(`SELECT count(*) FROM "${relationName}"`);
+  }
+
+  const duplicateDelivery = await client.query<{ id: string }>(
+    `
+      INSERT INTO "workflow_webhook_deliveries" (
+        "automation_id",
+        "delivery_key",
+        "body_sha256",
+        "status"
+      )
+      VALUES ($1, 'compat-dml-delivery', 'duplicate-body', 'accepted')
+      ON CONFLICT DO NOTHING
+      RETURNING "id"::text AS "id"
+    `,
+    [fixture.automationId],
+  );
+  assert.deepEqual(duplicateDelivery.rows, []);
+
+  const upsertedWorkflow = onlyRow(
+    (
+      await client.query<{ description: string; id: string }>(
+        `
+          INSERT INTO "workflows" (
+            "id",
+            "org_id",
+            "agent_id",
+            "name",
+            "owner_user_id",
+            "created_by",
+            "updated_by",
+            "description"
+          )
+          VALUES ($1, 'contract-upsert-org', $2, 'contract-upsert', 'contract-upsert', 'contract-upsert', 'contract-upsert', $3)
+          ON CONFLICT ("id") DO UPDATE
+          SET "description" = excluded."description"
+          RETURNING
+            "id"::text AS "id",
+            "description"
+        `,
+        [
+          fixture.workflowId,
+          supportAgentId,
+          "Updated by canonical ON CONFLICT DO UPDATE",
+        ],
+      )
+    ).rows,
+  );
+  assert.deepEqual(upsertedWorkflow, {
+    description: "Updated by canonical ON CONFLICT DO UPDATE",
+    id: fixture.workflowId,
+  });
+}
+
 async function validatePreExpansionCatalog(client: Client): Promise<void> {
   const relations = await client.query<{
     relationKind: string;
@@ -4231,6 +4729,7 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
   await validateMigrationArtifacts();
   await validateRefreshMigrationArtifacts();
   await validateSwitchMigrationArtifacts();
+  await validateContractMigrationArtifacts();
 
   const admin = new Client({ connectionString: adminUrl.toString() });
   await admin.connect();
@@ -4416,8 +4915,89 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
     await validateCompatibleReads(client);
     await validateMappedRowsUnchanged(client, switchRowsBefore);
 
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      contractPreviousMigration,
+    );
+    await validateSwitchedCatalog(client);
+    await validateCompatibleReads(client);
+
+    const contractCatalogBefore = await readPhysicalCatalog(
+      client,
+      canonicalRelationNames,
+    );
+    validateExpectedCanonicalPhysicalInventory(contractCatalogBefore);
+    const contractRowsBefore = await readPhysicalRows(
+      client,
+      canonicalRelationNames,
+    );
+    const legacyIdentitiesBefore =
+      await readLegacyViewCatalogIdentities(client);
+    const contractApplicationGrantsBefore = await readApplicationRoleGrants(
+      client,
+      canonicalRelationNames,
+    );
+    const allApplicationGrantsBefore = await readApplicationRoleGrants(client);
+
+    await validateContractFailureAtomicity(
+      client,
+      contractCatalogBefore,
+      contractRowsBefore,
+      legacyIdentitiesBefore,
+      allApplicationGrantsBefore,
+    );
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      contractMigration,
+    );
+    await validateContractedCatalog(client, legacyIdentitiesBefore);
+
+    const contractCatalogAfter = await readPhysicalCatalog(
+      client,
+      canonicalRelationNames,
+    );
+    validateExpectedCanonicalPhysicalInventory(contractCatalogAfter);
+    assert.deepEqual(contractCatalogAfter, contractCatalogBefore);
+    assert.deepEqual(
+      await readPhysicalRows(client, canonicalRelationNames),
+      contractRowsBefore,
+    );
+    assert.deepEqual(
+      await readApplicationRoleGrants(client, canonicalRelationNames),
+      contractApplicationGrantsBefore,
+    );
+    await validateLegacyContractFailures(client);
+
+    const contractedBehaviorFixture = await insertBehaviorFixture(
+      client,
+      false,
+    );
+    await updateBehaviorFixture(client, contractedBehaviorFixture, false);
+    await validateCanonicalConflictStatements(
+      client,
+      contractedBehaviorFixture,
+    );
+    await validateAllViewRowLocks(
+      client,
+      testUrl.toString(),
+      contractedBehaviorFixture,
+      false,
+      true,
+    );
+    await deleteBehaviorFixture(client, contractedBehaviorFixture, false);
+    assert.deepEqual(
+      await readPhysicalRows(client, canonicalRelationNames),
+      contractRowsBefore,
+    );
+    assert.deepEqual(
+      await readPhysicalCatalog(client, canonicalRelationNames),
+      contractCatalogBefore,
+    );
+
     console.log(
-      "   ✅ historical 1004, current 1020, and physical switch 1022 states pass",
+      "   ✅ historical 1004, current 1020, physical switch 1022, and legacy contract 1030 states pass",
     );
     console.log(
       "   ✅ six table OIDs/filenodes, rows, defaults, 15 indexes, six PKs, 19 FKs, four checks, owners, and grants are preserved",
@@ -4426,7 +5006,7 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
       "   ✅ both mixed-version directions, synthetic non-owner access, locks, cascades, exact 23505 arbitration, and rollback pass",
     );
     console.log(
-      "   ✅ preflight, collision, mid-transaction failures and three canonical physical ON CONFLICT statements pass\n",
+      "   ✅ contract dependency/catalog drift failures are atomic; canonical SQL and exact legacy 42P01 behavior pass\n",
     );
   } finally {
     await client.end();
