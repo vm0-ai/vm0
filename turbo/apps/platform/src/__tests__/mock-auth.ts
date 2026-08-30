@@ -1,7 +1,9 @@
 import type {
   Attribute,
   AttributeData,
+  BrowserClerk,
   ClerkAPIError,
+  CreateOrganizationParams,
   PasswordValidation,
 } from "@clerk/react/types";
 import { vi } from "vitest";
@@ -1056,6 +1058,10 @@ interface MockedUserProfileOptions {
   getContainer?: () => HTMLElement | null;
 }
 
+type MockedCreateOrganization = (
+  params: CreateOrganizationParams,
+) => Promise<{ readonly id: string }>;
+
 export const mockedClerk = {
   initialize,
   get loaded() {
@@ -1188,12 +1194,10 @@ export const mockedClerk = {
     };
   },
   handleRedirectCallback,
-  signOut: vi.fn(() => {
+  signOut: vi.fn<BrowserClerk["signOut"]>(() => {
     return Promise.resolve();
   }),
-  openSignIn: vi.fn(() => {
-    return Promise.resolve();
-  }),
+  openSignIn: vi.fn<BrowserClerk["openSignIn"]>(),
   openUserProfile: vi.fn<(options?: MockedUserProfileOptions) => void>(),
   closeUserProfile: vi.fn<() => void>(),
   load: mockedClerkLoad,
@@ -1210,18 +1214,20 @@ export const mockedClerk = {
       }
     };
   },
-  redirectToSignIn: vi.fn(),
+  redirectToSignIn: vi.fn<BrowserClerk["redirectToSignIn"]>(),
   buildSignInUrl: vi.fn<typeof defaultBuildSignInUrlImpl>(
     defaultBuildSignInUrlImpl,
   ),
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
-  buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
+  buildUrlWithAuth: vi.fn<typeof defaultBuildUrlWithAuthImpl>(
+    defaultBuildUrlWithAuthImpl,
+  ),
   buildUserProfileUrl: vi.fn<typeof defaultBuildUserProfileUrlImpl>(
     defaultBuildUserProfileUrlImpl,
   ),
   setActive: vi.fn<typeof defaultSetActiveImpl>(defaultSetActiveImpl),
-  createOrganization: vi.fn((_params: { name: string; slug: string }) => {
+  createOrganization: vi.fn<MockedCreateOrganization>(() => {
     return Promise.resolve({ id: "new-org-id" });
   }),
 };

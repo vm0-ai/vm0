@@ -2061,12 +2061,11 @@ function isAscii(value: string): boolean {
 function isIpv4NumberComponent(value: string): boolean {
   if (value === "") return false;
   if (value.toLowerCase().startsWith("0x")) {
-    return (
-      value.length > 2 &&
-      [...value.slice(2)].every((char) => {
-        return isHexDigit(char);
-      })
-    );
+    if (value.length <= 2) return false;
+    for (let index = 2; index < value.length; index += 1) {
+      if (!isHexDigit(value.charAt(index))) return false;
+    }
+    return true;
   }
   return UNICODE_DECIMAL_NUMBER_PATTERN.test(value);
 }

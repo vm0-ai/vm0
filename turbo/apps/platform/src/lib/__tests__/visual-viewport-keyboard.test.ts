@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { animationFrame, timeout } from "signal-timers";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
@@ -59,7 +59,7 @@ function focusTextEntry(): HTMLTextAreaElement {
 
 function focusComposer(inExistingThread: boolean): {
   editor: HTMLDivElement;
-  scrollIntoView: ReturnType<typeof vi.fn>;
+  scrollIntoView: Mock<HTMLElement["scrollIntoView"]>;
 } {
   const container = document.createElement(
     inExistingThread ? "footer" : "section",
@@ -70,7 +70,7 @@ function focusComposer(inExistingThread: boolean): {
 
   const composer = document.createElement("div");
   composer.className = "zero-composer";
-  const scrollIntoView = vi.fn();
+  const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
   Object.defineProperty(composer, "scrollIntoView", {
     configurable: true,
     value: scrollIntoView,

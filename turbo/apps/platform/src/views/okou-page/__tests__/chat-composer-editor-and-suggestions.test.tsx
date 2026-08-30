@@ -1075,7 +1075,7 @@ describe("chat composer models", () => {
 
   it("scrolls the slash workflow picker with keyboard selection", async () => {
     const user = userEvent.setup({ delay: null });
-    const scrollIntoView = vi.fn();
+    const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,

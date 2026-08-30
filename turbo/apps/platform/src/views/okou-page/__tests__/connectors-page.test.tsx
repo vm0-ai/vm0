@@ -616,17 +616,10 @@ async function expectConnectorCardsVisible(expected: {
   readonly asana: boolean;
 }): Promise<void> {
   await waitFor(() => {
-    if (expected.github) {
-      expect(queryConnectorCardByLabel("GitHub")).toBeInTheDocument();
-    } else {
-      expect(queryConnectorCardByLabel("GitHub")).not.toBeInTheDocument();
-    }
-
-    if (expected.asana) {
-      expect(queryConnectorCardByLabel("Asana")).toBeInTheDocument();
-    } else {
-      expect(queryConnectorCardByLabel("Asana")).not.toBeInTheDocument();
-    }
+    expect({
+      github: queryConnectorCardByLabel("GitHub") !== null,
+      asana: queryConnectorCardByLabel("Asana") !== null,
+    }).toStrictEqual(expected);
   });
 }
 

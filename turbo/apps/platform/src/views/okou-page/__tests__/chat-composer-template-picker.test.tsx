@@ -2724,8 +2724,8 @@ describe("chat composer templates", () => {
     if (!illustrationTemplate) {
       throw new Error("Illustration template with four variants not found");
     }
-    const scrollIntoView = vi.fn();
-    const scrollTo = vi.fn();
+    const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
+    const scrollTo = vi.fn<HTMLElement["scrollTo"]>();
     const rect = ({
       left,
       right,
