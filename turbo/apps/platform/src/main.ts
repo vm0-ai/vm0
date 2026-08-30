@@ -8,6 +8,7 @@ import "./polyfill.ts";
 import { createRoot } from "react-dom/client";
 import { createStore } from "ccstate";
 import { bootstrap$ } from "./signals/bootstrap.ts";
+import { runAuthenticatedDaemons$ } from "./signals/authenticated-daemons.ts";
 import { detach, Reason, resetSignal } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
 
@@ -56,6 +57,7 @@ function startApplication(): void {
       },
       rootSignal,
     );
+    await store.set(runAuthenticatedDaemons$, rootSignal);
   }
 
   detach(main(), Reason.Entrance, "main");

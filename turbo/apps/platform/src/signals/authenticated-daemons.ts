@@ -1,6 +1,6 @@
-import { command } from "ccstate";
+import { command, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { authRecovery$, clerk$ } from "./auth.ts";
+import { authRecovery$, clerk$, setupClerk$ } from "./auth.ts";
 import { setAuthenticatedIdentity$ } from "./auth-context.ts";
 import {
   subscribeChatThreadReadCursorUpdated$,
@@ -21,9 +21,12 @@ import {
 } from "./shared-database-browser.ts";
 import { runSharedDatabaseInvalidationDaemon$ } from "./shared-database-invalidation-daemon.ts";
 
-/** Start user-scoped background services after Clerk has resolved. */
+const authenticatedServicesInstalled$ = state(false);
+
+/** Install user-scoped application services during bootstrap. */
 export const setupAuthenticatedDaemons$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    await set(setupClerk$, signal);
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
@@ -50,17 +53,39 @@ export const setupAuthenticatedDaemons$ = command(
     await set(setupSharedDatabaseBridge$, authRecovery, signal);
     signal.throwIfAborted();
 
+    await set(setupRealtime$, signal);
+    signal.throwIfAborted();
+    set(authenticatedServicesInstalled$, true);
+  },
+);
+
+/** Complete finite authenticated data setup while the initial route loads. */
+export const setupAuthenticatedBootstrapData$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (!get(authenticatedServicesInstalled$)) {
+      return;
+    }
     await Promise.all([
-      set(setupRealtime$, signal),
-      set(subscribeChatThreadReadCursorUpdated$, signal),
       set(setupChatIndicatorForegroundCatchUp$, signal),
+      set(subscribeEventDrivenChatThreads$, signal),
+      set(prewarmSharedUnreadChatEvents$, signal),
+    ]);
+  },
+);
+
+/** Run authenticated root-lifecycle subscriptions and loops. */
+export const runAuthenticatedDaemons$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (!get(authenticatedServicesInstalled$)) {
+      return;
+    }
+    await Promise.all([
+      set(subscribeChatThreadReadCursorUpdated$, signal),
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
       set(subscribePresentationTemplatesChanged$, signal),
       set(setupUserPreferenceRealtime$, signal),
       set(subscribeCustomConnectorListChanged$, signal),
-      set(subscribeEventDrivenChatThreads$, signal),
-      set(prewarmSharedUnreadChatEvents$, signal),
       set(runSharedDatabaseHeartbeatLoop$, signal),
       set(runSharedDatabaseInvalidationDaemon$, signal),
     ]);

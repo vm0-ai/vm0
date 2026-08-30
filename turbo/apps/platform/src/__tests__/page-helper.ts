@@ -13,6 +13,7 @@ import {
   mockUser,
 } from "./mock-auth";
 import { bootstrap$ } from "../signals/bootstrap";
+import { runAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
 import { setupRouter } from "../views/main";
 import {
   mockPushState,
@@ -229,6 +230,9 @@ export async function setupPage(options: SetupPageOptions): Promise<void> {
       });
     });
   });
+  options.context.track(
+    options.context.store.set(runAuthenticatedDaemons$, options.context.signal),
+  );
 }
 
 /**

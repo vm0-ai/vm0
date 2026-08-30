@@ -5,9 +5,12 @@ import type { SupportedLocale } from "../i18n/resources.ts";
 import {
   initAuthRecovery$,
   initClerkRuntime$,
-  setupClerk$,
   watchOrgSwitch$,
 } from "./auth.ts";
+import {
+  setupAuthenticatedBootstrapData$,
+  setupAuthenticatedDaemons$,
+} from "./authenticated-daemons.ts";
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
@@ -470,6 +473,17 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
+const setupAuthenticatedRoutes$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(setupAuthenticatedDaemons$, signal);
+    signal.throwIfAborted();
+    await Promise.all([
+      set(setupRoutes$, signal),
+      set(setupAuthenticatedBootstrapData$, signal),
+    ]);
+  },
+);
+
 const setupFeatureSwitches$ = command(
   async (
     { set },
@@ -546,8 +560,8 @@ export const bootstrap$ = command(
     set(setupLoggers$);
 
     // The cached effective switches already drive the first rendered frame.
-    // Install capture from that same snapshot before setupRouter starts the
-    // authenticated daemons, so their initial Clerk and Ably waits are kept
+    // Install capture from that same snapshot before bootstrap starts the
+    // authenticated services, so their initial Clerk and Ably waits are kept
     // even while remote feature-switch hydration is still pending.
     set(setupConnectionDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
@@ -560,14 +574,13 @@ export const bootstrap$ = command(
     set(handleSlackRedirect$);
 
     await Promise.all([
-      set(setupRoutes$, signal),
+      set(setupAuthenticatedRoutes$, signal),
       set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
 
       set(setupGlobalKeyboardShortcuts$, signal),
-      set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
       set(setupFeatureSwitches$, initialLocaleLoadFailure, signal),
     ]);

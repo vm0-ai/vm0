@@ -1,4 +1,5 @@
 import { command, state } from "ccstate";
+import { delay } from "signal-timers";
 import SharedDatabaseWorker from "virtual:shared-database-worker";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
@@ -322,17 +323,15 @@ export const runSharedDatabaseHeartbeatLoop$ = command(
     });
     window.addEventListener("focus", heartbeatNow, { signal });
 
-    let waitBeforeFirstPoll = true;
+    const interval = heartbeatInterval(token);
+    await delay(interval, { signal });
     await setLoop(
       async (loopSignal): Promise<boolean> => {
-        if (waitBeforeFirstPoll) {
-          waitBeforeFirstPoll = false;
-          return false;
-        }
         await set(heartbeatSharedDatabaseNow$, loopSignal);
+        await delay(interval, { signal: loopSignal });
         return false;
       },
-      heartbeatInterval(token),
+      0,
       signal,
     );
   },
