@@ -3,11 +3,7 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  LEGACY_CHAT_EVENT_PROJECTION,
-  withoutLegacyChatEventProjection,
-  type ChatEventCursor,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import {
@@ -51,9 +47,6 @@ export const listRowsAfter$ = command(
           : {
               sinceSeqId: cursor.lastSeqId,
               sinceEventId: cursor.lastEventId,
-              // Stage 1 App-to-API adapter for retained pre-Stage-1 targets.
-              // Remove under vm0-ai/vm0#30329 when that API gate closes.
-              sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
               limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
             },
       fetchOptions: { signal },
@@ -76,7 +69,7 @@ export const listRowsAfter$ = command(
     return {
       kind: "rows",
       rows: result.body.rows,
-      cursor: withoutLegacyChatEventProjection(result.body.cursor),
+      cursor: result.body.cursor,
       hasMore: result.body.hasMore,
     };
   },

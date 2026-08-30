@@ -5,7 +5,6 @@ import {
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  withLegacyChatEventProjection,
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { logger } from "../log.ts";
@@ -155,9 +154,8 @@ function createRowWriteStore(
         tx.objectStore(cursorStoreName).put({
           threadId,
           schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          // Stage 1 App-to-IDB writer fallback for stale App readers (about two
-          // days). Remove under vm0-ai/vm0#30329 after that client gate closes.
-          ...withLegacyChatEventProjection(cursor),
+          lastEventId: cursor.lastEventId,
+          lastSeqId: cursor.lastSeqId,
         }),
       );
       await Promise.all([...requests, tx.done]);
@@ -184,9 +182,8 @@ function createRowWriteStore(
         tx.objectStore(cursorStoreName).put({
           threadId,
           schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          // Stage 1 App-to-IDB writer fallback for stale App readers (about two
-          // days). Remove under vm0-ai/vm0#30329 after that client gate closes.
-          ...withLegacyChatEventProjection(cursor),
+          lastEventId: cursor.lastEventId,
+          lastSeqId: cursor.lastSeqId,
         }),
         tx.done,
       ]);

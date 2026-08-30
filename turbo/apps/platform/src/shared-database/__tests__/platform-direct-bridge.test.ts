@@ -87,7 +87,6 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
         schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         lastEventId: cachedRow.id,
         lastSeqId: cachedRow.seqId,
-        projection: "tool-redacted",
       }),
       tx.done,
     ]);

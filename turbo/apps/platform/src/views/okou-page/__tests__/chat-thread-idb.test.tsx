@@ -546,7 +546,6 @@ describe("okou chat thread IndexedDB fallback", () => {
       schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       lastEventId: cachedRows[1].id,
       lastSeqId: cachedRows[1].seqId,
-      projection: "tool-redacted",
     });
 
     const markReadStarted = context.mocks.deferred<void>();
@@ -647,7 +646,6 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, {
         url: snapshotUrl,
         expiresInSeconds: 900,
-        projection: "tool-redacted",
         lastEventId: terminalSnapshotRow.id,
         lastSeqId: 3,
       });

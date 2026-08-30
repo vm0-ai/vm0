@@ -270,7 +270,6 @@ export const apiAgentsHandlers = [
       rows: [],
       cursor: { lastEventId: null, lastSeqId: 0 },
       hasMore: false,
-      projection: "tool-redacted",
     });
   }),
 

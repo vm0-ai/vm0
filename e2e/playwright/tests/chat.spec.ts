@@ -4,7 +4,6 @@ import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
-const legacyChatEventProjection = "tool-redacted" as const;
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
@@ -538,25 +537,19 @@ async function mockChatThread(
           ? {
               lastEventId: mockChatEventCursorId(lastSeqId),
               lastSeqId,
-              projection: legacyChatEventProjection,
             }
           : sinceEventId === null
             ? { lastEventId: null, lastSeqId: 0 }
             : {
                 lastEventId: sinceEventId,
                 lastSeqId: sinceSeqId,
-                projection: legacyChatEventProjection,
               };
       await route.fulfill({
         headers: await negotiatedChatEventHeaders(route.request()),
-        // Mirror the Stage 1 API-to-App fallback for the about-two-day stale
-        // client window. Current App logic strips projection before cursor
-        // continuation; vm0-ai/vm0#30329 removes this fixture field afterward.
         json: {
           rows,
           cursor,
           hasMore: false,
-          projection: legacyChatEventProjection,
         },
       });
     },

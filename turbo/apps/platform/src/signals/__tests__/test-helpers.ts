@@ -1,11 +1,5 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  LEGACY_CHAT_EVENT_PROJECTION,
-  withLegacyChatEventProjection,
-  type ChatEventCursor,
-  type LegacyChatEventCursor,
-  type LegacyChatEventProjection,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { createStore, type Store } from "ccstate";
 import { afterEach, beforeAll } from "vitest";
 import { i18n, initializeI18n } from "../../i18n/index.ts";
@@ -34,20 +28,16 @@ export function chatEventRowsResponse(
   query: {
     readonly sinceSeqId: number;
     readonly sinceEventId?: string;
-    readonly sinceProjection?: LegacyChatEventProjection;
   },
   options: {
-    readonly cursor?: ChatEventCursor | LegacyChatEventCursor;
+    readonly cursor?: ChatEventCursor;
     readonly hasMore?: boolean;
-    readonly projection?: LegacyChatEventProjection;
   } = {},
 ): {
   readonly rows: ChatEventRow[];
-  readonly cursor: LegacyChatEventCursor;
+  readonly cursor: ChatEventCursor;
   readonly hasMore: boolean;
-  readonly projection: LegacyChatEventProjection;
 } {
-  const projection = options.projection ?? LEGACY_CHAT_EVENT_PROJECTION;
   const lastRow = rows.at(-1);
   let cursor: ChatEventCursor;
   if (options.cursor !== undefined) {
@@ -69,9 +59,8 @@ export function chatEventRowsResponse(
   }
   return {
     rows: [...rows],
-    cursor: withLegacyChatEventProjection(cursor),
+    cursor,
     hasMore: options.hasMore ?? false,
-    projection,
   };
 }
 
