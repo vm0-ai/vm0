@@ -1127,11 +1127,19 @@ describe("okou social command", () => {
   });
 
   it.each([
-    { signal: "SIGINT" as const, exitCode: 130 },
-    { signal: "SIGTERM" as const, exitCode: 143 },
+    {
+      signal: "SIGINT" as const,
+      secondSignal: "SIGTERM" as const,
+      exitCode: 130,
+    },
+    {
+      signal: "SIGTERM" as const,
+      secondSignal: "SIGINT" as const,
+      exitCode: 143,
+    },
   ])(
     "prints recovery guidance and cleans up after $signal",
-    async ({ signal, exitCode }) => {
+    async ({ signal, secondSignal, exitCode }) => {
       let statusRequestStarted = false;
       const initialSigintListeners = process.listenerCount("SIGINT");
       const initialSigtermListeners = process.listenerCount("SIGTERM");
@@ -1170,9 +1178,11 @@ describe("okou social command", () => {
         expect(statusRequestStarted).toBeTruthy();
       });
       process.emit(signal, signal);
+      process.emit(secondSignal, secondSignal);
       await command;
 
       expect(output()).toBe("");
+      expect(mockConsoleError).toHaveBeenCalledTimes(2);
       expect(errorOutput()).toContain(
         `continues on the server after ${signal}`,
       );

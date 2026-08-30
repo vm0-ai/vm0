@@ -2669,11 +2669,31 @@ describe("managed SocialKit route", () => {
       expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
     },
     {
+      caseName: "C1 control provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "control_failure",
+        error: "Provider failure\u0085with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_control_failure",
+    },
+    {
       caseName: "unicode multiline provider message",
       providerFailure: {
         status: "failed",
         errorCode: "multiline_failure",
         error: "Provider failure\u2028with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
+    },
+    {
+      caseName: "unicode paragraph separator provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\u2029with hidden next line",
         retryable: false,
       },
       expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
