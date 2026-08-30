@@ -359,7 +359,8 @@ pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 
 /// Canonical stuck-tool timeout bootstrap output written by the runner.
 ///
-/// Guest readers retain [`STUCK_TOOL_TIMEOUT_SECS_ENV`] as a rollback fallback.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "OKOU_STUCK_TOOL_TIMEOUT_SECS";
 
 /// Retained local input for the Guest Agent SIGTERM grace period in seconds
@@ -373,8 +374,8 @@ pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GR
 
 /// Canonical post-result SIGTERM grace bootstrap output written by the runner.
 ///
-/// Guest readers retain [`POST_RESULT_SIGTERM_GRACE_SECS_ENV`] as a rollback
-/// fallback.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGTERM_GRACE_SECS";
 
@@ -390,8 +391,8 @@ pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS
 
 /// Canonical post-result total-cap bootstrap output written by the runner.
 ///
-/// Guest readers retain [`POST_RESULT_TOTAL_CAP_SECS_ENV`] as a rollback
-/// fallback.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "OKOU_POST_RESULT_TOTAL_CAP_SECS";
 
 /// Retained local input for the Guest Agent grace period in seconds before
@@ -405,8 +406,8 @@ pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GR
 
 /// Canonical post-result SIGKILL grace bootstrap output written by the runner.
 ///
-/// Guest readers retain [`POST_RESULT_SIGKILL_GRACE_SECS_ENV`] as a rollback
-/// fallback.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGKILL_GRACE_SECS";
 
