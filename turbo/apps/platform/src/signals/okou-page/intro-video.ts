@@ -2,15 +2,7 @@ import type {
   AvatarVideoAvatar,
   AvatarVideoVoice,
 } from "@okouai/api-contracts/contracts/avatar-video";
-import {
-  command,
-  computed,
-  state,
-  type Command,
-  type Getter,
-  type Setter,
-  type State,
-} from "ccstate";
+import { command, computed, state, type Command, type State } from "ccstate";
 import { delay } from "signal-timers";
 
 import { i18n } from "../../i18n/index.ts";
@@ -23,7 +15,7 @@ import {
   type IntroVideoSourceKind,
 } from "../external/intro-video-draft-store.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
-import { createDeferredPromise, onRef, settle } from "../utils.ts";
+import { createDeferredPromise, onRef, resetSignal, settle } from "../utils.ts";
 
 export type IntroVideoWizardStep =
   | "avatar"
@@ -72,8 +64,6 @@ interface RecordingRuntime {
   stopCompletion: Promise<void> | null;
   stopCompletionResolve: (() => void) | null;
   stopCompletionSettled: (() => boolean) | null;
-  stopAction: Promise<void> | null;
-  timer: number | null;
 }
 
 const DOCUMENT_EXTENSIONS = ["doc", "docx", "pdf", "ppt", "pptx"] as const;
@@ -96,8 +86,6 @@ function createRecordingRuntime(): RecordingRuntime {
     stopCompletion: null,
     stopCompletionResolve: null,
     stopCompletionSettled: null,
-    stopAction: null,
-    timer: null,
   };
 }
 
@@ -177,18 +165,10 @@ function stopTracks(stream: MediaStream | null): void {
   }
 }
 
-function clearRecordingTimer(runtime: RecordingRuntime): void {
-  if (runtime.timer !== null) {
-    window.clearInterval(runtime.timer);
-    runtime.timer = null;
-  }
-}
-
 function releaseRecordingRuntime(
   runtime: RecordingRuntime,
   stopRecorder: boolean,
 ): void {
-  clearRecordingTimer(runtime);
   const recorder = runtime.recorder;
   runtime.recorder = null;
   if (stopRecorder && recorder?.state !== "inactive") {
@@ -217,6 +197,7 @@ async function recordingStreamWithMicrophone(
   runtime: RecordingRuntime,
   displayStream: MediaStream,
   includeMicrophone: boolean,
+  signal: AbortSignal,
 ): Promise<MediaStream> {
   if (!includeMicrophone) {
     return displayStream;
@@ -226,6 +207,10 @@ async function recordingStreamWithMicrophone(
     audio: true,
     video: false,
   });
+  if (signal.aborted) {
+    stopTracks(microphoneStream);
+    signal.throwIfAborted();
+  }
   runtime.microphoneStream = microphoneStream;
   const videoTracks = displayStream.getVideoTracks();
   const audioTracks = [
@@ -248,6 +233,21 @@ async function recordingStreamWithMicrophone(
     ...videoTracks,
     ...destination.stream.getAudioTracks(),
   ]);
+}
+
+async function recordingDisplayStream(
+  includeSystemAudio: boolean,
+  signal: AbortSignal,
+): Promise<MediaStream> {
+  const displayStream = await navigator.mediaDevices.getDisplayMedia({
+    audio: includeSystemAudio,
+    video: { frameRate: { ideal: 30, max: 30 } },
+  });
+  if (signal.aborted) {
+    stopTracks(displayStream);
+    signal.throwIfAborted();
+  }
+  return displayStream;
 }
 
 function sourceFile(source: IntroVideoSource): File {
@@ -280,7 +280,7 @@ function voiceSelectionLabel(selection: IntroVideoVoiceSelection | null) {
   }
 }
 
-export function buildIntroVideoPrompt(args: {
+function buildIntroVideoPrompt(args: {
   readonly aspectRatio: "landscape" | "portrait";
   readonly avatar: AvatarVideoAvatar | null;
   readonly instructions: string;
@@ -325,17 +325,6 @@ interface IntroVideoInternalState {
   readonly step$: State<IntroVideoWizardStep>;
   readonly systemAudio$: State<boolean>;
   readonly voice$: State<IntroVideoVoiceSelection | null>;
-}
-
-interface SignalContext {
-  readonly get: Getter;
-  readonly set: Setter;
-}
-
-interface RecordingOperation {
-  readonly generation: number;
-  readonly internal: IntroVideoInternalState;
-  readonly runtime: RecordingRuntime;
 }
 
 function createIntroVideoInternalState(): IntroVideoInternalState {
@@ -401,6 +390,7 @@ function sourceFromFile(
 function createSourceCommands(
   internal: IntroVideoInternalState,
   runtime: RecordingRuntime,
+  resetRecordingAttempt$: ReturnType<typeof resetSignal>,
 ) {
   const openWizard$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -418,10 +408,17 @@ function createSourceCommands(
       set(internal.step$, "source-review");
     },
   );
-  const closeWizard$ = command(({ set }) => {
+  const closeWizard$ = command(({ get, set }) => {
     runtime.generation += 1;
+    set(resetRecordingAttempt$);
     releaseRecordingRuntime(runtime, true);
     set(internal.busy$, false);
+    set(internal.countdown$, 3);
+    set(internal.recordingSeconds$, 0);
+    const step = get(internal.step$);
+    if (step === "countdown" || step === "recording") {
+      set(internal.step$, "record-setup");
+    }
     set(internal.open$, false);
   });
   const setStep$ = command(
@@ -498,182 +495,27 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
 }
 
 function watchSharedSurface(
-  { set }: SignalContext,
-  operation: RecordingOperation,
+  runtime: RecordingRuntime,
+  generation: number,
   displayStream: MediaStream,
-  stopRecording$: Command<Promise<void>, [AbortSignal]>,
   signal: AbortSignal,
 ): { ended: boolean } {
-  const { generation, internal, runtime } = operation;
   const status = { ended: false };
-  displayStream.getVideoTracks()[0]?.addEventListener("ended", () => {
-    if (generation !== runtime.generation) {
-      return;
-    }
-    const recorder = runtime.recorder;
-    if (recorder && recorder.state !== "inactive") {
-      runtime.stopAction = set(stopRecording$, signal);
-      return;
-    }
-    status.ended = true;
-    releaseRecordingRuntime(runtime, false);
-    set(internal.busy$, false);
-    set(internal.error$, "recording-share-ended");
-    set(internal.step$, "record-setup");
-  });
-  return status;
-}
-
-async function runRecordingCountdown(
-  context: SignalContext,
-  operation: RecordingOperation,
-  status: { readonly ended: boolean },
-  signal: AbortSignal,
-): Promise<boolean> {
-  const { set } = context;
-  const { generation, internal, runtime } = operation;
-  set(internal.step$, "countdown");
-  for (let count = 3; count >= 1; count -= 1) {
-    set(internal.countdown$, count);
-    await delay(1000, { signal });
-    if (status.ended || generation !== runtime.generation) {
-      return false;
-    }
-  }
-  return true;
-}
-
-async function finalizeRecording(
-  { get, set }: SignalContext,
-  operation: RecordingOperation,
-  recorder: MediaRecorder,
-  signal: AbortSignal,
-): Promise<void> {
-  const { generation, internal, runtime } = operation;
-  if (generation !== runtime.generation) {
-    return;
-  }
-  const durationSeconds = Math.max(
-    0,
-    (now() - runtime.recordingStartedAt) / 1000,
-  );
-  const blob = new Blob(runtime.chunks, {
-    type: recorder.mimeType || "video/webm",
-  });
-  runtime.generation += 1;
-  releaseRecordingRuntime(runtime, false);
-  set(internal.busy$, false);
-  if (blob.size === 0) {
-    set(internal.error$, "recording-empty");
-    set(internal.step$, "record-setup");
-    return;
-  }
-  const source = sourceFromDraft({
-    blob,
-    contentType: blob.type || "video/webm",
-    createdAt: now(),
-    durationSeconds,
-    kind: "recording",
-    name: RECORDING_FILE_NAME,
-  });
-  releasePreviewUrl(get(internal.source$));
-  set(internal.source$, source);
-  set(internal.sourceUploaded$, false);
-  set(internal.sourcePersisted$, false);
-  set(internal.step$, "source-review");
-  const persisted = await settle(
-    saveIntroVideoDraft(draftFromSource(source)),
-    signal,
-  );
-  set(internal.sourcePersisted$, persisted.ok);
-}
-
-function startMediaRecorder(
-  context: SignalContext,
-  operation: RecordingOperation,
-  recordingStream: MediaStream,
-  signal: AbortSignal,
-): void {
-  const { set } = context;
-  const { internal, runtime } = operation;
-  runtime.recordingStream = recordingStream;
-  runtime.chunks = [];
-  const contentType = recorderMimeType();
-  const recorder = contentType
-    ? new MediaRecorder(recordingStream, { mimeType: contentType })
-    : new MediaRecorder(recordingStream);
-  runtime.recorder = recorder;
-  const completion = createDeferredPromise<void>(signal);
-  runtime.stopCompletion = completion.promise;
-  runtime.stopCompletionResolve = () => {
-    completion.resolve(undefined);
-  };
-  runtime.stopCompletionSettled = completion.settled;
-  recorder.addEventListener("dataavailable", (event) => {
-    if (event.data.size > 0) {
-      runtime.chunks.push(event.data);
-    }
-  });
-  recorder.addEventListener(
-    "stop",
+  displayStream.getVideoTracks()[0]?.addEventListener(
+    "ended",
     () => {
-      if (!completion.settled()) {
-        completion.resolve(undefined);
+      if (generation !== runtime.generation) {
+        return;
+      }
+      status.ended = true;
+      const recorder = runtime.recorder;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
       }
     },
-    { once: true, signal },
+    { signal },
   );
-  recorder.start(1000);
-  runtime.recordingStartedAt = now();
-  set(internal.step$, "recording");
-  set(internal.busy$, false);
-  runtime.timer = window.setInterval(() => {
-    set(
-      internal.recordingSeconds$,
-      Math.max(0, Math.floor((now() - runtime.recordingStartedAt) / 1000)),
-    );
-  }, 250);
-}
-
-async function performRecordingAttempt(
-  context: SignalContext,
-  operation: RecordingOperation,
-  stopRecording$: Command<Promise<void>, [AbortSignal]>,
-  signal: AbortSignal,
-): Promise<void> {
-  const { get } = context;
-  const { generation, internal, runtime } = operation;
-  const displayStream = await navigator.mediaDevices.getDisplayMedia({
-    audio: get(internal.systemAudio$),
-    video: { frameRate: { ideal: 30, max: 30 } },
-  });
-  signal.throwIfAborted();
-  if (generation !== runtime.generation) {
-    stopTracks(displayStream);
-    return;
-  }
-  runtime.displayStream = displayStream;
-  const status = watchSharedSurface(
-    context,
-    operation,
-    displayStream,
-    stopRecording$,
-    signal,
-  );
-  if (!(await runRecordingCountdown(context, operation, status, signal))) {
-    return;
-  }
-  const recordingStream = await recordingStreamWithMicrophone(
-    runtime,
-    displayStream,
-    get(internal.microphone$),
-  );
-  signal.throwIfAborted();
-  if (generation !== runtime.generation) {
-    stopTracks(recordingStream);
-    return;
-  }
-  startMediaRecorder(context, operation, recordingStream, signal);
+  return status;
 }
 
 function recordingError(error: unknown): IntroVideoWizardError {
@@ -684,70 +526,299 @@ function recordingError(error: unknown): IntroVideoWizardError {
     : "recording-failed";
 }
 
-function createRecordingCommands(
+function createRecordingProgressCommands(
   internal: IntroVideoInternalState,
   runtime: RecordingRuntime,
 ) {
-  const stopRecording$ = command(
-    async (context, signal: AbortSignal): Promise<void> => {
-      const { set } = context;
-      signal.throwIfAborted();
-      const recorder = runtime.recorder;
-      const completion = runtime.stopCompletion;
-      if (!recorder || !completion || recorder.state === "inactive") {
-        return;
+  const runRecordingCountdown$ = command(
+    async (
+      { set },
+      generation: number,
+      status: { readonly ended: boolean },
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      set(internal.step$, "countdown");
+      for (let count = 3; count >= 1; count -= 1) {
+        set(internal.countdown$, count);
+        await delay(1000, { signal });
+        if (status.ended || generation !== runtime.generation) {
+          return false;
+        }
       }
-      const operation = {
-        generation: runtime.generation,
-        internal,
-        runtime,
-      };
-      set(internal.busy$, true);
-      clearRecordingTimer(runtime);
-      recorder.stop();
-      await completion;
-      signal.throwIfAborted();
-      await finalizeRecording(context, operation, recorder, signal);
-      runtime.stopAction = null;
+      return true;
     },
   );
-  const startRecording$ = command(
-    async (context, signal: AbortSignal): Promise<void> => {
-      const { get, set } = context;
-      if (
-        !navigator.mediaDevices?.getDisplayMedia ||
-        typeof MediaRecorder === "undefined"
+  const updateRecordingSeconds$ = command(
+    async ({ set }, generation: number, signal: AbortSignal): Promise<void> => {
+      while (
+        generation === runtime.generation &&
+        runtime.recorder?.state === "recording"
       ) {
-        set(internal.error$, "recording-unsupported");
+        await delay(250, { signal });
+        if (
+          generation !== runtime.generation ||
+          runtime.recorder?.state !== "recording"
+        ) {
+          return;
+        }
+        set(
+          internal.recordingSeconds$,
+          Math.max(0, Math.floor((now() - runtime.recordingStartedAt) / 1000)),
+        );
+      }
+    },
+  );
+  return { runRecordingCountdown$, updateRecordingSeconds$ };
+}
+
+function createRecordingCompletionCommands(
+  internal: IntroVideoInternalState,
+  runtime: RecordingRuntime,
+) {
+  const finalizeRecording$ = command(
+    async (
+      { get, set },
+      generation: number,
+      recorder: MediaRecorder,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      if (generation !== runtime.generation) {
         return;
       }
-      runtime.generation += 1;
-      const generation = runtime.generation;
-      releaseRecordingRuntime(runtime, true);
-      if (runtime.audioContextClose) {
-        await settle(runtime.audioContextClose, signal);
-        runtime.audioContextClose = null;
-      }
-      set(internal.busy$, true);
-      set(internal.error$, null);
-      set(internal.recordingSeconds$, 0);
-      const operation = { generation, internal, runtime };
-      const attempt = await settle(
-        performRecordingAttempt(context, operation, stopRecording$, signal),
-        signal,
+      const durationSeconds = Math.max(
+        0,
+        (now() - runtime.recordingStartedAt) / 1000,
       );
-      if (!attempt.ok) {
-        releaseRecordingRuntime(runtime, true);
-        set(internal.busy$, false);
-        set(internal.error$, recordingError(attempt.error));
+      const blob = new Blob(runtime.chunks, {
+        type: recorder.mimeType || "video/webm",
+      });
+      runtime.generation += 1;
+      releaseRecordingRuntime(runtime, false);
+      set(internal.busy$, false);
+      if (blob.size === 0) {
+        set(internal.error$, "recording-empty");
         set(internal.step$, "record-setup");
         return;
       }
-      if (get(internal.step$) !== "recording") {
-        set(internal.busy$, false);
-      }
+      const source = sourceFromDraft({
+        blob,
+        contentType: blob.type || "video/webm",
+        createdAt: now(),
+        durationSeconds,
+        kind: "recording",
+        name: RECORDING_FILE_NAME,
+      });
+      releasePreviewUrl(get(internal.source$));
+      set(internal.source$, source);
+      set(internal.sourceUploaded$, false);
+      set(internal.sourcePersisted$, false);
+      set(internal.step$, "source-review");
+      const persisted = await settle(
+        saveIntroVideoDraft(draftFromSource(source)),
+        signal,
+      );
+      set(internal.sourcePersisted$, persisted.ok);
     },
   );
+  const startMediaRecorder$ = command(
+    (
+      { set },
+      recordingStream: MediaStream,
+      signal: AbortSignal,
+    ): {
+      readonly completion: Promise<void>;
+      readonly recorder: MediaRecorder;
+    } => {
+      runtime.recordingStream = recordingStream;
+      runtime.chunks = [];
+      const contentType = recorderMimeType();
+      const recorder = contentType
+        ? new MediaRecorder(recordingStream, { mimeType: contentType })
+        : new MediaRecorder(recordingStream);
+      runtime.recorder = recorder;
+      const completion = createDeferredPromise<void>(signal);
+      runtime.stopCompletion = completion.promise;
+      runtime.stopCompletionResolve = () => {
+        completion.resolve(undefined);
+      };
+      runtime.stopCompletionSettled = completion.settled;
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          runtime.chunks.push(event.data);
+        }
+      });
+      recorder.addEventListener(
+        "stop",
+        () => {
+          if (!completion.settled()) {
+            completion.resolve(undefined);
+          }
+        },
+        { once: true, signal },
+      );
+      recorder.start(1000);
+      runtime.recordingStartedAt = now();
+      set(internal.step$, "recording");
+      set(internal.busy$, false);
+      return { completion: completion.promise, recorder };
+    },
+  );
+  return { finalizeRecording$, startMediaRecorder$ };
+}
+
+function createRecordingAttemptCommand(
+  internal: IntroVideoInternalState,
+  runtime: RecordingRuntime,
+  progress: ReturnType<typeof createRecordingProgressCommands>,
+  completion: ReturnType<typeof createRecordingCompletionCommands>,
+) {
+  const { runRecordingCountdown$, updateRecordingSeconds$ } = progress;
+  const { finalizeRecording$, startMediaRecorder$ } = completion;
+  const performRecordingAttempt$ = command(
+    async (
+      { get, set },
+      generation: number,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      const displayStream = await recordingDisplayStream(
+        get(internal.systemAudio$),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (generation !== runtime.generation) {
+        stopTracks(displayStream);
+        return false;
+      }
+      runtime.displayStream = displayStream;
+      const status = watchSharedSurface(
+        runtime,
+        generation,
+        displayStream,
+        signal,
+      );
+      if (
+        !(await set(runRecordingCountdown$, generation, status, signal)) ||
+        status.ended
+      ) {
+        return false;
+      }
+      const recordingStream = await recordingStreamWithMicrophone(
+        runtime,
+        displayStream,
+        get(internal.microphone$),
+        signal,
+      );
+      if (signal.aborted || status.ended || generation !== runtime.generation) {
+        stopTracks(recordingStream);
+        signal.throwIfAborted();
+        return false;
+      }
+      const recording = set(startMediaRecorder$, recordingStream, signal);
+      await Promise.all([
+        recording.completion,
+        set(updateRecordingSeconds$, generation, signal),
+      ]);
+      signal.throwIfAborted();
+      if (generation !== runtime.generation) {
+        return true;
+      }
+      set(internal.busy$, true);
+      await set(finalizeRecording$, generation, recording.recorder, signal);
+      return true;
+    },
+  );
+  return performRecordingAttempt$;
+}
+
+function createStartRecordingCommand(
+  internal: IntroVideoInternalState,
+  runtime: RecordingRuntime,
+  resetRecordingAttempt$: ReturnType<typeof resetSignal>,
+  performRecordingAttempt$: ReturnType<typeof createRecordingAttemptCommand>,
+) {
+  return command(async ({ set }, parentSignal: AbortSignal): Promise<void> => {
+    if (
+      !navigator.mediaDevices?.getDisplayMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      set(internal.error$, "recording-unsupported");
+      return;
+    }
+    const signal = set(resetRecordingAttempt$, parentSignal);
+    runtime.generation += 1;
+    const generation = runtime.generation;
+    releaseRecordingRuntime(runtime, true);
+    if (runtime.audioContextClose) {
+      await settle(runtime.audioContextClose, signal);
+      runtime.audioContextClose = null;
+    }
+    set(internal.busy$, true);
+    set(internal.error$, null);
+    set(internal.recordingSeconds$, 0);
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (generation !== runtime.generation) {
+          return;
+        }
+        runtime.generation += 1;
+        releaseRecordingRuntime(runtime, true);
+      },
+      { once: true },
+    );
+    const attempt = await settle(
+      set(performRecordingAttempt$, generation, signal),
+      signal,
+    );
+    if (generation !== runtime.generation) {
+      return;
+    }
+    if (!attempt.ok) {
+      runtime.generation += 1;
+      releaseRecordingRuntime(runtime, true);
+      set(internal.busy$, false);
+      set(internal.error$, recordingError(attempt.error));
+      set(internal.step$, "record-setup");
+      return;
+    }
+    if (!attempt.value) {
+      runtime.generation += 1;
+      releaseRecordingRuntime(runtime, true);
+      set(internal.busy$, false);
+      set(internal.error$, "recording-share-ended");
+      set(internal.step$, "record-setup");
+    }
+  });
+}
+
+function createRecordingCommands(
+  internal: IntroVideoInternalState,
+  runtime: RecordingRuntime,
+  resetRecordingAttempt$: ReturnType<typeof resetSignal>,
+) {
+  const progress = createRecordingProgressCommands(internal, runtime);
+  const completion = createRecordingCompletionCommands(internal, runtime);
+  const performRecordingAttempt$ = createRecordingAttemptCommand(
+    internal,
+    runtime,
+    progress,
+    completion,
+  );
+  const startRecording$ = createStartRecordingCommand(
+    internal,
+    runtime,
+    resetRecordingAttempt$,
+    performRecordingAttempt$,
+  );
+  const stopRecording$ = command(({ set }, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    const recorder = runtime.recorder;
+    if (!recorder || recorder.state === "inactive") {
+      return;
+    }
+    set(internal.busy$, true);
+    recorder.stop();
+  });
   const setRecordingPreviewRef$ = onRef(
     command(
       async (
@@ -788,78 +859,73 @@ function createDownloadSourceCommand(internal: IntroVideoInternalState) {
   });
 }
 
-async function uploadSourceIfNeeded(
-  { get, set }: SignalContext,
-  args: {
-    readonly composer: ComposerSignals;
-    readonly downloadSource$: Command<void, []>;
-    readonly internal: IntroVideoInternalState;
-    readonly source: IntroVideoSource;
-  },
-  signal: AbortSignal,
-): Promise<boolean> {
-  const { composer, downloadSource$, internal, source } = args;
-  if (get(internal.sourceUploaded$)) {
-    return true;
-  }
-  const before = new Set(get(composer.draft.attachments$));
-  await set(composer.draft.uploadAttachment$, sourceFile(source), signal);
-  signal.throwIfAborted();
-  const uploaded = get(composer.draft.attachments$).some((attachment) => {
-    return !before.has(attachment);
-  });
-  if (!uploaded) {
-    set(internal.busy$, false);
-    set(internal.error$, "upload-failed");
-    set(downloadSource$);
-    return false;
-  }
-  set(internal.sourceUploaded$, true);
-  return true;
-}
-
-async function clearCompletedDraft(
-  { set }: SignalContext,
-  internal: IntroVideoInternalState,
-  source: IntroVideoSource,
-  signal: AbortSignal,
-): Promise<void> {
-  // The server owns the uploaded source after send. If local cleanup fails,
-  // the stale draft is harmless and can be replaced on the next open.
-  await settle(deleteIntroVideoDraft(), signal);
-  releasePreviewUrl(source);
-  set(internal.source$, null);
-  set(internal.sourcePersisted$, false);
-  set(internal.sourceUploaded$, false);
-  set(internal.avatar$, null);
-  set(internal.voice$, null);
-  set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-  set(internal.step$, "source");
-  set(internal.busy$, false);
-  set(internal.open$, false);
-}
-
-async function submitComposer(
-  { get, set }: SignalContext,
-  composer: ComposerSignals,
-  signal: AbortSignal,
-): Promise<boolean> {
-  const action = await get(composer.submission.primaryAction$);
-  signal.throwIfAborted();
-  return await set(composer.submission.submitCurrentInput$, action, signal);
-}
-
 function createSubmissionCommands(
   internal: IntroVideoInternalState,
   downloadSource$: Command<void, []>,
 ) {
-  const submitDirectChat$ = command(
+  const uploadSourceIfNeeded$ = command(
     async (
-      context,
+      { get, set },
+      composer: ComposerSignals,
+      source: IntroVideoSource,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      if (get(internal.sourceUploaded$)) {
+        return true;
+      }
+      const before = new Set(get(composer.draft.attachments$));
+      await set(composer.draft.uploadAttachment$, sourceFile(source), signal);
+      signal.throwIfAborted();
+      const uploaded = get(composer.draft.attachments$).some((attachment) => {
+        return !before.has(attachment);
+      });
+      if (!uploaded) {
+        set(internal.busy$, false);
+        set(internal.error$, "upload-failed");
+        set(downloadSource$);
+        return false;
+      }
+      set(internal.sourceUploaded$, true);
+      return true;
+    },
+  );
+  const clearCompletedDraft$ = command(
+    async (
+      { set },
+      source: IntroVideoSource,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      // A stale local draft is harmless if cleanup fails after the server send.
+      await settle(deleteIntroVideoDraft(), signal);
+      releasePreviewUrl(source);
+      set(internal.source$, null);
+      set(internal.sourcePersisted$, false);
+      set(internal.sourceUploaded$, false);
+      set(internal.avatar$, null);
+      set(internal.voice$, null);
+      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+      set(internal.step$, "source");
+      set(internal.busy$, false);
+      set(internal.open$, false);
+    },
+  );
+  const submitComposer$ = command(
+    async (
+      { get, set },
       composer: ComposerSignals,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      const { set } = context;
+      const action = await get(composer.submission.primaryAction$);
+      signal.throwIfAborted();
+      return await set(composer.submission.submitCurrentInput$, action, signal);
+    },
+  );
+  const submitDirectChat$ = command(
+    async (
+      { set },
+      composer: ComposerSignals,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
       set(internal.busy$, true);
       set(internal.error$, null);
       set(
@@ -867,7 +933,7 @@ function createSubmissionCommands(
         "Help me create an intro video. Ask me for the source, audience, avatar, voice, and editing direction before generating it.",
       );
       const submission = await settle(
-        submitComposer(context, composer, signal),
+        set(submitComposer$, composer, signal),
         signal,
       );
       set(internal.busy$, false);
@@ -881,11 +947,10 @@ function createSubmissionCommands(
   );
   const submit$ = command(
     async (
-      context,
+      { get, set },
       composer: ComposerSignals,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      const { get, set } = context;
       const source = get(internal.source$);
       if (!source) {
         set(internal.step$, "source");
@@ -893,13 +958,7 @@ function createSubmissionCommands(
       }
       set(internal.busy$, true);
       set(internal.error$, null);
-      if (
-        !(await uploadSourceIfNeeded(
-          context,
-          { composer, downloadSource$, internal, source },
-          signal,
-        ))
-      ) {
+      if (!(await set(uploadSourceIfNeeded$, composer, source, signal))) {
         return false;
       }
       set(
@@ -913,16 +972,17 @@ function createSubmissionCommands(
         }),
       );
       const submission = await settle(
-        submitComposer(context, composer, signal),
+        set(submitComposer$, composer, signal),
         signal,
       );
       if (!submission.ok || !submission.value) {
+        set(internal.sourceUploaded$, false);
         set(internal.busy$, false);
         set(internal.error$, "send-failed");
         set(downloadSource$);
         return false;
       }
-      await clearCompletedDraft(context, internal, source, signal);
+      await set(clearCompletedDraft$, source, signal);
       return true;
     },
   );
@@ -932,10 +992,19 @@ function createSubmissionCommands(
 function createIntroVideoWizardSignals() {
   const internal = createIntroVideoInternalState();
   const runtime = createRecordingRuntime();
+  const resetRecordingAttempt$ = resetSignal();
   const selectors = createIntroVideoSelectors(internal);
-  const sourceCommands = createSourceCommands(internal, runtime);
+  const sourceCommands = createSourceCommands(
+    internal,
+    runtime,
+    resetRecordingAttempt$,
+  );
   const selectionCommands = createSelectionCommands(internal);
-  const recordingCommands = createRecordingCommands(internal, runtime);
+  const recordingCommands = createRecordingCommands(
+    internal,
+    runtime,
+    resetRecordingAttempt$,
+  );
   const downloadSource$ = createDownloadSourceCommand(internal);
   const submissionCommands = createSubmissionCommands(
     internal,

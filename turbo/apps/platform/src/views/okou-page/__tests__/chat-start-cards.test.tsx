@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { WORKFLOW_TEMPLATE_ITEMS } from "@okouai/core/workflow-template-items";
 import { describe, expect, it, vi } from "vitest";
@@ -11,7 +12,6 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { buildIntroVideoPrompt } from "../../../signals/okou-page/intro-video.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -86,6 +86,140 @@ function setupChatStartCards(introVideo = true): void {
   });
 }
 
+function restoreProperty(
+  target: object,
+  key: PropertyKey,
+  descriptor: PropertyDescriptor | undefined,
+): void {
+  if (descriptor) {
+    Object.defineProperty(target, key, descriptor);
+  } else {
+    Reflect.deleteProperty(target, key);
+  }
+}
+
+function installRecordingMocks(options?: {
+  readonly getUserMedia?: () => Promise<MediaStream>;
+}) {
+  const displayTrackStop = vi.fn<() => void>();
+  const displayTrack = Object.assign(new EventTarget(), {
+    stop: displayTrackStop,
+  }) as unknown as MediaStreamTrack;
+  const displayStream = {
+    getAudioTracks: () => {
+      return [];
+    },
+    getTracks: () => {
+      return [displayTrack];
+    },
+    getVideoTracks: () => {
+      return [displayTrack];
+    },
+  } as unknown as MediaStream;
+  const recorderStarted = context.mocks.deferred<void>();
+  const getUserMediaCalled = context.mocks.deferred<void>();
+  let displayRequestedAt = 0;
+  const getDisplayMedia = vi.fn<() => Promise<MediaStream>>(() => {
+    displayRequestedAt = performance.now();
+    return Promise.resolve(displayStream);
+  });
+  const openUserMedia =
+    options?.getUserMedia ??
+    (() => {
+      return Promise.resolve(displayStream);
+    });
+  const getUserMedia = vi.fn<() => Promise<MediaStream>>(async () => {
+    if (!getUserMediaCalled.settled()) {
+      getUserMediaCalled.resolve(undefined);
+    }
+    return await openUserMedia();
+  });
+  const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(
+    navigator,
+    "mediaDevices",
+  );
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getDisplayMedia, getUserMedia },
+  });
+
+  let startCount = 0;
+  let startElapsedMs = 0;
+  class TestMediaRecorder extends EventTarget {
+    static isTypeSupported(): boolean {
+      return true;
+    }
+
+    readonly mimeType = "video/webm";
+    state: RecordingState = "inactive";
+
+    start(): void {
+      this.state = "recording";
+      startCount += 1;
+      startElapsedMs = performance.now() - displayRequestedAt;
+      if (!recorderStarted.settled()) {
+        recorderStarted.resolve(undefined);
+      }
+    }
+
+    stop(): void {
+      this.state = "inactive";
+      this.dispatchEvent(new Event("stop"));
+    }
+  }
+
+  const mediaRecorderDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "MediaRecorder",
+  );
+  Object.defineProperty(globalThis, "MediaRecorder", {
+    configurable: true,
+    value: TestMediaRecorder,
+  });
+  const playSpy = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockResolvedValue();
+  const srcObjectDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLMediaElement.prototype,
+    "srcObject",
+  );
+  Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
+    configurable: true,
+    writable: true,
+    value: null,
+  });
+
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      playSpy.mockRestore();
+      restoreProperty(
+        HTMLMediaElement.prototype,
+        "srcObject",
+        srcObjectDescriptor,
+      );
+      restoreProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
+      restoreProperty(globalThis, "MediaRecorder", mediaRecorderDescriptor);
+    },
+    { once: true },
+  );
+
+  return {
+    displayTrack,
+    displayTrackStop,
+    getDisplayMedia,
+    getUserMedia,
+    getUserMediaCalled: getUserMediaCalled.promise,
+    recorderStarted: recorderStarted.promise,
+    startElapsedMs: () => {
+      return startElapsedMs;
+    },
+    startCount: () => {
+      return startCount;
+    },
+  };
+}
+
 describe("chat start cards", () => {
   it("draws three catalog entries and the intro video flow", async () => {
     setupChatStartCards();
@@ -122,7 +256,18 @@ describe("chat start cards", () => {
 
   it("uploads an intro video source and creates its chat thread", async () => {
     const user = userEvent.setup({ delay: null });
-    mockChatLifecycle(context);
+    let sentPrompt: string | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt, userMessage }) => {
+        sentPrompt = prompt;
+        sentUserMessage = userMessage;
+      },
+      onRunCreate: ({ prompt, userMessage }) => {
+        sentPrompt = prompt;
+        sentUserMessage = userMessage;
+      },
+    });
     context.mocks.upload.success({
       id: "intro-video-source",
       filename: "launch.pdf",
@@ -157,6 +302,7 @@ describe("chat start cards", () => {
     await expect(
       screen.findByPlaceholderText(PLACEHOLDER),
     ).resolves.toBeInTheDocument();
+    await screen.findByLabelText("Send");
     click(screen.getByTestId("intro-video-start-card"));
 
     const dialog = await screen.findByRole("dialog", {
@@ -205,7 +351,10 @@ describe("chat start cards", () => {
     await expect(
       screen.findByText("Review your intro video"),
     ).resolves.toBeInTheDocument();
-    click(buttonWithText("Create in chat", dialog));
+    const createButton = buttonWithText("Create in chat", dialog);
+    expect(createButton).toBeInTheDocument();
+    expect(createButton).toBeEnabled();
+    await user.click(createButton);
 
     await waitFor(() => {
       expect(
@@ -213,6 +362,130 @@ describe("chat start cards", () => {
       ).not.toBeInTheDocument();
     });
     await expect(screen.findByLabelText("Stop")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(sentPrompt).toContain(
+        "Create a polished intro video from the attached source.",
+      );
+      expect(sentPrompt).toContain("- Source: launch.pdf");
+      expect(sentPrompt).toContain("- Avatar: No avatar");
+      expect(sentPrompt).toContain("- Voice: No voiceover");
+      expect(sentUserMessage?.parts).toContainEqual({
+        type: "file",
+        fileId: "intro-video-source",
+        filenameSnapshot: "launch.pdf",
+        contentType: "application/pdf",
+      });
+    });
+  });
+
+  it("reattaches the source when chat creation is retried", async () => {
+    const user = userEvent.setup({ delay: null });
+    const downloads = context.mocks.browser.blobDownload();
+    let sentUserMessage: UserMessageDocument | undefined;
+    let failNextSend = true;
+    mockChatLifecycle(context, {
+      sendGate: () => {
+        if (!failNextSend) {
+          return Promise.resolve();
+        }
+        failNextSend = false;
+        return Promise.reject(new Error("Try again"));
+      },
+      onSendRequest: ({ userMessage }) => {
+        sentUserMessage = userMessage;
+      },
+      onRunCreate: ({ userMessage }) => {
+        sentUserMessage = userMessage;
+      },
+    });
+    context.mocks.upload.success({
+      id: "intro-video-source",
+      filename: "launch.pdf",
+      contentType: "application/pdf",
+      size: 4,
+      url: "https://example.com/launch.pdf",
+    });
+    context.mocks.api(avatarVideoContract.voices, ({ respond }) => {
+      return respond(200, {
+        voices: [],
+        hasMore: false,
+        filterOptions: { languages: [], useCases: [] },
+      });
+    });
+    setupChatStartCards();
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    await screen.findByLabelText("Send");
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+    await screen.findByText("Your source is ready");
+    click(buttonWithText("Next", dialog));
+    await screen.findByText("Choose an avatar");
+    click(buttonWithText("Next", dialog));
+    await screen.findByText("Choose a voice");
+    click(buttonWithText("No voiceover", dialog, false));
+    click(buttonWithText("Next", dialog));
+    await screen.findByText("Review your intro video");
+    const createButton = buttonWithText("Create in chat", dialog);
+    expect(createButton).toBeInTheDocument();
+    expect(createButton).toBeEnabled();
+    await user.click(createButton);
+
+    await waitFor(() => {
+      expect(downloads.downloads).toHaveLength(1);
+    });
+    const newChatLink = queryAllByRoleFast("link").find((link) => {
+      return (
+        link.getAttribute("aria-label") === "New chat" &&
+        link.getAttribute("href") === "/"
+      );
+    });
+    if (!newChatLink) {
+      throw new Error("Expected the new chat navigation link");
+    }
+    click(newChatLink);
+    const retryDialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    expect(
+      screen.getByText(
+        "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
+      ),
+    ).toBeInTheDocument();
+    await expect(
+      screen.findByText("Review your intro video"),
+    ).resolves.toBeInTheDocument();
+
+    const retryCreateButton = buttonWithText("Create in chat", retryDialog);
+    expect(retryCreateButton).toBeEnabled();
+    await user.click(retryCreateButton);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Create an intro video" }),
+      ).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(sentUserMessage?.parts).toContainEqual({
+        type: "file",
+        fileId: "intro-video-source",
+        filenameSnapshot: "launch.pdf",
+        contentType: "application/pdf",
+      });
+    });
   });
 
   it("starts the intro video workflow directly in chat", async () => {
@@ -237,34 +510,9 @@ describe("chat start cards", () => {
     await expect(screen.findByLabelText("Stop")).resolves.toBeInTheDocument();
   });
 
-  it("builds the configured intro video prompt for chat", () => {
-    const prompt = buildIntroVideoPrompt({
-      aspectRatio: "landscape",
-      avatar: null,
-      instructions: "Keep the pacing focused.",
-      source: {
-        blob: new Blob(["deck"], { type: "application/pdf" }),
-        contentType: "application/pdf",
-        durationSeconds: null,
-        kind: "document",
-        name: "launch.pdf",
-        previewUrl: null,
-        size: 4,
-      },
-      voice: { kind: "none" },
-    });
-
-    expect(prompt).toContain(
-      "Create a polished intro video from the attached source.",
-    );
-    expect(prompt).toContain("- Source: launch.pdf");
-    expect(prompt).toContain("- Avatar: No avatar");
-    expect(prompt).toContain("- Voice: No voiceover");
-    expect(prompt).toContain("Keep the pacing focused.");
-  });
-
   it("starts screen recording only after the three-second countdown", async () => {
     mockChatLifecycle(context);
+    const recording = installRecordingMocks();
     setupChatStartCards();
 
     await expect(
@@ -275,132 +523,95 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     click(buttonWithText("Record your screen", recordingDialog, false));
+    click(buttonWithText("Choose screen and start", recordingDialog));
 
-    const displayTrack = Object.assign(new EventTarget(), {
-      stop: vi.fn<() => void>(),
+    await waitFor(() => {
+      expect(recording.getDisplayMedia).toHaveBeenCalledTimes(1);
+    });
+    const countdownCopy = await screen.findByText(
+      "Recording starts after the countdown",
+    );
+    expect(countdownCopy.parentElement).toHaveTextContent("3");
+    expect(recording.startCount()).toBe(0);
+
+    await recording.recorderStarted;
+    expect(recording.startElapsedMs()).toBeGreaterThanOrEqual(2900);
+    expect(recording.startCount()).toBe(1);
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Create an intro video" }),
+      ).not.toBeInTheDocument();
+    });
+    click(screen.getByTestId("intro-video-start-card"));
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    expect(
+      buttonWithText("Choose screen and start", reopenedDialog),
+    ).toBeInTheDocument();
+    click(screen.getByLabelText("Close"));
+  });
+
+  it("releases late microphone access after the recording dialog closes", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    const microphonePermission = context.mocks.deferred<MediaStream>();
+    const microphoneTrackStop = vi.fn<() => void>();
+    const microphoneTrack = Object.assign(new EventTarget(), {
+      stop: microphoneTrackStop,
     }) as unknown as MediaStreamTrack;
-    const displayStream = {
+    const microphoneStream = {
       getAudioTracks: () => {
-        return [];
+        return [microphoneTrack];
       },
       getTracks: () => {
-        return [displayTrack];
+        return [microphoneTrack];
       },
       getVideoTracks: () => {
-        return [displayTrack];
+        return [];
       },
     } as unknown as MediaStream;
-    const getDisplayMedia = vi.fn<() => Promise<MediaStream>>(() => {
-      return Promise.resolve(displayStream);
-    });
-    const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(
-      navigator,
-      "mediaDevices",
-    );
-    Object.defineProperty(navigator, "mediaDevices", {
-      configurable: true,
-      value: {
-        getDisplayMedia,
-        getUserMedia: vi.fn<() => Promise<MediaStream>>(),
+    const recording = installRecordingMocks({
+      getUserMedia: () => {
+        return microphonePermission.promise;
       },
     });
+    setupChatStartCards();
 
-    class TestMediaRecorder extends EventTarget {
-      static startCount = 0;
-      static isTypeSupported(): boolean {
-        return true;
-      }
-
-      readonly mimeType = "video/webm";
-      state: RecordingState = "inactive";
-
-      start(): void {
-        this.state = "recording";
-        TestMediaRecorder.startCount += 1;
-      }
-
-      stop(): void {
-        this.state = "inactive";
-        this.dispatchEvent(new Event("stop"));
-      }
-    }
-
-    const mediaRecorderDescriptor = Object.getOwnPropertyDescriptor(
-      globalThis,
-      "MediaRecorder",
-    );
-    Object.defineProperty(globalThis, "MediaRecorder", {
-      configurable: true,
-      value: TestMediaRecorder,
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+    const recordingDialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
     });
-    const playSpy = vi
-      .spyOn(HTMLMediaElement.prototype, "play")
-      .mockResolvedValue();
-    const srcObjectDescriptor = Object.getOwnPropertyDescriptor(
-      HTMLMediaElement.prototype,
-      "srcObject",
-    );
-    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
-      configurable: true,
-      writable: true,
-      value: null,
+    click(buttonWithText("Record your screen", recordingDialog, false));
+    const microphoneSwitch = screen.getByRole("switch", {
+      name: /Microphone/,
     });
+    await user.click(microphoneSwitch);
+    expect(microphoneSwitch).toHaveAttribute("aria-checked", "true");
+    click(buttonWithText("Choose screen and start", recordingDialog));
 
-    vi.useFakeTimers();
-    try {
-      click(buttonWithText("Choose screen and start", recordingDialog));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(getDisplayMedia).toHaveBeenCalledTimes(1);
-      expect(TestMediaRecorder.startCount).toBe(0);
+    await recording.getUserMediaCalled;
+    expect(recording.getUserMedia).toHaveBeenCalledTimes(1);
+    click(screen.getByLabelText("Close"));
+    microphonePermission.resolve(microphoneStream);
 
-      await vi.advanceTimersByTimeAsync(2999);
-      expect(TestMediaRecorder.startCount).toBe(0);
-
-      await vi.advanceTimersByTimeAsync(1);
-      expect(TestMediaRecorder.startCount).toBe(1);
-
-      click(screen.getByLabelText("Close"));
-      await vi.waitFor(() => {
-        expect(
-          screen.queryByRole("dialog", { name: "Create an intro video" }),
-        ).not.toBeInTheDocument();
-      });
-    } finally {
-      const closeButton = screen.queryByLabelText("Close");
-      if (closeButton) {
-        click(closeButton);
-        await vi.advanceTimersByTimeAsync(0);
-      }
-      vi.useRealTimers();
-      playSpy.mockRestore();
-      if (srcObjectDescriptor) {
-        Object.defineProperty(
-          HTMLMediaElement.prototype,
-          "srcObject",
-          srcObjectDescriptor,
-        );
-      } else {
-        Reflect.deleteProperty(HTMLMediaElement.prototype, "srcObject");
-      }
-      if (mediaDevicesDescriptor) {
-        Object.defineProperty(
-          navigator,
-          "mediaDevices",
-          mediaDevicesDescriptor,
-        );
-      } else {
-        Reflect.deleteProperty(navigator, "mediaDevices");
-      }
-      if (mediaRecorderDescriptor) {
-        Object.defineProperty(
-          globalThis,
-          "MediaRecorder",
-          mediaRecorderDescriptor,
-        );
-      } else {
-        Reflect.deleteProperty(globalThis, "MediaRecorder");
-      }
-    }
+    await waitFor(() => {
+      expect(recording.displayTrackStop).toHaveBeenCalledWith();
+      expect(microphoneTrackStop).toHaveBeenCalledWith();
+    });
+    click(screen.getByTestId("intro-video-start-card"));
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    expect(
+      buttonWithText("Choose screen and start", reopenedDialog),
+    ).toBeInTheDocument();
+    click(screen.getByLabelText("Close"));
   });
 
   it("writes the card prompt into the composer", async () => {

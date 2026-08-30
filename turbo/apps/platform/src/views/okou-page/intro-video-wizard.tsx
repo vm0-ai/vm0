@@ -36,6 +36,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import {
   classifyIntroVideoSource,
@@ -413,6 +414,7 @@ function SourcePage({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
+  const rootSignal = useGet(rootSignal$);
   const setSourceFile = useSet(introVideoWizardSignals.setSourceFile$);
   const setStep = useSet(introVideoWizardSignals.setStep$);
   const submitDirectChat = useSet(introVideoWizardSignals.submitDirectChat$);
@@ -460,7 +462,7 @@ function SourcePage({
         }}
         onStartInChat={() => {
           detach(
-            submitDirectChat(composer, pageSignal),
+            submitDirectChat(composer, rootSignal),
             Reason.DomCallback,
             "start intro video in chat",
           );
@@ -1139,6 +1141,7 @@ function WizardFooter({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
+  const rootSignal = useGet(rootSignal$);
   const setStep = useSet(introVideoWizardSignals.setStep$);
   const startRecording = useSet(introVideoWizardSignals.startRecording$);
   const stopRecording = useSet(introVideoWizardSignals.stopRecording$);
@@ -1170,7 +1173,7 @@ function WizardFooter({
     }
     if (step === "review") {
       detach(
-        submit(composer, pageSignal),
+        submit(composer, rootSignal),
         Reason.DomCallback,
         "create intro video chat thread",
       );
