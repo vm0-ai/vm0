@@ -35,7 +35,7 @@ const completeAgentRunRoute$ = command(
     const result = await set(completeAgentRun$, { auth, body }, signal);
     signal.throwIfAborted();
 
-    if (result.sideEffects) {
+    if (result.status === 200 && result.sideEffects) {
       waitUntil(
         tapError(
           set(

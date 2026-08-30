@@ -569,6 +569,31 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
       signal?: AbortSignal,
     ) {
+      const historyHash = body.checkpoint?.cliAgentSessionHistoryHash;
+      if (historyHash !== undefined) {
+        const sessionHistoryBlob = registerKnownSessionHistoryBlob(
+          context,
+          body.runId,
+          historyHash,
+        );
+        if (sessionHistoryBlob && statuses.includes(200)) {
+          await accept(
+            setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
+              webhookCheckpointsPrepareHistoryContract,
+            ).prepare({
+              headers,
+              body: {
+                runId: body.runId,
+                hash: historyHash,
+                rawSize: sessionHistoryBlob.byteLength,
+                encodedSize: sessionHistoryBlob.byteLength,
+                encoding: "identity",
+              },
+            }),
+            [200],
+          );
+        }
+      }
       const client = signal
         ? setupAppWithRoutes({
             context,

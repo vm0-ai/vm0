@@ -15,6 +15,7 @@ import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
+  webhookCompleteContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
@@ -94,6 +95,10 @@ export const rustTypeModuleDocs = [
   {
     rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
     rustDoc: ["DTOs for preparing direct session-history uploads."],
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "complete"],
+    rustDoc: ["DTOs for atomically completing agent runs."],
   },
   {
     rustModulePath: ["webhooks", "agent", "storages"],
@@ -494,6 +499,142 @@ export const rustTypeBindings = [
           conversationId: ["Conversation captured by the checkpoint."],
           artifacts: ["Optional artifact versions captured by the checkpoint."],
           volumes: ["Optional volume versions captured by the checkpoint."],
+        },
+      },
+    ],
+  },
+  {
+    schema: webhookCompleteContract.complete.body,
+    rustModulePath: ["webhooks", "agent", "complete"],
+    rustTypeName: "Request",
+    direction: "request",
+    fieldTypeOverrides: {
+      exitCode: "i32",
+      lastEventSequence: "u32",
+    },
+    declarations: [
+      {
+        rustTypeName: "RequestSandboxReuseResult",
+        rustDoc: ["Outcome of the sandbox reuse decision."],
+        variants: {
+          reused: ["An idle sandbox was reused."],
+          featureDisabled: ["Legacy outcome from the removed feature gate."],
+          noSessionId: ["Legacy outcome for an unavailable reuse identity."],
+          noReuseKey: ["The run had no sandbox reuse key."],
+          poolMiss: ["No matching idle sandbox was available."],
+          profileMismatch: ["The idle sandbox profile did not match."],
+          deviceLimitMismatch: [
+            "The idle sandbox device limits did not match.",
+          ],
+          unparkFailed: ["The selected idle sandbox could not be unparked."],
+        },
+      },
+      {
+        rustTypeName: "RequestWorkspaceReuseResult",
+        rustDoc: ["Final outcome of workspace reuse preparation."],
+        variants: {
+          reused: ["A cached workspace was reused."],
+          sandboxReused: ["The workspace remained in a reused sandbox."],
+          cacheMiss: ["No matching workspace cache was available."],
+          noReuseKey: ["The run had no workspace reuse key."],
+          invalidWorkingDir: ["The cached workspace directory was invalid."],
+          lockBusy: ["The cached workspace was locked by another run."],
+          invalidMetadata: ["The cached workspace metadata was invalid."],
+          diskPressure: ["Workspace reuse was disabled by disk pressure."],
+          notConfigured: ["Workspace reuse was not configured."],
+          sandboxPrepareFallback: [
+            "Workspace preparation fell back after sandbox setup.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "RequestCheckpoint",
+        rustDoc: ["Final checkpoint metadata included with completion."],
+        fields: {
+          cliAgentType: ["CLI agent implementation that produced the session."],
+          cliAgentSessionId: [
+            "CLI agent session identifier being checkpointed.",
+          ],
+          cliAgentSessionHistoryHash: [
+            "Optional SHA-256 hash of uploaded CLI agent session history.",
+          ],
+          cliAgentSessionHistoryDisposition: [
+            "Optional reason resumable session history was omitted.",
+          ],
+          artifactSnapshots: [
+            "Optional artifact versions captured by the checkpoint.",
+          ],
+          volumeVersionsSnapshot: [
+            "Optional volume versions captured by the checkpoint.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "RequestCheckpointCliAgentSessionHistoryDisposition",
+        rustDoc: [
+          "Reason a final checkpoint intentionally omits resumable CLI agent session history.",
+        ],
+        variants: {
+          discarded_oversized: [
+            "The native history exceeded the bounded checkpoint limit.",
+          ],
+          unavailable: ["The native history was unavailable or unusable."],
+        },
+      },
+      {
+        rustTypeName: "RequestCheckpointArtifactSnapshot",
+        rustDoc: ["Artifact version captured by a final checkpoint."],
+        fields: {
+          name: ["User-facing artifact name referenced by the run."],
+          version: ["Artifact version selected for the checkpoint."],
+          mountPath: ["Guest filesystem path where the artifact is mounted."],
+          missingRootPolicy: [
+            "Optional policy retained when the artifact mount root is missing.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "RequestCheckpointArtifactSnapshotMissingRootPolicy",
+        rustDoc: [
+          "Policy used when a final checkpoint artifact root is missing.",
+        ],
+        variants: {
+          fail: ["Treat a missing artifact root as an error."],
+          preserveParentVersion: [
+            "Preserve the parent artifact version when the root is missing.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "RequestCheckpointVolumeVersionsSnapshot",
+        rustDoc: ["Volume versions captured by a final checkpoint."],
+        fields: {
+          versions: ["Volume names mapped to their captured versions."],
+        },
+      },
+      {
+        rustTypeName: "Request",
+        rustDoc: ["Request body for completing an agent run."],
+        fields: {
+          runId: ["Agent run identifier bound to the sandbox token."],
+          exitCode: ["Process exit code reported by the caller."],
+          error: ["Optional process failure description."],
+          lastEventSequence: [
+            "Highest contiguous agent event sequence delivered before completion.",
+          ],
+          sandboxId: ["Optional sandbox identifier used by the run."],
+          sandboxReuseResult: [
+            "Optional outcome of the sandbox reuse decision.",
+          ],
+          workspaceReuseResult: [
+            "Optional outcome of the workspace reuse decision.",
+          ],
+          activeInputDeliveryIds: [
+            "Optional active-input delivery receipts recovered during completion.",
+          ],
+          checkpoint: [
+            "Optional final checkpoint persisted atomically with completion.",
+          ],
         },
       },
     ],
