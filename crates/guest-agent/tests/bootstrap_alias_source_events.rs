@@ -31,11 +31,7 @@ const SOURCE_EVENT_FAMILIES: [&str; 3] = [
     "guest_agent_tuning_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 5] = [
-    (
-        "api_url_env_source",
-        guest_contracts::env::CANONICAL_API_URL_ENV,
-    ),
+const SOURCE_EVENTS: [(&str, &str); 4] = [
     (
         "guest_agent_tuning_env_source",
         guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,

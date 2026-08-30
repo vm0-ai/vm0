@@ -26,7 +26,7 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 5;
+const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 4;
 
 #[derive(Clone, Copy)]
 struct BootstrapAliasSourceEventSpec {
@@ -36,10 +36,6 @@ struct BootstrapAliasSourceEventSpec {
 
 const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
     BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT] = [
-    BootstrapAliasSourceEventSpec {
-        family: "api_url_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_API_URL_ENV,
-    },
     BootstrapAliasSourceEventSpec {
         family: "guest_agent_tuning_env_source",
         canonical_key: guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
@@ -60,7 +56,6 @@ const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
 
 #[derive(Clone, Copy)]
 enum BootstrapAlias {
-    ApiUrl,
     StuckToolTimeout,
     PostResultSigtermGrace,
     PostResultTotalCap,
@@ -86,12 +81,11 @@ impl BootstrapAliasSource {
 
 /// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
 ///
-/// The internal slots correspond exactly to the five canonical keys in
+/// The internal slots correspond exactly to the four canonical keys in
 /// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
 /// resolvers can populate them.
 #[derive(Clone, Default)]
 pub struct BootstrapAliasSourceEvents {
-    api_url: Option<BootstrapAliasSource>,
     stuck_tool_timeout: Option<BootstrapAliasSource>,
     post_result_sigterm_grace: Option<BootstrapAliasSource>,
     post_result_total_cap: Option<BootstrapAliasSource>,
@@ -101,7 +95,6 @@ pub struct BootstrapAliasSourceEvents {
 impl BootstrapAliasSourceEvents {
     fn record(&mut self, alias: BootstrapAlias, source: BootstrapAliasSource) {
         let slot = match alias {
-            BootstrapAlias::ApiUrl => &mut self.api_url,
             BootstrapAlias::StuckToolTimeout => &mut self.stuck_tool_timeout,
             BootstrapAlias::PostResultSigtermGrace => &mut self.post_result_sigterm_grace,
             BootstrapAlias::PostResultTotalCap => &mut self.post_result_total_cap,
@@ -112,7 +105,6 @@ impl BootstrapAliasSourceEvents {
 
     fn sources(&self) -> [Option<BootstrapAliasSource>; BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT] {
         [
-            self.api_url,
             self.stuck_tool_timeout,
             self.post_result_sigterm_grace,
             self.post_result_total_cap,
@@ -138,37 +130,6 @@ impl BootstrapAliasSourceEvents {
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
-}
-
-/// Resolve the Runner-to-Guest Agent API URL at the single process-env capture
-/// boundary. The production Runner writer is canonical-only, while managed
-/// CLI-child exposure remains [`guest_contracts::env::API_URL_ENV`]. Retain this
-/// fail-closed legacy reader until the exact canonical writer production release,
-/// complete legacy-writer service and reusable-sandbox drain, supported rollback
-/// window, and value-free legacy-source-zero gates.
-fn api_url_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<String, String> {
-    let canonical_key = guest_contracts::env::CANONICAL_API_URL_ENV;
-    let legacy_key = guest_contracts::env::API_URL_ENV;
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting API backend URL environment aliases: canonical_key={canonical_key} \
-                 legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(BootstrapAlias::ApiUrl, source);
-    Ok(value)
 }
 
 /// Resolve one Guest Agent timing alias pair at the single process-env capture
@@ -403,7 +364,7 @@ impl GuestConfigRaw {
         guest_runtime_dir: Option<PathBuf>,
     ) -> Result<Self, String> {
         let mut bootstrap_alias_sources = BootstrapAliasSourceEvents::default();
-        let api_url = api_url_env_or_empty(&mut bootstrap_alias_sources)?;
+        let api_url = env_or_empty(guest_contracts::env::CANONICAL_API_URL_ENV);
 
         let stuck_tool_timeout_secs = guest_agent_tuning_env_or_empty(
             BootstrapAlias::StuckToolTimeout,
