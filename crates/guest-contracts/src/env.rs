@@ -16,23 +16,24 @@
 //! selected runner-owned keys may cross the local user-env boundary as
 //! guest-agent timing overrides.
 
-/// Backend API base URL provided to the guest-agent.
+/// Legacy backend API base URL spelling retained by compatibility readers.
 ///
-/// This is the only runner bootstrap key intentionally exposed to CLI child
-/// processes by the guest-agent's curated child environment.
+/// The production Runner and the guest-agent's curated managed CLI-child
+/// environment do not emit this alias.
 pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
-/// Canonical backend API URL spelling written by the production Runner.
+/// Canonical backend API URL spelling written by the production Runner and
+/// exposed to managed CLI children.
 ///
 /// The Guest Agent bootstrap reader and Runner operator parser reuse this exact
 /// spelling but have independent rollout floors. On the Runner-to-Guest surface,
 /// the Runner emits only this canonical alias, while the Guest Agent retains
-/// [`API_URL_ENV`] as a rollback reader fallback and keeps exposing that legacy
-/// spelling to managed CLI children. Remove the legacy bootstrap reader only
-/// after the exact canonical writer production release, complete legacy-writer
-/// service and reusable-sandbox drain, supported rollback window, and value-free
-/// legacy-source-zero gates in #28914. Runner operator input and managed
-/// CLI-child exposure each have their own later support floors.
+/// [`API_URL_ENV`] as a rollback reader fallback. On the Guest-to-managed-CLI
+/// surface, the curated child environment emits only this canonical alias.
+/// Remove the legacy bootstrap reader only after the exact canonical writer
+/// production release, complete legacy-writer service and reusable-sandbox
+/// drain, supported rollback window, and value-free legacy-source-zero gates in
+/// #28914. Runner operator input retains its own independent support floor.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime

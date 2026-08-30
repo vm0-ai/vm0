@@ -92,6 +92,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "CUSTOM_USER_ENV": "visible-to-cli",
             "BASH_ENV": "/tmp/user-bash-env",
             "VM0_API_BACKEND_URL": "https://user-env.example.invalid",
+            "OKOU_API_BACKEND_URL": "https://canonical-user-env.example.invalid",
             "OPENAI_API_KEY": "sk-user",
             "HOME": user_home_str,
             "CLAUDE_CONFIG_DIR": rejected_config_dir,
@@ -188,12 +189,14 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         Some("sk-user")
     );
     assert_eq!(
-        cli_env.get("VM0_API_BACKEND_URL").map(String::as_str),
+        cli_env
+            .get(guest_contracts::env::CANONICAL_API_URL_ENV)
+            .map(String::as_str),
         Some("http://127.0.0.1:1")
     );
     assert!(
-        !cli_env.contains_key(guest_contracts::env::CANONICAL_API_URL_ENV),
-        "Claude child env contains the reader-only canonical API URL alias"
+        !cli_env.contains_key(guest_contracts::env::API_URL_ENV),
+        "Claude child env contains the legacy API URL alias"
     );
     assert_eq!(
         cli_env.get("HOME").map(String::as_str),
@@ -323,8 +326,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     );
 
     unsafe {
-        // The remaining cases construct fresh runtimes; leave them with the
-        // legacy-only setup supplied by `common::setup_env`.
+        // The remaining cases construct fresh runtimes and install their own
+        // canonical-only snapshot through `common::setup_env`.
         std::env::remove_var(guest_contracts::env::CANONICAL_API_URL_ENV);
     }
     assert_home_value_reaches_claude(
