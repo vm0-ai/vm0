@@ -23,11 +23,7 @@ import {
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
-import {
-  authRecovery$,
-  setAuthenticatedIdentity$,
-  setAuthRecovery$,
-} from "./auth-context.ts";
+import { authRecovery$, setAuthRecovery$ } from "./auth-context.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 
@@ -459,16 +455,6 @@ export const setupClerk$ = command(
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     set(setupForegroundCatchUp$, signal);
-    if (clerk.user && clerk.organization) {
-      set(
-        setAuthenticatedIdentity$,
-        Promise.resolve({
-          userId: clerk.user.id,
-          orgId: clerk.organization.id,
-          email: clerk.user.primaryEmailAddress?.emailAddress,
-        }),
-      );
-    }
 
     // Set initial Sentry user context
     if (clerk.user) {

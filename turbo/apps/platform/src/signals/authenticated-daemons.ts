@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { authRecovery$, clerk$ } from "./auth.ts";
+import { setAuthenticatedIdentity$ } from "./auth-context.ts";
 import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
@@ -36,6 +37,14 @@ export const setupAuthenticatedDaemons$ = command(
     if (!clerk.user || !clerk.organization) {
       return;
     }
+    set(
+      setAuthenticatedIdentity$,
+      Promise.resolve({
+        userId: clerk.user.id,
+        orgId: clerk.organization.id,
+        email: clerk.user.primaryEmailAddress?.emailAddress,
+      }),
+    );
     set(setRealtimeDegradedNotifier$, () => {
       toast.error(
         i18n.t(($) => {
