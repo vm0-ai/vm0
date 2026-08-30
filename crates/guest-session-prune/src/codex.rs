@@ -122,7 +122,10 @@ impl CodexHistoryIneligibleReason {
 #[derive(Debug)]
 enum EventRecord<'a> {
     TurnStarted(&'a str),
-    UserMessage(Option<&'a str>),
+    UserMessage {
+        thread_id: Option<&'a str>,
+        turn_id: Option<&'a str>,
+    },
     TurnComplete(&'a str),
     TurnAborted,
     ThreadRolledBack,
@@ -180,6 +183,12 @@ struct CandidateState {
     selected_turn_id: String,
     selected_turn_delimited: bool,
     invalid: Option<CodexHistoryIneligibleReason>,
+}
+
+struct RecordProcessingContext<'a> {
+    expected_thread_id: &'a str,
+    body_max_bytes: usize,
+    canonical_record_len: usize,
 }
 
 impl CandidateState {
@@ -359,6 +368,11 @@ fn select_with_limits_and_observer(
     }
 
     let canonical_record_len = canonical_record.len();
+    let processing_context = RecordProcessingContext {
+        expected_thread_id,
+        body_max_bytes,
+        canonical_record_len,
+    };
     let mut retained_bytes = canonical_record;
     observe_retained_bytes(retained_bytes.len());
     let mut current_turn: Option<TurnState> = None;
@@ -383,8 +397,7 @@ fn select_with_limits_and_observer(
             BoundedRecord::Record(raw_record) => {
                 process_record(
                     &raw_record,
-                    body_max_bytes,
-                    canonical_record_len,
+                    &processing_context,
                     &mut retained_bytes,
                     &mut current_turn,
                     &mut candidate,
@@ -443,8 +456,7 @@ fn select_with_limits_and_observer(
 
 fn process_record(
     raw_record: &[u8],
-    body_max_bytes: usize,
-    canonical_record_len: usize,
+    context: &RecordProcessingContext<'_>,
     retained_bytes: &mut Vec<u8>,
     current_turn: &mut Option<TurnState>,
     candidate: &mut Option<CandidateState>,
@@ -461,8 +473,8 @@ fn process_record(
         Err(reason) => {
             append_to_retained_state(
                 raw_record,
-                body_max_bytes,
-                canonical_record_len,
+                context.body_max_bytes,
+                context.canonical_record_len,
                 retained_bytes,
                 current_turn,
                 candidate,
@@ -477,8 +489,8 @@ fn process_record(
         Err(reason) => {
             append_to_retained_state(
                 raw_record,
-                body_max_bytes,
-                canonical_record_len,
+                context.body_max_bytes,
+                context.canonical_record_len,
                 retained_bytes,
                 current_turn,
                 candidate,
@@ -495,14 +507,14 @@ fn process_record(
                 current_turn,
                 candidate,
                 retained_bytes,
-                canonical_record_len,
+                context.canonical_record_len,
                 observe_retained_bytes,
             );
             *current_turn = Some(TurnState::new(turn_id, retained_bytes.len()));
             append_to_retained_state(
                 raw_record,
-                body_max_bytes,
-                canonical_record_len,
+                context.body_max_bytes,
+                context.canonical_record_len,
                 retained_bytes,
                 current_turn,
                 candidate,
@@ -512,8 +524,8 @@ fn process_record(
         record => {
             append_to_retained_state(
                 raw_record,
-                body_max_bytes,
-                canonical_record_len,
+                context.body_max_bytes,
+                context.canonical_record_len,
                 retained_bytes,
                 current_turn,
                 candidate,
@@ -523,16 +535,20 @@ fn process_record(
                 RolloutRecord::Compacted(validation) => {
                     select_compacting_turn(
                         validation,
-                        canonical_record_len,
+                        context.canonical_record_len,
                         retained_bytes,
                         current_turn,
                         candidate,
                         observe_retained_bytes,
                     );
                 }
-                RolloutRecord::Event(EventRecord::UserMessage(turn_id)) => {
+                RolloutRecord::Event(EventRecord::UserMessage { thread_id, turn_id }) => {
                     if let Some(turn) = current_turn.as_mut() {
-                        if turn_id.is_none_or(|turn_id| turn_id == turn.id) {
+                        if thread_id
+                            .is_some_and(|thread_id| thread_id != context.expected_thread_id)
+                        {
+                            turn.invalidate(CodexHistoryIneligibleReason::ThreadIdMismatch);
+                        } else if turn_id.is_none_or(|turn_id| turn_id == turn.id) {
                             turn.saw_user_message = true;
                         } else {
                             turn.invalidate(CodexHistoryIneligibleReason::InvalidTurn);
@@ -558,7 +574,7 @@ fn process_record(
                         current_turn,
                         candidate,
                         retained_bytes,
-                        canonical_record_len,
+                        context.canonical_record_len,
                         observe_retained_bytes,
                     );
                 }
@@ -569,7 +585,7 @@ fn process_record(
                     *current_turn = None;
                     truncate_unselected_bytes(
                         retained_bytes,
-                        canonical_record_len,
+                        context.canonical_record_len,
                         candidate,
                         observe_retained_bytes,
                     );
@@ -888,7 +904,9 @@ fn classify_event(
             require_nonempty_string(payload, "turn_id").map(EventRecord::TurnStarted)
         }
         "user_message" => {
-            optional_nonempty_string(payload, "turn_id").map(EventRecord::UserMessage)
+            let thread_id = optional_nonempty_string(payload, "thread_id")?;
+            let turn_id = optional_nonempty_string(payload, "turn_id")?;
+            Ok(EventRecord::UserMessage { thread_id, turn_id })
         }
         "item_completed" => classify_completed_item(payload),
         "task_complete" | "turn_complete" => {
@@ -909,8 +927,12 @@ fn classify_completed_item(
         .ok_or(CodexHistoryIneligibleReason::InvalidRecord)?;
     let item_type = require_nonempty_string(item, "type")?;
     if item_type == "UserMessage" {
-        return require_nonempty_string(payload, "turn_id")
-            .map(|turn_id| EventRecord::UserMessage(Some(turn_id)));
+        let thread_id = require_nonempty_string(payload, "thread_id")?;
+        let turn_id = require_nonempty_string(payload, "turn_id")?;
+        return Ok(EventRecord::UserMessage {
+            thread_id: Some(thread_id),
+            turn_id: Some(turn_id),
+        });
     }
     Ok(EventRecord::Other)
 }
@@ -1233,11 +1255,11 @@ mod tests {
         event("user_message", json!({"message": "hello"}))
     }
 
-    fn paginated_user_message(turn_id: &str) -> Vec<u8> {
+    fn paginated_user_message_for_thread(thread_id: &str, turn_id: &str) -> Vec<u8> {
         event(
             "item_completed",
             json!({
-                "thread_id": THREAD_ID,
+                "thread_id": thread_id,
                 "turn_id": turn_id,
                 "item": {
                     "type": "UserMessage",
@@ -1251,6 +1273,10 @@ mod tests {
                 "completed_at_ms": 1_785_024_000_000_i64,
             }),
         )
+    }
+
+    fn paginated_user_message(turn_id: &str) -> Vec<u8> {
+        paginated_user_message_for_thread(THREAD_ID, turn_id)
     }
 
     fn turn_context(turn_id: &str) -> Vec<u8> {
@@ -1419,6 +1445,23 @@ mod tests {
             ]
             .concat()
         ));
+    }
+
+    #[test]
+    fn paginated_candidate_rejects_user_message_for_another_thread() {
+        let generation = vec![
+            turn_started(TURN_ID),
+            paginated_user_message_for_thread("cccccccc-cccc-4ccc-8ccc-cccccccccccc", TURN_ID),
+            turn_context(TURN_ID),
+            compacted("latest summary"),
+            turn_complete(TURN_ID),
+        ];
+        let file = source_with_history_mode(&generation, "paginated");
+
+        assert_eq!(
+            select(&file).unwrap(),
+            CodexHistorySelection::Ineligible(CodexHistoryIneligibleReason::ThreadIdMismatch)
+        );
     }
 
     #[test]
