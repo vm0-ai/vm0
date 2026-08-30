@@ -115,7 +115,7 @@ describe("okou connector custom create", () => {
   beforeEach(() => {
     chalk.level = 0;
     tempDir = mkdtempSync(join(tmpdir(), "custom-connector-create-"));
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", buildOkouToken(["connector:write"]));
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
   });
