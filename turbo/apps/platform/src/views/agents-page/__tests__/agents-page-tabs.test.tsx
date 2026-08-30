@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -153,17 +154,20 @@ describe("agents page (redesign)", () => {
     });
   });
 
-  it("shows agent unread indicators", async () => {
+  it("updates unread indicators after realtime invalidation with the shared database", async () => {
     const user = userEvent.setup();
     context.mocks.data.agents(agents);
     context.mocks.data.orgMembers({ members: [] });
 
+    let hasUnread = false;
     context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       return respond(200, {
-        agents: {
-          [agents[0].agentId]: "unread",
-          [agents[1].agentId]: "unread",
-        },
+        agents: hasUnread
+          ? {
+              [agents[0].agentId]: "unread",
+              [agents[1].agentId]: "unread",
+            }
+          : {},
         threads: {},
       });
     });
@@ -171,6 +175,7 @@ describe("agents page (redesign)", () => {
     detachedSetupPage({
       context,
       path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
     });
 
     await waitFor(() => {
@@ -182,8 +187,22 @@ describe("agents page (redesign)", () => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
     expect(
-      within(agentCard("Private Ops")).getByLabelText("Unread"),
-    ).toHaveClass("border-card");
+      within(agentCard("Private Ops")).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("threadListChanged"),
+      ).toBeTruthy();
+    });
+    hasUnread = true;
+    context.mocks.ably.trigger("threadListChanged");
+
+    await waitFor(() => {
+      expect(
+        within(agentCard("Private Ops")).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+    });
 
     await user.click(visibilitySegment("Public"));
     await waitFor(() => {
@@ -191,6 +210,6 @@ describe("agents page (redesign)", () => {
     });
     expect(
       within(agentCard("Research Agent")).getByLabelText("Unread"),
-    ).toHaveClass("border-card");
+    ).toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ import type {
 } from "./data-key.ts";
 import { MessagePortSharedDatabaseBridge } from "./message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "./message-port-server.ts";
+import { ReconnectingSharedDatabaseBridge } from "./reconnecting-client.ts";
 import type { SharedDatabaseHeartbeatResult } from "./protocol.ts";
 import type { TabId } from "./worker-context.ts";
 
@@ -62,17 +63,23 @@ export const setupSharedWorkerTestBootstrap$ = command(
     signal: AbortSignal,
     afterWorkerHeartbeat?: () => Promise<void>,
   ): void => {
-    const channel = new MessageChannel();
-    new SharedDatabaseMessagePortServer(channel.port1, signal, {
+    const maps = {
       credentialStores: new Map<string, Store>(),
       credentialAbortControllers: new Map<string, AbortController>(),
       tabCredentialIds: new Map<TabId, string>(),
       tabHeartbeatAts: new Map<TabId, number>(),
-    });
-    const bridge = new MessagePortSharedDatabaseBridge(
-      channel.port2,
-      resolveApiBaseForTarget("api"),
-      {
+    };
+    const bridge = new ReconnectingSharedDatabaseBridge({
+      createBridge: (events) => {
+        const channel = new MessageChannel();
+        new SharedDatabaseMessagePortServer(channel.port1, signal, maps);
+        return new MessagePortSharedDatabaseBridge(
+          channel.port2,
+          resolveApiBaseForTarget("api"),
+          events,
+        );
+      },
+      events: {
         authenticationRequired: () => {},
         indicatorsInvalidated: () => {
           set(reloadChatIndicators$);
@@ -84,7 +91,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
           set(setSharedDatabaseConnectionStatus$, status);
         },
       },
-    );
+    });
     set(
       installSharedDatabaseBridge$,
       new TestSharedDatabaseBridge(bridge, afterWorkerHeartbeat),
