@@ -157,6 +157,20 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         ] {
             std::env::set_var(key, "/stale/private-file-pointer");
         }
+        for key in [
+            "VM0_SANDBOX_ID",
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "VM0_SANDBOX_REUSE_RESULT",
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "VM0_WORKSPACE_REUSE_RESULT",
+            guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+            "VM0_RESUME_SESSION_ID",
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+            "VM0_API_START_TIME",
+            guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+        ] {
+            std::env::set_var(key, "stale-run-metadata");
+        }
     }
 
     let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
@@ -269,8 +283,23 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     }
     assert!(!cli_env.contains_key("VM0_PROMPT"));
     assert!(!cli_env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
-    assert!(!cli_env.contains_key("VM0_SANDBOX_ID"));
-    assert!(!cli_env.contains_key("VM0_SANDBOX_REUSE_RESULT"));
+    for key in [
+        "VM0_SANDBOX_ID",
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+        "VM0_SANDBOX_REUSE_RESULT",
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+        "VM0_WORKSPACE_REUSE_RESULT",
+        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
+        "VM0_RESUME_SESSION_ID",
+        guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+        "VM0_API_START_TIME",
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+    ] {
+        assert!(
+            !cli_env.contains_key(key),
+            "Claude child env contains run-metadata bootstrap key {key}"
+        );
+    }
     assert!(!cli_env.contains_key("VM0_FEATURE_FLAGS"));
     for key in [
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
