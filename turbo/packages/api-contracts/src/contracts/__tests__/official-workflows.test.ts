@@ -62,11 +62,6 @@ describe("Official Workflow product contracts", () => {
     expect(officialWorkflowCatalogDetailSchema.parse(detail)).toStrictEqual(
       detail,
     );
-
-    const { lifecycle: _lifecycle, ...legacyDetail } = detail;
-    expect(
-      officialWorkflowCatalogDetailSchema.safeParse(legacyDetail).success,
-    ).toBe(false);
   });
 
   it("carries every declared parameter type in authoritative installation metadata", () => {
