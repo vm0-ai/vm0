@@ -9,7 +9,7 @@ import {
 } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { usageEvent } from "@okouai/db/schema/usage-event";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 
 import { notFound } from "../../lib/error";
@@ -161,7 +161,13 @@ const heartbeat$ = command(async ({ get, set }, signal: AbortSignal) => {
   const result = await db
     .update(agentRuns)
     .set({ lastHeartbeatAt: nowDate() })
-    .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, auth.userId)))
+    .where(
+      and(
+        eq(agentRuns.id, body.runId),
+        eq(agentRuns.userId, auth.userId),
+        inArray(agentRuns.status, ["pending", "running"]),
+      ),
+    )
     .returning({ id: agentRuns.id });
   signal.throwIfAborted();
 

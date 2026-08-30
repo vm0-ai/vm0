@@ -1007,6 +1007,36 @@ describe("sandbox cleanup", () => {
     });
   });
 
+  it("keeps a stale running run active when its heartbeat commits first", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "running",
+        createdAt: minutesAgo(10),
+        lastHeartbeatAt: minutesAgo(3),
+      }),
+    );
+    const headers = {
+      authorization: `Bearer ${generateSandboxToken(
+        fixture.userId,
+        fixture.runId,
+        fixture.orgId,
+      )}`,
+    };
+
+    await webhooks.requestAgentHeartbeat(
+      { runId: fixture.runId },
+      headers,
+      [200],
+    );
+    const response = await cleanupRegisteredFixtures();
+
+    expect(response.body.results).toHaveLength(0);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "running",
+      error: null,
+    });
+  });
+
   it("exposes a pending-run timeout as terminal to connector runtime sync", async () => {
     const fixture = await trackRun(
       insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
