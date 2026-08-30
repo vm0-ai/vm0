@@ -1483,21 +1483,19 @@ function shouldHideThinkingIndicator({
 function resolveThinkingIndicatorMode({
   lastIsAssistant,
   lastAssistantOnlyThinking,
-  queued,
   running,
 }: {
   lastIsAssistant: boolean;
   lastAssistantOnlyThinking: boolean;
-  queued: boolean;
   running: boolean;
 }): ThinkingIndicatorMode {
   if (!running) {
     return "finished";
   }
   if (lastIsAssistant && !lastAssistantOnlyThinking) {
-    return queued ? "running-queued" : "running";
+    return "running";
   }
-  return queued ? "waiting-queued" : "waiting";
+  return "waiting";
 }
 
 function thinkingIndicatorProjectionFromGroups(
@@ -1506,7 +1504,7 @@ function thinkingIndicatorProjectionFromGroups(
 ): ThinkingIndicatorProjection {
   const { activeGroups } = groups;
   const lastGroup = activeGroups.at(-1);
-  if (!lastGroup) {
+  if (!lastGroup || runState === "queued") {
     return { mode: null, thinkingEventId: null, thinkingText: null };
   }
   const lastIsAssistant = lastGroup.role === "assistant";
@@ -1521,8 +1519,9 @@ function thinkingIndicatorProjectionFromGroups(
   const lastAssistantCancelled = lastAssistantEvent
     ? isCancelledRunEvent(lastAssistantEvent)
     : false;
-  const queued = runState === "queued";
-  const running = runState !== null && !lastAssistantCancelled;
+  const running =
+    (runState === "pending" || runState === "running") &&
+    !lastAssistantCancelled;
 
   if (
     shouldHideThinkingIndicator({
@@ -1538,13 +1537,10 @@ function thinkingIndicatorProjectionFromGroups(
   const mode = resolveThinkingIndicatorMode({
     lastIsAssistant,
     lastAssistantOnlyThinking,
-    queued,
     running,
   });
   const thinkingText =
-    !queued &&
-    running &&
-    rawThinkingEvent?.event.eventType === "output.thinking"
+    running && rawThinkingEvent?.event.eventType === "output.thinking"
       ? rawThinkingEvent.event.thinking?.trim() || null
       : null;
   return {
