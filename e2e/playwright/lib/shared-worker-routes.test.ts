@@ -63,6 +63,23 @@ test("routes requests from a real SharedWorker and cleans up", async (context) =
             assert.equal(fixture.requestCount("/api/mocked"), 0);
             assert.equal(fixture.requestCount("/api/passthrough"), 1);
 
+            const isolatedContext = await browser.newContext();
+            try {
+              const isolatedPage = await isolatedContext.newPage();
+              await isolatedPage.goto(fixture.origin);
+              const isolatedPort = await connectSharedWorker(
+                isolatedPage,
+                "isolated-context",
+              );
+              const isolatedResult = await fetchFromSharedWorker(isolatedPort);
+              assert.deepEqual(isolatedResult.mocked, {
+                source: "network-mocked",
+              });
+              assert.equal(fixture.requestCount("/api/mocked"), 1);
+            } finally {
+              await isolatedContext.close();
+            }
+
             let handlerCalled = false;
             routes.route(
               (url) => url.pathname === "/api/mocked",
@@ -95,7 +112,7 @@ test("routes requests from a real SharedWorker and cleans up", async (context) =
             const port = await connectSharedWorker(page, "after-cleanup");
             const result = await fetchFromSharedWorker(port);
             assert.deepEqual(result.mocked, { source: "network-mocked" });
-            assert.equal(fixture.requestCount("/api/mocked"), 1);
+            assert.equal(fixture.requestCount("/api/mocked"), 2);
           } finally {
             await cleanContext.close();
           }

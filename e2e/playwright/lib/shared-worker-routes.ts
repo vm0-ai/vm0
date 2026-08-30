@@ -152,18 +152,28 @@ export class SharedWorkerRoutes {
     apiOrigin: string,
   ): Promise<SharedWorkerRoutes> {
     const pageSession = await page.context().newCDPSession(page);
-    const { targetInfo } = await pageSession.send("Target.getTargetInfo");
-    await pageSession.detach();
-    if (!targetInfo.browserContextId) {
-      throw new Error("Playwright page has no Chromium browser context id");
+    let browserContextId: string;
+    try {
+      const { targetInfo } = await pageSession.send("Target.getTargetInfo");
+      if (!targetInfo.browserContextId) {
+        throw new Error("Playwright page has no Chromium browser context id");
+      }
+      browserContextId = targetInfo.browserContextId;
+    } finally {
+      await pageSession.detach();
     }
     const session = await browser.newBrowserCDPSession();
     const routes = new SharedWorkerRoutes(
       session,
       `${new URL(apiOrigin).origin}/api/*`,
-      targetInfo.browserContextId,
+      browserContextId,
     );
-    await session.send("Target.setDiscoverTargets", { discover: true });
+    try {
+      await session.send("Target.setDiscoverTargets", { discover: true });
+    } catch (error) {
+      await session.detach();
+      throw error;
+    }
     return routes;
   }
 
@@ -190,7 +200,7 @@ export class SharedWorkerRoutes {
 
   async close(): Promise<void> {
     this.closed = true;
-    await Promise.all(this.operations);
+    await Promise.allSettled(this.operations);
     await this.session.detach();
     if (this.errors.length === 1) {
       throw this.errors[0];
@@ -221,19 +231,22 @@ export class SharedWorkerRoutes {
       return;
     }
     this.attachingTargets.add(targetId);
-    const { sessionId } = await this.session.send("Target.attachToTarget", {
-      targetId,
-      flatten: false,
-    });
-    this.attachingTargets.delete(targetId);
-    if (this.closed) {
-      await this.session.send("Target.detachFromTarget", { sessionId });
-      return;
+    try {
+      const { sessionId } = await this.session.send("Target.attachToTarget", {
+        targetId,
+        flatten: false,
+      });
+      if (this.closed) {
+        await this.session.send("Target.detachFromTarget", { sessionId });
+        return;
+      }
+      await this.sendChildCommand(sessionId, "Fetch.enable", {
+        patterns: [{ urlPattern: this.apiPattern, requestStage: "Request" }],
+      });
+      this.resolveWorkerReady();
+    } finally {
+      this.attachingTargets.delete(targetId);
     }
-    await this.sendChildCommand(sessionId, "Fetch.enable", {
-      patterns: [{ urlPattern: this.apiPattern, requestStage: "Request" }],
-    });
-    this.resolveWorkerReady();
   }
 
   private receiveChildMessage(sessionId: string, message: string): void {
