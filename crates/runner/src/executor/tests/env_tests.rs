@@ -23,11 +23,6 @@ use super::support::{
     build_env_for_test_with_host_env, context_with_env, minimal_context,
 };
 use crate::error::{RunnerError, RunnerResult};
-use crate::host_env::{
-    LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV, LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
-    LEGACY_RUNNER_DISK_IOPS_ENV, LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
-    LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
-};
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 use crate::types::{
@@ -779,14 +774,6 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             r#"{"bad":true}"#.into(),
         ),
         ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
-        (LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
-        (
-            LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(),
-            "999".into(),
-        ),
-        (LEGACY_RUNNER_DISK_IOPS_ENV.into(), "999".into()),
-        (LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
-        (LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
         (
             guest_contracts::env::CLI_AGENT_TYPE_ENV.into(),
             "claude-code".into(),
@@ -860,11 +847,6 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         "VM0_GUEST_RUNTIME_DIR",
         guest_contracts::env::FEATURE_FLAGS_ENV,
         "VM0_FUTURE_RUNNER_KEY",
-        LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV,
-        LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
-        LEGACY_RUNNER_DISK_IOPS_ENV,
-        LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
-        LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
