@@ -20,6 +20,25 @@ const FORBIDDEN_BUNDLED_PACKAGES = [
   "tr46",
 ] as const;
 
+const FORBIDDEN_PRISM_MODULES = [
+  {
+    modulePath: "/node_modules/rehype-prism-plus/dist/index.es.js",
+    name: "rehype-prism-plus (root entry)",
+  },
+  {
+    modulePath: "/node_modules/rehype-prism-plus/dist/all.es.js",
+    name: "rehype-prism-plus/all",
+  },
+  {
+    modulePath: "/node_modules/rehype-prism-plus/dist/generator.es.js",
+    name: "rehype-prism-plus/generator",
+  },
+  {
+    modulePath: "/node_modules/refractor/lib/all.js",
+    name: "refractor/all",
+  },
+] as const;
+
 interface GeneratedChunk {
   readonly code: string;
   readonly dynamicImports?: readonly string[];
@@ -51,6 +70,13 @@ function bundledPackage(moduleId: string): string | undefined {
   return FORBIDDEN_BUNDLED_PACKAGES.find((packageName) => {
     return normalized.includes(`/node_modules/${packageName}/`);
   });
+}
+
+function forbiddenPrismModule(moduleId: string): string | undefined {
+  const normalized = normalizeModuleId(moduleId);
+  return FORBIDDEN_PRISM_MODULES.find(({ modulePath }) => {
+    return normalized.includes(modulePath);
+  })?.name;
 }
 
 function generatedChunks(
@@ -101,6 +127,18 @@ function chunkViolations(
   if (forbiddenPackages.size > 0) {
     violations.push(
       `${chunk.fileName}: forbidden packages reached the bundle: ${[...forbiddenPackages].join(", ")}`,
+    );
+  }
+  const forbiddenPrismModules = new Set(
+    (chunk.moduleIds ?? [])
+      .map(forbiddenPrismModule)
+      .filter((moduleName): moduleName is string => {
+        return moduleName !== undefined;
+      }),
+  );
+  if (forbiddenPrismModules.size > 0) {
+    violations.push(
+      `${chunk.fileName}: forbidden non-common Prism modules reached the bundle: ${[...forbiddenPrismModules].join(", ")}`,
     );
   }
   return violations;

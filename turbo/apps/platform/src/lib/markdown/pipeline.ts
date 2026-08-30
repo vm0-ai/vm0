@@ -4,6 +4,7 @@ import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeIgnore from "rehype-ignore";
+import rehypePrism from "rehype-prism-plus/common";
 import rehypeRaw from "rehype-raw";
 import rehypeRewrite from "rehype-rewrite";
 import rehypeSlug from "rehype-slug";
@@ -14,7 +15,7 @@ import {
   MARKDOWN_MERMAID_FENCE_ATTRIBUTE,
   rehypeMermaid,
 } from "../rehype-mermaid.ts";
-import { rehypeRewriteHandle } from "./markdown-nodes.ts";
+import { rehypeRewriteHandle } from "./uiw-nodes.ts";
 
 /**
  * Markers the pipeline puts on a node so the view can swap it for a component.
@@ -23,7 +24,7 @@ import { rehypeRewriteHandle } from "./markdown-nodes.ts";
  */
 declare module "hast" {
   interface Data {
-    /** Set by `markdown-nodes`: the code a copy button copies. */
+    /** Set by `uiw-nodes`: the code a copy button copies. */
     copyCode?: string;
     /** Set by `rehypeMermaid`: the diagram a placeholder stands for. */
     mermaid?: { code: string };
@@ -40,7 +41,7 @@ declare module "hast" {
  *
  * The rehype plugin order is load-bearing:
  *
- *   slug → autolinkHeadings → ignore → rewrite → attrs → cards → mermaid
+ *   slug → autolinkHeadings → ignore → rewrite → attrs → cards → mermaid → prism
  */
 
 type MarkdownCard = NonNullable<Data["card"]>;
@@ -344,13 +345,18 @@ function rehypePlugins(options: MarkdownParseOptions): PluggableList {
     [rehypeAttrs, { properties: "attr" }],
     ...cardPlugins,
     ...mermaidPlugins,
+    [rehypePrism, { ignoreMissing: true }],
   ];
 }
 
 /**
- * Normalizes the tree before handing it to `hast-util-to-jsx-runtime`. It drops
- * elements whose tag name is not plain alphanumeric — which is what makes the
- * mermaid placeholder use a `div` — and turns any leftover raw node into text.
+ * `react-markdown` ran this over the tree after the rehype chain, before
+ * handing it to `hast-util-to-jsx-runtime`. It drops elements whose tag name
+ * is not plain alphanumeric — which is what makes the mermaid placeholder use
+ * a `div` — and turns any leftover raw node into text.
+ *
+ * The url-transform step is deliberately absent: `@uiw/react-markdown-preview`
+ * passed an identity transform, so reproducing it would be a no-op.
  */
 function postProcess(tree: Root): Root {
   visit(tree, (node, index, parent) => {

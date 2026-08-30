@@ -180,7 +180,7 @@ describe("assistant markdown", () => {
     );
 
     expect(screen.getByText("<span> 123 </span>")).toBeInTheDocument();
-    expect(container.querySelector(".zero-markdown span")).toBeNull();
+    expect(container.querySelector(".wmde-markdown span")).toBeNull();
   });
 
   it("keeps blockquotes rendering when html is escaped", () => {
@@ -193,7 +193,7 @@ describe("assistant markdown", () => {
       </StoreProvider>,
     );
 
-    const blockquote = container.querySelector(".zero-markdown blockquote");
+    const blockquote = container.querySelector(".wmde-markdown blockquote");
     expect(blockquote).not.toBeNull();
     expect(blockquote?.textContent).toContain("quoted passage");
     // The leading `>` must be consumed as the blockquote marker, not shown as
@@ -215,6 +215,47 @@ describe("assistant markdown", () => {
     expect(screen.queryByTestId("rich-content-loading")).toBeNull();
   });
 
+  it("highlights common fenced-code languages with Prism tokens", async () => {
+    mockThread("```js\nconst answer = 42;\n```");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const keyword = await waitFor(() => {
+      const token = document.querySelector<HTMLElement>(
+        ".wmde-markdown code.language-js .token.keyword",
+      );
+      if (!token) {
+        throw new Error("Expected a Prism keyword token");
+      }
+      return token;
+    });
+    expect(keyword).toHaveTextContent("const");
+  });
+
+  it("keeps unknown fenced-code languages as plain code", async () => {
+    mockThread("```not-a-real-language\nplain_value = 1\n```");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const code = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        ".wmde-markdown code.language-not-a-real-language",
+      );
+      if (!element) {
+        throw new Error("Expected the unknown-language code block");
+      }
+      return element;
+    });
+    expect(code).toHaveTextContent("plain_value = 1");
+    expect(code.querySelector(".token")).toBeNull();
+  });
+
   it("keeps math source visible as plain text", async () => {
     const source = "$$a^2 + b^2 = c^2$$";
     mockThread(source);
@@ -228,7 +269,7 @@ describe("assistant markdown", () => {
     expect(document.querySelector(".katex")).toBeNull();
   });
 
-  it("renders formatted text", async () => {
+  it("renders formatted text and follows theme changes", async () => {
     mockThread("**bold text**");
 
     detachedSetupPage({
@@ -239,6 +280,24 @@ describe("assistant markdown", () => {
     await waitFor(() => {
       expect(
         screen.getByText("bold text", { selector: "strong, b" }),
+      ).toBeInTheDocument();
+    });
+
+    const settingsDialog = await openSettingsDialog();
+
+    click(getButtonByText(settingsDialog, "Dark"));
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-color-mode="dark"]'),
+      ).toBeInTheDocument();
+    });
+
+    click(getButtonByText(settingsDialog, "Light"));
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-color-mode="light"]'),
       ).toBeInTheDocument();
     });
   });
@@ -252,7 +311,7 @@ describe("assistant markdown", () => {
     });
 
     await waitFor(() => {
-      expect(document.querySelector(".zero-markdown")?.textContent).toContain(
+      expect(document.querySelector(".wmde-markdown")?.textContent).toContain(
         ".zero-injected { color: red }",
       );
     });

@@ -38,7 +38,11 @@ function vendorChunk() {
     code: "vendor",
     fileName: VENDOR_FILE,
     imports: [RUNTIME_FILE],
-    moduleIds: ["/repo/node_modules/react/index.js"],
+    moduleIds: [
+      "/repo/node_modules/react/index.js",
+      "/repo/node_modules/rehype-prism-plus/dist/common.es.js",
+      "/repo/node_modules/refractor/lib/common.js",
+    ],
     type: "chunk" as const,
   };
 }
@@ -133,6 +137,31 @@ await test("keeps third-party modules only in vendor and rejects extra edges", (
         "forbidden packages reached the bundle: @clerk/clerk-js",
       );
     }),
+  );
+});
+
+await test("allows Prism common and rejects non-common entries", () => {
+  assert.deepEqual(applicationBundleViolations(validApplicationOutputs()), []);
+
+  assert.deepEqual(
+    applicationBundleViolations([
+      applicationChunk(),
+      {
+        ...vendorChunk(),
+        moduleIds: [
+          ...vendorChunk().moduleIds,
+          "/repo/node_modules/rehype-prism-plus/dist/index.es.js",
+          "/repo/node_modules/rehype-prism-plus/dist/all.es.js",
+          "/repo/node_modules/rehype-prism-plus/dist/generator.es.js",
+          "/repo/node_modules/refractor/lib/all.js",
+        ],
+      },
+      runtimeChunk(),
+      workerAsset(),
+    ]),
+    [
+      `${VENDOR_FILE}: forbidden non-common Prism modules reached the bundle: rehype-prism-plus (root entry), rehype-prism-plus/all, rehype-prism-plus/generator, refractor/all`,
+    ],
   );
 });
 
