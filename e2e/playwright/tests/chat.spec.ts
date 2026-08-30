@@ -4,6 +4,7 @@ import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
+const legacyChatEventProjection = "tool-redacted" as const;
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
 const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
@@ -51,6 +52,11 @@ interface ModelPickerGeometry {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function mockChatEventCursorId(seqId: number): string {
+  const suffix = seqId.toString(16).padStart(12, "0").slice(-12);
+  return `00000000-0000-4000-8000-${suffix}`;
 }
 
 async function negotiatedChatEventHeaders(
@@ -522,9 +528,35 @@ async function mockChatThread(
         .filter((row) => {
           return typeof row.seqId === "number" && row.seqId > sinceSeqId;
         });
+      const lastRow = rows.at(-1);
+      const lastSeqId =
+        lastRow !== undefined && typeof lastRow.seqId === "number"
+          ? lastRow.seqId
+          : null;
+      const cursor =
+        lastSeqId !== null
+          ? {
+              lastEventId: mockChatEventCursorId(lastSeqId),
+              lastSeqId,
+              projection: legacyChatEventProjection,
+            }
+          : sinceEventId === null
+            ? { lastEventId: null, lastSeqId: 0 }
+            : {
+                lastEventId: sinceEventId,
+                lastSeqId: sinceSeqId,
+                projection: legacyChatEventProjection,
+              };
       await route.fulfill({
         headers: await negotiatedChatEventHeaders(route.request()),
-        json: { rows },
+        // Mirror the temporary Stage 1 wire boundary; current App logic strips
+        // the fixed projection before using this cursor for continuation.
+        json: {
+          rows,
+          cursor,
+          hasMore: false,
+          projection: legacyChatEventProjection,
+        },
       });
     },
   );
