@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.19](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.18...guest-mock-codex-v0.9.19) (2026-08-30)
+
+
+### Bug Fixes
+
+* interrupt active codex turns before shutdown ([#30344](https://github.com/vm0-ai/vm0/issues/30344)) ([2270569](https://github.com/vm0-ai/vm0/commit/2270569209f12ec58078cee520878409b4f15041))
+* preserve codex per-turn token usage ([#30337](https://github.com/vm0-ai/vm0/issues/30337)) ([c9ef6c1](https://github.com/vm0-ai/vm0/commit/c9ef6c1e407cf07ca71a1ac7bc0bfccfad3bf205))
+
 ## [0.9.18](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.17...guest-mock-codex-v0.9.18) (2026-08-30)
 
 ## [0.9.17](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.16...guest-mock-codex-v0.9.17) (2026-08-30)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.178.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.10...runner-rs-v0.178.11) (2026-08-30)
+
+
+### Bug Fixes
+
+* **mitm-addon:** accept zero-digit qvalue fractions ([#30343](https://github.com/vm0-ai/vm0/issues/30343)) ([3692cc8](https://github.com/vm0-ai/vm0/commit/3692cc86acf5b11b2313d73280b53dfa15a67ccc))
+
 ## [0.178.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.9...runner-rs-v0.178.10) (2026-08-30)
 
 ## [0.178.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.8...runner-rs-v0.178.9) (2026-08-30)

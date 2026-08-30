@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.511.8](https://github.com/vm0-ai/vm0/compare/api-v1.511.7...api-v1.511.8) (2026-08-30)
+
+
+### Refactoring
+
+* remove shared chat database feature switch ([#30272](https://github.com/vm0-ai/vm0/issues/30272)) ([2210065](https://github.com/vm0-ai/vm0/commit/221006596f337e8d50882a3c427b2cdd56619d87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.11
+    * @okouai/connector-catalog-validation bumped to 2.0.14
+    * @okouai/connectors bumped to 1.210.8
+    * @okouai/core bumped to 8.603.3
+    * @okouai/db bumped to 1.228.19
+
 ## [1.511.7](https://github.com/vm0-ai/vm0/compare/api-v1.511.6...api-v1.511.7) (2026-08-30)
 
 
