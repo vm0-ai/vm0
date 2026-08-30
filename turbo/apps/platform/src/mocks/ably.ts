@@ -519,6 +519,7 @@ export function triggerAblyReconnect(): void {
 export function triggerAblyConnectionState(
   state: "connected" | "disconnected" | "suspended",
   options: {
+    readonly channelName?: string;
     readonly code?: number;
     readonly message?: string;
     readonly retryIn?: number;
@@ -527,9 +528,16 @@ export function triggerAblyConnectionState(
 ): void {
   let activeRealtime: Realtime | null = null;
   for (const realtime of realtimeInstances) {
-    if (realtime.connection.state !== "closed") {
-      activeRealtime = realtime;
+    if (realtime.connection.state === "closed") {
+      continue;
     }
+    if (options.channelName) {
+      const channel = realtime.getExistingChannel(options.channelName);
+      if (!channel || channel.state === "initialized") {
+        continue;
+      }
+    }
+    activeRealtime = realtime;
   }
   activeRealtime?.transitionTo(
     state,
