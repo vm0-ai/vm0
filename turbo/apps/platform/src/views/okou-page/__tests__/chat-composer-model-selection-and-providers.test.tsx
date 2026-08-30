@@ -38,6 +38,7 @@ import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/wor
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
 import {
@@ -1584,8 +1585,15 @@ describe("chat composer models", () => {
     await expectComposerModel("GPT 5.6 Sol Fast");
 
     lifecycle.setCodexServiceTier(null);
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
     act(() => {
-      triggerAblyEvent("threadListChanged");
+      changeChatThreadList();
     });
     await expectComposerModel("GPT 5.6 Sol");
     await sendMessageInUI(
@@ -3547,7 +3555,14 @@ describe("chat composer models", () => {
       computerUseHostId: null,
       createdAt: "2026-07-22T09:00:00.000Z",
     };
-    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
+    changeChatThreadList();
     await waitFor(() => {
       expect(
         within(sideThread).getByText("Renamed other agent thread"),

@@ -483,6 +483,19 @@ export function triggerAblyEvent(topic: string, data?: unknown): void {
   }
 }
 
+/** Fire a chat-database publish on every connected user-org channel. */
+export function triggerChatDatabaseEvent(topic: string, data?: unknown): void {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "connected") {
+      for (const [channelName, channel] of realtime.namedChannels()) {
+        if (channelName.startsWith("user-org:")) {
+          channel.trigger(topic, data);
+        }
+      }
+    }
+  }
+}
+
 /** Fire a server-side publish on one named channel. */
 export function triggerAblyChannelEvent(
   channelName: string,

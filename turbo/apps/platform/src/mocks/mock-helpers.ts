@@ -5,9 +5,14 @@
  * to for a given chat-thread lifecycle transition. Use these instead of
  * calling triggerAblyEvent() directly with raw topic strings.
  */
-import { triggerAblyEvent } from "./ably.ts";
+import { triggerChatDatabaseEvent } from "./ably.ts";
 
 /** Simulate a new chat event being created in a thread. */
-export function createChatEvent(threadId: string): void {
-  triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
+export function createChatEvent(threadId: string, payload?: unknown): void {
+  triggerChatDatabaseEvent(`chatThreadMessageCreated:${threadId}`, payload);
+}
+
+/** Simulate a persisted chat-thread event changing the shared thread list. */
+export function changeChatThreadList(): void {
+  triggerChatDatabaseEvent("threadListChanged");
 }

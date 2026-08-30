@@ -24,6 +24,7 @@ The permanent App path consumes `chatThreadMessageCreated` and
 `threadListChanged` exclusively from the `user-org:<userId>:<orgId>` channel
 through the SharedWorker. During rollout, the API also publishes those two
 topics to the existing `user:<userId>` channel so already-loaded App clients
-compiled against the disabled switch continue receiving invalidations. Remove
-that duplicate publication after the two-day stale-App window has drained; the
-user channel otherwise remains reserved for unrelated user-scoped signals.
+compiled against the disabled switch continue receiving invalidations.
+Follow-up #30334 removes that duplicate publication after the two-day stale-App
+window has drained and the client-version floor excludes pre-cutover builds;
+the user channel otherwise remains reserved for unrelated user-scoped signals.

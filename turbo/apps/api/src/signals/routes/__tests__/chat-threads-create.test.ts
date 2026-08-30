@@ -821,7 +821,13 @@ describe("POST /api/zero/chat-threads", () => {
       [`user:${fixture.userId}`],
     ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(2);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+    expect(context.mocks.ably.publish).toHaveBeenNthCalledWith(
+      1,
+      "threadListChanged",
+      null,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenNthCalledWith(
+      2,
       "threadListChanged",
       null,
     );
