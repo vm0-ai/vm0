@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.810.2](https://github.com/vm0-ai/vm0/compare/app-v0.810.1...app-v0.810.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* **platform:** stop the shared database worker from reading page globals ([#30263](https://github.com/vm0-ai/vm0/issues/30263)) ([2f2113e](https://github.com/vm0-ai/vm0/commit/2f2113e26e8420ded0d1ff8f91395be2d6ac26e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.7
+    * @okouai/core bumped to 8.601.8
+
 ## [0.810.1](https://github.com/vm0-ai/vm0/compare/app-v0.810.0...app-v0.810.1) (2026-08-29)
 
 
