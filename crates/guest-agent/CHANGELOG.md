@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.82.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.19...guest-agent-v0.82.20) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api token legacy reader ([#30292](https://github.com/vm0-ai/vm0/issues/30292)) ([7d0c3ad](https://github.com/vm0-ai/vm0/commit/7d0c3ad45d1361c0ee6463f8cc46feb00780e8f4))
+* **guest:** retire execution timeout legacy reader ([#30301](https://github.com/vm0-ai/vm0/issues/30301)) ([e5fba4b](https://github.com/vm0-ai/vm0/commit/e5fba4b8fa0ed5c1a769e71ac40053798c08abd7)), closes [#30289](https://github.com/vm0-ai/vm0/issues/30289) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest:** retire private payload legacy readers ([#30307](https://github.com/vm0-ai/vm0/issues/30307)) ([1059893](https://github.com/vm0-ai/vm0/commit/10598930135c5e6def894ae799064a5ef794d2c1))
+
+## [0.82.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.18...guest-agent-v0.82.19) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document Pi RPC lifecycle and event projection ([#30258](https://github.com/vm0-ai/vm0/issues/30258)) ([e8c2fc8](https://github.com/vm0-ai/vm0/commit/e8c2fc85f241138a17cf021108ad5e8163928464))
+
+
+### Refactoring
+
+* **guest:** cut managed CLI API URL writer to canonical alias ([#30285](https://github.com/vm0-ai/vm0/issues/30285)) ([a9a071e](https://github.com/vm0-ai/vm0/commit/a9a071e78fb317292b8c712f2b5543949dcb5982)), closes [#30277](https://github.com/vm0-ai/vm0/issues/30277) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
 ## [0.82.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.17...guest-agent-v0.82.18) (2026-08-29)
 
 

@@ -72,7 +72,7 @@ describe("okou workflow edit command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     workflowDir = join(tmpdir(), `test-workflow-edit-${Date.now()}`);

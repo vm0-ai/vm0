@@ -224,16 +224,18 @@ pub(super) fn write_prunable_codex_history(
         .map_err(|error| format!("create Codex session directory: {error}"))?;
     let history_path = day_dir.join(format!("rollout-{session_id}.jsonl"));
 
-    let line = |record_type: &str, payload: serde_json::Value| -> Result<Vec<u8>, String> {
-        let mut bytes = serde_json::to_vec(&json!({
-            "timestamp": "2026-07-26T00:00:00Z",
-            "type": record_type,
-            "payload": payload,
-        }))
-        .map_err(|error| format!("encode Codex history: {error}"))?;
-        bytes.push(b'\n');
-        Ok(bytes)
-    };
+    let line =
+        |record_type: &str, payload: serde_json::Value, ordinal: u64| -> Result<Vec<u8>, String> {
+            let mut bytes = serde_json::to_vec(&json!({
+                "ordinal": ordinal,
+                "timestamp": "2026-07-26T00:00:00Z",
+                "type": record_type,
+                "payload": payload,
+            }))
+            .map_err(|error| format!("encode Codex history: {error}"))?;
+            bytes.push(b'\n');
+            Ok(bytes)
+        };
     let canonical = line(
         "session_meta",
         json!({
@@ -242,10 +244,11 @@ pub(super) fn write_prunable_codex_history(
             "timestamp": "2026-07-26T00:00:00Z",
             "cwd": guest_agent::paths::CANONICAL_WORKING_DIR,
             "originator": "codex",
-            "cli_version": "0.144.6",
+            "cli_version": "0.151.0",
             "source": "cli",
-            "history_mode": "legacy",
+            "history_mode": "paginated",
         }),
+        0,
     )?;
     let turn_id = "compact-turn";
     let retained_records = [
@@ -257,18 +260,26 @@ pub(super) fn write_prunable_codex_history(
                 "model_context_window": 258400,
                 "collaboration_mode_kind": "default",
             }),
+            10,
         )?,
         line(
             "event_msg",
             json!({
-                "type": "user_message",
-                "message": "compact this thread",
-                "images": [],
-                "local_images": [],
-                "audio": [],
-                "local_audio": [],
-                "text_elements": [],
+                "type": "item_completed",
+                "thread_id": session_id,
+                "turn_id": turn_id,
+                "item": {
+                    "type": "UserMessage",
+                    "id": "user-message-1",
+                    "content": [{
+                        "type": "text",
+                        "text": "compact this thread",
+                        "text_elements": [],
+                    }],
+                },
+                "completed_at_ms": 1_774_678_400_000_i64,
             }),
+            11,
         )?,
         line(
             "turn_context",
@@ -280,6 +291,7 @@ pub(super) fn write_prunable_codex_history(
                 "model": "gpt-test",
                 "summary": "auto",
             }),
+            12,
         )?,
         line(
             "compacted",
@@ -297,10 +309,12 @@ pub(super) fn write_prunable_codex_history(
                 "first_window_id": "019c0000-0000-7000-8000-000000000001",
                 "window_id": "019c0000-0000-7000-8000-000000000002",
             }),
+            13,
         )?,
         line(
             "world_state",
             json!({"full": true, "state": {"working_directory": "/workspace"}}),
+            14,
         )?,
         line(
             "event_msg",
@@ -309,6 +323,7 @@ pub(super) fn write_prunable_codex_history(
                 "turn_id": turn_id,
                 "last_agent_message": "retained summary",
             }),
+            15,
         )?,
     ];
     let candidate = std::iter::once(canonical.clone())

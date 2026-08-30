@@ -17,17 +17,12 @@ use super::super::env::{
     is_runner_owned_env_key, validate_execution_context_before_sandbox,
     validate_model_provider_env_placeholders, write_connector_account_context_file,
 };
-use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
+use super::super::guest_runtime_dir;
 use super::support::{
     api_artifact, api_storage, build_env_for_test, build_env_for_test_result,
     build_env_for_test_with_host_env, context_with_env, minimal_context,
 };
 use crate::error::{RunnerError, RunnerResult};
-use crate::host_env::{
-    LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV, LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
-    LEGACY_RUNNER_DISK_IOPS_ENV, LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
-    LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
-};
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 use crate::types::{
@@ -462,13 +457,13 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "tok"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert!(!env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV)
             .unwrap(),
         "7200"
     );
-    assert!(!env.contains_key(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV));
+    assert!(!env.contains_key("VM0_AGENT_EXECUTION_TIMEOUT_SECS"));
     assert_eq!(
         env.get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
@@ -499,11 +494,11 @@ fn build_env_json_required_keys() {
             .unwrap(),
         ""
     );
-    assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
+    assert!(!env.contains_key("VM0_API_START_TIME"));
     for legacy_key in [
-        guest_contracts::env::SANDBOX_ID_ENV,
-        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
-        guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+        "VM0_SANDBOX_ID",
+        "VM0_SANDBOX_REUSE_RESULT",
+        "VM0_WORKSPACE_REUSE_RESULT",
     ] {
         assert!(
             !env.contains_key(legacy_key),
@@ -566,9 +561,9 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
             "no-workspace builder emitted canonical workspace reuse metadata"
         );
         for legacy_key in [
-            guest_contracts::env::SANDBOX_ID_ENV,
-            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
-            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+            "VM0_SANDBOX_ID",
+            "VM0_SANDBOX_REUSE_RESULT",
+            "VM0_WORKSPACE_REUSE_RESULT",
         ] {
             assert!(
                 !env.contains_key(legacy_key),
@@ -765,7 +760,7 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             guest_contracts::env::PROMPT_ENV.into(),
             "user prompt".into(),
         ),
-        (guest_contracts::env::API_TOKEN_ENV.into(), "stolen".into()),
+        ("VM0_API_TOKEN".into(), "stolen".into()),
         (
             guest_contracts::env::WORKING_DIR_ENV.into(),
             "/legacy".into(),
@@ -779,14 +774,6 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             r#"{"bad":true}"#.into(),
         ),
         ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
-        (LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
-        (
-            LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(),
-            "999".into(),
-        ),
-        (LEGACY_RUNNER_DISK_IOPS_ENV.into(), "999".into()),
-        (LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
-        (LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
         (
             guest_contracts::env::CLI_AGENT_TYPE_ENV.into(),
             "claude-code".into(),
@@ -811,11 +798,8 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         ),
         ("VM0_MOCK_CLAUDE_PATH".into(), "/tmp/mock-claude".into()),
         ("VM0_MOCK_CODEX_PATH".into(), "/tmp/mock-codex".into()),
-        (USER_ENV_FILE_ENV_KEY.into(), "/tmp/user-env".into()),
-        (
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV.into(),
-            "/tmp/run-payload".into(),
-        ),
+        ("VM0_USER_ENV_FILE".into(), "/tmp/user-env".into()),
+        ("VM0_RUN_PAYLOAD_FILE".into(), "/tmp/run-payload".into()),
     ]));
 
     let bootstrap_env = build_env_for_test(&ctx, "http://localhost");
@@ -833,7 +817,7 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             .unwrap(),
         "tok"
     );
-    assert!(!bootstrap_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert!(!bootstrap_env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         bootstrap_env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &ctx.run_id.to_string()
@@ -855,16 +839,11 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         guest_contracts::env::PI_LAUNCH_CONFIG_ENV,
         guest_contracts::env::PI_MODEL_CONFIG_ENV,
         guest_contracts::env::PROMPT_ENV,
-        guest_contracts::env::API_TOKEN_ENV,
+        "VM0_API_TOKEN",
         guest_contracts::env::WORKING_DIR_ENV,
         "VM0_GUEST_RUNTIME_DIR",
         guest_contracts::env::FEATURE_FLAGS_ENV,
         "VM0_FUTURE_RUNNER_KEY",
-        LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV,
-        LEGACY_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
-        LEGACY_RUNNER_DISK_IOPS_ENV,
-        LEGACY_RUNNER_NET_RX_MIB_PER_SEC_ENV,
-        LEGACY_RUNNER_NET_TX_MIB_PER_SEC_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
@@ -874,8 +853,8 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         guest_contracts::env::SETTINGS_ENV,
         "VM0_MOCK_CLAUDE_PATH",
         "VM0_MOCK_CODEX_PATH",
-        USER_ENV_FILE_ENV_KEY,
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        "VM0_USER_ENV_FILE",
+        "VM0_RUN_PAYLOAD_FILE",
     ] {
         assert!(!user_env.contains_key(key), "{key} should be scrubbed");
     }
@@ -1032,7 +1011,7 @@ fn build_env_json_codex_keeps_shared_runner_env() {
             .unwrap(),
         "019e9154-c304-70f0-adde-36efb1be1701"
     );
-    assert!(!env.contains_key(guest_contracts::env::RESUME_SESSION_ID_ENV));
+    assert!(!env.contains_key("VM0_RESUME_SESSION_ID"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
 }
 
@@ -1213,7 +1192,7 @@ fn build_env_json_with_resume_session() {
             .unwrap(),
         "sess-123"
     );
-    assert!(!env.contains_key(guest_contracts::env::RESUME_SESSION_ID_ENV));
+    assert!(!env.contains_key("VM0_RESUME_SESSION_ID"));
 }
 
 #[test]
@@ -1340,7 +1319,7 @@ fn build_env_json_with_api_start_time() {
             .unwrap(),
         "1700000000500"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
+    assert!(!env.contains_key("VM0_API_START_TIME"));
 }
 
 #[test]
@@ -1721,7 +1700,7 @@ fn build_env_json_environment_cannot_override_system() {
             .unwrap(),
         "tok"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert!(!env.contains_key("VM0_API_TOKEN"));
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert!(!user_env.contains_key("VM0_PROMPT"));

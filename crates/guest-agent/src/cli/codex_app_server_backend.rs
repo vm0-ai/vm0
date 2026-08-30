@@ -598,6 +598,7 @@ async fn start_or_resume_thread(
                 "threadId".to_string(),
                 Value::String(resume_thread_id.to_string()),
             );
+            params.insert("excludeTurns".to_string(), Value::Bool(true));
             client
                 .request_value("thread/resume", Value::Object(params))
                 .await

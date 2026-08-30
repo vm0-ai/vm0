@@ -53,7 +53,7 @@ function readStdout(): string {
 
 describe("okou video frames command", () => {
   beforeEach(() => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     mockStdoutWrite.mockClear();
   });

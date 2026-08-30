@@ -122,7 +122,7 @@ describe("okou connector status command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("OKOU_APP_URL", "");
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_AGENT_ID", "");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
@@ -331,7 +331,7 @@ describe("okou connector status command", () => {
     it("uses the production app origin in authorization links", async () => {
       const apiOrigin = "https://api.vm0.ai";
       vi.stubEnv("APP_URL", "https://unrelated.example.test");
-      vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
+      vi.stubEnv("OKOU_API_BACKEND_URL", apiOrigin);
       server.use(
         stubConnectorCatalogStatus(
           [statusItemFromConnector(connectedGithub)],
@@ -358,7 +358,7 @@ describe("okou connector status command", () => {
     it("prefers OKOU_APP_URL in authorization links", async () => {
       const apiOrigin = "https://api.example.test";
       const appOrigin = "https://app.example.test";
-      vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
+      vi.stubEnv("OKOU_API_BACKEND_URL", apiOrigin);
       vi.stubEnv("OKOU_APP_URL", `${appOrigin}/ignored-path`);
       server.use(
         stubConnectorCatalogStatus(

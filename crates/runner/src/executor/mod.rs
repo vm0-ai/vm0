@@ -145,7 +145,6 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "LD_AUDIT",
     "NODE_OPTIONS",
 ];
-const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
     include_str!("../../scripts/agent-abnormal-exit-diagnostics.sh");
 

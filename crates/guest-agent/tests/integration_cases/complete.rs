@@ -56,11 +56,10 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
     mock.assert_calls_async(1).await;
 }
 
-/// Unset runner metadata (guest launched without `VM0_SANDBOX_ID` /
-/// `VM0_SANDBOX_REUSE_RESULT`, e.g. a pre-#10787 runner): empty strings
-/// must serialize as absent so the payload carries only `runId` +
-/// `exitCode`. Matches the `skip_serializing_if = "Option::is_none"`
-/// contract end-to-end.
+/// Unset canonical runner metadata (guest launched without `OKOU_SANDBOX_ID` /
+/// `OKOU_SANDBOX_REUSE_RESULT`): empty strings must serialize as absent so the
+/// payload carries only `runId` + `exitCode`. Matches the
+/// `skip_serializing_if = "Option::is_none"` contract end-to-end.
 #[tokio::test]
 async fn complete_report_success_omits_metadata_when_env_absent() {
     let api = SharedApiMock::new().await;

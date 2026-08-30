@@ -2038,6 +2038,96 @@
       "threads": "Conversaciones",
       "title": "Reenviar a"
     },
+    "introVideo": {
+      "avatar": {
+        "heading": "Elige un avatar",
+        "help": "Elige un presentador o continúa sin avatar",
+        "none": "Sin avatar"
+      },
+      "cardDescription": "Convierte un archivo o una grabación de pantalla en un vídeo terminado",
+      "description": "Añade una fuente, elige un avatar y una voz opcionales y crea el vídeo en un hilo de chat.",
+      "errors": {
+        "recordingEmpty": "La grabación está vacía. Inténtalo de nuevo.",
+        "recordingFailed": "No se pudo iniciar la grabación de pantalla. Inténtalo de nuevo en una versión reciente de Chrome.",
+        "recordingPermission": "No se compartió nada. Elige una pestaña, ventana o pantalla cuando estés listo.",
+        "recordingShareEnded": "La pantalla dejó de compartirse antes de que empezara la grabación.",
+        "recordingUnsupported": "Este navegador no admite la grabación de pantalla.",
+        "sendFailed": "No se pudo crear el hilo de chat. La fuente sigue guardada localmente y se ha descargado como copia de seguridad.",
+        "uploadFailed": "No se pudo subir la fuente. Sigue guardada localmente y se ha descargado como copia de seguridad."
+      },
+      "footer": {
+        "back": "Atrás",
+        "createInChat": "Crear en el chat",
+        "download": "Descargar fuente",
+        "next": "Siguiente",
+        "startRecording": "Elegir pantalla e iniciar",
+        "stopRecording": "Detener grabación"
+      },
+      "recording": {
+        "chooseSurface": "Elige una pestaña, ventana o pantalla",
+        "countdown": "La grabación comienza después de la cuenta atrás",
+        "description": "Chrome te preguntará qué quieres compartir. La grabación solo comienza cuando termina la cuenta atrás de tres segundos.",
+        "heading": "Graba tu pantalla",
+        "localNote": "Puedes detenerla desde la barra de uso compartido de Chrome o volver aquí. La grabación permanece en local hasta que se crea el hilo de chat.",
+        "microphone": "Micrófono",
+        "microphoneHelp": "Añade narración mientras haces la demostración",
+        "recordingLocally": "Grabando en local",
+        "systemAudio": "Audio del sistema",
+        "systemAudioHelp": "Las fuentes disponibles dependen de Chrome y de tu sistema"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Revisa tu vídeo de introducción",
+        "help": "Confirma las opciones que recibirá Zero en el nuevo hilo de chat",
+        "instructions": "Instrucciones de edición",
+        "source": "Fuente",
+        "voice": "Voz"
+      },
+      "source": {
+        "chatDescription": "Abre un hilo ahora y da forma al vídeo con Zero",
+        "chatDetail": "Añade una fuente, un avatar o una voz más tarde en el chat",
+        "chatTitle": "Empezar en el chat",
+        "documentDescription": "Convierte tu contenido en un vídeo de introducción narrado",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Subir diapositivas o un documento",
+        "dropDescription": "Diapositivas, documentos o grabaciones",
+        "dropTitle": "Suelta una fuente aquí",
+        "heading": "¿Cómo quieres empezar?",
+        "help": "Añade algo que ya tengas, graba tu pantalla o describe el vídeo con tus propias palabras",
+        "recordDescription": "Elige una pestaña, ventana o toda la pantalla",
+        "recordDetail": "Comienza tras una cuenta atrás de tres segundos",
+        "recordTitle": "Grabar la pantalla",
+        "videoDescription": "Deja que la IA mejore el ritmo, el encuadre y la narración",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Subir una grabación"
+      },
+      "sourceReview": {
+        "format": "Formato",
+        "heading": "Tu fuente está lista",
+        "help": "Comprueba el archivo antes de continuar",
+        "inBrowser": "En este navegador",
+        "inTab": "Hasta que cierres esta pestaña",
+        "replace": "Sustituir fuente",
+        "saved": "Guardada",
+        "source": "Fuente"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Pasos del vídeo de introducción",
+        "review": "Revisar",
+        "source": "Fuente",
+        "voice": "Voz"
+      },
+      "title": "Crear un vídeo de introducción",
+      "voice": {
+        "heading": "Elige una voz",
+        "help": "Escucha una muestra antes de continuar",
+        "none": "Sin narración",
+        "noneDescription": "Crea un vídeo guiado por subtítulos sin narración",
+        "original": "Audio original",
+        "originalDescription": "Conserva el audio del vídeo o la grabación que has subido"
+      }
+    },
     "mail": {
       "bcc": "BCC",
       "cc": "cc",

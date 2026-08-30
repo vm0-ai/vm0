@@ -215,7 +215,7 @@ async fn guest_agent_reads_only_the_canonical_runtime_override() -> TestResult {
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert_eq!(output.status.code(), Some(1), "{}: {stderr}", case.name);
         assert!(
-            stderr.contains("parse VM0_RUN_PAYLOAD_FILE JSON"),
+            stderr.contains("parse OKOU_RUN_PAYLOAD_FILE JSON"),
             "{}: {stderr}",
             case.name
         );
@@ -270,7 +270,7 @@ async fn guest_agent_preserves_a_non_unicode_canonical_runtime_override() -> Tes
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "stderr: {stderr}");
     assert!(
-        stderr.contains("VM0_RUN_PAYLOAD_FILE is required"),
+        stderr.contains("OKOU_RUN_PAYLOAD_FILE is required"),
         "stderr: {stderr}"
     );
     assert!(!stderr.contains("OKOU_GUEST_RUNTIME_DIR must be an absolute path"));

@@ -9,8 +9,9 @@ use serde_json::{Value, json};
 const THREAD_ID: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TURN_ID: &str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-fn line(record_type: &str, payload: Value) -> serde_json::Result<Vec<u8>> {
+fn line(record_type: &str, payload: Value, ordinal: u64) -> serde_json::Result<Vec<u8>> {
     let mut bytes = serde_json::to_vec(&json!({
+        "ordinal": ordinal,
         "timestamp": "2026-01-01T00:00:00.000Z",
         "type": record_type,
         "payload": payload,
@@ -30,11 +31,12 @@ fn selects_a_small_generation_from_a_source_above_the_public_guard()
             "timestamp": "2026-01-01T00:00:00.000Z",
             "cwd": "/workspace",
             "originator": "codex_exec",
-            "cli_version": "0.145.0",
+            "cli_version": "0.151.0",
             "source": "exec",
             "model_provider": "mock",
-            "history_mode": "legacy",
+            "history_mode": "paginated",
         }),
+        0,
     )?;
     let retained = [
         line(
@@ -45,18 +47,26 @@ fn selects_a_small_generation_from_a_source_above_the_public_guard()
                 "model_context_window": 258400,
                 "collaboration_mode_kind": "default",
             }),
+            10,
         )?,
         line(
             "event_msg",
             json!({
-                "type": "user_message",
-                "message": "continue",
-                "images": [],
-                "local_images": [],
-                "audio": [],
-                "local_audio": [],
-                "text_elements": [],
+                "type": "item_completed",
+                "thread_id": THREAD_ID,
+                "turn_id": TURN_ID,
+                "item": {
+                    "type": "UserMessage",
+                    "id": "user-message-1",
+                    "content": [{
+                        "type": "text",
+                        "text": "continue",
+                        "text_elements": [],
+                    }],
+                },
+                "completed_at_ms": 1_767_225_600_000_i64,
             }),
+            11,
         )?,
         line(
             "turn_context",
@@ -68,6 +78,7 @@ fn selects_a_small_generation_from_a_source_above_the_public_guard()
                 "model": "gpt-test",
                 "summary": "auto",
             }),
+            12,
         )?,
         line(
             "compacted",
@@ -82,6 +93,7 @@ fn selects_a_small_generation_from_a_source_above_the_public_guard()
                     }],
                 }],
             }),
+            13,
         )?,
         line(
             "world_state",
@@ -89,6 +101,7 @@ fn selects_a_small_generation_from_a_source_above_the_public_guard()
                 "full": true,
                 "state": {"resources": []},
             }),
+            14,
         )?,
         line(
             "event_msg",
@@ -97,6 +110,7 @@ fn selects_a_small_generation_from_a_source_above_the_public_guard()
                 "turn_id": TURN_ID,
                 "last_agent_message": "retained summary",
             }),
+            15,
         )?,
     ];
 

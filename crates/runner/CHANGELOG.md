@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.178.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.8...runner-rs-v0.178.9) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api token legacy reader ([#30292](https://github.com/vm0-ai/vm0/issues/30292)) ([7d0c3ad](https://github.com/vm0-ai/vm0/commit/7d0c3ad45d1361c0ee6463f8cc46feb00780e8f4))
+* **guest:** retire execution timeout legacy reader ([#30301](https://github.com/vm0-ai/vm0/issues/30301)) ([e5fba4b](https://github.com/vm0-ai/vm0/commit/e5fba4b8fa0ed5c1a769e71ac40053798c08abd7)), closes [#30289](https://github.com/vm0-ai/vm0/issues/30289) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest:** retire private payload legacy readers ([#30307](https://github.com/vm0-ai/vm0/issues/30307)) ([1059893](https://github.com/vm0-ai/vm0/commit/10598930135c5e6def894ae799064a5ef794d2c1))
+
+## [0.178.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.7...runner-rs-v0.178.8) (2026-08-30)
+
+
+### Documentation
+
+* **runner:** document DNS readiness log observation semantics ([#30260](https://github.com/vm0-ai/vm0/issues/30260)) ([bb1a3d0](https://github.com/vm0-ai/vm0/commit/bb1a3d0e74e42dd40585ad4fe9826b5af42206cf))
+* **runner:** document workspace image cache path scoping ([#30259](https://github.com/vm0-ai/vm0/issues/30259)) ([9730128](https://github.com/vm0-ai/vm0/commit/9730128f7b480b926f1411b6713e9d93d0fd9a39))
+
+
+### Refactoring
+
+* **runner:** retire legacy host tuning aliases ([#30288](https://github.com/vm0-ai/vm0/issues/30288)) ([70cf673](https://github.com/vm0-ai/vm0/commit/70cf673d14daf635722134724ad281b6224e068b))
+
 ## [0.178.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.6...runner-rs-v0.178.7) (2026-08-29)
 
 

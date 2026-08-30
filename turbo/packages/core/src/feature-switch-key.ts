@@ -69,6 +69,7 @@ export enum FeatureSwitchKey {
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
   LatestPresentationTemplates = "latestPresentationTemplates",
+  IntroVideo = "introVideo",
   ChatConversationLocator = "chatConversationLocator",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",

@@ -1,5 +1,36 @@
 # Changelog
 
+## [9.297.11](https://github.com/vm0-ai/vm0/compare/cli-v9.297.10...cli-v9.297.11) (2026-08-30)
+
+
+### Refactoring
+
+* **cli:** use canonical API URL in ordinary tests ([#30309](https://github.com/vm0-ai/vm0/issues/30309)) ([c3a4c58](https://github.com/vm0-ai/vm0/commit/c3a4c58707ecd86e89db02dcd7c7513bfab85cb4))
+
+## [9.297.10](https://github.com/vm0-ai/vm0/compare/cli-v9.297.9...cli-v9.297.10) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document Pi RPC lifecycle and event projection ([#30258](https://github.com/vm0-ai/vm0/issues/30258)) ([e8c2fc8](https://github.com/vm0-ai/vm0/commit/e8c2fc85f241138a17cf021108ad5e8163928464))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.603.0
+
+## [9.297.9](https://github.com/vm0-ai/vm0/compare/cli-v9.297.8...cli-v9.297.9) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.8
+    * @okouai/core bumped to 8.602.0
+
 ## [9.297.8](https://github.com/vm0-ai/vm0/compare/cli-v9.297.7...cli-v9.297.8) (2026-08-30)
 
 

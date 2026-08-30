@@ -34,9 +34,9 @@ fn process_env_config_loads_user_env_once() {
         Err(error) => error,
     };
     assert!(
-        missing_payload_error.contains(guest_contracts::env::RUN_PAYLOAD_FILE_ENV),
+        missing_payload_error.contains(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV),
         "error should identify {}, got: {missing_payload_error}",
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV
     );
     assert!(
         user_env_path.exists(),

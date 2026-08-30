@@ -17,8 +17,8 @@ use crate::constants;
 use guest_common::{log_info, log_warn};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
-const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_ENV;
+const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
+const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV;
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
 pub(crate) const AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC: &str = "agent execution timeout";
 #[cfg(debug_assertions)]
@@ -26,7 +26,7 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 14;
+const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 5;
 
 #[derive(Clone, Copy)]
 struct BootstrapAliasSourceEventSpec {
@@ -56,42 +56,6 @@ const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
         family: "guest_agent_tuning_env_source",
         canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
     },
-    BootstrapAliasSourceEventSpec {
-        family: "private_payload_file_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "private_payload_file_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "api_token_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_API_TOKEN_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "run_metadata_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "run_metadata_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "run_metadata_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "run_metadata_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "run_metadata_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_API_START_TIME_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "agent_execution_timeout_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-    },
 ];
 
 #[derive(Clone, Copy)]
@@ -101,15 +65,6 @@ enum BootstrapAlias {
     PostResultSigtermGrace,
     PostResultTotalCap,
     PostResultSigkillGrace,
-    UserEnvFile,
-    RunPayloadFile,
-    ApiToken,
-    SandboxId,
-    SandboxReuseResult,
-    WorkspaceReuseResult,
-    ResumeSessionId,
-    ApiStartTime,
-    AgentExecutionTimeout,
 }
 
 #[derive(Clone, Copy)]
@@ -131,7 +86,7 @@ impl BootstrapAliasSource {
 
 /// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
 ///
-/// The internal slots correspond exactly to the 14 canonical keys in
+/// The internal slots correspond exactly to the five canonical keys in
 /// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
 /// resolvers can populate them.
 #[derive(Clone, Default)]
@@ -141,15 +96,6 @@ pub struct BootstrapAliasSourceEvents {
     post_result_sigterm_grace: Option<BootstrapAliasSource>,
     post_result_total_cap: Option<BootstrapAliasSource>,
     post_result_sigkill_grace: Option<BootstrapAliasSource>,
-    user_env_file: Option<BootstrapAliasSource>,
-    run_payload_file: Option<BootstrapAliasSource>,
-    api_token: Option<BootstrapAliasSource>,
-    sandbox_id: Option<BootstrapAliasSource>,
-    sandbox_reuse_result: Option<BootstrapAliasSource>,
-    workspace_reuse_result: Option<BootstrapAliasSource>,
-    resume_session_id: Option<BootstrapAliasSource>,
-    api_start_time: Option<BootstrapAliasSource>,
-    agent_execution_timeout: Option<BootstrapAliasSource>,
 }
 
 impl BootstrapAliasSourceEvents {
@@ -160,15 +106,6 @@ impl BootstrapAliasSourceEvents {
             BootstrapAlias::PostResultSigtermGrace => &mut self.post_result_sigterm_grace,
             BootstrapAlias::PostResultTotalCap => &mut self.post_result_total_cap,
             BootstrapAlias::PostResultSigkillGrace => &mut self.post_result_sigkill_grace,
-            BootstrapAlias::UserEnvFile => &mut self.user_env_file,
-            BootstrapAlias::RunPayloadFile => &mut self.run_payload_file,
-            BootstrapAlias::ApiToken => &mut self.api_token,
-            BootstrapAlias::SandboxId => &mut self.sandbox_id,
-            BootstrapAlias::SandboxReuseResult => &mut self.sandbox_reuse_result,
-            BootstrapAlias::WorkspaceReuseResult => &mut self.workspace_reuse_result,
-            BootstrapAlias::ResumeSessionId => &mut self.resume_session_id,
-            BootstrapAlias::ApiStartTime => &mut self.api_start_time,
-            BootstrapAlias::AgentExecutionTimeout => &mut self.agent_execution_timeout,
         };
         *slot = Some(source);
     }
@@ -180,15 +117,6 @@ impl BootstrapAliasSourceEvents {
             self.post_result_sigterm_grace,
             self.post_result_total_cap,
             self.post_result_sigkill_grace,
-            self.user_env_file,
-            self.run_payload_file,
-            self.api_token,
-            self.sandbox_id,
-            self.sandbox_reuse_result,
-            self.workspace_reuse_result,
-            self.resume_session_id,
-            self.api_start_time,
-            self.agent_execution_timeout,
         ]
     }
 
@@ -243,108 +171,6 @@ fn api_url_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<Strin
     Ok(value)
 }
 
-type PrivatePayloadFileEnvResolution = (String, Option<BootstrapAliasSource>);
-
-/// Resolve Stage 1 compatibility between existing runners or sandboxes and a
-/// new guest reader. Existing pointers can remain live through the two-hour
-/// guest runtime budget plus bounded finalization. #28914 owns the later
-/// writer-cutover and reader-removal issues; remove the legacy branches only
-/// after the reader floor, sandbox drain, rollback window, and
-/// legacy-read-zero gates are complete.
-fn private_payload_file_env(
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-) -> Result<PrivatePayloadFileEnvResolution, String> {
-    let canonical = std::env::var(canonical_key)
-        .ok()
-        .filter(|value| !value.is_empty());
-    let legacy = std::env::var(legacy_key)
-        .ok()
-        .filter(|value| !value.is_empty());
-
-    match (canonical, legacy) {
-        (None, None) => Ok((String::new(), None)),
-        (Some(value), None) => Ok((value, Some(BootstrapAliasSource::CanonicalOnly))),
-        (None, Some(value)) => Ok((value, Some(BootstrapAliasSource::LegacyOnly))),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            Ok((canonical, Some(BootstrapAliasSource::Dual)))
-        }
-        (Some(_), Some(_)) => Err(format!(
-            "conflicting private payload file environment aliases: canonical_key={canonical_key} \
-             legacy_key={legacy_key} state=conflict"
-        )),
-    }
-}
-
-fn record_private_payload_file_env_source(
-    events: &mut BootstrapAliasSourceEvents,
-    alias: BootstrapAlias,
-    source: Option<BootstrapAliasSource>,
-) {
-    if let Some(source) = source {
-        events.record(alias, source);
-    }
-}
-
-/// Resolve the sensitive runner-to-guest API token at the single process-env
-/// capture boundary. Both aliases are reader-only during #28914 migration
-/// Stage 1; the runner writer remains [`guest_contracts::env::API_TOKEN_ENV`].
-fn api_token_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<String, String> {
-    let canonical_key = guest_contracts::env::CANONICAL_API_TOKEN_ENV;
-    let legacy_key = guest_contracts::env::API_TOKEN_ENV;
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting API token environment aliases: canonical_key={canonical_key} \
-                 legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(BootstrapAlias::ApiToken, source);
-    Ok(value)
-}
-
-/// Resolve the runner-owned agent execution timeout at the single process-env
-/// capture boundary. Both aliases are reader-only during #28914 migration
-/// Stage 1; the runner writer remains
-/// [`guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV`].
-fn agent_execution_timeout_env_or_empty(
-    events: &mut BootstrapAliasSourceEvents,
-) -> Result<String, String> {
-    let canonical_key = guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV;
-    let legacy_key = guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV;
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting agent execution timeout environment aliases: \
-                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(BootstrapAlias::AgentExecutionTimeout, source);
-    Ok(value)
-}
-
 /// Resolve one Guest Agent timing alias pair at the single process-env capture
 /// boundary. Canonical aliases are reader-only during #28914 Stage 1; the
 /// runner writer and supported local tuning interface remain legacy-only.
@@ -370,38 +196,6 @@ fn guest_agent_tuning_env_or_empty(
             return Err(format!(
                 "conflicting guest agent tuning environment aliases: \
                  canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(alias, source);
-    Ok(value)
-}
-
-/// Resolve Stage 1 compatibility between an existing runner or sandbox and a
-/// new guest reader. #28914 owns the follow-up writer-cutover and reader-removal
-/// issues; remove the legacy branch only after the reader floor, sandbox drain,
-/// rollback window, and legacy-read-zero gates are complete.
-fn run_metadata_env_or_empty(
-    alias: BootstrapAlias,
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-    events: &mut BootstrapAliasSourceEvents,
-) -> Result<String, String> {
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting run metadata environment aliases: canonical_key={canonical_key} \
-                 legacy_key={legacy_key} state=conflict"
             ));
         }
     };
@@ -636,64 +430,26 @@ impl GuestConfigRaw {
             &mut bootstrap_alias_sources,
         )?;
 
-        let (user_env_file, user_env_file_source) = private_payload_file_env(
-            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-            USER_ENV_FILE_ENV_KEY,
-        )?;
-        let (run_payload_file, run_payload_file_source) = private_payload_file_env(
-            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-            RUN_PAYLOAD_FILE_ENV_KEY,
-        )?;
-
-        record_private_payload_file_env_source(
-            &mut bootstrap_alias_sources,
-            BootstrapAlias::UserEnvFile,
-            user_env_file_source,
-        );
-        record_private_payload_file_env_source(
-            &mut bootstrap_alias_sources,
-            BootstrapAlias::RunPayloadFile,
-            run_payload_file_source,
-        );
+        let user_env_file = env_or_empty(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV);
+        let run_payload_file = env_or_empty(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV);
 
         Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),
             api_url,
-            api_token: api_token_env_or_empty(&mut bootstrap_alias_sources)?,
-            sandbox_id: run_metadata_env_or_empty(
-                BootstrapAlias::SandboxId,
-                guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-                guest_contracts::env::SANDBOX_ID_ENV,
-                &mut bootstrap_alias_sources,
-            )?,
-            sandbox_reuse_result: run_metadata_env_or_empty(
-                BootstrapAlias::SandboxReuseResult,
+            api_token: env_or_empty(guest_contracts::env::CANONICAL_API_TOKEN_ENV),
+            sandbox_id: env_or_empty(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV),
+            sandbox_reuse_result: env_or_empty(
                 guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-                guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
-                &mut bootstrap_alias_sources,
-            )?,
-            workspace_reuse_result: run_metadata_env_or_empty(
-                BootstrapAlias::WorkspaceReuseResult,
+            ),
+            workspace_reuse_result: env_or_empty(
                 guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-                guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
-                &mut bootstrap_alias_sources,
-            )?,
+            ),
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
-            resume_session_id: run_metadata_env_or_empty(
-                BootstrapAlias::ResumeSessionId,
-                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-                guest_contracts::env::RESUME_SESSION_ID_ENV,
-                &mut bootstrap_alias_sources,
-            )?,
-            api_start_time: run_metadata_env_or_empty(
-                BootstrapAlias::ApiStartTime,
-                guest_contracts::env::CANONICAL_API_START_TIME_ENV,
-                guest_contracts::env::API_START_TIME_ENV,
-                &mut bootstrap_alias_sources,
-            )?,
-            agent_execution_timeout_secs: agent_execution_timeout_env_or_empty(
-                &mut bootstrap_alias_sources,
-            )?,
+            resume_session_id: env_or_empty(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV),
+            api_start_time: env_or_empty(guest_contracts::env::CANONICAL_API_START_TIME_ENV),
+            agent_execution_timeout_secs: env_or_empty(
+                guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            ),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV)
                 .ok(),
@@ -1309,10 +1065,6 @@ mod tests {
                     .unwrap_err();
             assert!(
                 error.contains(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC),
-                "{error}"
-            );
-            assert!(
-                !error.contains(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV),
                 "{error}"
             );
             assert!(
