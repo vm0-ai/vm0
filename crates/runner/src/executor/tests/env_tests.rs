@@ -494,11 +494,11 @@ fn build_env_json_required_keys() {
             .unwrap(),
         ""
     );
-    assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
+    assert!(!env.contains_key("VM0_API_START_TIME"));
     for legacy_key in [
-        guest_contracts::env::SANDBOX_ID_ENV,
-        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
-        guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+        "VM0_SANDBOX_ID",
+        "VM0_SANDBOX_REUSE_RESULT",
+        "VM0_WORKSPACE_REUSE_RESULT",
     ] {
         assert!(
             !env.contains_key(legacy_key),
@@ -561,9 +561,9 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
             "no-workspace builder emitted canonical workspace reuse metadata"
         );
         for legacy_key in [
-            guest_contracts::env::SANDBOX_ID_ENV,
-            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
-            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+            "VM0_SANDBOX_ID",
+            "VM0_SANDBOX_REUSE_RESULT",
+            "VM0_WORKSPACE_REUSE_RESULT",
         ] {
             assert!(
                 !env.contains_key(legacy_key),
@@ -1014,7 +1014,7 @@ fn build_env_json_codex_keeps_shared_runner_env() {
             .unwrap(),
         "019e9154-c304-70f0-adde-36efb1be1701"
     );
-    assert!(!env.contains_key(guest_contracts::env::RESUME_SESSION_ID_ENV));
+    assert!(!env.contains_key("VM0_RESUME_SESSION_ID"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
 }
 
@@ -1195,7 +1195,7 @@ fn build_env_json_with_resume_session() {
             .unwrap(),
         "sess-123"
     );
-    assert!(!env.contains_key(guest_contracts::env::RESUME_SESSION_ID_ENV));
+    assert!(!env.contains_key("VM0_RESUME_SESSION_ID"));
 }
 
 #[test]
@@ -1322,7 +1322,7 @@ fn build_env_json_with_api_start_time() {
             .unwrap(),
         "1700000000500"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
+    assert!(!env.contains_key("VM0_API_START_TIME"));
 }
 
 #[test]

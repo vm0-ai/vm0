@@ -201,10 +201,7 @@ mod tests {
     fn apply_values_clears_resume_session_bootstrap_aliases() {
         let mut command = tokio::process::Command::new("unused");
         command
-            .env(
-                guest_contracts::env::RESUME_SESSION_ID_ENV,
-                "legacy-session-id",
-            )
+            .env("VM0_RESUME_SESSION_ID", "legacy-session-id")
             .env(
                 guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
                 "canonical-session-id",
@@ -219,7 +216,7 @@ mod tests {
             .map(|(key, _)| key)
             .collect::<Vec<_>>();
         for key in [
-            guest_contracts::env::RESUME_SESSION_ID_ENV,
+            "VM0_RESUME_SESSION_ID",
             guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
         ] {
             assert!(

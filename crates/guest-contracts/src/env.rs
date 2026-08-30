@@ -52,31 +52,16 @@ pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
 /// has the same runner-owned isolation contract as the legacy alias.
 pub const CANONICAL_API_TOKEN_ENV: &str = "OKOU_API_TOKEN";
 
-/// Sandbox identifier assigned by the runner.
-///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
-
-/// Canonical alias for the sandbox identifier written by the runner.
+/// Sandbox identifier assigned and written by the runner.
 pub const CANONICAL_SANDBOX_ID_ENV: &str = "OKOU_SANDBOX_ID";
 
 /// Wire value for the runner's sandbox-reuse decision.
 ///
 /// `reused` means an idle sandbox was unparked. Other values describe why reuse did
 /// not happen, such as `poolMiss` or `noReuseKey`.
-///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
-
-/// Canonical alias for the sandbox-reuse decision written by the runner.
 pub const CANONICAL_SANDBOX_REUSE_RESULT_ENV: &str = "OKOU_SANDBOX_REUSE_RESULT";
 
 /// Wire value for the runner's final workspace-reuse decision.
-///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const WORKSPACE_REUSE_RESULT_ENV: &str = "VM0_WORKSPACE_REUSE_RESULT";
-
-/// Canonical alias for the workspace-reuse decision written by the runner.
 pub const CANONICAL_WORKSPACE_REUSE_RESULT_ENV: &str = "OKOU_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
@@ -98,21 +83,11 @@ pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 /// Optional CLI session or thread identifier used when resuming a prior agent
 /// session.
 ///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
-
-/// Canonical resume-session alias written by the runner.
-///
 /// The runner normalizes Codex thread ids before emitting this key.
 pub const CANONICAL_RESUME_SESSION_ID_ENV: &str = "OKOU_RESUME_SESSION_ID";
 
 /// Optional Unix epoch millisecond timestamp for when the API accepted the
 /// run.
-///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
-
-/// Canonical alias for the API start timestamp written by the runner.
 ///
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const CANONICAL_API_START_TIME_ENV: &str = "OKOU_API_START_TIME";
@@ -624,21 +599,16 @@ mod tests {
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
         assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
-        assert_eq!(SANDBOX_ID_ENV, "VM0_SANDBOX_ID");
         assert_eq!(CANONICAL_SANDBOX_ID_ENV, "OKOU_SANDBOX_ID");
-        assert_eq!(SANDBOX_REUSE_RESULT_ENV, "VM0_SANDBOX_REUSE_RESULT");
         assert_eq!(
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             "OKOU_SANDBOX_REUSE_RESULT"
         );
-        assert_eq!(WORKSPACE_REUSE_RESULT_ENV, "VM0_WORKSPACE_REUSE_RESULT");
         assert_eq!(
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             "OKOU_WORKSPACE_REUSE_RESULT"
         );
-        assert_eq!(RESUME_SESSION_ID_ENV, "VM0_RESUME_SESSION_ID");
         assert_eq!(CANONICAL_RESUME_SESSION_ID_ENV, "OKOU_RESUME_SESSION_ID");
-        assert_eq!(API_START_TIME_ENV, "VM0_API_START_TIME");
         assert_eq!(CANONICAL_API_START_TIME_ENV, "OKOU_API_START_TIME");
         assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
         assert_eq!(PI_LAUNCH_CONFIG_ENV, "OKOU_PI_LAUNCH_CONFIG");
@@ -873,9 +843,13 @@ mod tests {
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-            RESUME_SESSION_ID_ENV,
             CANONICAL_RESUME_SESSION_ID_ENV,
             CANONICAL_API_START_TIME_ENV,
+            "VM0_SANDBOX_ID",
+            "VM0_SANDBOX_REUSE_RESULT",
+            "VM0_WORKSPACE_REUSE_RESULT",
+            "VM0_RESUME_SESSION_ID",
+            "VM0_API_START_TIME",
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,

@@ -25,16 +25,15 @@ const WORKSPACE_REUSE_VALUE: &str = "workspace-reuse-value-must-not-leak";
 const RESUME_SESSION_VALUE: &str = "resume-session-value-must-not-leak";
 const API_START_TIME_VALUE: &str = "api-start-time-value-must-not-leak";
 
-const SOURCE_EVENT_FAMILIES: [&str; 6] = [
+const SOURCE_EVENT_FAMILIES: [&str; 5] = [
     "api_url_env_source",
     "private_payload_file_env_source",
     "api_token_env_source",
     "agent_execution_timeout_env_source",
     "guest_agent_tuning_env_source",
-    "run_metadata_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 14] = [
+const SOURCE_EVENTS: [(&str, &str); 9] = [
     (
         "api_url_env_source",
         guest_contracts::env::CANONICAL_API_URL_ENV,
@@ -66,26 +65,6 @@ const SOURCE_EVENTS: [(&str, &str); 14] = [
     (
         "api_token_env_source",
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,
-    ),
-    (
-        "run_metadata_env_source",
-        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-    ),
-    (
-        "run_metadata_env_source",
-        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-    ),
-    (
-        "run_metadata_env_source",
-        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-    ),
-    (
-        "run_metadata_env_source",
-        guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-    ),
-    (
-        "run_metadata_env_source",
-        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
     ),
     (
         "agent_execution_timeout_env_source",
@@ -258,6 +237,8 @@ async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult
     );
     assert_value_free(&stderr, &runtime_dir);
     assert_value_free(&system_log, &runtime_dir);
+    assert!(!stderr.contains("run_metadata_env_source"));
+    assert!(!system_log.contains("run_metadata_env_source"));
     assert!(!private_files.user_env_path.exists());
     assert!(!private_files.run_payload_path.exists());
     Ok(())
@@ -275,6 +256,11 @@ fn bootstrap_alias_source_events_isolated_child() -> TestResult {
     assert!(runtime.config.user_env.is_empty());
     assert_eq!(runtime.config.api_url, API_URL_VALUE);
     assert_eq!(runtime.config.api_token, API_TOKEN_VALUE);
+    assert_eq!(runtime.config.sandbox_id, SANDBOX_ID_VALUE);
+    assert_eq!(runtime.config.sandbox_reuse_result, SANDBOX_REUSE_VALUE);
+    assert_eq!(runtime.config.workspace_reuse_result, WORKSPACE_REUSE_VALUE);
+    assert_eq!(runtime.config.resume_session_id, RESUME_SESSION_VALUE);
+    assert_eq!(runtime.config.api_start_time, API_START_TIME_VALUE);
     println!("{CHILD_MARKER}");
     Ok(())
 }
