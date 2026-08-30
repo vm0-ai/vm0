@@ -463,7 +463,7 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "7200"
     );
-    assert!(!env.contains_key(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV));
+    assert!(!env.contains_key("VM0_AGENT_EXECUTION_TIMEOUT_SECS"));
     assert_eq!(
         env.get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
             .unwrap(),

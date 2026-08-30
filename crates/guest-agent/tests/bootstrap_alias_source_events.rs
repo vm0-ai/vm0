@@ -25,15 +25,14 @@ const WORKSPACE_REUSE_VALUE: &str = "workspace-reuse-value-must-not-leak";
 const RESUME_SESSION_VALUE: &str = "resume-session-value-must-not-leak";
 const API_START_TIME_VALUE: &str = "api-start-time-value-must-not-leak";
 
-const SOURCE_EVENT_FAMILIES: [&str; 5] = [
+const SOURCE_EVENT_FAMILIES: [&str; 4] = [
     "api_url_env_source",
     "private_payload_file_env_source",
     "api_token_env_source",
-    "agent_execution_timeout_env_source",
     "guest_agent_tuning_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 8] = [
+const SOURCE_EVENTS: [(&str, &str); 7] = [
     (
         "api_url_env_source",
         guest_contracts::env::CANONICAL_API_URL_ENV,
@@ -61,10 +60,6 @@ const SOURCE_EVENTS: [(&str, &str); 8] = [
     (
         "private_payload_file_env_source",
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-    ),
-    (
-        "agent_execution_timeout_env_source",
-        guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
     ),
 ];
 
@@ -257,6 +252,10 @@ fn bootstrap_alias_source_events_isolated_child() -> TestResult {
     assert_eq!(runtime.config.workspace_reuse_result, WORKSPACE_REUSE_VALUE);
     assert_eq!(runtime.config.resume_session_id, RESUME_SESSION_VALUE);
     assert_eq!(runtime.config.api_start_time, API_START_TIME_VALUE);
+    assert_eq!(
+        runtime.config.agent_execution_timeout,
+        Some(Duration::from_secs(37))
+    );
     println!("{CHILD_MARKER}");
     Ok(())
 }

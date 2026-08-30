@@ -9,6 +9,8 @@ use guest_agent::run_context::GuestRuntime;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
+const RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
+
 #[tokio::test]
 async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -66,7 +68,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_APPEND_SYSTEM_PROMPT", "runner append prompt");
         std::env::set_var("VM0_FEATURE_FLAGS", r#"{"flag":true}"#);
-        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "60");
+        std::env::set_var(RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV, "59");
         std::env::set_var(
             guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             "60",
@@ -303,7 +305,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!cli_env.contains_key("VM0_FEATURE_FLAGS"));
     for key in [
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+        RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
         guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
         guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
