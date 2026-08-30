@@ -110,6 +110,8 @@ export class SharedWorkerRoutes {
   private readonly errors: Error[] = [];
   private readonly workerReadyPromise: Promise<void>;
   private readonly resolveWorkerReady: () => void;
+  private workerReadyError: Error | undefined;
+  private workerReady = false;
   private nextCommandId = 0;
   private closed = false;
 
@@ -128,7 +130,12 @@ export class SharedWorkerRoutes {
         targetInfo.type === "shared_worker" &&
         targetInfo.browserContextId === this.browserContextId
       ) {
-        this.run(this.attach(targetInfo.targetId));
+        this.run(this.attach(targetInfo.targetId), (error) => {
+          if (!this.workerReady) {
+            this.workerReadyError = error;
+            this.resolveWorkerReady();
+          }
+        });
       }
     });
     session.on("Target.detachedFromTarget", ({ sessionId }) => {
@@ -179,6 +186,9 @@ export class SharedWorkerRoutes {
 
   async waitForWorker(): Promise<void> {
     await this.workerReadyPromise;
+    if (this.workerReadyError) {
+      throw this.workerReadyError;
+    }
   }
 
   route(
@@ -213,7 +223,10 @@ export class SharedWorkerRoutes {
     }
   }
 
-  private run(operation: Promise<void>): void {
+  private run(
+    operation: Promise<void>,
+    onError?: (error: Error) => void,
+  ): void {
     this.operations.add(operation);
     void operation.then(
       () => {
@@ -221,7 +234,9 @@ export class SharedWorkerRoutes {
       },
       (error: unknown) => {
         this.operations.delete(operation);
-        this.errors.push(toError(error));
+        const normalizedError = toError(error);
+        this.errors.push(normalizedError);
+        onError?.(normalizedError);
       },
     );
   }
@@ -243,6 +258,7 @@ export class SharedWorkerRoutes {
       await this.sendChildCommand(sessionId, "Fetch.enable", {
         patterns: [{ urlPattern: this.apiPattern, requestStage: "Request" }],
       });
+      this.workerReady = true;
       this.resolveWorkerReady();
     } finally {
       this.attachingTargets.delete(targetId);
