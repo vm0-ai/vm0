@@ -297,6 +297,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the latest built-in presentation template archives, direct-HTML authoring guidance, and seedream4 image generation instead of the pre-cutover renderer release.",
     enabled: true,
   },
+  [FeatureSwitchKey.IntroVideo]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
+    enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
   [FeatureSwitchKey.ChatConversationLocator]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -349,8 +356,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the Forward action in the assistant text-selection pill.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",

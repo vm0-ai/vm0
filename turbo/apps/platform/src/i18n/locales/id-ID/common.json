@@ -2002,6 +2002,96 @@
       "threads": "Chat",
       "title": "Teruskan ke"
     },
+    "introVideo": {
+      "avatar": {
+        "heading": "Pilih avatar",
+        "help": "Pilih presenter atau lanjutkan tanpa avatar",
+        "none": "Tanpa avatar"
+      },
+      "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
+      "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
+      "errors": {
+        "recordingEmpty": "Rekaman kosong. Silakan coba lagi.",
+        "recordingFailed": "Perekaman layar tidak dapat dimulai. Coba lagi di Chrome versi terbaru.",
+        "recordingPermission": "Tidak ada yang dibagikan. Pilih tab, jendela, atau layar saat Anda siap.",
+        "recordingShareEnded": "Berbagi layar berakhir sebelum perekaman dimulai.",
+        "recordingUnsupported": "Perekaman layar tidak didukung di browser ini.",
+        "sendFailed": "Utas chat tidak dapat dibuat. Sumber Anda tetap tersimpan secara lokal dan telah diunduh sebagai cadangan.",
+        "uploadFailed": "Sumber tidak dapat diunggah. Sumber tetap tersimpan secara lokal dan telah diunduh sebagai cadangan."
+      },
+      "footer": {
+        "back": "Kembali",
+        "createInChat": "Buat di chat",
+        "download": "Unduh sumber",
+        "next": "Berikutnya",
+        "startRecording": "Pilih layar dan mulai",
+        "stopRecording": "Hentikan perekaman"
+      },
+      "recording": {
+        "chooseSurface": "Pilih tab, jendela, atau layar",
+        "countdown": "Perekaman dimulai setelah hitung mundur",
+        "description": "Chrome akan menanyakan apa yang ingin dibagikan. Perekaman baru dimulai setelah hitung mundur tiga detik selesai.",
+        "heading": "Rekam layar Anda",
+        "localNote": "Anda dapat berhenti dari bilah berbagi Chrome atau kembali ke sini. Rekaman tetap lokal sampai utas chat dibuat.",
+        "microphone": "Mikrofon",
+        "microphoneHelp": "Tambahkan narasi saat melakukan demonstrasi",
+        "recordingLocally": "Merekam secara lokal",
+        "systemAudio": "Audio sistem",
+        "systemAudioHelp": "Sumber yang tersedia bergantung pada Chrome dan sistem Anda"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Tinjau video intro Anda",
+        "help": "Konfirmasikan pilihan yang akan diterima Zero di utas chat baru",
+        "instructions": "Petunjuk pengeditan",
+        "source": "Sumber",
+        "voice": "Suara"
+      },
+      "source": {
+        "chatDescription": "Buka utas sekarang dan bentuk video bersama Zero",
+        "chatDetail": "Tambahkan sumber, avatar, atau suara nanti di chat",
+        "chatTitle": "Mulai di chat",
+        "documentDescription": "Ubah konten Anda menjadi video intro bernarasi",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Unggah slide atau dokumen",
+        "dropDescription": "Slide, dokumen, atau rekaman",
+        "dropTitle": "Letakkan sumber di sini",
+        "heading": "Bagaimana Anda ingin memulai?",
+        "help": "Tambahkan materi yang sudah ada, rekam layar, atau jelaskan video dengan kata-kata Anda sendiri",
+        "recordDescription": "Pilih tab, jendela, atau seluruh layar",
+        "recordDetail": "Dimulai setelah hitung mundur tiga detik",
+        "recordTitle": "Rekam layar Anda",
+        "videoDescription": "Biarkan AI merapikan tempo, framing, dan narasi",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Unggah rekaman"
+      },
+      "sourceReview": {
+        "format": "Format",
+        "heading": "Sumber Anda sudah siap",
+        "help": "Periksa file sebelum melanjutkan",
+        "inBrowser": "Di browser ini",
+        "inTab": "Sampai tab ini ditutup",
+        "replace": "Ganti sumber",
+        "saved": "Tersimpan",
+        "source": "Sumber"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Langkah video intro",
+        "review": "Tinjau",
+        "source": "Sumber",
+        "voice": "Suara"
+      },
+      "title": "Buat video intro",
+      "voice": {
+        "heading": "Pilih suara",
+        "help": "Dengarkan sampel sebelum melanjutkan",
+        "none": "Tanpa narasi",
+        "noneDescription": "Buat video berbasis teks tanpa narasi",
+        "original": "Audio asli",
+        "originalDescription": "Pertahankan audio dari video atau rekaman yang diunggah"
+      }
+    },
     "mail": {
       "bcc": "bcc",
       "cc": "cc",

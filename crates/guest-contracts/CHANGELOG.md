@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.12.13](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.12...guest-contracts-v0.12.13) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api token legacy reader ([#30292](https://github.com/vm0-ai/vm0/issues/30292)) ([7d0c3ad](https://github.com/vm0-ai/vm0/commit/7d0c3ad45d1361c0ee6463f8cc46feb00780e8f4))
+* **guest:** retire execution timeout legacy reader ([#30301](https://github.com/vm0-ai/vm0/issues/30301)) ([e5fba4b](https://github.com/vm0-ai/vm0/commit/e5fba4b8fa0ed5c1a769e71ac40053798c08abd7)), closes [#30289](https://github.com/vm0-ai/vm0/issues/30289) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest:** retire private payload legacy readers ([#30307](https://github.com/vm0-ai/vm0/issues/30307)) ([1059893](https://github.com/vm0-ai/vm0/commit/10598930135c5e6def894ae799064a5ef794d2c1))
+
+## [0.12.12](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.11...guest-contracts-v0.12.12) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** cut managed CLI API URL writer to canonical alias ([#30285](https://github.com/vm0-ai/vm0/issues/30285)) ([a9a071e](https://github.com/vm0-ai/vm0/commit/a9a071e78fb317292b8c712f2b5543949dcb5982)), closes [#30277](https://github.com/vm0-ai/vm0/issues/30277) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest:** retire legacy tool cgroup reader ([#30278](https://github.com/vm0-ai/vm0/issues/30278)) ([416b413](https://github.com/vm0-ai/vm0/commit/416b41325cd6a19c62e4f006b7ef7a4af2aca4cb)), closes [#30276](https://github.com/vm0-ai/vm0/issues/30276) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
 ## [0.12.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.10...guest-contracts-v0.12.11) (2026-08-29)
 
 

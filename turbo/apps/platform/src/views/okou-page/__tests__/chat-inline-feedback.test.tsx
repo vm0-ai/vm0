@@ -838,6 +838,7 @@ describe("chat inline feedback", () => {
 
     detachedSetupPage({
       context,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: false },
       path: `/chats/${FEEDBACK_THREAD_ID}`,
     });
 

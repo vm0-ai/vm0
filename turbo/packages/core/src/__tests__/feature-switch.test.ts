@@ -13,6 +13,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ChatForward, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -124,7 +125,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -140,6 +140,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
 
@@ -153,7 +154,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
@@ -169,8 +169,23 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
+  });
+
+  it("should enable intro video for Bingjie only", () => {
+    const bingjieStates = getAllFeatureStates({
+      email: "bingjie@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(bingjieStates[FeatureSwitchKey.IntroVideo]).toBe(true);
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(otherStaffStates[FeatureSwitchKey.IntroVideo]).toBe(false);
   });
 
   it("should enable gradient color themes for Ming only", () => {

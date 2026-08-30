@@ -1555,6 +1555,20 @@
       "when": 1788048199922,
       "tag": "1029_morning_brief_phase_a_cutover",
       "breakpoints": true
+    },
+    {
+      "idx": 1030,
+      "version": "7",
+      "when": 1788059979897,
+      "tag": "1030_contract_legacy_workflow_compatibility_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 1031,
+      "version": "7",
+      "when": 1788068208560,
+      "tag": "1031_assert_legacy_workflow_routine_references",
+      "breakpoints": true
     }
   ]
 }

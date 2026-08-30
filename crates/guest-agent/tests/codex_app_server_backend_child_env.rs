@@ -50,7 +50,8 @@ async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prom
         serde_json::to_vec(&json!({
             "CUSTOM_USER_ENV": "visible-to-app-server",
             "OPENAI_MODEL": "gpt-runtime-model",
-            "VM0_API_BACKEND_URL": "https://user-env.example.invalid"
+            "VM0_API_BACKEND_URL": "https://user-env.example.invalid",
+            "OKOU_API_BACKEND_URL": "https://canonical-user-env.example.invalid"
         }))?,
     )?;
     unsafe {
@@ -67,6 +68,10 @@ async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prom
     unsafe {
         std::env::set_var("HOME", tmp.path().join("stale-home"));
         std::env::set_var("VM0_API_BACKEND_URL", "https://stale-api.example.invalid");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "https://stale-canonical-api.example.invalid",
+        );
         std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
         std::env::set_var("CUSTOM_USER_ENV", "stale-process-user-env");
     }
@@ -115,6 +120,12 @@ async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prom
     assert_eq!(
         input_event.get("child_env_api_url").and_then(Value::as_str),
         Some(runtime.config.api_url.as_str())
+    );
+    assert_eq!(
+        input_event
+            .get("child_env_has_legacy_api_url")
+            .and_then(Value::as_bool),
+        Some(false)
     );
     assert_eq!(
         input_event

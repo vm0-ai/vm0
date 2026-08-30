@@ -1,6 +1,6 @@
 [package]
 name = "guest-mock-codex"
-version = "0.9.15"
+version = "0.9.17"
 edition.workspace = true
 
 [dependencies]

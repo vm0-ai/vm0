@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.38.122](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.121...desktop-v0.38.122) (2026-08-30)
+
+
+### Refactoring
+
+* **desktop:** retire product and platform legacy aliases ([#30310](https://github.com/vm0-ai/vm0/issues/30310)) ([97adf2c](https://github.com/vm0-ai/vm0/commit/97adf2cf57f3a052d9afacf7b13a0fdf01c50b63)), closes [#30306](https://github.com/vm0-ai/vm0/issues/30306)
+
+## [0.38.121](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.120...desktop-v0.38.121) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.8
+
 ## [0.38.120](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.119...desktop-v0.38.120) (2026-08-30)
 
 

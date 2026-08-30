@@ -1,5 +1,31 @@
 # Changelog
 
+## [8.603.0](https://github.com/vm0-ai/vm0/compare/core-v8.602.0...core-v8.603.0) (2026-08-30)
+
+
+### Features
+
+* **platform:** add intro video creation flow ([#30177](https://github.com/vm0-ai/vm0/issues/30177)) ([0907ea3](https://github.com/vm0-ai/vm0/commit/0907ea3f326c0c1bdb42e34a6c0faa2664c134f4))
+
+## [8.602.0](https://github.com/vm0-ai/vm0/compare/core-v8.601.8...core-v8.602.0) (2026-08-30)
+
+
+### Features
+
+* roll out chat forwarding to all users ([#29575](https://github.com/vm0-ai/vm0/issues/29575)) ([312e629](https://github.com/vm0-ai/vm0/commit/312e62966b4454b266a192c347727b3904a72dba))
+
+
+### Refactoring
+
+* retire legacy morning brief runtime ([#30267](https://github.com/vm0-ai/vm0/issues/30267)) ([f71e821](https://github.com/vm0-ai/vm0/commit/f71e821906627a3e7198eb8a395d2e2825b0e748))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.8
+
 ## [8.601.8](https://github.com/vm0-ai/vm0/compare/core-v8.601.7...core-v8.601.8) (2026-08-30)
 
 

@@ -197,7 +197,7 @@ fn clear_api_url_env() {
 
 fn clear_api_token_env() {
     remove_test_env(guest_contracts::env::CANONICAL_API_TOKEN_ENV);
-    remove_test_env(guest_contracts::env::API_TOKEN_ENV);
+    remove_test_env("VM0_API_TOKEN");
 }
 
 fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
@@ -357,9 +357,9 @@ fn assert_conflict_precedes_private_payload_consumption(tmp: &Path) -> TestResul
     for key in [
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        guest_contracts::env::USER_ENV_FILE_ENV,
+        "VM0_USER_ENV_FILE",
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        "VM0_RUN_PAYLOAD_FILE",
     ] {
         remove_test_env(key);
     }

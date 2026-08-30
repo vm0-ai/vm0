@@ -120,6 +120,7 @@ impl AppServerState {
         self.set_current_thread(
             thread_id.clone(),
             params.get("runtimeWorkspaceRoots").is_some(),
+            params.get("excludeTurns").and_then(Value::as_bool) == Some(true),
             string_param(params, "model").map(str::to_string),
             string_param(params, "modelProvider").map(str::to_string),
             rollout_timestamp,
@@ -223,6 +224,7 @@ impl AppServerState {
         self.set_current_thread(
             thread_id.to_string(),
             params.get("runtimeWorkspaceRoots").is_some(),
+            params.get("excludeTurns").and_then(Value::as_bool) == Some(true),
             string_param(params, "model").map(str::to_string),
             string_param(params, "modelProvider").map(str::to_string),
             rollout_timestamp,
@@ -280,6 +282,7 @@ impl AppServerState {
         let artifact_thread_id = current_thread.artifact_thread_id.clone();
         let thread_request_has_runtime_workspace_roots =
             current_thread.thread_request_has_runtime_workspace_roots;
+        let thread_request_excludes_turns = current_thread.thread_request_excludes_turns;
         let thread_request_model = current_thread.thread_request_model.clone();
         let thread_request_model_provider = current_thread.thread_request_model_provider.clone();
         let rollout_timestamp = current_thread.rollout_timestamp;
@@ -307,6 +310,7 @@ impl AppServerState {
                 turn_id: &turn_id,
                 kind: "initial",
                 thread_request_has_runtime_workspace_roots,
+                thread_request_excludes_turns,
                 thread_request_model: thread_request_model.as_deref(),
                 thread_request_model_provider: thread_request_model_provider.as_deref(),
                 rollout_timestamp: &rollout_timestamp,
@@ -489,6 +493,7 @@ impl AppServerState {
         let artifact_thread_id = current_thread.artifact_thread_id.clone();
         let thread_request_has_runtime_workspace_roots =
             current_thread.thread_request_has_runtime_workspace_roots;
+        let thread_request_excludes_turns = current_thread.thread_request_excludes_turns;
         let thread_request_model = current_thread.thread_request_model.clone();
         let thread_request_model_provider = current_thread.thread_request_model_provider.clone();
         let rollout_timestamp = current_thread.rollout_timestamp;
@@ -507,6 +512,7 @@ impl AppServerState {
                 turn_id: &active_turn_id,
                 kind: "steered",
                 thread_request_has_runtime_workspace_roots,
+                thread_request_excludes_turns,
                 thread_request_model: thread_request_model.as_deref(),
                 thread_request_model_provider: thread_request_model_provider.as_deref(),
                 rollout_timestamp: &rollout_timestamp,

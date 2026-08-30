@@ -63,8 +63,8 @@ use super::{
     JOB_TIMEOUT_EXIT_CODE, ResourceFailureDiagnostics, ResourceFailureKind, RunnerError,
     RunnerResult, SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult,
     SandboxReuseTerminal, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
-    USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, guest_runtime_dir, guest_runtime_path,
-    job_supervisor_timeout, job_terminal_wait_timeout, normalize_failure_exit_code,
+    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_supervisor_timeout,
+    job_terminal_wait_timeout, normalize_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
@@ -2084,8 +2084,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let user_env_file = required_files.user_env_file;
     let run_payload_file = required_files.run_payload_file;
     debug_assert!(
-        !env_map.contains_key(USER_ENV_FILE_ENV_KEY)
-            && !env_map.contains_key(guest_contracts::env::RUN_PAYLOAD_FILE_ENV),
+        !env_map.contains_key("VM0_USER_ENV_FILE")
+            && !env_map.contains_key("VM0_RUN_PAYLOAD_FILE"),
         "legacy private payload pointers must be absent before canonical insertion"
     );
     if let Some(path) = user_env_file {

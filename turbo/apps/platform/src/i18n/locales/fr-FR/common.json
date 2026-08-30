@@ -2038,6 +2038,96 @@
       "threads": "Chats",
       "title": "Transférer vers"
     },
+    "introVideo": {
+      "avatar": {
+        "heading": "Choisir un avatar",
+        "help": "Choisissez un présentateur ou continuez sans avatar",
+        "none": "Aucun avatar"
+      },
+      "cardDescription": "Transformez un fichier ou un enregistrement d'écran en vidéo finalisée",
+      "description": "Ajoutez une source, choisissez éventuellement un avatar et une voix, puis créez la vidéo dans un fil de discussion.",
+      "errors": {
+        "recordingEmpty": "L'enregistrement est vide. Veuillez réessayer.",
+        "recordingFailed": "Impossible de démarrer l'enregistrement d'écran. Réessayez dans une version récente de Chrome.",
+        "recordingPermission": "Aucun élément n'a été partagé. Choisissez un onglet, une fenêtre ou un écran lorsque vous êtes prêt.",
+        "recordingShareEnded": "Le partage d'écran s'est arrêté avant le début de l'enregistrement.",
+        "recordingUnsupported": "Ce navigateur ne prend pas en charge l'enregistrement d'écran.",
+        "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre source reste enregistrée localement et a été téléchargée comme sauvegarde.",
+        "uploadFailed": "La source n'a pas pu être importée. Elle reste enregistrée localement et a été téléchargée comme sauvegarde."
+      },
+      "footer": {
+        "back": "Retour",
+        "createInChat": "Créer dans le chat",
+        "download": "Télécharger la source",
+        "next": "Suivant",
+        "startRecording": "Choisir l'écran et démarrer",
+        "stopRecording": "Arrêter l'enregistrement"
+      },
+      "recording": {
+        "chooseSurface": "Choisissez un onglet, une fenêtre ou un écran",
+        "countdown": "L'enregistrement commence après le compte à rebours",
+        "description": "Chrome vous demandera quoi partager. L'enregistrement ne commence qu'après le compte à rebours de trois secondes.",
+        "heading": "Enregistrer votre écran",
+        "localNote": "Vous pouvez arrêter depuis la barre de partage de Chrome ou revenir ici. L'enregistrement reste local jusqu'à la création du fil de discussion.",
+        "microphone": "Microphone",
+        "microphoneHelp": "Ajoutez une narration pendant votre démonstration",
+        "recordingLocally": "Enregistrement local",
+        "systemAudio": "Audio système",
+        "systemAudioHelp": "Les sources disponibles dépendent de Chrome et de votre système"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Vérifier votre vidéo d'introduction",
+        "help": "Confirmez les choix que Zero recevra dans le nouveau fil de discussion",
+        "instructions": "Instructions de montage",
+        "source": "Source",
+        "voice": "Voix"
+      },
+      "source": {
+        "chatDescription": "Ouvrez un fil maintenant et façonnez la vidéo avec Zero",
+        "chatDetail": "Ajoutez une source, un avatar ou une voix plus tard dans le chat",
+        "chatTitle": "Commencer dans le chat",
+        "documentDescription": "Transformez votre contenu en vidéo d'introduction commentée",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Importer des diapositives ou un document",
+        "dropDescription": "Diapositives, documents ou enregistrements",
+        "dropTitle": "Déposez une source ici",
+        "heading": "Comment souhaitez-vous commencer ?",
+        "help": "Ajoutez un contenu existant, enregistrez votre écran ou décrivez la vidéo avec vos propres mots",
+        "recordDescription": "Choisissez un onglet, une fenêtre ou tout l'écran",
+        "recordDetail": "Démarre après un compte à rebours de trois secondes",
+        "recordTitle": "Enregistrer votre écran",
+        "videoDescription": "Laissez l'IA améliorer le rythme, le cadrage et la narration",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Importer un enregistrement"
+      },
+      "sourceReview": {
+        "format": "Format",
+        "heading": "Votre source est prête",
+        "help": "Vérifiez le fichier avant de continuer",
+        "inBrowser": "Dans ce navigateur",
+        "inTab": "Jusqu'à la fermeture de cet onglet",
+        "replace": "Remplacer la source",
+        "saved": "Enregistrée",
+        "source": "Source"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Étapes de la vidéo d'introduction",
+        "review": "Vérification",
+        "source": "Source",
+        "voice": "Voix"
+      },
+      "title": "Créer une vidéo d'introduction",
+      "voice": {
+        "heading": "Choisir une voix",
+        "help": "Écoutez un extrait avant de continuer",
+        "none": "Sans voix off",
+        "noneDescription": "Créez une vidéo guidée par les sous-titres sans narration",
+        "original": "Audio d'origine",
+        "originalDescription": "Conservez l'audio de la vidéo ou de l'enregistrement importé"
+      }
+    },
     "mail": {
       "bcc": "bcc",
       "cc": "cc",

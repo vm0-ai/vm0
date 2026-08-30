@@ -2,7 +2,7 @@
 //!
 //! The runner uses these names to bootstrap the guest-agent process. User,
 //! model-provider, and connector environment is a separate payload loaded
-//! through [`USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
+//! through [`CANONICAL_USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
 //! bootstrap controls directly.
 //!
 //! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
@@ -16,66 +16,46 @@
 //! selected runner-owned keys may cross the local user-env boundary as
 //! guest-agent timing overrides.
 
-/// Backend API base URL provided to the guest-agent.
+/// Legacy backend API base URL spelling retained by compatibility readers.
 ///
-/// This is the only runner bootstrap key intentionally exposed to CLI child
-/// processes by the guest-agent's curated child environment.
+/// The production Runner and the guest-agent's curated managed CLI-child
+/// environment do not emit this alias.
 pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
-/// Canonical backend API URL spelling written by the production Runner.
+/// Canonical backend API URL spelling written by the production Runner and
+/// exposed to managed CLI children.
 ///
 /// The Guest Agent bootstrap reader and Runner operator parser reuse this exact
 /// spelling but have independent rollout floors. On the Runner-to-Guest surface,
 /// the Runner emits only this canonical alias, while the Guest Agent retains
-/// [`API_URL_ENV`] as a rollback reader fallback and keeps exposing that legacy
-/// spelling to managed CLI children. Remove the legacy bootstrap reader only
-/// after the exact canonical writer production release, complete legacy-writer
-/// service and reusable-sandbox drain, supported rollback window, and value-free
-/// legacy-source-zero gates in #28914. Runner operator input and managed
-/// CLI-child exposure each have their own later support floors.
+/// [`API_URL_ENV`] as a rollback reader fallback. On the Guest-to-managed-CLI
+/// surface, the curated child environment emits only this canonical alias.
+/// Remove the legacy bootstrap reader only after the exact canonical writer
+/// production release, complete legacy-writer service and reusable-sandbox
+/// drain, supported rollback window, and value-free legacy-source-zero gates in
+/// #28914. Runner operator input retains its own independent support floor.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
 /// file path resolution.
 pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
 
-/// Legacy backend API bearer token alias retained by guest readers for rollback.
+/// Sensitive backend API bearer token for guest-agent calls.
 ///
 /// This value is runner-owned and must not be exposed through user-provided
 /// environment or CLI child env.
-pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
-
-/// Canonical backend API bearer token alias written by the runner.
-///
-/// Guest readers retain [`API_TOKEN_ENV`] as the rollback fallback. This value
-/// has the same runner-owned isolation contract as the legacy alias.
 pub const CANONICAL_API_TOKEN_ENV: &str = "OKOU_API_TOKEN";
 
-/// Sandbox identifier assigned by the runner.
-///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
-
-/// Canonical alias for the sandbox identifier written by the runner.
+/// Sandbox identifier assigned and written by the runner.
 pub const CANONICAL_SANDBOX_ID_ENV: &str = "OKOU_SANDBOX_ID";
 
 /// Wire value for the runner's sandbox-reuse decision.
 ///
 /// `reused` means an idle sandbox was unparked. Other values describe why reuse did
 /// not happen, such as `poolMiss` or `noReuseKey`.
-///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
-
-/// Canonical alias for the sandbox-reuse decision written by the runner.
 pub const CANONICAL_SANDBOX_REUSE_RESULT_ENV: &str = "OKOU_SANDBOX_REUSE_RESULT";
 
 /// Wire value for the runner's final workspace-reuse decision.
-///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const WORKSPACE_REUSE_RESULT_ENV: &str = "VM0_WORKSPACE_REUSE_RESULT";
-
-/// Canonical alias for the workspace-reuse decision written by the runner.
 pub const CANONICAL_WORKSPACE_REUSE_RESULT_ENV: &str = "OKOU_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
@@ -97,38 +77,21 @@ pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 /// Optional CLI session or thread identifier used when resuming a prior agent
 /// session.
 ///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
-
-/// Canonical resume-session alias written by the runner.
-///
 /// The runner normalizes Codex thread ids before emitting this key.
 pub const CANONICAL_RESUME_SESSION_ID_ENV: &str = "OKOU_RESUME_SESSION_ID";
 
 /// Optional Unix epoch millisecond timestamp for when the API accepted the
 /// run.
 ///
-/// Guest readers retain this legacy alias as a rollback fallback.
-pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
-
-/// Canonical alias for the API start timestamp written by the runner.
-///
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const CANONICAL_API_START_TIME_ENV: &str = "OKOU_API_START_TIME";
 
-/// Maximum agent execution duration in seconds.
+/// Maximum agent execution duration in seconds, written by the runner.
 ///
 /// The runner owns this fixed lifecycle budget. Guest-agent uses it to stop
 /// the CLI before the later sandbox supervisor deadline, leaving time for
 /// recovery checkpointing and final telemetry. It is intentionally not a
 /// local user-tuning key.
-pub const AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
-
-/// Canonical agent execution timeout alias written by the runner.
-///
-/// Guest readers retain [`AGENT_EXECUTION_TIMEOUT_SECS_ENV`] as a rollback
-/// fallback until the canonical writer deployment, supported rollback window,
-/// and legacy-read-zero gates in #28914 are complete.
 pub const CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "OKOU_AGENT_EXECUTION_TIMEOUT_SECS";
 
 /// Logical run-payload field name for sensitive values used by the guest-agent
@@ -165,26 +128,18 @@ pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
 /// this exact name.
 pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 
-/// Legacy private user-environment file pointer retained by guest readers as a
-/// rollback fallback.
+/// Canonical private user-environment file pointer written by the runner.
 ///
 /// The guest-agent validates that the path points at its per-run private
 /// runtime directory, parses it as a `HashMap<String, String>`, and removes the
 /// file after loading. Unset or empty means there is no user environment
 /// payload.
-pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
-
-/// Canonical user-environment file pointer written by the runner.
-///
-/// Guest readers retain [`USER_ENV_FILE_ENV`] until the canonical writer
-/// deployment, supported rollback window, and legacy-read-zero gates in #28914
-/// are complete.
 pub const CANONICAL_USER_ENV_FILE_ENV: &str = "OKOU_USER_ENV_FILE";
 
-/// Private runtime subdirectory used by [`USER_ENV_FILE_ENV`].
+/// Private runtime subdirectory used by [`CANONICAL_USER_ENV_FILE_ENV`].
 pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 
-/// Private runtime filename used by [`USER_ENV_FILE_ENV`].
+/// Private runtime filename used by [`CANONICAL_USER_ENV_FILE_ENV`].
 pub const USER_ENV_FILENAME: &str = "env.json";
 
 /// Path to the non-secret connector account context for the current run.
@@ -200,25 +155,17 @@ pub const CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME: &str = "connector-account-
 /// Private runtime filename used by [`CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV`].
 pub const CONNECTOR_ACCOUNT_CONTEXT_FILENAME: &str = "context.json";
 
-/// Legacy private runner-owned run-payload file pointer retained by guest
-/// readers as a rollback fallback.
+/// Canonical private runner-owned run-payload file pointer written by the runner.
 ///
 /// Large prompt-like and configuration payloads use this file instead of
 /// bootstrap environment values so guest-agent startup does not hit Linux
-/// argv/env limits. Production guest-agent startup requires one pointer alias.
-pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
-
-/// Canonical run-payload file pointer written by the runner.
-///
-/// Guest readers retain [`RUN_PAYLOAD_FILE_ENV`] until the canonical writer
-/// deployment, supported rollback window, and legacy-read-zero gates in #28914
-/// are complete.
+/// argv/env limits. Production guest-agent startup requires this pointer.
 pub const CANONICAL_RUN_PAYLOAD_FILE_ENV: &str = "OKOU_RUN_PAYLOAD_FILE";
 
-/// Private runtime subdirectory used by [`RUN_PAYLOAD_FILE_ENV`].
+/// Private runtime subdirectory used by [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
 
-/// Private runtime filename used by [`RUN_PAYLOAD_FILE_ENV`].
+/// Private runtime filename used by [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 
 /// Logical run-payload field name for the JSON array describing artifact mounts
@@ -270,7 +217,7 @@ pub const PI_MODEL_CONFIG_ENV: &str = "OKOU_PI_MODEL_CONFIG";
 pub const PI_SESSION_ID_ENV: &str = "OKOU_PI_SESSION_ID";
 
 /// Runner-owned variable-length run payload sent through
-/// [`RUN_PAYLOAD_FILE_ENV`].
+/// [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 ///
 /// Empty strings mean "no value" for optional fields.
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -621,23 +568,17 @@ mod tests {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
-        assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
-        assert_eq!(SANDBOX_ID_ENV, "VM0_SANDBOX_ID");
         assert_eq!(CANONICAL_SANDBOX_ID_ENV, "OKOU_SANDBOX_ID");
-        assert_eq!(SANDBOX_REUSE_RESULT_ENV, "VM0_SANDBOX_REUSE_RESULT");
         assert_eq!(
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             "OKOU_SANDBOX_REUSE_RESULT"
         );
-        assert_eq!(WORKSPACE_REUSE_RESULT_ENV, "VM0_WORKSPACE_REUSE_RESULT");
         assert_eq!(
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             "OKOU_WORKSPACE_REUSE_RESULT"
         );
-        assert_eq!(RESUME_SESSION_ID_ENV, "VM0_RESUME_SESSION_ID");
         assert_eq!(CANONICAL_RESUME_SESSION_ID_ENV, "OKOU_RESUME_SESSION_ID");
-        assert_eq!(API_START_TIME_ENV, "VM0_API_START_TIME");
         assert_eq!(CANONICAL_API_START_TIME_ENV, "OKOU_API_START_TIME");
         assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
         assert_eq!(PI_LAUNCH_CONFIG_ENV, "OKOU_PI_LAUNCH_CONFIG");
@@ -647,14 +588,9 @@ mod tests {
         assert_eq!(PI_MODEL_CONFIG_ENV, "OKOU_PI_MODEL_CONFIG");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(
-            AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-            "VM0_AGENT_EXECUTION_TIMEOUT_SECS"
-        );
-        assert_eq!(
             CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             "OKOU_AGENT_EXECUTION_TIMEOUT_SECS"
         );
-        assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
         assert_eq!(CANONICAL_USER_ENV_FILE_ENV, "OKOU_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
@@ -667,7 +603,6 @@ mod tests {
             "connector-account-context"
         );
         assert_eq!(CONNECTOR_ACCOUNT_CONTEXT_FILENAME, "context.json");
-        assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
         assert_eq!(CANONICAL_RUN_PAYLOAD_FILE_ENV, "OKOU_RUN_PAYLOAD_FILE");
         assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
         assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
@@ -867,23 +802,27 @@ mod tests {
             API_URL_ENV,
             CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
-            API_TOKEN_ENV,
+            "VM0_API_TOKEN",
             CANONICAL_API_TOKEN_ENV,
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-            RESUME_SESSION_ID_ENV,
             CANONICAL_RESUME_SESSION_ID_ENV,
             CANONICAL_API_START_TIME_ENV,
+            "VM0_SANDBOX_ID",
+            "VM0_SANDBOX_REUSE_RESULT",
+            "VM0_WORKSPACE_REUSE_RESULT",
+            "VM0_RESUME_SESSION_ID",
+            "VM0_API_START_TIME",
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
             CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
             WORKING_DIR_ENV,
-            USER_ENV_FILE_ENV,
+            "VM0_USER_ENV_FILE",
             CANONICAL_USER_ENV_FILE_ENV,
-            RUN_PAYLOAD_FILE_ENV,
+            "VM0_RUN_PAYLOAD_FILE",
             CANONICAL_RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,

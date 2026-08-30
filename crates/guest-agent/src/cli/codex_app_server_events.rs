@@ -453,6 +453,9 @@ fn normalize_item(
         ("item/completed", "agentMessage") => normalize_agent_message(item, method).map(Some),
         ("item/completed", "plan") => normalize_plan(item, method).map(Some),
         ("item/completed", "reasoning") => normalize_reasoning(item, method).map(Some),
+        ("item/completed", "functionCallOutput") => {
+            normalize_function_call_output(item, method).map(Some)
+        }
         ("item/completed", "commandExecution") => {
             normalize_command_execution(item, method).map(Some)
         }
@@ -534,6 +537,22 @@ fn normalize_command_execution(
     );
     copy_optional_field(&mut normalized, "exit_code", item, "exitCode");
     copy_optional_field(&mut normalized, "duration_ms", item, "durationMs");
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_function_call_output(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "function_call_output")?;
+    let name = required_string_key(item, method, "name", "item.name")?;
+    normalized.insert("name".to_string(), Value::String(name.to_string()));
+    copy_optional_field(&mut normalized, "namespace", item, "namespace");
+    let output = item
+        .get("output")
+        .filter(|output| matches!(output, Value::String(_) | Value::Array(_)))
+        .ok_or_else(|| invalid_field_for_method(method, "item.output"))?;
+    normalized.insert("output".to_string(), output.clone());
     Ok(Value::Object(normalized))
 }
 
@@ -657,6 +676,35 @@ fn normalize_error_object(error: &Map<String, Value>) -> Value {
     );
     copy_optional_field(&mut normalized, "connectors", error, "connectors");
     copy_optional_field(&mut normalized, "failureReason", error, "failureReason");
+    if let Some(misalignment) = error.get("misalignment") {
+        normalized.insert(
+            "misalignment".to_string(),
+            normalize_optional_misalignment(misalignment),
+        );
+    }
+    Value::Object(normalized)
+}
+
+fn normalize_optional_misalignment(misalignment: &Value) -> Value {
+    let Value::Object(misalignment) = misalignment else {
+        return misalignment.clone();
+    };
+    let mut normalized = Map::new();
+    copy_first_optional_field(
+        &mut normalized,
+        "error_type",
+        misalignment,
+        &["error_type", "errorType"],
+    );
+    copy_first_optional_field(
+        &mut normalized,
+        "detailed_explanation",
+        misalignment,
+        &["detailed_explanation", "detailedExplanation"],
+    );
+    if let Some(steer) = misalignment.get("steer") {
+        normalized.insert("steer".to_string(), steer.clone());
+    }
     Value::Object(normalized)
 }
 
@@ -1245,6 +1293,33 @@ mod tests {
     }
 
     #[test]
+    fn failed_turn_completed_classifies_rate_limit_for_diagnostics() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "error": {
+                        "message": "Rate limit exceeded.",
+                        "codexErrorInfo": "rateLimitExceeded"
+                    }
+                }
+            }),
+        );
+
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(events::CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: "Rate limit exceeded.".to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
     fn failed_turn_completed_preserves_cyber_policy_reason_for_diagnostics() {
         let event = mapped_event(
             "turn/completed",
@@ -1287,7 +1362,12 @@ mod tests {
                     "status": "failed",
                     "error": {
                         "message": "This request violates the provider's alignment policy.",
-                        "codexErrorInfo": "misalignmentPolicyViolation"
+                        "codexErrorInfo": "misalignmentPolicyViolation",
+                        "misalignment": {
+                            "errorType": "policy_violation",
+                            "detailedExplanation": "Try a safer direction.",
+                            "steer": {"message": "Continue with a safe alternative."}
+                        }
                     },
                     "startedAt": 10,
                     "completedAt": 20,
@@ -1299,6 +1379,14 @@ mod tests {
         assert_eq!(
             event["turn"]["error"]["codex_error_info"],
             "misalignmentPolicyViolation"
+        );
+        assert_eq!(
+            event["turn"]["error"]["misalignment"],
+            json!({
+                "error_type": "policy_violation",
+                "detailed_explanation": "Try a safer direction.",
+                "steer": {"message": "Continue with a safe alternative."}
+            })
         );
         assert_eq!(
             events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
@@ -1696,6 +1784,42 @@ mod tests {
         assert_eq!(event["item"]["duration_ms"], 50);
         assert_eq!(event["item"]["arguments"], json!({"owner": "vm0-ai"}));
         assert_eq!(event["item"]["large"], json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn function_call_output_preserves_structured_output() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "functionCallOutput",
+                    "id": "function-output-1",
+                    "name": "lookup",
+                    "namespace": "tools",
+                    "output": [
+                        {"type": "input_text", "text": "result"},
+                        {"type": "input_image", "image_url": "data:image/png;base64,AA=="}
+                    ]
+                }
+            }),
+        );
+
+        assert_eq!(
+            event["item"],
+            json!({
+                "type": "function_call_output",
+                "id": "function-output-1",
+                "name": "lookup",
+                "namespace": "tools",
+                "output": [
+                    {"type": "input_text", "text": "result"},
+                    {"type": "input_image", "image_url": "data:image/png;base64,AA=="}
+                ]
+            })
+        );
     }
 
     #[test]
