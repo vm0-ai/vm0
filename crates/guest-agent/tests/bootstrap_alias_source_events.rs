@@ -33,7 +33,7 @@ const SOURCE_EVENT_FAMILIES: [&str; 4] = [
     "agent_execution_timeout_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 4] = [
+const SOURCE_EVENTS: [(&str, &str); 3] = [
     (
         "api_url_env_source",
         guest_contracts::env::CANONICAL_API_URL_ENV,
@@ -45,10 +45,6 @@ const SOURCE_EVENTS: [(&str, &str); 4] = [
     (
         "private_payload_file_env_source",
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-    ),
-    (
-        "agent_execution_timeout_env_source",
-        guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
     ),
 ];
 
@@ -265,6 +261,10 @@ fn bootstrap_alias_source_events_isolated_child() -> TestResult {
     assert_eq!(
         runtime.config.post_result_sigkill_grace,
         Duration::from_secs(41)
+    );
+    assert_eq!(
+        runtime.config.agent_execution_timeout,
+        Some(Duration::from_secs(37))
     );
     println!("{CHILD_MARKER}");
     Ok(())

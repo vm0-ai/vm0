@@ -86,19 +86,12 @@ pub const CANONICAL_RESUME_SESSION_ID_ENV: &str = "OKOU_RESUME_SESSION_ID";
 /// The runner emits an empty string when the timestamp is unavailable.
 pub const CANONICAL_API_START_TIME_ENV: &str = "OKOU_API_START_TIME";
 
-/// Maximum agent execution duration in seconds.
+/// Maximum agent execution duration in seconds, written by the runner.
 ///
 /// The runner owns this fixed lifecycle budget. Guest-agent uses it to stop
 /// the CLI before the later sandbox supervisor deadline, leaving time for
 /// recovery checkpointing and final telemetry. It is intentionally not a
 /// local user-tuning key.
-pub const AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
-
-/// Canonical agent execution timeout alias written by the runner.
-///
-/// Guest readers retain [`AGENT_EXECUTION_TIMEOUT_SECS_ENV`] as a rollback
-/// fallback until the canonical writer deployment, supported rollback window,
-/// and legacy-read-zero gates in #28914 are complete.
 pub const CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "OKOU_AGENT_EXECUTION_TIMEOUT_SECS";
 
 /// Logical run-payload field name for sensitive values used by the guest-agent
@@ -611,10 +604,6 @@ mod tests {
         assert_eq!(PI_LAUNCH_PAYLOAD_FILENAME, "payload.json");
         assert_eq!(PI_MODEL_CONFIG_ENV, "OKOU_PI_MODEL_CONFIG");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
-        assert_eq!(
-            AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-            "VM0_AGENT_EXECUTION_TIMEOUT_SECS"
-        );
         assert_eq!(
             CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             "OKOU_AGENT_EXECUTION_TIMEOUT_SECS"
