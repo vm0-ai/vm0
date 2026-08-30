@@ -136,6 +136,7 @@ describe("reconnecting shared database bridge", () => {
         return created;
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged: (status) => {
           statuses.push(status);
@@ -192,6 +193,7 @@ describe("reconnecting shared database bridge", () => {
         return created;
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged:
           vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
@@ -245,6 +247,7 @@ describe("reconnecting shared database bridge", () => {
         return created;
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged:
           vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
@@ -279,6 +282,7 @@ describe("reconnecting shared database bridge", () => {
         return created;
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged:
           vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),

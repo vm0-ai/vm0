@@ -43,6 +43,7 @@ import {
   type SharedDatabaseQueryResult,
 } from "./data-key.ts";
 import {
+  SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME,
   SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
   type SharedDatabaseConnectionStatus,
   type SharedDatabaseHeartbeatResult,
@@ -82,7 +83,11 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
 type WorkerClientEvent = Extract<
   SharedDatabaseWorkerMessage,
   {
-    readonly type: "append" | "reload-required" | "status";
+    readonly type:
+      | "append"
+      | "authentication-required"
+      | "reload-required"
+      | "status";
   }
 >;
 
@@ -186,7 +191,7 @@ class SharedDatabaseAuthBlockedError extends Error {
     super(
       "Shared database remote synchronization is blocked by authentication",
     );
-    this.name = "SharedDatabaseAuthBlockedError";
+    this.name = SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME;
   }
 }
 
@@ -1455,7 +1460,7 @@ export class SharedDatabaseWorkerRuntime {
     credential: CredentialState,
     rejectedToken: string,
   ): void {
-    if (credential.token !== rejectedToken) {
+    if (credential.token !== rejectedToken || credential.authBlocked) {
       return;
     }
     L.debug("auth.block", {
@@ -1477,6 +1482,7 @@ export class SharedDatabaseWorkerRuntime {
         client.identity?.userId === credential.userId &&
         client.identity.orgId === credential.orgId
       ) {
+        client.emit({ type: "authentication-required" });
         client.emit({ type: "status", status: "disconnected" });
       }
     }

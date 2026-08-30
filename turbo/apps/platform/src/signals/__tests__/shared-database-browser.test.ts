@@ -5,6 +5,7 @@ import type {
   SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
 } from "../../shared-database/bridge.ts";
+import type { AuthRecovery } from "../auth-retry.ts";
 import { heartbeatSharedDatabase$ } from "../shared-database.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
 import { testContext } from "./test-helpers.ts";
@@ -12,6 +13,7 @@ import { testContext } from "./test-helpers.ts";
 const context = testContext();
 
 class TestSharedWorkerPort implements SharedDatabasePortLike {
+  readonly heartbeatTokens: string[] = [];
   private listener: ((event: MessageEvent<unknown>) => void) | null = null;
 
   postMessage(value: unknown): void {
@@ -24,6 +26,15 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
       typeof value.requestId !== "string"
     ) {
       return;
+    }
+    if (
+      "identity" in value &&
+      typeof value.identity === "object" &&
+      value.identity !== null &&
+      "token" in value.identity &&
+      typeof value.identity.token === "string"
+    ) {
+      this.heartbeatTokens.push(value.identity.token);
     }
     const requestId = value.requestId;
     queueMicrotask(() => {
@@ -40,6 +51,16 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
   }
 
   start(): void {}
+
+  requireAuthentication(): void {
+    queueMicrotask(() => {
+      this.listener?.(
+        new MessageEvent("message", {
+          data: { type: "authentication-required" },
+        }),
+      );
+    });
+  }
 
   close(): void {
     this.listener = null;
@@ -106,6 +127,10 @@ class TestSharedWorker {
       }),
     );
   }
+
+  requireAuthentication(): void {
+    this.port.requireAuthentication();
+  }
 }
 
 function installSharedWorkerMock(): {
@@ -134,8 +159,19 @@ function sharedDatabaseHeartbeat(): SharedDatabaseHeartbeat {
   };
 }
 
-async function setupBridge(): Promise<void> {
-  context.store.set(setupSharedDatabaseBridge$, context.signal);
+function authRecovery(replacementToken = "replacement-token"): AuthRecovery {
+  return {
+    getToken: () => {
+      return Promise.resolve("shared-worker-token");
+    },
+    forceRefreshToken: () => {
+      return Promise.resolve(replacementToken);
+    },
+  };
+}
+
+async function setupBridge(recovery = authRecovery()): Promise<void> {
+  context.store.set(setupSharedDatabaseBridge$, recovery, context.signal);
   await context.store.set(
     heartbeatSharedDatabase$,
     sharedDatabaseHeartbeat(),
@@ -144,6 +180,20 @@ async function setupBridge(): Promise<void> {
 }
 
 describe("shared database browser bridge", () => {
+  it("forces an auth refresh when the worker rejects its credential", async () => {
+    const { workers } = installSharedWorkerMock();
+    await setupBridge();
+
+    workers[0]!.requireAuthentication();
+
+    await vi.waitFor(() => {
+      expect(workers[0]!.port.heartbeatTokens).toStrictEqual([
+        "shared-worker-token",
+        "replacement-token",
+      ]);
+    });
+  });
+
   it("creates the shared worker with the Okou core service identity", async () => {
     const { constructorCalls } = installSharedWorkerMock();
 

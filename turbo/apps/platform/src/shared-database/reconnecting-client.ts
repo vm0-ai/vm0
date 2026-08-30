@@ -272,6 +272,11 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     const generation = ++this.generation;
     this.options.events.statusChanged("connecting");
     const bridge = this.options.createBridge({
+      authenticationRequired: () => {
+        if (this.connection?.generation === generation) {
+          this.options.events.authenticationRequired();
+        }
+      },
       reloadRequired: () => {
         if (this.connection?.generation === generation) {
           this.options.events.reloadRequired();
