@@ -1286,6 +1286,7 @@ def run_codex_app_server(codex_home, prompt, resume_id=None):
             if resume_id is not None:
                 thread_method = "thread/resume"
                 thread_params["threadId"] = resume_id
+                thread_params["excludeTurns"] = True
             send_app_server_message(
                 process,
                 {"id": 2, "method": thread_method, "params": thread_params},
@@ -1293,7 +1294,9 @@ def run_codex_app_server(codex_home, prompt, resume_id=None):
             thread_result = wait_for_app_server_response(process, 2, messages)
             thread = thread_result["thread"]
             thread_id = thread["id"]
-            assert thread["historyMode"] == "legacy", thread
+            assert thread["historyMode"] == "paginated", thread
+            if resume_id is not None:
+                assert thread["turns"] == [], thread
 
             send_app_server_message(
                 process,
@@ -1650,6 +1653,8 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
                 },
             },
         )
+        for ordinal, record in enumerate(records):
+            record["ordinal"] = ordinal
         source.write_bytes(
             "".join(
                 json.dumps(record, separators=(",", ":")) + "\n"
