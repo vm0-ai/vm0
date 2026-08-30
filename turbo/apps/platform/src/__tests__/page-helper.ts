@@ -188,7 +188,7 @@ export async function setupBootstrap(
       memberships: [{ id: defaultOrgId }],
     });
   }
-  if (cachedFeatureSwitches[FeatureSwitchKey.SharedChatDatabase] && testUser) {
+  if (testUser) {
     options.context.mocks.api(authContract.me, ({ respond }) => {
       return respond(200, {
         userId: testUser.id,
@@ -196,12 +196,12 @@ export async function setupBootstrap(
         orgId: activeOrgId ?? null,
       });
     });
-    options.context.store.set(
-      setupSharedWorkerTestBootstrap$,
-      options.context.signal,
-      options.afterSharedDatabaseWorkerHeartbeat,
-    );
   }
+  options.context.store.set(
+    setupSharedWorkerTestBootstrap$,
+    options.context.signal,
+    options.afterSharedDatabaseWorkerHeartbeat,
+  );
   clearMockedAuthOnAbort(options.context.signal);
   options.context.signal.addEventListener(
     "abort",

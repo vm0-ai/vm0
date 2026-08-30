@@ -7,11 +7,7 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  LEGACY_CHAT_EVENT_PROJECTION,
-  withoutLegacyChatEventProjection,
-  type ChatEventCursor,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import type { InboundMessage, TokenRequest } from "ably";
 import type { IDBPDatabase } from "idb";
@@ -85,9 +81,6 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
     : {
         sinceSeqId: cursor.lastSeqId,
         sinceEventId: cursor.lastEventId,
-        // Stage 1 SharedWorker-to-API adapter for retained pre-Stage-1 targets.
-        // Remove under vm0-ai/vm0#30329 when that API gate closes.
-        sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
         limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
       };
 }
@@ -97,6 +90,7 @@ type WorkerClientEvent = Extract<
   {
     readonly type:
       | "append"
+      | "invalidate"
       | "authentication-required"
       | "indicators-invalidated"
       | "reload-required"
@@ -737,7 +731,7 @@ export class SharedDatabaseWorkerRuntime {
       }
       credential.dirtyDataKeyIds.delete(sharedDatabaseDataKeyId(actor.dataKey));
       if (settled.value.changed) {
-        this.notifyActor(actor.dataKey);
+        this.notifyActor(actor.dataKey, "append");
       }
       this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
       this.cleanupActorAfterSync(actor);
@@ -787,7 +781,7 @@ export class SharedDatabaseWorkerRuntime {
     if (settled?.status === "fulfilled") {
       credential.dirtyDataKeyIds.delete(sharedDatabaseDataKeyId(actor.dataKey));
       if (settled.value.changed) {
-        this.notifyActor(actor.dataKey);
+        this.notifyActor(actor.dataKey, "append");
       }
       this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
       this.cleanupActorAfterSync(actor);
@@ -1000,7 +994,7 @@ export class SharedDatabaseWorkerRuntime {
       }
       const pageRows = page.body.rows;
       remoteRows = mergeChatEventRows([remoteRows, pageRows]);
-      cursor = withoutLegacyChatEventProjection(page.body.cursor);
+      cursor = page.body.cursor;
       const confirmColdStartTail = needsColdStartTailConfirmation;
       needsColdStartTailConfirmation = false;
       loadNextPage = confirmColdStartTail || page.body.hasMore;
@@ -1519,7 +1513,10 @@ export class SharedDatabaseWorkerRuntime {
     await Promise.all(work);
   }
 
-  private notifyActor(dataKey: ScopedSharedDatabaseDataKey): void {
+  private notifyActor(
+    dataKey: ScopedSharedDatabaseDataKey,
+    type: "append" | "invalidate",
+  ): void {
     const id = sharedDatabaseDataKeyId(dataKey);
     for (const client of this.clients.values()) {
       for (const [
@@ -1528,7 +1525,7 @@ export class SharedDatabaseWorkerRuntime {
       ] of client.subscriptions) {
         if (sharedDatabaseDataKeyId(subscriptionDataKey) === id) {
           client.emit({
-            type: "append",
+            type,
             subscriptionId,
             dataKey: unScopeSharedDatabaseDataKey(dataKey),
           });
@@ -1564,6 +1561,9 @@ export class SharedDatabaseWorkerRuntime {
         },
         onMessage: (message) => {
           this.handleRealtimeMessage(credential, message);
+        },
+        onReconnect: () => {
+          this.catchUpSubscribedActorsForCredential(credential);
         },
         onStatus: (status) => {
           this.realtimeStatuses.set(credentialId, status);
@@ -1640,7 +1640,7 @@ export class SharedDatabaseWorkerRuntime {
       };
       const actor = this.getOrCreateActor(dataKey);
       actor.backgroundCatchUp = true;
-      this.enqueueActorCatchUp(
+      this.invalidateAndEnqueueActorCatchUp(
         actor,
         credential,
         `shared database background realtime catch-up: ${sharedDatabaseDataKeyId(dataKey)}`,
@@ -1658,7 +1658,7 @@ export class SharedDatabaseWorkerRuntime {
       if (!matches || !this.isActorSubscribed(id)) {
         continue;
       }
-      this.enqueueActorCatchUp(
+      this.invalidateAndEnqueueActorCatchUp(
         actor,
         credential,
         `shared database realtime catch-up: ${id}`,
@@ -1678,12 +1678,26 @@ export class SharedDatabaseWorkerRuntime {
       ) {
         continue;
       }
-      this.enqueueActorCatchUp(
+      this.invalidateAndEnqueueActorCatchUp(
         actor,
         credential,
         `shared database post-attach actor catch-up: ${actorId}`,
       );
     }
+  }
+
+  private invalidateAndEnqueueActorCatchUp(
+    actor: DatasetActor,
+    credential: CredentialState,
+    description: string,
+  ): void {
+    const actorId = sharedDatabaseDataKeyId(actor.dataKey);
+    if (actor.invalidationPending || !this.isActorActive(actorId)) {
+      return;
+    }
+    // Establish each tab's read barrier before the worker catch-up can finish.
+    this.notifyActor(actor.dataKey, "invalidate");
+    this.enqueueActorCatchUp(actor, credential, description);
   }
 
   private enqueueActorCatchUp(

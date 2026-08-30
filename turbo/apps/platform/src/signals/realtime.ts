@@ -123,9 +123,10 @@ interface RealtimeSession {
   readonly close: () => void;
 }
 
-type RealtimeChannelScope = "user" | "org";
+type RealtimeChannelScope = "user" | "org" | "credential";
 
 interface RealtimeSessionChannels {
+  readonly credential: StableRealtimeChannel;
   readonly user: StableRealtimeChannel;
   readonly org: StableRealtimeChannel;
 }
@@ -220,8 +221,7 @@ interface RealtimeLoopArgs {
 
 interface RealtimePayloadLoopArgs {
   readonly channel: StableRealtimeChannel;
-  readonly topic: string | null;
-  readonly passMessage?: boolean;
+  readonly topic: string;
   readonly loopCommand$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
@@ -245,14 +245,6 @@ interface SetAblyPayloadLoopArgs {
   >;
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
-}
-
-interface SetAblyMessageLoopArgs {
-  readonly loopCommand$: Command<
-    Promise<boolean> | boolean,
-    [unknown, AbortSignal]
-  >;
-  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
 }
 
 interface RealtimePayloadLoopState {
@@ -577,16 +569,9 @@ const runWithChannelPayload$ = command(
     args: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
-    const {
-      channel,
-      topic,
-      passMessage,
-      loopCommand$,
-      catchUpCommand$,
-      options,
-    } = args;
+    const { channel, topic, loopCommand$, catchUpCommand$, options } = args;
     signal.throwIfAborted();
-    const subscriptionLabel = topic ?? "all user channel messages";
+    const subscriptionLabel = topic;
     const state: RealtimePayloadLoopState = {
       deferred: createDeferredPromise(signal),
       poked: false,
@@ -615,7 +600,7 @@ const runWithChannelPayload$ = command(
         return;
       }
       L.debug("got queued message from topic", subscriptionLabel, message);
-      state.pendingPayloads.push(passMessage ? message : message.data);
+      state.pendingPayloads.push(message.data);
       pokeLoop();
     };
     await subscribeChannel(
@@ -938,6 +923,7 @@ function createStableRealtimeChannel(
 }
 
 interface ConnectedRealtimeChannels {
+  readonly credential: RealtimeChannel;
   readonly user: RealtimeChannel;
   readonly org: RealtimeChannel;
 }
@@ -948,6 +934,7 @@ function connectedRealtimeChannels(
   orgId: string,
 ): ConnectedRealtimeChannels {
   return {
+    credential: ably.channels.get(`user-org:${userId}:${orgId}`),
     user: ably.channels.get(`user:${userId}`),
     org: ably.channels.get(`org:${orgId}`),
   };
@@ -965,9 +952,11 @@ function observeRealtimeChannels(
       phase: "instant",
     });
   };
+  channels.credential.on(handleStateChange);
   channels.user.on(handleStateChange);
   channels.org.on(handleStateChange);
   return () => {
+    channels.credential.off(handleStateChange);
     channels.user.off(handleStateChange);
     channels.org.off(handleStateChange);
   };
@@ -1127,6 +1116,7 @@ const closeRealtimeWhileHidden$ = command(({ get, set }) => {
     return;
   }
   L.debug("page hidden, closing realtime connection");
+  session.channels.credential.suspend();
   session.channels.user.suspend();
   session.channels.org.suspend();
   session.close();
@@ -1147,6 +1137,7 @@ const updateRealtimeVisibility$ = command(
       return;
     }
     L.debug("page hidden, pausing realtime subscriptions");
+    session.channels.credential.pauseSubscriptions();
     session.channels.user.pauseSubscriptions();
     session.channels.org.pauseSubscriptions();
     set(realtimeCloseDue$, false);
@@ -1219,6 +1210,7 @@ const foregroundRealtimeCatchUp$ = command(
       const replaceResult = await settle(
         onRejection(
           Promise.all([
+            session.channels.credential.replace(connected.channels.credential),
             session.channels.user.replace(connected.channels.user),
             session.channels.org.replace(connected.channels.org),
           ]),
@@ -1267,6 +1259,7 @@ const foregroundRealtimeCatchUp$ = command(
     }
 
     if (!isDocumentVisible()) {
+      session.channels.credential.pauseSubscriptions();
       session.channels.user.pauseSubscriptions();
       session.channels.org.pauseSubscriptions();
       if (get(realtimeCloseDue$)) {
@@ -1276,6 +1269,7 @@ const foregroundRealtimeCatchUp$ = command(
     }
 
     await Promise.all([
+      session.channels.credential.resumeSubscriptions(),
       session.channels.user.resumeSubscriptions(),
       session.channels.org.resumeSubscriptions(),
     ]);
@@ -1321,6 +1315,7 @@ export const setupRealtime$ = command(
     );
     signal.throwIfAborted();
     const channels: RealtimeSessionChannels = {
+      credential: createStableRealtimeChannel(connected.channels.credential),
       user: createStableRealtimeChannel(connected.channels.user),
       org: createStableRealtimeChannel(connected.channels.org),
     };
@@ -1446,34 +1441,6 @@ export const setAblyPayloadLoop$ = command(
     await set(
       runWithChannelPayload$,
       { channel, topic, loopCommand$, catchUpCommand$, options },
-      signal,
-    );
-    signal.throwIfAborted();
-  },
-);
-
-export const setAblyMessageLoop$ = command(
-  async (
-    { set },
-    { loopCommand$, catchUpCommand$ }: SetAblyMessageLoopArgs,
-    signal: AbortSignal,
-  ) => {
-    const channel = await set(
-      realtimeChannel$,
-      "user",
-      "all user channel messages",
-      signal,
-    );
-    signal.throwIfAborted();
-    await set(
-      runWithChannelPayload$,
-      {
-        channel,
-        topic: null,
-        passMessage: true,
-        loopCommand$,
-        catchUpCommand$,
-      },
       signal,
     );
     signal.throwIfAborted();

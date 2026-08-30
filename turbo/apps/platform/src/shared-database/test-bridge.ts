@@ -7,6 +7,7 @@ import {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
+  SharedDatabaseSubscriptionCallback,
 } from "./bridge.ts";
 import type {
   ChatThreadIndicators,
@@ -47,7 +48,7 @@ class TestSharedDatabaseBridge implements SharedDatabaseBridge {
 
   on(
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void> {
     return this.bridge.on(dataKey, callback, signal);

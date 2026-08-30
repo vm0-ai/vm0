@@ -51,20 +51,12 @@ const reloadChatIndicatorsOnForeground$ = command(
   },
 );
 
-/**
- * Subscribe to the user-level `threadListChanged` topic and invalidate the
- * indicator snapshot. Event-sourced thread data has its own incremental
- * subscription.
- *
- * Loop command returns false so it keeps listening until the signal aborts.
- * Isolated in its own file to avoid an import cycle when `route.ts` wires
- * this into the per-page setup wrapper.
- */
 export const subscribeThreadListChanged$ = command(
   async ({ set }, signal: AbortSignal) => {
     await set(
       setAblyLoop$,
       {
+        scope: "credential",
         topic: "threadListChanged",
         loopCommand$: reloadChatIndicatorsFromRealtime$,
         options: { runOnForegroundCatchUp: false },

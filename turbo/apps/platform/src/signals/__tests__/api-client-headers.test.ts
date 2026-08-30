@@ -80,6 +80,7 @@ function setApiClientRuntimeForTest(): void {
   const apiBaseUrl = resolveApiBaseForTarget("api");
   const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
   context.store.set(setApiClientRuntime$, {
+    environment: "app",
     apiBaseUrl,
     oauthApiBaseUrl: resolveOAuthApiBase(),
     ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),

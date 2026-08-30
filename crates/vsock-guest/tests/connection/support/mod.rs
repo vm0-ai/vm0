@@ -11,6 +11,7 @@ pub(crate) use connection::{
     start_guest_connection_with_exec_drain_deadline,
     start_guest_connection_with_guest_agent_program,
     start_guest_connection_with_guest_state_restore_program,
+    start_guest_connection_with_memory_snapshot_path,
     start_guest_connection_with_storage_manifest_program, wait_for_guest_connection,
 };
 pub(crate) use exec::{

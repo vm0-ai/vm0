@@ -103,6 +103,14 @@ const appendMessageSchema = z
   })
   .strict();
 
+const invalidateMessageSchema = z
+  .object({
+    type: z.literal("invalidate"),
+    subscriptionId: subscriptionIdSchema,
+    dataKey: sharedDatabaseDataKeySchema,
+  })
+  .strict();
+
 const reloadRequiredMessageSchema = z
   .object({ type: z.literal("reload-required") })
   .strict();
@@ -136,6 +144,7 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   resultMessageSchema,
   errorMessageSchema,
   appendMessageSchema,
+  invalidateMessageSchema,
   reloadRequiredMessageSchema,
   authenticationRequiredMessageSchema,
   indicatorsInvalidatedMessageSchema,

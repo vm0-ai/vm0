@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 
 export interface ApiClientRuntime {
+  readonly environment: "app" | "worker";
   readonly apiBaseUrl: string;
   readonly oauthApiBaseUrl: string;
   readonly vercelProtectionBypass?: string;

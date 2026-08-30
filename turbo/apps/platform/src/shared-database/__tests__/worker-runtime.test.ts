@@ -8,7 +8,6 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  LEGACY_CHAT_EVENT_PROJECTION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { openDB } from "idb";
@@ -57,6 +56,7 @@ type WorkerEvent = Extract<
   {
     readonly type:
       | "append"
+      | "invalidate"
       | "authentication-required"
       | "indicators-invalidated"
       | "reload-required"
@@ -585,7 +585,6 @@ describe("shared database worker runtime", () => {
             rows: [],
             cursor: { lastEventId: null, lastSeqId: 0 },
             hasMore: false,
-            projection: "tool-redacted",
           },
           {
             headers: { [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "999" },
@@ -615,7 +614,6 @@ describe("shared database worker runtime", () => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
-        projection: "tool-redacted",
         lastEventId: snapshotRow.id,
         lastSeqId: 2,
       });
@@ -627,9 +625,6 @@ describe("shared database worker runtime", () => {
       chatThreadEventsContract.rows,
       ({ query, query: requestQuery, respond }) => {
         requestedSeqIds.push(requestQuery.sinceSeqId);
-        expect(query).toMatchObject({
-          sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
-        });
         return respond(
           200,
           chatEventRowsResponse(
@@ -721,7 +716,7 @@ describe("shared database worker runtime", () => {
     expect(requestedSeqIds).toStrictEqual([0, 1]);
   });
 
-  it("coalesces repeated Ably notifications and writes before append", async () => {
+  it("invalidates before catch-up, coalesces repeats, and writes before append", async () => {
     const workerEvents: WorkerEvent[] = [];
     const clientId = await connectRuntime(workerEvents);
     const dataKey = chatEventKey(crypto.randomUUID());
@@ -767,6 +762,12 @@ describe("shared database worker runtime", () => {
       afterSeqId: null,
       consistency: "catch-up",
     });
+    const appendCountBeforeRealtime = workerEvents.filter((event) => {
+      return event.type === "append";
+    }).length;
+    const invalidationCountBeforeRealtime = workerEvents.filter((event) => {
+      return event.type === "invalidate";
+    }).length;
 
     availableRows = [firstRow, secondRow];
     holdRealtimePage = true;
@@ -775,6 +776,16 @@ describe("shared database worker runtime", () => {
       `chatThreadMessageCreated:${dataKey.threadId}`,
     );
     await realtimePageStarted.promise;
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "invalidate";
+      }),
+    ).toHaveLength(invalidationCountBeforeRealtime + 1);
+    expect(
+      workerEvents.filter((event) => {
+        return event.type === "append";
+      }),
+    ).toHaveLength(appendCountBeforeRealtime);
     availableRows = [firstRow, secondRow, thirdRow];
     context.mocks.ably.triggerOnChannel(
       realtimeChannel(),
@@ -1130,15 +1141,12 @@ describe("shared database worker runtime", () => {
                   : {
                       lastEventId: sinceEventId,
                       lastSeqId: sinceSeqId,
-                      projection: "tool-redacted" as const,
                     }
                 : {
                     lastEventId: lastRow.id,
                     lastSeqId: lastRow.seqId,
-                    projection: "tool-redacted" as const,
                   },
             hasMore: false,
-            projection: "tool-redacted",
           },
           { headers: chatEventSchemaVersionResponseHeaders() },
         );
@@ -1188,7 +1196,7 @@ describe("shared database worker runtime", () => {
     ).resolves.toStrictEqual([secondRow]);
   });
 
-  it("does not report a disconnected realtime session as connected on heartbeat", async () => {
+  it("keeps a reconnecting realtime session non-connected on heartbeat", async () => {
     const workerEvents: WorkerEvent[] = [];
     const clientId = await connectRuntime(workerEvents);
     context.workerStore.set(
@@ -1208,7 +1216,7 @@ describe("shared database worker runtime", () => {
     await vi.waitFor(() => {
       expect(workerEvents.at(-1)).toMatchObject({
         type: "status",
-        status: "disconnected",
+        status: "connecting",
       });
     });
     await context.workerStore.set(
@@ -1219,7 +1227,7 @@ describe("shared database worker runtime", () => {
     );
     expect(workerEvents.at(-1)).toMatchObject({
       type: "status",
-      status: "disconnected",
+      status: "connecting",
     });
   });
 
@@ -1248,7 +1256,6 @@ describe("shared database worker runtime", () => {
         return respond(200, {
           url: SNAPSHOT_URL,
           expiresInSeconds: 900,
-          projection: "tool-redacted",
           lastEventId: rebuiltRow.id,
           lastSeqId: 10,
         });

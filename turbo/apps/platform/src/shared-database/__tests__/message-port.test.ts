@@ -22,6 +22,7 @@ import { reloadChatIndicators$ } from "../../signals/chat-thread-list-reload.ts"
 import { setRootSignal$ } from "../../signals/root-signal.ts";
 import type {
   SharedDatabaseBridgeEvents,
+  SharedDatabaseChangeKind,
   SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
 } from "../bridge.ts";
@@ -685,31 +686,39 @@ describe("shared database MessagePort protocol", () => {
     });
 
     const subscription = createChildAbortController(context.signal);
-    let callbacks = 0;
+    const changes: SharedDatabaseChangeKind[] = [];
     await bridge.on(
       key,
-      () => {
-        callbacks += 1;
+      (kind) => {
+        changes.push(kind);
       },
       subscription.signal,
     );
-    expect(callbacks).toBe(1);
+    expect(changes).toStrictEqual(["append"]);
     expect(subscriptionId).not.toBeNull();
+    if (subscriptionId === null) {
+      throw new Error("Expected a protocol subscription ID");
+    }
+    serverPort.postMessage({
+      type: "invalidate",
+      subscriptionId,
+      dataKey: key,
+    });
+    await vi.waitFor(() => {
+      expect(changes).toStrictEqual(["append", "invalidate"]);
+    });
 
     subscription.abort(new DOMException("listener removed", "AbortError"));
     await vi.waitFor(() => {
       expect(unsubscribeObserved).toBeTruthy();
     });
-    if (subscriptionId === null) {
-      throw new Error("Expected a protocol subscription ID");
-    }
     serverPort.postMessage({
       type: "append",
       subscriptionId,
       dataKey: key,
     });
     await Promise.resolve();
-    expect(callbacks).toBe(1);
+    expect(changes).toStrictEqual(["append", "invalidate"]);
 
     await expect(
       bridge.query(

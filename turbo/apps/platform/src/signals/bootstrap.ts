@@ -534,6 +534,7 @@ export const bootstrap$ = command(
     const vercelProtectionBypass =
       getCapturedPreviewBypassForTarget(apiBaseUrl);
     set(setApiClientRuntime$, {
+      environment: "app",
       apiBaseUrl,
       oauthApiBaseUrl: resolveOAuthApiBase(),
       ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),

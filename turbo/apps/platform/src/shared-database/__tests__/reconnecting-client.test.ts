@@ -8,6 +8,7 @@ import {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
+  SharedDatabaseSubscriptionCallback,
 } from "../bridge.ts";
 import type {
   ChatThreadIndicators,
@@ -26,7 +27,7 @@ import {
 } from "../reconnecting-client.ts";
 
 class FakeBridge implements SharedDatabaseBridge {
-  readonly callbacks: (() => void)[] = [];
+  readonly callbacks: SharedDatabaseSubscriptionCallback[] = [];
   readonly heartbeats: SharedDatabaseHeartbeat[] = [];
   readonly heartbeatSignals: AbortSignal[] = [];
   heartbeatCalls = 0;
@@ -68,7 +69,7 @@ class FakeBridge implements SharedDatabaseBridge {
 
   on(
     _dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void> {
     this.subscribeCalls += 1;
@@ -166,7 +167,7 @@ describe("reconnecting shared database bridge", () => {
       { vercelProtectionBypass: "preview-secret" },
     ]);
     expect(recoveredBridge.callbacks).toHaveLength(1);
-    recoveredBridge.callbacks[0]?.();
+    recoveredBridge.callbacks[0]?.("append");
     expect(appends).toBe(1);
     expect(statuses).toStrictEqual([
       "connecting",
@@ -227,7 +228,7 @@ describe("reconnecting shared database bridge", () => {
     expect(recoveredBridge.queryCalls).toBe(1);
     expect(recoveredBridge.subscribeCalls).toBe(1);
     expect(recoveredBridge.callbacks).toHaveLength(1);
-    recoveredBridge.callbacks[0]?.();
+    recoveredBridge.callbacks[0]?.("append");
     expect(appends).toBe(1);
 
     subscription.abort();

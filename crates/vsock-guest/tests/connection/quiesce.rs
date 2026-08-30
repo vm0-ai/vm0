@@ -1,13 +1,66 @@
-use std::io::Write;
+use std::io::{Read, Write};
 
 use vsock_proto::{
     self, ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_MEMORY_SNAPSHOT,
     MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
     MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_WRITE_FILE, MSG_WRITE_FILES,
-    MSG_WRITE_PRIVATE_FILES, WriteFileBatchEntry,
+    MSG_WRITE_PRIVATE_FILES, MemorySnapshot, WriteFileBatchEntry,
 };
 
 use super::support::*;
+
+const KIB: u64 = 1024;
+const VALID_MEMINFO: &str = concat!(
+    "MemTotal: 18000 kB\n",
+    "MemFree: 1701 kB\n",
+    "MemAvailable: 16002 kB\n",
+    "Buffers: 103 kB\n",
+    "Cached: 204 kB\n",
+    "AnonPages: 305 kB\n",
+    "Mapped: 406 kB\n",
+    "Dirty: 507 kB\n",
+    "Writeback: 608 kB\n",
+    "Shmem: 709 kB\n",
+    "Slab: 810 kB\n",
+    "SReclaimable: 411 kB\n",
+    "SUnreclaim: 399 kB\n",
+    "Unevictable: 914 kB\n",
+    "KernelStack: 1015 kB\n",
+    "PageTables: 1116 kB\n",
+    "SwapTotal: 1217 kB\n",
+    "SwapFree: 1118 kB\n",
+);
+
+fn expected_memory_snapshot() -> MemorySnapshot {
+    MemorySnapshot {
+        mem_total_bytes: 18_000 * KIB,
+        mem_free_bytes: 1_701 * KIB,
+        mem_available_bytes: 16_002 * KIB,
+        buffers_bytes: 103 * KIB,
+        cached_bytes: 204 * KIB,
+        anon_pages_bytes: 305 * KIB,
+        mapped_bytes: 406 * KIB,
+        dirty_bytes: 507 * KIB,
+        writeback_bytes: 608 * KIB,
+        shmem_bytes: 709 * KIB,
+        slab_bytes: 810 * KIB,
+        slab_reclaimable_bytes: 411 * KIB,
+        slab_unreclaimable_bytes: 399 * KIB,
+        unevictable_bytes: 914 * KIB,
+        kernel_stack_bytes: 1_015 * KIB,
+        page_tables_bytes: 1_116 * KIB,
+        swap_total_bytes: 1_217 * KIB,
+        swap_free_bytes: 1_118 * KIB,
+    }
+}
+
+fn request_memory_snapshot(stream: &mut (impl Read + Write), seq: u32) -> MemorySnapshot {
+    send_control_payload(stream, MSG_MEMORY_SNAPSHOT, seq, &[]);
+    let response = read_message(stream);
+    assert_eq!(response.msg_type, MSG_MEMORY_SNAPSHOT_RESULT);
+    assert_eq!(response.seq, seq);
+    vsock_proto::decode_memory_snapshot(&response.payload).unwrap()
+}
 
 fn assert_error_contains(stream: &mut impl std::io::Read, seq: u32, expected_fragment: &str) {
     let error = read_error_response(stream, seq);
@@ -121,6 +174,71 @@ fn memory_snapshot_requires_fully_quiesced_connection() {
     assert!(snapshot.swap_free_bytes <= snapshot.swap_total_bytes);
 
     finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn controlled_memory_snapshot_maps_all_meminfo_fields() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("meminfo");
+    std::fs::write(&path, VALID_MEMINFO).unwrap();
+    let (handle, mut host_stream) = start_guest_connection_with_memory_snapshot_path(path);
+
+    send_quiesce_operations(&mut host_stream, 301);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+
+    let snapshot = request_memory_snapshot(&mut host_stream, 302);
+    assert_eq!(snapshot, expected_memory_snapshot());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn controlled_memory_snapshot_reports_parse_errors_and_recovers() {
+    let overflow_kib = u64::MAX / KIB + 1;
+    let cases = [
+        (
+            "missing-field",
+            VALID_MEMINFO.replacen("SwapFree: 1118 kB\n", "", 1),
+            "SwapFree is missing",
+        ),
+        (
+            "invalid-number",
+            VALID_MEMINFO.replacen("MemFree: 1701 kB", "MemFree: invalid kB", 1),
+            "MemFree has an invalid value",
+        ),
+        (
+            "extra-unit-token",
+            VALID_MEMINFO.replacen("MemAvailable: 16002 kB", "MemAvailable: 16002 kB extra", 1),
+            "MemAvailable has an invalid unit",
+        ),
+        (
+            "overflow",
+            VALID_MEMINFO.replacen("Buffers: 103 kB", &format!("Buffers: {overflow_kib} kB"), 1),
+            "Buffers byte value overflowed",
+        ),
+    ];
+
+    for (case, invalid_meminfo, expected_error) in cases {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(format!("{case}.meminfo"));
+        std::fs::write(&path, invalid_meminfo).unwrap();
+        let (handle, mut host_stream) =
+            start_guest_connection_with_memory_snapshot_path(path.clone());
+
+        send_quiesce_operations(&mut host_stream, 303);
+        let quiesced = read_message(&mut host_stream);
+        assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+
+        send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 304, &[]);
+        assert_error_contains(&mut host_stream, 304, expected_error);
+
+        std::fs::write(&path, VALID_MEMINFO).unwrap();
+        let snapshot = request_memory_snapshot(&mut host_stream, 305);
+        assert_eq!(snapshot, expected_memory_snapshot());
+
+        finish_guest_connection(handle, host_stream);
+    }
 }
 
 #[test]

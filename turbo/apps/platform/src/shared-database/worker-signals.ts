@@ -76,6 +76,7 @@ export const initializeCredentialStore$ = command(
     signal.throwIfAborted();
     set(setRootSignal$, signal);
     set(setApiClientRuntime$, {
+      environment: "worker",
       apiBaseUrl: input.apiBaseUrl,
       oauthApiBaseUrl: input.apiBaseUrl,
       ...(input.vercelProtectionBypass

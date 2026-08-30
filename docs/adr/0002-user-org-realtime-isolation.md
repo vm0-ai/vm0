@@ -20,9 +20,11 @@ client-side filtering or thread-to-organization inference.
 
 ## Consequences
 
-While Shared Chat Database remains behind its feature switch, the API publishes
-`chatThreadMessageCreated` and `threadListChanged` to exactly one channel for
-each user-org identity. Feature-enabled identities receive them on the new
-user-org channel; feature-disabled identities continue to receive them on the
-existing user channel. This keeps the experimental and existing paths explicit
-without a dual-publication compatibility bridge.
+The permanent App path consumes `chatThreadMessageCreated` and
+`threadListChanged` exclusively from the `user-org:<userId>:<orgId>` channel
+through the SharedWorker. During rollout, the API also publishes those two
+topics to the existing `user:<userId>` channel so already-loaded App clients
+compiled against the disabled switch continue receiving invalidations.
+Follow-up #30334 removes that duplicate publication after the two-day stale-App
+window has drained and the client-version floor excludes pre-cutover builds;
+the user channel otherwise remains reserved for unrelated user-scoped signals.

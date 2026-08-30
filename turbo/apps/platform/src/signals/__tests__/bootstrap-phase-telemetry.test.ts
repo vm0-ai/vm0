@@ -1,5 +1,4 @@
 import { waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,10 +51,6 @@ vi.mock("posthog-js/dist/module.slim", () => {
 
 const context = testContext();
 const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
-
-function disabledSharedDatabase(): Partial<Record<FeatureSwitchKey, boolean>> {
-  return { [FeatureSwitchKey.SharedChatDatabase]: false };
-}
 
 beforeEach(() => {
   posthog.capture.mockClear();
@@ -110,8 +105,6 @@ describe("bootstrap phase telemetry", () => {
     await setupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      cachedFeatureSwitches: disabledSharedDatabase(),
-      featureSwitches: disabledSharedDatabase(),
       withoutRender: true,
     });
 
@@ -184,8 +177,6 @@ describe("bootstrap phase telemetry", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      cachedFeatureSwitches: disabledSharedDatabase(),
-      featureSwitches: disabledSharedDatabase(),
       withoutRender: true,
     });
     await snapshotRequested.promise;

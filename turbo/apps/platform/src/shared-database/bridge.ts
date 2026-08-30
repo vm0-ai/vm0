@@ -15,6 +15,11 @@ export interface SharedDatabaseHeartbeat {
   readonly vercelProtectionBypass?: string;
 }
 
+export type SharedDatabaseChangeKind = "append" | "invalidate";
+export type SharedDatabaseSubscriptionCallback = (
+  kind: SharedDatabaseChangeKind,
+) => void;
+
 export interface SharedDatabaseBridge {
   heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
@@ -27,7 +32,7 @@ export interface SharedDatabaseBridge {
   ): Promise<SharedDatabaseQueryResult<TKey>>;
   on(
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void>;
 }

@@ -3,13 +3,13 @@ import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-thread
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { apiClientRuntime$ } from "../api-client-runtime.ts";
 import { reloadChatIndicatorsCounter$ } from "../chat-thread-list-reload.ts";
-import { sharedDatabaseModeEnabled$ } from "../shared-database-mode.ts";
 import { sharedDatabaseChatThreadIndicators$ } from "../shared-database.ts";
 
 export const chatThreadIndicators$ = computed(async (get) => {
   get(reloadChatIndicatorsCounter$);
-  if (get(sharedDatabaseModeEnabled$)) {
+  if (get(apiClientRuntime$).environment === "app") {
     return await get(sharedDatabaseChatThreadIndicators$);
   }
   const client = get(apiClient$)(chatThreadsContract);
