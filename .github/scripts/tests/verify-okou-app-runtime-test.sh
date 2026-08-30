@@ -8,7 +8,9 @@ trap 'rm -rf "$test_root"' EXIT
 assets_directory="${test_root}/assets"
 fake_bin="${test_root}/bin"
 curl_log="${test_root}/curl.log"
+sleep_log="${test_root}/sleep.log"
 html_source="${test_root}/index.html"
+old_html_source="${test_root}/old-index.html"
 mkdir -p "$assets_directory" "$fake_bin"
 
 fail() {
@@ -31,6 +33,13 @@ cat > "$html_source" <<'HTML'
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js">
 HTML
 
+cat > "$old_html_source" <<'HTML'
+<!doctype html>
+<script type="module" crossorigin src="https://static.test/okou-app/assets/app-Old12345.js"></script>
+<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js">
+<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js">
+HTML
+
 cat > "${fake_bin}/curl" <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -47,19 +56,41 @@ for (( index = 0; index < ${#arguments[@]}; index += 1 )); do
   esac
 done
 if [[ "$asset_url" == */sign-up ]]; then
-  cp "$MOCK_HTML_SOURCE" "$output_file"
+  if [[ "${MOCK_DOCUMENT_MODE:-success}" == "transport-failure" ]]; then
+    echo 'curl: (56) simulated document transport failure' >&2
+    exit 56
+  fi
+  document_source="$MOCK_HTML_SOURCE"
+  if [[ -n "${MOCK_HTML_SEQUENCE_STATE:-}" ]]; then
+    document_attempt="$(<"$MOCK_HTML_SEQUENCE_STATE")"
+    document_attempt=$((document_attempt + 1))
+    printf '%s\n' "$document_attempt" >"$MOCK_HTML_SEQUENCE_STATE"
+    sequence_source="${MOCK_HTML_SEQUENCE_DIR}/${document_attempt}.html"
+    if [[ -f "$sequence_source" ]]; then
+      document_source="$sequence_source"
+    fi
+  fi
+  cp "$document_source" "$output_file"
 fi
 if [[ -n "$write_out" ]]; then
   printf '%s' "${MOCK_WORKER_STATUS:-206}"
 fi
 BASH
-chmod +x "${fake_bin}/curl"
+
+cat > "${fake_bin}/sleep" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "${1:?sleep delay is required}" >>"$MOCK_SLEEP_LOG"
+BASH
+chmod +x "${fake_bin}/curl" "${fake_bin}/sleep"
 
 : > "$curl_log"
+: > "$sleep_log"
 output="$({
   PATH="${fake_bin}:$PATH" \
     MOCK_CURL_LOG="$curl_log" \
     MOCK_HTML_SOURCE="$html_source" \
+    MOCK_SLEEP_LOG="$sleep_log" \
     bash "$script" \
       https://app.test \
       https://static.test/okou-app/assets \
@@ -79,9 +110,99 @@ for expected_url in \
     fail "runtime verifier did not probe ${expected_url}"
 done
 
+if OKOU_APP_RUNTIME_MAX_ATTEMPTS=0 \
+  bash "$script" \
+    https://app.test \
+    https://static.test/okou-app/assets \
+    "$assets_directory" > "${test_root}/invalid-bound.log" 2>&1; then
+  fail "invalid runtime convergence bound did not fail closed"
+fi
+grep -Fq 'OKOU_APP_RUNTIME_MAX_ATTEMPTS must be a positive integer' \
+  "${test_root}/invalid-bound.log" ||
+  fail "invalid runtime convergence bound was not identified"
+
+sequence_directory="${test_root}/html-sequence"
+sequence_state="${test_root}/html-sequence.state"
+mkdir -p "$sequence_directory"
+cp "$old_html_source" "${sequence_directory}/1.html"
+cp "$html_source" "${sequence_directory}/2.html"
+printf '0\n' > "$sequence_state"
+: > "$curl_log"
+: > "$sleep_log"
+PATH="${fake_bin}:$PATH" \
+  MOCK_CURL_LOG="$curl_log" \
+  MOCK_HTML_SEQUENCE_DIR="$sequence_directory" \
+  MOCK_HTML_SEQUENCE_STATE="$sequence_state" \
+  MOCK_HTML_SOURCE="$html_source" \
+  MOCK_SLEEP_LOG="$sleep_log" \
+  OKOU_APP_RUNTIME_MAX_ATTEMPTS=3 \
+  bash "$script" \
+    https://app.test \
+    https://static.test/okou-app/assets \
+    "$assets_directory" >/dev/null
+[[ "$(<"$sequence_state")" == "2" ]] ||
+  fail "old runtime document did not converge on the second probe"
+[[ "$(grep -Fc 'https://app.test/sign-up' "$curl_log")" == "2" ]] ||
+  fail "runtime convergence did not fetch exactly two documents"
+grep -Fxq '10' "$sleep_log" ||
+  fail "runtime convergence did not wait between semantic probes"
+
+: > "$curl_log"
+: > "$sleep_log"
+if PATH="${fake_bin}:$PATH" \
+  MOCK_CURL_LOG="$curl_log" \
+  MOCK_HTML_SOURCE="$old_html_source" \
+  MOCK_SLEEP_LOG="$sleep_log" \
+  OKOU_APP_RUNTIME_MAX_ATTEMPTS=3 \
+  bash "$script" \
+    https://app.test \
+    https://static.test/okou-app/assets \
+    "$assets_directory" > "${test_root}/semantic-failure.log" 2>&1; then
+  fail "permanent semantic mismatch did not exhaust the convergence bound"
+fi
+[[ "$(grep -Fc 'https://app.test/sign-up' "$curl_log")" == "3" ]] ||
+  fail "permanent semantic mismatch did not use the bounded probe count"
+[[ "$(wc -l < "$sleep_log")" == "2" ]] ||
+  fail "permanent semantic mismatch used an unexpected retry count"
+grep -Fq 'App runtime document did not converge for https://app.test after probe 3/3' \
+  "${test_root}/semantic-failure.log" ||
+  fail "semantic exhaustion did not identify the origin and bound"
+grep -Fq 'app-AbCd1234.js' "${test_root}/semantic-failure.log" ||
+  fail "semantic exhaustion did not report the expected module"
+grep -Fq 'app-Old12345.js' "${test_root}/semantic-failure.log" ||
+  fail "semantic exhaustion did not report the observed module"
+
+: > "$curl_log"
+: > "$sleep_log"
+if PATH="${fake_bin}:$PATH" \
+  MOCK_CURL_LOG="$curl_log" \
+  MOCK_DOCUMENT_MODE=transport-failure \
+  MOCK_HTML_SOURCE="$html_source" \
+  MOCK_SLEEP_LOG="$sleep_log" \
+  OKOU_APP_RUNTIME_MAX_ATTEMPTS=3 \
+  bash "$script" \
+    https://transport.test \
+    https://static.test/okou-app/assets \
+    "$assets_directory" > "${test_root}/transport-failure.log" 2>&1; then
+  fail "permanent document transport failure did not exhaust the convergence bound"
+fi
+[[ "$(grep -Fc 'https://transport.test/sign-up' "$curl_log")" == "3" ]] ||
+  fail "document transport failure did not use the bounded probe count"
+grep -Fq 'App runtime document did not converge for https://transport.test after probe 3/3' \
+  "${test_root}/transport-failure.log" ||
+  fail "transport exhaustion did not identify the origin and bound"
+grep -Fq 'curl exit 56' "${test_root}/transport-failure.log" ||
+  fail "transport exhaustion did not preserve the final curl status"
+grep -Fq 'simulated document transport failure' \
+  "${test_root}/transport-failure.log" ||
+  fail "transport exhaustion did not preserve the final curl evidence"
+
+: > "$curl_log"
+: > "$sleep_log"
 if PATH="${fake_bin}:$PATH" \
   MOCK_CURL_LOG="$curl_log" \
   MOCK_HTML_SOURCE="$html_source" \
+  MOCK_SLEEP_LOG="$sleep_log" \
   MOCK_WORKER_STATUS=200 \
   bash "$script" \
     https://app.test \
@@ -93,9 +214,12 @@ grep -Fq 'SharedWorker same-origin proxy returned HTTP 200' \
   "${test_root}/worker-failure.log" || fail "worker failure was not identified"
 
 sed -i '/vendor-EfGh5678/d' "$html_source"
+: > "$curl_log"
+: > "$sleep_log"
 if PATH="${fake_bin}:$PATH" \
   MOCK_CURL_LOG="$curl_log" \
   MOCK_HTML_SOURCE="$html_source" \
+  MOCK_SLEEP_LOG="$sleep_log" \
   bash "$script" \
     https://app.test \
     https://static.test/okou-app/assets \
@@ -104,5 +228,8 @@ if PATH="${fake_bin}:$PATH" \
 fi
 grep -Fq 'Expected CDN runtime/vendor modulepreloads' \
   "${test_root}/html-failure.log" || fail "HTML failure was not identified"
+grep -Fq 'App runtime document did not converge for https://app.test after probe 1/1' \
+  "${test_root}/html-failure.log" ||
+  fail "malformed document failure did not exhaust the convergence bound"
 
 echo "verify okou app runtime tests passed"

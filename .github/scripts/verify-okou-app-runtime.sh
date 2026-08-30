@@ -9,15 +9,22 @@ fi
 app_url="${1%/}"
 public_assets_url="${2%/}"
 assets_directory="${3%/}"
+document_max_attempts="${OKOU_APP_RUNTIME_MAX_ATTEMPTS:-1}"
 
 if [[ ! -d "$assets_directory" ]]; then
   echo "app assets directory does not exist: $assets_directory" >&2
   exit 1
 fi
+if [[ ! "$document_max_attempts" =~ ^[1-9][0-9]*$ ]]; then
+  echo "OKOU_APP_RUNTIME_MAX_ATTEMPTS must be a positive integer" >&2
+  exit 1
+fi
 
 layout_files="$(mktemp)"
 document_body="$(mktemp)"
-trap 'rm -f "$layout_files" "$document_body"' EXIT
+curl_error="$(mktemp)"
+probe_evidence="$(mktemp)"
+trap 'rm -f "$layout_files" "$document_body" "$curl_error" "$probe_evidence"' EXIT
 
 declare -a app_files=()
 declare -a vendor_files=()
@@ -48,26 +55,32 @@ app_asset_url="${public_assets_url}/${app_files[0]}"
 vendor_asset_url="${public_assets_url}/${vendor_files[0]}"
 runtime_asset_url="${public_assets_url}/${runtime_files[0]}"
 worker_asset_url="${app_url}/okou-app/assets/${worker_files[0]}"
+document_url="${app_url}/sign-up"
+document_retry_delay_seconds=10
+document_wait_started=$SECONDS
+document_wait_deadline=$((document_wait_started + 600))
 
-curl \
-  --fail \
-  --silent \
-  --show-error \
-  --location \
-  --connect-timeout 10 \
-  --max-time 30 \
-  --retry 6 \
-  --retry-delay 2 \
-  --retry-max-time 90 \
-  --retry-all-errors \
-  --output "$document_body" \
-  "${app_url}/sign-up"
-
-python3 - \
-  "$document_body" \
-  "$app_asset_url" \
-  "$runtime_asset_url" \
-  "$vendor_asset_url" <<'PY'
+for ((attempt = 1; attempt <= document_max_attempts; attempt++)); do
+  : >"$curl_error"
+  : >"$probe_evidence"
+  if curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --connect-timeout 10 \
+    --max-time 30 \
+    --retry 6 \
+    --retry-delay 2 \
+    --retry-max-time 90 \
+    --retry-all-errors \
+    --output "$document_body" \
+    "$document_url" 2>"$curl_error"; then
+    if python3 - \
+      "$document_body" \
+      "$app_asset_url" \
+      "$runtime_asset_url" \
+      "$vendor_asset_url" 2>"$probe_evidence" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
 import sys
@@ -107,6 +120,45 @@ if len(parser.module_preloads) != 2 or set(parser.module_preloads) != expected_p
         f"got {parser.module_preloads}"
     )
 PY
+    then
+      break
+    fi
+  else
+    curl_status=$?
+    {
+      printf 'Transport probe failed for %s (curl exit %s)\n' \
+        "$document_url" \
+        "$curl_status"
+      cat "$curl_error"
+    } >"$probe_evidence"
+  fi
+
+  if ((attempt == document_max_attempts || SECONDS >= document_wait_deadline)); then
+    elapsed_seconds=$((SECONDS - document_wait_started))
+    printf \
+      'App runtime document did not converge for %s after probe %s/%s (%ss); final probe evidence:\n' \
+      "$app_url" \
+      "$attempt" \
+      "$document_max_attempts" \
+      "$elapsed_seconds" \
+      >&2
+    cat "$probe_evidence" >&2
+    exit 1
+  fi
+
+  printf \
+    '::warning title=Waiting for app runtime convergence::%s has not converged (attempt %s/%s)\n' \
+    "$document_url" \
+    "$attempt" \
+    "$document_max_attempts" \
+    >&2
+  remaining_seconds=$((document_wait_deadline - SECONDS))
+  sleep_seconds=$document_retry_delay_seconds
+  if ((remaining_seconds < sleep_seconds)); then
+    sleep_seconds=$remaining_seconds
+  fi
+  sleep "$sleep_seconds"
+done
 
 for asset_url in \
   "$app_asset_url" \
