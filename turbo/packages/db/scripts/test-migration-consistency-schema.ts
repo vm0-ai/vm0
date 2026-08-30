@@ -2685,7 +2685,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   },
   // Same temporary #30349 bridge and #30351 removal gate as its trigger.
   {
-    bodyHash: "6fd2a364114c03565956ebdcd23cc149",
+    bodyHash: "1b8a6940840cc559410b8c6277576669",
     functionName: "mark_socialkit_mp4_artifact_1033",
     identityArguments: "",
     kind: "f",

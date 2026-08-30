@@ -15,10 +15,14 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  IF NEW."external_id" !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    RETURN NEW;
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM "socialkit_download_jobs" AS "job"
-    WHERE "job"."id"::text = NEW."external_id"
+    WHERE "job"."id" = NEW."external_id"::uuid
       AND "job"."user_id" = NEW."user_id"
       AND "job"."org_id" = NEW."org_id"
       AND "job"."run_id" = NEW."run_id"
@@ -53,7 +57,7 @@ SET "metadata" = jsonb_set(
   true
 )
 FROM "socialkit_download_jobs" AS "job"
-WHERE "job"."status" = 'completed'
+WHERE "job"."status" IN ('materializing', 'artifact_failed', 'completed')
   AND "job"."id"::text = "file"."external_id"
   AND "job"."user_id" = "file"."user_id"
   AND "job"."org_id" = "file"."org_id"

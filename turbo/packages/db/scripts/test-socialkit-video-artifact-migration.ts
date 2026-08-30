@@ -37,10 +37,13 @@ const fixture = {
   mismatchedJobId: "00000000-0000-4000-8000-000000303500",
   mismatchedFileId: "00000000-0000-4000-8000-000000303501",
   ordinaryVideoFileId: "00000000-0000-4000-8000-000000303502",
+  inFlightJobId: "00000000-0000-4000-8000-000000303507",
+  inFlightFileId: "00000000-0000-4000-8000-000000303508",
   oldWriterJobId: "00000000-0000-4000-8000-000000303503",
   oldWriterFileId: "00000000-0000-4000-8000-000000303504",
   canonicalJobId: "00000000-0000-4000-8000-000000303505",
   canonicalFileId: "00000000-0000-4000-8000-000000303506",
+  malformedFileId: "00000000-0000-4000-8000-000000303509",
 } as const;
 
 interface OwnerFixture {
@@ -228,6 +231,13 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       providerJobId: "provider-authoritative-mismatch",
       status: "completed",
     });
+    await seedDownloadJob(client, {
+      format: "mp4",
+      id: fixture.inFlightJobId,
+      owner: fixture.historical,
+      providerJobId: "provider-in-flight",
+      status: "materializing",
+    });
 
     await seedFile(client, {
       contentType: "video/mp4",
@@ -263,6 +273,17 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
     });
     await seedFile(client, {
       contentType: "video/mp4",
+      externalId: fixture.inFlightJobId,
+      fileId: fixture.inFlightFileId,
+      metadata: {
+        provider: "socialkit",
+        providerJobId: "provider-in-flight",
+        preserved: "in-flight",
+      },
+      owner: fixture.historical,
+    });
+    await seedFile(client, {
+      contentType: "video/mp4",
       externalId: "ordinary-video-non-uuid",
       fileId: fixture.ordinaryVideoFileId,
       metadata: { preserved: "ordinary-upload" },
@@ -281,6 +302,7 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       fixture.historicalM4aFileId,
       fixture.mismatchedFileId,
       fixture.ordinaryVideoFileId,
+      fixture.inFlightFileId,
     ]);
     assert.deepEqual(requiredFile(historical, fixture.historicalMp4JobId), {
       externalId: fixture.historicalMp4JobId,
@@ -317,6 +339,16 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       requiredFile(historical, "ordinary-video-non-uuid").pending,
       false,
     );
+    assert.deepEqual(requiredFile(historical, fixture.inFlightJobId), {
+      externalId: fixture.inFlightJobId,
+      metadata: {
+        provider: "socialkit",
+        providerJobId: "provider-in-flight",
+        preserved: "in-flight",
+        generatedBy: VIDEO_MARKER,
+      },
+      pending: true,
+    });
 
     await seedDownloadJob(client, {
       format: "mp4",
@@ -355,10 +387,22 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       },
       owner: fixture.canonical,
     });
+    await seedFile(client, {
+      contentType: "video/mp4",
+      externalId: "malformed-socialkit-job-id",
+      fileId: fixture.malformedFileId,
+      metadata: {
+        provider: "socialkit",
+        providerJobId: "provider-malformed",
+        preserved: "malformed",
+      },
+      owner: fixture.oldWriter,
+    });
 
     const rolling = await readFileStates(client, [
       fixture.oldWriterFileId,
       fixture.canonicalFileId,
+      fixture.malformedFileId,
     ]);
     assert.deepEqual(requiredFile(rolling, fixture.oldWriterJobId), {
       externalId: fixture.oldWriterJobId,
@@ -380,9 +424,18 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       },
       pending: true,
     });
+    assert.deepEqual(requiredFile(rolling, "malformed-socialkit-job-id"), {
+      externalId: "malformed-socialkit-job-id",
+      metadata: {
+        provider: "socialkit",
+        providerJobId: "provider-malformed",
+        preserved: "malformed",
+      },
+      pending: true,
+    });
 
     console.log(
-      "   ✅ authoritative historical MP4 rows are marked and re-queued",
+      "   ✅ historical and in-flight authoritative MP4 rows are marked and re-queued",
     );
     console.log(
       "   ✅ M4A, ordinary video, and identity lookalikes stay unmarked",
