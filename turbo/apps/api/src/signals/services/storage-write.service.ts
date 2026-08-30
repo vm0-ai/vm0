@@ -394,23 +394,6 @@ async function resolveStorageForPrepare(
   );
 }
 
-async function resolveStorageForCommit(
-  args: {
-    readonly db: Db;
-    readonly input: CommitStorageInput;
-  },
-  signal: AbortSignal,
-): Promise<MountedWritebackStorage | StorageErrorResponse> {
-  return await findMountedWritebackStorage(
-    {
-      db: args.db,
-      auth: args.input.auth,
-      storageId: args.input.storageId,
-    },
-    signal,
-  );
-}
-
 function resolvePreparedFiles(
   args: {
     readonly db: Db;
@@ -613,6 +596,31 @@ interface VerifiedStorageCommit {
   readonly s3Key: string;
 }
 
+function terminalStorageCommitPersistedStateMatches(args: {
+  readonly storage: StorageRow;
+  readonly version: StorageVersionRow | undefined;
+  readonly input: CommitStorageForStorageInput;
+}): boolean {
+  const version = args.version;
+  const sandboxAuth = args.input.sandboxAuth;
+  const parentVersionId = args.input.parentVersionId;
+  const size = totalSize(args.input.files);
+  const fileCount = args.input.files.length;
+  return (
+    version !== undefined &&
+    sandboxAuth !== undefined &&
+    parentVersionId !== undefined &&
+    version.s3Key === `${args.storage.s3Prefix}/${args.input.versionId}` &&
+    Number(version.size) === size &&
+    version.fileCount === fileCount &&
+    version.message === (args.input.message ?? null) &&
+    version.createdBy === "agent" &&
+    args.storage.headVersionId === args.input.versionId &&
+    Number(args.storage.size) === size &&
+    args.storage.fileCount === fileCount
+  );
+}
+
 function verifyStorageCommit(
   args: {
     readonly bucket: string;
@@ -695,21 +703,17 @@ async function terminalStorageCommitAlreadySucceeded(args: {
   const version = args.version;
   const sandboxAuth = args.input.sandboxAuth;
   const parentVersionId = args.input.parentVersionId;
-  const size = totalSize(args.input.files);
-  const fileCount = args.input.files.length;
   if (
     !version ||
     !sandboxAuth ||
     !parentVersionId ||
+    !terminalStorageCommitPersistedStateMatches({
+      storage: args.storage,
+      version,
+      input: args.input,
+    }) ||
     version.s3Key !== args.verification.s3Key ||
-    Number(version.size) !== size ||
-    version.archiveSize !== args.verification.archiveSize ||
-    version.fileCount !== fileCount ||
-    version.message !== (args.input.message ?? null) ||
-    version.createdBy !== "agent" ||
-    args.storage.headVersionId !== args.input.versionId ||
-    Number(args.storage.size) !== size ||
-    args.storage.fileCount !== fileCount
+    version.archiveSize !== args.verification.archiveSize
   ) {
     return false;
   }
@@ -1153,10 +1157,11 @@ export const commitStorageUploadForAuth$ = command(
     signal: AbortSignal,
   ): Promise<CommitStorageResponse> => {
     const writeDb = set(writeDb$);
-    const mounted = await resolveStorageForCommit(
+    const mounted = await findMountedWritebackStorage(
       {
         db: writeDb,
-        input: args,
+        auth: args.auth,
+        storageId: args.storageId,
       },
       signal,
     );
@@ -1166,18 +1171,60 @@ export const commitStorageUploadForAuth$ = command(
       return mounted;
     }
 
-    return await set(
-      commitStorageUploadForStorage$,
-      {
-        storageId: args.storageId,
+    const commitInput: CommitStorageForStorageInput = {
+      storageId: args.storageId,
+      versionId: args.versionId,
+      files: args.files,
+      runId: args.runId,
+      parentVersionId: args.parentVersionId,
+      message: args.message,
+      sandboxAuth: args.auth,
+    };
+    const terminalRetry = !sandboxStorageRunIsActive(mounted.runStatus);
+    if (terminalRetry) {
+      const parentVersionId = args.parentVersionId;
+      const version = await findStorageVersion({
+        db: writeDb,
+        storageId: mounted.storage.id,
         versionId: args.versionId,
-        files: args.files,
-        runId: args.runId,
-        parentVersionId: args.parentVersionId,
-        message: args.message,
-        sandboxAuth: args.auth,
-      },
+      });
+      signal.throwIfAborted();
+      if (
+        !parentVersionId ||
+        !terminalStorageCommitPersistedStateMatches({
+          storage: mounted.storage,
+          version,
+          input: commitInput,
+        })
+      ) {
+        return notFound("Active agent run not found");
+      }
+
+      const [lineage] = await writeDb
+        .select({ id: storageVersionLineage.id })
+        .from(storageVersionLineage)
+        .where(
+          and(
+            eq(storageVersionLineage.storageId, mounted.storage.id),
+            eq(storageVersionLineage.versionId, args.versionId),
+            eq(storageVersionLineage.parentVersionId, parentVersionId),
+            eq(storageVersionLineage.runId, args.auth.runId),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+      if (!lineage) {
+        return notFound("Active agent run not found");
+      }
+    }
+
+    const response = await set(
+      commitStorageUploadForStorage$,
+      commitInput,
       signal,
     );
+    return terminalRetry && response.status !== 200
+      ? notFound("Active agent run not found")
+      : response;
   },
 );

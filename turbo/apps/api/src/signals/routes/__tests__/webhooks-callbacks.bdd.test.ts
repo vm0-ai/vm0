@@ -2984,6 +2984,7 @@ describe("WHCB-10: timeout closes sandbox storage write authority", () => {
 
     const timeout = await transitionRunToTimeout(context, fixture.runId);
     expect(timeout.body.ok).toBeTruthy();
+    const s3Calls = context.mocks.s3.send.mock.calls.length;
 
     const committed = await api.requestAgentStorageCommit(
       {
@@ -2999,6 +3000,7 @@ describe("WHCB-10: timeout closes sandbox storage write authority", () => {
     );
     expectApiError(committed.body);
     expect(committed.body.error.code).toBe("NOT_FOUND");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(s3Calls);
     await expect(
       storages.inspectWriteback({
         storageId: fixture.mount.storageId,
