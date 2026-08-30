@@ -25,15 +25,6 @@ const context = testContext();
 
 function setBrowserUrl(url: string): void {
   context.mocks.browser.url(url);
-  const hostname = new URL(url).hostname;
-  const production =
-    hostname === "vm0.ai" ||
-    hostname.endsWith(".vm0.ai") ||
-    hostname === "okou.ai" ||
-    hostname.endsWith(".okou.ai");
-  document.documentElement.dataset.vm0ClerkPublishableKey = production
-    ? "test_production_key"
-    : "test_preview_key";
 }
 
 describe("platform auth URLs", () => {

@@ -7,15 +7,13 @@ import type { Plugin } from "vite";
 // "worker failed to load" error event. Keep the first-party modules that reach
 // the worker bundle free of these globals so the failure is impossible to
 // introduce rather than something we rediscover from production telemetry.
-export const FORBIDDEN_WORKER_GLOBALS = [
+const FORBIDDEN_WORKER_GLOBALS = [
   "document",
   "history",
   "localStorage",
   "sessionStorage",
   "window",
 ] as const;
-
-const FORBIDDEN_NAMES = new Set<string>(FORBIDDEN_WORKER_GLOBALS);
 
 interface AstNode {
   readonly type: string;
@@ -88,7 +86,7 @@ export function domGlobalUsageCounts(code: string): Map<string, number> {
   const visit = (node: AstNode): void => {
     if (node.type === "Identifier") {
       const { name } = node as IdentifierNode;
-      if (FORBIDDEN_NAMES.has(name)) {
+      if ((FORBIDDEN_WORKER_GLOBALS as readonly string[]).includes(name)) {
         counts.set(name, (counts.get(name) ?? 0) + 1);
       }
       return;

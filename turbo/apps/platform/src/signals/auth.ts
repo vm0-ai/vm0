@@ -11,7 +11,6 @@ import {
   setPostHogOrganization,
   setPostHogUser,
 } from "../lib/posthog.ts";
-import { resolveClerkPublishableKey } from "../lib/clerk-bootstrap.ts";
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
 import {
   derivePlatformServiceOrigin,
@@ -377,7 +376,7 @@ const internalAuthRecovery$ = state<Promise<AuthRecovery> | undefined>(
 export const initClerkRuntime$ = command(
   ({ set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
-    const publishableKey = resolveClerkPublishableKey();
+    const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
     const satelliteConfig = resolveClerkSatelliteConfig();
     markBootstrapClerkLoadStarted();
     set(
