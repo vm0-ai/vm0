@@ -73,6 +73,7 @@ release_sentry_step = find_step(
     release_job, "Upload Cloudflare Pages source maps to Sentry"
 )
 release_step = find_step(release_job, "Deploy Cloudflare Pages production")
+release_finish_step = find_step(release_job, "Finish GitHub Deployment")
 release_api_verification_step = find_step(
     release_api_job, "Verify production App and API domains"
 )
@@ -186,7 +187,7 @@ if preview_gateway_step.get("env", {}).get("CANONICAL_ASSETS") != (
     "${{ steps.pages-preview.outputs.canonical-dist }}/assets"
 ):
     raise RuntimeError("SharedWorker smoke test must use canonical app assets")
-require_fragments(
+release_step_source = require_fragments(
     release_step,
     [
         shared_script,
@@ -195,16 +196,44 @@ require_fragments(
         "production",
         '"$ARTIFACT_SHA"',
         "bash .github/scripts/verify-okou-app-runtime.sh",
+        '"$pages_url"',
         '"https://static.okou.io/okou-app/assets"',
         '"$CANONICAL_ASSETS"',
         '"https://app.vm0.ai"',
         '"https://app.okou.ai"',
     ],
 )
+if release_step_source.count(shared_script) != 1:
+    raise RuntimeError(
+        "production readiness polling must follow exactly one Pages deployment"
+    )
+runtime_verifier = "bash .github/scripts/verify-okou-app-runtime.sh"
+domain_verifier = "bash .github/scripts/verify-okou-production-domains.sh"
+if not (
+    release_step_source.index(shared_script)
+    < release_step_source.index(runtime_verifier)
+    < release_step_source.index(domain_verifier)
+    < release_step_source.index('echo "url=$production_url"')
+):
+    raise RuntimeError(
+        "production readiness and domain verification must finish before success output"
+    )
 if release_step.get("env", {}).get("CANONICAL_ASSETS") != (
     "${{ steps.pages-production.outputs.canonical-dist }}/assets"
 ):
     raise RuntimeError("production deploy must verify the canonical App bundles")
+if release_step.get("env", {}).get("OKOU_APP_RUNTIME_MAX_ATTEMPTS") != "60":
+    raise RuntimeError("production runtime convergence must use 60 bounded probes")
+if not (
+    release_steps.index(release_step) < release_steps.index(release_finish_step)
+):
+    raise RuntimeError(
+        "production readiness must finish before the GitHub Deployment is reported"
+    )
+if release_finish_step.get("with", {}).get("status") != "${{ job.status }}":
+    raise RuntimeError(
+        "GitHub Deployment completion must fail closed on readiness verification"
+    )
 require_fragments(
     rollback_step,
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', "production", '"$TARGET_COMMIT"'],
