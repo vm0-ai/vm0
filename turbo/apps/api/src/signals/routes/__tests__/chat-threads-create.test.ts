@@ -797,45 +797,13 @@ describe("POST /api/zero/chat-threads", () => {
     expect(afterDisconnect.body.selections).toStrictEqual([]);
   });
 
-  it("routes thread-list invalidations to the feature-selected realtime channel", async () => {
+  it("routes thread-list invalidations to the user-org realtime channel", async () => {
     const fixture = await seedAgent();
     const token = okouToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       capabilities: ["chat-thread:read", "chat-thread:write"],
     });
-
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.SharedChatDatabase]: false,
-    });
-    await flushWaitUntilForTest();
-    context.mocks.ably.channelGet.mockClear();
-    context.mocks.ably.publish.mockClear();
-
-    await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          agentId: fixture.agentId,
-          model: WORKSPACE_DEFAULT_MODEL,
-        },
-      }),
-      [201],
-    );
-    await flushWaitUntilForTest();
-    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
-      [`user:${fixture.userId}`],
-    ]);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "threadListChanged",
-      null,
-    );
-
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.SharedChatDatabase]: true,
-    });
-    context.mocks.ably.channelGet.mockClear();
-    context.mocks.ably.publish.mockClear();
 
     await accept(
       threadsClient().create({

@@ -8,15 +8,11 @@ import type {
   RunnerPreference,
 } from "@okouai/api-contracts/contracts/runners";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
-import { db } from "../../lib/db";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
 import { waitUntil } from "../context/wait-until";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort, tapError } from "../utils";
 
 const L = logger("Realtime");
@@ -124,17 +120,7 @@ async function publishChatDatabaseSignalNow(
   topic: string,
   payload: unknown,
 ): Promise<void> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db(),
-    target.orgId,
-    target.userId,
-  );
-  const channelName = isFeatureEnabled(
-    FeatureSwitchKey.SharedChatDatabase,
-    featureSwitchContext,
-  )
-    ? getUserOrgChannelName(target.userId, target.orgId)
-    : getUserChannelName(target.userId);
+  const channelName = getUserOrgChannelName(target.userId, target.orgId);
   const channel = ablyClient().channels.get(channelName);
   await channel.publish(topic, payload);
   L.debug(`Published "${topic}" to ${channelName}`);

@@ -26,13 +26,12 @@ import {
   optimisticChatThreadCreateUnsettled,
   reconcileOptimisticChatThreadEvents$,
   registerOptimisticChatThreadEvent$,
-  syncEventDrivenChatThreads$,
   threadMeta,
   touchOptimisticChatThreadSort$,
 } from "../chat-thread-event-sourcing.ts";
 import { createRemoteChatThreadDraft } from "../chat-thread-remote-signals.ts";
 import { openChatIdb } from "../../external/chat-idb-store.ts";
-import { createIdbChatThreadEventStores } from "../../external/idb-chat-thread-event-store.ts";
+import { createStrictIdbChatThreadEventStores } from "../../external/idb-chat-thread-event-store.ts";
 import type { OptimisticChatThreadEvent } from "../chat-thread-event-types.ts";
 
 vi.mock("idb", async () => {
@@ -71,7 +70,7 @@ const threadEventDb$ = computed(async () => {
 });
 
 const threadEventStores$ = computed((get) => {
-  return createIdbChatThreadEventStores(() => {
+  return createStrictIdbChatThreadEventStores(() => {
     return get(threadEventDb$);
   });
 });
@@ -229,88 +228,6 @@ describe("chat thread event sourcing local-first list", () => {
     expect(eventsRequests).toBe(1);
     expect(teamRequests).toBe(0);
     expectCallback(unblockEventsRequest)();
-  });
-
-  it("keeps event-sourced thread state stable when incremental sync is empty", async () => {
-    context.store.set(setChatAgentId$, AGENT_ID);
-
-    await seedThreadEventCache({
-      snapshot: {
-        latestEventId: EVENT_ID,
-        latestSeqId: EVENT_SEQ_ID,
-        chatThreads: [
-          {
-            id: THREAD_ID,
-            agentId: AGENT_ID,
-            title: "Cached thread",
-            sortAt: "2026-07-03T02:00:00.000Z",
-            createdAt: "2026-07-03T01:00:00.000Z",
-            updatedAt: "2026-07-03T02:00:00.000Z",
-            pinnedAt: null,
-            renamedAt: null,
-            selectedModel: null,
-            serviceTier: null,
-            computerUseHostId: null,
-          },
-        ],
-      },
-      events: [],
-    });
-
-    const renamedEvent = {
-      id: OPTIMISTIC_EVENT_ID,
-      seqId: EVENT_SEQ_ID + 1,
-      kind: "renamed",
-      chatThreadId: THREAD_ID,
-      agentId: AGENT_ID,
-      title: "Synced thread",
-      selectedModel: null,
-      serviceTier: null,
-      computerUseHostId: null,
-      createdAt: "2026-07-03T03:00:00.000Z",
-    } satisfies ChatThreadEvent;
-    let eventsRequests = 0;
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      eventsRequests += 1;
-      if (eventsRequests === 1) {
-        return respond(200, { events: [renamedEvent], hasMore: false });
-      }
-      return respond(200, { events: [], hasMore: false });
-    });
-
-    await setupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-      user: { id: threadEventUserId(), fullName: "Test User" },
-      session: { token: "token" },
-      org: {
-        activeOrg: { id: threadEventOrgId(), name: "Test Org" },
-        memberships: [{ id: threadEventOrgId() }],
-      },
-    });
-    await vi.waitFor(async () => {
-      expect((await context.store.get(chatThreads$))[0]?.title).toBe(
-        "Synced thread",
-      );
-    });
-
-    const before = await context.store.get(chatThreads$);
-    const persistedBefore = {
-      snapshot: await threadEventStores().readStore.readSnapshot(),
-      eventLog: await threadEventStores().readStore.readEventLog(),
-    };
-
-    await context.store.set(syncEventDrivenChatThreads$, context.signal);
-
-    const after = await context.store.get(chatThreads$);
-    expect(after).toBe(before);
-    await expect(
-      threadEventStores().readStore.readSnapshot(),
-    ).resolves.toStrictEqual(persistedBefore.snapshot);
-    await expect(
-      threadEventStores().readStore.readEventLog(),
-    ).resolves.toStrictEqual(persistedBefore.eventLog);
   });
 
   it("filters event-sourced visible threads through unread thread ids", async () => {

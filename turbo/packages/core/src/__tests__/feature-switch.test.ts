@@ -124,7 +124,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -152,7 +151,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,

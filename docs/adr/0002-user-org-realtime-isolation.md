@@ -20,9 +20,7 @@ client-side filtering or thread-to-organization inference.
 
 ## Consequences
 
-While Shared Chat Database remains behind its feature switch, the API publishes
-`chatThreadMessageCreated` and `threadListChanged` to exactly one channel for
-each user-org identity. Feature-enabled identities receive them on the new
-user-org channel; feature-disabled identities continue to receive them on the
-existing user channel. This keeps the experimental and existing paths explicit
-without a dual-publication compatibility bridge.
+The API publishes `chatThreadMessageCreated` and `threadListChanged` exclusively
+to the `user-org:<userId>:<orgId>` channel for each user-org identity. The
+existing user channel remains available for unrelated user-scoped signals, but
+it no longer carries chat database invalidations.
