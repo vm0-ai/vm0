@@ -299,8 +299,6 @@ import type {
 import {
   claimQueueFirstRunAssociation,
   lockGoalQueueFirstRunSource,
-  recordQueueFirstClaimedRun,
-  recordQueueFirstFailedRun,
   resolveQueueFirstRunAdmission,
   type QueueFirstRunAdmission,
   type QueueFirstRunAssociation,
@@ -7684,12 +7682,6 @@ async function persistFailedLaunch(
     officialWorkflowProvenance: args.context.officialWorkflowRun?.provenance,
     error: message,
   });
-  if (queueFirstClaim) {
-    await recordQueueFirstFailedRun(tx, {
-      claim: queueFirstClaim,
-      runId: args.identity.runId,
-    });
-  }
   return {
     kind: "failed",
     createdAt,
@@ -7965,12 +7957,6 @@ async function commitQueuedPreparedLaunch(
     commit: args,
     run: persisted.run,
   });
-  if (queueFirstClaim) {
-    await recordQueueFirstClaimedRun(tx, {
-      claim: queueFirstClaim,
-      runId: persisted.run.id,
-    });
-  }
   return {
     ...persisted,
     runnerJobPayload: payload,
@@ -8001,12 +7987,6 @@ async function commitPendingPreparedLaunch(
     commit: args,
     run: persisted.run,
   });
-  if (queueFirstClaim) {
-    await recordQueueFirstClaimedRun(tx, {
-      claim: queueFirstClaim,
-      runId: persisted.run.id,
-    });
-  }
   return {
     ...persisted,
     runnerJobPayload: payload,

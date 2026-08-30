@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { emailSuppressions } from "@okouai/db/schema/email-suppression";
-import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { users } from "@okouai/db/schema/user";
 import { command } from "ccstate";
@@ -94,6 +93,9 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
       unsubscribeUrl: z.string().optional(),
     }),
   }),
+  // Phase-A drain fallback for Morning Brief outbox rows persisted before the
+  // cutover. Phase B removes this template and renderer after #30264's released
+  // zero-traffic gate also proves no pending or retryable legacy email remains.
   z.object({
     template: z.literal("morning-brief"),
     props: z.object({
@@ -809,18 +811,6 @@ export async function getUserIdByEmail(
       },
     });
   return user.id;
-}
-
-export async function resolveDefaultAgent(
-  db: Db,
-  orgId: string,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ defaultAgentId: orgMetadata.defaultAgentId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return row?.defaultAgentId ?? null;
 }
 
 export async function unsubscribeUser(db: Db, userId: string): Promise<void> {

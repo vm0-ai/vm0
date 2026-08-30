@@ -40,8 +40,6 @@ export enum FeatureSwitchKey {
   GoogleFormsWorkflowAutomations = "googleFormsWorkflowAutomations",
   StripeInvoicePaidWorkflowAutomations = "stripeInvoicePaidWorkflowAutomations",
   OfficialWorkflows = "officialWorkflows",
-  MorningBrief = "morningBrief",
-  ManualMorningBrief = "manualMorningBrief",
   TestOauthConnector = "testOauthConnector",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",

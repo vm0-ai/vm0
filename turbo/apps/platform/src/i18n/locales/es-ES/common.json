@@ -2138,6 +2138,7 @@
       "message_one": "{{count}} mensaje",
       "message_many": "{{count}} mensajes",
       "message_other": "{{count}} mensajes",
+      "morningBrief": "Resumen matutino",
       "openGoalDetails": "Abrir detalles del objetivo",
       "pendingAutomationEvent": "Evento de automatización pendiente",
       "queuedMessage": "Mensaje en cola",
@@ -3290,15 +3291,6 @@
       "doneTitle": "Suscripción cancelada",
       "errorBody": "Este enlace de baja es inválido o caducado. Puedes gestionar las notificaciones por correo electrónico en Configuración.",
       "errorTitle": "Algo salió mal"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Resumen matutino",
-      "doneBody": "Ya no recibirás el correo electrónico diario de Morning Brief. Puedes volver a activarlo en cualquier momento en Configuración.",
-      "doneTitle": "Morning Brief desactivado",
-      "errorBody": "El enlace de baja es inválido o incompleto. Abre el último correo de Morning Brief y utiliza su enlace de baja o gestiona la preferencia en Configuración.",
-      "errorTitle": "Este enlace no es válido",
-      "loadingLabel": "Cargando estado de cancelación de suscripción",
-      "managePreferences": "Gestionar preferencias"
     },
     "pwaInstall": {
       "banner": "Instala {{assistantName}} para una mejor experiencia",
@@ -5149,16 +5141,6 @@
           "spanish": "Español"
         },
         "title": "Idioma"
-      },
-      "morningBrief": {
-        "description": "Un correo diario a las 7:00 de la mañana con tu agenda, acciones y actualizaciones de GitHub, Gmail y Google Calendar",
-        "nextEmail": "Siguiente correo: {{date}}",
-        "nextEmailInTimezone": "Siguiente correo: {{date}} ({{timezone}})",
-        "notScheduled": "Siguiente correo: aún no está programado — apaga y enciende el interruptor para reprogramar",
-        "sending": "Enviando...",
-        "sendNow": "Enviar ahora",
-        "title": "Resumen matutino",
-        "triggeredToast": "Se inició el resumen matutino; el correo llegará en breve"
       },
       "pageDescription": "Gestiona la apariencia y las preferencias de ejecución de tus agentes",
       "pageTitle": "Preferencias",

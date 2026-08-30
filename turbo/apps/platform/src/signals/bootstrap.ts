@@ -73,7 +73,6 @@ import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callbac
 import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
-import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
 import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import {
   setupSignInV2Page$,
@@ -410,11 +409,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.signInToken,
     setup: setupSignInTokenPage$,
-  },
-  {
-    // Public route: opened from the Morning Brief email, no auth guard.
-    path: ROUTES.morningBriefUnsubscribe,
-    setup: setupMorningBriefUnsubscribePage$,
   },
   {
     path: ROUTES.redeemCampaign,

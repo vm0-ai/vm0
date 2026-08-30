@@ -6506,14 +6506,14 @@ function MessageAnnotation({
     return (
       <div
         aria-label={t(($) => {
-          return $.settings.preferences.morningBrief.title;
+          return $.chat.queue.morningBrief;
         })}
         className={className}
       >
         <Sunrise size={15} className="shrink-0" />
         <span>
           {t(($) => {
-            return $.settings.preferences.morningBrief.title;
+            return $.chat.queue.morningBrief;
           })}
         </span>
       </div>

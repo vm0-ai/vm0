@@ -2101,6 +2101,7 @@
       "loadingGoal": "Loading goal...",
       "message_one": "{{count}} message",
       "message_other": "{{count}} messages",
+      "morningBrief": "Morning Brief",
       "openGoalDetails": "Open goal details",
       "pendingAutomationEvent": "Pending automation event",
       "queuedMessage": "Queued message",
@@ -3231,15 +3232,6 @@
       "doneTitle": "Unsubscribed",
       "errorBody": "This unsubscribe link is invalid or expired. You can manage email notifications in Settings.",
       "errorTitle": "Something went wrong"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "You will no longer receive the daily Morning Brief email. You can turn it back on any time in Settings.",
-      "doneTitle": "Morning Brief turned off",
-      "errorBody": "The unsubscribe link is invalid or incomplete. Open the latest Morning Brief email and use its unsubscribe link, or manage the preference in Settings.",
-      "errorTitle": "This link is invalid",
-      "loadingLabel": "Loading unsubscribe status",
-      "managePreferences": "Manage preferences"
     },
     "pwaInstall": {
       "banner": "Install {{assistantName}} for a better experience",
@@ -5082,16 +5074,6 @@
           "spanish": "Español"
         },
         "title": "Language"
-      },
-      "morningBrief": {
-        "description": "A daily 7:00 AM email with your schedule, action items, and updates from connected GitHub, Gmail, and Google Calendar",
-        "nextEmail": "Next email: {{date}}",
-        "nextEmailInTimezone": "Next email: {{date}} ({{timezone}})",
-        "notScheduled": "Next email: not scheduled yet — turn the switch off and on to reschedule",
-        "sending": "Sending...",
-        "sendNow": "Send now",
-        "title": "Morning Brief",
-        "triggeredToast": "Morning Brief triggered, the email arrives shortly"
       },
       "pageDescription": "Manage your appearance and agent runtime preferences",
       "pageTitle": "Preferences",

@@ -16,6 +16,11 @@ export const emailMorningBriefUnsubscribeErrorSchema = z.object({
   error: z.string(),
 });
 
+/**
+ * Phase-A endpoint fallback for already-delivered links and old App bundles.
+ * Phase B removes it after #30264's released zero-request observation gate and
+ * replacement App version floor close the retained-link/client window.
+ */
 export const emailMorningBriefUnsubscribeContract = c.router({
   unsubscribe: {
     method: "POST",

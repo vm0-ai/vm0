@@ -1,12 +1,8 @@
 import { command } from "ccstate";
 import { emailMorningBriefUnsubscribeContract } from "@okouai/api-contracts/contracts/email-morning-brief-unsubscribe";
-import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 
 import { queryOf } from "../context/request";
-import { writeDb$ } from "../external/db";
-import { nowDate } from "../../lib/time";
 import { verifyMorningBriefUnsubscribeToken } from "../services/morning-brief-email-link.service";
-import { syncMorningBriefSchedule } from "../services/morning-brief-schedule.service";
 import type { RouteEntry } from "../route-entry";
 
 function missingTokenResponse() {
@@ -17,55 +13,21 @@ function invalidTokenResponse() {
   return { status: 400 as const, body: { error: "Invalid token" } };
 }
 
-const disableMorningBrief$ = command(
-  async (
-    { set },
-    args: { readonly orgId: string; readonly userId: string },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    const updatedAt = nowDate();
-    await db
-      .insert(orgMembersMetadata)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        morningBriefEnabled: false,
-        createdAt: updatedAt,
-        updatedAt,
-      })
-      .onConflictDoUpdate({
-        target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-        set: { morningBriefEnabled: false, updatedAt },
-      });
-    signal.throwIfAborted();
-    await syncMorningBriefSchedule(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      timezone: null,
-      enabled: false,
-      currentTime: updatedAt,
-    });
-    signal.throwIfAborted();
-  },
-);
-
-const postMorningBriefUnsubscribe$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const query = get(
-      queryOf(emailMorningBriefUnsubscribeContract.unsubscribe),
-    );
-    if (!query.token) {
-      return missingTokenResponse();
-    }
-    const verified = verifyMorningBriefUnsubscribeToken(query.token);
-    if (!verified) {
-      return invalidTokenResponse();
-    }
-    await set(disableMorningBrief$, verified, signal);
-    return { status: 200 as const, body: { unsubscribed: true as const } };
-  },
-);
+const postMorningBriefUnsubscribe$ = command(({ get }) => {
+  const query = get(queryOf(emailMorningBriefUnsubscribeContract.unsubscribe));
+  if (!query.token) {
+    return missingTokenResponse();
+  }
+  const verified = verifyMorningBriefUnsubscribeToken(query.token);
+  if (!verified) {
+    return invalidTokenResponse();
+  }
+  // Deployment fallback for already-delivered email links and old loaded App
+  // bundles. The phase-A migration already makes the preference terminal;
+  // phase B removes this idempotent endpoint after #30264's released
+  // zero-traffic gate and the replacement App version floor.
+  return { status: 200 as const, body: { unsubscribed: true as const } };
+});
 
 export const emailMorningBriefUnsubscribeRoutes: readonly RouteEntry[] = [
   {

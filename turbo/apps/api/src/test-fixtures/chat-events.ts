@@ -873,6 +873,38 @@ export async function insertQueuedSlackMissingContextFixture(args: {
   });
 }
 
+/** Reproduces a pre-cutover legacy queue head without admitting new runtime state. */
+export async function insertQueuedLegacyMorningBriefFixture(args: {
+  readonly threadId: string;
+  readonly content: string;
+}): Promise<string> {
+  const eventId = randomUUID();
+  await db().transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({
+        lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 1`,
+      })
+      .where(eq(chatThreads.id, args.threadId))
+      .returning({ seqId: chatThreads.lastChatEventSeqId });
+    if (!thread) {
+      throw new Error("Expected the legacy Morning Brief thread");
+    }
+    await tx.insert(chatEvents).values({
+      id: eventId,
+      chatThreadId: args.threadId,
+      contextType: "morning_brief",
+      eventType: "input.prompt",
+      payload: {
+        userMessage: createUserMessageDocument({ text: args.content }),
+      },
+      runId: null,
+      seqId: thread.seqId,
+    });
+  });
+  return eventId;
+}
+
 export async function replayPendingChatInputQueueEventFixture(args: {
   readonly eventId: string;
   readonly replacementId: string;

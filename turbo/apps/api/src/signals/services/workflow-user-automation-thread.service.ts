@@ -96,7 +96,7 @@ export async function disableThreadBoundWorkflowAutomations(
     });
 }
 
-export async function createAutomationChatThread(
+async function createAutomationChatThread(
   db: ChatThreadEventTransaction,
   args: {
     readonly userId: string;

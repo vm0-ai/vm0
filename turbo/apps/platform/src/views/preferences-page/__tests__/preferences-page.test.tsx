@@ -165,7 +165,12 @@ describe("preferences page", () => {
     });
     context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
       capturedBodies.push(body as Record<string, unknown>);
-      storedPreferences = { ...storedPreferences, ...body };
+      storedPreferences = {
+        ...storedPreferences,
+        ...body,
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+      };
       return respond(200, storedPreferences);
     });
 
@@ -214,7 +219,12 @@ describe("preferences page", () => {
     });
     context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
       capturedBodies.push(body as Record<string, unknown>);
-      storedPreferences = { ...storedPreferences, ...body };
+      storedPreferences = {
+        ...storedPreferences,
+        ...body,
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+      };
       return respond(200, storedPreferences);
     });
 

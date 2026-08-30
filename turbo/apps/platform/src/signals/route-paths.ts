@@ -60,7 +60,6 @@ export const ROUTES = {
   signUpV2: "/v2/sign-up",
   signUpV2CatchAll: "/v2/sign-up{/*path}",
   signInToken: "/sign-in-token",
-  morningBriefUnsubscribe: "/email/morning-brief/unsubscribe",
   lab: "/_/lab",
   exportData: "/export",
   redeemCampaign: "/redeem/:campaign",
