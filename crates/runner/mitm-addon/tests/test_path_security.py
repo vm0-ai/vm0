@@ -39,7 +39,7 @@ def test_has_unsafe_path_blocks_dot_segments(path):
         pytest.param(path_security._MAX_PERCENT_DECODE_PASSES + 1, id="over-limit"),
     ],
 )
-def test_has_unsafe_path_blocks_nested_dot_segments_at_decode_limit(decode_passes):
+def test_has_unsafe_path_blocks_nested_dot_segments_at_decode_limit(decode_passes: int):
     encoded = "%2e"
     for _ in range(decode_passes - 1):
         encoded = urllib.parse.quote(encoded, safe="")
