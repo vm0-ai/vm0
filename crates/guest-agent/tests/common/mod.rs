@@ -1062,7 +1062,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
         "VM0_API_START_TIME",
         guest_contracts::env::CANONICAL_API_START_TIME_ENV,
-        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+        "VM0_AGENT_EXECUTION_TIMEOUT_SECS",
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::SECRET_VALUES_ENV,
         guest_contracts::env::DISALLOWED_TOOLS_ENV,

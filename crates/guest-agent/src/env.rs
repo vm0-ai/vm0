@@ -26,7 +26,7 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 8;
+const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 7;
 
 #[derive(Clone, Copy)]
 struct BootstrapAliasSourceEventSpec {
@@ -64,10 +64,6 @@ const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
         family: "private_payload_file_env_source",
         canonical_key: guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
     },
-    BootstrapAliasSourceEventSpec {
-        family: "agent_execution_timeout_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-    },
 ];
 
 #[derive(Clone, Copy)]
@@ -79,7 +75,6 @@ enum BootstrapAlias {
     PostResultSigkillGrace,
     UserEnvFile,
     RunPayloadFile,
-    AgentExecutionTimeout,
 }
 
 #[derive(Clone, Copy)]
@@ -101,7 +96,7 @@ impl BootstrapAliasSource {
 
 /// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
 ///
-/// The internal slots correspond exactly to the eight canonical keys in
+/// The internal slots correspond exactly to the seven canonical keys in
 /// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
 /// resolvers can populate them.
 #[derive(Clone, Default)]
@@ -113,7 +108,6 @@ pub struct BootstrapAliasSourceEvents {
     post_result_sigkill_grace: Option<BootstrapAliasSource>,
     user_env_file: Option<BootstrapAliasSource>,
     run_payload_file: Option<BootstrapAliasSource>,
-    agent_execution_timeout: Option<BootstrapAliasSource>,
 }
 
 impl BootstrapAliasSourceEvents {
@@ -126,7 +120,6 @@ impl BootstrapAliasSourceEvents {
             BootstrapAlias::PostResultSigkillGrace => &mut self.post_result_sigkill_grace,
             BootstrapAlias::UserEnvFile => &mut self.user_env_file,
             BootstrapAlias::RunPayloadFile => &mut self.run_payload_file,
-            BootstrapAlias::AgentExecutionTimeout => &mut self.agent_execution_timeout,
         };
         *slot = Some(source);
     }
@@ -140,7 +133,6 @@ impl BootstrapAliasSourceEvents {
             self.post_result_sigkill_grace,
             self.user_env_file,
             self.run_payload_file,
-            self.agent_execution_timeout,
         ]
     }
 
@@ -236,37 +228,6 @@ fn record_private_payload_file_env_source(
     if let Some(source) = source {
         events.record(alias, source);
     }
-}
-
-/// Resolve the runner-owned agent execution timeout at the single process-env
-/// capture boundary. Both aliases are reader-only during #28914 migration
-/// Stage 1; the runner writer remains
-/// [`guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV`].
-fn agent_execution_timeout_env_or_empty(
-    events: &mut BootstrapAliasSourceEvents,
-) -> Result<String, String> {
-    let canonical_key = guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV;
-    let legacy_key = guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV;
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting agent execution timeout environment aliases: \
-                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(BootstrapAlias::AgentExecutionTimeout, source);
-    Ok(value)
 }
 
 /// Resolve one Guest Agent timing alias pair at the single process-env capture
@@ -562,9 +523,9 @@ impl GuestConfigRaw {
             vercel_bypass: env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV),
             resume_session_id: env_or_empty(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV),
             api_start_time: env_or_empty(guest_contracts::env::CANONICAL_API_START_TIME_ENV),
-            agent_execution_timeout_secs: agent_execution_timeout_env_or_empty(
-                &mut bootstrap_alias_sources,
-            )?,
+            agent_execution_timeout_secs: env_or_empty(
+                guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            ),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
             mock_claude_path: std::env::var(guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV)
                 .ok(),
@@ -1180,10 +1141,6 @@ mod tests {
                     .unwrap_err();
             assert!(
                 error.contains(AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC),
-                "{error}"
-            );
-            assert!(
-                !error.contains(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV),
                 "{error}"
             );
             assert!(
