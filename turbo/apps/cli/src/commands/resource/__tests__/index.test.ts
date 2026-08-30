@@ -152,7 +152,7 @@ describe("okou resource pull command", () => {
 
   beforeEach(async () => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     outputDir = await mkdtemp(path.join(tmpdir(), "resource-pull-test-"));
     mockExit.mockClear();

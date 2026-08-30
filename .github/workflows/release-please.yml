@@ -1728,6 +1728,7 @@ jobs:
           CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          OKOU_APP_RUNTIME_MAX_ATTEMPTS: "60"
           PAGES_DIST: ${{ steps.pages-production.outputs.pages-dist }}
         run: |
           set -euo pipefail

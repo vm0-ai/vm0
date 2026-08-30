@@ -17,7 +17,7 @@ use super::super::env::{
     is_runner_owned_env_key, validate_execution_context_before_sandbox,
     validate_model_provider_env_placeholders, write_connector_account_context_file,
 };
-use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
+use super::super::guest_runtime_dir;
 use super::support::{
     api_artifact, api_storage, build_env_for_test, build_env_for_test_result,
     build_env_for_test_with_host_env, context_with_env, minimal_context,
@@ -798,11 +798,8 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         ),
         ("VM0_MOCK_CLAUDE_PATH".into(), "/tmp/mock-claude".into()),
         ("VM0_MOCK_CODEX_PATH".into(), "/tmp/mock-codex".into()),
-        (USER_ENV_FILE_ENV_KEY.into(), "/tmp/user-env".into()),
-        (
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV.into(),
-            "/tmp/run-payload".into(),
-        ),
+        ("VM0_USER_ENV_FILE".into(), "/tmp/user-env".into()),
+        ("VM0_RUN_PAYLOAD_FILE".into(), "/tmp/run-payload".into()),
     ]));
 
     let bootstrap_env = build_env_for_test(&ctx, "http://localhost");
@@ -856,8 +853,8 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         guest_contracts::env::SETTINGS_ENV,
         "VM0_MOCK_CLAUDE_PATH",
         "VM0_MOCK_CODEX_PATH",
-        USER_ENV_FILE_ENV_KEY,
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        "VM0_USER_ENV_FILE",
+        "VM0_RUN_PAYLOAD_FILE",
     ] {
         assert!(!user_env.contains_key(key), "{key} should be scrubbed");
     }

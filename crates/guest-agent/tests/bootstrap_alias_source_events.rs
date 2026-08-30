@@ -26,27 +26,16 @@ const RESUME_SESSION_VALUE: &str = "resume-session-value-must-not-leak";
 const API_START_TIME_VALUE: &str = "api-start-time-value-must-not-leak";
 const RETIRED_TIMING_SOURCE_EVENT: &str = "guest_agent_tuning_env_source";
 
-const SOURCE_EVENT_FAMILIES: [&str; 4] = [
+const SOURCE_EVENT_FAMILIES: [&str; 3] = [
     "api_url_env_source",
-    "private_payload_file_env_source",
     "api_token_env_source",
     "agent_execution_timeout_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 3] = [
-    (
-        "api_url_env_source",
-        guest_contracts::env::CANONICAL_API_URL_ENV,
-    ),
-    (
-        "private_payload_file_env_source",
-        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-    ),
-    (
-        "private_payload_file_env_source",
-        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-    ),
-];
+const SOURCE_EVENTS: [(&str, &str); 1] = [(
+    "api_url_env_source",
+    guest_contracts::env::CANONICAL_API_URL_ENV,
+)];
 
 struct PrivateFiles {
     user_env_path: PathBuf,
@@ -223,6 +212,8 @@ async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult
     );
     assert_value_free(&stderr, &runtime_dir);
     assert_value_free(&system_log, &runtime_dir);
+    assert!(!stderr.contains("private_payload_file_env_source"));
+    assert!(!system_log.contains("private_payload_file_env_source"));
     assert!(!stderr.contains("run_metadata_env_source"));
     assert!(!system_log.contains("run_metadata_env_source"));
     assert_timing_source_absent(&stderr);

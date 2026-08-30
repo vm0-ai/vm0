@@ -152,9 +152,9 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         );
         std::env::set_var("HOME", tmp.path().join("stale-home"));
         for key in [
-            guest_contracts::env::USER_ENV_FILE_ENV,
+            "VM0_USER_ENV_FILE",
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            "VM0_RUN_PAYLOAD_FILE",
             guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         ] {
             std::env::set_var(key, "/stale/private-file-pointer");
@@ -260,9 +260,9 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     for key in [
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         "VM0_GUEST_RUNTIME_DIR",
-        guest_contracts::env::USER_ENV_FILE_ENV,
+        "VM0_USER_ENV_FILE",
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        "VM0_RUN_PAYLOAD_FILE",
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
     ] {
         assert!(
