@@ -25,14 +25,13 @@ const WORKSPACE_REUSE_VALUE: &str = "workspace-reuse-value-must-not-leak";
 const RESUME_SESSION_VALUE: &str = "resume-session-value-must-not-leak";
 const API_START_TIME_VALUE: &str = "api-start-time-value-must-not-leak";
 
-const SOURCE_EVENT_FAMILIES: [&str; 4] = [
+const SOURCE_EVENT_FAMILIES: [&str; 3] = [
     "api_url_env_source",
-    "private_payload_file_env_source",
     "api_token_env_source",
     "guest_agent_tuning_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 7] = [
+const SOURCE_EVENTS: [(&str, &str); 5] = [
     (
         "api_url_env_source",
         guest_contracts::env::CANONICAL_API_URL_ENV,
@@ -52,14 +51,6 @@ const SOURCE_EVENTS: [(&str, &str); 7] = [
     (
         "guest_agent_tuning_env_source",
         guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    ),
-    (
-        "private_payload_file_env_source",
-        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-    ),
-    (
-        "private_payload_file_env_source",
-        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
     ),
 ];
 
@@ -228,6 +219,8 @@ async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult
     );
     assert_value_free(&stderr, &runtime_dir);
     assert_value_free(&system_log, &runtime_dir);
+    assert!(!stderr.contains("private_payload_file_env_source"));
+    assert!(!system_log.contains("private_payload_file_env_source"));
     assert!(!stderr.contains("run_metadata_env_source"));
     assert!(!system_log.contains("run_metadata_env_source"));
     assert!(!private_files.user_env_path.exists());

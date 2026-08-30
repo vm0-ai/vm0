@@ -17,8 +17,8 @@ use crate::constants;
 use guest_common::{log_info, log_warn};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
-const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_ENV;
+const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
+const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV;
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
 pub(crate) const AGENT_EXECUTION_TIMEOUT_DIAGNOSTIC: &str = "agent execution timeout";
 #[cfg(debug_assertions)]
@@ -26,7 +26,7 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 7;
+const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 5;
 
 #[derive(Clone, Copy)]
 struct BootstrapAliasSourceEventSpec {
@@ -56,14 +56,6 @@ const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
         family: "guest_agent_tuning_env_source",
         canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
     },
-    BootstrapAliasSourceEventSpec {
-        family: "private_payload_file_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "private_payload_file_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-    },
 ];
 
 #[derive(Clone, Copy)]
@@ -73,8 +65,6 @@ enum BootstrapAlias {
     PostResultSigtermGrace,
     PostResultTotalCap,
     PostResultSigkillGrace,
-    UserEnvFile,
-    RunPayloadFile,
 }
 
 #[derive(Clone, Copy)]
@@ -96,7 +86,7 @@ impl BootstrapAliasSource {
 
 /// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
 ///
-/// The internal slots correspond exactly to the seven canonical keys in
+/// The internal slots correspond exactly to the five canonical keys in
 /// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
 /// resolvers can populate them.
 #[derive(Clone, Default)]
@@ -106,8 +96,6 @@ pub struct BootstrapAliasSourceEvents {
     post_result_sigterm_grace: Option<BootstrapAliasSource>,
     post_result_total_cap: Option<BootstrapAliasSource>,
     post_result_sigkill_grace: Option<BootstrapAliasSource>,
-    user_env_file: Option<BootstrapAliasSource>,
-    run_payload_file: Option<BootstrapAliasSource>,
 }
 
 impl BootstrapAliasSourceEvents {
@@ -118,8 +106,6 @@ impl BootstrapAliasSourceEvents {
             BootstrapAlias::PostResultSigtermGrace => &mut self.post_result_sigterm_grace,
             BootstrapAlias::PostResultTotalCap => &mut self.post_result_total_cap,
             BootstrapAlias::PostResultSigkillGrace => &mut self.post_result_sigkill_grace,
-            BootstrapAlias::UserEnvFile => &mut self.user_env_file,
-            BootstrapAlias::RunPayloadFile => &mut self.run_payload_file,
         };
         *slot = Some(source);
     }
@@ -131,8 +117,6 @@ impl BootstrapAliasSourceEvents {
             self.post_result_sigterm_grace,
             self.post_result_total_cap,
             self.post_result_sigkill_grace,
-            self.user_env_file,
-            self.run_payload_file,
         ]
     }
 
@@ -185,49 +169,6 @@ fn api_url_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<Strin
 
     events.record(BootstrapAlias::ApiUrl, source);
     Ok(value)
-}
-
-type PrivatePayloadFileEnvResolution = (String, Option<BootstrapAliasSource>);
-
-/// Resolve Stage 1 compatibility between existing runners or sandboxes and a
-/// new guest reader. Existing pointers can remain live through the two-hour
-/// guest runtime budget plus bounded finalization. #28914 owns the later
-/// writer-cutover and reader-removal issues; remove the legacy branches only
-/// after the reader floor, sandbox drain, rollback window, and
-/// legacy-read-zero gates are complete.
-fn private_payload_file_env(
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-) -> Result<PrivatePayloadFileEnvResolution, String> {
-    let canonical = std::env::var(canonical_key)
-        .ok()
-        .filter(|value| !value.is_empty());
-    let legacy = std::env::var(legacy_key)
-        .ok()
-        .filter(|value| !value.is_empty());
-
-    match (canonical, legacy) {
-        (None, None) => Ok((String::new(), None)),
-        (Some(value), None) => Ok((value, Some(BootstrapAliasSource::CanonicalOnly))),
-        (None, Some(value)) => Ok((value, Some(BootstrapAliasSource::LegacyOnly))),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            Ok((canonical, Some(BootstrapAliasSource::Dual)))
-        }
-        (Some(_), Some(_)) => Err(format!(
-            "conflicting private payload file environment aliases: canonical_key={canonical_key} \
-             legacy_key={legacy_key} state=conflict"
-        )),
-    }
-}
-
-fn record_private_payload_file_env_source(
-    events: &mut BootstrapAliasSourceEvents,
-    alias: BootstrapAlias,
-    source: Option<BootstrapAliasSource>,
-) {
-    if let Some(source) = source {
-        events.record(alias, source);
-    }
 }
 
 /// Resolve one Guest Agent timing alias pair at the single process-env capture
@@ -489,25 +430,8 @@ impl GuestConfigRaw {
             &mut bootstrap_alias_sources,
         )?;
 
-        let (user_env_file, user_env_file_source) = private_payload_file_env(
-            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-            USER_ENV_FILE_ENV_KEY,
-        )?;
-        let (run_payload_file, run_payload_file_source) = private_payload_file_env(
-            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-            RUN_PAYLOAD_FILE_ENV_KEY,
-        )?;
-
-        record_private_payload_file_env_source(
-            &mut bootstrap_alias_sources,
-            BootstrapAlias::UserEnvFile,
-            user_env_file_source,
-        );
-        record_private_payload_file_env_source(
-            &mut bootstrap_alias_sources,
-            BootstrapAlias::RunPayloadFile,
-            run_payload_file_source,
-        );
+        let user_env_file = env_or_empty(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV);
+        let run_payload_file = env_or_empty(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV);
 
         Ok(Self {
             run_id: env_or_empty(guest_contracts::env::RUN_ID_ENV),

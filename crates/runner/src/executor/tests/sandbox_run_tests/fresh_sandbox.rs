@@ -1111,7 +1111,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
         ("VM0_API_TOKEN".into(), "stolen-token".into()),
-        (USER_ENV_FILE_ENV_KEY.into(), "/tmp/evil-env.json".into()),
+        ("VM0_USER_ENV_FILE".into(), "/tmp/evil-env.json".into()),
         ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
         (
             guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
@@ -1171,10 +1171,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
-    for legacy_key in [
-        USER_ENV_FILE_ENV_KEY,
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
-    ] {
+    for legacy_key in ["VM0_USER_ENV_FILE", "VM0_RUN_PAYLOAD_FILE"] {
         assert!(
             !start_env.contains_key(legacy_key),
             "canonical writer must not emit legacy key {legacy_key}"
@@ -1256,7 +1253,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert!(!user_env.contains_key("VM0_APP_URL"));
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
-    assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
+    assert!(!user_env.contains_key("VM0_USER_ENV_FILE"));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
     assert_eq!(
         user_env
@@ -1318,7 +1315,7 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
     for user_env_key in [
-        USER_ENV_FILE_ENV_KEY,
+        "VM0_USER_ENV_FILE",
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
     ] {
         assert!(
@@ -1332,7 +1329,7 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
-    assert!(!start_env.contains_key(guest_contracts::env::RUN_PAYLOAD_FILE_ENV));
+    assert!(!start_env.contains_key("VM0_RUN_PAYLOAD_FILE"));
 }
 
 #[tokio::test]
