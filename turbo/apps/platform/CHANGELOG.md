@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.812.4](https://github.com/vm0-ai/vm0/compare/app-v0.812.3...app-v0.812.4) (2026-08-30)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#30366](https://github.com/vm0-ai/vm0/issues/30366)) ([ec658a5](https://github.com/vm0-ai/vm0/commit/ec658a548883f28e75126106528e53c7241a1ade))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/core bumped to 8.603.4
+
 ## [0.812.3](https://github.com/vm0-ai/vm0/compare/app-v0.812.2...app-v0.812.3) (2026-08-30)
 
 
