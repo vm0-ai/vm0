@@ -66,52 +66,6 @@ function physicalEntries(
   });
 }
 
-const workflowDisposition = {
-  classification: "migrate",
-  reason:
-    "The six legacy Workflow compatibility views remain on the staged switch and contract path after canonical physical promotion.",
-  ownerIssue: "#26896",
-  writerStopCondition:
-    "The #26896 canonical read/write switch is production-accepted and every supported rollback build addresses all six canonical Workflow relations.",
-  drainEvidence:
-    "A fresh pg_catalog replay has zero unowned legacy dependencies, MaskDB has exact key parity for all six relation pairs, and a 24-hour post-switch Axiom window has zero legacy-relation SQL errors.",
-  removalGate:
-    "#26896 may contract an entry only after the 24-hour zero-error window, zero legacy writer inventory, and exact catalog dependency review all pass.",
-} as const satisfies ManifestDisposition;
-
-const workflowIdentities = [
-  {
-    key: "view:public.zero_workflow_automations",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.zero_workflow_github_processed_events",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.zero_workflow_strapi_automations",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.zero_workflow_webhook_automations",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.zero_workflow_webhook_deliveries",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.zero_workflows",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-] as const satisfies readonly PhysicalIdentitySpec[];
-
 const acquisitionDisposition = {
   classification: "migrate",
   reason:
@@ -371,7 +325,6 @@ const semanticFamilyEntries = [
 ] as const satisfies readonly LegacyDatabaseIdentityManifestEntry[];
 
 export const LEGACY_DATABASE_IDENTITY_MANIFEST = [
-  ...physicalEntries(workflowIdentities, workflowDisposition),
   ...nonWorkflowPhysicalEntries,
   ...semanticFamilyEntries,
 ] as const satisfies readonly LegacyDatabaseIdentityManifestEntry[];
