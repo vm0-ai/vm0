@@ -28,11 +28,6 @@
             ? "__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
             : "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
 
-        document.documentElement.setAttribute(
-          "data-vm0-clerk-publishable-key",
-          publishableKey,
-        );
-
         var script = document.createElement("script");
         script.async = false;
         script.defer = true;

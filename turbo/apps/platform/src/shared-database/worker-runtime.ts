@@ -19,7 +19,7 @@ import {
 } from "../lib/sentry-config.ts";
 import { now } from "../lib/time.ts";
 import { logger } from "../signals/log.ts";
-import { createChatIdbOpener } from "../signals/external/chat-idb-store.ts";
+import { createChatIdbOpener } from "../signals/external/chat-idb-opener.ts";
 import { createIdbEventRowStores } from "../signals/external/idb-event-row-store.ts";
 import { createStrictIdbChatThreadEventStores } from "../signals/external/idb-chat-thread-event-store.ts";
 import {

@@ -728,6 +728,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
+      acorn:
+        specifier: ^8.16.0
+        version: 8.16.0
       eslint:
         specifier: ^9.34.0
         version: 9.39.4(jiti@2.7.0)

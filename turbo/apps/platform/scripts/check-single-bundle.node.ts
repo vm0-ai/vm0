@@ -13,6 +13,10 @@ import {
   singleWorkerBundleViolations,
   singleWorkerJavaScriptBundlePlugin,
 } from "./single-bundle.ts";
+import {
+  domGlobalUsageCounts,
+  workerDomGlobalsMessage,
+} from "./worker-dom-globals.ts";
 
 const APP_FILE = "assets/index-AppHash1.js";
 const VENDOR_FILE = "assets/vendor-Vendor01.js";
@@ -267,4 +271,46 @@ await test("emits the fixed page topology and one external worker", async () => 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+await test("counts window-only globals but ignores properties and typeof", () => {
+  assert.deepEqual(
+    [...domGlobalUsageCounts("export const a = document.title;").entries()],
+    [["document", 1]],
+  );
+  assert.deepEqual(
+    [
+      ...domGlobalUsageCounts(
+        "export const a = globalThis.document ?? scope.window;",
+      ).entries(),
+    ],
+    [],
+  );
+  assert.deepEqual(
+    [
+      ...domGlobalUsageCounts(
+        'export const a = typeof window === "undefined";',
+      ).entries(),
+    ],
+    [],
+  );
+  // A local shadow is reported too: the check has no scope analysis, and a
+  // module the worker imports has no reason to reuse the name.
+  assert.deepEqual(
+    [
+      ...domGlobalUsageCounts(
+        "export function f(x) { const document = x; return document.a; }",
+      ).entries(),
+    ],
+    [["document", 2]],
+  );
+});
+
+await test("names the offending module and globals", () => {
+  const message = workerDomGlobalsMessage(
+    "/repo/apps/platform/src/lib/platform-host.ts",
+    new Map([["document", 2]]),
+  );
+  assert.match(message, /platform-host\.ts/u);
+  assert.match(message, /document \(2x\)/u);
 });

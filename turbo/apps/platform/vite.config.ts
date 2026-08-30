@@ -12,6 +12,7 @@ import {
   applicationJavaScriptBundlePlugin,
   singleWorkerJavaScriptBundlePlugin,
 } from "./scripts/single-bundle.ts";
+import { workerDomGlobalsPlugin } from "./scripts/worker-dom-globals.ts";
 
 const APP_ASSET_BASE = "https://static.okou.io/okou-app/";
 const APP_GIT_COMMIT_SHA = process.env.OKOU_APP_GIT_COMMIT_SHA ?? "";
@@ -45,7 +46,7 @@ export default defineConfig(({ command }) => ({
   },
   worker: {
     plugins: () => {
-      return [singleWorkerJavaScriptBundlePlugin()];
+      return [workerDomGlobalsPlugin(), singleWorkerJavaScriptBundlePlugin()];
     },
   },
   plugins: [

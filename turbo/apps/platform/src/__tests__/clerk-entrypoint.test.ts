@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import indexHtml from "../../index.html?raw";
 import { transformClerkCoreScriptUrls } from "../../scripts/clerk-html-transform.ts";
 import { CLERK_JS_VERSION } from "../lib/clerk-versions.ts";
+import { resolvePlatformRuntimeConfig } from "../lib/platform-host.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 import { mockedClerk, mockedClerkLoad } from "./mock-auth.ts";
 import { setupPage } from "./page-helper.ts";
@@ -280,9 +281,15 @@ describe("platform Clerk entrypoint", () => {
   ])(
     "selects the Clerk core configuration on $url",
     ({ domain, publishableKey, scriptUrl, url }) => {
+      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", PREVIEW_PUBLISHABLE_KEY);
+      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", PRODUCTION_PUBLISHABLE_KEY);
       const script = captureClerkBootstrapScript(url);
 
-      expect(document.documentElement.dataset.vm0ClerkPublishableKey).toBe(
+      // The bootstrap and the bundle select the key independently: the
+      // bootstrap runs before any module loads, and the shared database worker
+      // is a second entry point with no DOM to read the choice back from. They
+      // must agree on every hostname.
+      expect(resolvePlatformRuntimeConfig().clerkPublishableKey).toBe(
         publishableKey,
       );
       expect(script.src).toBe(scriptUrl);

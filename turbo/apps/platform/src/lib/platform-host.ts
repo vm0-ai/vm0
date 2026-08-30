@@ -5,6 +5,10 @@ type PlatformPublicBrand = "vm0" | "okou";
 
 export type PlatformService = "api" | "www" | "app" | "platform";
 
+// Resolved from `location` and build-time constants alone. The shared database
+// SharedWorker is a second entry point into this bundle and has no DOM, so
+// nothing here may read page state: every value must come from the hostname or
+// from an `import.meta.env` constant that the build inlines.
 interface PlatformRuntimeConfig {
   readonly environment: PlatformEnvironment;
   readonly publicBrand: PlatformPublicBrand;
@@ -28,7 +32,6 @@ const OKOU_ROOT_DOMAINS = [
   OKOU_PAGES_DOMAIN,
 ] as const;
 const PREVIEW_API_DOMAIN = "vm6.ai";
-const CLERK_PUBLISHABLE_KEY_ATTRIBUTE = "data-vm0-clerk-publishable-key";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
 export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
@@ -167,20 +170,17 @@ function optionalBuildValue(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function resolveClerkPublishableKey(): string {
-  const publishableKey = document.documentElement.getAttribute(
-    CLERK_PUBLISHABLE_KEY_ATTRIBUTE,
-  );
-  if (!publishableKey) {
-    throw new Error("Missing Clerk publishable key from platform bootstrap");
+function requiredBuildValue(value: unknown, name: string): string {
+  const normalized = optionalBuildValue(value);
+  if (!normalized) {
+    throw new Error(`Missing ${name} environment variable`);
   }
-  return publishableKey;
+  return normalized;
 }
 
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const environment = resolvePlatformEnvironment();
   const publicBrand = resolvePlatformPublicBrand(browserHostname());
-  const clerkPublishableKey = resolveClerkPublishableKey();
   const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
     "https://static.vm0.io",
     publicBrand,
@@ -190,7 +190,13 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
     return {
       environment,
       publicBrand,
-      clerkPublishableKey,
+      // Both keys are inlined into every artifact and selected by hostname,
+      // mirroring the early bootstrap in index.html. Keep the two selections
+      // in step; src/__tests__/clerk-entrypoint.test.ts pins them together.
+      clerkPublishableKey: requiredBuildValue(
+        import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PROD,
+        "VITE_CLERK_PUBLISHABLE_KEY_PROD",
+      ),
       publicArtifactsBaseUrl: "https://cdn.vm0.io",
       publicStaticAssetsBaseUrl,
       zeroHostDomain: "sites.vm0.io",
@@ -208,7 +214,10 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   return {
     environment,
     publicBrand,
-    clerkPublishableKey,
+    clerkPublishableKey: requiredBuildValue(
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PREVIEW,
+      "VITE_CLERK_PUBLISHABLE_KEY_PREVIEW",
+    ),
     publicArtifactsBaseUrl: "https://cdn.vm7.io",
     publicStaticAssetsBaseUrl,
     zeroHostDomain: "sites.vm7.io",

@@ -66,14 +66,6 @@ const context = testContext();
 
 function setBrowserUrl(url: string, apiOriginMarker?: string | null): void {
   context.mocks.browser.url(url, { apiOriginMarker });
-  const hostname = new URL(url).hostname;
-  const production =
-    hostname === "vm0.ai" ||
-    hostname.endsWith(".vm0.ai") ||
-    isOkouProductionHostname(hostname);
-  document.documentElement.dataset.vm0ClerkPublishableKey = production
-    ? PRODUCTION_CLERK_KEY
-    : PREVIEW_CLERK_KEY;
 }
 
 function installImmediateIdleCallback(): void {
@@ -175,9 +167,9 @@ describe("portable platform runtime environment", () => {
       environment: "production",
       publicBrand: "okou",
       publicStaticAssetsBaseUrl: "https://static.okou.io",
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
       sentryDsn: SENTRY_DSN,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
+      clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
     const plausibleController = new AbortController();
     await runtime.plausible.initPlausible(plausibleController.signal);
@@ -211,6 +203,7 @@ describe("portable platform runtime environment", () => {
       environment: "production",
       publicBrand: "vm0",
       publicStaticAssetsBaseUrl: "https://static.vm0.io",
+      clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
   });
 
@@ -254,8 +247,8 @@ describe("portable platform runtime environment", () => {
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "vm0",
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
+      clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
@@ -323,8 +316,8 @@ describe("portable platform runtime environment", () => {
       environment: "preview",
       publicBrand: "okou",
       publicStaticAssetsBaseUrl: "https://static.okou.io",
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
     });
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
@@ -453,8 +446,8 @@ describe("portable platform runtime environment", () => {
     );
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "preview",
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
     });
   });
 
@@ -473,6 +466,7 @@ describe("portable platform runtime environment", () => {
     );
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "okou",
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
     });
   });
 
