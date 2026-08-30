@@ -3093,6 +3093,147 @@ describe("WHCB-10: timeout closes sandbox storage write authority", () => {
       }),
     ).resolves.toStrictEqual(before);
   });
+
+  it("keeps a deduplicated head move provable after timeout", async () => {
+    const fixture = await sandboxStorageWriteFixture(
+      "timeout deduplicated retry",
+    );
+    const storages = createStoragesBddApi(context);
+    const initialVersionId = fixture.mount.versionId;
+    const restoredFiles = [
+      {
+        path: "restored.txt",
+        hash: createHash("sha256")
+          .update(`restored ${fixture.runId}`)
+          .digest("hex"),
+        size: 1024,
+      },
+    ];
+    const restoredMessage = "restored before timeout";
+    const restoredPrepare = await api.requestAgentStoragePrepare(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        parentVersionId: initialVersionId,
+        files: restoredFiles,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (restoredPrepare.status !== 200) {
+      throw new Error("Expected restored version prepare to succeed");
+    }
+    await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: restoredPrepare.body.versionId,
+        parentVersionId: initialVersionId,
+        files: restoredFiles,
+        message: restoredMessage,
+      },
+      fixture.headers,
+      [200],
+    );
+
+    const replacementFiles = [
+      {
+        path: "replacement.txt",
+        hash: createHash("sha256")
+          .update(`replacement ${fixture.runId}`)
+          .digest("hex"),
+        size: 4096,
+      },
+    ];
+    const replacementPrepare = await api.requestAgentStoragePrepare(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        parentVersionId: restoredPrepare.body.versionId,
+        files: replacementFiles,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (replacementPrepare.status !== 200) {
+      throw new Error("Expected replacement version prepare to succeed");
+    }
+    await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: replacementPrepare.body.versionId,
+        parentVersionId: restoredPrepare.body.versionId,
+        files: replacementFiles,
+        message: "replacement before restore",
+      },
+      fixture.headers,
+      [200],
+    );
+
+    const restored = await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: restoredPrepare.body.versionId,
+        parentVersionId: replacementPrepare.body.versionId,
+        files: restoredFiles,
+        message: restoredMessage,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (restored.status !== 200) {
+      throw new Error("Expected deduplicated head move to succeed");
+    }
+    expect(restored.body).toMatchObject({
+      success: true,
+      versionId: restoredPrepare.body.versionId,
+      size: 1024,
+      fileCount: 1,
+      deduplicated: true,
+    });
+
+    const before = await storages.inspectWriteback({
+      storageId: fixture.mount.storageId,
+      versionId: restoredPrepare.body.versionId,
+      runId: fixture.runId,
+      parentVersionId: replacementPrepare.body.versionId,
+    });
+    expect(before.storage).toMatchObject({
+      headVersionId: restoredPrepare.body.versionId,
+      size: 1024,
+      fileCount: 1,
+    });
+    expect(before.lineageCount).toBe(1);
+
+    const timeout = await transitionRunToTimeout(context, fixture.runId);
+    expect(timeout.body.ok).toBeTruthy();
+    const retried = await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: restoredPrepare.body.versionId,
+        parentVersionId: replacementPrepare.body.versionId,
+        files: restoredFiles,
+        message: restoredMessage,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (retried.status !== 200) {
+      throw new Error("Expected deduplicated exact retry to succeed");
+    }
+    expect(retried.body.deduplicated).toBeTruthy();
+    await expect(
+      storages.inspectWriteback({
+        storageId: fixture.mount.storageId,
+        versionId: restoredPrepare.body.versionId,
+        runId: fixture.runId,
+        parentVersionId: replacementPrepare.body.versionId,
+      }),
+    ).resolves.toStrictEqual(before);
+  });
 });
 
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {

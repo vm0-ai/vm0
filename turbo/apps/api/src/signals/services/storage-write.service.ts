@@ -592,7 +592,6 @@ function verifyUploadedStorageFiles(
 
 interface VerifiedStorageCommit {
   readonly archiveSize: number;
-  readonly existingBeforeTransaction: boolean;
   readonly s3Key: string;
 }
 
@@ -635,7 +634,6 @@ function verifyStorageCommit(
       if (args.version?.fileCount === 0) {
         return {
           archiveSize: args.version.archiveSize,
-          existingBeforeTransaction: true,
           s3Key: args.version.s3Key,
         };
       }
@@ -659,7 +657,6 @@ function verifyStorageCommit(
         return verification.kind === "verified"
           ? {
               archiveSize: verification.archiveSize,
-              existingBeforeTransaction: true,
               s3Key,
             }
           : s3FilesMissingConflict();
@@ -669,7 +666,6 @@ function verifyStorageCommit(
         case "verified": {
           return {
             archiveSize: verification.archiveSize,
-            existingBeforeTransaction: false,
             s3Key,
           };
         }
@@ -753,19 +749,14 @@ function storageCommitSuccess(args: {
   };
 }
 
-async function recordVerifiedNewStorageLineage(args: {
+async function recordStorageLineage(args: {
   readonly tx: Tx;
   readonly storageId: string;
   readonly input: CommitStorageForStorageInput;
-  readonly verification: VerifiedStorageCommit;
 }): Promise<void> {
   const sandboxAuth = args.input.sandboxAuth;
   const parentVersionId = args.input.parentVersionId;
-  if (
-    args.verification.existingBeforeTransaction ||
-    !sandboxAuth ||
-    !parentVersionId
-  ) {
+  if (!sandboxAuth || !parentVersionId) {
     return;
   }
 
@@ -801,15 +792,16 @@ async function commitActiveStorageVersion(args: {
         .update(storages)
         .set({
           headVersionId: args.input.versionId,
+          size: Number(args.version.size),
+          fileCount: args.version.fileCount,
           updatedAt: nowDate(),
         })
         .where(eq(storages.id, args.storage.id));
     }
-    await recordVerifiedNewStorageLineage({
+    await recordStorageLineage({
       tx: args.tx,
       storageId: args.storage.id,
       input: args.input,
-      verification: args.verification,
     });
     return storageCommitSuccess({
       storage: args.storage,
@@ -864,11 +856,10 @@ async function commitActiveStorageVersion(args: {
       updatedAt: nowDate(),
     })
     .where(eq(storages.id, args.storage.id));
-  await recordVerifiedNewStorageLineage({
+  await recordStorageLineage({
     tx: args.tx,
     storageId: args.storage.id,
     input: args.input,
-    verification: args.verification,
   });
 
   return storageCommitSuccess({
