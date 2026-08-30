@@ -24,6 +24,8 @@ fi
 
 canonical_api_url="https://canonical.example.test/Exact/Path/?query=a%20b#fragment"
 legacy_api_url="https://legacy.example.test/Exact/Path/?query=a%20b#fragment"
+# The child shell, not this test process, expands the quoted assertions.
+# shellcheck disable=SC2016
 if ! env -u VM0_API_BACKEND_URL \
   OKOU_API_BACKEND_URL="$canonical_api_url" \
   EXPECTED_API_BACKEND_URL="$canonical_api_url" \
@@ -35,6 +37,8 @@ if ! env -u VM0_API_BACKEND_URL \
   echo "browser helper did not preserve the canonical-only API URL" >&2
   exit 1
 fi
+# The child shell, not this test process, expands the quoted assertions.
+# shellcheck disable=SC2016
 if ! env -u OKOU_API_BACKEND_URL \
   VM0_API_BACKEND_URL="$legacy_api_url" \
   EXPECTED_API_BACKEND_URL="$legacy_api_url" \
@@ -60,6 +64,8 @@ fi
 
 expected_missing_api_url="E2E API backend URL is required: canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=missing"
 api_alias_status=0
+# The child shell expands the quoted helper path after bash receives it.
+# shellcheck disable=SC2016
 missing_api_url_output="$(
   env -u OKOU_API_BACKEND_URL -u VM0_API_BACKEND_URL \
     bash -c 'source "$1"; resolve_e2e_api_backend_url' \
