@@ -16,8 +16,11 @@ const switchPreviousMigration = "1021_bizarre_ronan";
 const switchMigration = "1022_workflow_physical_switch";
 const contractPreviousMigration = "1029_morning_brief_phase_a_cutover";
 const contractMigration = "1030_contract_legacy_workflow_compatibility_views";
+const routineAssertionMigration =
+  "1031_assert_legacy_workflow_routine_references";
 const testDatabase = "migration_workflow_compatibility_views";
 const applicationRole = "workflow_switch_application";
+const routineAssertionDiagnosticLimit = 20;
 
 const historicalRelationDefinitions = [
   {
@@ -155,6 +158,66 @@ const allRelationNames = [...legacyRelationNames, ...canonicalRelationNames];
 type LegacyRelationName = (typeof legacyRelationNames)[number];
 type CanonicalRelationName = (typeof canonicalRelationNames)[number];
 type RelationName = (typeof allRelationNames)[number];
+
+const routineReferenceProbeDefinitions = [
+  {
+    kind: "function",
+    language: "plpgsql",
+    legacyIdentifier: "zero_workflows",
+    routineName: "workflow_routine_reference_plpgsql_function",
+  },
+  {
+    kind: "function",
+    language: "sql",
+    legacyIdentifier: "zero_workflow_automations",
+    routineName: "workflow_routine_reference_sql_function",
+  },
+  {
+    kind: "procedure",
+    language: "plpgsql",
+    legacyIdentifier: "zero_workflow_webhook_automations",
+    routineName: "workflow_routine_reference_plpgsql_procedure",
+  },
+  {
+    kind: "trigger-function",
+    language: "plpgsql",
+    legacyIdentifier: "zero_workflow_webhook_deliveries",
+    routineName: "workflow_routine_reference_trigger_function",
+  },
+  {
+    kind: "function",
+    language: "sql",
+    legacyIdentifier: "zero_workflow_github_processed_events",
+    routineName: "workflow_routine_reference_quoted_sql_function",
+  },
+  {
+    kind: "function",
+    language: "plpgsql",
+    legacyIdentifier: "zero_workflow_strapi_automations",
+    routineName: "workflow_routine_reference_quoted_plpgsql_function",
+  },
+] as const;
+
+const routineReferenceOverflowProbeNames = [
+  "zz_workflow_routine_reference_overflow_1",
+  "zz_workflow_routine_reference_overflow_2",
+  "zz_workflow_routine_reference_overflow_3",
+] as const;
+
+const routineReferenceNearTokenProbe =
+  "workflow_routine_reference_near_token_control";
+const routineReferenceSqlStandardProbe =
+  "workflow_routine_reference_sql_standard_control";
+const matchingRoutineReferenceProbeNames: readonly string[] = [
+  ...routineReferenceProbeDefinitions.map(({ routineName }) => {
+    return routineName;
+  }),
+  ...routineReferenceOverflowProbeNames,
+];
+const allRoutineReferenceProbeNames: readonly string[] = [
+  ...matchingRoutineReferenceProbeNames,
+  routineReferenceNearTokenProbe,
+];
 
 const expectedExplicitIndexNames = [
   "idx_zero_workflow_automations_next_run",
@@ -431,6 +494,18 @@ interface LegacyViewCatalogIdentity {
   readonly rowTypeOid: string;
 }
 
+interface RoutineReferenceProbeCatalog {
+  readonly languageName: string;
+  readonly relationEdgeCount: number;
+  readonly returnType: string;
+  readonly routineDefinition: string;
+  readonly routineKind: string;
+  readonly routineName: string;
+  readonly routineOid: string;
+  readonly schemaName: string;
+  readonly stringBody: boolean;
+}
+
 function databaseErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return undefined;
@@ -443,6 +518,20 @@ function databaseErrorConstraint(error: unknown): string | undefined {
     return undefined;
   }
   return typeof error.constraint === "string" ? error.constraint : undefined;
+}
+
+function databaseErrorDetail(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("detail" in error)) {
+    return undefined;
+  }
+  return typeof error.detail === "string" ? error.detail : undefined;
+}
+
+function databaseErrorMessage(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("message" in error)) {
+    return undefined;
+  }
+  return typeof error.message === "string" ? error.message : undefined;
 }
 
 async function expectDatabaseFailure(
@@ -907,6 +996,98 @@ async function validateContractMigrationArtifacts(): Promise<void> {
   assert.equal(contractPosition, previousPosition + 1);
   assert.equal(journal.entries[previousPosition]?.idx, 1029);
   assert.equal(journal.entries[contractPosition]?.idx, 1030);
+}
+
+async function validateRoutineAssertionMigrationArtifacts(): Promise<void> {
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${routineAssertionMigration}.sql`),
+    "utf8",
+  );
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map(normalizedSql)
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  assert.equal(statements.length, 1);
+  const [assertionStatement] = statements;
+  assert.ok(assertionStatement);
+  assert.match(
+    assertionStatement,
+    /^DO \$workflow_routine_reference_assertion\$/u,
+  );
+  assert.match(assertionStatement, /pg_catalog\.pg_get_functiondef/u);
+  assert.match(assertionStatement, /pg_catalog\.regexp_replace/u);
+  assert.ok(assertionStatement.includes('(^|[^"])"%s"([^"]|$)'));
+  assert.match(assertionStatement, /"routine"\."prokind" IN \('f', 'p'\)/u);
+  assert.match(
+    assertionStatement,
+    /"language"\."lanname" IN \('sql', 'plpgsql'\)/u,
+  );
+  assert.match(assertionStatement, /"namespace"\."nspname" !~ '\^pg_'/u);
+  assert.ok(
+    assertionStatement.includes('(^|[^[:alnum:]_$"])%s([^[:alnum:]_$"]|$)'),
+  );
+  assert.match(
+    assertionStatement,
+    new RegExp(`LIMIT ${routineAssertionDiagnosticLimit}\\b`, "u"),
+  );
+  assert.match(assertionStatement, /matchedLegacyIdentifier/u);
+  assert.match(assertionStatement, /'language'/u);
+  assert.match(assertionStatement, /'oid'/u);
+  assert.match(assertionStatement, /'routine'/u);
+  assert.match(assertionStatement, /'schema'/u);
+  assert.doesNotMatch(migrationSql, /vm0:non-transactional/iu);
+  assert.doesNotMatch(
+    migrationSql,
+    /\b(?:ALTER|CREATE|DELETE|DROP|INSERT|TRUNCATE|UPDATE)\b/iu,
+  );
+  for (const legacyIdentifier of legacyRelationNames) {
+    assert.equal(
+      migrationSql.match(new RegExp(`\\('${legacyIdentifier}'\\)`, "gu"))
+        ?.length,
+      1,
+    );
+  }
+
+  const contractSnapshot = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/1030_snapshot.json"),
+      "utf8",
+    ),
+  ) as MigrationSnapshot;
+  const routineAssertionSnapshot = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/1031_snapshot.json"),
+      "utf8",
+    ),
+  ) as MigrationSnapshot;
+  assert.equal(routineAssertionSnapshot.prevId, contractSnapshot.id);
+  assert.deepEqual(
+    snapshotSchema(routineAssertionSnapshot),
+    snapshotSchema(contractSnapshot),
+  );
+
+  const journal = JSON.parse(
+    await fs.readFile(
+      path.join(migrationsDirectory, "meta/_journal.json"),
+      "utf8",
+    ),
+  ) as { entries: JournalEntry[] };
+  const contractPosition = journal.entries.findIndex(({ tag }) => {
+    return tag === contractMigration;
+  });
+  const routineAssertionPosition = journal.entries.findIndex(({ tag }) => {
+    return tag === routineAssertionMigration;
+  });
+  assert.notEqual(contractPosition, -1);
+  assert.equal(routineAssertionPosition, contractPosition + 1);
+  assert.equal(journal.entries[contractPosition]?.idx, 1030);
+  assert.equal(journal.entries[routineAssertionPosition]?.idx, 1031);
+  assert.equal(
+    journal.entries[routineAssertionPosition]?.tag,
+    routineAssertionMigration,
+  );
 }
 
 async function readPhysicalCatalog(
@@ -4788,6 +4969,387 @@ async function validateContractFailureAtomicity(
   await assertUnchanged();
 }
 
+async function createRoutineReferenceProbes(client: Client): Promise<void> {
+  await client.query(`
+    CREATE FUNCTION "public"."${routineReferenceSqlStandardProbe}"()
+    RETURNS bigint
+    LANGUAGE sql
+    BEGIN ATOMIC
+      SELECT count(*) FROM "public"."zero_workflows";
+    END
+  `);
+  await client.query(`
+    CREATE FUNCTION "public"."workflow_routine_reference_plpgsql_function"()
+    RETURNS bigint
+    LANGUAGE plpgsql
+    AS $workflow_probe$
+    BEGIN
+      RETURN (SELECT count(*) FROM PUBLIC.ZERO_WORKFLOWS);
+    END
+    $workflow_probe$
+  `);
+  await client.query(`
+    CREATE FUNCTION "public"."workflow_routine_reference_sql_function"()
+    RETURNS bigint
+    LANGUAGE sql
+    AS $workflow_probe$
+      SELECT count(*) FROM "public"."zero_workflow_automations"
+    $workflow_probe$
+  `);
+  await client.query(`
+    CREATE PROCEDURE "public"."workflow_routine_reference_plpgsql_procedure"()
+    LANGUAGE plpgsql
+    AS $workflow_probe$
+    BEGIN
+      PERFORM count(*) FROM zero_workflow_webhook_automations;
+    END
+    $workflow_probe$
+  `);
+  await client.query(`
+    CREATE FUNCTION "public"."workflow_routine_reference_trigger_function"()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $workflow_probe$
+    BEGIN
+      PERFORM 1
+      FROM "public".zero_workflow_webhook_deliveries
+      LIMIT 1;
+      RETURN NEW;
+    END
+    $workflow_probe$
+  `);
+  await client.query(`
+    CREATE FUNCTION "public"."workflow_routine_reference_quoted_sql_function"()
+    RETURNS bigint
+    LANGUAGE sql
+    AS $workflow_probe$
+      SELECT count(*)
+      FROM public."zero_workflow_github_processed_events"
+    $workflow_probe$
+  `);
+  await client.query(`
+    CREATE FUNCTION "public"."workflow_routine_reference_quoted_plpgsql_function"()
+    RETURNS bigint
+    LANGUAGE plpgsql
+    AS $workflow_probe$
+    BEGIN
+      RETURN (SELECT count(*) FROM "zero_workflow_strapi_automations");
+    END
+    $workflow_probe$
+  `);
+
+  for (const routineName of routineReferenceOverflowProbeNames) {
+    await client.query(`
+      CREATE FUNCTION "public"."${routineName}"()
+      RETURNS text
+      LANGUAGE sql
+      AS $workflow_probe$
+        SELECT 'routine-body-must-not-leak zero_workflows zero_workflow_automations zero_workflow_webhook_automations zero_workflow_webhook_deliveries zero_workflow_github_processed_events zero_workflow_strapi_automations'::text
+      $workflow_probe$
+    `);
+  }
+
+  await client.query(`
+    CREATE FUNCTION "public"."${routineReferenceNearTokenProbe}"()
+    RETURNS bigint
+    LANGUAGE plpgsql
+    AS $workflow_probe$
+    BEGIN
+      PERFORM count(*) FROM public."prefix zero_workflows suffix";
+      PERFORM count(*) FROM public."prefix""zero_workflows";
+      PERFORM count(*) FROM public."zero_workflows""suffix";
+      -- archive_zero_workflows zero_workflows_archive zero_workflows$archive
+      RETURN 0;
+    END
+    $workflow_probe$
+  `);
+}
+
+async function readRoutineReferenceProbeCatalog(
+  client: Client,
+  routineNames: readonly string[],
+): Promise<RoutineReferenceProbeCatalog[]> {
+  const catalog = await client.query<RoutineReferenceProbeCatalog>(
+    `
+      SELECT
+        "language"."lanname" AS "languageName",
+        (
+          SELECT count(*)::integer
+          FROM "pg_depend" AS "dependency"
+          INNER JOIN "pg_class" AS "referenced_relation"
+            ON "dependency"."refclassid" = 'pg_class'::regclass
+            AND "dependency"."refobjid" = "referenced_relation"."oid"
+          WHERE "dependency"."classid" = 'pg_proc'::regclass
+            AND "dependency"."objid" = "routine"."oid"
+            AND "referenced_relation"."relnamespace" = 'public'::regnamespace
+            AND "referenced_relation"."relname" = ANY($2::text[])
+        ) AS "relationEdgeCount",
+        "format_type"("routine"."prorettype", NULL) AS "returnType",
+        "pg_get_functiondef"("routine"."oid") AS "routineDefinition",
+        "routine"."prokind"::text AS "routineKind",
+        "routine"."proname" AS "routineName",
+        "routine"."oid"::text AS "routineOid",
+        "namespace"."nspname" AS "schemaName",
+        "routine"."prosqlbody" IS NULL AS "stringBody"
+      FROM "pg_proc" AS "routine"
+      INNER JOIN "pg_namespace" AS "namespace"
+        ON "namespace"."oid" = "routine"."pronamespace"
+      INNER JOIN "pg_language" AS "language"
+        ON "language"."oid" = "routine"."prolang"
+      WHERE "namespace"."nspname" = 'public'
+        AND "routine"."proname" = ANY($1::text[])
+      ORDER BY "routine"."proname" COLLATE "C", "routine"."oid"
+    `,
+    [routineNames, legacyRelationNames],
+  );
+  return catalog.rows;
+}
+
+async function validateRoutineReferenceCatalogBlindSpot(
+  client: Client,
+): Promise<RoutineReferenceProbeCatalog[]> {
+  const catalog = await readRoutineReferenceProbeCatalog(client, [
+    ...allRoutineReferenceProbeNames,
+    routineReferenceSqlStandardProbe,
+  ]);
+  assert.equal(catalog.length, allRoutineReferenceProbeNames.length + 1);
+
+  const sqlStandardProbe = catalog.find(({ routineName }) => {
+    return routineName === routineReferenceSqlStandardProbe;
+  });
+  assert.ok(sqlStandardProbe);
+  assert.equal(sqlStandardProbe.languageName, "sql");
+  assert.equal(sqlStandardProbe.routineKind, "f");
+  assert.equal(sqlStandardProbe.stringBody, false);
+  assert.ok(sqlStandardProbe.relationEdgeCount > 0);
+
+  for (const definition of routineReferenceProbeDefinitions) {
+    const probe = catalog.find(({ routineName }) => {
+      return routineName === definition.routineName;
+    });
+    assert.ok(probe);
+    assert.equal(probe.schemaName, "public");
+    assert.equal(probe.languageName, definition.language);
+    assert.equal(probe.relationEdgeCount, 0);
+    assert.equal(probe.stringBody, true);
+    assert.equal(
+      probe.routineKind,
+      definition.kind === "procedure" ? "p" : "f",
+    );
+    if (definition.kind === "trigger-function") {
+      assert.equal(probe.returnType, "trigger");
+    }
+  }
+
+  for (const routineName of routineReferenceOverflowProbeNames) {
+    const probe = catalog.find((entry) => {
+      return entry.routineName === routineName;
+    });
+    assert.ok(probe);
+    assert.equal(probe.languageName, "sql");
+    assert.equal(probe.relationEdgeCount, 0);
+    assert.equal(probe.stringBody, true);
+  }
+
+  const nearTokenProbe = catalog.find(({ routineName }) => {
+    return routineName === routineReferenceNearTokenProbe;
+  });
+  assert.ok(nearTokenProbe);
+  assert.equal(nearTokenProbe.languageName, "plpgsql");
+  assert.equal(nearTokenProbe.relationEdgeCount, 0);
+  assert.equal(nearTokenProbe.stringBody, true);
+  assert.ok(
+    nearTokenProbe.routineDefinition.includes(
+      'public."prefix""zero_workflows"',
+    ),
+  );
+  assert.ok(
+    nearTokenProbe.routineDefinition.includes(
+      'public."zero_workflows""suffix"',
+    ),
+  );
+
+  await client.query(
+    `DROP FUNCTION "public"."${routineReferenceSqlStandardProbe}"()`,
+  );
+  assert.deepEqual(
+    await readRoutineReferenceProbeCatalog(client, [
+      routineReferenceSqlStandardProbe,
+    ]),
+    [],
+  );
+  return readRoutineReferenceProbeCatalog(
+    client,
+    allRoutineReferenceProbeNames,
+  );
+}
+
+async function validateDormantRoutineReferenceProbes(
+  client: Client,
+  expectedCatalog: readonly RoutineReferenceProbeCatalog[],
+): Promise<void> {
+  assert.deepEqual(
+    await readRoutineReferenceProbeCatalog(
+      client,
+      allRoutineReferenceProbeNames,
+    ),
+    expectedCatalog,
+  );
+  await expectDatabaseFailure(
+    client.query(
+      `SELECT "public"."workflow_routine_reference_plpgsql_function"()`,
+    ),
+    "42P01",
+  );
+  await expectDatabaseFailure(
+    client.query(`SELECT "public"."workflow_routine_reference_sql_function"()`),
+    "42P01",
+  );
+  await expectDatabaseFailure(
+    client.query(
+      `CALL "public"."workflow_routine_reference_plpgsql_procedure"()`,
+    ),
+    "42P01",
+  );
+}
+
+async function assertRoutineAssertionNotApplied(client: Client): Promise<void> {
+  const applied = await client.query<{ count: string }>(
+    `
+      SELECT count(*)::text AS "count"
+      FROM "drizzle"."__drizzle_migrations"
+      WHERE "hash" = $1
+    `,
+    [routineAssertionMigration],
+  );
+  assert.deepEqual(applied.rows, [{ count: "0" }]);
+}
+
+async function validateRoutineAssertionFailureAtomicity(
+  client: Client,
+  canonicalCatalog: PhysicalCatalog,
+  canonicalRows: Readonly<Record<string, string>>,
+  applicationGrants: readonly ApplicationGrant[],
+  probeCatalog: readonly RoutineReferenceProbeCatalog[],
+): Promise<void> {
+  const matchingProbeCatalog = probeCatalog.filter(({ routineName }) => {
+    return matchingRoutineReferenceProbeNames.includes(routineName);
+  });
+  const expectedMatches = matchingProbeCatalog
+    .flatMap((probe) => {
+      const definition = routineReferenceProbeDefinitions.find(
+        ({ routineName }) => {
+          return routineName === probe.routineName;
+        },
+      );
+      const legacyIdentifiers: readonly LegacyRelationName[] = definition
+        ? [definition.legacyIdentifier]
+        : legacyRelationNames;
+      assert.ok(
+        definition ||
+          routineReferenceOverflowProbeNames.some((routineName) => {
+            return routineName === probe.routineName;
+          }),
+      );
+      return legacyIdentifiers.map((matchedLegacyIdentifier) => {
+        return {
+          language: probe.languageName,
+          matchedLegacyIdentifier,
+          oid: probe.routineOid,
+          routine: probe.routineName,
+          schema: probe.schemaName,
+        };
+      });
+    })
+    .sort((left, right) => {
+      const leftKey = `${left.schema}\n${left.routine}\n${left.oid.padStart(10, "0")}\n${left.matchedLegacyIdentifier}`;
+      const rightKey = `${right.schema}\n${right.routine}\n${right.oid.padStart(10, "0")}\n${right.matchedLegacyIdentifier}`;
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    });
+  assert.equal(expectedMatches.length, 24);
+
+  let assertionFailure: unknown;
+  await assert.rejects(
+    applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      routineAssertionMigration,
+    ),
+    (error: unknown) => {
+      assertionFailure = error;
+      return databaseErrorCode(error) === "P0001";
+    },
+  );
+  assert.equal(
+    databaseErrorMessage(assertionFailure),
+    `workflow routine reference assertion found ${expectedMatches.length} persisted legacy identifier match(es); diagnostic limited to first ${routineAssertionDiagnosticLimit}`,
+  );
+  const diagnostic = databaseErrorDetail(assertionFailure);
+  assert.ok(diagnostic);
+  const parsedDiagnostic: unknown = JSON.parse(diagnostic);
+  assert.deepEqual(
+    parsedDiagnostic,
+    expectedMatches.slice(0, routineAssertionDiagnosticLimit),
+  );
+  assert.doesNotMatch(diagnostic, /routine-body-must-not-leak|\bSELECT\b/u);
+
+  await assertRoutineAssertionNotApplied(client);
+  assert.deepEqual(
+    await readPhysicalCatalog(client, canonicalRelationNames),
+    canonicalCatalog,
+  );
+  assert.deepEqual(
+    await readPhysicalRows(client, canonicalRelationNames),
+    canonicalRows,
+  );
+  assert.deepEqual(
+    await readApplicationRoleGrants(client, canonicalRelationNames),
+    applicationGrants,
+  );
+  assert.deepEqual(
+    await readRoutineReferenceProbeCatalog(
+      client,
+      allRoutineReferenceProbeNames,
+    ),
+    probeCatalog,
+  );
+}
+
+async function dropMatchingRoutineReferenceProbes(
+  client: Client,
+): Promise<void> {
+  for (const definition of routineReferenceProbeDefinitions) {
+    const routineKind =
+      definition.kind === "procedure" ? "PROCEDURE" : "FUNCTION";
+    await client.query(
+      `DROP ${routineKind} "public"."${definition.routineName}"()`,
+    );
+  }
+  for (const routineName of routineReferenceOverflowProbeNames) {
+    await client.query(`DROP FUNCTION "public"."${routineName}"()`);
+  }
+}
+
+async function executeRoutineAssertionDirectly(client: Client): Promise<void> {
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${routineAssertionMigration}.sql`),
+    "utf8",
+  );
+  await client.query(migrationSql);
+}
+
+async function assertRoutineAssertionApplied(client: Client): Promise<void> {
+  const applied = await client.query<{ count: string }>(
+    `
+      SELECT count(*)::text AS "count"
+      FROM "drizzle"."__drizzle_migrations"
+      WHERE "hash" = $1
+    `,
+    [routineAssertionMigration],
+  );
+  assert.deepEqual(applied.rows, [{ count: "1" }]);
+}
+
 async function validateLegacyContractFailures(client: Client): Promise<void> {
   for (const { columns, legacy } of relationDefinitions) {
     const keyColumn = columns[0];
@@ -4903,6 +5465,7 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
   await validateRefreshMigrationArtifacts();
   await validateSwitchMigrationArtifacts();
   await validateContractMigrationArtifacts();
+  await validateRoutineAssertionMigrationArtifacts();
 
   const admin = new Client({ connectionString: adminUrl.toString() });
   await admin.connect();
@@ -5088,6 +5651,10 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
     await validateCompatibleReads(client);
     await validateMappedRowsUnchanged(client, switchRowsBefore);
 
+    await createRoutineReferenceProbes(client);
+    const routineReferenceProbeCatalogBeforeContract =
+      await validateRoutineReferenceCatalogBlindSpot(client);
+
     await applyMigrationsFromDirectoryUpToTag(
       client,
       migrationsDirectory,
@@ -5142,6 +5709,61 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
       await readApplicationRoleGrants(client, canonicalRelationNames),
       contractApplicationGrantsBefore,
     );
+
+    await validateDormantRoutineReferenceProbes(
+      client,
+      routineReferenceProbeCatalogBeforeContract,
+    );
+    await validateRoutineAssertionFailureAtomicity(
+      client,
+      contractCatalogBefore,
+      contractRowsBefore,
+      contractApplicationGrantsBefore,
+      routineReferenceProbeCatalogBeforeContract,
+    );
+
+    await dropMatchingRoutineReferenceProbes(client);
+    const nearTokenCatalogBeforeAssertion =
+      await readRoutineReferenceProbeCatalog(client, [
+        routineReferenceNearTokenProbe,
+      ]);
+    assert.equal(nearTokenCatalogBeforeAssertion.length, 1);
+    await executeRoutineAssertionDirectly(client);
+    await assertRoutineAssertionNotApplied(client);
+    assert.deepEqual(
+      await readRoutineReferenceProbeCatalog(client, [
+        routineReferenceNearTokenProbe,
+      ]),
+      nearTokenCatalogBeforeAssertion,
+    );
+    await client.query(
+      `DROP FUNCTION "public"."${routineReferenceNearTokenProbe}"()`,
+    );
+    assert.deepEqual(
+      await readRoutineReferenceProbeCatalog(
+        client,
+        allRoutineReferenceProbeNames,
+      ),
+      [],
+    );
+    await applyMigrationsFromDirectoryUpToTag(
+      client,
+      migrationsDirectory,
+      routineAssertionMigration,
+    );
+    await assertRoutineAssertionApplied(client);
+    assert.deepEqual(
+      await readPhysicalCatalog(client, canonicalRelationNames),
+      contractCatalogBefore,
+    );
+    assert.deepEqual(
+      await readPhysicalRows(client, canonicalRelationNames),
+      contractRowsBefore,
+    );
+    assert.deepEqual(
+      await readApplicationRoleGrants(client, canonicalRelationNames),
+      contractApplicationGrantsBefore,
+    );
     await validateLegacyContractFailures(client);
 
     const contractedBehaviorFixture = await insertBehaviorFixture(
@@ -5171,7 +5793,7 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
     );
 
     console.log(
-      "   ✅ historical 1004, current 1020, physical switch 1022, and legacy contract 1030 states pass",
+      "   ✅ historical 1004, current 1020, physical switch 1022, legacy contract 1030, and routine assertion 1031 states pass",
     );
     console.log(
       "   ✅ six table OIDs/filenodes, rows, defaults, 15 indexes, six PKs, 19 FKs, four checks, owners, and grants are preserved",
@@ -5180,7 +5802,7 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
       "   ✅ both mixed-version directions, synthetic non-owner access, locks, cascades, exact 23505 arbitration, and rollback pass",
     );
     console.log(
-      "   ✅ contract dependency/catalog drift failures are atomic; canonical SQL and exact legacy 42P01 behavior pass\n",
+      "   ✅ string-body routine blind spots, bounded assertion diagnostics, failure atomicity, near-token boundaries, canonical SQL, and exact legacy 42P01 behavior pass\n",
     );
   } finally {
     await client.end();
