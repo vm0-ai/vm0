@@ -2609,15 +2609,64 @@ describe("managed SocialKit route", () => {
       expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
     },
     {
-      caseName: "unsafe provider message",
+      caseName: "oversized provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "oversized_failure",
+        error: "x".repeat(501),
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "provider URL",
       providerFailure: {
         status: "failed",
         errorCode: "private_failure",
-        error:
-          "Download failed at https://temporary.socialkit.test/file\nAuthorization: token=test-socialkit-key\n    at provider.js:1:2",
+        error: "Download failed at https://temporary.socialkit.test/file",
         retryable: false,
       },
       expectedCode: "SOCIALKIT_PROVIDER_private_failure",
+    },
+    {
+      caseName: "configured provider credential",
+      providerFailure: {
+        status: "failed",
+        errorCode: "credential_failure",
+        error: "Provider failed with test-socialkit-key",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_credential_failure",
+    },
+    {
+      caseName: "credential assignment",
+      providerFailure: {
+        status: "failed",
+        errorCode: "authorization_failure",
+        error: "Authorization: Bearer different-provider-secret",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_authorization_failure",
+    },
+    {
+      caseName: "stack frame",
+      providerFailure: {
+        status: "failed",
+        errorCode: "stack_failure",
+        error: "Provider failed at worker (/srv/provider.js:1:2)",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_stack_failure",
+    },
+    {
+      caseName: "ASCII multiline provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\nwith hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
     },
     {
       caseName: "unicode multiline provider message",
