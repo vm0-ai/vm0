@@ -24,35 +24,19 @@ const SANDBOX_REUSE_VALUE: &str = "sandbox-reuse-value-must-not-leak";
 const WORKSPACE_REUSE_VALUE: &str = "workspace-reuse-value-must-not-leak";
 const RESUME_SESSION_VALUE: &str = "resume-session-value-must-not-leak";
 const API_START_TIME_VALUE: &str = "api-start-time-value-must-not-leak";
+const RETIRED_TIMING_SOURCE_EVENT: &str = "guest_agent_tuning_env_source";
 
-const SOURCE_EVENT_FAMILIES: [&str; 5] = [
+const SOURCE_EVENT_FAMILIES: [&str; 4] = [
     "api_url_env_source",
     "private_payload_file_env_source",
     "api_token_env_source",
     "agent_execution_timeout_env_source",
-    "guest_agent_tuning_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 8] = [
+const SOURCE_EVENTS: [(&str, &str); 4] = [
     (
         "api_url_env_source",
         guest_contracts::env::CANONICAL_API_URL_ENV,
-    ),
-    (
-        "guest_agent_tuning_env_source",
-        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-    ),
-    (
-        "guest_agent_tuning_env_source",
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    ),
-    (
-        "guest_agent_tuning_env_source",
-        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-    ),
-    (
-        "guest_agent_tuning_env_source",
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
     ),
     (
         "private_payload_file_env_source",
@@ -127,6 +111,16 @@ fn assert_value_free(text: &str, runtime_dir: &Path) {
         !text.contains(runtime_dir.to_string_lossy().as_ref()),
         "source evidence exposed the runtime or private-file path"
     );
+}
+
+fn assert_timing_source_absent(text: &str) {
+    assert!(!text.contains(RETIRED_TIMING_SOURCE_EVENT));
+    for (_, canonical_key) in guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS {
+        assert!(
+            !text.contains(canonical_key),
+            "source evidence retained timing key {canonical_key}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -235,6 +229,8 @@ async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult
     assert_value_free(&system_log, &runtime_dir);
     assert!(!stderr.contains("run_metadata_env_source"));
     assert!(!system_log.contains("run_metadata_env_source"));
+    assert_timing_source_absent(&stderr);
+    assert_timing_source_absent(&system_log);
     assert!(!private_files.user_env_path.exists());
     assert!(!private_files.run_payload_path.exists());
     Ok(())
@@ -257,6 +253,19 @@ fn bootstrap_alias_source_events_isolated_child() -> TestResult {
     assert_eq!(runtime.config.workspace_reuse_result, WORKSPACE_REUSE_VALUE);
     assert_eq!(runtime.config.resume_session_id, RESUME_SESSION_VALUE);
     assert_eq!(runtime.config.api_start_time, API_START_TIME_VALUE);
+    assert_eq!(runtime.config.stuck_tool_timeout_secs, 38);
+    assert_eq!(
+        runtime.config.post_result_sigterm_grace,
+        Duration::from_secs(39)
+    );
+    assert_eq!(
+        runtime.config.post_result_total_cap,
+        Duration::from_secs(40)
+    );
+    assert_eq!(
+        runtime.config.post_result_sigkill_grace,
+        Duration::from_secs(41)
+    );
     println!("{CHILD_MARKER}");
     Ok(())
 }
