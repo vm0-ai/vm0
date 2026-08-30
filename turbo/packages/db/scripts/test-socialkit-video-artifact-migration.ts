@@ -30,6 +30,11 @@ const fixture = {
     sessionId: "00000000-0000-4000-8000-000000303494",
     runId: "00000000-0000-4000-8000-000000303495",
   },
+  artifactFailed: {
+    userId: "user_socialkit_video_artifact_failed",
+    sessionId: "00000000-0000-4000-8000-000000303510",
+    runId: "00000000-0000-4000-8000-000000303511",
+  },
   historicalMp4JobId: "00000000-0000-4000-8000-000000303496",
   historicalMp4FileId: "00000000-0000-4000-8000-000000303497",
   historicalM4aJobId: "00000000-0000-4000-8000-000000303498",
@@ -44,6 +49,8 @@ const fixture = {
   canonicalJobId: "00000000-0000-4000-8000-000000303505",
   canonicalFileId: "00000000-0000-4000-8000-000000303506",
   malformedFileId: "00000000-0000-4000-8000-000000303509",
+  artifactFailedJobId: "00000000-0000-4000-8000-000000303512",
+  artifactFailedFileId: "00000000-0000-4000-8000-000000303513",
 } as const;
 
 interface OwnerFixture {
@@ -89,7 +96,7 @@ async function seedDownloadJob(
     readonly id: string;
     readonly owner: OwnerFixture;
     readonly providerJobId: string;
-    readonly status: "completed" | "materializing";
+    readonly status: "artifact_failed" | "completed" | "materializing";
   },
 ): Promise<void> {
   await client.query(
@@ -209,6 +216,7 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
     await seedOwner(client, fixture.historical);
     await seedOwner(client, fixture.oldWriter);
     await seedOwner(client, fixture.canonical);
+    await seedOwner(client, fixture.artifactFailed);
 
     await seedDownloadJob(client, {
       format: "mp4",
@@ -237,6 +245,13 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       owner: fixture.historical,
       providerJobId: "provider-in-flight",
       status: "materializing",
+    });
+    await seedDownloadJob(client, {
+      format: "mp4",
+      id: fixture.artifactFailedJobId,
+      owner: fixture.artifactFailed,
+      providerJobId: "provider-artifact-failed",
+      status: "artifact_failed",
     });
 
     await seedFile(client, {
@@ -284,6 +299,17 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
     });
     await seedFile(client, {
       contentType: "video/mp4",
+      externalId: fixture.artifactFailedJobId,
+      fileId: fixture.artifactFailedFileId,
+      metadata: {
+        provider: "socialkit",
+        providerJobId: "provider-artifact-failed",
+        preserved: "artifact-failed",
+      },
+      owner: fixture.artifactFailed,
+    });
+    await seedFile(client, {
+      contentType: "video/mp4",
       externalId: "ordinary-video-non-uuid",
       fileId: fixture.ordinaryVideoFileId,
       metadata: { preserved: "ordinary-upload" },
@@ -303,6 +329,7 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
       fixture.mismatchedFileId,
       fixture.ordinaryVideoFileId,
       fixture.inFlightFileId,
+      fixture.artifactFailedFileId,
     ]);
     assert.deepEqual(requiredFile(historical, fixture.historicalMp4JobId), {
       externalId: fixture.historicalMp4JobId,
@@ -345,6 +372,16 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
         provider: "socialkit",
         providerJobId: "provider-in-flight",
         preserved: "in-flight",
+        generatedBy: VIDEO_MARKER,
+      },
+      pending: true,
+    });
+    assert.deepEqual(requiredFile(historical, fixture.artifactFailedJobId), {
+      externalId: fixture.artifactFailedJobId,
+      metadata: {
+        provider: "socialkit",
+        providerJobId: "provider-artifact-failed",
+        preserved: "artifact-failed",
         generatedBy: VIDEO_MARKER,
       },
       pending: true,
@@ -435,7 +472,7 @@ export async function validateSocialKitVideoArtifactMigration(): Promise<void> {
     });
 
     console.log(
-      "   ✅ historical and in-flight authoritative MP4 rows are marked and re-queued",
+      "   ✅ completed, in-flight, and retryable MP4 rows are marked and re-queued",
     );
     console.log(
       "   ✅ M4A, ordinary video, and identity lookalikes stay unmarked",
