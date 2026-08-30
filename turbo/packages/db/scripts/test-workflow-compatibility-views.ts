@@ -850,6 +850,9 @@ async function validateContractMigrationArtifacts(): Promise<void> {
   );
   assert.match(preflightStatement, /^DO \$workflow_contract\$/u);
   assert.match(preflightStatement, /canonical column\/default mismatch/u);
+  assert.match(preflightStatement, /attribute\.attname COLLATE "C"/u);
+  assert.match(preflightStatement, /55ebe04cc8b68ce87f13f702f3032760/u);
+  assert.doesNotMatch(preflightStatement, /attribute\.attnum::text/u);
   assert.match(preflightStatement, /canonical index mismatch/u);
   assert.match(preflightStatement, /canonical constraint\/FK mismatch/u);
   assert.match(preflightStatement, /legacy view definition mismatch/u);
@@ -4252,6 +4255,138 @@ async function configureApplicationRole(client: Client): Promise<void> {
   );
 }
 
+async function recreateGitHubLegacyView(client: Client): Promise<void> {
+  const definition = relationDefinitions.find(({ canonical }) => {
+    return canonical === "workflow_github_processed_events";
+  });
+  assert.ok(definition);
+
+  await client.query(expectedLegacyCreateViewStatement(definition));
+  await client.query(`
+    GRANT SELECT
+    ON TABLE "zero_workflow_github_processed_events"
+    TO "${applicationRole}"
+    WITH GRANT OPTION
+  `);
+  await client.query(`
+    GRANT INSERT, UPDATE, DELETE
+    ON TABLE "zero_workflow_github_processed_events"
+    TO "${applicationRole}"
+  `);
+}
+
+async function introduceCanonicalPersistedAttnumLineageVariant(
+  client: Client,
+): Promise<void> {
+  await client.query(`DROP VIEW "zero_workflow_github_processed_events"`);
+  await client.query(`
+    ALTER TABLE "workflow_github_processed_events"
+    RENAME TO "workflow_contract_fresh_github_processed_events"
+  `);
+  await client.query(`
+    CREATE TABLE "workflow_github_processed_events" (
+      "id" uuid DEFAULT gen_random_uuid() NOT NULL,
+      "workflow_contract_dropped_trigger_id" uuid,
+      "github_delivery_id" varchar(255) NOT NULL,
+      "repo" varchar(255) NOT NULL,
+      "subject_type" varchar(32),
+      "subject_number" integer,
+      "action" varchar(64) NOT NULL,
+      "label_name_normalized" varchar(255),
+      "created_at" timestamp DEFAULT now() NOT NULL,
+      "automation_id" uuid NOT NULL
+    )
+  `);
+  await client.query(`
+    ALTER TABLE "workflow_github_processed_events"
+    DROP COLUMN "workflow_contract_dropped_trigger_id"
+  `);
+  await client.query(`
+    INSERT INTO "workflow_github_processed_events" (
+      "id",
+      "github_delivery_id",
+      "repo",
+      "subject_type",
+      "subject_number",
+      "action",
+      "label_name_normalized",
+      "created_at",
+      "automation_id"
+    )
+    SELECT
+      "id",
+      "github_delivery_id",
+      "repo",
+      "subject_type",
+      "subject_number",
+      "action",
+      "label_name_normalized",
+      "created_at",
+      "automation_id"
+    FROM "workflow_contract_fresh_github_processed_events"
+  `);
+  await client.query(`
+    DROP TABLE "workflow_contract_fresh_github_processed_events"
+  `);
+  await client.query(`
+    ALTER TABLE "workflow_github_processed_events"
+    ADD CONSTRAINT "workflow_github_processed_events_pkey"
+    PRIMARY KEY ("id")
+  `);
+  await client.query(`
+    ALTER TABLE "workflow_github_processed_events"
+    ADD CONSTRAINT "workflow_github_processed_events_automation_id_workflow_automat"
+    FOREIGN KEY ("automation_id")
+    REFERENCES "workflow_automations" ("id")
+    ON DELETE CASCADE
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX "idx_workflow_github_processed_automation_delivery"
+    ON "workflow_github_processed_events" ("automation_id", "github_delivery_id")
+  `);
+  await client.query(`
+    CREATE INDEX "idx_workflow_github_processed_subject"
+    ON "workflow_github_processed_events" ("repo", "subject_type", "subject_number")
+  `);
+  await client.query(`
+    GRANT SELECT
+    ON TABLE "workflow_github_processed_events"
+    TO "${applicationRole}"
+    WITH GRANT OPTION
+  `);
+  await client.query(`
+    GRANT INSERT, UPDATE, DELETE
+    ON TABLE "workflow_github_processed_events"
+    TO "${applicationRole}"
+  `);
+  await recreateGitHubLegacyView(client);
+
+  const columns = await client.query<{
+    attnum: number;
+    columnName: string;
+  }>(`
+    SELECT
+      "attnum"::integer AS "attnum",
+      "attname" AS "columnName"
+    FROM "pg_attribute"
+    WHERE "attrelid" = 'public.workflow_github_processed_events'::regclass
+      AND "attnum" > 0
+      AND NOT "attisdropped"
+    ORDER BY "attnum"
+  `);
+  assert.deepEqual(columns.rows, [
+    { attnum: 1, columnName: "id" },
+    { attnum: 3, columnName: "github_delivery_id" },
+    { attnum: 4, columnName: "repo" },
+    { attnum: 5, columnName: "subject_type" },
+    { attnum: 6, columnName: "subject_number" },
+    { attnum: 7, columnName: "action" },
+    { attnum: 8, columnName: "label_name_normalized" },
+    { attnum: 9, columnName: "created_at" },
+    { attnum: 10, columnName: "automation_id" },
+  ]);
+}
+
 async function validateApplicationRoleAccess(client: Client): Promise<void> {
   const canonicalWorkflowId = "00000000-0000-4000-8000-000000296480";
   const legacyWorkflowId = "00000000-0000-4000-8000-000000296481";
@@ -4524,6 +4659,21 @@ async function validateContractFailureAtomicity(
       applicationGrants,
     );
   };
+  const expectCanonicalCatalogDriftFailure = async (
+    introduceDrift: () => Promise<void>,
+  ): Promise<void> => {
+    await client.query("BEGIN");
+    try {
+      await introduceDrift();
+      await expectContractMigrationFailure(
+        client,
+        /canonical column\/default mismatch/u,
+      );
+    } finally {
+      await client.query("ROLLBACK");
+    }
+    await assertUnchanged();
+  };
 
   await client.query(`
     CREATE VIEW "workflow_contract_dependency_probe" AS
@@ -4546,6 +4696,29 @@ async function validateContractFailureAtomicity(
     await client.query(`DROP INDEX "workflow_contract_index_probe"`);
   }
   await assertUnchanged();
+
+  await expectCanonicalCatalogDriftFailure(async () => {
+    await client.query(`DROP VIEW "zero_workflow_github_processed_events"`);
+    await client.query(`
+      ALTER TABLE "workflow_github_processed_events"
+      ALTER COLUMN "label_name_normalized" TYPE text
+    `);
+    await recreateGitHubLegacyView(client);
+  });
+
+  await expectCanonicalCatalogDriftFailure(async () => {
+    await client.query(`
+      ALTER TABLE "workflow_github_processed_events"
+      ALTER COLUMN "action" DROP NOT NULL
+    `);
+  });
+
+  await expectCanonicalCatalogDriftFailure(async () => {
+    await client.query(`
+      ALTER TABLE "workflows"
+      ALTER COLUMN "visibility" SET DEFAULT 'public'
+    `);
+  });
 
   await client.query(
     `ALTER VIEW "zero_workflows" RENAME COLUMN "description" TO "unexpected_description"`,
@@ -4920,6 +5093,7 @@ export async function validateWorkflowCompatibilityViews(): Promise<void> {
       migrationsDirectory,
       contractPreviousMigration,
     );
+    await introduceCanonicalPersistedAttnumLineageVariant(client);
     await validateSwitchedCatalog(client);
     await validateCompatibleReads(client);
 

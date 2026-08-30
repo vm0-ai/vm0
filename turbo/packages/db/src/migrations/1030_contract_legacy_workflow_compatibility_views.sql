@@ -93,13 +93,15 @@ BEGIN
       'workflow compatibility contract canonical table options mismatch';
   END IF;
 
+  -- Long-lived tables retain non-semantic attnum gaps from dropped columns.
+  -- Compare every live canonical column tuple by name; the legacy view order
+  -- remains an explicit attnum-ordered contract below.
   SELECT
     count(*),
     md5(string_agg(
       concat_ws(
         '|',
         relation.relname,
-        attribute.attnum::text,
         attribute.attname,
         format_type(attribute.atttypid, attribute.atttypmod),
         attribute.attnotnull::text,
@@ -116,7 +118,7 @@ BEGIN
       E'\n'
       ORDER BY
         relation.relname COLLATE "C",
-        attribute.attnum
+        attribute.attname COLLATE "C"
     ))
   INTO actual_count, actual_hash
   FROM pg_attribute AS attribute
@@ -141,7 +143,7 @@ BEGIN
     AND NOT attribute.attisdropped;
 
   IF actual_count IS DISTINCT FROM 71
-    OR actual_hash IS DISTINCT FROM '54f6df36b3ae2c5dea091161c98ff275'
+    OR actual_hash IS DISTINCT FROM '55ebe04cc8b68ce87f13f702f3032760'
   THEN
     RAISE EXCEPTION
       'workflow compatibility contract canonical column/default mismatch: count %, fingerprint %',
