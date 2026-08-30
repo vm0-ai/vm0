@@ -1,4 +1,4 @@
-//! API backend URL aliases are resolved once in this process-isolated test binary.
+//! Guest root captures only the canonical API URL in this process-isolated test binary.
 
 #![cfg(unix)]
 
@@ -11,157 +11,87 @@ use guest_agent::http::HttpClient;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-const CANONICAL_URL: &str = "https://canonical-api-url-must-not-leak.example.test/private-path";
-const LEGACY_URL: &str = "https://legacy-api-url-must-not-leak.example.test/private-path";
-const SHARED_URL: &str = "https://shared-api-url-must-not-leak.example.test/private-path";
+const CANONICAL_URL: &str =
+    "https://canonical-api-url-must-not-leak.example.test/%2F?raw=%20#fragment";
+const RETIRED_URL: &str = "https://retired-api-url-must-not-leak.example.test/private-path";
 const API_TOKEN: &str = "api-url-test-token-must-not-leak";
-const VALUE_MARKERS: [&str; 4] = [
+const VALUE_MARKERS: [&str; 3] = [
     "canonical-api-url-must-not-leak",
-    "legacy-api-url-must-not-leak",
-    "shared-api-url-must-not-leak",
+    "retired-api-url-must-not-leak",
     API_TOKEN,
 ];
 const SOURCE_EVENT: &str = "api_url_env_source";
+const CONFLICT_DIAGNOSTIC: &str = "conflicting API backend URL environment aliases";
 
 #[derive(Clone, Copy)]
-enum AliasInput {
+enum EnvInput {
     Absent,
     Readable(&'static str),
     NonUnicode,
 }
 
 #[derive(Clone, Copy)]
-struct SuccessCase {
+struct CaptureCase {
     name: &'static str,
-    canonical: AliasInput,
-    legacy: AliasInput,
+    canonical: EnvInput,
+    retired: EnvInput,
     expected_value: &'static str,
-    expected_source: Option<&'static str>,
 }
 
-#[derive(Clone, Copy)]
-struct ConflictCase {
-    name: &'static str,
-    canonical: &'static str,
-    legacy: &'static str,
-}
-
-const SUCCESS_CASES: [SuccessCase; 14] = [
-    SuccessCase {
+const CAPTURE_CASES: [CaptureCase; 9] = [
+    CaptureCase {
         name: "both-absent",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Absent,
+        canonical: EnvInput::Absent,
+        retired: EnvInput::Absent,
         expected_value: "",
-        expected_source: None,
     },
-    SuccessCase {
-        name: "canonical-only",
-        canonical: AliasInput::Readable(CANONICAL_URL),
-        legacy: AliasInput::Absent,
+    CaptureCase {
+        name: "canonical-readable",
+        canonical: EnvInput::Readable(CANONICAL_URL),
+        retired: EnvInput::Absent,
         expected_value: CANONICAL_URL,
-        expected_source: Some("canonical-only"),
     },
-    SuccessCase {
-        name: "legacy-only",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable(LEGACY_URL),
-        expected_value: LEGACY_URL,
-        expected_source: Some("legacy-only"),
-    },
-    SuccessCase {
-        name: "equal-dual",
-        canonical: AliasInput::Readable(SHARED_URL),
-        legacy: AliasInput::Readable(SHARED_URL),
-        expected_value: SHARED_URL,
-        expected_source: Some("dual"),
-    },
-    SuccessCase {
-        name: "canonical-empty-only",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::Absent,
+    CaptureCase {
+        name: "canonical-present-empty",
+        canonical: EnvInput::Readable(""),
+        retired: EnvInput::Absent,
         expected_value: "",
-        expected_source: Some("canonical-only"),
     },
-    SuccessCase {
-        name: "legacy-empty-only",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::Readable(""),
+    CaptureCase {
+        name: "canonical-non-unicode",
+        canonical: EnvInput::NonUnicode,
+        retired: EnvInput::Absent,
         expected_value: "",
-        expected_source: Some("legacy-only"),
     },
-    SuccessCase {
-        name: "equal-dual-empty",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::Readable(""),
+    CaptureCase {
+        name: "retired-readable-only",
+        canonical: EnvInput::Absent,
+        retired: EnvInput::Readable(RETIRED_URL),
         expected_value: "",
-        expected_source: Some("dual"),
     },
-    SuccessCase {
-        name: "canonical-non-unicode-only",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::Absent,
-        expected_value: "",
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "legacy-non-unicode-only",
-        canonical: AliasInput::Absent,
-        legacy: AliasInput::NonUnicode,
-        expected_value: "",
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "both-non-unicode",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::NonUnicode,
-        expected_value: "",
-        expected_source: None,
-    },
-    SuccessCase {
-        name: "canonical-with-unreadable-legacy",
-        canonical: AliasInput::Readable(CANONICAL_URL),
-        legacy: AliasInput::NonUnicode,
+    CaptureCase {
+        name: "canonical-readable-with-different-retired",
+        canonical: EnvInput::Readable(CANONICAL_URL),
+        retired: EnvInput::Readable(RETIRED_URL),
         expected_value: CANONICAL_URL,
-        expected_source: Some("canonical-only"),
     },
-    SuccessCase {
-        name: "legacy-with-unreadable-canonical",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::Readable(LEGACY_URL),
-        expected_value: LEGACY_URL,
-        expected_source: Some("legacy-only"),
+    CaptureCase {
+        name: "canonical-readable-with-non-unicode-retired",
+        canonical: EnvInput::Readable(CANONICAL_URL),
+        retired: EnvInput::NonUnicode,
+        expected_value: CANONICAL_URL,
     },
-    SuccessCase {
-        name: "canonical-empty-with-unreadable-legacy",
-        canonical: AliasInput::Readable(""),
-        legacy: AliasInput::NonUnicode,
+    CaptureCase {
+        name: "canonical-empty-with-readable-retired",
+        canonical: EnvInput::Readable(""),
+        retired: EnvInput::Readable(RETIRED_URL),
         expected_value: "",
-        expected_source: Some("canonical-only"),
     },
-    SuccessCase {
-        name: "legacy-empty-with-unreadable-canonical",
-        canonical: AliasInput::NonUnicode,
-        legacy: AliasInput::Readable(""),
+    CaptureCase {
+        name: "canonical-non-unicode-with-readable-retired",
+        canonical: EnvInput::NonUnicode,
+        retired: EnvInput::Readable(RETIRED_URL),
         expected_value: "",
-        expected_source: Some("legacy-only"),
-    },
-];
-
-const CONFLICT_CASES: [ConflictCase; 3] = [
-    ConflictCase {
-        name: "different-readable-values",
-        canonical: CANONICAL_URL,
-        legacy: LEGACY_URL,
-    },
-    ConflictCase {
-        name: "canonical-empty-legacy-non-empty",
-        canonical: "",
-        legacy: LEGACY_URL,
-    },
-    ConflictCase {
-        name: "canonical-non-empty-legacy-empty",
-        canonical: CANONICAL_URL,
-        legacy: "",
     },
 ];
 
@@ -181,12 +111,12 @@ fn remove_test_env(key: impl AsRef<OsStr>) {
     }
 }
 
-fn apply_alias(key: &str, input: AliasInput) {
+fn apply_input(key: &str, input: EnvInput) {
     remove_test_env(key);
     match input {
-        AliasInput::Absent => {}
-        AliasInput::Readable(value) => set_test_env(key, value),
-        AliasInput::NonUnicode => set_test_env(key, OsString::from_vec(vec![0xff])),
+        EnvInput::Absent => {}
+        EnvInput::Readable(value) => set_test_env(key, value),
+        EnvInput::NonUnicode => set_test_env(key, OsString::from_vec(vec![0xff])),
     }
 }
 
@@ -200,7 +130,7 @@ fn clear_api_token_env() {
     remove_test_env("VM0_API_TOKEN");
 }
 
-fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
+fn capture_raw(log_path: &Path) -> (Result<GuestConfigRaw, String>, String) {
     guest_common::log::clear_system_log_file();
     let raw = GuestConfigRaw::from_process_env();
     assert!(
@@ -218,7 +148,7 @@ fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, Strin
                 .join("\n")
         })
         .unwrap_or_default();
-    Ok((raw, evidence))
+    (raw, evidence)
 }
 
 fn assert_value_free(text: &str, context: &str) {
@@ -230,33 +160,18 @@ fn assert_value_free(text: &str, context: &str) {
     }
 }
 
-fn assert_source_evidence(log: &str, case: SuccessCase) {
-    assert_value_free(log, case.name);
-    let source_messages = log
-        .lines()
-        .filter(|line| line.contains(SOURCE_EVENT))
-        .filter_map(|line| line.rsplit_once("] ").map(|(_, message)| message))
-        .collect::<Vec<_>>();
-
-    match case.expected_source {
-        Some(source) => {
-            let expected = format!(
-                "{SOURCE_EVENT} key={} source={source}",
-                guest_contracts::env::CANONICAL_API_URL_ENV
-            );
-            assert_eq!(
-                source_messages,
-                [expected.as_str()],
-                "{} emitted incorrect fixed source evidence",
-                case.name
-            );
-        }
-        None => assert!(
-            source_messages.is_empty(),
-            "{} emitted source evidence for unreadable aliases",
-            case.name
-        ),
-    }
+fn assert_no_retired_reader_evidence(evidence: &str, case: CaptureCase) {
+    assert_value_free(evidence, case.name);
+    assert!(
+        !evidence.contains(SOURCE_EVENT),
+        "{} emitted retired API URL source evidence: {evidence}",
+        case.name
+    );
+    assert!(
+        !evidence.contains(CONFLICT_DIAGNOSTIC),
+        "{} emitted the retired API URL conflict diagnostic: {evidence}",
+        case.name
+    );
 }
 
 fn materialize_config(
@@ -275,7 +190,7 @@ fn materialize_config(
         .map_err(|error| format!("write run payload: {error}"))?;
 
     GuestConfig::from_raw(GuestConfigRaw {
-        run_id: format!("api-url-alias-{scenario}"),
+        run_id: format!("api-url-capture-{scenario}"),
         home: Some(tmp.to_string_lossy().into_owned()),
         guest_runtime_dir: Some(runtime_dir),
         run_payload_file: payload_path.to_string_lossy().into_owned(),
@@ -283,12 +198,17 @@ fn materialize_config(
     })
 }
 
-fn assert_http_semantics(tmp: &Path, case: SuccessCase, raw: GuestConfigRaw) -> TestResult {
+fn assert_http_semantics(tmp: &Path, case: CaptureCase, raw: GuestConfigRaw) -> TestResult {
     let mut without_token = raw.clone();
     without_token.api_token.clear();
     let disabled_config =
         materialize_config(tmp, &format!("{}-http-disabled", case.name), without_token)
             .map_err(std::io::Error::other)?;
+    assert_eq!(
+        disabled_config.api_url, case.expected_value,
+        "{}",
+        case.name
+    );
     let disabled = HttpClient::for_config(&disabled_config)?;
     assert!(
         !disabled.has_api(),
@@ -301,6 +221,7 @@ fn assert_http_semantics(tmp: &Path, case: SuccessCase, raw: GuestConfigRaw) -> 
     let enabled_config =
         materialize_config(tmp, &format!("{}-http-enabled", case.name), with_token)
             .map_err(std::io::Error::other)?;
+    assert_eq!(enabled_config.api_url, case.expected_value, "{}", case.name);
     if case.expected_value.is_empty() {
         let error = match HttpClient::for_config(&enabled_config) {
             Ok(_) => {
@@ -314,8 +235,13 @@ fn assert_http_semantics(tmp: &Path, case: SuccessCase, raw: GuestConfigRaw) -> 
         };
         assert_value_free(&error, case.name);
         assert!(
-            error.contains(guest_contracts::env::API_URL_ENV),
-            "{} changed the missing API URL diagnostic: {error}",
+            error.contains(guest_contracts::env::CANONICAL_API_URL_ENV),
+            "{} changed the canonical missing API URL diagnostic: {error}",
+            case.name
+        );
+        assert!(
+            !error.contains(CONFLICT_DIAGNOSTIC),
+            "{} emitted the retired conflict diagnostic: {error}",
             case.name
         );
     } else {
@@ -325,97 +251,26 @@ fn assert_http_semantics(tmp: &Path, case: SuccessCase, raw: GuestConfigRaw) -> 
     Ok(())
 }
 
-fn expected_conflict_error() -> String {
-    format!(
-        "conflicting API backend URL environment aliases: canonical_key={} \
-         legacy_key={} state=conflict",
-        guest_contracts::env::CANONICAL_API_URL_ENV,
-        guest_contracts::env::API_URL_ENV
-    )
-}
-
-fn assert_conflict_precedes_private_payload_consumption(tmp: &Path) -> TestResult {
-    let runtime_dir = tmp.join("conflict-private-payload-runtime");
-    let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
-    let user_env_path = user_env_dir.join(guest_contracts::env::USER_ENV_FILENAME);
-    let run_payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
-    let run_payload_path = run_payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
-    std::fs::create_dir_all(&user_env_dir)?;
-    std::fs::create_dir_all(&run_payload_dir)?;
-    std::fs::write(
-        &user_env_path,
-        serde_json::to_vec(&std::collections::HashMap::from([(
-            "CUSTOM_USER_ENV",
-            "private-user-value",
-        )]))?,
-    )?;
-    std::fs::write(
-        &run_payload_path,
-        serde_json::to_vec(&guest_contracts::env::RunPayload::default())?,
-    )?;
-
-    for key in [
-        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        "VM0_USER_ENV_FILE",
-        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-        "VM0_RUN_PAYLOAD_FILE",
-    ] {
-        remove_test_env(key);
-    }
-    set_test_env(
-        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        &runtime_dir,
-    );
-    set_test_env(
-        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        &user_env_path,
-    );
-    set_test_env(
-        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-        &run_payload_path,
-    );
-    set_test_env(guest_contracts::env::RUN_ID_ENV, "api-url-conflict");
-    set_test_env("HOME", tmp);
-    set_test_env(guest_contracts::env::CANONICAL_API_URL_ENV, CANONICAL_URL);
-    set_test_env(guest_contracts::env::API_URL_ENV, LEGACY_URL);
-
-    let log_path = tmp.join("conflict-before-private-payload.log");
-    guest_common::log::set_system_log_file(&log_path);
-    let error = match GuestConfig::from_process_env() {
-        Ok(_) => return Err("API URL conflict consumed private payloads".into()),
-        Err(error) => error,
-    };
-    guest_common::log::clear_system_log_file();
-    let log = std::fs::read_to_string(log_path).unwrap_or_default();
-
-    assert_eq!(error, expected_conflict_error());
-    assert_value_free(&error, "private-payload-conflict-error");
-    assert_value_free(&log, "private-payload-conflict-log");
-    assert!(!log.contains(SOURCE_EVENT));
-    assert!(user_env_path.exists(), "conflict consumed private user env");
-    assert!(
-        run_payload_path.exists(),
-        "conflict consumed private run payload"
-    );
-    Ok(())
-}
-
 #[test]
-fn process_env_dual_reads_api_url_aliases_without_value_leaks() -> TestResult {
+fn process_env_captures_only_canonical_api_url_without_value_leaks() -> TestResult {
     let tmp = tempfile::tempdir()?;
     clear_api_token_env();
 
-    for case in SUCCESS_CASES {
-        apply_alias(guest_contracts::env::CANONICAL_API_URL_ENV, case.canonical);
-        apply_alias(guest_contracts::env::API_URL_ENV, case.legacy);
-        let (raw, log) = capture_raw(&tmp.path().join(format!("{}.log", case.name)))?;
+    for case in CAPTURE_CASES {
+        apply_input(guest_contracts::env::CANONICAL_API_URL_ENV, case.canonical);
+        apply_input(guest_contracts::env::API_URL_ENV, case.retired);
+        let (raw, evidence) = capture_raw(&tmp.path().join(format!("{}.log", case.name)));
         let raw = match raw {
             Ok(raw) => raw,
             Err(error) => {
                 assert_value_free(&error, case.name);
+                assert!(
+                    !error.contains(CONFLICT_DIAGNOSTIC),
+                    "{} retained the API URL conflict reader: {error}",
+                    case.name
+                );
                 return Err(std::io::Error::other(format!(
-                    "{} unexpectedly rejected a readable state",
+                    "{} unexpectedly rejected root API URL input: {error}",
                     case.name
                 ))
                 .into());
@@ -423,39 +278,13 @@ fn process_env_dual_reads_api_url_aliases_without_value_leaks() -> TestResult {
         };
         assert_eq!(
             raw.api_url, case.expected_value,
-            "{} resolved the wrong API URL state",
+            "{} captured the wrong root API URL",
             case.name
         );
-        assert_source_evidence(&log, case);
+        assert_no_retired_reader_evidence(&evidence, case);
         assert_http_semantics(tmp.path(), case, raw)?;
     }
 
-    let expected_error = expected_conflict_error();
-    for case in CONFLICT_CASES {
-        set_test_env(guest_contracts::env::CANONICAL_API_URL_ENV, case.canonical);
-        set_test_env(guest_contracts::env::API_URL_ENV, case.legacy);
-        let (raw, log) = capture_raw(&tmp.path().join(format!("{}.log", case.name)))?;
-        let error = match raw {
-            Ok(_) => {
-                return Err(std::io::Error::other(format!(
-                    "{} accepted conflicting readable aliases",
-                    case.name
-                ))
-                .into());
-            }
-            Err(error) => error,
-        };
-        assert_eq!(error, expected_error);
-        assert_value_free(&error, case.name);
-        assert_value_free(&log, case.name);
-        assert!(
-            !log.contains(SOURCE_EVENT),
-            "{} emitted success evidence for a conflict",
-            case.name
-        );
-    }
-
-    assert_conflict_precedes_private_payload_consumption(tmp.path())?;
     clear_api_url_env();
     clear_api_token_env();
     Ok(())

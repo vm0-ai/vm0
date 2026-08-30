@@ -1,4 +1,4 @@
-//! Bootstrap alias source evidence is persisted only after runtime sink setup.
+//! Retired bootstrap alias source evidence stays absent after runtime sink setup.
 
 #![cfg(unix)]
 
@@ -32,10 +32,7 @@ const SOURCE_EVENT_FAMILIES: [&str; 3] = [
     "agent_execution_timeout_env_source",
 ];
 
-const SOURCE_EVENTS: [(&str, &str); 1] = [(
-    "api_url_env_source",
-    guest_contracts::env::CANONICAL_API_URL_ENV,
-)];
+const SOURCE_EVENTS: [(&str, &str); 0] = [];
 
 struct PrivateFiles {
     user_env_path: PathBuf,
@@ -109,7 +106,7 @@ fn assert_timing_source_absent(text: &str) {
 }
 
 #[tokio::test]
-async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult {
+async fn runtime_bootstrap_emits_no_retired_source_events() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let runtime_dir = tmp.path().join("runtime-path-value-must-not-leak");
     let private_files = write_private_files(&runtime_dir)?;
@@ -199,9 +196,12 @@ async fn runtime_bootstrap_persists_each_fixed_source_event_once() -> TestResult
     );
     assert!(stdout.contains(CHILD_MARKER), "stdout:\n{stdout}");
 
-    let system_log = std::fs::read_to_string(guest_contracts::runtime_paths::system_log_file(
-        &runtime_dir,
-    ))?;
+    let system_log_path = guest_contracts::runtime_paths::system_log_file(&runtime_dir);
+    let system_log = match std::fs::read_to_string(system_log_path) {
+        Ok(system_log) => system_log,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.into()),
+    };
     let expected = expected_source_messages();
     let expected = expected.iter().map(String::as_str).collect::<Vec<_>>();
     assert_eq!(source_messages(&stderr), expected, "stderr source events");

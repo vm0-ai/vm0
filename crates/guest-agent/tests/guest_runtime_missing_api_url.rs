@@ -33,7 +33,7 @@ fn runtime_bootstrap_logs_missing_api_url_to_system_log() {
             run_payload_file,
         )
         .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
-        .env(guest_contracts::env::API_URL_ENV, "")
+        .env(guest_contracts::env::CANONICAL_API_URL_ENV, "")
         .output()
         .unwrap();
 
@@ -50,9 +50,9 @@ fn runtime_bootstrap_logs_missing_api_url_to_system_log() {
         "stderr should be fatal: {stderr}"
     );
     assert!(
-        stderr.contains(guest_contracts::env::API_URL_ENV),
+        stderr.contains(guest_contracts::env::CANONICAL_API_URL_ENV),
         "stderr should identify {}, got: {stderr}",
-        guest_contracts::env::API_URL_ENV
+        guest_contracts::env::CANONICAL_API_URL_ENV
     );
 
     let system_log_path = guest_contracts::runtime_paths::system_log_file(&runtime_dir);
@@ -62,8 +62,8 @@ fn runtime_bootstrap_logs_missing_api_url_to_system_log() {
         "system log should contain the fatal bootstrap diagnostic: {system_log}"
     );
     assert!(
-        system_log.contains(guest_contracts::env::API_URL_ENV),
+        system_log.contains(guest_contracts::env::CANONICAL_API_URL_ENV),
         "system log should identify {}, got: {system_log}",
-        guest_contracts::env::API_URL_ENV
+        guest_contracts::env::CANONICAL_API_URL_ENV
     );
 }
