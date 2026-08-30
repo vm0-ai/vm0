@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.297.10](https://github.com/vm0-ai/vm0/compare/cli-v9.297.9...cli-v9.297.10) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document Pi RPC lifecycle and event projection ([#30258](https://github.com/vm0-ai/vm0/issues/30258)) ([e8c2fc8](https://github.com/vm0-ai/vm0/commit/e8c2fc85f241138a17cf021108ad5e8163928464))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.603.0
+
 ## [9.297.9](https://github.com/vm0-ai/vm0/compare/cli-v9.297.8...cli-v9.297.9) (2026-08-30)
 
 
