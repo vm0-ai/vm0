@@ -58,7 +58,15 @@ const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_ARTIFACT_FILENAME_STEM_CHARS = 120;
+const MAX_PROVIDER_FAILURE_CODE_CHARS = 128;
+const MAX_PROVIDER_FAILURE_MESSAGE_CHARS = 500;
 const INVALID_ARTIFACT_FILENAME_CHARS = String.raw`<>:"/\|?*`;
+const PROVIDER_FAILURE_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+const PROVIDER_FAILURE_URL_PATTERN = /(?:[a-z][a-z0-9+.-]*:\/\/|www\.)/iu;
+const PROVIDER_FAILURE_CREDENTIAL_PATTERN =
+  /\b(?:access[ _-]?key|api[ _-]?key|authorization|password|token)\s*[:=]\s*\S+/iu;
+const PROVIDER_FAILURE_STACK_PATTERN =
+  /(?:\bat\s+(?:async\s+)?(?:\S+\s+\()?[^()\s]+:\d+:\d+\)?|\bFile\s+"[^"]+",\s+line\s+\d+)/u;
 const RECONCILE_BATCH_SIZE = 2;
 const USAGE_NAMESPACE = "42a65d9f-67d6-4bed-ae87-9f80ce1feb79";
 const ACTIVE_STATUSES = [
@@ -68,6 +76,17 @@ const ACTIVE_STATUSES = [
 ] as const;
 
 type DownloadJob = typeof socialKitDownloadJobs.$inferSelect;
+type DownloadJobError = NonNullable<DownloadJob["error"]>;
+
+const PROVIDER_DOWNLOAD_FAILED_ERROR = {
+  code: "SOCIALKIT_DOWNLOAD_FAILED",
+  message: "SocialKit could not prepare the download",
+} satisfies DownloadJobError;
+
+const INVALID_PROVIDER_RESPONSE_ERROR = {
+  code: "SOCIALKIT_INVALID_DOWNLOAD_RESPONSE",
+  message: "SocialKit returned invalid download metadata",
+} satisfies DownloadJobError;
 
 interface SocialKitDownloadErrorResponse {
   readonly status: 409 | 502 | 503;
@@ -119,6 +138,17 @@ const providerReadySchema = z.object({
   format: socialKitDownloadFormatSchema,
   title: z.unknown().optional(),
   thumbnail: z.unknown().optional(),
+});
+
+const providerFailedSchema = z.object({
+  status: z.literal("failed"),
+  errorCode: z
+    .string()
+    .min(1)
+    .max(MAX_PROVIDER_FAILURE_CODE_CHARS)
+    .regex(PROVIDER_FAILURE_CODE_PATTERN),
+  error: z.string().trim().min(1).max(MAX_PROVIDER_FAILURE_MESSAGE_CHARS),
+  retryable: z.boolean(),
 });
 
 const providerThumbnailSchema = z
@@ -213,6 +243,42 @@ function providerBody(value: unknown): unknown {
   return value;
 }
 
+function safeProviderFailureMessage(
+  message: string,
+  accessKey: string,
+): string | null {
+  const hasControlCharacter = [...message].some((character) => {
+    const codeUnit = character.charCodeAt(0);
+    return codeUnit <= 31 || (codeUnit >= 127 && codeUnit <= 159);
+  });
+  if (
+    hasControlCharacter ||
+    PROVIDER_FAILURE_URL_PATTERN.test(message) ||
+    PROVIDER_FAILURE_CREDENTIAL_PATTERN.test(message) ||
+    PROVIDER_FAILURE_STACK_PATTERN.test(message) ||
+    message.includes(accessKey)
+  ) {
+    return null;
+  }
+  return message;
+}
+
+function providerFailureError(
+  value: unknown,
+  accessKey: string,
+): DownloadJobError | null {
+  const parsed = providerFailedSchema.safeParse(value);
+  if (!parsed.success) {
+    return null;
+  }
+  return {
+    code: `SOCIALKIT_PROVIDER_${parsed.data.errorCode}`,
+    message:
+      safeProviderFailureMessage(parsed.data.error, accessKey) ??
+      PROVIDER_DOWNLOAD_FAILED_ERROR.message,
+  };
+}
+
 async function providerJson(
   url: string,
   init: RequestInit,
@@ -270,7 +336,10 @@ async function startProviderJob(
 
 type ProviderPollResult =
   | { readonly status: "processing" }
-  | { readonly status: "failed" }
+  | {
+      readonly status: "failed";
+      readonly error: DownloadJobError | null;
+    }
   | { readonly status: "invalid" }
   | {
       readonly status: "ready";
@@ -289,7 +358,7 @@ async function pollProviderJob(
   );
   if (!result.response.ok) {
     if (result.response.status === 404) {
-      return { status: "failed" };
+      return { status: "failed", error: null };
     }
     throw new Error(
       `SocialKit download status failed (${result.response.status})`,
@@ -304,7 +373,10 @@ async function pollProviderJob(
     return { status: "invalid" };
   }
   if (result.body.status === "failed") {
-    return { status: "failed" };
+    return {
+      status: "failed",
+      error: providerFailureError(result.body, accessKey),
+    };
   }
   if (result.body.status === "queued" || result.body.status === "processing") {
     return { status: "processing" };
@@ -1030,7 +1102,7 @@ async function recordProviderFailure(
   writeDb: Db,
   job: DownloadJob,
   signal: AbortSignal,
-  invalidResponse = false,
+  error: DownloadJobError,
 ): Promise<void> {
   if (job.creditsCharged !== null) {
     await deferClaimedJob(writeDb, job, signal);
@@ -1040,14 +1112,7 @@ async function recordProviderFailure(
     .update(socialKitDownloadJobs)
     .set({
       status: "provider_failed",
-      error: {
-        code: invalidResponse
-          ? "SOCIALKIT_INVALID_DOWNLOAD_RESPONSE"
-          : "SOCIALKIT_DOWNLOAD_FAILED",
-        message: invalidResponse
-          ? "SocialKit returned invalid download metadata"
-          : "SocialKit could not prepare the download",
-      },
+      error,
       claimExpiresAt: null,
       updatedAt: nowDate(),
       completedAt: nowDate(),
@@ -1116,17 +1181,32 @@ export const reconcileSocialKitDownload$ = command(
           return true;
         }
         if (poll.value.status === "failed") {
-          await recordProviderFailure(writeDb, job, signal);
+          await recordProviderFailure(
+            writeDb,
+            job,
+            signal,
+            poll.value.error ?? PROVIDER_DOWNLOAD_FAILED_ERROR,
+          );
           signal.throwIfAborted();
           return true;
         }
         if (poll.value.status === "invalid") {
-          await recordProviderFailure(writeDb, job, signal, true);
+          await recordProviderFailure(
+            writeDb,
+            job,
+            signal,
+            INVALID_PROVIDER_RESPONSE_ERROR,
+          );
           signal.throwIfAborted();
           return true;
         }
         if (!readyMetadataIsValid(job, poll.value.ready)) {
-          await recordProviderFailure(writeDb, job, signal, true);
+          await recordProviderFailure(
+            writeDb,
+            job,
+            signal,
+            INVALID_PROVIDER_RESPONSE_ERROR,
+          );
           signal.throwIfAborted();
           return true;
         }

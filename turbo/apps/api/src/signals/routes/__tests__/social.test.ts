@@ -2515,7 +2515,7 @@ describe("managed SocialKit route", () => {
     await expect(credits(actor)).resolves.toBe(creditsAfterFailure);
   });
 
-  it("marks provider download failures free and terminal", async () => {
+  it("preserves bounded provider download diagnostics", async () => {
     const actor = createBddApi(context).user();
     configureProvider();
     const pricing = await setupConfiguredPricing();
@@ -2533,6 +2533,11 @@ describe("managed SocialKit route", () => {
         return HttpResponse.json({
           jobId: providerJobId,
           status: "failed",
+          errorCode: "duration_limit_exceeded",
+          error: "Video exceeds the max_duration=60s limit",
+          retryable: false,
+          downloadUrl: "https://temporary.socialkit.test/private-video",
+          accessKey: "test-socialkit-key",
         });
       }),
     );
@@ -2560,14 +2565,124 @@ describe("managed SocialKit route", () => {
       [200],
     );
 
-    expect(failed.body.status).toBe("provider_failed");
-    expect(failed.body.billing).toBeNull();
-    expect(failed.body.error).toMatchObject({
-      billed: false,
-      retryable: false,
+    expect(failed.body).toMatchObject({
+      status: "provider_failed",
+      billing: null,
+      error: {
+        code: "SOCIALKIT_PROVIDER_duration_limit_exceeded",
+        message: "Video exceeds the max_duration=60s limit",
+        billed: false,
+        retryable: false,
+      },
     });
+    expect(JSON.stringify(failed.body)).not.toContain("downloadUrl");
+    expect(JSON.stringify(failed.body)).not.toContain("test-socialkit-key");
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
+
+  it.each([
+    {
+      caseName: "legacy failure without diagnostics",
+      providerFailure: {
+        status: "failed",
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "malformed provider code",
+      providerFailure: {
+        status: "failed",
+        errorCode: "invalid provider code",
+        error: "The provider could not prepare the download",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "oversized provider code",
+      providerFailure: {
+        status: "failed",
+        errorCode: "x".repeat(129),
+        error: "The provider could not prepare the download",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "unsafe provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "private_failure",
+        error:
+          "Download failed at https://temporary.socialkit.test/file\nAuthorization: token=test-socialkit-key\n    at provider.js:1:2",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_private_failure",
+    },
+  ])(
+    "uses a safe fallback for $caseName",
+    async ({ providerFailure, expectedCode }) => {
+      const actor = createBddApi(context).user();
+      configureProvider();
+      const pricing = await setupConfiguredPricing();
+      await fundActor(actor);
+      const beforeCredits = await credits(actor);
+      const providerJobId = `provider-safe-fallback-${randomUUID()}`;
+      server.use(
+        http.post(`${SOCIALKIT_BASE}/v2/tiktok/download`, () => {
+          return HttpResponse.json({
+            jobId: providerJobId,
+            status: "queued",
+          });
+        }),
+        http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+          return HttpResponse.json({
+            jobId: providerJobId,
+            ...providerFailure,
+          });
+        }),
+      );
+      const socialClient = client(pricing.resolution)(socialContract);
+
+      const created = await accept(
+        socialClient.createDownload({
+          headers: authenticate(actor),
+          body: {
+            platform: "tiktok",
+            url: "https://www.tiktok.com/@public/video/1",
+            maxDuration: 60,
+            quality: "720p",
+            format: "mp4",
+          },
+        }),
+        [202],
+      );
+      await flushWaitUntilForTest();
+      const failed = await accept(
+        socialClient.getDownload({
+          headers: authenticate(actor),
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      );
+
+      expect(failed.body).toMatchObject({
+        status: "provider_failed",
+        billing: null,
+        error: {
+          code: expectedCode,
+          message: "SocialKit could not prepare the download",
+          billed: false,
+          retryable: false,
+        },
+      });
+      const serialized = JSON.stringify(failed.body);
+      expect(serialized).not.toContain("temporary.socialkit.test");
+      expect(serialized).not.toContain("test-socialkit-key");
+      expect(serialized).not.toContain("provider.js");
+      await expect(credits(actor)).resolves.toBe(beforeCredits);
+    },
+  );
 
   it("rejects a ready response for a different platform without billing", async () => {
     const actor = createBddApi(context).user();
