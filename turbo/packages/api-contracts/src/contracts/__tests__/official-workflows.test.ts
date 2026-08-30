@@ -42,7 +42,7 @@ const blueprint = {
 };
 
 describe("Official Workflow product contracts", () => {
-  it("represents retained retired catalog detail while preserving the rollback field window", () => {
+  it("represents retained retired catalog detail", () => {
     const detail = {
       name: "team-brief",
       revision: REVISION,
@@ -65,8 +65,8 @@ describe("Official Workflow product contracts", () => {
 
     const { lifecycle: _lifecycle, ...legacyDetail } = detail;
     expect(
-      officialWorkflowCatalogDetailSchema.parse(legacyDetail),
-    ).toStrictEqual(legacyDetail);
+      officialWorkflowCatalogDetailSchema.safeParse(legacyDetail).success,
+    ).toBe(false);
   });
 
   it("carries every declared parameter type in authoritative installation metadata", () => {
