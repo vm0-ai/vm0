@@ -209,23 +209,6 @@ describe("shared database direct Platform bridge", () => {
       }),
     ).toBeTruthy();
 
-    await expect(
-      context.store.set(
-        queryChatEventSharedDatabase$,
-        {
-          dataKey: {
-            kind: "chat-event",
-            userId: userId(),
-            orgId: "another-org",
-            threadId,
-          },
-          afterSeqId: null,
-          consistency: "cache-only",
-        },
-        context.signal,
-      ),
-    ).rejects.toThrow("does not match client identity");
-
     owner.abort(new DOMException("chat closed", "AbortError"));
     const requestsBeforeAbort = requestedSeqIds.length;
     context.mocks.ably.triggerOnChannel(
@@ -331,8 +314,6 @@ describe("shared database direct Platform bridge", () => {
     await context.store.set(signals.setup$, owner.signal);
     const dataKey = {
       kind: "chat-event" as const,
-      userId: userId(),
-      orgId: orgId(),
       threadId,
     };
     let appends = 0;
@@ -377,7 +358,7 @@ describe("shared database direct Platform bridge", () => {
       owner.signal,
     );
     expect(appends).toBe(1);
-    expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1, 0, 1]);
+    expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1, 0, 1, 0, 1]);
     owner.abort(new DOMException("chat closed", "AbortError"));
   });
 

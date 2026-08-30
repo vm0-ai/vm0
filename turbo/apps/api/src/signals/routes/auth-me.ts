@@ -58,6 +58,7 @@ const getAuthMeInner$ = command(
         body: {
           userId: auth.userId,
           email: cached.email,
+          orgId: auth.orgId ?? null,
         },
       };
     }
@@ -105,6 +106,7 @@ const getAuthMeInner$ = command(
       body: {
         userId: auth.userId,
         email,
+        orgId: auth.orgId ?? null,
       },
     };
   },

@@ -18,7 +18,6 @@ import {
   type ChatThreadMetadataShortcutOutcome,
 } from "../../lib/posthog.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
 import { apiClient$ } from "../api-client.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -540,12 +539,9 @@ const subscribeLegacyEventDrivenChatThreads$ = command(
   },
 );
 
-const sharedChatThreadEventDataKey$ = computed(
-  async (get): Promise<ChatThreadEventDataKey> => {
-    const { userId, orgId } = await get(authenticatedIdentity$);
-    return { kind: "chat-thread-event", userId, orgId };
-  },
-);
+const sharedChatThreadEventDataKey$ = computed((): ChatThreadEventDataKey => {
+  return { kind: "chat-thread-event" };
+});
 
 const applySharedChatThreadEventResult$ = command(
   (

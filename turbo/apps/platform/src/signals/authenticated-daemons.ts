@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { authRecovery$, clerk$ } from "./auth.ts";
 import {
@@ -13,7 +14,8 @@ import {
 } from "./chat-page/chat-event-background-sync.ts";
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
-import { setupRealtime$ } from "./realtime.ts";
+import { setRealtimeDegradedNotifier$, setupRealtime$ } from "./realtime.ts";
+import { i18n } from "../i18n/index.ts";
 import { setupBillingRealtime$ } from "./okou-page/billing.ts";
 import { subscribePresentationTemplatesChanged$ } from "./okou-page/presentation-template-library.ts";
 import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custom-connectors.ts";
@@ -34,6 +36,13 @@ export const setupAuthenticatedDaemons$ = command(
     if (!clerk.user || !clerk.organization) {
       return;
     }
+    set(setRealtimeDegradedNotifier$, () => {
+      toast.error(
+        i18n.t(($) => {
+          return $.global.realtime.degraded;
+        }),
+      );
+    });
 
     const sharedDatabaseEnabled =
       get(featureSwitch$)[FeatureSwitchKey.SharedChatDatabase] ?? false;

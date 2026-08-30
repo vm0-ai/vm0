@@ -1,5 +1,7 @@
 import {
+  chatThreadIndicatorsSchema,
   parseSharedDatabaseQueryResult,
+  type ChatThreadIndicators,
   type SharedDatabaseDataKey,
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
@@ -58,6 +60,10 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         this.events.authenticationRequired();
         return;
       }
+      if (message.type === "indicators-invalidated") {
+        this.events.indicatorsInvalidated();
+        return;
+      }
       if (message.type === "status") {
         this.events.statusChanged(message.status);
         return;
@@ -88,7 +94,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       {
         type: "heartbeat",
         requestId: crypto.randomUUID(),
-        identity: heartbeat.identity,
+        token: heartbeat.token,
         apiBaseUrl: this.apiBaseUrl,
         ...(heartbeat.vercelProtectionBypass
           ? { vercelProtectionBypass: heartbeat.vercelProtectionBypass }
@@ -101,6 +107,17 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
 
   fail(reason: unknown): void {
     this.close(reason, false);
+  }
+
+  async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
+    const value = await this.request(
+      {
+        type: "get-indicators",
+        requestId: crypto.randomUUID(),
+      },
+      signal,
+    );
+    return chatThreadIndicatorsSchema.parse(value);
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -171,7 +188,9 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   private request(
     message: Extract<
       SharedDatabaseClientMessage,
-      { readonly type: "heartbeat" | "query" | "subscribe" }
+      {
+        readonly type: "heartbeat" | "query" | "subscribe" | "get-indicators";
+      }
     >,
     signal: AbortSignal,
   ): Promise<unknown> {
@@ -183,9 +202,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     const requestId = message.requestId;
     const abort = () => {
       this.pendingRequests.delete(requestId);
-      if (!this.closed) {
-        this.port.postMessage({ type: "cancel", requestId });
-      }
     };
     const finish = (callback: (value: unknown) => void) => {
       return (value: unknown) => {
@@ -210,7 +226,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     }
     this.closed = true;
     this.closeReason = reason;
-    this.port.postMessage({ type: "disconnect" });
     this.port.removeEventListener("message", this.handleMessage);
     this.port.close();
     this.subscriptions.clear();

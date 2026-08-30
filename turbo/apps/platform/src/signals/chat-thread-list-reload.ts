@@ -5,6 +5,7 @@ import {
   subscribeRealtimeReadyCatchUp$,
 } from "./realtime.ts";
 import { clearOptimisticReadMark$ } from "./chat-page/optimistic-chat-thread-read-marks.ts";
+import { invalidateTabIndicators$ } from "../shared-database/worker-context.ts";
 
 const internalReloadChatIndicators$ = state(0);
 
@@ -20,6 +21,7 @@ export const reloadChatIndicators$ = command(({ set }) => {
 
 const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
   set(reloadChatIndicators$);
+  set(invalidateTabIndicators$);
   return false;
 });
 
@@ -37,6 +39,7 @@ const reloadChatIndicatorsFromReadCursor$ = command(
       set(clearOptimisticReadMark$, payload.threadId);
     }
     set(reloadChatIndicators$);
+    set(invalidateTabIndicators$);
     return false;
   },
 );

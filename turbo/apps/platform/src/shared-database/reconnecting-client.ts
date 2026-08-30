@@ -15,8 +15,8 @@ import {
   type SharedDatabaseHeartbeatResult,
 } from "./protocol.ts";
 import type {
+  ChatThreadIndicators,
   SharedDatabaseDataKey,
-  SharedDatabaseIdentity,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
@@ -106,23 +106,6 @@ async function withTransportTimeout<T>(
   });
 }
 
-function sameCredential(
-  left: SharedDatabaseHeartbeat | null,
-  right: SharedDatabaseHeartbeat,
-): boolean {
-  return (
-    left?.identity.userId === right.identity.userId &&
-    left.identity.orgId === right.identity.orgId
-  );
-}
-
-function dataKeyMatchesIdentity(
-  dataKey: SharedDatabaseDataKey,
-  identity: SharedDatabaseIdentity,
-): boolean {
-  return dataKey.userId === identity.userId && dataKey.orgId === identity.orgId;
-}
-
 export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly subscriptions = new Map<string, DurableSubscription>();
   private readonly subscriptionSignals = new Map<string, AbortSignal>();
@@ -145,29 +128,12 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     signal: AbortSignal,
   ): Promise<SharedDatabaseHeartbeatResult> {
     this.bindOwner(signal);
-    const credentialChanged = !sameCredential(
-      this.heartbeatRegistration,
-      heartbeat,
-    );
     this.heartbeatRegistration = heartbeat;
-    if (credentialChanged) {
-      const credentialChange = new DOMException(
-        "Shared database credential changed",
-        "AbortError",
-      );
-      for (const [id, subscription] of this.subscriptions) {
-        this.invalidateSubscriptionRegistration(subscription, credentialChange);
-        if (!dataKeyMatchesIdentity(subscription.dataKey, heartbeat.identity)) {
-          this.subscriptions.delete(id);
-          this.subscriptionSignals.delete(id);
-        }
-      }
-    }
 
     const connectionToRenew = this.connection;
     await this.runWithReconnect(async (connection) => {
       if (connection === connectionToRenew) {
-        await this.renewConnection(connection, heartbeat, credentialChanged);
+        await this.renewConnection(connection, heartbeat);
       }
     }, signal);
     return { clientReconnected: false };
@@ -185,18 +151,22 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     }, signal);
   }
 
+  async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
+    return await this.runWithReconnect(async (connection) => {
+      return await this.runTransportRequest(
+        connection.bridge.indicators(signal),
+        connection,
+      );
+    }, signal);
+  }
+
   async on(
     dataKey: SharedDatabaseDataKey,
     callback: () => void,
     signal: AbortSignal,
   ): Promise<void> {
     signal.throwIfAborted();
-    const identity = this.requireHeartbeatRegistration().identity;
-    if (!dataKeyMatchesIdentity(dataKey, identity)) {
-      throw new Error(
-        "Shared database data key does not match client identity",
-      );
-    }
+    this.requireHeartbeatRegistration();
     const id = crypto.randomUUID();
     const subscription: DurableSubscription = {
       callback,
@@ -277,6 +247,11 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
           this.options.events.authenticationRequired();
         }
       },
+      indicatorsInvalidated: () => {
+        if (this.connection?.generation === generation) {
+          this.options.events.indicatorsInvalidated();
+        }
+      },
       reloadRequired: () => {
         if (this.connection?.generation === generation) {
           this.options.events.reloadRequired();
@@ -304,7 +279,6 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
   private async renewConnection(
     connection: Connection,
     heartbeat: SharedDatabaseHeartbeat,
-    registerSubscriptions: boolean,
   ): Promise<void> {
     const result = await this.runTransportRequest(
       connection.bridge.heartbeat(heartbeat, connection.controller.signal),
@@ -315,7 +289,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
         new DOMException("Shared database client renewed", "AbortError"),
       );
     }
-    if (registerSubscriptions || result.clientReconnected) {
+    if (result.clientReconnected) {
       await this.registerSubscriptions(connection);
     }
   }

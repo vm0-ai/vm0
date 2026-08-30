@@ -13,7 +13,6 @@ import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/cont
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
 import type { ChatEventDataKey } from "../../shared-database/data-key.ts";
 import {
   onSharedDatabase$,
@@ -310,9 +309,8 @@ function createSharedDatabaseEventSignals({
     [PersistedChatEvent[], AbortSignal]
   >;
 }) {
-  const dataKey$ = computed(async (get): Promise<ChatEventDataKey> => {
-    const { userId, orgId } = await get(authenticatedIdentity$);
-    return { kind: "chat-event", userId, orgId, threadId };
+  const dataKey$ = computed((): ChatEventDataKey => {
+    return { kind: "chat-event", threadId };
   });
   const load$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {

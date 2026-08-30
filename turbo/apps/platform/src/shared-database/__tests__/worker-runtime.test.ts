@@ -58,6 +58,7 @@ type WorkerEvent = Extract<
     readonly type:
       | "append"
       | "authentication-required"
+      | "indicators-invalidated"
       | "reload-required"
       | "status";
   }
@@ -76,22 +77,14 @@ function realtimeChannel(current: SharedDatabaseIdentity = identity()): string {
 }
 
 function chatEventKey(threadId: string): ChatEventDataKey {
-  const current = identity();
   return {
     kind: "chat-event",
-    userId: current.userId,
-    orgId: current.orgId,
     threadId,
   };
 }
 
 function chatThreadEventKey(): ChatThreadEventDataKey {
-  const current = identity();
-  return {
-    kind: "chat-thread-event",
-    userId: current.userId,
-    orgId: current.orgId,
-  };
+  return { kind: "chat-thread-event" };
 }
 
 function chatEventRow(threadId: string, seqId: number): ChatEventRow {
@@ -968,14 +961,10 @@ describe("shared database worker runtime", () => {
     const threadId = crypto.randomUUID();
     const orgADataKey: ChatEventDataKey = {
       kind: "chat-event",
-      userId: sharedUserId,
-      orgId: orgAIdentity.orgId,
       threadId,
     };
     const orgBDataKey: ChatEventDataKey = {
       kind: "chat-event",
-      userId: sharedUserId,
-      orgId: orgBIdentity.orgId,
       threadId,
     };
     const orgARow = chatEventRow(threadId, 1);
@@ -1529,8 +1518,9 @@ describe("shared database worker runtime", () => {
       consistency: "cache-only",
     });
 
+    const current = identity();
     const upgradedDb = await openDB(
-      `vm0-chat-${dataKey.userId}-${dataKey.orgId}`,
+      `vm0-chat-${current.userId}-${current.orgId}`,
       CHAT_IDB_VERSION + 1,
     );
     context.signal.addEventListener("abort", () => {
@@ -1607,8 +1597,9 @@ describe("shared database worker runtime", () => {
       consistency: "cache-only",
     });
 
+    const current = identity();
     const upgradedDb = await openDB(
-      `vm0-chat-${dataKey.userId}-${dataKey.orgId}`,
+      `vm0-chat-${current.userId}-${current.orgId}`,
       CHAT_IDB_VERSION + 1,
     );
     context.signal.addEventListener("abort", () => {

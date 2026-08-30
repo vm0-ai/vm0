@@ -38,6 +38,8 @@ import {
 import {
   sharedDatabaseCredentialId,
   sharedDatabaseDataKeyId,
+  scopeSharedDatabaseDataKey,
+  unScopeSharedDatabaseDataKey,
   type ChatEventDataKey,
   type ChatThreadEventDataKey,
   type ChatThreadEventQueryResult,
@@ -45,6 +47,10 @@ import {
   type SharedDatabaseIdentity,
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
+  type ScopedChatEventDataKey,
+  type ScopedChatThreadEventDataKey,
+  type ScopedSharedDatabaseDataKey,
+  type ScopedSharedDatabaseQuery,
 } from "./data-key.ts";
 import {
   SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME,
@@ -92,6 +98,7 @@ type WorkerClientEvent = Extract<
     readonly type:
       | "append"
       | "authentication-required"
+      | "indicators-invalidated"
       | "reload-required"
       | "status";
   }
@@ -102,7 +109,7 @@ export type WorkerClientEmitter = (event: WorkerClientEvent) => void;
 interface WorkerClientRegistration {
   readonly clientId: string;
   readonly emit: WorkerClientEmitter;
-  readonly subscriptions: Map<string, SharedDatabaseDataKey>;
+  readonly subscriptions: Map<string, ScopedSharedDatabaseDataKey>;
   identity: SharedDatabaseIdentity | null;
   apiBaseUrl: string | null;
   lastHeartbeatAt: number;
@@ -166,7 +173,7 @@ interface ChatThreadEventRemoteContext {
 
 interface ChatEventActor {
   readonly kind: "chat-event";
-  readonly dataKey: ChatEventDataKey;
+  readonly dataKey: ScopedChatEventDataKey;
   backgroundCatchUp: boolean;
   degraded: boolean;
   observedSeqId: number | null;
@@ -176,7 +183,7 @@ interface ChatEventActor {
 
 interface ChatThreadEventActor {
   readonly kind: "chat-thread-event";
-  readonly dataKey: ChatThreadEventDataKey;
+  readonly dataKey: ScopedChatThreadEventDataKey;
   degraded: boolean;
   observedSeqId: number | null;
   invalidationPending: boolean;
@@ -572,17 +579,18 @@ export class SharedDatabaseWorkerRuntime {
     subscriptionId: string,
     dataKey: SharedDatabaseDataKey,
   ): void {
-    const client = this.requireClientForDataKey(clientId, dataKey);
-    const actorId = sharedDatabaseDataKeyId(dataKey);
+    const { client, identity } = this.requireClientWithIdentity(clientId);
+    const scopedDataKey = scopeSharedDatabaseDataKey(dataKey, identity);
+    const actorId = sharedDatabaseDataKeyId(scopedDataKey);
     const alreadySubscribed = this.isActorSubscribed(actorId);
     L.debug("subscription.add", {
       clientId,
-      dataset: dataKey.kind,
+      dataset: scopedDataKey.kind,
       subscriptionId,
     });
-    client.subscriptions.set(subscriptionId, dataKey);
-    const actor = this.getOrCreateActor(dataKey);
-    const credential = this.requireCredential(dataKey);
+    client.subscriptions.set(subscriptionId, scopedDataKey);
+    const actor = this.getOrCreateActor(scopedDataKey);
+    const credential = this.requireCredential(scopedDataKey);
     if (
       !alreadySubscribed &&
       this.realtimeStatuses.get(sharedDatabaseCredentialId(credential)) ===
@@ -609,11 +617,13 @@ export class SharedDatabaseWorkerRuntime {
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
-    const client = this.requireClientForDataKey(clientId, query.dataKey);
-    const credentialId = sharedDatabaseCredentialId(query.dataKey);
-    const actor = this.getOrCreateActor(query.dataKey);
+    const { client, identity } = this.requireClientWithIdentity(clientId);
+    const credentialId = sharedDatabaseCredentialId(identity);
+    const scopedDataKey = scopeSharedDatabaseDataKey(query.dataKey, identity);
+    const actor = this.getOrCreateActor(scopedDataKey);
+    const scopedQuery = { ...query, dataKey: scopedDataKey };
     const result = await withCleanup(
-      this.queryActor(actor, query, signal),
+      this.queryActor(actor, scopedQuery, signal),
       () => {
         this.removeUnusedActors();
       },
@@ -628,11 +638,11 @@ export class SharedDatabaseWorkerRuntime {
     return result;
   }
 
-  private async queryActor<TKey extends SharedDatabaseDataKey>(
+  private async queryActor<TKey extends ScopedSharedDatabaseDataKey>(
     actor: DatasetActor,
-    query: SharedDatabaseQuery<TKey>,
+    query: ScopedSharedDatabaseQuery<TKey>,
     signal: AbortSignal,
-  ): Promise<SharedDatabaseQueryResult<TKey>> {
+  ): Promise<SharedDatabaseQueryResult<SharedDatabaseDataKey>> {
     if (actor.kind === "chat-event") {
       const result = await this.queryChatEvents(
         actor,
@@ -640,14 +650,14 @@ export class SharedDatabaseWorkerRuntime {
         query.consistency,
         signal,
       );
-      return result as SharedDatabaseQueryResult<TKey>;
+      return result;
     }
     const result = await this.queryChatThreadEvents(
       actor,
       query.consistency,
       signal,
     );
-    return result as SharedDatabaseQueryResult<TKey>;
+    return result;
   }
 
   private async queryChatEvents(
@@ -1006,7 +1016,7 @@ export class SharedDatabaseWorkerRuntime {
 
   private async fetchChatEventSnapshot(
     client: ChatEventContractClient,
-    dataKey: ChatEventDataKey,
+    dataKey: ScopedChatEventDataKey,
     credential: CredentialState,
     requestToken: string,
     signal: AbortSignal,
@@ -1352,7 +1362,7 @@ export class SharedDatabaseWorkerRuntime {
   }
 
   private async getDatabase(
-    dataKey: SharedDatabaseDataKey,
+    dataKey: ScopedSharedDatabaseDataKey,
   ): Promise<IDBPDatabase> {
     const credentialId = sharedDatabaseCredentialId(dataKey);
     let entry = this.databases.get(credentialId);
@@ -1391,12 +1401,12 @@ export class SharedDatabaseWorkerRuntime {
     return database;
   }
 
-  private getOrCreateActor(dataKey: ChatEventDataKey): ChatEventActor;
+  private getOrCreateActor(dataKey: ScopedChatEventDataKey): ChatEventActor;
   private getOrCreateActor(
-    dataKey: ChatThreadEventDataKey,
+    dataKey: ScopedChatThreadEventDataKey,
   ): ChatThreadEventActor;
-  private getOrCreateActor(dataKey: SharedDatabaseDataKey): DatasetActor;
-  private getOrCreateActor(dataKey: SharedDatabaseDataKey): DatasetActor {
+  private getOrCreateActor(dataKey: ScopedSharedDatabaseDataKey): DatasetActor;
+  private getOrCreateActor(dataKey: ScopedSharedDatabaseDataKey): DatasetActor {
     const id = sharedDatabaseDataKeyId(dataKey);
     const existing = this.actors.get(id);
     if (existing) {
@@ -1434,24 +1444,20 @@ export class SharedDatabaseWorkerRuntime {
     return client;
   }
 
-  private requireClientForDataKey(
-    clientId: string,
-    dataKey: SharedDatabaseDataKey,
-  ): WorkerClientRegistration {
+  private requireClientWithIdentity(clientId: string): {
+    readonly client: WorkerClientRegistration;
+    readonly identity: SharedDatabaseIdentity;
+  } {
     const client = this.requireClient(clientId);
-    if (
-      client.identity === null ||
-      client.identity.userId !== dataKey.userId ||
-      client.identity.orgId !== dataKey.orgId
-    ) {
-      throw new Error(
-        "Shared database data key does not match client identity",
-      );
+    if (client.identity === null) {
+      throw new SharedDatabaseClientNotConnectedError();
     }
-    return client;
+    return { client, identity: client.identity };
   }
 
-  private requireCredential(dataKey: SharedDatabaseDataKey): CredentialState {
+  private requireCredential(
+    dataKey: ScopedSharedDatabaseDataKey,
+  ): CredentialState {
     const credential = this.credentials.get(
       sharedDatabaseCredentialId(dataKey),
     );
@@ -1513,7 +1519,7 @@ export class SharedDatabaseWorkerRuntime {
     await Promise.all(work);
   }
 
-  private notifyActor(dataKey: SharedDatabaseDataKey): void {
+  private notifyActor(dataKey: ScopedSharedDatabaseDataKey): void {
     const id = sharedDatabaseDataKeyId(dataKey);
     for (const client of this.clients.values()) {
       for (const [
@@ -1524,7 +1530,7 @@ export class SharedDatabaseWorkerRuntime {
           client.emit({
             type: "append",
             subscriptionId,
-            dataKey,
+            dataKey: unScopeSharedDatabaseDataKey(dataKey),
           });
         }
       }
@@ -1626,7 +1632,7 @@ export class SharedDatabaseWorkerRuntime {
       ? topic.slice("chatThreadMessageCreated:".length)
       : null;
     if (threadId !== null && threadId.length > 0) {
-      const dataKey: ChatEventDataKey = {
+      const dataKey: ScopedChatEventDataKey = {
         kind: "chat-event",
         userId: credential.userId,
         orgId: credential.orgId,

@@ -1,130 +1,50 @@
-import type { Store } from "ccstate";
-import {
-  parseSharedDatabaseQueryResult,
-  type SharedDatabaseDataKey,
-  type SharedDatabaseQuery,
-  type SharedDatabaseQueryResult,
-} from "./data-key.ts";
-import type {
-  SharedDatabaseBridge,
-  SharedDatabaseHeartbeat,
-} from "./bridge.ts";
-import type {
-  SharedDatabaseHeartbeatResult,
-  SharedDatabaseWorkerMessage,
-} from "./protocol.ts";
-import {
-  bootstrapSharedDatabaseWorker$,
-  connectSharedDatabaseWorkerClient$,
-  disconnectSharedDatabaseWorkerClient$,
-  heartbeatSharedDatabaseWorker$,
-  querySharedDatabaseWorker$,
-  subscribeSharedDatabaseWorker$,
-  unsubscribeSharedDatabaseWorker$,
-} from "./worker-signals.ts";
+import { command, type Store } from "ccstate";
+
+import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
   installSharedDatabaseBridge$,
   setSharedDatabaseConnectionStatus$,
 } from "../signals/shared-database.ts";
 import { resolveApiBaseForTarget } from "../signals/api-base.ts";
-import { createDeferredPromise } from "../signals/utils.ts";
+import type {
+  SharedDatabaseBridge,
+  SharedDatabaseHeartbeat,
+} from "./bridge.ts";
+import type {
+  ChatThreadIndicators,
+  SharedDatabaseDataKey,
+  SharedDatabaseQuery,
+  SharedDatabaseQueryResult,
+} from "./data-key.ts";
+import { MessagePortSharedDatabaseBridge } from "./message-port-client.ts";
+import { SharedDatabaseMessagePortServer } from "./message-port-server.ts";
+import type { SharedDatabaseHeartbeatResult } from "./protocol.ts";
+import type { TabId } from "./worker-context.ts";
 
-type DirectWorkerEvent = Extract<
-  SharedDatabaseWorkerMessage,
-  {
-    readonly type:
-      | "append"
-      | "authentication-required"
-      | "reload-required"
-      | "status";
-  }
->;
-
-async function waitForWorkerOperation<T>(
-  operation: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  signal.throwIfAborted();
-  const aborted = createDeferredPromise<never>(signal);
-  return await Promise.race([operation, aborted.promise]);
-}
-
-class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
-  private readonly clientId = crypto.randomUUID();
-  private readonly subscriptions = new Map<
-    string,
-    { readonly callback: () => void; readonly dataKey: SharedDatabaseDataKey }
-  >();
-  private ownerSignal: AbortSignal | null = null;
-
+class TestSharedDatabaseBridge implements SharedDatabaseBridge {
   constructor(
-    private readonly platformStore: Store,
-    private readonly workerStore: Store,
-    private readonly apiBaseUrl: string,
-    private readonly workerSignal: AbortSignal,
-    private readonly afterWorkerHeartbeat?: () => Promise<void>,
-  ) {
-    workerStore.set(
-      connectSharedDatabaseWorkerClient$,
-      this.clientId,
-      this.emit,
-    );
-  }
-
-  private readonly emit = (event: DirectWorkerEvent): void => {
-    if (event.type === "append") {
-      this.subscriptions.get(event.subscriptionId)?.callback();
-      return;
-    }
-    if (event.type === "reload-required") {
-      location.reload();
-      return;
-    }
-    if (event.type === "authentication-required") {
-      return;
-    }
-    this.platformStore.set(setSharedDatabaseConnectionStatus$, event.status);
-  };
+    private readonly bridge: SharedDatabaseBridge,
+    private readonly afterHeartbeat?: () => Promise<void>,
+  ) {}
 
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<SharedDatabaseHeartbeatResult> {
-    this.bindOwner(signal);
-    const result = await this.workerStore.set(
-      heartbeatSharedDatabaseWorker$,
-      this.clientId,
-      { ...heartbeat, apiBaseUrl: this.apiBaseUrl, emit: this.emit },
-      this.workerSignal,
-    );
-    if (result.clientReconnected) {
-      for (const [subscriptionId, subscription] of this.subscriptions) {
-        this.workerStore.set(
-          subscribeSharedDatabaseWorker$,
-          this.clientId,
-          subscriptionId,
-          subscription.dataKey,
-        );
-      }
-    }
-    await this.afterWorkerHeartbeat?.();
+    const result = await this.bridge.heartbeat(heartbeat, signal);
+    await this.afterHeartbeat?.();
     return result;
   }
 
-  async query<TKey extends SharedDatabaseDataKey>(
+  indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
+    return this.bridge.indicators(signal);
+  }
+
+  query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
-    signal.throwIfAborted();
-    const operation = this.workerStore.set(
-      querySharedDatabaseWorker$,
-      this.clientId,
-      query,
-      this.workerSignal,
-    );
-    const result = await waitForWorkerOperation(operation, signal);
-    const cloned: unknown = structuredClone(result);
-    return parseSharedDatabaseQueryResult(query.dataKey, cloned);
+    return this.bridge.query(query, signal);
   }
 
   on(
@@ -132,68 +52,42 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     callback: () => void,
     signal: AbortSignal,
   ): Promise<void> {
-    signal.throwIfAborted();
-    const subscriptionId = crypto.randomUUID();
-    this.subscriptions.set(subscriptionId, { callback, dataKey });
-    this.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      this.clientId,
-      subscriptionId,
-      dataKey,
-    );
-    signal.addEventListener(
-      "abort",
-      () => {
-        this.subscriptions.delete(subscriptionId);
-        this.workerStore.set(
-          unsubscribeSharedDatabaseWorker$,
-          this.clientId,
-          subscriptionId,
-        );
-      },
-      { once: true },
-    );
-    return Promise.resolve();
-  }
-
-  private bindOwner(signal: AbortSignal): void {
-    if (this.ownerSignal === signal) {
-      return;
-    }
-    if (this.ownerSignal !== null) {
-      throw new Error("Shared database test bridge already has an owner");
-    }
-    signal.throwIfAborted();
-    this.ownerSignal = signal;
-    signal.addEventListener(
-      "abort",
-      () => {
-        this.subscriptions.clear();
-        this.workerStore.set(
-          disconnectSharedDatabaseWorkerClient$,
-          this.clientId,
-        );
-      },
-      { once: true },
-    );
+    return this.bridge.on(dataKey, callback, signal);
   }
 }
 
-export class SharedWorkerTestBootstrap {
-  constructor(
-    private readonly platformStore: Store,
-    private readonly workerStore: Store,
+export const setupSharedWorkerTestBootstrap$ = command(
+  (
+    { set },
     signal: AbortSignal,
     afterWorkerHeartbeat?: () => Promise<void>,
-  ) {
-    this.workerStore.set(bootstrapSharedDatabaseWorker$, signal);
-    const bridge = new DirectSharedDatabaseBridge(
-      this.platformStore,
-      this.workerStore,
+  ): void => {
+    const channel = new MessageChannel();
+    new SharedDatabaseMessagePortServer(channel.port1, signal, {
+      credentialStores: new Map<string, Store>(),
+      credentialAbortControllers: new Map<string, AbortController>(),
+      tabCredentialIds: new Map<TabId, string>(),
+      tabHeartbeatAts: new Map<TabId, number>(),
+    });
+    const bridge = new MessagePortSharedDatabaseBridge(
+      channel.port2,
       resolveApiBaseForTarget("api"),
-      signal,
-      afterWorkerHeartbeat,
+      {
+        authenticationRequired: () => {},
+        indicatorsInvalidated: () => {
+          set(reloadChatIndicators$);
+        },
+        reloadRequired: () => {
+          globalThis.location.reload();
+        },
+        statusChanged: (status) => {
+          set(setSharedDatabaseConnectionStatus$, status);
+        },
+      },
     );
-    this.platformStore.set(installSharedDatabaseBridge$, bridge);
-  }
-}
+    set(
+      installSharedDatabaseBridge$,
+      new TestSharedDatabaseBridge(bridge, afterWorkerHeartbeat),
+    );
+  },
+);

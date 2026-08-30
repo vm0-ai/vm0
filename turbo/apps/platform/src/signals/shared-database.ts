@@ -1,5 +1,6 @@
 import { command, computed, state, type Command } from "ccstate";
 import type {
+  ChatThreadIndicators,
   ChatEventDataKey,
   ChatThreadEventDataKey,
   SharedDatabaseDataKey,
@@ -11,6 +12,8 @@ import type {
   SharedDatabaseHeartbeat,
 } from "../shared-database/bridge.ts";
 import type { SharedDatabaseConnectionStatus } from "../shared-database/protocol.ts";
+import { reloadChatIndicatorsCounter$ } from "./chat-thread-list-reload.ts";
+import { rootSignal$ } from "./root-signal.ts";
 
 const sharedDatabaseBridgeState$ = state<SharedDatabaseBridge | null>(null);
 const sharedDatabaseConnectionStatusState$ =
@@ -55,6 +58,15 @@ export const heartbeatSharedDatabase$ = command(
     await requireBridge(get(sharedDatabaseBridgeState$)).heartbeat(
       heartbeat,
       signal,
+    );
+  },
+);
+
+export const sharedDatabaseChatThreadIndicators$ = computed(
+  async (get): Promise<ChatThreadIndicators> => {
+    get(reloadChatIndicatorsCounter$);
+    return await requireBridge(get(sharedDatabaseBridgeState$)).indicators(
+      get(rootSignal$),
     );
   },
 );

@@ -11,6 +11,9 @@ import {
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
+import { setApiClientRuntime$ } from "./api-client-runtime.ts";
+import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
+import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
@@ -527,6 +530,14 @@ export const bootstrap$ = command(
     set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
     set(setRootSignal$, signal);
+    const apiBaseUrl = resolveApiBaseForTarget("api");
+    const vercelProtectionBypass =
+      getCapturedPreviewBypassForTarget(apiBaseUrl);
+    set(setApiClientRuntime$, {
+      apiBaseUrl,
+      oauthApiBaseUrl: resolveOAuthApiBase(),
+      ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+    });
     set(initClerkRuntime$, signal);
     set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);

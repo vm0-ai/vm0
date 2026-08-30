@@ -3,7 +3,7 @@ import SharedDatabaseWorker from "virtual:shared-database-worker";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
-import { authRecovery$, authenticatedIdentity$ } from "./auth.ts";
+import { authRecovery$ } from "./auth.ts";
 import type { AuthRecovery } from "./auth-retry.ts";
 import { logger } from "./log.ts";
 import {
@@ -28,6 +28,7 @@ import {
   sharedDatabaseBridgeInstalled$,
   setSharedDatabaseConnectionStatus$,
 } from "./shared-database.ts";
+import { reloadChatIndicators$ } from "./chat-thread-list-reload.ts";
 
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
 const AUTHENTICATION_REQUIRED_EVENT = "authentication-required";
@@ -199,6 +200,9 @@ export const setupSharedDatabaseBridge$ = command(
         reloadRequired: () => {
           location.reload();
         },
+        indicatorsInvalidated: () => {
+          set(reloadChatIndicators$);
+        },
         statusChanged: (status) => {
           set(setSharedDatabaseConnectionStatus$, status);
         },
@@ -224,8 +228,6 @@ export const setupSharedDatabaseBridge$ = command(
 
 export const heartbeatSharedDatabaseNow$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const identity = await get(authenticatedIdentity$);
-    signal.throwIfAborted();
     const authRecovery = await get(authRecovery$);
     signal.throwIfAborted();
 
@@ -240,11 +242,7 @@ export const heartbeatSharedDatabaseNow$ = command(
     await set(
       heartbeatSharedDatabase$,
       {
-        identity: {
-          userId: identity.userId,
-          orgId: identity.orgId,
-          token,
-        },
+        token,
         ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
       },
       signal,

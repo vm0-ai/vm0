@@ -6,13 +6,12 @@ import type {
   InboundMessage,
   RealtimeChannel,
 } from "ably";
-import { toast } from "@okouai/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { createAblyRealtime, type AblyRealtime } from "../lib/ably-realtime.ts";
 import { now } from "../lib/time.ts";
 import { apiClient$ } from "./api-client.ts";
-import { authenticatedIdentity$ } from "./auth.ts";
+import { runtimeAuthenticatedIdentity$ } from "./auth-context.ts";
 import {
   requestForegroundCatchUp$,
   subscribeForegroundCatchUp$,
@@ -35,7 +34,6 @@ import {
   withCleanup,
 } from "./utils.ts";
 import { logger } from "./log.ts";
-import { i18n } from "../i18n/index.ts";
 
 const L = logger("Realtime");
 const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
@@ -48,7 +46,10 @@ const realtimeBackgroundCloseDelayMs = IN_VITEST
   : REALTIME_BACKGROUND_CLOSE_GRACE_MS;
 
 function isDocumentVisible(): boolean {
-  return document.visibilityState === "visible";
+  return (
+    typeof document === "undefined" ||
+    globalThis.document.visibilityState === "visible"
+  );
 }
 
 type RealtimeConnectionState = ConnectionStateChange["current"];
@@ -80,17 +81,22 @@ function channelStateDetails(
 }
 
 const realtimeDegradedToastShown$ = state(false);
+const realtimeDegradedNotifier$ = state<(() => void) | null>(null);
+
+export const setRealtimeDegradedNotifier$ = command(
+  ({ set }, notify: () => void): void => {
+    set(realtimeDegradedNotifier$, () => {
+      return notify;
+    });
+  },
+);
 
 const notifyRealtimeDegraded$ = command(({ get, set }) => {
   if (get(realtimeDegradedToastShown$)) {
     return;
   }
   set(realtimeDegradedToastShown$, true);
-  toast.error(
-    i18n.t(($) => {
-      return $.global.realtime.degraded;
-    }),
-  );
+  get(realtimeDegradedNotifier$)?.();
 });
 
 type ChannelCallback = (message: InboundMessage) => void;
@@ -978,7 +984,7 @@ const connectRealtimeClient$ = command(
     { get, set },
     signal: AbortSignal,
   ): Promise<ConnectedRealtimeClient> => {
-    const identity = await get(authenticatedIdentity$);
+    const identity = await get(runtimeAuthenticatedIdentity$);
     signal.throwIfAborted();
     const createClient = get(apiClient$);
     const client = createClient(platformRealtimeTokenContract);
@@ -1113,7 +1119,7 @@ const cancelRealtimeClose$ = command(({ set }, signal: AbortSignal): void => {
 });
 
 const closeRealtimeWhileHidden$ = command(({ get, set }) => {
-  if (document.visibilityState === "visible") {
+  if (isDocumentVisible()) {
     return;
   }
   const session = get(internalRealtimeSession$);
@@ -1158,7 +1164,7 @@ const updateRealtimeVisibility$ = command(
 
 const foregroundRealtimeCatchUp$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (document.visibilityState === "visible") {
+    if (isDocumentVisible()) {
       set(cancelRealtimeClose$, signal);
     }
     const session = get(internalRealtimeSession$);
@@ -1260,7 +1266,7 @@ const foregroundRealtimeCatchUp$ = command(
       });
     }
 
-    if (document.visibilityState !== "visible") {
+    if (!isDocumentVisible()) {
       session.channels.user.pauseSubscriptions();
       session.channels.org.pauseSubscriptions();
       if (get(realtimeCloseDue$)) {
@@ -1323,14 +1329,18 @@ export const setupRealtime$ = command(
       channels,
       close: connected.close,
     });
-    set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
-    const handleVisibilityChange = onDomEventFn(async () => {
-      await set(updateRealtimeVisibility$, signal);
-    });
-    document.addEventListener("visibilitychange", handleVisibilityChange, {
-      signal,
-    });
-    handleVisibilityChange(new Event("visibilitychange"));
+    if (typeof document !== "undefined") {
+      set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
+      const handleVisibilityChange = onDomEventFn(async () => {
+        await set(updateRealtimeVisibility$, signal);
+      });
+      globalThis.document.addEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+        { signal },
+      );
+      handleVisibilityChange(new Event("visibilitychange"));
+    }
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {

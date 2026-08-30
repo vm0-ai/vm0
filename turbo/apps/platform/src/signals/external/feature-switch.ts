@@ -5,6 +5,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { authRecovery$, clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
+import { getCapturedPreviewBypassForTarget } from "../../lib/preview-bypass-cookie.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { writeConnectionDiagnostic$ } from "../connection-diagnostics.ts";
@@ -16,13 +17,17 @@ import {
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
 const apiFeatureSwitchClient$ = computed((get) => {
+  const apiBaseUrl = resolveApiBaseForTarget("api");
   return createAuthedContractClient(featureSwitchesContract, {
-    baseUrl: resolveApiBaseForTarget("api"),
+    baseUrl: apiBaseUrl,
     getAuthRecovery: () => {
       return get(authRecovery$);
     },
     getRootSignal: () => {
       return get(rootSignal$);
+    },
+    getVercelProtectionBypass: () => {
+      return getCapturedPreviewBypassForTarget(apiBaseUrl) ?? undefined;
     },
   });
 });

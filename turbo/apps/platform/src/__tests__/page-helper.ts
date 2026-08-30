@@ -23,13 +23,14 @@ import {
 } from "../signals/location";
 import { vi } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch-state";
 import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
-import { SharedWorkerTestBootstrap } from "../shared-database/test-bridge.ts";
+import { setupSharedWorkerTestBootstrap$ } from "../shared-database/test-bridge.ts";
 
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
@@ -165,22 +166,12 @@ export async function setupBootstrap(
     setFeatureSwitchCacheForTest$,
     cachedFeatureSwitches,
   );
-  if (cachedFeatureSwitches[FeatureSwitchKey.SharedChatDatabase]) {
-    new SharedWorkerTestBootstrap(
-      options.context.store,
-      options.context.workerStore,
-      options.context.signal,
-      options.afterSharedDatabaseWorkerHeartbeat,
-    );
-  }
-
-  mockUser(
+  const testUser =
     options.user !== undefined
       ? options.user
-      : {
-          id: "test-user-123",
-          fullName: "Test User",
-        },
+      : { id: "test-user-123", fullName: "Test User" };
+  mockUser(
+    testUser,
     options.session ?? {
       token: "test-token",
     },
@@ -196,6 +187,20 @@ export async function setupBootstrap(
       activeOrg: { id: defaultOrgId, name: "Default Org" },
       memberships: [{ id: defaultOrgId }],
     });
+  }
+  if (cachedFeatureSwitches[FeatureSwitchKey.SharedChatDatabase] && testUser) {
+    options.context.mocks.api(authContract.me, ({ respond }) => {
+      return respond(200, {
+        userId: testUser.id,
+        email: testUser.email ?? "test@example.com",
+        orgId: activeOrgId ?? null,
+      });
+    });
+    options.context.store.set(
+      setupSharedWorkerTestBootstrap$,
+      options.context.signal,
+      options.afterSharedDatabaseWorkerHeartbeat,
+    );
   }
   clearMockedAuthOnAbort(options.context.signal);
   options.context.signal.addEventListener(

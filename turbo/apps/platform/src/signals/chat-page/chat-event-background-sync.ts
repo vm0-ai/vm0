@@ -25,7 +25,6 @@ import {
   chatEventDebugSummaries,
   chatEventTraceTime,
 } from "./chat-event-debug.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
 import { queryChatEventSharedDatabase$ } from "../shared-database.ts";
 
 const L = logger("ChatEventBackgroundSync");
@@ -300,10 +299,7 @@ export const setupChatEventBackgroundSync$ = command(
 
 export const prewarmSharedUnreadChatEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const [{ userId, orgId }, unreadThreadIds] = await Promise.all([
-      get(authenticatedIdentity$),
-      get(allUnreadThreadIds$),
-    ]);
+    const unreadThreadIds = await get(allUnreadThreadIds$);
     signal.throwIfAborted();
     await Promise.all(
       Array.from(unreadThreadIds)
@@ -314,8 +310,6 @@ export const prewarmSharedUnreadChatEvents$ = command(
             {
               dataKey: {
                 kind: "chat-event",
-                userId,
-                orgId,
                 threadId,
               },
               afterSeqId: null,

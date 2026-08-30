@@ -27,14 +27,8 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
     ) {
       return;
     }
-    if (
-      "identity" in value &&
-      typeof value.identity === "object" &&
-      value.identity !== null &&
-      "token" in value.identity &&
-      typeof value.identity.token === "string"
-    ) {
-      this.heartbeatTokens.push(value.identity.token);
+    if ("token" in value && typeof value.token === "string") {
+      this.heartbeatTokens.push(value.token);
     }
     const requestId = value.requestId;
     queueMicrotask(() => {
@@ -69,8 +63,19 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
   addEventListener(
     _type: "message",
     listener: (event: MessageEvent<unknown>) => void,
+    options?: AddEventListenerOptions | boolean,
   ): void {
     this.listener = listener;
+    const signal = typeof options === "object" ? options.signal : undefined;
+    signal?.addEventListener(
+      "abort",
+      () => {
+        if (this.listener === listener) {
+          this.listener = null;
+        }
+      },
+      { once: true },
+    );
   }
 
   removeEventListener(
@@ -150,13 +155,7 @@ function installSharedWorkerMock(): {
 }
 
 function sharedDatabaseHeartbeat(): SharedDatabaseHeartbeat {
-  return {
-    identity: {
-      userId: "shared-worker-user",
-      orgId: "shared-worker-org",
-      token: "shared-worker-token",
-    },
-  };
+  return { token: "shared-worker-token" };
 }
 
 function authRecovery(replacementToken = "replacement-token"): AuthRecovery {
