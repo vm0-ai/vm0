@@ -32,7 +32,7 @@ import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
-} from "@okouai/connectors/firewall-types";
+} from "@okouai/connectors/firewall-contracts";
 import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/user-permission-grants";
 import type {
   PlatformConnectorPermissionMetadata,
@@ -96,6 +96,7 @@ import {
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { i18n } from "../../../../i18n/index.ts";
+import { IconTooltipButton } from "../../../components/icon-tooltip.tsx";
 
 interface ConnectorPermission {
   name: string;
@@ -1515,7 +1516,7 @@ function LoadedPermissionsDrawerContent({
               className="pl-9 pr-9"
             />
             {search && (
-              <button
+              <IconTooltipButton
                 type="button"
                 onClick={() => {
                   handleSearchChange("");
@@ -1526,11 +1527,11 @@ function LoadedPermissionsDrawerContent({
                 })}
               >
                 <X size={13} />
-              </button>
+              </IconTooltipButton>
             )}
           </div>
           {!groups && !searchActive && (
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2 overflow-y-auto [scrollbar-gutter:stable]">
               <span className="text-xs font-medium text-foreground">
                 {readOnly
                   ? t(($) => {
@@ -1552,7 +1553,7 @@ function LoadedPermissionsDrawerContent({
         </div>
 
         <div
-          className={`flex-1 overflow-y-auto -mx-6 px-3 ${displayedGroups ? "pt-1" : ""}`}
+          className={`flex-1 overflow-y-auto -mx-6 px-3 [scrollbar-gutter:stable] ${displayedGroups ? "pt-1" : ""}`}
           onScroll={(e) => {
             const target = e.currentTarget;
             setScrolled(stateKey, target.scrollTop > 0, initialUiState);

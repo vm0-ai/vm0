@@ -76,7 +76,7 @@ def test_flush_keeps_model_observation_source_vector_in_one_safe_segment(tmp_pat
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [
@@ -197,7 +197,7 @@ def test_rejects_out_of_range_model_observation_before_recording_idempotency(tmp
 
     assert (
         usage.buffer_source_model_usage_observations(
-            "https://api.test/api/webhooks/agent/model-usage-observation",
+            "https://api.test/api/runners/model-usage-observations",
             "token-a",
             "run-1",
             [
@@ -229,7 +229,7 @@ def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [
@@ -490,7 +490,7 @@ def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
     accepted_source_keys: set[str] = set()
 
     usage.buffer_source_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [
@@ -508,7 +508,6 @@ def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload == {
-        "runId": "run-1",
         "events": [
             {
                 "idempotencyKey": "source-1",
@@ -521,6 +520,81 @@ def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
         ],
     }
     assert enqueue.last_call.log_type == "model_usage_observation"
+
+
+def test_source_observations_batch_across_runs_without_changing_source_keys(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    for run_id, source_key in (("run-1", "source-1"), ("run-2", "source-2")):
+        usage.buffer_source_model_usage_observations(
+            "https://api.test/api/runners/model-usage-observations",
+            "runner-token",
+            run_id,
+            [observation(source_key=source_key, input_tokens=10)],
+            str(tmp_path / f"{run_id}.jsonl"),
+        )
+
+    assert usage.flush_model_usage_observations(trigger="test") == 1
+    assert set(enqueue.last_call.payload) == {"events"}
+    assert {
+        flushed_observation["idempotencyKey"]
+        for flushed_observation in enqueue.last_call.payload["events"]
+    } == {"source-1", "source-2"}
+
+
+def test_model_observations_aggregate_same_model_across_runs(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    for run_id, source_key, input_tokens in (
+        ("run-1", "source-1", 10),
+        ("run-2", "source-2", 7),
+    ):
+        usage.buffer_model_usage_observations(
+            "https://api.test/api/runners/model-usage-observations",
+            "runner-token",
+            run_id,
+            [observation(source_key=source_key, input_tokens=input_tokens)],
+            str(tmp_path / f"{run_id}.jsonl"),
+        )
+
+    assert usage.flush_model_usage_observations(trigger="test") == 1
+    enqueue.assert_called_once()
+    assert enqueue.last_call.proxy_log_path == ""
+    assert enqueue.last_call.payload.keys() == {"events"}
+    [flushed_observation] = enqueue.last_call.payload["events"]
+    uuid.UUID(flushed_observation.pop("idempotencyKey"))
+    assert flushed_observation == {
+        "model": "claude-sonnet-4-6",
+        "inputTokens": 17,
+        "outputTokens": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+    }
+
+
+def test_model_observations_keep_different_canonical_models_separate(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    for run_id, source_key, model in (
+        ("run-1", "source-1", "model-a"),
+        ("run-2", "source-2", "model-b"),
+    ):
+        usage.buffer_model_usage_observations(
+            "https://api.test/api/runners/model-usage-observations",
+            "runner-token",
+            run_id,
+            [observation(source_key=source_key, model=model, input_tokens=10)],
+            str(tmp_path / f"{run_id}.jsonl"),
+        )
+
+    assert usage.flush_model_usage_observations(trigger="test") == 1
+    assert {
+        (flushed_observation["model"], flushed_observation["inputTokens"])
+        for flushed_observation in enqueue.last_call.payload["events"]
+    } == {("model-a", 10), ("model-b", 10)}
 
 
 def test_flush_keeps_runs_categories_providers_and_destinations_separate(tmp_path):
@@ -708,7 +782,7 @@ def test_flushes_when_model_observation_bucket_count_reaches_exact_bound(tmp_pat
     proxy_log_path = str(tmp_path / "proxy.jsonl")
 
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [
@@ -721,7 +795,7 @@ def test_flushes_when_model_observation_bucket_count_reaches_exact_bound(tmp_pat
 
     final_index = usage_buffer.MAX_AGGREGATE_BUCKETS - 1
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [
@@ -735,7 +809,7 @@ def test_flushes_when_model_observation_bucket_count_reaches_exact_bound(tmp_pat
 
     enqueue.assert_called_once()
     payload = enqueue.last_call.payload
-    assert payload["runId"] == "run-1"
+    assert "runId" not in payload
     assert len(payload["events"]) == usage_buffer.MAX_AGGREGATE_BUCKETS
     assert {flushed_observation["model"] for flushed_observation in payload["events"]} == {
         f"model-{index}" for index in range(usage_buffer.MAX_AGGREGATE_BUCKETS)

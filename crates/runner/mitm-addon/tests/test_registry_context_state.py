@@ -1,12 +1,12 @@
 """Tests for registry compiled context state and reload behavior."""
 
 import json
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 import matching
 import registry
+from tests.process_log_helpers import capture_addon_process_events
 from tests.registry_helpers import pin_mtime, write_firewall_registry
 
 
@@ -130,7 +130,7 @@ class TestRegistryContextState:
         assert compiled_firewalls is not None
 
         path.write_text("{ broken")
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             unavailable_context = registry.get_sandbox_context("10.200.0.1", str(path))
             state = registry.load_registry_state(str(path))
 
@@ -150,7 +150,7 @@ class TestRegistryContextState:
         assert compiled_firewalls is not None
 
         path.unlink()
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             unavailable_context = registry.get_sandbox_context("10.200.0.1", str(path))
             state = registry.load_registry_state(str(path))
 
@@ -215,7 +215,7 @@ class TestRegistryContextState:
         data["sandboxes"]["10.200.0.1"]["firewalls"] = firewalls
         path.write_text(json.dumps(data))
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             context = registry.get_sandbox_context("10.200.0.1", str(path))
             state = registry.load_registry_state(str(path))
 
@@ -242,7 +242,7 @@ class TestRegistryContextState:
         data["sandboxes"]["10.200.0.1"]["firewalls"] = firewalls
         path.write_text(json.dumps(data))
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             context = registry.get_sandbox_context("10.200.0.1", str(path))
             state = registry.load_registry_state(str(path))
 

@@ -10,13 +10,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from typing import Self
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 import runner_flush_lifecycle
 import usage
 from tests.pending_helpers import assert_pending
+from tests.process_log_helpers import capture_addon_process_events
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 from tests.usage_helpers import install_recording_usage_timer
@@ -277,6 +278,98 @@ class TestRunnerUsageFlushSignal:
             flush_request_id="request-1",
         )
 
+    def test_unmarked_signal_does_not_flush_model_observations(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ) -> None:
+        billing_flushed = threading.Event()
+
+        with (
+            patch.object(
+                usage,
+                "flush_usage_events",
+                side_effect=lambda *, trigger: billing_flushed.set() or 0,
+            ) as flush_usage_events,
+            patch.object(
+                usage,
+                "flush_model_usage_observations",
+            ) as flush_model_usage_observations,
+        ):
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+            assert billing_flushed.wait(timeout=1)
+            wait_for_usage_flush_worker_to_stop()
+
+        flush_usage_events.assert_called_once_with(trigger="runner")
+        flush_model_usage_observations.assert_not_called()
+        assert_pending(
+            runner_usage_flush_files.pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+        )
+
+    def test_formal_runner_request_flushes_model_observations_before_acknowledgement(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ) -> None:
+        observations_flushed = threading.Event()
+        runner_usage_flush_files.write_usage_flush_request()
+
+        with (
+            patch.object(usage, "flush_usage_events", return_value=0) as flush_usage_events,
+            patch.object(
+                usage,
+                "flush_model_usage_observations",
+                side_effect=lambda *, trigger: observations_flushed.set() or 0,
+            ) as flush_model_usage_observations,
+        ):
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+            assert observations_flushed.wait(timeout=1)
+            wait_for_usage_flush_worker_to_stop()
+
+        flush_usage_events.assert_called_once_with(trigger="runner")
+        flush_model_usage_observations.assert_called_once_with(trigger="runner")
+        assert_pending(
+            runner_usage_flush_files.pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id=_DEFAULT_USAGE_FLUSH_REQUEST_ID,
+        )
+
+    def test_formal_runner_request_attempts_observations_when_billing_flush_fails(
+        self,
+        runner_usage_flush_files: RunnerUsageFlushFiles,
+        mitm_ctx,
+    ) -> None:
+        observations_flushed = threading.Event()
+        runner_usage_flush_files.write_usage_flush_request()
+
+        with (
+            mitm_ctx(),
+            patch.object(
+                usage,
+                "flush_usage_events",
+                side_effect=OSError("billing unavailable"),
+            ) as flush_usage_events,
+            patch.object(
+                usage,
+                "flush_model_usage_observations",
+                side_effect=lambda *, trigger: observations_flushed.set() or 0,
+            ) as flush_model_usage_observations,
+        ):
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+            assert observations_flushed.wait(timeout=1)
+            wait_for_usage_flush_worker_to_stop()
+
+        flush_usage_events.assert_called_once_with(trigger="runner")
+        flush_model_usage_observations.assert_called_once_with(trigger="runner")
+        assert_pending(
+            runner_usage_flush_files.pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id=_DEFAULT_USAGE_FLUSH_REQUEST_ID,
+        )
+
     def test_signal_worker_start_handoff_to_closed_shutdown_does_not_spawn_worker(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ) -> None:
@@ -399,7 +492,7 @@ class TestRunnerUsageFlushSignal:
                 "write_pending_snapshot",
                 side_effect=write_pending_snapshot,
             ),
-            patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
+            capture_addon_process_events(),
         ):
             runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             assert snapshotted.wait(timeout=1)
@@ -415,10 +508,8 @@ class TestRunnerUsageFlushSignal:
         pending_report.release()
 
     def test_runner_flush_failure_warns_without_error_text(self):
-        log = MagicMock()
-
         with (
-            patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(
                 usage,
                 "flush_usage_events",
@@ -468,7 +559,7 @@ class TestRunnerUsageFlushSignal:
             str(runner_usage_flush_files.proxy_log_path),
         )
 
-        with patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             runner_flush_lifecycle._flush_usage_for_runner_request()
 
         assert enqueue_calls == 1

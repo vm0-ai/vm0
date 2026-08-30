@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use vsock_guest::{
     handle_connection_with_test_dns_readiness_program,
+    handle_connection_with_test_guest_agent_program,
     handle_connection_with_test_guest_state_restore_program,
     handle_connection_with_test_process_containment,
     handle_connection_with_test_process_containment_and_exec_drain_deadline,
@@ -63,6 +64,14 @@ pub(crate) fn start_guest_connection_with_guest_state_restore_program(
 ) -> (GuestConnectionHandle, UnixStream) {
     start_guest_connection_with_handler(move |stream| {
         handle_connection_with_test_guest_state_restore_program(stream, program)
+    })
+}
+
+pub(crate) fn start_guest_connection_with_guest_agent_program(
+    program: std::path::PathBuf,
+) -> (GuestConnectionHandle, UnixStream) {
+    start_guest_connection_with_handler(move |stream| {
+        handle_connection_with_test_guest_agent_program(stream, program)
     })
 }
 

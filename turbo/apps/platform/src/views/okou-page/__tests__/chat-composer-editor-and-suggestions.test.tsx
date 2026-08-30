@@ -4,7 +4,7 @@ import {
   chatThreadByIdContract,
   chatThreadDraftContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
@@ -30,6 +30,7 @@ import {
   workflowSummary,
 } from "./chat-composer-test-helpers.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached by the time a
@@ -49,25 +50,22 @@ function mountedComposerText(): string {
 }
 
 function suggestionAgent({
-  id,
+  agentId,
   displayName,
   avatarUrl = null,
   visibility = "public",
 }: {
-  readonly id: string;
+  readonly agentId: string;
   readonly displayName: string;
   readonly avatarUrl?: string | null;
   readonly visibility?: "public" | "private";
-}): TeamComposeItem {
-  return {
-    id,
+}): AgentResponse {
+  return createMockAgentResponse({
+    agentId,
     displayName,
-    description: null,
-    sound: null,
     avatarUrl,
     visibility,
-    updatedAt: "2024-01-01T00:00:00Z",
-  };
+  });
 }
 
 beforeEach(() => {
@@ -420,14 +418,14 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
-    context.mocks.data.team([
+    context.mocks.data.agents([
       suggestionAgent({
-        id: AGENT_ID,
+        agentId: AGENT_ID,
         displayName: "Scout",
         avatarUrl: currentAgentAvatarUrl,
       }),
       suggestionAgent({
-        id: OTHER_AGENT_ID,
+        agentId: OTHER_AGENT_ID,
         displayName: "Reviewer",
         avatarUrl: otherAgentAvatarUrl,
       }),
@@ -506,30 +504,30 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
-    context.mocks.data.team([
-      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
+    context.mocks.data.agents([
+      suggestionAgent({ agentId: AGENT_ID, displayName: "Scout" }),
       suggestionAgent({
-        id: alphaAgentId,
+        agentId: alphaAgentId,
         displayName: "Alpha Agent",
         avatarUrl: "preset:0",
       }),
       suggestionAgent({
-        id: privateAgentId,
+        agentId: privateAgentId,
         displayName: "Private Agent",
         visibility: "private",
       }),
       suggestionAgent({
-        id: betaAgentId,
+        agentId: betaAgentId,
         displayName: "Beta Agent",
         avatarUrl: "preset:1",
       }),
       suggestionAgent({
-        id: gammaAgentId,
+        agentId: gammaAgentId,
         displayName: "Gamma Agent",
         avatarUrl: "preset:2",
       }),
       suggestionAgent({
-        id: zetaAgentId,
+        agentId: zetaAgentId,
         displayName: "Zeta Agent",
         avatarUrl: zetaAvatarUrl,
       }),
@@ -629,10 +627,10 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
-    context.mocks.data.team([
-      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
+    context.mocks.data.agents([
+      suggestionAgent({ agentId: AGENT_ID, displayName: "Scout" }),
       suggestionAgent({
-        id: mentionedAgentId,
+        agentId: mentionedAgentId,
         displayName: "Restored Agent",
         avatarUrl: mentionedAgentAvatarUrl,
       }),
@@ -704,12 +702,27 @@ describe("chat composer models", () => {
 
   it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
-    let workflows: ReturnType<typeof workflowSummary>[] = [];
+    const reloadWorkflowsRequested = context.mocks.deferred<void>();
+    const releaseReloadWorkflows = context.mocks.deferred<void>();
+    const reloadedWorkflow = workflowSummary({
+      name: "new-chat-workflow",
+      displayName: "New Chat Workflow",
+      description: "Created by the current chat run",
+      agentId: AGENT_ID,
+    });
+    let workflowPhase: "initial" | "reloaded" = "initial";
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
-    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
-      return respond(200, workflows);
+    context.mocks.api(workflowsCollectionContract.list, async ({ respond }) => {
+      if (workflowPhase === "initial") {
+        return respond(200, []);
+      }
+      if (!reloadWorkflowsRequested.settled()) {
+        reloadWorkflowsRequested.resolve();
+      }
+      await releaseReloadWorkflows.promise;
+      return respond(200, [reloadedWorkflow]);
     });
 
     detachedSetupPage({
@@ -723,28 +736,31 @@ describe("chat composer models", () => {
           `chatThreadWorkflowsChanged:${THREAD_ID}`,
         ),
       ).toBeTruthy();
+      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
     });
-    const editor = await findComposerEditor();
-    await user.click(editor);
+    const thread = await screen.findByLabelText("Chat thread");
+    const initialEditor = await within(thread).findByRole("textbox", {
+      name: "Message",
+    });
+    await user.click(initialEditor);
     await user.keyboard("/");
     await expect(
       screen.findByText("No matching workflows"),
     ).resolves.toBeInTheDocument();
+    const editor = await findComposerEditor();
 
-    workflows = [
-      workflowSummary({
-        name: "new-chat-workflow",
-        displayName: "New Chat Workflow",
-        description: "Created by the current chat run",
-        agentId: AGENT_ID,
-      }),
-    ];
+    workflowPhase = "reloaded";
     act(() => {
       context.mocks.ably.trigger(
         `chatThreadWorkflowsChanged:${THREAD_ID}`,
         null,
       );
     });
+    await reloadWorkflowsRequested.promise;
+    releaseReloadWorkflows.resolve();
 
     await expect(
       screen.findByText("new-chat-workflow"),

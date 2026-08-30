@@ -3,13 +3,13 @@
 import json
 import os
 import stat
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NamedTuple
 
 from mitmproxy import ctx
 
+import addon_process_logging
 import builtin_base_url_template
 import builtin_host_policy
 import matching
@@ -241,7 +241,10 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
             state.failed_reason = "cache_invalid"
             state.loaded_key = None
             state.catalog = None
-            _warn(f"Failed to read builtin firewall catalog cache: {exc}")
+            addon_process_logging.emit_addon_process_event(
+                "warn",
+                f"Failed to read builtin firewall catalog cache: {exc}",
+            )
             return BuiltinFirewallCatalogSnapshot(
                 key,
                 None,
@@ -472,8 +475,3 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
         last_index = reference.end
     result.append(raw_base[last_index:])
     return "".join(result)
-
-
-def _warn(message: str) -> None:
-    with suppress(Exception):
-        ctx.log.warn(message)

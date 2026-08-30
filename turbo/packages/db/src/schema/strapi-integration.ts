@@ -42,7 +42,7 @@ export const strapiIntegrations = pgTable(
 );
 
 export const strapiWorkflowAutomations = pgTable(
-  "zero_workflow_strapi_automations",
+  "workflow_strapi_automations",
   {
     automationId: uuid("automation_id")
       .primaryKey()
@@ -64,7 +64,7 @@ export const strapiWorkflowAutomations = pgTable(
   },
   (table) => {
     return [
-      index("idx_zero_workflow_strapi_automations_integration").on(
+      index("idx_workflow_strapi_automations_integration").on(
         table.integrationId,
       ),
     ];

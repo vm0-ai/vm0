@@ -71,9 +71,20 @@ impl NbdOrphanCandidate {
     }
 }
 
-/// Failure while acquiring a cooperative claim or disconnecting an orphan.
+/// Failure while checking owner liveness, acquiring a claim, or disconnecting an orphan.
 #[derive(Debug, thiserror::Error)]
 pub enum NbdOrphanError {
+    /// Owner liveness could not be established from procfs.
+    #[error("failed to check owner TID {owner_tid} for /dev/nbd{device_index}: {source}")]
+    OwnerLiveness {
+        /// N in `/dev/nbdN`.
+        device_index: u32,
+        /// TID read from `/sys/block/nbdN/pid`.
+        owner_tid: u32,
+        /// Underlying procfs metadata error.
+        #[source]
+        source: std::io::Error,
+    },
     /// The per-index cooperative claim could not be acquired.
     #[error("failed to acquire cooperative claim for /dev/nbd{device_index}: {source}")]
     Claim {
@@ -106,7 +117,7 @@ pub enum NbdOrphanProbe {
     Changed,
     /// The exact observed owner now exists and is ineligible under the policy.
     Live,
-    /// Cooperative claim acquisition failed.
+    /// Owner liveness or cooperative claim acquisition failed.
     Failed(NbdOrphanError),
 }
 
@@ -122,7 +133,7 @@ pub enum NbdOrphanDisconnect {
     Changed,
     /// The exact observed owner now exists and is ineligible under the policy.
     Live,
-    /// Cooperative claim acquisition or netlink disconnect failed.
+    /// Owner liveness, cooperative claim acquisition, or netlink disconnect failed.
     Failed(NbdOrphanError),
 }
 
@@ -143,9 +154,13 @@ enum RevalidatedCandidate<Guard> {
 /// Observe one policy-eligible NBD orphan candidate without acquiring its claim.
 ///
 /// Missing, released, malformed, unreadable, or policy-ineligible sysfs state
-/// returns `None`. The returned candidate must be passed to [`probe`] or
-/// [`disconnect`] before it is treated as current.
-pub fn observe(device_index: u32, policy: NbdOrphanPolicy) -> Option<NbdOrphanCandidate> {
+/// returns `Ok(None)`. Uncertain owner liveness returns an error. A returned
+/// candidate must be passed to [`probe`] or [`disconnect`] before it is treated
+/// as current.
+pub fn observe(
+    device_index: u32,
+    policy: NbdOrphanPolicy,
+) -> Result<Option<NbdOrphanCandidate>, NbdOrphanError> {
     observe_with(
         device_index,
         policy,
@@ -186,24 +201,35 @@ fn observe_with(
     device_index: u32,
     policy: NbdOrphanPolicy,
     read_state: impl FnOnce(u32, NbdOrphanPolicy) -> Option<NbdDeviceState>,
-    owner_exists: impl FnOnce(u32) -> bool,
+    owner_exists: impl FnOnce(u32) -> std::io::Result<bool>,
     current_process_owns: impl FnOnce(u32) -> bool,
-) -> Option<NbdOrphanCandidate> {
-    let state = read_state(device_index, policy)?;
-    if !size_is_eligible(state, policy)
-        || !owner_is_eligible(state.owner_tid, policy, owner_exists, current_process_owns)
-    {
-        return None;
+) -> Result<Option<NbdOrphanCandidate>, NbdOrphanError> {
+    let Some(state) = read_state(device_index, policy) else {
+        return Ok(None);
+    };
+    if !size_is_eligible(state, policy) {
+        return Ok(None);
+    }
+    let owner_is_eligible =
+        owner_is_eligible(state.owner_tid, policy, owner_exists, current_process_owns).map_err(
+            |source| NbdOrphanError::OwnerLiveness {
+                device_index,
+                owner_tid: state.owner_tid,
+                source,
+            },
+        )?;
+    if !owner_is_eligible {
+        return Ok(None);
     }
 
-    Some(candidate_from_state(device_index, state, policy))
+    Ok(Some(candidate_from_state(device_index, state, policy)))
 }
 
 fn probe_with<Guard>(
     candidate: NbdOrphanCandidate,
     try_claim: impl FnOnce(u32) -> std::io::Result<Option<Guard>>,
     read_state: impl FnOnce(u32, NbdOrphanPolicy) -> Option<NbdDeviceState>,
-    owner_exists: impl FnOnce(u32) -> bool,
+    owner_exists: impl FnOnce(u32) -> std::io::Result<bool>,
     current_process_owns: impl FnOnce(u32) -> bool,
 ) -> NbdOrphanProbe {
     match revalidate_with(
@@ -228,7 +254,7 @@ fn disconnect_with<Guard>(
     candidate: NbdOrphanCandidate,
     try_claim: impl FnOnce(u32) -> std::io::Result<Option<Guard>>,
     read_state: impl FnOnce(u32, NbdOrphanPolicy) -> Option<NbdDeviceState>,
-    owner_exists: impl FnOnce(u32) -> bool,
+    owner_exists: impl FnOnce(u32) -> std::io::Result<bool>,
     current_process_owns: impl FnOnce(u32) -> bool,
     disconnect_device: impl FnOnce(u32) -> crate::error::Result<()>,
 ) -> NbdOrphanDisconnect {
@@ -261,7 +287,7 @@ fn revalidate_with<Guard>(
     candidate: NbdOrphanCandidate,
     try_claim: impl FnOnce(u32) -> std::io::Result<Option<Guard>>,
     read_state: impl FnOnce(u32, NbdOrphanPolicy) -> Option<NbdDeviceState>,
-    owner_exists: impl FnOnce(u32) -> bool,
+    owner_exists: impl FnOnce(u32) -> std::io::Result<bool>,
     current_process_owns: impl FnOnce(u32) -> bool,
 ) -> RevalidatedCandidate<Guard> {
     let claim = match try_claim(candidate.device_index) {
@@ -281,12 +307,22 @@ fn revalidate_with<Guard>(
     if current.owner_tid != candidate.owner_tid || !size_is_eligible(current, candidate.policy) {
         return RevalidatedCandidate::Changed;
     }
-    if !owner_is_eligible(
+    let owner_is_eligible = match owner_is_eligible(
         current.owner_tid,
         candidate.policy,
         owner_exists,
         current_process_owns,
     ) {
+        Ok(owner_is_eligible) => owner_is_eligible,
+        Err(source) => {
+            return RevalidatedCandidate::Failed(NbdOrphanError::OwnerLiveness {
+                device_index: candidate.device_index,
+                owner_tid: current.owner_tid,
+                source,
+            });
+        }
+    };
+    if !owner_is_eligible {
         return RevalidatedCandidate::Live;
     }
 
@@ -328,8 +364,8 @@ fn parse_owner_tid(contents: &str) -> Option<u32> {
     owner.parse().ok()
 }
 
-fn proc_tid_exists(owner_tid: u32) -> bool {
-    Path::new(&format!("/proc/{owner_tid}")).exists()
+fn proc_tid_exists(owner_tid: u32) -> std::io::Result<bool> {
+    Path::new(&format!("/proc/{owner_tid}")).try_exists()
 }
 
 fn size_is_eligible(state: NbdDeviceState, policy: NbdOrphanPolicy) -> bool {
@@ -339,13 +375,17 @@ fn size_is_eligible(state: NbdDeviceState, policy: NbdOrphanPolicy) -> bool {
 fn owner_is_eligible(
     owner_tid: u32,
     policy: NbdOrphanPolicy,
-    owner_exists: impl FnOnce(u32) -> bool,
+    owner_exists: impl FnOnce(u32) -> std::io::Result<bool>,
     current_process_owns: impl FnOnce(u32) -> bool,
-) -> bool {
+) -> std::io::Result<bool> {
     match policy {
-        NbdOrphanPolicy::DeadOwner => !owner_exists(owner_tid),
+        NbdOrphanPolicy::DeadOwner => owner_exists(owner_tid).map(|exists| !exists),
         NbdOrphanPolicy::DeadOrCurrentProcessOwnerWithNonZeroSize => {
-            current_process_owns(owner_tid) || !owner_exists(owner_tid)
+            if current_process_owns(owner_tid) {
+                Ok(true)
+            } else {
+                owner_exists(owner_tid).map(|exists| !exists)
+            }
         }
     }
 }
@@ -465,21 +505,21 @@ mod tests {
             3,
             NbdOrphanPolicy::DeadOwner,
             |_, _| Some(state(123, None)),
-            |_| false,
+            |_| Ok(false),
             |_| panic!("dead-owner policy must not inspect current-process membership"),
         );
         assert!(
-            matches!(dead, Some(candidate) if candidate.owner_tid() == 123 && candidate.size_sectors().is_none())
+            matches!(dead, Ok(Some(candidate)) if candidate.owner_tid() == 123 && candidate.size_sectors().is_none())
         );
 
         let live = observe_with(
             3,
             NbdOrphanPolicy::DeadOwner,
             |_, _| Some(state(123, None)),
-            |_| true,
+            |_| Ok(true),
             |_| panic!("dead-owner policy must not inspect current-process membership"),
         );
-        assert!(live.is_none());
+        assert!(matches!(live, Ok(None)));
     }
 
     #[test]
@@ -492,16 +532,16 @@ mod tests {
             |_| panic!("zero size must be rejected before owner liveness"),
             |_| panic!("zero size must be rejected before owner membership"),
         );
-        assert!(zero_size.is_none());
+        assert!(matches!(zero_size, Ok(None)));
 
         let dead = observe_with(
             3,
             policy,
             |_, _| Some(state(123, Some(8))),
-            |_| false,
+            |_| Ok(false),
             |_| false,
         );
-        assert!(matches!(dead, Some(candidate) if candidate.size_sectors() == Some(8)));
+        assert!(matches!(dead, Ok(Some(candidate)) if candidate.size_sectors() == Some(8)));
     }
 
     #[test]
@@ -514,16 +554,54 @@ mod tests {
             |_| panic!("current-process owner must short-circuit liveness"),
             |_| true,
         );
-        assert!(local.is_some());
+        assert!(matches!(local, Ok(Some(_))));
 
         let foreign = observe_with(
             3,
             policy,
             |_, _| Some(state(123, Some(8))),
-            |_| true,
+            |_| Ok(true),
             |_| false,
         );
-        assert!(foreign.is_none());
+        assert!(matches!(foreign, Ok(None)));
+    }
+
+    #[test]
+    fn observation_reports_owner_liveness_failures_for_both_policies() {
+        for (policy, size_sectors) in [
+            (NbdOrphanPolicy::DeadOwner, None),
+            (
+                NbdOrphanPolicy::DeadOrCurrentProcessOwnerWithNonZeroSize,
+                Some(8),
+            ),
+        ] {
+            let outcome = observe_with(
+                3,
+                policy,
+                |_, _| Some(state(123, size_sectors)),
+                |_| {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "procfs permission denied",
+                    ))
+                },
+                |_| false,
+            );
+
+            match outcome {
+                Err(NbdOrphanError::OwnerLiveness {
+                    device_index,
+                    owner_tid,
+                    source,
+                }) => {
+                    assert_eq!(device_index, 3);
+                    assert_eq!(owner_tid, 123);
+                    assert_eq!(source.kind(), std::io::ErrorKind::PermissionDenied);
+                    assert_eq!(source.to_string(), "procfs permission denied");
+                }
+                other => panic!("expected owner liveness failure for {policy:?}, got {other:?}"),
+            }
+        }
     }
 
     #[test]
@@ -553,7 +631,7 @@ mod tests {
                 proc_tid_exists,
                 crate::is_our_thread,
             )
-            .is_some()
+            .is_ok_and(|candidate| candidate.is_some())
         );
         assert!(
             observe_with(
@@ -563,7 +641,7 @@ mod tests {
                 proc_tid_exists,
                 crate::is_our_thread,
             )
-            .is_none()
+            .is_ok_and(|candidate| candidate.is_none())
         );
         assert!(
             observe_with(
@@ -573,7 +651,7 @@ mod tests {
                 proc_tid_exists,
                 crate::is_our_thread,
             )
-            .is_some()
+            .is_ok_and(|candidate| candidate.is_some())
         );
         assert!(
             observe_with(
@@ -583,7 +661,7 @@ mod tests {
                 proc_tid_exists,
                 crate::is_our_thread,
             )
-            .is_none()
+            .is_ok_and(|candidate| candidate.is_none())
         );
         assert!(
             child
@@ -653,10 +731,34 @@ mod tests {
             NbdOrphanCandidate::from_dead_owner_observation(3, 123),
             |_| Ok(Some(())),
             |_, _| Some(state(123, None)),
-            |_| true,
+            |_| Ok(true),
             |_| panic!("dead-owner policy must not inspect current-process membership"),
         );
         assert!(matches!(outcome, NbdOrphanProbe::Live));
+    }
+
+    #[test]
+    fn probe_reports_owner_liveness_failure() {
+        let outcome = probe_with(
+            NbdOrphanCandidate::from_dead_owner_observation(3, 123),
+            |_| Ok(Some(())),
+            |_, _| Some(state(123, None)),
+            |_| Err(std::io::Error::other("procfs unavailable")),
+            |_| panic!("dead-owner policy must not inspect current-process membership"),
+        );
+
+        match outcome {
+            NbdOrphanProbe::Failed(NbdOrphanError::OwnerLiveness {
+                device_index,
+                owner_tid,
+                source,
+            }) => {
+                assert_eq!(device_index, 3);
+                assert_eq!(owner_tid, 123);
+                assert_eq!(source.to_string(), "procfs unavailable");
+            }
+            other => panic!("expected owner liveness failure, got {other:?}"),
+        }
     }
 
     #[test]
@@ -698,7 +800,7 @@ mod tests {
             },
             |_| {
                 assert!(!dropped_for_owner.get());
-                false
+                Ok(false)
             },
             |_| panic!("dead-owner policy must not inspect current-process membership"),
         );
@@ -782,11 +884,49 @@ mod tests {
             NbdOrphanCandidate::from_dead_owner_observation(3, 123),
             |_| Ok(Some(())),
             |_, _| Some(state(123, None)),
-            |_| true,
+            |_| Ok(true),
             |_| panic!("dead-owner policy must not inspect current-process membership"),
             |_| panic!("live owner must not be disconnected"),
         );
         assert!(matches!(outcome, NbdOrphanDisconnect::Live));
+    }
+
+    #[test]
+    fn disconnect_reports_owner_liveness_failures_without_netlink() {
+        for candidate in [
+            NbdOrphanCandidate::from_dead_owner_observation(3, 123),
+            local_or_dead_candidate(3, 123, 8),
+        ] {
+            let outcome = disconnect_with(
+                candidate,
+                |_| Ok(Some(())),
+                |_, policy| match policy {
+                    NbdOrphanPolicy::DeadOwner => Some(state(123, None)),
+                    NbdOrphanPolicy::DeadOrCurrentProcessOwnerWithNonZeroSize => {
+                        Some(state(123, Some(8)))
+                    }
+                },
+                |_| Err(std::io::Error::other("procfs unavailable")),
+                |_| false,
+                |_| panic!("uncertain owner must not be disconnected"),
+            );
+
+            match outcome {
+                NbdOrphanDisconnect::Failed(NbdOrphanError::OwnerLiveness {
+                    device_index,
+                    owner_tid,
+                    source,
+                }) => {
+                    assert_eq!(device_index, 3);
+                    assert_eq!(owner_tid, 123);
+                    assert_eq!(source.to_string(), "procfs unavailable");
+                }
+                other => panic!(
+                    "expected owner liveness failure for {:?}, got {other:?}",
+                    candidate.policy
+                ),
+            }
+        }
     }
 
     #[test]
@@ -798,7 +938,7 @@ mod tests {
             local_or_dead_candidate(3, 123, 8),
             |_| Ok(Some(DropGuard(dropped_for_claim))),
             |_, _| Some(state(123, Some(16))),
-            |_| false,
+            |_| Ok(false),
             |_| false,
             |_| {
                 assert!(!dropped_for_disconnect.get());
@@ -817,7 +957,7 @@ mod tests {
             NbdOrphanCandidate::from_dead_owner_observation(3, 123),
             |_| Ok(Some(())),
             |_, _| Some(state(123, None)),
-            |_| false,
+            |_| Ok(false),
             |_| panic!("dead-owner policy must not inspect current-process membership"),
             |_| Err(NbdCowError::Io(std::io::Error::other("netlink failed"))),
         );

@@ -142,19 +142,6 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "output-tool",
-    seqId: 10,
-    threadId: THREAD_ID,
-    eventType: "output.tool",
-    runId: "run-1",
-    content: null,
-    toolUseId: "tool-use-1",
-    action: "write",
-    status: "pending",
-    summary: "Write the generated migration",
-    createdAt: CREATED_AT,
-  },
-  {
     id: "run-queued",
     seqId: 10,
     threadId: THREAD_ID,
@@ -329,21 +316,6 @@ describe("ChatEvent catalog", () => {
         encryptedParams: "must-stay-server-side",
       }).success,
     ).toBe(false);
-    const tool = chatEvents.find((event) => {
-      return event.eventType === "output.tool";
-    });
-    if (tool === undefined) {
-      throw new Error("Expected output.tool fixture");
-    }
-    for (const invalid of [
-      { ...tool, action: "execute" },
-      { ...tool, status: "running" },
-      { ...tool, summary: "first\nsecond" },
-      { ...tool, summary: "x".repeat(241) },
-      { ...tool, rawResult: "secret" },
-    ]) {
-      expect(chatEventSchema.safeParse(invalid).success).toBe(false);
-    }
     expect(
       chatEventSchema.safeParse({
         ...prompt,

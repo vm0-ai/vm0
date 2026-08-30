@@ -34,6 +34,10 @@ import {
   handleWorkflowAutomationInternalCallback,
   handleWorkflowAutomationInternalCallback$,
 } from "./workflow-automation-run-callback.service";
+import {
+  handleWorkflowAutomationResultEmailInternalCallback,
+  handleWorkflowAutomationResultEmailInternalCallback$,
+} from "./internal-workflow-automation-result-email-callback.service";
 import { handleTerminalGoalContinuation$ } from "./goal-continuation.service";
 
 const L = logger("AgentRunCallback");
@@ -143,6 +147,7 @@ const dispatchInternalCallback$ = command(
                 {
                   chatThreadId,
                   dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+                  goalSchedulerOrigin: "chat_callback",
                   timing,
                 },
                 inputSignal,
@@ -224,6 +229,13 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
+      case "workflow-automation:result-email": {
+        return await set(
+          handleWorkflowAutomationResultEmailInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
     }
   },
 );
@@ -296,7 +308,7 @@ const dispatchSingleInternalCallback$ = command(
   },
 );
 
-async function dispatchRunCallbacks(
+export async function dispatchRunCallbacks(
   db: Db,
   runId: string,
   status: TerminalCallbackStatus,
@@ -635,6 +647,12 @@ async function dispatchInternalCallbackWithoutCcstate(
         kind,
         callback: callbackEnvelope(input),
       });
+    }
+    case "workflow-automation:result-email": {
+      return await handleWorkflowAutomationResultEmailInternalCallback(
+        input.db,
+        callbackEnvelope(input),
+      );
     }
   }
 }

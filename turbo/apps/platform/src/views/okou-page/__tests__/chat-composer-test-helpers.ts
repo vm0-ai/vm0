@@ -28,7 +28,10 @@ import {
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import { expect, vi } from "vitest";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -279,27 +282,25 @@ export function mockAgent(options?: {
 }): void {
   const agents = [
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       displayName: "Scout",
       description: null,
       sound: null,
       avatarUrl: null,
-      updatedAt: "2024-01-01T00:00:00Z",
     },
     ...(options?.includeOtherAgent
       ? [
           {
-            id: OTHER_AGENT_ID,
+            agentId: OTHER_AGENT_ID,
             displayName: "Other Agent",
             description: null,
             sound: null,
             avatarUrl: null,
-            updatedAt: "2024-01-01T00:00:00Z",
           },
         ]
       : []),
   ];
-  context.mocks.data.team(agents);
+  context.mocks.data.agents(agents);
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const isOtherAgent = params.id === OTHER_AGENT_ID;
     return respond(200, {
@@ -369,13 +370,17 @@ export function mockThread(options?: {
     });
   });
   context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
-    return respond(200, {
-      rows: mockChatEventRows(
-        normalizeMockChatEvents(options?.messages ?? []),
-      ).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      }),
-    });
+    return respond(
+      200,
+      chatEventRowsResponse(
+        mockChatEventRows(
+          normalizeMockChatEvents(options?.messages ?? []),
+        ).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+        query,
+      ),
+    );
   });
 }
 

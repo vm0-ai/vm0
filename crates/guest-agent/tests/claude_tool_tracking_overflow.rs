@@ -90,7 +90,10 @@ async fn claude_tool_tracking_overflow_preserves_later_watchdog_coverage()
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt_lines.join("\n"), 1, 1)?;
-        std::env::set_var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV, "1");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            "1",
+        );
     }
 
     let runtime = common::guest_runtime_from_process_env()?;

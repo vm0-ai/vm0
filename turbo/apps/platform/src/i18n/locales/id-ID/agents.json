@@ -614,19 +614,23 @@
     "pinAgentDescription": "Pilih agen untuk disematkan ke sidebar.",
     "pinned": "Disematkan",
     "pinnedAgents": "Agen yang disematkan",
+    "pinSuccess": "{{agentName}} disematkan",
     "resultCount_other": "{{count}} hasil",
     "searchAgents": "Cari agen...",
     "searchAgentsAndChats": "Cari agen dan chat...",
-    "searchChatsAndMessages": "Cari chat dan pesan...",
     "searching": "Mencari...",
+    "searchWorkspace": "Cari chat, pesan, alur kerja, dan artefak...",
     "sections": {
+      "artifacts": "Artefak",
       "chats": "Chat",
       "lead": "Utama",
       "messages": "Pesan",
-      "others": "Lainnya"
+      "others": "Lainnya",
+      "workflows": "Alur kerja"
     },
     "talkTo": "Ngobrol dengan",
-    "unpin": "Lepaskan sematan"
+    "unpin": "Lepaskan sematan",
+    "unpinSuccess": "Sematan {{agentName}} dilepas"
   },
   "status": {
     "unread": "Belum dibaca"

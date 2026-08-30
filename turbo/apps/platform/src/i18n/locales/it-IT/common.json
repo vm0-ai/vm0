@@ -123,7 +123,10 @@
         "cacheMiss": "Nessuno spazio di lavoro nella cache corrispondeva alla chiave di riutilizzo.",
         "deviceLimitMismatch": "Esiste una voce del pool inattivo ma lo stato del limitatore di velocità del dispositivo non corrisponde.",
         "diskPressure": "Il riutilizzo dello spazio di lavoro è stato ignorato a causa della pressione sul disco del runner.",
+        "environment": "Ambiente",
         "featureDisabled": "Il riutilizzo del sandbox è disabilitato per questa esecuzione.",
+        "generation": "Generazione",
+        "hostname": "Nome host",
         "invalidMetadata": "I metadati dello spazio di lavoro nella cache non erano validi.",
         "invalidWorkingDir": "Non è stato possibile riutilizzare la directory di lavoro richiesta.",
         "lockBusy": "Un'altra esecuzione stava preparando lo stesso spazio di lavoro.",
@@ -131,21 +134,28 @@
         "noSessionId": "Risultato legacy: il motivo esatto per cui la sandbox non è stata riutilizzata non è disponibile.",
         "notConfigured": "Il riutilizzo dello spazio di lavoro non era configurato per questa esecuzione.",
         "notReused": "Non riutilizzato",
+        "outcomeUnavailableDescription": "Non sono disponibili ulteriori dettagli.",
         "poolMiss": "Nessun sandbox corrispondente trovato nel pool inattivo.",
         "profileMismatch": "La voce del pool inattivo esiste ma il suo profilo non corrisponde.",
         "provisioning": "Provisioning",
         "reused": "Riutilizzato",
         "reusedDescription": "La sandbox è stata riattivata dal pool inattivo.",
+        "runnerId": "ID runner",
         "sandbox": "Sandbox",
         "sandboxPrepareFallback": "È stato trovato uno spazio di lavoro nella cache, ma non è stato possibile utilizzarlo dopo la preparazione della sandbox.",
         "sandboxReusedDescription": "Lo spazio di lavoro è rimasto disponibile nella sandbox riutilizzata.",
         "startup": "Avvio",
         "startupCold": "Avvio a freddo",
+        "startupColdDescription": "Sono stati preparati una nuova sandbox e un nuovo spazio di lavoro.",
         "startupSandbox": "Riutilizzo della sandbox",
+        "startupSandboxDescription": "La sandbox e il relativo spazio di lavoro sono stati riutilizzati.",
         "startupUnknown": "Sconosciuto",
+        "startupUnknownDescription": "I dettagli sul riutilizzo all'avvio non sono disponibili.",
         "startupWorkspace": "Riutilizzo dello spazio di lavoro",
+        "startupWorkspaceDescription": "Una nuova sandbox ha ripristinato uno spazio di lavoro dalla cache.",
         "unavailable": "Non disponibile",
         "unparkFailed": "Impossibile riattivare la sandbox; ne è stata predisposta una nuova.",
+        "version": "Versione",
         "workspace": "Spazio di lavoro",
         "workspaceNoReuseKey": "Non era disponibile alcuna chiave di riutilizzo dello spazio di lavoro.",
         "workspaceReusedDescription": "Lo spazio di lavoro è stato ripristinato dalla cache del runner."
@@ -445,7 +455,6 @@
       "ariaLabel": "Barra laterale",
       "chat": "Chat",
       "collapse": "Comprimi la barra laterale",
-      "expand": "Espandi la barra laterale",
       "hideChatList": "Nascondi elenco chat",
       "manage": "Gestisci",
       "mobile": {
@@ -469,7 +478,7 @@
         "workflows": "Flussi di lavoro",
         "works": "Integrazioni"
       },
-      "searchConversations": "Cerca conversazioni",
+      "searchWorkspace": "Cerca nell'area di lavoro",
       "showChatList": "Mostra elenco chat",
       "workspaceSwitcher": {
         "create": "Crea area di lavoro",
@@ -521,7 +530,6 @@
         "arrow": "Freccia",
         "box": "Rettangolo",
         "pen": "Disegna",
-        "redact": "Oscura",
         "text": "Testo"
       },
       "undo": "Annulla"
@@ -1085,6 +1093,7 @@
         "secondFactorDescription": "Questo accesso richiede un ulteriore passaggio di verifica non supportato da questa pagina. Ricomincia per provare un altro metodo di accesso.",
         "secondFactorTitle": "È richiesta un'ulteriore verifica",
         "selectOrganization": "Continua con {{organizationName}}",
+        "signedInAs": "Accesso eseguito come {{identifier}}",
         "unsupportedDescription": "Il tuo account ha restituito un passaggio di autenticazione non supportato da questa pagina. Ricomincia per provare un altro metodo di accesso.",
         "unsupportedTitle": "Passaggio di accesso non disponibile"
       },
@@ -1093,7 +1102,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usa l'accesso attuale",
         "addAccount": "Aggiungi account",
         "appleMethod": "Continua con Apple",
         "back": "Indietro",
@@ -1123,6 +1131,7 @@
         "hidePassword": "Nascondi password",
         "identifierLabel": "Indirizzo email o nome utente",
         "identifierPlaceholder": "Inserisci il tuo indirizzo email o nome utente",
+        "lastUsed": "Ultimo utilizzo",
         "methodsHelpPrompt": "Non hai nessuna di queste opzioni?",
         "newPasswordLabel": "Nuova password",
         "newPasswordSubtitle": "Per motivi di sicurezza, è richiesto di resettare la tua password.",
@@ -1160,7 +1169,6 @@
         "verify": "Verifica"
       },
       "signUp": {
-        "action": "Usa la registrazione attuale",
         "alreadyHaveAccount": "Hai già un account?",
         "appleMethod": "Continua con Apple",
         "back": "Indietro",
@@ -1716,7 +1724,6 @@
         "inviteMember": "Invita umani 🤝",
         "otherChannels": "Telegram e telefono"
       },
-      "invitePeople": "Invita persone",
       "taglines": {
         "anonymous": {
           "buildSomething": "Pronto a costruire qualcosa?",
@@ -1918,18 +1925,17 @@
       "agentSuggestions": "Agenti",
       "configureModel": "Configura modello",
       "createWorkflow": "Crea flusso di lavoro",
+      "imageModelForThisChat": "Modello di immagini per questa chat",
       "message": "Messaggio",
+      "modelForThisChat": "Modello per questa chat",
       "placeholder": "Chiedimi di automatizzare i flussi di lavoro, gestire le attività...",
       "selectedModelUnavailable": "Il modello selezionato non è disponibile. Configuralo prima dell'invio.",
       "selectedModelUnavailableToast": "Il modello selezionato non è disponibile",
       "selectModel": "Seleziona modello",
-      "setAsDefault": "Imposta come predefinito",
-      "temporaryFastModeDisabledNotice": "La modalità Fast è temporaneamente disattivata per questa esecuzione",
-      "temporaryFastModeEnabledNotice": "La modalità Fast è temporaneamente attivata per questa esecuzione",
-      "temporaryImageModelNotice": "Passaggio temporaneo a {{model}} per le immagini",
-      "temporaryModelNotice": "Passaggio temporaneo a {{model}}",
-      "temporaryVideoModelNotice": "Passaggio temporaneo a {{model}} per i video",
+      "temporarilySwitchTo": "Passa temporaneamente a",
       "threadSuggestions": "Thread di chat",
+      "useForFutureChats": "Usa questo modello per le chat future",
+      "videoModelForThisChat": "Modello video per questa chat",
       "visualAttachmentsUnsupported": "{{modelName}} non supporta immagini o video. Passa a un modello con capacità visive per allegarli.",
       "workflows": {
         "empty": "Nessun flusso di lavoro corrispondente",
@@ -1967,6 +1973,7 @@
       "available_one": "Connettori disponibili per la connessione ({{count}})",
       "available_many": "Connettori disponibili per la connessione ({{count}})",
       "available_other": "Connettori disponibili per la connessione ({{count}})",
+      "back": "Indietro",
       "configurePermissions": "Configura le autorizzazioni {{connectorName}}",
       "customAuthorizeDescription": "Esamina, connetti e autorizza questo connettore personalizzato per l'agente.",
       "defaultAccountFor": "{{connector}} · Account predefinito in uso: {{account}}",
@@ -2024,7 +2031,7 @@
       "agents": "Agenti",
       "back": "Indietro",
       "content": "Contenuto",
-      "description": "Inoltra il contenuto selezionato a un agente o a una chat.",
+      "description": "Invia il contenuto selezionato a un agente o a una chat per continuare a lavorarci.",
       "noResults": "Nessun agente o chat trovato",
       "search": "Cerca agenti e chat...",
       "sent": "Inoltrato correttamente",
@@ -2348,48 +2355,6 @@
       "copied": "Copiato",
       "deleted": "Chat eliminata"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Modifica di file",
-            "singular": "Modifica di un file"
-          },
-          "terminal": {
-            "plural": "File modificati",
-            "singular": "File modificato"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Lettura di file",
-            "singular": "Lettura di un file"
-          },
-          "terminal": {
-            "plural": "File letti",
-            "singular": "File letto"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Esecuzione di comandi",
-            "singular": "Esecuzione di un comando"
-          },
-          "terminal": {
-            "plural": "Comandi eseguiti",
-            "singular": "Comando eseguito"
-          }
-        }
-      },
-      "collapse": "Comprimi attività strumenti",
-      "expand": "Espandi attività strumenti",
-      "status": {
-        "cancelled": "Annullato",
-        "error": "Non riuscito",
-        "pending": "In corso",
-        "success": "Completato"
-      }
-    },
     "voice": {
       "checkingLimit": "Controllo del limite di input vocale",
       "input": "Ingresso vocale",
@@ -2463,11 +2428,10 @@
       "summaryOne_one": "",
       "summaryOne_many": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} richiedono attenzione",
+      "summaryWithAttention": "{{value}}/{{total}} richiedono attenzione",
       "summaryWithAttention_one": "",
       "summaryWithAttention_many": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Applicare",
@@ -2531,6 +2495,8 @@
       "access": {
         "add": "Aggiungi accesso",
         "manage": "Gestisci l'accesso {{connector}}",
+        "summaryMany": "{{value}} agenti",
+        "unavailable": "Accesso non disponibile",
         "usedBy": "Utilizzato da "
       },
       "categories": {
@@ -5089,6 +5055,20 @@
         "sectionTitle": "Conto e sicurezza"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Applica una palette luminosa e delicata a ogni livello dell'interfaccia.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema colore"
+        },
         "description": "Scegli l'aspetto dell'interfaccia.",
         "sectionTitle": "Aspetto",
         "theme": {
@@ -5390,15 +5370,20 @@
       "viewSource": "Codice del diagramma"
     },
     "notFound": {
+      "action": "Torna alla home",
       "description": "La pagina che stai cercando non esiste.",
       "title": "Pagina non trovata"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Questa conversazione condivisa non esiste.",
+    "handoffDescription": "{{assistantName}} porta il contesto in una nuova chat",
+    "handoffPrompt": "Continua questa conversazione condivisa con me: {{url}}",
+    "makeConversationYours": "Fai tua questa conversazione",
     "notFoundTitle": "Conversazione condivisa non trovata",
-    "tryOkou": "Prova {{assistantName}}"
+    "share": "Condividi",
+    "signIn": "Accedi",
+    "signUp": "Registrati",
+    "tryItYourself": "Provalo tu"
   },
   "usage": {
     "displayNames": {
@@ -6149,6 +6134,69 @@
       },
       "title": "Flussi di lavoro",
       "viewAutomations": "Visualizza le automazioni"
+    },
+    "official": {
+      "activeInstallationDescription": "Questo workflow ufficiale resta operativo e i suoi contenuti gestiti rimangono di sola lettura.",
+      "activeInstallationTitle": "Workflow ufficiale",
+      "agent": "Agente",
+      "automationCount_one": "{{count}} automazione",
+      "automationCount_many": "",
+      "automationCount_other": "{{count}} automazioni",
+      "badge": "Ufficiale",
+      "browse": "Sfoglia gli ufficiali",
+      "chooseValue": "Scegli un valore",
+      "copySucceededUninstallFailed": "La copia è pronta, ma non è stato possibile disinstallare il workflow ufficiale originale.",
+      "description": "Installa workflow gestiti e mantenuti da vm0.",
+      "empty": "Non sono disponibili workflow ufficiali.",
+      "includedAutomations": "Automazioni incluse",
+      "install": "Installa",
+      "installDescription": "Scegli un agente e completa tutti i parametri obbligatori. Verranno installate tutte le automazioni incluse.",
+      "installed": "Workflow ufficiale installato",
+      "installErrorDescription": "Controlla l’agente e i valori dei parametri, quindi riprova.",
+      "installErrorTitle": "Impossibile installare il workflow ufficiale",
+      "installTitle": "Installa {{name}}",
+      "intendedOff": "deve essere disattivato",
+      "intendedOn": "deve essere attivato",
+      "loadErrorDescription": "Questo catalogo potrebbe non essere disponibile o abilitato per il tuo account.",
+      "loadErrorTitle": "Impossibile caricare i workflow ufficiali",
+      "no": "No",
+      "noParameters": "Non sono richiesti parametri.",
+      "noResults": "Nessun workflow ufficiale corrisponde alla ricerca.",
+      "notFound": "Questo workflow ufficiale non è stato trovato.",
+      "parameterCount_one": "{{count}} parametro",
+      "parameterCount_many": "",
+      "parameterCount_other": "{{count}} parametri",
+      "parameterRequired": "{{key}} (obbligatorio)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Riconfigura",
+      "reconfigured": "Workflow ufficiale riconfigurato",
+      "reconfigureDescription": "Aggiorna i parametri tipizzati senza sostituire questo workflow o le sue automazioni.",
+      "reconfigureDialogDescription": "Controlla ogni automazione gestita e aggiornane i parametri.",
+      "reconfigureErrorDescription": "Controlla i valori obbligatori e riprova.",
+      "reconfigureErrorTitle": "Impossibile riconfigurare il workflow ufficiale",
+      "reconfigureTitle": "Parametri di installazione",
+      "reconfigureUnavailable": "I metadati autorevoli dei parametri non sono temporaneamente disponibili.",
+      "retiredBadge": "Ufficiale · Ritirato",
+      "retiredDefinitionDescription": "Questa definizione conservata può essere visualizzata, ma non può più essere installata.",
+      "retiredInstallationDescription": "Questa definizione è stata ritirata. L’installazione esistente resta operativa e di sola lettura finché non viene disinstallata.",
+      "retiredInstallationTitle": "Workflow ufficiale ritirato",
+      "retiredTitle": "Definizione ritirata",
+      "retry": "Riprova",
+      "search": "Cerca workflow ufficiali",
+      "selectAgent": "Seleziona un agente",
+      "statusCurrent": "Aggiornato",
+      "statusFailed": "Non riuscito",
+      "statusNeedsReconfiguration": "Richiede riconfigurazione",
+      "statusReconciling": "Sincronizzazione",
+      "title": "Workflow ufficiali",
+      "unavailableInstallationDescription": "La definizione accettata non è temporaneamente disponibile. I controlli operativi esistenti restano disponibili.",
+      "unavailableInstallationTitle": "Definizione ufficiale non disponibile",
+      "uninstall": "Disinstalla",
+      "uninstallConfirm": "Questa operazione rimuove l’installazione ufficiale e tutte le sue automazioni. Non può essere annullata.",
+      "uninstallDescription": "Rimuovi questa installazione di workflow ufficiale tramite il relativo ciclo di vita gestito.",
+      "uninstallTitle": "Disinstalla workflow ufficiale",
+      "viewAndInstall": "Visualizza e installa",
+      "yes": "Sì"
     }
   },
   "works": {

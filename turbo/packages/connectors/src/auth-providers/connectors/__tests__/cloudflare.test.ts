@@ -192,6 +192,7 @@ describe("connector/providers/cloudflare", () => {
         accessToken: "new-cloudflare-access-token",
         refreshToken: "new-cloudflare-refresh-token",
         expiresIn: 7200,
+        scopes: null,
       });
     });
 
@@ -216,6 +217,7 @@ describe("connector/providers/cloudflare", () => {
         accessToken: "new-cloudflare-access-token",
         refreshToken: null,
         expiresIn: 7200,
+        scopes: null,
       });
     });
   });

@@ -12,6 +12,23 @@ static SANDBOX_USER_CREDENTIALS: OnceLock<UserCredentials> = OnceLock::new();
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
 static SANDBOX_USER_CREDENTIALS_INIT: Mutex<()> = Mutex::new(());
 
+const SANDBOX_USER_BASE_PATH: &str = "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games";
+const AGENT_SHELL: &str = "/bin/bash";
+// [sync:etc-environment] Keep in sync with:
+// - crates/runner/scripts/customize-rootfs.sh
+// - .github/scripts/runner-behavior-exec.sh (Test 10)
+const TRUSTED_ROOTFS_ENVIRONMENT: [(&str, &str); 6] = [
+    ("LANG", "C.UTF-8"),
+    ("NPM_CONFIG_UPDATE_NOTIFIER", "false"),
+    (
+        "NODE_EXTRA_CA_CERTS",
+        "/usr/local/share/ca-certificates/vm0-proxy-ca.crt",
+    ),
+    ("SSL_CERT_FILE", "/etc/ssl/certs/ca-certificates.crt"),
+    ("REQUESTS_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt"),
+    ("CARGO_HTTP_CAINFO", "/etc/ssl/certs/ca-certificates.crt"),
+];
+
 #[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct UserCredentials {
@@ -73,6 +90,36 @@ pub(crate) fn apply_command_identity(command: &mut Command, sudo: bool) -> io::R
         #[cfg(not(any(debug_assertions, feature = "test-support")))]
         TargetIdentity::User(credentials) => apply_credentials(command, credentials),
     }
+}
+
+/// Install the trusted Agent environment without sourcing sandbox-owned shell
+/// state during fixed launch.
+pub(crate) fn configure_agent_command_environment(command: &mut Command) -> io::Result<()> {
+    command
+        .envs(TRUSTED_ROOTFS_ENVIRONMENT)
+        .env("SHELL", AGENT_SHELL);
+
+    #[cfg(any(debug_assertions, feature = "test-support"))]
+    {
+        command.env("PATH", SANDBOX_USER_BASE_PATH);
+        Ok(())
+    }
+
+    #[cfg(not(any(debug_assertions, feature = "test-support")))]
+    {
+        let home = sandbox_user_home()?;
+        command.env("PATH", sandbox_user_path(&home));
+        Ok(())
+    }
+}
+
+#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
+fn sandbox_user_path(home: &std::path::Path) -> String {
+    format!(
+        "{SANDBOX_USER_BASE_PATH}:{}/go/bin:{}/.cargo/bin",
+        home.display(),
+        home.display()
+    )
 }
 
 fn target_identity(sudo: bool) -> io::Result<TargetIdentity> {
@@ -273,6 +320,34 @@ fn parse_required_u32(value: Option<&str>, field: &str) -> io::Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn sandbox_user_path_matches_trusted_rootfs_profile() {
+        assert_eq!(
+            sandbox_user_path(Path::new("/home/user")),
+            "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/user/go/bin:/home/user/.cargo/bin"
+        );
+    }
+
+    #[test]
+    fn agent_environment_preserves_trusted_defaults() {
+        let mut command = Command::new("true");
+        configure_agent_command_environment(&mut command).unwrap();
+
+        for (key, expected) in TRUSTED_ROOTFS_ENVIRONMENT {
+            let actual = command
+                .get_envs()
+                .find_map(|(candidate, value)| (candidate == key).then_some(value))
+                .flatten();
+            assert_eq!(actual, Some(std::ffi::OsStr::new(expected)));
+        }
+        let shell = command
+            .get_envs()
+            .find_map(|(candidate, value)| (candidate == "SHELL").then_some(value))
+            .flatten();
+        assert_eq!(shell, Some(std::ffi::OsStr::new(AGENT_SHELL)));
+    }
 
     #[test]
     fn parse_user_credentials_includes_primary_and_supplementary_groups() {

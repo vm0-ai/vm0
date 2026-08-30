@@ -1,5 +1,86 @@
 # Changelog
 
+## [0.19.126](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.125...vsock-guest-v0.19.126) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
+## [0.19.125](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.124...vsock-guest-v0.19.125) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
+## [0.19.124](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.123...vsock-guest-v0.19.124) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy process-control endpoint reader ([#30130](https://github.com/vm0-ai/vm0/issues/30130)) ([57157de](https://github.com/vm0-ai/vm0/commit/57157de35208c779837373ce8cca6baf601d605b))
+
+## [0.19.123](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.122...vsock-guest-v0.19.123) (2026-08-28)
+
+## [0.19.122](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.121...vsock-guest-v0.19.122) (2026-08-28)
+
+## [0.19.121](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.120...vsock-guest-v0.19.121) (2026-08-28)
+
+## [0.19.120](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.119...vsock-guest-v0.19.120) (2026-08-28)
+
+## [0.19.119](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.118...vsock-guest-v0.19.119) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
+## [0.19.118](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.117...vsock-guest-v0.19.118) (2026-08-28)
+
+
+### Refactoring
+
+* **runtime:** cut process-control writer to canonical alias ([#29915](https://github.com/vm0-ai/vm0/issues/29915)) ([d24888e](https://github.com/vm0-ai/vm0/commit/d24888e360664ac892d1be16788f5b75abd2a26a))
+
+## [0.19.117](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.116...vsock-guest-v0.19.117) (2026-08-27)
+
+
+### Refactoring
+
+* **runtime:** cut root cgroup placement writers to canonical aliases ([#29917](https://github.com/vm0-ai/vm0/issues/29917)) ([ae935e6](https://github.com/vm0-ai/vm0/commit/ae935e632c1a1c1bee1bd3c014ca556370e59a4a))
+
+## [0.19.116](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.115...vsock-guest-v0.19.116) (2026-08-27)
+
+
+### Refactoring
+
+* **runtime:** cut guest runtime writers to canonical alias ([#29913](https://github.com/vm0-ai/vm0/issues/29913)) ([9a84d60](https://github.com/vm0-ai/vm0/commit/9a84d60ec8d14061f9f17d57e5fda48988b62753)), closes [#29909](https://github.com/vm0-ai/vm0/issues/29909) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
+## [0.19.115](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.114...vsock-guest-v0.19.115) (2026-08-27)
+
+
+### Bug Fixes
+
+* **vsock-guest:** mark incomplete exec output truncated ([#29729](https://github.com/vm0-ai/vm0/issues/29729)) ([accc1cc](https://github.com/vm0-ai/vm0/commit/accc1cc182219bc47c1074ca6467cd37e81241bc))
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
+
+### Performance Improvements
+
+* **vsock-guest:** cancel accepted placement handshakes ([#29759](https://github.com/vm0-ai/vm0/issues/29759)) ([64b79f6](https://github.com/vm0-ai/vm0/commit/64b79f65f2fed3a7fb7ed997bbeeb7a14b131966))
+
+## [0.19.114](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.113...vsock-guest-v0.19.114) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.19.113](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.112...vsock-guest-v0.19.113) (2026-08-26)
 
 ## [0.19.112](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.111...vsock-guest-v0.19.112) (2026-08-26)

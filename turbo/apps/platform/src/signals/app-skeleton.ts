@@ -1,7 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { completeOnLocalAbort, onRef, resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/okou-page/avatars.ts";
-import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
+import {
+  captureBootstrapPhaseTiming$,
+  captureFirstSkeletonHide$,
+} from "../lib/posthog.ts";
 import { i18n } from "../i18n/index.ts";
 import { locale$ } from "./locale.ts";
 
@@ -15,6 +18,9 @@ const internalOverlayMounted$ = state(true);
 const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
   "vm0AppSkeletonVisibleEventQueued";
+const APP_FIRST_CONTENT_VISIBLE_EVENT = "vm0:app-first-content-visible";
+const APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY =
+  "vm0AppFirstContentVisibleEventDispatched";
 const APP_BOOTSTRAP_SKELETON_ID = "app-bootstrap-skeleton";
 const APP_BOOTSTRAP_SKELETON_HIDDEN_CLASS = "app-bootstrap-skeleton--hidden";
 
@@ -50,6 +56,22 @@ function queueAppSkeletonVisibleEvent(): void {
 export const appSkeletonVisibleEventRef$ = onRef(
   command((_visitor, _element: HTMLDivElement, _signal: AbortSignal) => {
     queueAppSkeletonVisibleEvent();
+  }),
+);
+
+export const firstAppContentVisibleEventRef$ = onRef(
+  command((_visitor, _element: HTMLSpanElement, _signal: AbortSignal) => {
+    if (
+      document.documentElement.dataset[
+        APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY
+      ] === "true"
+    ) {
+      return;
+    }
+    document.documentElement.dataset[
+      APP_FIRST_CONTENT_VISIBLE_EVENT_DISPATCHED_KEY
+    ] = "true";
+    window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
   }),
 );
 
@@ -205,4 +227,11 @@ export const hideAppSkeleton$ = command(({ set }, _signal: AbortSignal) => {
   set(internalVisible$, false);
   hideBootstrapSkeleton();
   set(captureFirstSkeletonHide$);
+  set(captureBootstrapPhaseTiming$);
 });
+
+export const hideAppSkeletonOnContentReadyRef$ = onRef(
+  command(({ set }, _element: HTMLSpanElement, signal: AbortSignal) => {
+    set(hideAppSkeleton$, signal);
+  }),
+);

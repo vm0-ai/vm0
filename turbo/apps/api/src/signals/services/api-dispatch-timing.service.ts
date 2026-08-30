@@ -107,6 +107,11 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_web_chat_validate_revocation"
   | "api_dispatch_pre_create_zero_web_chat_check_active_run"
   | "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue"
+  | "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction"
+  | "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft"
+  | "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event"
+  | "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets"
+  | "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort"
   | "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable"
   | "api_dispatch_pre_create_zero_web_chat_create_normal_run"
   | "api_dispatch_pre_create_zero_web_chat_resolve_model_pin"
@@ -136,6 +141,12 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_teams_entrypoint_gap"
   | "api_dispatch_pre_create_zero_teams_create_run"
   | "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_pre_entry"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_run_thread_lookup"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_notify_running_run"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff"
   | "api_dispatch_pre_create_zero_goal_drain_event_queue_age"
   | "api_dispatch_pre_create_zero_goal_drain_load_event"
   | "api_dispatch_pre_create_zero_goal_drain_load_target"
@@ -278,6 +289,27 @@ interface ApiDispatchPhaseRecord {
   readonly finishedAt: number;
 }
 
+export type GoalSchedulerTimingOrigin =
+  | "chat_callback"
+  | "terminal_callback_fallback"
+  | "run_recovery"
+  | "direct"
+  | "stale_sweep";
+
+type GoalSchedulerTimingActionType =
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_pre_entry"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_run_thread_lookup"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_notify_running_run"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain"
+  | "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff";
+
+interface GoalSchedulerTimingRecord {
+  readonly actionType: GoalSchedulerTimingActionType;
+  readonly startedAt: number;
+  readonly finishedAt: number;
+}
+
 export class ApiDispatchPhaseCollector {
   private readonly records: ApiDispatchPhaseRecord[] = [];
   private previousBoundaryAt: number;
@@ -306,6 +338,49 @@ export class ApiDispatchPhaseCollector {
         "top_level",
         record.startedAt,
         record.finishedAt,
+      );
+    }
+  }
+}
+
+/** Hold shared scheduler phases until a created goal run owns their flush. */
+export class GoalSchedulerTimingCollector {
+  private readonly records: GoalSchedulerTimingRecord[] = [];
+  private previousBoundaryAt: number;
+  readonly origin: GoalSchedulerTimingOrigin;
+
+  constructor(startedAt: number, origin: GoalSchedulerTimingOrigin) {
+    this.previousBoundaryAt = startedAt;
+    this.origin = origin;
+  }
+
+  checkpoint(
+    actionType: GoalSchedulerTimingActionType,
+    finishedAt: number = now(),
+  ): void {
+    const boundedFinishedAt = Math.max(this.previousBoundaryAt, finishedAt);
+    this.records.push({
+      actionType,
+      startedAt: this.previousBoundaryAt,
+      finishedAt: boundedFinishedAt,
+    });
+    this.previousBoundaryAt = boundedFinishedAt;
+  }
+
+  appendTo(
+    timing: ApiDispatchTimingCollector,
+    dimensions: ApiDispatchTimingDimensions,
+  ): void {
+    for (const record of this.records.splice(0)) {
+      timing.recordElapsed(
+        record.actionType,
+        "nested",
+        record.startedAt,
+        record.finishedAt,
+        {
+          ...dimensions,
+          goal_scheduler_origin: this.origin,
+        },
       );
     }
   }

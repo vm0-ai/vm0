@@ -2,7 +2,7 @@ import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-
 import { z } from "zod";
 
 import { throwOAuthError } from "./error";
-import { effectiveOAuthScopes } from "./scope";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "./scope";
 
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
@@ -35,6 +35,7 @@ interface MicrosoftRefreshResult {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
 }
 
 /**
@@ -156,6 +157,7 @@ export async function refreshMicrosoftToken(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
+      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -173,6 +175,7 @@ export async function refreshMicrosoftToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }
 

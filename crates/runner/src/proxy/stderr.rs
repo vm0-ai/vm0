@@ -1,102 +1,61 @@
-//! Mitmdump stderr parsing and re-emission.
+//! Addon process-event parsing and mitmdump stderr re-emission.
 
+use serde_json::{Map, Value};
 use tracing::{error, warn};
 
+const ADDON_PROCESS_EVENT_PREFIX: &str = "VM0_ADDON_EVENT ";
+const ADDON_PROCESS_EVENT_VERSION: u8 = 1;
+const MAX_ADDON_PROCESS_EVENT_BYTES: usize = 4096;
+
 #[derive(Debug, PartialEq, Eq)]
-struct MitmdumpUsageUnderbillingStderr<'a> {
-    reason: &'a str,
-    underbilling_class: &'a str,
-    component: &'a str,
-    counter: Option<&'a str>,
+enum AddonProcessEventLevel {
+    Warn,
+    Error,
 }
 
-fn mitmdump_underbilling_fields(line: &str) -> Option<&str> {
-    let mut rest = line.trim_start();
-
-    while let Some(after_open) = rest.strip_prefix('[') {
-        let Some(end) = after_open.find(']') else {
-            break;
-        };
-        rest = after_open[end + 1..].trim_start();
-    }
-
-    for prefix in ["Addon error:", "error:", "ERROR:"] {
-        if let Some(after_prefix) = rest.strip_prefix(prefix) {
-            rest = after_prefix.trim_start();
-            break;
-        }
-    }
-
-    if rest.starts_with("type=") {
-        Some(rest)
-    } else {
-        None
-    }
+#[derive(Debug, PartialEq, Eq)]
+struct AddonProcessEvent {
+    level: AddonProcessEventLevel,
+    fields: Map<String, Value>,
 }
 
-fn parse_mitmdump_usage_underbilling_stderr(
-    line: &str,
-) -> Option<MitmdumpUsageUnderbillingStderr<'_>> {
-    let fields = mitmdump_underbilling_fields(line)?;
-    let mut tokens = fields.split_whitespace();
-    let (key, value) = tokens.next()?.split_once('=')?;
-    if key != "type" || value.trim_end_matches([',', ';']) != "usage_underbilling" {
+fn parse_addon_process_event(line: &str) -> Option<AddonProcessEvent> {
+    if line.len() > MAX_ADDON_PROCESS_EVENT_BYTES {
+        return None;
+    }
+    let payload = line.strip_prefix(ADDON_PROCESS_EVENT_PREFIX)?;
+    let mut fields = serde_json::from_str::<Map<String, Value>>(payload).ok()?;
+    let version = fields.remove("version")?.as_u64()?;
+    if version != u64::from(ADDON_PROCESS_EVENT_VERSION) {
         return None;
     }
 
-    let mut reason = None;
-    let mut underbilling_class = None;
-    let mut component = None;
-    let mut counter = None;
+    let level = match fields.get("level")?.as_str()? {
+        "warn" => AddonProcessEventLevel::Warn,
+        "error" => AddonProcessEventLevel::Error,
+        _ => return None,
+    };
+    fields.get("message")?.as_str()?;
+    Some(AddonProcessEvent { level, fields })
+}
 
-    for token in tokens {
-        let Some((key, value)) = token.split_once('=') else {
-            break;
-        };
-        let value = value.trim_end_matches([',', ';']);
-        match key {
-            "reason" => reason = Some(value),
-            "underbilling_class" if value == "confirmed" || value == "risk" => {
-                underbilling_class = Some(value);
-            }
-            "component" if !value.is_empty() => component = Some(value),
-            "counter" if !value.is_empty() => counter = Some(value),
-            _ => {}
-        }
+fn log_addon_process_event(event: AddonProcessEvent) {
+    let encoded = Value::Object(event.fields).to_string();
+    match event.level {
+        AddonProcessEventLevel::Warn => warn!(
+            target: "mitmdump_addon",
+            message = encoded.as_str(),
+        ),
+        AddonProcessEventLevel::Error => error!(
+            target: "mitmdump_addon",
+            message = encoded.as_str(),
+        ),
     }
-
-    Some(MitmdumpUsageUnderbillingStderr {
-        reason: reason?,
-        underbilling_class: underbilling_class?,
-        component: component?,
-        counter,
-    })
 }
 
 pub(super) fn log_mitmdump_stderr_line(line: &str) {
-    if let Some(signal) = parse_mitmdump_usage_underbilling_stderr(line) {
-        if let Some(counter) = signal.counter {
-            error!(
-                target: "mitmdump",
-                r#type = "usage_underbilling",
-                reason = signal.reason,
-                underbilling_class = signal.underbilling_class,
-                component = signal.component,
-                counter = counter,
-                mitmdump_stderr = %line,
-                "mitmdump usage underbilling signal"
-            );
-        } else {
-            error!(
-                target: "mitmdump",
-                r#type = "usage_underbilling",
-                reason = signal.reason,
-                underbilling_class = signal.underbilling_class,
-                component = signal.component,
-                mitmdump_stderr = %line,
-                "mitmdump usage underbilling signal"
-            );
-        }
+    if let Some(event) = parse_addon_process_event(line) {
+        log_addon_process_event(event);
         return;
     }
 
@@ -130,144 +89,116 @@ mod tests {
         assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
     }
 
+    fn emitted_log(event: &CapturedEvent) -> Value {
+        let encoded = event
+            .fields
+            .get("message")
+            .unwrap_or_else(|| panic!("missing message; event={event:#?}"));
+        serde_json::from_str(encoded).expect("emitted log should be valid JSON")
+    }
+
     #[test]
-    fn parse_mitmdump_usage_underbilling_stderr_extracts_fields() {
-        let signal = parse_mitmdump_usage_underbilling_stderr(
-            "[error] type=usage_underbilling reason=pending_snapshot_write_failed \
-             underbilling_class=risk component=mitm_addon Failed to write pending count",
+    fn parses_versioned_error_event() {
+        let event = parse_addon_process_event(
+            r#"VM0_ADDON_EVENT {"version":1,"level":"error","message":"Failed to write pending count","type":"usage_underbilling","reason":"pending_snapshot_write_failed","underbilling_class":"risk","retry_count":2,"retryable":true,"diagnostic":{"phase":"flush"},"future.field-name":["value",3]}"#,
         )
         .unwrap();
 
+        assert_eq!(event.level, AddonProcessEventLevel::Error);
         assert_eq!(
-            signal,
-            MitmdumpUsageUnderbillingStderr {
-                reason: "pending_snapshot_write_failed",
-                underbilling_class: "risk",
-                component: "mitm_addon",
-                counter: None,
-            }
+            Value::Object(event.fields),
+            serde_json::json!({
+                "level": "error",
+                "message": "Failed to write pending count",
+                "type": "usage_underbilling",
+                "reason": "pending_snapshot_write_failed",
+                "underbilling_class": "risk",
+                "retry_count": 2,
+                "retryable": true,
+                "diagnostic": {"phase": "flush"},
+                "future.field-name": ["value", 3],
+            })
         );
     }
 
     #[test]
-    fn parse_mitmdump_usage_underbilling_stderr_extracts_counter() {
-        let signal = parse_mitmdump_usage_underbilling_stderr(
-            "[error] type=usage_underbilling reason=usage_pending_counter_underflow \
-             underbilling_class=risk component=mitm_addon counter=reports unmatched release",
+    fn parses_versioned_warn_event() {
+        let event = parse_addon_process_event(
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","message":"write failed"}"#,
         )
         .unwrap();
 
-        assert_eq!(
-            signal,
-            MitmdumpUsageUnderbillingStderr {
-                reason: "usage_pending_counter_underflow",
-                underbilling_class: "risk",
-                component: "mitm_addon",
-                counter: Some("reports"),
-            }
-        );
+        assert_eq!(event.level, AddonProcessEventLevel::Warn);
+        assert_eq!(event.fields["message"], serde_json::json!("write failed"));
     }
 
     #[test]
-    fn parse_mitmdump_usage_underbilling_stderr_allows_timestamped_error_prefix() {
-        let signal = parse_mitmdump_usage_underbilling_stderr(
-            "[12:34:56.789] [error] type=usage_underbilling \
-             reason=pending_snapshot_write_failed underbilling_class=risk \
-             component=mitm_addon Failed to write pending count",
-        )
-        .unwrap();
-
-        assert_eq!(
-            signal,
-            MitmdumpUsageUnderbillingStderr {
-                reason: "pending_snapshot_write_failed",
-                underbilling_class: "risk",
-                component: "mitm_addon",
-                counter: None,
-            }
-        );
+    fn rejects_unowned_or_invalid_envelopes() {
+        for line in [
+            "ordinary mitmdump warning",
+            r#"prefix VM0_ADDON_EVENT {"version":1}"#,
+            r#"VM0_ADDON_EVENT {"version":2,"level":"warn","message":"failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"info","message":"failed"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn"}"#,
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","message":42}"#,
+            &format!(
+                "VM0_ADDON_EVENT {{\"version\":1,\"level\":\"warn\",\"message\":\"{}\"}}",
+                "x".repeat(MAX_ADDON_PROCESS_EVENT_BYTES)
+            ),
+        ] {
+            assert!(
+                parse_addon_process_event(line).is_none(),
+                "unexpectedly parsed: {line}"
+            );
+        }
     }
 
     #[test]
-    fn parse_mitmdump_usage_underbilling_stderr_allows_mitmproxy_timestamp_prefix() {
-        let signal = parse_mitmdump_usage_underbilling_stderr(
-            "[12:34:56.789] type=usage_underbilling \
-             reason=pending_snapshot_write_failed underbilling_class=risk \
-             component=mitm_addon Failed to write pending count",
-        )
-        .unwrap();
-
-        assert_eq!(
-            signal,
-            MitmdumpUsageUnderbillingStderr {
-                reason: "pending_snapshot_write_failed",
-                underbilling_class: "risk",
-                component: "mitm_addon",
-                counter: None,
-            }
+    fn reemits_addon_error_with_opaque_log_record() {
+        let message = "Failed to write pending count";
+        let event = capture_mitmdump_stderr_log(
+            r#"VM0_ADDON_EVENT {"version":1,"level":"error","message":"Failed to write pending count","type":"usage_underbilling","reason":"pending_snapshot_write_failed","underbilling_class":"risk","retry_count":2,"retryable":true,"diagnostic":{"phase":"flush"},"future.field-name":["value",3]}"#,
         );
-    }
-
-    #[test]
-    fn parse_mitmdump_usage_underbilling_stderr_ignores_regular_stderr() {
-        assert!(parse_mitmdump_usage_underbilling_stderr("ordinary mitmdump warning").is_none());
-        assert!(
-            parse_mitmdump_usage_underbilling_stderr(
-                "type=usage_underbilling reason=missing_fields"
-            )
-            .is_none()
-        );
-        assert!(
-            parse_mitmdump_usage_underbilling_stderr(
-                "ordinary stderr type=usage_underbilling reason=pending_snapshot_write_failed \
-                 underbilling_class=risk component=mitm_addon"
-            )
-            .is_none()
-        );
-        assert!(
-            parse_mitmdump_usage_underbilling_stderr(
-                "url=https://example.test/?type=usage_underbilling \
-                 reason=pending_snapshot_write_failed underbilling_class=risk component=mitm_addon"
-            )
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn mitmdump_underbilling_stderr_reemits_structured_error() {
-        let line = "[error] type=usage_underbilling reason=pending_snapshot_write_failed \
-                    underbilling_class=risk component=mitm_addon Failed to write pending count";
-
-        let event = capture_mitmdump_stderr_log(line);
 
         assert_eq!(event.level, Level::ERROR);
-        assert_event_field(&event, "message", "mitmdump usage underbilling signal");
-        assert_event_field(&event, "type", "usage_underbilling");
-        assert_event_field(&event, "reason", "pending_snapshot_write_failed");
-        assert_event_field(&event, "underbilling_class", "risk");
-        assert_event_field(&event, "component", "mitm_addon");
-        assert_event_field(&event, "mitmdump_stderr", line);
-        assert!(
-            !event.fields.contains_key("counter"),
-            "unexpected counter field; event={event:#?}"
+        assert_eq!(
+            emitted_log(&event),
+            serde_json::json!({
+                "level": "error",
+                "message": message,
+                "type": "usage_underbilling",
+                "reason": "pending_snapshot_write_failed",
+                "underbilling_class": "risk",
+                "retry_count": 2,
+                "retryable": true,
+                "diagnostic": {"phase": "flush"},
+                "future.field-name": ["value", 3],
+            })
         );
+        assert_eq!(event.fields.len(), 1, "unexpected fields: {event:#?}");
     }
 
     #[test]
-    fn mitmdump_underbilling_stderr_reemits_counter_when_present() {
-        let line = "[error] type=usage_underbilling \
-                    reason=usage_pending_counter_underflow underbilling_class=risk \
-                    component=mitm_addon counter=reports unmatched release";
+    fn reemits_addon_warning_with_opaque_log_record() {
+        let event = capture_mitmdump_stderr_log(
+            r#"VM0_ADDON_EVENT {"version":1,"level":"warn","message":"write failed"}"#,
+        );
 
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            emitted_log(&event),
+            serde_json::json!({"level": "warn", "message": "write failed"})
+        );
+        assert_eq!(event.fields.len(), 1, "unexpected fields: {event:#?}");
+    }
+
+    #[test]
+    fn malformed_envelope_uses_ordinary_stderr_path() {
+        let line = "VM0_ADDON_EVENT not-json";
         let event = capture_mitmdump_stderr_log(line);
 
-        assert_eq!(event.level, Level::ERROR);
-        assert_event_field(&event, "message", "mitmdump usage underbilling signal");
-        assert_event_field(&event, "type", "usage_underbilling");
-        assert_event_field(&event, "reason", "usage_pending_counter_underflow");
-        assert_event_field(&event, "underbilling_class", "risk");
-        assert_event_field(&event, "component", "mitm_addon");
-        assert_event_field(&event, "counter", "reports");
-        assert_event_field(&event, "mitmdump_stderr", line);
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(&event, "message", &format!("stderr: {line}"));
+        assert!(!event.fields.contains_key("type"));
     }
 }

@@ -9,7 +9,7 @@ import {
   type FirewallPolicy,
   type FirewallPolicies,
   type FirewallPolicyValue,
-} from "@okouai/connectors/firewall-types";
+} from "@okouai/connectors/firewall-contracts";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,

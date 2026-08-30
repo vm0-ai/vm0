@@ -26,15 +26,6 @@ use uuid::Uuid;
 ///
 /// When set to a non-empty absolute path, this value is used as the run
 /// directory directly instead of deriving one from `HOME` and a run id.
-pub const GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
-/// Canonical reader alias for [`GUEST_RUNTIME_DIR_ENV`].
-///
-/// This bounded fallback lets new embedded readers accept the five legacy-only
-/// writers on the existing runner and reusable-sandbox surface, where a claim
-/// can live for the two-hour guest runtime budget plus bounded finalization.
-/// Remove the legacy branch only after #28914 records the exact-artifact reader
-/// floor, service and reusable-sandbox drain, rollback window, and
-/// legacy-read-zero gates.
 pub const CANONICAL_GUEST_RUNTIME_DIR_ENV: &str = "OKOU_GUEST_RUNTIME_DIR";
 /// Fixed fallback path used when a storage manifest exceeds the stdin limit.
 pub const STORAGE_MANIFEST_PATH: &str = "/tmp/storage-manifest.json";
@@ -53,10 +44,8 @@ pub enum RuntimePathError {
     InvalidRunId,
     /// The fallback runtime directory layout requires a non-empty `HOME`.
     MissingHome,
-    /// `VM0_GUEST_RUNTIME_DIR` was set to a relative path.
+    /// `OKOU_GUEST_RUNTIME_DIR` was set to a relative path.
     InvalidRuntimeDir,
-    /// Both runtime-directory aliases were non-empty and unequal.
-    ConflictingRuntimeDirEnvAliases,
 }
 
 impl std::fmt::Display for RuntimePathError {
@@ -66,14 +55,8 @@ impl std::fmt::Display for RuntimePathError {
             Self::InvalidRunId => f.write_str("OKOU_RUN_ID must be a single safe path segment"),
             Self::MissingHome => f.write_str("HOME is required for guest runtime paths"),
             Self::InvalidRuntimeDir => {
-                f.write_str("VM0_GUEST_RUNTIME_DIR must be an absolute path")
+                f.write_str("OKOU_GUEST_RUNTIME_DIR must be an absolute path")
             }
-            Self::ConflictingRuntimeDirEnvAliases => write!(
-                f,
-                "conflicting guest runtime directory environment aliases: canonical_key={} \
-                 legacy_key={} state=conflict",
-                CANONICAL_GUEST_RUNTIME_DIR_ENV, GUEST_RUNTIME_DIR_ENV
-            ),
         }
     }
 }
@@ -118,104 +101,22 @@ pub fn run_dir_for_home(
         .join(run_id))
 }
 
-/// Value-free provenance for a selected guest runtime-directory override.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GuestRuntimeDirEnvSource {
-    /// Only `OKOU_GUEST_RUNTIME_DIR` supplied a non-empty value.
-    CanonicalOnly,
-    /// Only `VM0_GUEST_RUNTIME_DIR` supplied a non-empty value.
-    LegacyOnly,
-    /// Both aliases supplied the same non-empty value.
-    Dual,
-}
-
-impl GuestRuntimeDirEnvSource {
-    /// Fixed label used by bounded source evidence.
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::CanonicalOnly => "canonical-only",
-            Self::LegacyOnly => "legacy-only",
-            Self::Dual => "dual",
-        }
-    }
-}
-
-/// One value-preserving resolution of the guest runtime-directory aliases.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GuestRuntimeDirEnvResolution {
-    runtime_dir: Option<PathBuf>,
-    source: Option<GuestRuntimeDirEnvSource>,
-}
-
-impl GuestRuntimeDirEnvResolution {
-    /// Selected non-empty absolute override, if either alias supplied one.
-    pub fn runtime_dir(&self) -> Option<&Path> {
-        self.runtime_dir.as_deref()
-    }
-
-    /// Value-free source for the selected override.
-    pub fn source(&self) -> Option<GuestRuntimeDirEnvSource> {
-        self.source
-    }
-
-    /// Consume the resolution into its owned path and source.
-    pub fn into_parts(self) -> (Option<PathBuf>, Option<GuestRuntimeDirEnvSource>) {
-        (self.runtime_dir, self.source)
-    }
-}
-
-/// Resolve canonical and legacy guest runtime-directory aliases without
-/// converting their values to UTF-8.
-///
-/// Empty values are absent. One non-empty value wins, equal non-empty values
-/// resolve once, and unequal non-empty values fail closed without exposing
-/// either path.
-pub fn resolve_guest_runtime_dir_env(
-    canonical: Option<OsString>,
-    legacy: Option<OsString>,
-) -> Result<GuestRuntimeDirEnvResolution, RuntimePathError> {
-    let canonical = canonical.filter(|value| !value.is_empty());
-    let legacy = legacy.filter(|value| !value.is_empty());
-
-    let (runtime_dir, source) = match (canonical, legacy) {
-        (None, None) => (None, None),
-        (Some(runtime_dir), None) => (
-            Some(PathBuf::from(runtime_dir)),
-            Some(GuestRuntimeDirEnvSource::CanonicalOnly),
-        ),
-        (None, Some(runtime_dir)) => (
-            Some(PathBuf::from(runtime_dir)),
-            Some(GuestRuntimeDirEnvSource::LegacyOnly),
-        ),
-        (Some(canonical), Some(legacy)) if canonical == legacy => (
-            Some(PathBuf::from(canonical)),
-            Some(GuestRuntimeDirEnvSource::Dual),
-        ),
-        (Some(_), Some(_)) => {
-            return Err(RuntimePathError::ConflictingRuntimeDirEnvAliases);
-        }
-    };
-
+fn canonical_guest_runtime_dir(
+    value: Option<OsString>,
+) -> Result<Option<PathBuf>, RuntimePathError> {
+    let runtime_dir = value.filter(|value| !value.is_empty()).map(PathBuf::from);
     if runtime_dir
         .as_deref()
         .is_some_and(|runtime_dir| !runtime_dir.is_absolute())
     {
         return Err(RuntimePathError::InvalidRuntimeDir);
     }
-
-    Ok(GuestRuntimeDirEnvResolution {
-        runtime_dir,
-        source,
-    })
+    Ok(runtime_dir)
 }
 
-/// Capture and resolve both guest runtime-directory aliases exactly once.
-pub fn guest_runtime_dir_env_from_process_env()
--> Result<GuestRuntimeDirEnvResolution, RuntimePathError> {
-    resolve_guest_runtime_dir_env(
-        env::var_os(CANONICAL_GUEST_RUNTIME_DIR_ENV),
-        env::var_os(GUEST_RUNTIME_DIR_ENV),
-    )
+/// Capture the canonical guest runtime-directory override exactly once.
+pub fn guest_runtime_dir_env_from_process_env() -> Result<Option<PathBuf>, RuntimePathError> {
+    canonical_guest_runtime_dir(env::var_os(CANONICAL_GUEST_RUNTIME_DIR_ENV))
 }
 
 /// Resolve a complete run directory from already captured values.
@@ -237,26 +138,17 @@ pub fn run_dir_from_captured_env(
     run_dir_for_home(home, run_id)
 }
 
-/// Resolve the process runtime directory and return value-free alias source.
-pub fn run_dir_from_env_with_source(
-    run_id: &str,
-) -> Result<(PathBuf, Option<GuestRuntimeDirEnvSource>), RuntimePathError> {
-    let resolution = guest_runtime_dir_env_from_process_env()?;
-    let home = env::var_os("HOME").map(PathBuf::from);
-    let run_dir = run_dir_from_captured_env(run_id, resolution.runtime_dir(), home.as_deref())?;
-    Ok((run_dir, resolution.source()))
-}
-
 /// Resolve the runtime directory from process environment.
 ///
-/// A non-empty absolute canonical or legacy override wins and is returned as
-/// the complete runtime directory. In that override branch, `run_id` is not
-/// validated and is not appended. Empty overrides are ignored, relative
-/// overrides return [`RuntimePathError::InvalidRuntimeDir`], conflicting
-/// non-empty aliases fail closed, and fallback resolution uses `HOME` plus
-/// [`run_dir_for_home`].
+/// A non-empty absolute canonical override wins and is returned as the complete
+/// runtime directory. In that override branch, `run_id` is not validated and
+/// is not appended. An empty override is ignored, a relative override returns
+/// [`RuntimePathError::InvalidRuntimeDir`], and fallback resolution uses `HOME`
+/// plus [`run_dir_for_home`].
 pub fn run_dir_from_env(run_id: &str) -> Result<PathBuf, RuntimePathError> {
-    run_dir_from_env_with_source(run_id).map(|(run_dir, _source)| run_dir)
+    let runtime_dir = guest_runtime_dir_env_from_process_env()?;
+    let home = env::var_os("HOME").map(PathBuf::from);
+    run_dir_from_captured_env(run_id, runtime_dir.as_deref(), home.as_deref())
 }
 
 fn file(run_dir: impl AsRef<Path>, name: &str) -> PathBuf {
@@ -1397,92 +1289,33 @@ mod tests {
     }
 
     #[test]
-    fn guest_runtime_dir_aliases_preserve_paths_and_source() {
-        assert_eq!(GUEST_RUNTIME_DIR_ENV, "VM0_GUEST_RUNTIME_DIR");
+    fn canonical_guest_runtime_dir_preserves_path_and_empty_semantics() {
         assert_eq!(CANONICAL_GUEST_RUNTIME_DIR_ENV, "OKOU_GUEST_RUNTIME_DIR");
-
-        let success_cases = [
-            ("absent", None, None, None, None),
-            ("both-empty", Some(""), Some(""), None, None),
-            (
-                "canonical-only",
-                Some("/canonical"),
-                None,
-                Some("/canonical"),
-                Some(GuestRuntimeDirEnvSource::CanonicalOnly),
-            ),
-            (
-                "legacy-only",
-                None,
-                Some("/legacy"),
-                Some("/legacy"),
-                Some(GuestRuntimeDirEnvSource::LegacyOnly),
-            ),
-            (
-                "equal-dual",
-                Some("/shared"),
-                Some("/shared"),
-                Some("/shared"),
-                Some(GuestRuntimeDirEnvSource::Dual),
-            ),
-            (
-                "canonical-empty",
-                Some(""),
-                Some("/legacy"),
-                Some("/legacy"),
-                Some(GuestRuntimeDirEnvSource::LegacyOnly),
-            ),
-            (
-                "legacy-empty",
-                Some("/canonical"),
-                Some(""),
-                Some("/canonical"),
-                Some(GuestRuntimeDirEnvSource::CanonicalOnly),
-            ),
-        ];
-
-        for (name, canonical, legacy, expected_path, expected_source) in success_cases {
-            let resolution = resolve_guest_runtime_dir_env(
-                canonical.map(OsString::from),
-                legacy.map(OsString::from),
-            )
-            .unwrap();
-            assert_eq!(
-                resolution.runtime_dir(),
-                expected_path.map(Path::new),
-                "{name} selected the wrong path"
-            );
-            assert_eq!(
-                resolution.source(),
-                expected_source,
-                "{name} selected the wrong source"
-            );
-        }
-
-        let error = resolve_guest_runtime_dir_env(
-            Some(OsString::from("/canonical-must-not-leak")),
-            Some(OsString::from("/legacy-must-not-leak")),
-        )
-        .unwrap_err();
-        assert_eq!(error, RuntimePathError::ConflictingRuntimeDirEnvAliases);
-        let diagnostic = error.to_string();
         assert_eq!(
-            diagnostic,
-            "conflicting guest runtime directory environment aliases: \
-             canonical_key=OKOU_GUEST_RUNTIME_DIR legacy_key=VM0_GUEST_RUNTIME_DIR \
-             state=conflict"
+            canonical_guest_runtime_dir(None),
+            Ok(None),
+            "an absent override must use fallback resolution"
         );
-        assert!(!diagnostic.contains("must-not-leak"));
+        assert_eq!(
+            canonical_guest_runtime_dir(Some(OsString::new())),
+            Ok(None),
+            "an empty override must use fallback resolution"
+        );
+        assert_eq!(
+            canonical_guest_runtime_dir(Some(OsString::from("/canonical"))),
+            Ok(Some(PathBuf::from("/canonical")))
+        );
     }
 
     #[test]
-    fn guest_runtime_dir_aliases_preserve_non_unicode_and_fallback_contract() {
+    fn canonical_guest_runtime_dir_preserves_non_unicode_and_fallback_contract() {
         #[cfg(unix)]
         {
             let absolute = PathBuf::from(OsString::from_vec(vec![b'/', b'r', b'u', b'n', 0xff]));
-            let resolution =
-                resolve_guest_runtime_dir_env(Some(absolute.as_os_str().to_owned()), None).unwrap();
-            assert_eq!(resolution.runtime_dir(), Some(absolute.as_path()));
+            assert_eq!(
+                canonical_guest_runtime_dir(Some(absolute.as_os_str().to_owned())),
+                Ok(Some(absolute))
+            );
 
             let home = PathBuf::from(OsString::from_vec(vec![b'/', b'h', b'o', b'm', b'e', 0xfe]));
             let fallback = run_dir_from_captured_env("run-123", None, Some(&home)).unwrap();
@@ -1505,7 +1338,7 @@ mod tests {
             Err(RuntimePathError::InvalidRuntimeDir)
         );
         assert_eq!(
-            resolve_guest_runtime_dir_env(Some(OsString::from("relative-runtime")), None),
+            canonical_guest_runtime_dir(Some(OsString::from("relative-runtime"))),
             Err(RuntimePathError::InvalidRuntimeDir)
         );
     }

@@ -1103,6 +1103,7 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: query.sinceSeqId,
                   sinceEventId: query.sinceEventId,
+                  sinceProjection: "tool-redacted",
                   ...(query.limit === undefined ? {} : { limit: query.limit }),
                 },
         }),
@@ -1132,9 +1133,7 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: cursor.lastSeqId,
                   sinceEventId: cursor.lastEventId,
-                  ...(cursor.projection === undefined
-                    ? {}
-                    : { sinceProjection: cursor.projection }),
+                  sinceProjection: cursor.projection,
                 },
         }),
         [200],
@@ -1177,6 +1176,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly cursor?: string;
         readonly kind?: ArtifactCatalogKind;
         readonly chatThreadId?: string;
+        readonly keyword?: string;
       } = {},
     ): Promise<{
       readonly artifacts: readonly ArtifactSummary[];

@@ -2,6 +2,7 @@
 
 use std::time::Instant;
 
+use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
@@ -11,6 +12,122 @@ use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use crate::error::AgentError;
 
 const PI_RPC_ABORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE: &str = "vm0_pi_api_first_turn_boundary";
+const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PiApiFirstTurnBoundaryControl {
+    #[serde(rename = "type")]
+    record_type: String,
+    schema_version: u32,
+    sandbox_event_sequence_start: u64,
+}
+
+pub(super) enum PiRpcRecordAdmission {
+    InstallBoundary(u32),
+    Project,
+    Discard,
+}
+
+#[derive(Default)]
+pub(super) struct PiRpcStartupBoundary {
+    installed: Option<u32>,
+    official_record_seen: bool,
+    terminal_error: bool,
+}
+
+impl PiRpcStartupBoundary {
+    pub(super) fn admit(&mut self, record: &Value) -> Result<PiRpcRecordAdmission, AgentError> {
+        if self.terminal_error {
+            return Ok(PiRpcRecordAdmission::Discard);
+        }
+        let is_control = record.get("type").and_then(Value::as_str)
+            == Some(PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE);
+        if !is_control {
+            if self.installed.is_none() {
+                return self.reject(Self::missing_error());
+            }
+            self.official_record_seen = true;
+            return Ok(PiRpcRecordAdmission::Project);
+        }
+
+        let candidate = match parse_boundary_control(record) {
+            Ok(candidate) => candidate,
+            Err(error) => return self.reject(error),
+        };
+        let Some(installed) = self.installed else {
+            self.installed = Some(candidate);
+            return Ok(PiRpcRecordAdmission::InstallBoundary(candidate));
+        };
+        if candidate != installed {
+            return self.reject(boundary_error(
+                "PI_HANDOFF_BOUNDARY_CONFLICT",
+                "Pi API first-turn handoff boundary conflicts with the installed boundary",
+            ));
+        }
+        if self.official_record_seen {
+            return self.reject(boundary_error(
+                "PI_HANDOFF_BOUNDARY_LATE",
+                "Pi API first-turn handoff boundary arrived after RPC startup",
+            ));
+        }
+        self.reject(boundary_error(
+            "PI_HANDOFF_BOUNDARY_INVALID",
+            "Pi API first-turn handoff boundary was duplicated",
+        ))
+    }
+
+    pub(super) fn requires_boundary(&self) -> bool {
+        self.installed.is_none() && !self.terminal_error
+    }
+
+    pub(super) fn missing_error() -> AgentError {
+        boundary_error(
+            "PI_HANDOFF_BOUNDARY_MISSING",
+            "Pi API first-turn handoff boundary is required before RPC startup",
+        )
+    }
+
+    pub(super) fn malformed_record_error() -> AgentError {
+        boundary_error(
+            "PI_HANDOFF_BOUNDARY_INVALID",
+            "Pi API first-turn handoff boundary is malformed",
+        )
+    }
+
+    pub(super) fn looks_like_control(raw: &str) -> bool {
+        raw.contains(PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE)
+    }
+
+    pub(super) fn discard_remaining(&mut self) {
+        self.terminal_error = true;
+    }
+
+    fn reject(&mut self, error: AgentError) -> Result<PiRpcRecordAdmission, AgentError> {
+        self.terminal_error = true;
+        Err(error)
+    }
+}
+
+fn parse_boundary_control(record: &Value) -> Result<u32, AgentError> {
+    let control: PiApiFirstTurnBoundaryControl = serde_json::from_value(record.clone())
+        .map_err(|_| PiRpcStartupBoundary::malformed_record_error())?;
+    if control.record_type != PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE || control.schema_version != 1
+    {
+        return Err(PiRpcStartupBoundary::malformed_record_error());
+    }
+    let sequence = u32::try_from(control.sandbox_event_sequence_start)
+        .map_err(|_| PiRpcStartupBoundary::malformed_record_error())?;
+    if sequence == 0 || sequence > MAX_EVENT_SEQUENCE_NUMBER {
+        return Err(PiRpcStartupBoundary::malformed_record_error());
+    }
+    Ok(sequence)
+}
+
+fn boundary_error(code: &str, message: &str) -> AgentError {
+    AgentError::Execution(format!("[{code}] {message}"))
+}
 
 #[derive(Default)]
 struct PiAssistantTerminal {
@@ -351,6 +468,20 @@ async fn write_command(
     Ok(())
 }
 
+async fn write_command_with_cancellation(
+    stdin: &mut tokio::process::ChildStdin,
+    command: &Value,
+    cancellation: &CancellationToken,
+) -> Result<(), AgentError> {
+    tokio::select! {
+        biased;
+        () = cancellation.cancelled() => Err(AgentError::Execution(
+            "Pi RPC command write was interrupted by cancellation".to_string(),
+        )),
+        result = write_command(stdin, command) => result,
+    }
+}
+
 async fn wait_for_response(
     responses: &mut mpsc::UnboundedReceiver<Value>,
     expected_id: &str,
@@ -394,13 +525,12 @@ async fn abort(
     run_id: &str,
 ) -> Result<(), AgentError> {
     let id = format!("{run_id}:pi:abort");
-    write_command(stdin, &json!({ "id": id, "type": "abort" })).await?;
-    tokio::time::timeout(
-        PI_RPC_ABORT_TIMEOUT,
-        wait_for_response(responses, &id, "abort", true),
-    )
+    tokio::time::timeout(PI_RPC_ABORT_TIMEOUT, async {
+        write_command(stdin, &json!({ "id": id, "type": "abort" })).await?;
+        wait_for_response(responses, &id, "abort", true).await
+    })
     .await
-    .map_err(|_| AgentError::Execution("Pi RPC abort acknowledgement timed out".to_string()))?
+    .map_err(|_| AgentError::Execution("Pi RPC abort timed out".to_string()))?
 }
 
 async fn request_prompt(
@@ -410,13 +540,14 @@ async fn request_prompt(
     message: &str,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
-    write_command(
+    write_command_with_cancellation(
         stdin,
         &json!({
             "id": id,
             "type": "prompt",
             "message": message,
         }),
+        cancellation,
     )
     .await?;
     tokio::select! {
@@ -436,13 +567,14 @@ async fn request_steer(
     message: &str,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
-    write_command(
+    write_command_with_cancellation(
         stdin,
         &json!({
             "id": id,
             "type": "steer",
             "message": message,
         }),
+        cancellation,
     )
     .await?;
     tokio::select! {
@@ -489,7 +621,12 @@ pub(super) async fn write_commands(
     cancellation: CancellationToken,
 ) -> Result<(), AgentError> {
     let state_id = format!("{run_id}:pi:get-state");
-    write_command(&mut stdin, &json!({ "id": state_id, "type": "get_state" })).await?;
+    write_command_with_cancellation(
+        &mut stdin,
+        &json!({ "id": state_id, "type": "get_state" }),
+        &cancellation,
+    )
+    .await?;
     tokio::select! {
         biased;
         () = cancellation.cancelled() => {

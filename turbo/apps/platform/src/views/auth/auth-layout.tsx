@@ -150,7 +150,8 @@ const CLERK_CSS = `
   color: hsl(var(--muted-foreground)) !important;
 }
 
-/* Button styles - remove gradients and borders (exclude social buttons) */
+/* Primary action - mirror @vm0/ui's default Button treatment while removing
+   Clerk's gradients and borders (exclude social buttons). */
 .cl-formButtonPrimary,
 button[type="submit"]:not(.cl-socialButtonsBlockButton),
 [data-localization-key="formButtonPrimary"],
@@ -159,6 +160,7 @@ button[type="submit"]:not(.cl-socialButtonsBlockButton),
   background: hsl(var(--primary)) !important;
   border: none !important;
   box-shadow: none !important;
+  color: hsl(var(--primary-foreground)) !important;
 }
 
 /* Button hover state (exclude social buttons) */
@@ -166,8 +168,14 @@ button[type="submit"]:not(.cl-socialButtonsBlockButton),
 button[type="submit"]:not(.cl-socialButtonsBlockButton):hover,
 [data-localization-key="formButtonPrimary"]:hover {
   background-image: none !important;
-  background: hsl(var(--primary) / 0.9) !important;
+  background: var(--color-primary-hover) !important;
   box-shadow: none !important;
+}
+
+.cl-formButtonPrimary:active,
+button[type="submit"]:not(.cl-socialButtonsBlockButton):active,
+[data-localization-key="formButtonPrimary"]:active {
+  background: var(--color-primary-pressed) !important;
 }
 
 /* Remove pseudo elements (exclude social buttons) */
@@ -251,11 +259,47 @@ button[class*="socialButtonsBlockButton"] img,
 .cl-footerActionLink,
 [class*="footerActionLink"] {
   color: hsl(var(--primary)) !important;
+  text-decoration: none !important;
 }
 
 .cl-footerActionLink:hover,
 [class*="footerActionLink"]:hover {
   color: hsl(var(--primary) / 0.9) !important;
+  text-decoration: none !important;
+}
+
+/* The discoverable passkey action is rendered by Clerk as a footer link even
+   though it is a peer of the other sign-in methods. Match the standard outline
+   button without changing other footer or recovery links. */
+.cl-footerAction__usePasskey {
+  width: 100% !important;
+}
+
+.cl-footerActionLink__usePasskey {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 36px !important;
+  border-width: 0.7px !important;
+  border-style: solid !important;
+  border-color: hsl(var(--gray-400)) !important;
+  border-radius: 0.5rem !important;
+  background-color: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+  transition: background-color 0.2s !important;
+}
+
+.cl-footerActionLink__usePasskey:hover {
+  background-color: var(--color-state-hover) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-footerActionLink__usePasskey:active {
+  background-color: var(--color-state-pressed) !important;
 }
 
 /* OTP/Verification Code Input Boxes - Match cli-auth style */

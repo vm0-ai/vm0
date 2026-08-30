@@ -24,9 +24,9 @@ pub struct ConfigArgs {
     #[arg(long, required = true)]
     snapshot_hash: Vec<String>,
 
-    /// Runner logical name
+    /// Canonical physical hostname used for diagnostic attribution
     #[arg(long)]
-    name: String,
+    hostname: Option<String>,
     /// Runner group in `vm0/<name>` format (e.g. "vm0/production")
     #[arg(long)]
     group: String,
@@ -75,6 +75,9 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
 
 async fn run_config_with_home(args: ConfigArgs, paths: HomePaths) -> RunnerResult<()> {
     // Pure-CPU validation first — fail fast before any filesystem I/O.
+    if let Some(hostname) = args.hostname.as_deref() {
+        config::validate_runner_hostname(hostname)?;
+    }
     crate::group::validate_or_err(&args.group)?;
     crate::runner_dirname::validate_or_err(&args.runner_dirname)?;
     validate_concurrency_factor(args.concurrency_factor)?;
@@ -132,7 +135,7 @@ async fn run_config_with_home(args: ConfigArgs, paths: HomePaths) -> RunnerResul
 
     let runner_dir = paths.runners_dir().join(&args.runner_dirname);
     let runner_config = RunnerConfig {
-        name: args.name,
+        hostname: args.hostname,
         group: args.group,
         base_dir: runner_dir.clone(),
         ca_dir: paths.ca_dir(),
@@ -175,7 +178,7 @@ mod tests {
             profile: vec!["vm0/default".into()],
             rootfs_hash: vec!["dummy".into()],
             snapshot_hash: vec!["dummy".into()],
-            name: "test".into(),
+            hostname: None,
             group: "vm0/test".into(),
             runner_dirname: dirname.into(),
             max_concurrent: 0,
@@ -281,6 +284,26 @@ mod tests {
             !msg.contains(&dirname),
             "overlong dirname should be previewed, not echoed in full: {msg}"
         );
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_invalid_hostname_before_filesystem_setup() {
+        let max_length = usize::try_from(
+            api_contracts::generated::constants::runners::RUNNER_HOSTNAME_MAX_LENGTH,
+        )
+        .unwrap();
+        for hostname in [String::new(), "a".repeat(max_length + 1)] {
+            let mut args = args_with_valid_image_hashes();
+            args.hostname = Some(hostname);
+
+            let err = run_config(args).await.unwrap_err();
+            let msg = err.to_string();
+            assert!(msg.contains("hostname"), "got: {msg}");
+            assert!(
+                !msg.contains("rootfs not found"),
+                "hostname validation should happen before image checks: {msg}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -393,7 +416,8 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let args = args_with_valid_image_hashes();
+        let mut args = args_with_valid_image_hashes();
+        args.hostname = Some("prod-1.aws.vm3.ai".to_string());
         let config_path = home
             .runners_dir()
             .join(&args.runner_dirname)
@@ -434,6 +458,7 @@ mod tests {
         assert_eq!(profile.snapshot_hash, snapshot_hash);
         assert_eq!(profile.rootfs_disk_mb, 12288);
         assert_eq!(profile.workspace_disk_mb, 16384);
+        assert_eq!(runner_config.hostname.as_deref(), Some("prod-1.aws.vm3.ai"));
     }
 
     fn args_with_concurrency_factor(factor: f64) -> ConfigArgs {
@@ -441,7 +466,7 @@ mod tests {
             profile: vec!["vm0/default".into()],
             rootfs_hash: vec!["dummy".into()],
             snapshot_hash: vec!["dummy".into()],
-            name: "test".into(),
+            hostname: None,
             group: "vm0/test".into(),
             runner_dirname: "runner-01".into(),
             max_concurrent: 0,

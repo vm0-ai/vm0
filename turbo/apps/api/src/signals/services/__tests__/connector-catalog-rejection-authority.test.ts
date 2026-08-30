@@ -1,93 +1,160 @@
+import { CONNECTOR_CATALOG_VALIDATOR_VERSION } from "@okouai/connector-catalog-validation/version";
 import { describe, expect, it } from "vitest";
 
+import { mockEnv } from "../../../lib/env";
 import {
+  connectorCatalogValidationAuthorityIsCurrent,
+  connectorCatalogValidationAuthorityIsCurrentOrNewer,
   connectorCatalogRejectionIsReusable,
   createConnectorCatalogValidatorIdentity,
+  currentConnectorCatalogValidatorIdentity,
   type ConnectorCatalogRejectionAuthority,
+  type ConnectorCatalogRejectionValidatorIdentity,
+  type ConnectorCatalogValidationAuthority,
   type ConnectorCatalogValidatorIdentity,
 } from "../connector-catalog-validator-authority";
 
-function authority(
-  backendVersion: string,
+function acceptedAuthority(
+  validatorVersion: string,
   buildCommitSha: string | null = null,
-): ConnectorCatalogRejectionAuthority {
-  return {
-    backendVersion,
-    buildCommitSha,
-  };
+): ConnectorCatalogValidationAuthority {
+  return { validatorVersion, buildCommitSha };
 }
 
-function validator(args: {
-  readonly backendVersion: string;
-  readonly buildCommitSha?: string | null;
-  readonly production?: boolean;
-}): ConnectorCatalogValidatorIdentity {
+function validator(
+  validatorVersion: string,
+  buildCommitSha: string | null = null,
+): ConnectorCatalogValidatorIdentity {
   return createConnectorCatalogValidatorIdentity({
-    backendVersion: args.backendVersion,
-    buildCommitSha: args.buildCommitSha ?? null,
-    production: args.production ?? true,
+    validatorVersion,
+    buildCommitSha,
   });
 }
 
-describe("connector catalog rejection authority", () => {
+function rejectionAuthority(
+  backendVersion: string,
+  buildCommitSha: string | null = null,
+): ConnectorCatalogRejectionAuthority {
+  return { backendVersion, buildCommitSha };
+}
+
+function rejectionValidator(
+  backendVersion: string,
+  buildCommitSha: string | null = null,
+): ConnectorCatalogRejectionValidatorIdentity {
+  return { backendVersion, buildCommitSha };
+}
+
+describe("connector catalog validator authority", () => {
+  it("uses only the validator package version in production", () => {
+    mockEnv("ENV", "production");
+
+    expect(currentConnectorCatalogValidatorIdentity()).toStrictEqual({
+      validatorVersion: CONNECTOR_CATALOG_VALIDATOR_VERSION,
+      buildCommitSha: null,
+    });
+  });
+
+  it("keeps preview authority exact to the build commit", () => {
+    const commit = "c".repeat(40);
+    mockEnv("ENV", "preview");
+    mockEnv("GIT_COMMIT_SHA", commit);
+
+    expect(currentConnectorCatalogValidatorIdentity()).toStrictEqual({
+      validatorVersion: CONNECTOR_CATALOG_VALIDATOR_VERSION,
+      buildCommitSha: commit,
+    });
+  });
+
+  it("fails closed when preview commit authority is unavailable", () => {
+    mockEnv("ENV", "preview");
+    mockEnv("GIT_COMMIT_SHA", "invalid-commit");
+
+    expect(() => {
+      currentConnectorCatalogValidatorIdentity();
+    }).toThrow("Preview connector catalog authority requires a commit SHA");
+  });
+
   it.each([
     { stored: "2.0.0", current: "1.999.999", reusable: true },
-    { stored: "1.320.0", current: "1.319.999", reusable: true },
-    { stored: "1.319.1", current: "1.319.0", reusable: true },
-    { stored: "1.319.0", current: "1.319.0", reusable: true },
-    { stored: "1.318.9", current: "1.319.0", reusable: false },
+    { stored: "2.0.1", current: "2.0.0", reusable: true },
+    { stored: "2.0.0", current: "2.0.0", reusable: true },
+    { stored: "1.999.999", current: "2.0.0", reusable: false },
   ])(
-    "orders production authority $stored against $current",
+    "orders accepted validator package $stored against $current",
     ({ stored, current, reusable }) => {
       expect(
-        connectorCatalogRejectionIsReusable({
-          authority: authority(stored),
-          validator: validator({ backendVersion: current }),
+        connectorCatalogValidationAuthorityIsCurrentOrNewer({
+          authority: acceptedAuthority(stored),
+          validator: validator(current),
         }),
       ).toBe(reusable);
     },
   );
 
-  it("requires matching build commits for equal non-production versions", () => {
+  it("requires the exact package version and preview commit for current authority", () => {
     const firstCommit = "a".repeat(40);
     const secondCommit = "b".repeat(40);
     expect(
+      connectorCatalogValidationAuthorityIsCurrent({
+        authority: acceptedAuthority("2.0.0", firstCommit),
+        validator: validator("2.0.0", firstCommit),
+      }),
+    ).toBeTruthy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrent({
+        authority: acceptedAuthority("2.0.0", firstCommit),
+        validator: validator("2.0.0", secondCommit),
+      }),
+    ).toBeFalsy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrent({
+        authority: acceptedAuthority("2.0.0"),
+        validator: validator("2.0.1"),
+      }),
+    ).toBeFalsy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrentOrNewer({
+        authority: acceptedAuthority("2.0.0", firstCommit),
+        validator: validator("2.0.0"),
+      }),
+    ).toBeFalsy();
+  });
+
+  it("keeps cached rejection authority scoped to the API release", () => {
+    const commit = "a".repeat(40);
+    expect(
       connectorCatalogRejectionIsReusable({
-        authority: authority("1.319.0", firstCommit),
-        validator: validator({
-          backendVersion: "1.319.0",
-          buildCommitSha: firstCommit,
-          production: false,
-        }),
+        authority: rejectionAuthority("1.319.0", commit),
+        validator: rejectionValidator("1.319.0", commit),
       }),
     ).toBeTruthy();
     expect(
       connectorCatalogRejectionIsReusable({
-        authority: authority("1.319.0", firstCommit),
-        validator: validator({
-          backendVersion: "1.319.0",
-          buildCommitSha: secondCommit,
-          production: false,
-        }),
+        authority: rejectionAuthority("1.318.0", commit),
+        validator: rejectionValidator("1.319.0", commit),
       }),
     ).toBeFalsy();
     expect(
       connectorCatalogRejectionIsReusable({
-        authority: authority("1.319.0"),
-        validator: validator({
-          backendVersion: "1.319.0",
-          production: false,
-        }),
+        authority: rejectionAuthority("1.320.0"),
+        validator: rejectionValidator("1.319.0"),
       }),
     ).toBeTruthy();
   });
 
   it.each(["01.2.3", "1.02.3", "1.2.03", "1.2", "1.2.3-rc.1"])(
-    "rejects non-core backend version %s",
-    (backendVersion) => {
+    "rejects non-core validator package version %s",
+    (validatorVersion) => {
       expect(() => {
-        validator({ backendVersion });
-      }).toThrow(`Invalid core SemVer: ${backendVersion}`);
+        validator(validatorVersion);
+      }).toThrow(`Invalid core SemVer: ${validatorVersion}`);
     },
   );
+
+  it("rejects malformed preview commit SHAs", () => {
+    expect(() => {
+      validator("2.0.0", "not-a-commit");
+    }).toThrow("Invalid connector catalog validator build commit SHA");
+  });
 });

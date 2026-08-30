@@ -27,6 +27,8 @@ grep -Fq "local RUNNER_DIRNAME=\"\${RUNNER_DIR##*/}\"" "$RUNNER_START_HELPER" ||
   fail "runner config dirname must come from the manifest runner directory"
 grep -Fq -- "--runner-dirname \${RUNNER_DIRNAME}" "$RUNNER_START_HELPER" ||
   fail "runner config must be written beneath the manifest runner directory"
+grep -Fq -- "--hostname \${HOST}" "$RUNNER_START_HELPER" ||
+  fail "runner config must use the metal host for attribution"
 grep -Fq -- "--config \${RUNNER_DIR}/runner.yaml" "$RUNNER_START_HELPER" ||
   fail "runner service must read the config from the manifest runner directory"
 if grep -Fq -- "--runner-dirname \${RUNNER_SERVICE_REF}" "$RUNNER_START_HELPER"; then

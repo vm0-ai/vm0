@@ -3395,12 +3395,7 @@ mod tests {
             client_session_id: "runner-session-test".to_string(),
         })
         .unwrap();
-        JobTelemetry::new(
-            http,
-            RunId::nil(),
-            "test-token".to_string(),
-            "test-runner".to_string(),
-        )
+        JobTelemetry::new(http, RunId::nil(), "test-token".to_string(), None)
     }
 
     fn assert_op(ops: &[(String, bool, Option<String>)], action_type: &str, success: bool) {
@@ -3581,6 +3576,7 @@ mod tests {
             archive_url: url,
             vas_storage_name: name.to_string(),
             vas_version_id: version.to_string(),
+            baseline_candidate: false,
             instructions_target_filename: None,
             archive_size: None,
         }
@@ -3852,6 +3848,13 @@ mod tests {
             request: &sandbox::StartProcessRequest<'_>,
         ) -> sandbox::Result<sandbox::GuestProcessHandle> {
             self.inner.start_process(request).await
+        }
+
+        async fn start_agent_process(
+            &self,
+            request: &sandbox::StartAgentProcessRequest<'_>,
+        ) -> sandbox::Result<sandbox::GuestAgentProcessHandle> {
+            self.inner.start_agent_process(request).await
         }
 
         async fn wait_process(

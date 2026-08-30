@@ -1,3 +1,9 @@
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
+  type ChatEventCursor,
+  type ChatEventSnapshotProjection,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { createStore, type Store } from "ccstate";
 import { afterEach, beforeAll } from "vitest";
 import { i18n, initializeI18n } from "../../i18n/index.ts";
@@ -10,6 +16,68 @@ import { createTestMocks, type TestMocks } from "./test-mocks.ts";
 import { isAbortError } from "../utils.ts";
 
 const L = logger("Test");
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function testCursorEventId(row: ChatEventRow): string {
+  if (UUID_PATTERN.test(row.id)) {
+    return row.id;
+  }
+  const suffix = row.seqId.toString(16).padStart(12, "0").slice(-12);
+  return `00000000-0000-4000-8000-${suffix}`;
+}
+
+export function chatEventRowsResponse(
+  rows: readonly ChatEventRow[],
+  query: {
+    readonly sinceSeqId: number;
+    readonly sinceEventId?: string;
+    readonly sinceProjection?: ChatEventSnapshotProjection;
+  },
+  options: {
+    readonly cursor?: ChatEventCursor;
+    readonly hasMore?: boolean;
+    readonly projection?: ChatEventSnapshotProjection;
+  } = {},
+): {
+  readonly rows: ChatEventRow[];
+  readonly cursor: ChatEventCursor;
+  readonly hasMore: boolean;
+  readonly projection: ChatEventSnapshotProjection;
+} {
+  const projection =
+    options.projection ?? CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION;
+  const lastRow = rows.at(-1);
+  let cursor: ChatEventCursor;
+  if (options.cursor !== undefined) {
+    cursor = options.cursor;
+  } else if (lastRow !== undefined) {
+    cursor = {
+      // Many old UI fixtures use human-readable row IDs even though real DB
+      // cursors are UUIDs. Normalize only the mock cursor boundary.
+      lastEventId: testCursorEventId(lastRow),
+      lastSeqId: lastRow.seqId,
+      projection,
+    };
+  } else if (query.sinceEventId !== undefined) {
+    if (query.sinceProjection === undefined) {
+      throw new Error("Current Chat Event row cursors require a projection");
+    }
+    cursor = {
+      lastEventId: query.sinceEventId,
+      lastSeqId: query.sinceSeqId,
+      projection: query.sinceProjection,
+    };
+  } else {
+    cursor = { lastEventId: null, lastSeqId: 0 };
+  }
+  return {
+    rows: [...rows],
+    cursor,
+    hasMore: options.hasMore ?? false,
+    projection,
+  };
+}
 
 export interface TestContext {
   readonly mocks: TestMocks;
@@ -121,7 +189,7 @@ export function testContext(): TestContext {
  */
 export function warmMermaidParser(): void {
   beforeAll(async () => {
-    const { default: mermaid } = await import("mermaid");
+    const { default: mermaid } = await import("@okouai/mermaid-lite");
     await mermaid.parse("flowchart TD\n  A --> B", { suppressErrors: true });
   }, 30_000);
 }

@@ -111,6 +111,38 @@ function importBindings(sourceFile) {
   return bindings;
 }
 
+function moduleReferences(sourceFile) {
+  const references = [];
+  function visit(node) {
+    let specifier;
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      specifier = node.moduleSpecifier.text;
+    } else if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    ) {
+      specifier = node.argument.literal.text;
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      specifier = node.arguments[0].text;
+    }
+    if (specifier) {
+      references.push({ node, specifier });
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return references;
+}
+
 const baselineRoots = typeScriptRoots(baselineConfig);
 const ownersByRoot = new Map();
 const counts = new Map();
@@ -159,6 +191,7 @@ let setupAppCalls = 0;
 let createAppCalls = 0;
 const implicitRouteCalls = [];
 const lowerLayerRouteImports = [];
+const nativePiRuntimeImports = [];
 
 for (const root of baselineRoots) {
   const source = fs.readFileSync(root, "utf8");
@@ -183,6 +216,20 @@ for (const root of baselineRoots) {
           resolve(sourceRoot, `signals/${directory}`) + "/",
         );
       }));
+
+  for (const reference of moduleReferences(sourceFile)) {
+    if (
+      !isTestRoot &&
+      (reference.specifier === "@okouai/pi-agent-runtime/node" ||
+        reference.specifier.startsWith("@earendil-works/"))
+    ) {
+      const line =
+        sourceFile.getLineAndCharacterOfPosition(
+          reference.node.getStart(sourceFile),
+        ).line + 1;
+      nativePiRuntimeImports.push(`${display(root)}:${line}`);
+    }
+  }
 
   for (const imported of importBindings(sourceFile)) {
     const target = resolveRelativeImport(root, imported.specifier);
@@ -264,6 +311,12 @@ if (lowerLayerRouteImports.length > 0) {
   fail(
     "Lower layers must not import route or bootstrap aggregation modules:",
     lowerLayerRouteImports,
+  );
+}
+if (nativePiRuntimeImports.length > 0) {
+  fail(
+    "API production modules must use the declaration-isolated Pi API entrypoint:",
+    nativePiRuntimeImports,
   );
 }
 

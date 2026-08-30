@@ -16,11 +16,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  MemoryPiSession,
-  runPiFirstModelTurn,
-  UnsupportedPiSessionVersionError,
-} from "./session-memory";
+import { MemoryPiSession, runPiFirstModelTurn } from "./session-memory";
+import { UnsupportedPiSessionVersionError } from "./errors";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
 const temporaryDirectories: string[] = [];

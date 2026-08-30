@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/feishu-connect";
 import { connectors } from "@okouai/db/schema/connector";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
@@ -665,6 +666,32 @@ export const deleteFeishuInstallationAndCustomConnector$ = command(
     return true;
   },
 );
+
+export async function resolveFeishuConnectorAccountMutation(
+  db: ReadonlyDb,
+  args: {
+    readonly installationId: string;
+    readonly userId: string;
+  },
+): Promise<ConnectorAccountMutationIntent> {
+  const connectionRows = await db
+    .select({ connectorId: feishuOrgConnections.connectorId })
+    .from(feishuOrgConnections)
+    .where(
+      and(
+        eq(feishuOrgConnections.installationId, args.installationId),
+        eq(feishuOrgConnections.userId, args.userId),
+      ),
+    )
+    .limit(2);
+  if (connectionRows.length > 1) {
+    throw new Error("Multiple Feishu member connections found");
+  }
+  const connection = connectionRows[0];
+  return connection?.connectorId
+    ? { intent: "reconnect", connectionId: connection.connectorId }
+    : { intent: "add" };
+}
 
 export async function hasFeishuCustomConnectorOAuthConnection(
   db: ReadonlyDb,

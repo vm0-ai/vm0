@@ -22,7 +22,7 @@ import { generateText } from "../external/openrouter";
 import { safeJsonParse } from "../utils";
 import { loadAgentConnectorScope } from "./agent-connector-scope.service";
 import { readPublicConnectorCatalogStatus } from "./connector-catalog-reader.service";
-import { connectorList } from "./connector-data.service";
+import { connectorCatalogConnectionList } from "./connector-data.service";
 
 const CONNECTOR_READINESS_MODEL = "google/gemini-3.1-flash-lite-preview";
 const CONNECTOR_READINESS_TIMEOUT_MS = 30_000;
@@ -287,7 +287,7 @@ export const detectWorkflowConnectorReadiness$ = command(
     const [connectorState, agentScope, automationDependencies] =
       await Promise.all([
         get(
-          connectorList({
+          connectorCatalogConnectionList({
             orgId: args.orgId,
             userId: args.userId,
           }),
@@ -308,7 +308,7 @@ export const detectWorkflowConnectorReadiness$ = command(
     const catalogRead = await readPublicConnectorCatalogStatus({
       db,
       featureStates: args.featureStates,
-      connectors: connectorState.connectors,
+      connections: connectorState,
       referenceConnectorSlugs: [...automationDependencies.keys()],
       publicBrand: args.publicBrand,
     });

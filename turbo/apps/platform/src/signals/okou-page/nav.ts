@@ -1,9 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
@@ -40,7 +38,7 @@ const navigateToNewChat$ = command(
 );
 
 function adjacentPinnedAgentId(
-  pinnedAgents: readonly { readonly id: string }[],
+  pinnedAgents: readonly { readonly agentId: string }[],
   currentAgentId: string | null,
   direction: PinnedAgentShortcutDirection,
 ): string | null {
@@ -49,18 +47,18 @@ function adjacentPinnedAgentId(
   }
   const currentIndex = currentAgentId
     ? pinnedAgents.findIndex((agent) => {
-        return agent.id === currentAgentId;
+        return agent.agentId === currentAgentId;
       })
     : -1;
   if (currentIndex === -1) {
     return direction === "next"
-      ? pinnedAgents[0]!.id
-      : pinnedAgents[pinnedAgents.length - 1]!.id;
+      ? pinnedAgents[0]!.agentId
+      : pinnedAgents[pinnedAgents.length - 1]!.agentId;
   }
   const offset = direction === "next" ? 1 : -1;
   return pinnedAgents[
     (currentIndex + offset + pinnedAgents.length) % pinnedAgents.length
-  ]!.id;
+  ]!.agentId;
 }
 
 const firstChatThreadIdForAgent$ = command(
@@ -136,7 +134,7 @@ export const toggleSidebarOff$ = command(({ get, set }) => {
 });
 
 export const setupGlobalKeyboardShortcuts$ = command(
-  ({ get, set }, signal: AbortSignal) => {
+  ({ set }, signal: AbortSignal) => {
     setupGlobalShortcut(
       {
         "mod+b": {
@@ -147,11 +145,6 @@ export const setupGlobalKeyboardShortcuts$ = command(
         },
         "mod+k": {
           allowInEditableTarget: true,
-          shouldHandle: () => {
-            return (
-              get(featureSwitch$)[FeatureSwitchKey.ThreeColumnNav] ?? false
-            );
-          },
           run: () => {
             set(openThreeColumnSearchDialog$);
           },

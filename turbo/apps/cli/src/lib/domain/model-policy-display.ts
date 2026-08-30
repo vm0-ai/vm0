@@ -1,5 +1,6 @@
 import {
   getModelProviderPresentationLabel,
+  isBuiltInModelProviderType,
   type ModelProviderType,
   type OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -9,7 +10,7 @@ type ModelProviderRouteKind = "built-in" | "api key" | "subscription";
 export function getModelProviderRouteKind(
   policy: Pick<OrgModelPolicy, "credentialScope" | "defaultProviderType">,
 ): ModelProviderRouteKind {
-  if (policy.defaultProviderType === "vm0") {
+  if (isBuiltInModelProviderType(policy.defaultProviderType)) {
     return "built-in";
   }
 

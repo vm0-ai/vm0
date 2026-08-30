@@ -467,7 +467,13 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     ``response_streaming.configure_response_stream()`` because that path keeps a
     bounded raw wire-byte buffer and records whether it was truncated. Bounded
     ``flow.response.raw_content`` decoding is used only when no stream
-    buffer metadata exists.
+    buffer metadata exists. These sources intentionally use different decode
+    policies: retained stream buffers use best-effort ``decompress_body()``,
+    which can preserve original wire bytes or partial decoded output after a
+    decode problem, while buffered ``raw_content`` uses the strict
+    ``decode_response_body_for_network_log_capture()`` helper. A strict
+    ``None`` result omits a non-empty buffered body and marks it ``binary``;
+    ``b""`` remains a successful empty result with no body field.
     """
     # Request headers (always available)
     request_inspection = _inspect_headers_for_capture(flow.request.headers)
@@ -501,9 +507,12 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                     max_output=BODY_CAPTURE_LIMIT + 1,
                 )
                 if request_body is None:
-                    if request_stream_body.truncated or request_stream_incomplete:
-                        log_entry["request_body_truncated"] = True
-                    log_entry["request_body_encoding"] = "binary"
+                    _set_body_capture_failure(
+                        log_entry,
+                        "request",
+                        raw_request_body,
+                        truncated=request_stream_body.truncated or request_stream_incomplete,
+                    )
                 else:
                     _set_body_fields(
                         log_entry,

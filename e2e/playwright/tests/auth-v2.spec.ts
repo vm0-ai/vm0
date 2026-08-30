@@ -11,6 +11,7 @@ import {
   expectNoOrganizationCreation,
   expectStepAnnouncement,
   openAuthV2,
+  reloadAuthV2,
   signInMethodButton,
   submitSignInIdentifier,
   waitForPathname,
@@ -18,6 +19,7 @@ import {
 
 const ORGANIZATION_ALPHA = "Auth v2 Browser Alpha";
 const ORGANIZATION_BETA = "Auth v2 Browser Beta";
+const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(239, 80, 1)";
 const SUPPORTED_AUTH_V2_LOCALES = [
   { locale: "en-US", title: "Create your account" },
   { locale: "pt-BR", title: "Criar sua conta" },
@@ -30,6 +32,59 @@ const SUPPORTED_AUTH_V2_LOCALES = [
   { locale: "fr-FR", title: "Créer votre compte" },
   { locale: "hi-IN", title: "अपना खाता बनाएं" },
 ] as const;
+
+function relativeLuminance(color: string): number {
+  const channels = color
+    .match(/[0-9.]+/g)
+    ?.slice(0, 3)
+    .map(Number);
+  if (
+    channels?.length !== 3 ||
+    channels.some((channel) => !Number.isFinite(channel))
+  ) {
+    throw new Error(`Expected an RGB color, received ${color}`);
+  }
+  const [red = 0, green = 0, blue = 0] = channels.map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  );
+}
+
+async function renderedLinkContrast(
+  linkAction: Locator,
+  surface: Locator,
+): Promise<number> {
+  const linkForeground = await linkAction.evaluate((element) => {
+    return getComputedStyle(element).color;
+  });
+  const surfaceBackground = await surface.evaluate((element) => {
+    return getComputedStyle(element).backgroundColor;
+  });
+  return contrastRatio(linkForeground, surfaceBackground);
+}
+
+async function expectAccessibleLinkContrast(
+  linkAction: Locator,
+  surface: Locator,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      return renderedLinkContrast(linkAction, surface);
+    })
+    .toBeGreaterThanOrEqual(4.5);
+}
 
 test("base, nested, refreshed, and legacy auth routes coexist on desktop", async ({
   page,
@@ -44,8 +99,7 @@ test("base, nested, refreshed, and legacy auth routes coexist on desktop", async
     await openAuthV2(page, route);
     const expectedPathname = new URL(route, "https://auth-v2.invalid").pathname;
     expect(new URL(page.url()).pathname).toBe(expectedPathname);
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(authV2Root(page)).toBeVisible();
+    await reloadAuthV2(page);
     expect(new URL(page.url()).pathname).toBe(expectedPathname);
   }
 
@@ -60,7 +114,7 @@ test("base, nested, refreshed, and legacy auth routes coexist on desktop", async
   }
 });
 
-test("primary and link actions retain accessible brand colors in both themes", async ({
+test("primary actions retain brand styling while links remain accessible", async ({
   page,
 }) => {
   await openAuthV2(page, "/v2/sign-up");
@@ -70,24 +124,34 @@ test("primary and link actions retain accessible brand colors in both themes", a
     exact: true,
     name: "Continue",
   });
-  const currentSignUpLink = page.getByRole("link", {
-    name: "Use current sign-up",
+  const signInLink = root.getByRole("link", {
+    exact: true,
+    name: "Sign in",
   });
   const passwordVisibilityAction = root.getByRole("button", {
     name: "Show password",
   });
 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(continueButton).toHaveCSS("background-color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveCSS(
+    "background-color",
+    AUTH_V2_PRIMARY_BACKGROUND_COLOR,
+  );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(currentSignUpLink).toHaveCSS("color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveClass(/\bbg-primary\b/);
+  await expect(continueButton).toHaveClass(/\btext-primary-foreground\b/);
+  await expect(signInLink).toHaveClass(/\btext-primary-900\b/);
+  await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(21, 24, 30)");
 
   await page.getByRole("button", { name: "Toggle theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(continueButton).toHaveCSS("background-color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveCSS(
+    "background-color",
+    AUTH_V2_PRIMARY_BACKGROUND_COLOR,
+  );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(currentSignUpLink).toHaveCSS("color", "rgb(239, 90, 15)");
+  await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS(
     "color",
     "rgb(233, 234, 236)",
@@ -267,10 +331,11 @@ test("existing sessions continue without exposing organization creation", async 
   await page.goto("/_/skeleton", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.Clerk?.loaded));
   await clerk.signIn({ emailAddress: identity.email, page });
+  await waitForSignedInAccount(page, identity.email);
 
   await openAuthV2(page, authUrl("/v2/sign-in", redirect));
   const account = authV2Root(page).getByRole("button", {
-    name: /Auth Browser/i,
+    name: identity.email,
   });
   await expect(account).toBeVisible();
   await expectStepAnnouncement(page);
@@ -493,19 +558,38 @@ async function waitForActivatedSessionOrRedirect(
   page: Page,
   redirect: URL,
 ): Promise<void> {
-  await expect
-    .poll(async () => {
-      if (new URL(page.url()).pathname === redirect.pathname) {
-        return "activated";
-      }
-      return await page.evaluate(() => {
-        return window.Clerk?.client?.signUp.status === "complete" &&
-          window.Clerk.session
-          ? "activated"
-          : "pending";
-      });
-    })
-    .toBe("activated");
+  await page.waitForFunction(
+    (redirectPathname) => {
+      return (
+        window.location.pathname === redirectPathname ||
+        Boolean(
+          window.Clerk?.client?.signUp.status === "complete" &&
+          window.Clerk.session,
+        )
+      );
+    },
+    redirect.pathname,
+    { timeout: 5_000 },
+  );
+}
+
+async function waitForSignedInAccount(
+  page: Page,
+  emailAddress: string,
+): Promise<void> {
+  await page.waitForFunction(
+    (expectedEmailAddress) => {
+      return Boolean(
+        window.Clerk?.client?.signedInSessions.some(
+          (session) =>
+            session.user.primaryEmailAddress?.emailAddress ===
+            expectedEmailAddress,
+        ),
+      );
+    },
+    emailAddress,
+    { timeout: 5_000 },
+  );
 }
 
 function organizationButton(page: Page, organizationName: string): Locator {

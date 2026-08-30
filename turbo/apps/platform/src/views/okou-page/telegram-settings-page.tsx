@@ -25,7 +25,7 @@ import {
   type TelegramSetupStatus,
   OFFICIAL_TELEGRAM_BOT_ID,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { Button } from "@okouai/ui/components/ui/button";
 import {
   Dialog,
@@ -119,9 +119,11 @@ import { i18n } from "../../i18n/index.ts";
 const telegramIconImg = settingsIconAssetUrl("telegram");
 
 interface DefaultAgentLabel {
-  id: string | null;
+  agentId: string | null;
   displayName: string | null;
 }
+
+type TelegramAgentOption = Pick<AgentResponse, "agentId" | "displayName">;
 
 const TELEGRAM_COMMAND_CLASS =
   "cursor-pointer rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-state-hover active:bg-state-pressed";
@@ -132,28 +134,24 @@ function isOfficialTelegramBot(bot: TelegramBot): boolean {
 }
 
 function agentLabel(
-  agent: TeamComposeItem | { id: string; name: string },
+  agent: TelegramAgentOption,
   defaultAgent: DefaultAgentLabel,
 ) {
-  if (agent.id === defaultAgent.id && defaultAgent.displayName) {
+  if (agent.agentId === defaultAgent.agentId && defaultAgent.displayName) {
     return defaultAgent.displayName;
   }
-
-  if ("displayName" in agent) {
-    return agent.displayName ?? agent.id;
-  }
-  return agent.name || agent.id;
+  return agent.displayName ?? agent.agentId;
 }
 
 function buildBotAgentOptions(
   bot: TelegramBot,
-  agents: TeamComposeItem[],
+  agents: AgentResponse[],
   defaultAgent: DefaultAgentLabel,
 ) {
   if (
     !bot.agent ||
     agents.some((agent) => {
-      return agent.id === bot.agent?.id;
+      return agent.agentId === bot.agent?.id;
     })
   ) {
     return agents;
@@ -162,15 +160,11 @@ function buildBotAgentOptions(
   return [
     ...agents,
     {
-      id: bot.agent.id,
+      agentId: bot.agent.id,
       displayName:
-        bot.agent.id === defaultAgent.id && defaultAgent.displayName
+        bot.agent.id === defaultAgent.agentId && defaultAgent.displayName
           ? defaultAgent.displayName
           : bot.agent.name,
-      description: null,
-      sound: null,
-      avatarUrl: null,
-      updatedAt: "",
     },
   ];
 }
@@ -525,7 +519,7 @@ function AddTelegramBotAgentField({
   disabled,
   onAgentChange,
 }: {
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   agentId: string | undefined;
   selectedAgentLabel: string;
@@ -554,7 +548,7 @@ function AddTelegramBotAgentField({
         <SelectContent>
           {agents.map((agent) => {
             return (
-              <SelectItem key={agent.id} value={agent.id}>
+              <SelectItem key={agent.agentId} value={agent.agentId}>
                 {agentLabel(agent, defaultAgent)}
               </SelectItem>
             );
@@ -737,7 +731,7 @@ function AddTelegramCreateStep({
   disabled,
   onAgentChange,
 }: {
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   agentId: string | undefined;
   selectedAgentLabel: string;
@@ -804,18 +798,19 @@ function getSelectedAddTelegramAgent({
   defaultAgent,
   selectedAgentId,
 }: {
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   selectedAgentId: string | null | undefined;
 }) {
-  const preferredAgentId = selectedAgentId ?? defaultAgent.id ?? agents[0]?.id;
+  const preferredAgentId =
+    selectedAgentId ?? defaultAgent.agentId ?? agents[0]?.agentId;
   const selectedAgent =
     agents.find((agent) => {
-      return agent.id === preferredAgentId;
+      return agent.agentId === preferredAgentId;
     }) ?? agents[0];
 
   return {
-    agentId: selectedAgent?.id,
+    agentId: selectedAgent?.agentId,
     selectedAgentLabel: selectedAgent
       ? agentLabel(selectedAgent, defaultAgent)
       : (defaultAgent.displayName ??
@@ -934,7 +929,7 @@ function buildAddTelegramBotSetupFlow({
 }
 
 interface AddTelegramBotDialogInnerProps {
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   disabled: boolean;
   botToken: string;
@@ -960,7 +955,7 @@ interface AddTelegramBotDialogFrameProps {
   flow: AddTelegramBotSetupFlow;
   canSubmit: boolean;
   botToken: string;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   agentId: string | undefined;
   selectedAgentLabel: string;
@@ -1214,7 +1209,7 @@ function AddTelegramBotStepContent({
   botToken: string;
   disabled: boolean;
   adding: boolean;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   agentId: string | undefined;
   selectedAgentLabel: string;
@@ -1365,7 +1360,7 @@ function AddTelegramBotDialog({
   defaultAgent,
   disabled,
 }: {
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   disabled: boolean;
 }) {
@@ -1422,7 +1417,7 @@ function TelegramBotAgentSelect({
   disabled,
 }: {
   bot: TelegramBot;
-  options: TeamComposeItem[];
+  options: TelegramAgentOption[];
   defaultAgent: DefaultAgentLabel;
   disabled: boolean;
 }) {
@@ -1471,7 +1466,7 @@ function TelegramBotAgentSelect({
       <SelectContent>
         {options.map((agent) => {
           return (
-            <SelectItem key={agent.id} value={agent.id}>
+            <SelectItem key={agent.agentId} value={agent.agentId}>
               {agentLabel(agent, defaultAgent)}
             </SelectItem>
           );
@@ -1603,6 +1598,7 @@ function TelegramMoreActions({
     <Popover>
       <PopoverTrigger asChild>
         <Button
+          showTooltip
           type="button"
           disabled={disabled}
           variant="quiet"
@@ -1731,7 +1727,7 @@ function TelegramBotRow({
   disabled,
 }: {
   bot: TelegramBot;
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   canManage: boolean;
   disabled: boolean;
@@ -2079,7 +2075,7 @@ function TelegramBotList({
   agentsLoading,
 }: {
   bots: TelegramBot[];
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   isAdmin: boolean;
   agentsLoading: boolean;
@@ -2138,7 +2134,7 @@ function TelegramBotsCard({
   hasError,
 }: {
   bots: TelegramBot[];
-  agents: TeamComposeItem[];
+  agents: AgentResponse[];
   defaultAgent: DefaultAgentLabel;
   isAdmin: boolean;
   agentsLoading: boolean;
@@ -2187,10 +2183,10 @@ export function TelegramSettingsPage() {
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const defaultAgent: DefaultAgentLabel = {
-    id:
+    agentId:
       defaultAgentIdLoadable.state === "hasData"
         ? defaultAgentIdLoadable.data
-        : (agents[0]?.id ?? null),
+        : (agents[0]?.agentId ?? null),
     displayName:
       defaultAgentNameLoadable.state === "hasData"
         ? defaultAgentNameLoadable.data

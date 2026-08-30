@@ -130,7 +130,6 @@ function configureGoogleCalendarApiMock(args: {
   };
   let incrementalCallCount = 0;
   mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-  mockEnv("VM0_API_BACKEND_URL", undefined);
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",

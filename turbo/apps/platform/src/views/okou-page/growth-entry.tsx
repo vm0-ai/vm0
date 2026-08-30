@@ -1,13 +1,7 @@
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@okouai/core";
-import { Check, ChevronDown, Coins, PlusCircle, UserPlus } from "lucide-react";
+import { Check, ChevronDown, Coins, PlusCircle } from "lucide-react";
 import {
   Button,
   DropdownMenu,
@@ -21,7 +15,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { assistantName$ } from "../../signals/branding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { openSettingsDialogAt$ } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { slackOrgData$ } from "../../signals/okou-page/slack.ts";
 import {
@@ -190,6 +183,7 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
 
         <DropdownMenuTrigger asChild>
           <Button
+            showTooltip
             type="button"
             variant="quiet"
             size="icon-sm"
@@ -268,55 +262,25 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
   );
 }
 
-function InviteButton({ isAdmin }: { isAdmin: boolean }) {
-  const { t } = useTranslation();
-  const pageSignal = useGet(pageSignal$);
-  const openSettings = useSet(openSettingsDialogAt$);
-  const handleInvite = () => {
-    detach(openSettings("people", pageSignal), Reason.DomCallback);
-  };
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleInvite}
-      className={`zero-btn-morandi gap-1.5${isAdmin ? "" : " invisible"}`}
-      aria-hidden={isAdmin ? undefined : "true"}
-      tabIndex={isAdmin ? undefined : -1}
-      data-testid="invite-button"
-    >
-      <UserPlus size={14} />
-      {t(($) => {
-        return $.chat.agentPage.invitePeople;
-      })}
-    </Button>
-  );
-}
-
 /**
- * The corner both entries sit in.
+ * The corner the growth entry sits in.
  *
  * The row spans the page rather than the 900px content column, so the entry
  * lands in the top-right corner — the position the invite button has always
- * held, and the one the menu's `align="end"` is drawn against.
+ * held, and the one the menu's `align="end"` is drawn against. It stays outside
+ * the page's flex layout so loading it cannot shift the home content.
  */
 function CornerHeader({ children }: { children: ReactNode }) {
   return (
-    <header className="hidden shrink-0 bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
-      <div className="flex items-center justify-end gap-2">{children}</div>
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden bg-transparent px-4 pb-2 pt-4 md:block sm:px-6">
+      <div className="pointer-events-auto flex items-center justify-end gap-2">
+        {children}
+      </div>
     </header>
   );
 }
 
-function InviteHeader({ isAdmin }: { isAdmin: boolean }) {
-  return (
-    <CornerHeader>
-      <InviteButton isAdmin={isAdmin} />
-    </CornerHeader>
-  );
-}
-
-function EnabledGrowthEntryHeader() {
+function AdminGrowthEntryHeader() {
   const slackInstalled = useSlackInstalled();
   if (slackInstalled === null) {
     return null;
@@ -329,16 +293,15 @@ function EnabledGrowthEntryHeader() {
 }
 
 export function GrowthEntryHeader() {
-  const features = useLastResolved(featureSwitch$);
-  const growthEntryEnabled =
-    features?.[FeatureSwitchKey.HomeGrowthEntry] ?? false;
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
-  if (!growthEntryEnabled) {
-    return <InviteHeader isAdmin={isAdmin} />;
-  }
-  if (!isAdmin) {
-    return null;
-  }
-  return <EnabledGrowthEntryHeader />;
+  return (
+    <>
+      {/* Match the former in-flow header's 16px + 32px + 8px height. The
+          slot exists from the first render so async role and entry resolution
+          cannot move the home content. The admin controls stay absolute. */}
+      <div aria-hidden className="hidden h-14 shrink-0 md:block" />
+      {isAdmin ? <AdminGrowthEntryHeader /> : null}
+    </>
+  );
 }

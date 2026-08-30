@@ -203,7 +203,11 @@ fn classify_process_stat_read(result: std::io::Result<Vec<u8>>) -> ProcessStatRe
 
 /// Read `/proc/{pid}/stat` without conflating disappearance and read failures.
 pub(crate) async fn read_process_stat_checked(pid: u32) -> ProcessStatRead {
-    let path = format!("/proc/{pid}/stat");
+    read_process_stat_checked_from(Path::new("/proc"), pid).await
+}
+
+pub(crate) async fn read_process_stat_checked_from(proc_root: &Path, pid: u32) -> ProcessStatRead {
+    let path = proc_root.join(pid.to_string()).join("stat");
     classify_process_stat_read(tokio::fs::read(&path).await)
 }
 

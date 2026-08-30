@@ -1,5 +1,81 @@
 # Changelog
 
+## [0.12.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.10...guest-contracts-v0.12.11) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
+## [0.12.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.9...guest-contracts-v0.12.10) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy root cgroup readers ([#30112](https://github.com/vm0-ai/vm0/issues/30112)) ([8d594fa](https://github.com/vm0-ai/vm0/commit/8d594fa8ce223e5040a0c0edcfae2aacf1a03307)), closes [#30103](https://github.com/vm0-ai/vm0/issues/30103) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **runner:** cut guest API URL writer to canonical alias ([#30105](https://github.com/vm0-ai/vm0/issues/30105)) ([f3bb3c5](https://github.com/vm0-ai/vm0/commit/f3bb3c589879d6782f7942afff00b8e9af242706))
+
+## [0.12.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.8...guest-contracts-v0.12.9) (2026-08-28)
+
+
+### Documentation
+
+* **rust:** document active-input payload size responsibility ([#30080](https://github.com/vm0-ai/vm0/issues/30080)) ([dbceaf5](https://github.com/vm0-ai/vm0/commit/dbceaf5c1617ffff16b5e0fdd43170e09853a7f4))
+
+## [0.12.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.7...guest-contracts-v0.12.8) (2026-08-28)
+
+
+### Refactoring
+
+* **runner:** cut sandbox metadata writers to canonical aliases ([#30066](https://github.com/vm0-ai/vm0/issues/30066)) ([237f6a8](https://github.com/vm0-ai/vm0/commit/237f6a84c78087d2fe9a446f3c9c3d040a3f6365))
+* **runner:** translate timing tuning writers to canonical aliases ([#30060](https://github.com/vm0-ai/vm0/issues/30060)) ([44f18e2](https://github.com/vm0-ai/vm0/commit/44f18e290973d5ea8c7cc5f34857e67091c4293b))
+
+## [0.12.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.6...guest-contracts-v0.12.7) (2026-08-28)
+
+
+### Refactoring
+
+* **runner:** cut private payload writers to canonical aliases ([#30055](https://github.com/vm0-ai/vm0/issues/30055)) ([edbdda3](https://github.com/vm0-ai/vm0/commit/edbdda3db6a2553bdf047181becbf2f9a170b997))
+
+## [0.12.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.5...guest-contracts-v0.12.6) (2026-08-28)
+
+
+### Refactoring
+
+* **runner:** cut api token writer to canonical alias ([#30025](https://github.com/vm0-ai/vm0/issues/30025)) ([0f1af83](https://github.com/vm0-ai/vm0/commit/0f1af83895de4965396672276f0b709f77190f64))
+* **runner:** cut execution timeout writer to canonical alias ([#30020](https://github.com/vm0-ai/vm0/issues/30020)) ([89628c1](https://github.com/vm0-ai/vm0/commit/89628c1f22e6441c025a846859036281751776bd))
+
+## [0.12.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.4...guest-contracts-v0.12.5) (2026-08-28)
+
+
+### Refactoring
+
+* **guest:** cut managed tool placement writer to canonical alias ([#30001](https://github.com/vm0-ai/vm0/issues/30001)) ([e8e1294](https://github.com/vm0-ai/vm0/commit/e8e129417a3e77e507f2892854f8291d71d97d8e)), closes [#29995](https://github.com/vm0-ai/vm0/issues/29995) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
+## [0.12.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.3...guest-contracts-v0.12.4) (2026-08-28)
+
+
+### Refactoring
+
+* **guest:** remove legacy mock binary path readers ([#29977](https://github.com/vm0-ai/vm0/issues/29977)) ([95df1fc](https://github.com/vm0-ai/vm0/commit/95df1fce63080ef61656f9d5e76b2c763fd2afdc)), closes [#29973](https://github.com/vm0-ai/vm0/issues/29973) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **test:** cut mock path writers to canonical aliases ([#29949](https://github.com/vm0-ai/vm0/issues/29949)) ([3941a98](https://github.com/vm0-ai/vm0/commit/3941a9832964c22b647213509376be0fccb70683))
+
+## [0.12.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.2...guest-contracts-v0.12.3) (2026-08-27)
+
+
+### Refactoring
+
+* **runtime:** cut root cgroup placement writers to canonical aliases ([#29917](https://github.com/vm0-ai/vm0/issues/29917)) ([ae935e6](https://github.com/vm0-ai/vm0/commit/ae935e632c1a1c1bee1bd3c014ca556370e59a4a))
+
+## [0.12.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.1...guest-contracts-v0.12.2) (2026-08-27)
+
+
+### Refactoring
+
+* **rust:** make shared jsonl cli state backend-neutral ([#29895](https://github.com/vm0-ai/vm0/issues/29895)) ([0e0bc69](https://github.com/vm0-ai/vm0/commit/0e0bc69214f2717f37aa27064c1a1f5a1c8ae311))
+
+## [0.12.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.0...guest-contracts-v0.12.1) (2026-08-27)
+
 ## [0.12.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.23...guest-contracts-v0.12.0) (2026-08-26)
 
 

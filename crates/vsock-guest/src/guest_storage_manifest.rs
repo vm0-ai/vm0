@@ -297,17 +297,20 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
             );
         }
     };
-    let process_containment =
-        match ExecProcessContainment::create(seq, process_containment_mode, false) {
-            Ok(process_containment) => process_containment,
-            Err(error) => {
-                return failed_output(
-                    ExecTermination::StartFailed,
-                    started,
-                    format!("Failed to initialize storage helper process containment: {error}"),
-                );
-            }
-        };
+    let process_containment = match ExecProcessContainment::create(
+        seq,
+        process_containment_mode,
+        vsock_proto::ExecProcessRole::Workload,
+    ) {
+        Ok(process_containment) => process_containment,
+        Err(error) => {
+            return failed_output(
+                ExecTermination::StartFailed,
+                started,
+                format!("Failed to initialize storage helper process containment: {error}"),
+            );
+        }
+    };
     let mut prepared_containment = match process_containment.prepare_command() {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -324,7 +327,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         .arg("--manifest-stdin")
         .env(guest_contracts::env::RUN_ID_ENV, run_id)
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             runtime_dir,
         )
         .stdin(Stdio::piped())
@@ -631,10 +634,12 @@ fn failed_output(
         stdout: BoundedDrainResult {
             captured: Some(Vec::new()),
             capture_truncated: false,
+            stream_truncated: false,
         },
         stderr: BoundedDrainResult {
             captured: Some(Vec::new()),
             capture_truncated: false,
+            stream_truncated: false,
         },
         diagnostic: truncate_utf8(diagnostic, MAX_DIAGNOSTIC_BYTES),
     }

@@ -87,9 +87,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/agents\/[^/]+\/draft$/.test(
-      new URL(response.url()).pathname,
-    )
+    !/^\/api\/agents\/[^/]+\/draft$/.test(new URL(response.url()).pathname)
   ) {
     return false;
   }
@@ -171,7 +169,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       contentType: "image/svg+xml",
     });
   });
-  await page.route("**/api/connector-catalog/status", async (route) => {
+  await page.route("**/api/connector-catalog/discovery", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isConnectorCatalogStatusResponse(body)) {
@@ -1072,6 +1070,23 @@ async function expectInside(inner: Locator, outer: Locator): Promise<void> {
   );
 }
 
+async function computedIconStyle(control: Locator): Promise<{
+  readonly height: string;
+  readonly opacity: string;
+  readonly width: string;
+}> {
+  const icon = control.locator("svg").first();
+  await expect(icon).toBeVisible();
+  return icon.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      height: style.height,
+      opacity: style.opacity,
+      width: style.width,
+    };
+  });
+}
+
 interface ImagePreviewGeometry {
   readonly image: {
     readonly height: number;
@@ -1234,6 +1249,148 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
+test("home content keeps its reserved offset while the growth entry loads", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const orgRequested = deferred();
+  const releaseOrg = deferred();
+  const slackStatusRequested = deferred();
+  const releaseSlackStatus = deferred();
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      orgRequested.resolve();
+      await releaseOrg.promise;
+      await route.fulfill({
+        json: { id: "org_admin", name: "Admin Org", role: "admin" },
+      });
+    },
+  );
+  await page.route("**/api/integrations/slack", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    slackStatusRequested.resolve();
+    await releaseSlackStatus.promise;
+    await route.fulfill({
+      json: {
+        connectUrl: null,
+        environment: {
+          missingSecrets: [],
+          missingVars: [],
+          requiredSecrets: [],
+          requiredVars: [],
+        },
+        installUrl: null,
+        isAdmin: true,
+        isConnected: false,
+        isInstalled: true,
+        reinstallUrl: null,
+        scopeMismatch: false,
+        workspaceName: null,
+      },
+    });
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await orgRequested.promise;
+
+  const growthEntry = page.getByTestId("growth-entry");
+  const main = page.locator("main");
+  const tagline = page.getByTestId("chat-tagline");
+  await expect(tagline).toBeVisible({ timeout: 20_000 });
+  await expect(growthEntry).not.toBeAttached();
+  const mainBefore = await main.boundingBox();
+  const taglineBefore = await tagline.boundingBox();
+  if (!mainBefore || !taglineBefore) {
+    throw new Error("Home content has no measurable layout before entry load");
+  }
+  // Reserve the former 56px header slot before either async dependency resolves.
+  expect(mainBefore.y).toBe(56);
+
+  releaseOrg.resolve();
+  await slackStatusRequested.promise;
+  await expect(growthEntry).not.toBeAttached();
+  const mainAfterRole = await main.boundingBox();
+  const taglineAfterRole = await tagline.boundingBox();
+  if (!mainAfterRole || !taglineAfterRole) {
+    throw new Error("Home content has no measurable layout after role load");
+  }
+  expect(mainAfterRole.y).toBe(mainBefore.y);
+  expect(mainAfterRole.height).toBe(mainBefore.height);
+  expect(taglineAfterRole.y).toBe(taglineBefore.y);
+
+  releaseSlackStatus.resolve();
+  await expect(growthEntry).toBeVisible();
+  await expect(growthEntry).toContainText("Invite humans 🤝");
+  const mainAfter = await main.boundingBox();
+  const taglineAfter = await tagline.boundingBox();
+  if (!mainAfter || !taglineAfter) {
+    throw new Error("Home content has no measurable layout after entry load");
+  }
+
+  expect(mainAfter.y).toBe(mainBefore.y);
+  expect(mainAfter.height).toBe(mainBefore.height);
+  expect(taglineAfter.y).toBe(taglineBefore.y);
+});
+
+test("non-admin home content keeps the reserved desktop offset", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        json: { id: "org_member", name: "Member Org", role: "member" },
+      });
+    },
+  );
+  const memberOrgLoaded = page.waitForResponse((response) => {
+    const request = response.request();
+    return (
+      response.ok() &&
+      request.method() === "GET" &&
+      new URL(response.url()).pathname === "/api/org"
+    );
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await memberOrgLoaded;
+  await expect(page.getByTestId("chat-tagline")).toBeVisible({
+    timeout: 20_000,
+  });
+  // Let the member role commit before reading the stable layout.
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+  });
+
+  await expect(page.getByTestId("growth-entry")).not.toBeAttached();
+  const mainBox = await page.locator("main").boundingBox();
+  if (!mainBox) {
+    throw new Error("Non-admin home content has no measurable layout");
+  }
+  expect(mainBox.y).toBe(56);
+});
+
 test("checkmark keeps its column across selection states and previews deactivation", async ({
   page,
 }) => {
@@ -1262,9 +1419,7 @@ test("checkmark keeps its column across selection states and previews deactivati
   await expectModelRowColumns(page);
 });
 
-test("model picker fits seven rows and scrolls one row for eight", async ({
-  page,
-}) => {
+test("model picker grows by a row rather than scrolling", async ({ page }) => {
   const boundary = await mockModelPickerBoundary(page);
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
@@ -1280,16 +1435,102 @@ test("model picker fits seven rows and scrolls one row for eight", async ({
   boundary.showEightModels();
   await page.reload();
 
+  // The popup is bounded by the space it has, not by a row count, so an eighth
+  // model makes it one row taller instead of parking that row under a
+  // scrollbar. A fixed cap used to stop it here, and the category-switch height
+  // animation kept travelling to a height the popup could not reach.
   const eightModels = await openModelPickerAndReadGeometry(page);
   expect(eightModels).toStrictEqual({
-    clientHeight: 288,
+    clientHeight: 324,
     optionCount: 8,
     rowStep: 36,
     scrollHeight: 324,
   });
-  expect(eightModels.scrollHeight - eightModels.clientHeight).toBe(
+  expect(eightModels.clientHeight - sevenModels.clientHeight).toBe(
     eightModels.rowStep,
   );
+});
+
+test("model picker stops at the space it has on a short viewport", async ({
+  page,
+}) => {
+  const boundary = await mockModelPickerBoundary(page);
+  boundary.showEightModels();
+  // Removing the row-count cap leaves the available height as the popup's only
+  // bound, so it needs a case where that bound bites. 320px is under the 324px
+  // the eight-model list asks for, which makes this independent of where the
+  // composer happens to sit: no popup can both stay on screen and show every
+  // row here. An unbounded popup -- or one still capped at `SelectContent`'s
+  // own 24rem default, which outlives this viewport -- would lay out its whole
+  // list and run past the screen instead of scrolling.
+  await page.setViewportSize({ width: 1280, height: 320 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const popup = page.locator('[data-slot="select-content"]');
+  await expect(popup).toBeVisible();
+  await expect(popup).toBeInViewport({ ratio: 1 });
+  const bounded = await popup.evaluate((element) => {
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    };
+  });
+  expect(bounded.scrollHeight).toBeGreaterThan(bounded.clientHeight);
+});
+
+test("model picker image category settles without a scrollbar", async ({
+  page,
+}) => {
+  await mockModelPickerBoundary(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page
+    .getByRole("combobox", { name: "Claude Fable 5", exact: true })
+    .click();
+  const popup = page.locator('[data-slot="select-content"]');
+  await expect(popup).toBeVisible();
+  await page
+    .getByRole("radiogroup", { name: "Models" })
+    .getByRole("radio", { name: "Image" })
+    .click();
+
+  // The image catalog is the longest of the three categories, so it is the one
+  // that outgrew the old cap. The switch animates the popup's height and hides
+  // the overflow while it runs, so wait for the rows to land and the animation
+  // to finish -- that is the frame where a scrollbar used to appear.
+  const imageRows = popup.locator('[data-slot="select-group"] > button');
+  await expect(imageRows.last()).toBeVisible();
+  const imageCategory = await popup.evaluate(async (element) => {
+    // The resize observer starts the height animation from the frame the
+    // swapped list lays out in, so let that frame pass before collecting it.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    };
+  });
+  expect(imageCategory.scrollHeight).toBe(imageCategory.clientHeight);
+  expect(imageCategory.scrollTop).toBe(0);
+  // Every row the category offers is on screen, so nothing is hidden below the
+  // fold that the height assertion above would miss.
+  await expect(imageRows.last()).toBeInViewport({ ratio: 1 });
 });
 
 test("model picker category switch marks its selection without a raised shadow", async ({
@@ -1413,7 +1654,7 @@ test("send a message through the deployed runner", async ({ page }) => {
   ).toBeVisible({ timeout: 90_000 });
 });
 
-test("chat composer keeps the Send button inside on narrow screens", async ({
+test("chat composer keeps standard tool icons and Send inside on narrow screens", async ({
   page,
 }) => {
   await mockComposerConnectorState(page);
@@ -1423,6 +1664,14 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
 
   const composer = page.locator(".zero-composer");
   const editor = composer.getByRole("textbox", { name: "Message" });
+  const attachButton = composer.getByRole("button", {
+    name: "Attach",
+    exact: true,
+  });
+  const templateButton = composer.getByRole("button", {
+    name: "Template",
+    exact: true,
+  });
   const workflowButton = composer.getByRole("button", {
     name: "Create workflow",
   });
@@ -1435,8 +1684,9 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   });
   const sendButton = composer.getByRole("button", { name: "Send" });
 
-  await expect(connectorsButton.locator("img")).toHaveCount(2);
+  await expect(connectorsButton.locator("img")).toHaveCount(0);
   await connectorsButton.click();
+  await expect(connectorsButton.locator("img")).toHaveCount(2);
   await expect(
     page.getByRole("switch", { name: "Disable Cloud browser" }),
   ).toBeVisible();
@@ -1461,6 +1711,18 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await expect(
     connectorsButton.locator("img:visible, svg:visible"),
   ).toHaveCount(3);
+  for (const control of [
+    attachButton,
+    templateButton,
+    workflowButton,
+    microphoneButton,
+  ]) {
+    expect(await computedIconStyle(control)).toStrictEqual({
+      height: "18px",
+      opacity: "1",
+      width: "18px",
+    });
+  }
   await expectInside(sendButton, composer);
 
   await waitForAgentDraftClear(page, async () => {

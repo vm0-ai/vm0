@@ -1,9 +1,13 @@
-import { Clerk } from "@clerk/clerk-js";
-import { ui } from "@clerk/ui";
 import { command, computed, state } from "ccstate";
+import {
+  startClerkBrowserRuntime,
+  type ClerkBrowserRuntime,
+} from "../lib/clerk-runtime.ts";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
   clearPostHogUser,
+  markBootstrapClerkLoadCompleted,
+  markBootstrapClerkLoadStarted,
   setPostHogOrganization,
   setPostHogUser,
 } from "../lib/posthog.ts";
@@ -18,10 +22,13 @@ import {
 } from "../lib/platform-host.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
-import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
+import {
+  createAuthRecovery,
+  setupForegroundCatchUp$,
+  type AuthRecovery,
+} from "./auth-retry.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
-import { rootSignal$ } from "./root-signal.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -359,81 +366,101 @@ export function buildSignInRedirectUrl(
   return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
-export const clerkUi$ = computed(() => {
-  return ui;
-});
+const internalClerkRuntime$ = state<Promise<ClerkBrowserRuntime> | undefined>(
+  undefined,
+);
+const internalAuthRecovery$ = state<Promise<AuthRecovery> | undefined>(
+  undefined,
+);
 
-/**
- * Construct Clerk synchronously so the React provider can subscribe before
- * loading starts. Passing an already-loaded instance can make the provider
- * miss Clerk's ready event and leave hosted auth UI in its loading fallback.
- */
-export const clerkInstance$ = computed(() => {
-  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
-  const satelliteConfig = resolveClerkSatelliteConfig();
+export const initClerkRuntime$ = command(
+  ({ set }, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+    const satelliteConfig = resolveClerkSatelliteConfig();
+    markBootstrapClerkLoadStarted();
+    set(
+      internalClerkRuntime$,
+      startClerkBrowserRuntime(
+        {
+          domain: satelliteConfig?.domain,
+          loadOptions: {
+            ...(satelliteConfig
+              ? {
+                  isSatellite: true,
+                  satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+                }
+              : {}),
+            afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+            signInUrl: resolveAppAuthUrl("/sign-in"),
+            signUpUrl: resolveAppAuthUrl("/sign-up"),
+          },
+          publishableKey,
+        },
+        signal,
+      ),
+    );
+  },
+);
 
-  const { ClerkUI } = ui;
-  if (!ClerkUI) {
-    throw new Error("Clerk UI module did not provide its renderer");
+const clerkRuntime$ = computed((get) => {
+  const runtime = get(internalClerkRuntime$);
+  if (!runtime) {
+    throw new Error("Clerk runtime was not initialized during bootstrap");
   }
-
-  const clerkInstance = satelliteConfig
-    ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
-    : new Clerk(publishableKey);
-
-  // @clerk/react subscribes to status in a passive effect without requesting
-  // the current value. If Clerk loads first, that leaves its context stuck at
-  // "loading". Make every status subscription replay the latest value.
-  const subscribeToStatus = clerkInstance.on.bind(clerkInstance);
-  clerkInstance.on = (event, handler, options) => {
-    subscribeToStatus(event, handler, { ...options, notify: true });
-  };
-
-  // Both VM0 signals and @clerk/react need the loaded instance. Share the
-  // first load instead of issuing concurrent bootstrap requests.
-  const loadClerk = clerkInstance.load.bind(clerkInstance);
-  let loadPromise: Promise<void> | undefined;
-  clerkInstance.load = (options) => {
-    loadPromise ??= loadClerk(options);
-    return loadPromise;
-  };
-
-  return clerkInstance;
+  return runtime;
 });
 
-/**
- * Loaded Clerk instance for consumers that need authentication state.
- */
+/** Clerk core is available once its browser script has initialized. */
+export const clerkInstance$ = computed(async (get) => {
+  const runtime = await get(clerkRuntime$);
+  return runtime.clerk;
+});
+
+export const ensureClerkUiLoaded$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const runtime = await get(clerkRuntime$);
+    signal.throwIfAborted();
+    await runtime.ensureUiLoaded();
+    signal.throwIfAborted();
+  },
+);
+
+/** Loaded Clerk instance for consumers that need authentication state. */
 export const clerk$ = computed(async (get) => {
-  const clerkInstance = get(clerkInstance$);
-  const satelliteConfig = resolveClerkSatelliteConfig();
-  await clerkInstance.load({
-    ui,
-    ...(satelliteConfig
-      ? {
-          isSatellite: true,
-          satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-        }
-      : {}),
-    signInUrl: resolveAppAuthUrl("/sign-in"),
-    signUpUrl: resolveAppAuthUrl("/sign-up"),
-    afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
-  });
+  const runtime = await get(clerkRuntime$);
+  await runtime.loaded;
+  markBootstrapClerkLoadCompleted();
 
-  return clerkInstance;
+  return runtime.clerk;
 });
 
-export const authRecovery$ = computed(async (get) => {
-  const clerk = await get(clerk$);
-  return createAuthRecovery(clerk, () => {
-    return get(rootSignal$);
-  });
+export const initAuthRecovery$ = command(
+  ({ get, set }, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    set(
+      internalAuthRecovery$,
+      (async () => {
+        const clerk = await get(clerk$);
+        signal.throwIfAborted();
+        return createAuthRecovery(clerk, signal);
+      })(),
+    );
+  },
+);
+
+export const authRecovery$ = computed((get) => {
+  const recovery = get(internalAuthRecovery$);
+  if (!recovery) {
+    throw new Error("Auth recovery was not initialized during bootstrap");
+  }
+  return recovery;
 });
 
 /**
  * Command to setup Clerk authentication listeners.
- * This command initializes the Clerk instance and sets up a listener
- * for authentication state changes.
+ * The runtime starts during bootstrap; this command waits for it and installs
+ * authentication state listeners.
  */
 export const setupClerk$ = command(
   async ({ set, get }, signal: AbortSignal) => {

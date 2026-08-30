@@ -233,23 +233,37 @@ describe("agent completion active input receipts", () => {
 });
 
 describe("webhook telemetry contract", () => {
-  it("accepts an optional bounded runner name", () => {
+  it("accepts optional bounded canonical runner dimensions", () => {
     const runId = "00000000-0000-4000-8000-000000000000";
-    expect(
-      webhookTelemetryContract.send.body.parse({ runId }),
-    ).not.toHaveProperty("runnerName");
+    const minimalPayload = webhookTelemetryContract.send.body.parse({ runId });
+    expect(minimalPayload).not.toHaveProperty("runnerHostname");
+    expect(minimalPayload).not.toHaveProperty("runnerVersion");
 
     expect(
       webhookTelemetryContract.send.body.parse({
         runId,
-        runnerName: "v0.168.14",
+        runnerHostname: "prod-1.aws.vm3.ai",
+        runnerVersion: "0.168.14",
       }),
-    ).toMatchObject({ runnerName: "v0.168.14" });
+    ).toMatchObject({
+      runnerHostname: "prod-1.aws.vm3.ai",
+      runnerVersion: "0.168.14",
+    });
 
-    for (const runnerName of ["", "x".repeat(129)]) {
+    for (const runnerHostname of ["", "x".repeat(256)]) {
       expect(
-        webhookTelemetryContract.send.body.safeParse({ runId, runnerName })
-          .success,
+        webhookTelemetryContract.send.body.safeParse({
+          runId,
+          runnerHostname,
+        }).success,
+      ).toBe(false);
+    }
+    for (const runnerVersion of ["", "x".repeat(129)]) {
+      expect(
+        webhookTelemetryContract.send.body.safeParse({
+          runId,
+          runnerVersion,
+        }).success,
       ).toBe(false);
     }
   });

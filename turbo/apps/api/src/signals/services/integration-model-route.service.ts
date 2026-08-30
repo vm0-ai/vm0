@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import {
   getFrameworkForType,
   getVm0ConcreteProviderType,
+  isBuiltInModelProviderType,
   isSupportedRunModel,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
@@ -54,7 +55,7 @@ export const resolveIntegrationModelRouteForUser$ = command(
       selectedModel: pin.selectedModel,
       serviceTier: pin.serviceTier,
       cliAgentType: getFrameworkForType(
-        providerType.data === "vm0"
+        isBuiltInModelProviderType(providerType.data)
           ? getVm0ConcreteProviderType(pin.selectedModel)
           : providerType.data,
       ),

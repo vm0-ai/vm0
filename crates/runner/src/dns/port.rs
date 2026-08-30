@@ -38,26 +38,25 @@ impl ReservedTcpPort {
 pub(crate) fn reserve_port() -> std::io::Result<DnsPortReservation> {
     const MAX_PORT_PROBE_ATTEMPTS: usize = 64;
 
-    reserve_port_from((0..MAX_PORT_PROBE_ATTEMPTS).map(|_| ReservedTcpPort::bind(0)))
+    reserve_port_from(
+        (0..MAX_PORT_PROBE_ATTEMPTS).map(|_| ReservedTcpPort::bind(0)),
+        |port| std::net::UdpSocket::bind(("0.0.0.0", port)),
+    )
 }
 
-#[cfg(test)]
-fn find_available_port_from<I>(tcp_candidates: I) -> std::io::Result<u16>
+fn reserve_port_from<I, F>(
+    tcp_candidates: I,
+    mut bind_udp: F,
+) -> std::io::Result<DnsPortReservation>
 where
     I: IntoIterator<Item = std::io::Result<ReservedTcpPort>>,
-{
-    Ok(reserve_port_from(tcp_candidates)?.port())
-}
-
-fn reserve_port_from<I>(tcp_candidates: I) -> std::io::Result<DnsPortReservation>
-where
-    I: IntoIterator<Item = std::io::Result<ReservedTcpPort>>,
+    F: FnMut(u16) -> std::io::Result<std::net::UdpSocket>,
 {
     let mut last_addr_in_use = None;
     for tcp in tcp_candidates {
         let tcp = tcp?;
         let port = tcp.port();
-        match std::net::UdpSocket::bind(("0.0.0.0", port)) {
+        match bind_udp(port) {
             Ok(udp) => {
                 return Ok(DnsPortReservation {
                     port,
@@ -85,9 +84,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reserve_port_returns_nonzero() {
+    fn reservation_holds_tcp_and_udp_until_drop() {
         let reservation = reserve_port().unwrap();
-        assert!(reservation.port() > 0);
+        let port = reservation.port();
+
+        let tcp_error = std::net::TcpListener::bind(("0.0.0.0", port)).unwrap_err();
+        assert_eq!(tcp_error.kind(), std::io::ErrorKind::AddrInUse);
+
+        let udp_error = std::net::UdpSocket::bind(("0.0.0.0", port)).unwrap_err();
+        assert_eq!(udp_error.kind(), std::io::ErrorKind::AddrInUse);
+
+        drop(reservation);
+
+        let _tcp_listener = std::net::TcpListener::bind(("0.0.0.0", port)).unwrap();
+        let _udp_socket = std::net::UdpSocket::bind(("0.0.0.0", port)).unwrap();
     }
 
     fn bind_tcp_udp_pair() -> std::io::Result<(ReservedTcpPort, std::net::UdpSocket)> {
@@ -117,12 +127,23 @@ mod tests {
     #[test]
     fn find_available_port_retries_when_udp_candidate_is_in_use() {
         let (busy_tcp, _busy_udp) = bind_tcp_udp_pair().unwrap();
-        let (free_tcp, free_udp_probe) = bind_tcp_udp_pair().unwrap();
+        let busy_port = busy_tcp.port();
+        let (free_tcp, free_udp) = bind_tcp_udp_pair().unwrap();
         let free_port = free_tcp.port();
-        drop(free_udp_probe);
+        let mut free_udp = Some(free_udp);
 
-        let port = find_available_port_from([Ok(busy_tcp), Ok(free_tcp)]).unwrap();
+        let reservation = reserve_port_from([Ok(busy_tcp), Ok(free_tcp)], |port| {
+            if port == free_port {
+                let udp = free_udp.take().unwrap();
+                assert_eq!(udp.local_addr()?.port(), port);
+                Ok(udp)
+            } else {
+                assert_eq!(port, busy_port);
+                std::net::UdpSocket::bind(("0.0.0.0", port))
+            }
+        })
+        .unwrap();
 
-        assert_eq!(port, free_port);
+        assert_eq!(reservation.port(), free_port);
     }
 }

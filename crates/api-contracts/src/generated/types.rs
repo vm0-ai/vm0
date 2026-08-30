@@ -64,7 +64,7 @@ pub mod runners {
             /// Checkpoint used as the base Pi session.
             pub base_session: PiLaunchConfigApiFirstTurnBaseSession,
             /// First sandbox event sequence number for the resumed session.
-            pub sandbox_event_sequence_start: i64,
+            pub sandbox_event_sequence_start: u64,
         }
 
         /// API-owned launch configuration forwarded to Pi in the sandbox.
@@ -204,38 +204,65 @@ pub mod runners {
 
         /// DTOs for reporting bounded built-in model provider failures.
         pub mod model_provider_failures {
-            /// Bounded provider-independent failure eligible for route cooldown.
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-            pub enum RequestFailureKind {
-                /// Provider authentication failed.
-                #[serde(rename = "authentication")]
-                Authentication,
-                /// Provider billing rejected the request.
-                #[serde(rename = "billing")]
-                Billing,
-                /// Provider rate limiting rejected the request.
-                #[serde(rename = "rate_limit")]
-                RateLimit,
-                /// The provider route was unavailable or overloaded.
-                #[serde(rename = "provider_unavailable")]
-                ProviderUnavailable,
-                /// The provider inference request timed out.
-                #[serde(rename = "timeout")]
-                Timeout,
-                /// The provider connection failed.
-                #[serde(rename = "connection")]
-                Connection,
-            }
-
             /// Request body for reporting a built-in model provider failure.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            pub struct Request {
-                /// Normalized eligible provider failure kind.
-                pub failure_kind: RequestFailureKind,
-                /// Optional bounded provider retry delay in seconds.
-                #[serde(default, skip_serializing_if = "Option::is_none")]
-                pub retry_after_seconds: Option<i64>,
+            #[serde(tag = "failureKind", rename_all_fields = "camelCase")]
+            pub enum Request {
+                /// Provider authentication failed.
+                #[serde(rename = "authentication")]
+                Authentication {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
+                /// Provider billing rejected the request.
+                #[serde(rename = "billing")]
+                Billing {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
+                /// Provider rate limiting rejected the request.
+                #[serde(rename = "rate_limit")]
+                RateLimit {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
+                /// The provider route was unavailable or overloaded.
+                #[serde(rename = "provider_unavailable")]
+                ProviderUnavailable {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
+                /// The provider inference request timed out.
+                #[serde(rename = "timeout")]
+                Timeout {
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
+                /// The provider connection failed.
+                #[serde(rename = "connection")]
+                Connection {
+                    /// Required source of the connection failure.
+                    connection_source: RequestConnectionSource,
+                    /// Optional bounded provider retry delay in seconds.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    retry_after_seconds: Option<i64>,
+                },
+            }
+
+            /// Source of an eligible connection failure.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestConnectionSource {
+                /// The provider returned a connection failure.
+                #[serde(rename = "provider_response")]
+                ProviderResponse,
+                /// The runner observed an upstream transport failure.
+                #[serde(rename = "upstream_transport")]
+                UpstreamTransport,
             }
         }
     }
@@ -274,6 +301,9 @@ pub mod runners {
             /// Whether the resolved Storage version is explicitly empty.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub empty: Option<bool>,
+            /// Whether this read-only mount participates in baseline stability observation.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub baseline_candidate: Option<bool>,
             /// Optional filename used when Storage instructions are normalized.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub instructions_target_filename: Option<String>,

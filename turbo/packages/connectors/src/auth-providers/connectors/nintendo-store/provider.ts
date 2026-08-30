@@ -70,10 +70,7 @@ function createNintendoStoreExternalCodeGrantProvider(): ExternalCodeConnectorAu
           locale: locale.locale,
         },
         expiresIn: token.expiresIn,
-        scopes:
-          token.scopes.length > 0
-            ? token.scopes
-            : args.externalCodeGrant.scopes,
+        scopes: token.scopes ?? args.externalCodeGrant.scopes,
         userInfo: nintendoStoreUserInfo(token.idToken),
       };
     },
@@ -107,6 +104,7 @@ function createNintendoStoreRefreshTokenAccessProvider(): RefreshTokenAccessProv
           locale: locale.locale,
         },
         expiresIn: token.expiresIn,
+        ...(token.scopes === null ? {} : { scopes: token.scopes }),
       };
     },
   };

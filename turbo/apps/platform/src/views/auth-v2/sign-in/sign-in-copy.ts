@@ -45,7 +45,7 @@ export interface AuthV2SignInCopy {
   readonly helpTitle: string;
   readonly identifierLabel: string;
   readonly identifierPlaceholder: string;
-  readonly legacySignIn: string;
+  readonly lastUsed: string;
   readonly loading: string;
   readonly methodsHelpPrompt: string;
   readonly newPasswordLabel: string;
@@ -140,6 +140,9 @@ function signInEntryCopy(
     }),
     identifierPlaceholder: t(($) => {
       return $.auth.v2.signIn.identifierPlaceholder;
+    }),
+    lastUsed: t(($) => {
+      return $.auth.v2.signIn.lastUsed;
     }),
     noAccount: t(($) => {
       return $.auth.v2.signIn.noAccount;
@@ -324,9 +327,6 @@ function signInTerminalCopy(
     helpTitle: t(($) => {
       return $.auth.v2.signIn.helpTitle;
     }),
-    legacySignIn: t(($) => {
-      return $.auth.v2.signIn.action;
-    }),
     loading: t(($) => {
       return $.auth.loading;
     }),
@@ -367,9 +367,10 @@ function signInTerminalCopy(
   };
 }
 
-export function useAuthV2SignInCopy(): AuthV2SignInCopy {
+export function useAuthV2SignInCopy(
+  authBrand: AuthBrandContext = resolveAuthBrandContext(),
+): AuthV2SignInCopy {
   const { t } = useTranslation();
-  const authBrand = resolveAuthBrandContext();
   return {
     ...signInEntryCopy(t, authBrand.brandName),
     ...signInCodeCopy(t, authBrand.brandName),

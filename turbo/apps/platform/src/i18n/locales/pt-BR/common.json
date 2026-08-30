@@ -123,7 +123,10 @@
         "cacheMiss": "Nenhum workspace em cache correspondeu à chave de reutilização.",
         "deviceLimitMismatch": "A entrada no pool ocioso existe, mas o estado do limitador de uso do dispositivo não corresponde.",
         "diskPressure": "A reutilização do workspace foi ignorada porque o runner estava sob pressão de disco.",
+        "environment": "Ambiente",
         "featureDisabled": "A reutilização de sandbox está desativada para esta execução.",
+        "generation": "Geração",
+        "hostname": "Nome do host",
         "invalidMetadata": "Os metadados do workspace em cache eram inválidos.",
         "invalidWorkingDir": "O diretório de trabalho solicitado não pôde ser reutilizado.",
         "lockBusy": "Outra execução estava preparando o mesmo workspace.",
@@ -131,21 +134,28 @@
         "noSessionId": "Resultado legado: o motivo exato pelo qual a sandbox não foi reutilizada não está disponível.",
         "notConfigured": "A reutilização do workspace não estava configurada para esta execução.",
         "notReused": "Não reutilizado",
+        "outcomeUnavailableDescription": "Não há detalhes adicionais disponíveis.",
         "poolMiss": "Nenhum sandbox correspondente foi encontrado no pool ocioso.",
         "profileMismatch": "A entrada no pool ocioso existe, mas o perfil não corresponde.",
         "provisioning": "Provisionando",
         "reused": "Reutilizado",
         "reusedDescription": "O sandbox foi reativado a partir do pool ocioso.",
+        "runnerId": "ID do runner",
         "sandbox": "Sandbox",
         "sandboxPrepareFallback": "Um workspace em cache foi encontrado, mas não pôde ser usado após a preparação da sandbox.",
         "sandboxReusedDescription": "O workspace permaneceu disponível dentro da sandbox reutilizada.",
         "startup": "Inicialização",
         "startupCold": "Inicialização a frio",
+        "startupColdDescription": "Um novo sandbox e workspace foram preparados.",
         "startupSandbox": "Reutilização da sandbox",
+        "startupSandboxDescription": "O sandbox e seu workspace foram reutilizados.",
         "startupUnknown": "Desconhecido",
+        "startupUnknownDescription": "Os detalhes de reutilização na inicialização não estão disponíveis.",
         "startupWorkspace": "Reutilização do workspace",
+        "startupWorkspaceDescription": "Um novo sandbox restaurou um workspace em cache.",
         "unavailable": "Indisponível",
         "unparkFailed": "A tentativa de reativação falhou; um novo sandbox foi provisionado.",
+        "version": "Versão",
         "workspace": "Workspace",
         "workspaceNoReuseKey": "Nenhuma chave de reutilização do workspace estava disponível.",
         "workspaceReusedDescription": "O workspace foi restaurado do cache do runner."
@@ -445,7 +455,6 @@
       "ariaLabel": "Barra lateral",
       "chat": "Chat",
       "collapse": "Recolher barra lateral",
-      "expand": "Expandir barra lateral",
       "hideChatList": "Ocultar lista de conversas",
       "manage": "Gerenciar",
       "mobile": {
@@ -469,7 +478,7 @@
         "workflows": "Fluxos de trabalho",
         "works": "Trabalha"
       },
-      "searchConversations": "Buscar conversas",
+      "searchWorkspace": "Buscar no espaço de trabalho",
       "showChatList": "Mostrar lista de conversas",
       "workspaceSwitcher": {
         "create": "Criar espaço de trabalho",
@@ -521,7 +530,6 @@
         "arrow": "Seta",
         "box": "Retângulo",
         "pen": "Desenhar",
-        "redact": "Ocultar",
         "text": "Texto"
       },
       "undo": "Desfazer"
@@ -1085,6 +1093,7 @@
         "secondFactorDescription": "Este login exige uma etapa adicional de verificação que esta página não oferece. Comece novamente para tentar outro método de login.",
         "secondFactorTitle": "Verificação adicional necessária",
         "selectOrganization": "Continuar com {{organizationName}}",
+        "signedInAs": "Conectado como {{identifier}}",
         "unsupportedDescription": "Sua conta retornou uma etapa de autenticação que esta página não oferece. Comece novamente para tentar outro método de login.",
         "unsupportedTitle": "Etapa de login indisponível"
       },
@@ -1093,7 +1102,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usar o login atual",
         "addAccount": "Adicionar conta",
         "appleMethod": "Continuar com Apple",
         "back": "Voltar",
@@ -1123,6 +1131,7 @@
         "hidePassword": "Ocultar senha",
         "identifierLabel": "E-mail ou nome de usuário",
         "identifierPlaceholder": "Digite seu e-mail ou nome de usuário",
+        "lastUsed": "Último uso",
         "methodsHelpPrompt": "Não tem nenhuma destas opções?",
         "newPasswordLabel": "Nova senha",
         "newPasswordSubtitle": "Por razões de segurança, é necessário redefinir sua senha.",
@@ -1160,7 +1169,6 @@
         "verify": "Verificar"
       },
       "signUp": {
-        "action": "Usar o cadastro atual",
         "alreadyHaveAccount": "Possui uma conta?",
         "appleMethod": "Continuar com Apple",
         "back": "Voltar",
@@ -1716,7 +1724,6 @@
         "inviteMember": "Convidar humanos 🤝",
         "otherChannels": "Telegram e telefone"
       },
-      "invitePeople": "Convidar pessoas",
       "taglines": {
         "anonymous": {
           "buildSomething": "Vamos criar alguma coisa?",
@@ -1918,18 +1925,17 @@
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
       "createWorkflow": "Criar fluxo de trabalho",
+      "imageModelForThisChat": "Modelo de imagem para este chat",
       "message": "Mensagem",
+      "modelForThisChat": "Modelo para este chat",
       "placeholder": "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
       "selectedModelUnavailable": "O modelo selecionado não está disponível. Configure-o antes de enviar.",
       "selectedModelUnavailableToast": "O modelo selecionado não está disponível",
       "selectModel": "Selecionar modelo",
-      "setAsDefault": "Definir como padrão",
-      "temporaryFastModeDisabledNotice": "O modo rápido está temporariamente desativado para esta execução",
-      "temporaryFastModeEnabledNotice": "O modo rápido está temporariamente ativado para esta execução",
-      "temporaryImageModelNotice": "Alternado temporariamente para {{model}} em imagens",
-      "temporaryModelNotice": "Alternado temporariamente para {{model}}",
-      "temporaryVideoModelNotice": "Alternado temporariamente para {{model}} em vídeo",
+      "temporarilySwitchTo": "Mudar temporariamente para",
       "threadSuggestions": "Conversas",
+      "useForFutureChats": "Usar este modelo em chats futuros",
+      "videoModelForThisChat": "Modelo de vídeo para este chat",
       "visualAttachmentsUnsupported": "{{modelName}} não reconhece imagens nem vídeos. Troque para um modelo com visão para anexá-los.",
       "workflows": {
         "empty": "Nenhum fluxo de trabalho correspondente",
@@ -1967,6 +1973,7 @@
       "available_one": "Conectores disponíveis para conectar ({{count}})",
       "available_many": "Conectores disponíveis para conectar ({{count}})",
       "available_other": "Conectores disponíveis para conectar ({{count}})",
+      "back": "Voltar",
       "configurePermissions": "Configurar permissões de {{connectorName}}",
       "customAuthorizeDescription": "Revise, conecte e autorize este conector personalizado para o agente.",
       "defaultAccountFor": "{{connector}} · Usando a conta padrão: {{account}}",
@@ -2024,7 +2031,7 @@
       "agents": "Agentes",
       "back": "Voltar",
       "content": "Conteúdo",
-      "description": "Encaminhe o conteúdo selecionado para um agente ou uma conversa.",
+      "description": "Envie o conteúdo selecionado para um agente ou uma conversa e continue trabalhando nele.",
       "noResults": "Nenhum agente ou conversa foi encontrado",
       "search": "Buscar agentes e conversas...",
       "sent": "Encaminhado com sucesso",
@@ -2348,48 +2355,6 @@
       "copied": "Copiado",
       "deleted": "Conversa excluída"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Alterando arquivos",
-            "singular": "Alterando um arquivo"
-          },
-          "terminal": {
-            "plural": "Arquivos alterados",
-            "singular": "Arquivo alterado"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Lendo arquivos",
-            "singular": "Lendo um arquivo"
-          },
-          "terminal": {
-            "plural": "Arquivos lidos",
-            "singular": "Arquivo lido"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Executando comandos",
-            "singular": "Executando um comando"
-          },
-          "terminal": {
-            "plural": "Comandos executados",
-            "singular": "Comando executado"
-          }
-        }
-      },
-      "collapse": "Recolher atividade de ferramentas",
-      "expand": "Expandir atividade de ferramentas",
-      "status": {
-        "cancelled": "Cancelado",
-        "error": "Falhou",
-        "pending": "Em andamento",
-        "success": "Concluído"
-      }
-    },
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",
       "input": "Entrada de voz",
@@ -2463,11 +2428,10 @@
       "summaryOne_one": "",
       "summaryOne_many": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} precisam de atenção",
+      "summaryWithAttention": "{{value}}/{{total}} precisam de atenção",
       "summaryWithAttention_one": "",
       "summaryWithAttention_many": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Aplicar",
@@ -2531,6 +2495,8 @@
       "access": {
         "add": "Adicionar acesso",
         "manage": "Gerenciar acesso ao {{connector}}",
+        "summaryMany": "{{value}} agentes",
+        "unavailable": "Acesso indisponível",
         "usedBy": "Usado por "
       },
       "categories": {
@@ -5089,6 +5055,20 @@
         "sectionTitle": "Conta e segurança"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Aplique uma paleta luminosa e sutil a todas as camadas da interface.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema de cores"
+        },
         "description": "Escolha a aparência da interface.",
         "sectionTitle": "Aparência",
         "theme": {
@@ -5390,15 +5370,20 @@
       "viewSource": "Código do diagrama"
     },
     "notFound": {
+      "action": "Voltar ao início",
       "description": "A página que você procura não existe.",
       "title": "Página não encontrada"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Esta conversa compartilhada não existe.",
+    "handoffDescription": "{{assistantName}} leva o contexto para uma nova conversa",
+    "handoffPrompt": "Continue esta conversa compartilhada comigo: {{url}}",
+    "makeConversationYours": "Torne esta conversa sua",
     "notFoundTitle": "Conversa compartilhada não encontrada",
-    "tryOkou": "Experimentar o {{assistantName}}"
+    "share": "Compartilhar",
+    "signIn": "Entrar",
+    "signUp": "Criar conta",
+    "tryItYourself": "Experimente você mesmo"
   },
   "usage": {
     "displayNames": {
@@ -6149,6 +6134,69 @@
       },
       "title": "Fluxos de trabalho",
       "viewAutomations": "Ver automações"
+    },
+    "official": {
+      "activeInstallationDescription": "Este fluxo de trabalho oficial continua operacional, e seu conteúdo gerenciado permanece como somente leitura.",
+      "activeInstallationTitle": "Fluxo de trabalho oficial",
+      "agent": "Agente",
+      "automationCount_one": "{{count}} automação",
+      "automationCount_many": "",
+      "automationCount_other": "{{count}} automações",
+      "badge": "Oficial",
+      "browse": "Explorar oficiais",
+      "chooseValue": "Escolha um valor",
+      "copySucceededUninstallFailed": "A cópia está pronta, mas não foi possível desinstalar o fluxo de trabalho oficial original.",
+      "description": "Instale fluxos de trabalho gerenciados e mantidos pela vm0.",
+      "empty": "Nenhum fluxo de trabalho oficial está disponível.",
+      "includedAutomations": "Automações incluídas",
+      "install": "Instalar",
+      "installDescription": "Escolha um agente e preencha todos os parâmetros obrigatórios. Todas as automações incluídas serão instaladas.",
+      "installed": "Fluxo de trabalho oficial instalado",
+      "installErrorDescription": "Verifique o agente e os valores dos parâmetros e tente novamente.",
+      "installErrorTitle": "Não foi possível instalar o fluxo de trabalho oficial",
+      "installTitle": "Instalar {{name}}",
+      "intendedOff": "deve ficar desativado",
+      "intendedOn": "deve ficar ativado",
+      "loadErrorDescription": "Este catálogo pode estar indisponível ou não habilitado para sua conta.",
+      "loadErrorTitle": "Não foi possível carregar os fluxos de trabalho oficiais",
+      "no": "Não",
+      "noParameters": "Nenhum parâmetro é necessário.",
+      "noResults": "Nenhum fluxo de trabalho oficial corresponde à sua busca.",
+      "notFound": "Este fluxo de trabalho oficial não foi encontrado.",
+      "parameterCount_one": "{{count}} parâmetro",
+      "parameterCount_many": "",
+      "parameterCount_other": "{{count}} parâmetros",
+      "parameterRequired": "{{key}} (obrigatório)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Reconfigurar",
+      "reconfigured": "Fluxo de trabalho oficial reconfigurado",
+      "reconfigureDescription": "Atualize os parâmetros tipados sem substituir este fluxo de trabalho nem suas automações.",
+      "reconfigureDialogDescription": "Revise cada automação gerenciada e atualize seus parâmetros.",
+      "reconfigureErrorDescription": "Revise os valores obrigatórios e tente novamente.",
+      "reconfigureErrorTitle": "Não foi possível reconfigurar o fluxo de trabalho oficial",
+      "reconfigureTitle": "Parâmetros da instalação",
+      "reconfigureUnavailable": "Os metadados oficiais dos parâmetros estão temporariamente indisponíveis.",
+      "retiredBadge": "Oficial · Desativado",
+      "retiredDefinitionDescription": "Esta definição mantida pode ser visualizada, mas não pode mais ser instalada.",
+      "retiredInstallationDescription": "Esta definição foi desativada. Sua instalação atual continuará operacional e como somente leitura até ser desinstalada.",
+      "retiredInstallationTitle": "Fluxo de trabalho oficial desativado",
+      "retiredTitle": "Definição desativada",
+      "retry": "Tentar novamente",
+      "search": "Buscar fluxos de trabalho oficiais",
+      "selectAgent": "Selecionar um agente",
+      "statusCurrent": "Atual",
+      "statusFailed": "Falhou",
+      "statusNeedsReconfiguration": "Precisa de reconfiguração",
+      "statusReconciling": "Sincronizando",
+      "title": "Fluxos de trabalho oficiais",
+      "unavailableInstallationDescription": "A definição aceita está temporariamente indisponível. Os controles operacionais existentes continuam disponíveis.",
+      "unavailableInstallationTitle": "Definição oficial indisponível",
+      "uninstall": "Desinstalar",
+      "uninstallConfirm": "Isso remove a instalação oficial e todas as suas automações. Esta ação não pode ser desfeita.",
+      "uninstallDescription": "Remova esta instalação de fluxo de trabalho oficial por meio do ciclo de vida gerenciado.",
+      "uninstallTitle": "Desinstalar fluxo de trabalho oficial",
+      "viewAndInstall": "Ver e instalar",
+      "yes": "Sim"
     }
   },
   "works": {

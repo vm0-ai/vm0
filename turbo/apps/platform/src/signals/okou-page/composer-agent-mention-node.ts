@@ -17,7 +17,7 @@ interface AgentMentionAttributes {
 }
 
 interface AgentMentionAvatarSource {
-  readonly id: string;
+  readonly agentId: string;
   readonly avatarUrl: string | null;
 }
 
@@ -33,7 +33,7 @@ export function createAgentMentionAvatarRuntime(): AgentMentionAvatarRuntime {
   return {
     resolve(agentId, fallback) {
       const agent = agents.find((candidate) => {
-        return candidate.id === agentId;
+        return candidate.agentId === agentId;
       });
       return agent ? agent.avatarUrl : fallback;
     },

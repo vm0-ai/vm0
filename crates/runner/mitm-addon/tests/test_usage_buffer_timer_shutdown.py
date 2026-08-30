@@ -1,5 +1,6 @@
 """Tests for usage-buffer timer and shutdown flush behavior."""
 
+import json
 import threading
 from collections.abc import Callable
 
@@ -752,7 +753,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.set_pending_path(str(pending_path))
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [observation(source_key="observation-source", input_tokens=1)],
@@ -787,7 +788,7 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
                 [event(source_key="usage-source-2")],
                 path,
             )
-            assert len(timers) == 3
+            assert len(timers) == 4
         return True
 
     enqueue.side_effect = enqueue_and_buffer_later_usage
@@ -818,6 +819,31 @@ def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(
         reports=0,
         flush_request_id="priority-drained",
     )
+
+
+def test_model_observation_timer_is_fixed_and_independent_from_billing_configuration(tmp_path):
+    enqueue = RecordingEnqueue()
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    usage.configure_usage_buffer(flush_interval_seconds=5)
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "sandbox-token",
+        "run-1",
+        [event(source_key="usage-source")],
+        str(tmp_path / "billing.jsonl"),
+    )
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/runners/model-usage-observations",
+        "runner-token",
+        "run-1",
+        [observation(source_key="observation-source", input_tokens=1)],
+        str(tmp_path / "observation.jsonl"),
+    )
+
+    assert len(timers) == 2
+    assert 4 <= timers[0].delay <= 6
+    assert 240 <= timers[1].delay <= 360
 
 
 def test_failed_timer_start_allows_idempotent_replay_to_reschedule(tmp_path):
@@ -1080,14 +1106,18 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
     )
 
 
-def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
+@pytest.mark.parametrize(
+    "log_type",
+    ["usage_event", "model_usage_observation"],
+)
+def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path, log_type: str):
     callbacks: list[Callable[[usage.webhook.WebhookDeliveryOutcome], None]] = []
     enqueued_keys: list[str] = []
     pending_path = tmp_path / "usage-pending"
 
-    def enqueue_webhook(url, sandbox_token, payload, path, log_type, delivery_callback):
+    def enqueue_webhook(url, sandbox_token, payload, path, delivery_log_type, delivery_callback):
         del url, sandbox_token, path
-        assert log_type == "usage_event"
+        assert delivery_log_type == log_type
         enqueued_keys.append(payload["events"][0]["idempotencyKey"])
         if len(enqueued_keys) == 1:
             callbacks.append(delivery_callback)
@@ -1097,13 +1127,22 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
 
     timers = install_recording_usage_timer(enqueue_webhook=enqueue_webhook)
     usage.set_pending_path(str(pending_path))
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "token-a",
-        "run-1",
-        [event(source_key="source-1", quantity=10)],
-        str(tmp_path / "proxy.jsonl"),
-    )
+    if log_type == "usage_event":
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [event(source_key="source-1", quantity=10)],
+            str(tmp_path / "proxy.jsonl"),
+        )
+    else:
+        usage.buffer_model_usage_observations(
+            "https://api.test/api/runners/model-usage-observations",
+            "runner-token",
+            "run-1",
+            [observation(source_key="source-1", input_tokens=10)],
+            str(tmp_path / "proxy.jsonl"),
+        )
 
     timers[0].callback()
 
@@ -1282,22 +1321,22 @@ def test_shutdown_retry_exhaustion_logs_underbilling_without_proxy_log_path(mitm
         enqueue.clear()
         assert usage.flush_usage_events(trigger="shutdown") == 0
 
-    messages = [call.args[0] for call in log.error.call_args_list]
+    fields = [call.args[1] for call in log.error.call_args_list]
     assert any(
-        message.startswith(
-            "type=usage_underbilling reason=shutdown_retained_without_retry "
-            "underbilling_class=risk component=mitm_addon "
-        )
-        for message in messages
+        field["type"] == "usage_underbilling"
+        and field["reason"] == "shutdown_retained_without_retry"
+        and field["underbilling_class"] == "risk"
+        and field["component"] == "mitm_addon"
+        for field in fields
     )
     assert any(
-        message.startswith(
-            "type=usage_underbilling reason=retry_budget_exhausted "
-            "underbilling_class=confirmed component=mitm_addon "
-        )
-        for message in messages
+        field["type"] == "usage_underbilling"
+        and field["reason"] == "retry_budget_exhausted"
+        and field["underbilling_class"] == "confirmed"
+        and field["component"] == "mitm_addon"
+        for field in fields
     )
-    assert all("secret-token" not in message for message in messages)
+    assert all("secret-token" not in json.dumps(field) for field in fields)
 
 
 def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):

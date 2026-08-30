@@ -32,6 +32,7 @@ fn send_exec_start_with_stdin_timeout(
         seq,
         ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms },
             command,
             env: &[],
@@ -149,6 +150,7 @@ fn exec_operation_timeout_with_stdin_kills_child() {
         125,
         ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::Duration {
                 timeout_ms: EXEC_OPERATION_TIMEOUT_TEST_MS,
             },
@@ -213,6 +215,7 @@ fn supervised_exec_writes_stdin_and_closes_pipe() {
         211,
         ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
             command: "cat; printf ':after'",
             env: &[],

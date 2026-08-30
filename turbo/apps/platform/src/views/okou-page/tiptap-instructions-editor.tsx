@@ -1,14 +1,35 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
+import { Extension } from "@tiptap/core";
+import { Blockquote } from "@tiptap/extension-blockquote";
+import { Bold as BoldExtension } from "@tiptap/extension-bold";
+import { Code as CodeExtension } from "@tiptap/extension-code";
+import { CodeBlock } from "@tiptap/extension-code-block";
+import { Document } from "@tiptap/extension-document";
+import { HardBreak } from "@tiptap/extension-hard-break";
+import { Heading } from "@tiptap/extension-heading";
+import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
+import { Italic as ItalicExtension } from "@tiptap/extension-italic";
+import {
+  BulletList,
+  ListItem,
+  ListKeymap,
+  OrderedList,
+} from "@tiptap/extension-list";
+import { Paragraph } from "@tiptap/extension-paragraph";
+import { Strike } from "@tiptap/extension-strike";
+import { Text } from "@tiptap/extension-text";
+import { Underline } from "@tiptap/extension-underline";
+import {
+  Dropcursor,
+  Gapcursor,
+  TrailingNode,
+  UndoRedo,
+} from "@tiptap/extensions";
+import { Markdown } from "@tiptap/markdown";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
-import { StarterKit } from "@tiptap/starter-kit";
-import { Extension, findChildren } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { Markdown } from "@tiptap/markdown";
-import { common, createLowlight } from "lowlight";
 import {
   Bold,
   Italic,
@@ -23,89 +44,6 @@ import {
 } from "lucide-react";
 import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
-import "highlight.js/styles/github.css";
-
-function getLowlight() {
-  return createLowlight(common);
-}
-
-function flattenNodes(
-  nodes: {
-    properties?: { className?: string[] };
-    children?: unknown[];
-    value?: string;
-  }[],
-  className: string[] = [],
-): { text: string; classes: string[] }[] {
-  return nodes.flatMap((node) => {
-    const classes = [...className, ...(node.properties?.className ?? [])];
-    if (node.children) {
-      return flattenNodes(node.children as typeof nodes, classes);
-    }
-    return { text: node.value ?? "", classes };
-  });
-}
-
-function buildDecorations(
-  doc: Parameters<typeof findChildren>[0],
-): DecorationSet {
-  const decorations: Decoration[] = [];
-  for (const block of findChildren(doc, (node) => {
-    return node.type.name === "codeBlock";
-  })) {
-    let from = block.pos + 1;
-    const language: string | null = block.node.attrs.language;
-    const result =
-      language && getLowlight().listLanguages().includes(language)
-        ? getLowlight().highlight(language, block.node.textContent)
-        : getLowlight().highlightAuto(block.node.textContent);
-
-    for (const flatNode of flattenNodes(
-      (result.children ?? []) as Parameters<typeof flattenNodes>[0],
-    )) {
-      const to = from + flatNode.text.length;
-      if (flatNode.classes.length) {
-        decorations.push(
-          Decoration.inline(from, to, {
-            class: flatNode.classes.join(" "),
-          }),
-        );
-      }
-      from = to;
-    }
-  }
-  return DecorationSet.create(doc, decorations);
-}
-
-function createLowlightPlugin() {
-  return Extension.create({
-    name: "lowlightHighlight",
-    addProseMirrorPlugins() {
-      const pluginKey = new PluginKey("lowlight");
-      return [
-        new Plugin({
-          key: pluginKey,
-          state: {
-            init(_, { doc }) {
-              return buildDecorations(doc);
-            },
-            apply(tr, set) {
-              if (tr.docChanged) {
-                return buildDecorations(tr.doc);
-              }
-              return set.map(tr.mapping, tr.doc);
-            },
-          },
-          props: {
-            decorations(state) {
-              return pluginKey.getState(state) as DecorationSet;
-            },
-          },
-        }),
-      ];
-    },
-  });
-}
 
 interface TiptapInstructionsEditorProps {
   initialContent: string;
@@ -179,6 +117,33 @@ const EDITOR_CLASSES =
   "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[13px] [&_code]:font-[var(--font-family-mono)] " +
   "[&_pre]:bg-muted [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 " +
   "[&_hr]:border-border [&_hr]:my-4";
+
+function createInstructionsEditorExtensions() {
+  return [
+    BoldExtension,
+    Blockquote,
+    BulletList,
+    CodeExtension,
+    CodeBlock,
+    Document,
+    Dropcursor,
+    Gapcursor,
+    HardBreak,
+    Heading,
+    UndoRedo,
+    HorizontalRule,
+    ItalicExtension,
+    ListItem,
+    ListKeymap,
+    OrderedList,
+    Paragraph,
+    Strike,
+    Text,
+    Underline,
+    TrailingNode,
+    Markdown,
+  ];
+}
 
 /**
  * Tiptap extension that captures the markdown the editor produces right after
@@ -270,9 +235,7 @@ export function TiptapInstructionsEditor({
   );
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      createLowlightPlugin(),
-      Markdown,
+      ...createInstructionsEditorExtensions(),
       createBaselineExtension(onChange),
     ],
     content: initialContent,

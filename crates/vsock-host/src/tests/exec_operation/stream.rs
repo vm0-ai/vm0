@@ -534,7 +534,7 @@ async fn exec_operation_stream_handles_output_and_pending_response_from_one_writ
 }
 
 #[tokio::test]
-async fn exec_output_teardown_before_copy_discards_reserved_event() {
+async fn exec_output_teardown_at_copy_boundary_discards_reserved_event() {
     let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(stream_request("stream-copy-teardown"))
@@ -563,7 +563,7 @@ async fn exec_output_teardown_before_copy_discards_reserved_event() {
         .expect("operation teardown thread should not panic");
         assert!(
             removed,
-            "operation teardown should acquire the unlocked state and remove the operation"
+            "operation teardown should acquire state at the payload-copy boundary"
         );
     });
 

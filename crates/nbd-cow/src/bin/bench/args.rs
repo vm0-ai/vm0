@@ -24,7 +24,10 @@ pub(crate) fn parse_bench_args(args: &[String]) -> Result<BenchCommand, String> 
 }
 
 pub(crate) fn usage() -> &'static str {
-    "usage: bench [base-size-mb]"
+    "NBD COW vs dm-snapshot benchmark\n\n\
+Usage:\n  cargo run --manifest-path crates/Cargo.toml -p nbd-cow --features bench --bin bench -- [base-size-mb]\n\n\
+Arguments:\n  [base-size-mb]  Base image size in MB (default: 1024 MB; inclusive minimum: 1024 MB)\n\n\
+Requirements:\n  - Run as root.\n  - fio, losetup, and dmsetup must be available on PATH.\n  - The NBD kernel module must be loaded:\n    modprobe nbd nbds_max=4096"
 }
 
 pub(crate) fn base_size_bytes(base_size_mb: u64) -> Option<u64> {
@@ -59,7 +62,29 @@ mod tests {
         assert!(invalid.contains("invalid base image size"), "{invalid}");
 
         let extra = parse_bench_args(&["1024".to_string(), "extra".to_string()]).unwrap_err();
-        assert!(extra.contains("usage"), "{extra}");
+        assert!(extra.contains("Usage:"), "{extra}");
+    }
+
+    #[test]
+    fn usage_describes_benchmark_invocation_and_prerequisites() {
+        let help = usage();
+
+        for expected in [
+            "NBD COW vs dm-snapshot benchmark",
+            "cargo run --manifest-path crates/Cargo.toml -p nbd-cow --features bench --bin bench -- [base-size-mb]",
+            "Base image size in MB",
+            "default: 1024 MB",
+            "inclusive minimum: 1024 MB",
+            "Run as root",
+            "fio, losetup, and dmsetup",
+            "NBD kernel module",
+            "modprobe nbd nbds_max=4096",
+        ] {
+            assert!(
+                help.contains(expected),
+                "missing {expected:?} from help: {help}"
+            );
+        }
     }
 
     #[test]

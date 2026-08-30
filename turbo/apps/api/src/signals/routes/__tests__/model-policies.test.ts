@@ -4,9 +4,10 @@ import {
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   SUPPORTED_RUN_MODELS,
+  isBuiltInModelProviderType,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
-  type ModelProviderType,
+  type ModelProviderWriteType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { modelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/model-provider-gateways";
@@ -19,6 +20,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
+import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createRouteMocks } from "./helpers/route-test";
 import {
@@ -54,7 +56,11 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
     return {
       model: policy.model,
       isDefault: policy.isDefault,
-      defaultProviderType: policy.defaultProviderType,
+      defaultProviderType: isBuiltInModelProviderType(
+        policy.defaultProviderType,
+      )
+        ? "built-in"
+        : policy.defaultProviderType,
       credentialScope: policy.credentialScope,
       modelProviderId: policy.modelProviderId,
       modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
@@ -69,7 +75,7 @@ function makeVm0Policy(
   return {
     model,
     isDefault,
-    defaultProviderType: "vm0",
+    defaultProviderType: "built-in",
     credentialScope: "org",
     modelProviderId: null,
   };
@@ -122,7 +128,7 @@ function seedFixture(): ModelPolicyFixture {
 
 async function createOrgProvider(
   fixture: ModelPolicyFixture,
-  type: ModelProviderType,
+  type: ModelProviderWriteType,
 ): Promise<string> {
   const { providerId } = await runsApi.createOrgModelProvider(fixture, {
     type,
@@ -219,7 +225,7 @@ describe("GET/PUT /api/model-policies", () => {
       }),
     ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
     expect(response.body.policies[0]).toMatchObject({
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       routeStatus: "valid",
@@ -232,6 +238,64 @@ describe("GET/PUT /api/model-policies", () => {
         return policy.isDefault;
       })?.model,
     ).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
+  });
+
+  it("preserves canonical built-in rows with legacy built-in route semantics", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    await accept(client.list({ headers: authHeaders() }), [200]);
+
+    await setOrgModelPolicyProviderTypeFixture({
+      orgId: fixture.orgId,
+      model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      defaultProviderType: "built-in",
+    });
+
+    const response = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(
+      response.body.policies.find((policy) => {
+        return policy.isDefault;
+      }),
+    ).toMatchObject({
+      defaultProviderType: "built-in",
+      modelProviderId: null,
+      routeStatus: "valid",
+      routeStatusReason: null,
+    });
+  });
+
+  it("rejects built-in policy writes with a provider ID", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const providerId = await createOrgProvider(fixture, "deepseek");
+    const client = apiClient();
+    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
+    const updates = toUpdate(listed.body).map((policy) => {
+      return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
+        ? {
+            ...policy,
+            defaultProviderType: "built-in" as const,
+            modelProviderId: providerId,
+          }
+        : policy;
+    });
+
+    const response = await client.update({
+      headers: authHeaders(),
+      body: { policies: updates },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Built-in routes cannot store a provider ID",
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("lists restricted policies for limited-free-1 workspace UI gating", async () => {
@@ -794,15 +858,20 @@ describe("GET/PUT /api/model-policies", () => {
       routeStatus: "valid",
     });
 
-    const previousClientPolicies = updated.body.policies.map((policy) => {
-      return {
-        model: policy.model,
-        isDefault: policy.isDefault,
-        defaultProviderType: policy.defaultProviderType,
-        credentialScope: policy.credentialScope,
-        modelProviderId: policy.modelProviderId,
-      };
-    });
+    const previousClientPolicies: UpdateOrgModelPolicy[] =
+      updated.body.policies.map((policy) => {
+        return {
+          model: policy.model,
+          isDefault: policy.isDefault,
+          defaultProviderType: isBuiltInModelProviderType(
+            policy.defaultProviderType,
+          )
+            ? "built-in"
+            : policy.defaultProviderType,
+          credentialScope: policy.credentialScope,
+          modelProviderId: policy.modelProviderId,
+        };
+      });
     const roundTripped = await accept(
       client.update({
         headers: authHeaders(),
@@ -826,7 +895,7 @@ describe("GET/PUT /api/model-policies", () => {
       return policy.model === "claude-sonnet-5"
         ? {
             ...policy,
-            defaultProviderType: "vm0" as const,
+            defaultProviderType: "built-in" as const,
             credentialScope: "org" as const,
             modelProviderId: null,
             modelProviderSurfaceId: null,
@@ -845,7 +914,7 @@ describe("GET/PUT /api/model-policies", () => {
         return policy.model === "claude-sonnet-5";
       }),
     ).toMatchObject({
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       modelProviderSurfaceId: null,
@@ -951,7 +1020,7 @@ describe("GET/PUT /api/model-policies", () => {
       return policy.model === "gpt-5.6-sol"
         ? {
             ...policy,
-            defaultProviderType: "vm0" as const,
+            defaultProviderType: "built-in" as const,
             credentialScope: "org" as const,
             modelProviderId: null,
           }
@@ -1518,6 +1587,35 @@ describe("GET/PUT /api/model-policies", () => {
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject({
       error: { code: "BAD_REQUEST" },
+    });
+  });
+
+  it("accepts legacy policy input and emits the canonical provider type", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+
+    const response = await putRawModelPolicies(
+      JSON.stringify({
+        policies: [
+          {
+            model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+            isDefault: true,
+            defaultProviderType: "vm0",
+            credentialScope: "org",
+            modelProviderId: null,
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      policies: [
+        {
+          model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          defaultProviderType: "built-in",
+        },
+      ],
     });
   });
 

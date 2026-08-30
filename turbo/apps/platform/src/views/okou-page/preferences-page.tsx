@@ -21,8 +21,8 @@ import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
 import { PersonalProvidersTab } from "./components/preferences/personal-providers-tab.tsx";
 import {
   themePreference$,
-  setTheme$,
   type ThemePreference,
+  updateThemePreference$,
 } from "../../signals/theme.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -37,6 +37,7 @@ import {
 } from "../../signals/okou-page/settings/preferences-page.ts";
 import { BuildInfoBlock } from "./components/settings/build-info-block.tsx";
 import { LanguageSettings } from "./components/settings/language-settings.tsx";
+import { ColorThemeSettings } from "./components/settings/color-theme-settings.tsx";
 
 function AppearanceSettings() {
   const { t } = useTranslation();
@@ -51,7 +52,12 @@ function AppearanceSettings() {
   const prefLoadable = useLoadable(themePreference$);
   const currentPref =
     prefLoadable.state === "hasData" ? prefLoadable.data : "system";
-  const setTheme = useSet(setTheme$);
+  const updateTheme = useSet(updateThemePreference$);
+  const pageSignal = useGet(pageSignal$);
+
+  const handleChange = (value: ThemePreference) => {
+    detach(updateTheme(value, pageSignal), Reason.DomCallback);
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -86,7 +92,7 @@ function AppearanceSettings() {
             return $.settings.preferences.appearance.theme.title;
           })}
           value={currentPref}
-          onValueChange={setTheme}
+          onValueChange={handleChange}
         >
           {THEME_OPTIONS.map(({ value, icon: Icon }) => {
             const label =
@@ -342,6 +348,7 @@ export function PreferencesPage() {
               {activeTab === "appearance" && (
                 <div className="flex flex-col gap-6">
                   <AppearanceSettings />
+                  <ColorThemeSettings />
                   <LanguageSettings />
                   <SendModeSettings />
                 </div>

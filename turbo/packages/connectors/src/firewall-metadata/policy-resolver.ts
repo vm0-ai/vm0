@@ -1,4 +1,4 @@
-import type { FirewallPolicyValue } from "../firewall-types";
+import type { FirewallPolicyValue } from "../firewall-contracts";
 
 interface FirewallMetadataPolicyResolverMetadata {
   readonly defaultPolicy: {

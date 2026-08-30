@@ -1,3 +1,4 @@
+import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.ts";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -35,7 +36,6 @@ import {
   mockKeyboardNavigationThreads,
   buttonByText,
   buttonByLabel,
-  linkByText,
   queryButtonByText,
   chatScrollContainer,
   chatComposerTextarea,
@@ -79,11 +79,15 @@ describe("chat lifecycle", () => {
       const events = exposeNewMessage
         ? [initialMessage, newMessage]
         : [initialMessage];
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, { lastReadAt: null, unreads: [] });
@@ -143,18 +147,22 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposePersistedMessage || persistedMessage === null) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
       }
       const events: ChatEvent[] = [initialMessage];
       if (exposePersistedMessage && persistedMessage !== null) {
         events.push(persistedMessage, acknowledgement);
       }
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       const clientEventId = body.clientEventId;
@@ -269,11 +277,15 @@ describe("chat lifecycle", () => {
         pendingSteer,
         ...(exposeReplacement ? [deliveredSteer] : []),
       ];
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
@@ -334,10 +346,10 @@ describe("chat lifecycle", () => {
             : sidebarInitialMessage;
         if (query.sinceSeqId === initialMessage.seqId) {
           if (params.threadId !== KEYBOARD_NEXT_THREAD_ID) {
-            return respond(200, { rows: [] });
+            return respond(200, chatEventRowsResponse([], query));
           }
           if (!exposeSidebarMessage) {
-            return respond(200, { rows: [] });
+            return respond(200, chatEventRowsResponse([], query));
           }
         }
         const events = [
@@ -347,11 +359,15 @@ describe("chat lifecycle", () => {
             ? [sidebarNewMessage]
             : []),
         ];
-        return respond(200, {
-          rows: mockChatEventRows(events).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(events).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
@@ -683,12 +699,17 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
-      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Previous keyboard thread"),
+      ).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Next keyboard thread"),
+      ).toBeInTheDocument();
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
@@ -771,16 +792,19 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
       expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+        within(chatList).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
 
-    const sidebarScrollArea = screen.getByTestId("sidebar-scroll-area");
+    const sidebarScrollArea = within(chatList).getByTestId(
+      "sidebar-scroll-area",
+    );
     Object.defineProperties(sidebarScrollArea, {
       clientHeight: {
         configurable: true,
@@ -810,7 +834,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(screen.getByTestId("sidebar-scroll-area").scrollTop).toBe(
+      expect(sidebarScrollArea.scrollTop).toBe(
         CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 21,
       );
     });
@@ -839,15 +863,25 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
-      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Previous keyboard thread"),
+      ).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Next keyboard thread"),
+      ).toBeInTheDocument();
     });
 
-    const currentThreadLink = linkByText("Current keyboard thread");
+    const currentThreadLink = within(chatList)
+      .getByText("Current keyboard thread")
+      .closest("a");
+    if (!currentThreadLink) {
+      throw new Error("Current keyboard thread link not found");
+    }
     currentThreadLink.focus();
     expect(currentThreadLink).toHaveFocus();
     expect(

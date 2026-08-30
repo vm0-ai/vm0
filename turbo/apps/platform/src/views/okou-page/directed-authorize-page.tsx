@@ -6,6 +6,7 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/connector-catalog";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
@@ -43,6 +44,7 @@ import { ProductBrandMarkLink } from "./directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { useTranslation } from "react-i18next";
 import { assistantName$ } from "../../signals/branding.ts";
+import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 // ---------------------------------------------------------------------------
 // Action button / authorized badge
@@ -296,6 +298,8 @@ function runDirectedAuthorize(
         readonly connectorLabel?: string;
         readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
         readonly agentId?: string;
+        readonly account?: ConnectorAccountMutationIntent;
+        readonly useDefaultConnectorProjection?: boolean;
       },
       signal: AbortSignal,
     ) => Promise<ConnectorConnectionResult | false>;
@@ -306,6 +310,8 @@ function runDirectedAuthorize(
         readonly options: {
           readonly connectorLabel?: string;
           readonly agentId?: string;
+          readonly account?: ConnectorAccountMutationIntent;
+          readonly useDefaultConnectorProjection?: boolean;
         };
       },
       signal: AbortSignal,
@@ -329,6 +335,12 @@ function runDirectedAuthorize(
     );
     return;
   }
+  const accountOptions = params.item
+    ? defaultBuiltinConnectorAccountOptions(params.item)
+    : null;
+  if (!accountOptions) {
+    return;
+  }
   const launchMode = params.item
     ? getConnectorStatusConnectLaunchMode(params.item)
     : "modal";
@@ -350,6 +362,7 @@ function runDirectedAuthorize(
               connectorLabel: params.connectorLabel,
               connectorIcon: params.item.icon,
               agentId: params.agentId,
+              ...accountOptions,
             },
             signal,
           );
@@ -361,6 +374,7 @@ function runDirectedAuthorize(
               options: {
                 connectorLabel: params.connectorLabel,
                 agentId: params.agentId,
+                ...accountOptions,
               },
             },
             signal,
@@ -400,11 +414,16 @@ function DirectedAuthorizeConnectModal({
   if (!open || !item) {
     return null;
   }
+  const accountOptions = defaultBuiltinConnectorAccountOptions(item);
+  if (!accountOptions) {
+    return null;
+  }
 
   return (
     <ConnectModal
       item={item}
       agentId={agentId}
+      accountOptions={accountOptions}
       onSuccess={async () => {
         reloadAuthorization();
         await handleAuthorizeSuccess();

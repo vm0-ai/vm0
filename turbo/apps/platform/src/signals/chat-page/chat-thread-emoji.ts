@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import emojiGroups from "../../data/chat-thread-emoji.json";
 
 export interface ChatThreadEmojiItem {
   emoji: string;
@@ -10,21 +11,9 @@ interface ChatThreadEmojiGroup {
   emojis: ChatThreadEmojiItem[];
 }
 
-// The full emoji dataset (~1,900 entries) is only needed once the user opens
-// the picker, so it is loaded on demand and kept out of the main bundle.
-export const chatThreadEmojiGroups$ = computed(
-  async (): Promise<ChatThreadEmojiGroup[]> => {
-    const module = await import("unicode-emoji-json/data-by-group.json");
-    return module.default.map((group) => {
-      return {
-        name: group.name,
-        emojis: group.emojis.map((entry) => {
-          return { emoji: entry.emoji, name: entry.name };
-        }),
-      };
-    });
-  },
-);
+export const chatThreadEmojiGroups$ = computed((): ChatThreadEmojiGroup[] => {
+  return emojiGroups;
+});
 
 const internalChatThreadEmojiQuery$ = state("");
 

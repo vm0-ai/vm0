@@ -31,12 +31,29 @@ describe("platform entrypoint safe area behavior", () => {
         return directive.startsWith("interactive-widget=");
       }),
     ).toBeFalsy();
+  });
+
+  it("pins the bootstrap skeleton to the initial reachable viewport", () => {
+    const rule = /#app-bootstrap-skeleton\s*{([^}]*)}/.exec(indexHtml)?.[1];
+    const contentRule = /\.app-bootstrap-skeleton__content\s*{([^}]*)}/.exec(
+      indexHtml,
+    )?.[1];
 
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(indexHtml).toMatch(/--zero-viewport-height:\s*100lvh;/);
-    expect(indexHtml).toMatch(
-      /#app-bootstrap-skeleton\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);/,
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/position:\s*fixed;/);
+    expect(rule).toMatch(/inset:\s*0;/);
+    expect(rule).not.toMatch(/(?:^|[;\s])(?:min-)?height\s*:/);
+    expect(contentRule).toBeDefined();
+    expect(contentRule).toMatch(/position:\s*fixed;/);
+    expect(contentRule).toMatch(
+      /top:\s*var\(--app-bootstrap-skeleton-center-y,\s*50dvh\);/,
     );
+    expect(contentRule).toMatch(/left:\s*50%;/);
+    expect(contentRule).toMatch(/transform:\s*translate\(-50%,\s*-50%\);/);
+    expect(indexHtml).toContain("window.visualViewport.height");
+    expect(indexHtml).toContain('viewportHeight / 2 + "px"');
   });
 
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {

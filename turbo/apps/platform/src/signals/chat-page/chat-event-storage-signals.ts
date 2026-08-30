@@ -26,6 +26,7 @@ import {
   clearIndexedDbChatEventRows$,
   loadIndexedDbChatEventCursor$,
   loadIndexedDbChatEventRowsAfter$,
+  replaceIndexedDbChatEventRows$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
@@ -169,30 +170,37 @@ function createSyncRemoteRowsCommand({
      * not reached yet has no snapshot, so the whole thread is still in
      * Postgres and the tail below reads it from the beginning.
      */
-    const loadColdStartCursor = async (): Promise<ChatEventCursor> => {
-      const snapshot = await settle(
+    const loadColdStartCursor = async (): Promise<{
+      readonly cursor: ChatEventCursor;
+    }> => {
+      const result = await settle(
         set(fetchChatEventSnapshotRows$, threadId, signal),
         signal,
       );
-      if (!snapshot.ok) {
-        throw snapshot.error;
+      if (!result.ok) {
+        throw result.error;
       }
-      if (snapshot.value === null) {
-        return { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID };
-      }
-      const cursor = {
-        lastEventId: snapshot.value.lastEventId,
-        lastSeqId: snapshot.value.lastSeqId,
-        projection: snapshot.value.projection,
-      };
+      const snapshot = result.value.snapshot;
+      const cursor: ChatEventCursor =
+        snapshot === null || snapshot.lastEventId === null
+          ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
+          : {
+              lastEventId: snapshot.lastEventId,
+              lastSeqId: snapshot.lastSeqId,
+              projection: snapshot.projection,
+            };
       await set(
-        writeIndexedDbChatEventRows$,
-        { threadId, rows: snapshot.value.rows, cursor },
+        replaceIndexedDbChatEventRows$,
+        {
+          threadId,
+          rows: snapshot?.rows ?? [],
+          cursor,
+        },
         signal,
       );
       signal.throwIfAborted();
-      await mergeRows(snapshot.value.rows);
-      return cursor;
+      await mergeRows(snapshot?.rows ?? []);
+      return { cursor };
     };
 
     // True once the cursor came from the server rather than the local cache.
@@ -211,8 +219,9 @@ function createSyncRemoteRowsCommand({
       signal,
     );
     if (cachedCursor === null) {
-      cursor = await loadColdStartCursor();
+      const coldStart = await loadColdStartCursor();
       signal.throwIfAborted();
+      cursor = coldStart.cursor;
       cursorFromServer = true;
       needsColdStartTailConfirmation = true;
     } else {
@@ -231,8 +240,9 @@ function createSyncRemoteRowsCommand({
         }
         await set(clearIndexedDbChatEventRows$, threadId, signal);
         signal.throwIfAborted();
-        cursor = await loadColdStartCursor();
+        const coldStart = await loadColdStartCursor();
         signal.throwIfAborted();
+        cursor = coldStart.cursor;
         cursorFromServer = true;
         needsColdStartTailConfirmation = true;
         continue;
@@ -240,7 +250,11 @@ function createSyncRemoteRowsCommand({
       cursor = page.cursor;
       await set(
         writeIndexedDbChatEventRows$,
-        { threadId, rows: page.rows, cursor },
+        {
+          threadId,
+          rows: page.rows,
+          cursor,
+        },
         signal,
       );
       signal.throwIfAborted();

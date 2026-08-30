@@ -41,6 +41,9 @@ teardown() {
         "$values"
     echo "$output"
     assert_success
+    CONNECTOR_ACCOUNT_ID=$(jq -er \
+        '.id | select(type == "string" and length > 0)' \
+        <<<"$output")
     public_surfaces+="$output"$'\n'
 
     local probe_template
@@ -124,7 +127,8 @@ EOF
         bentoml \
         api-token \
         "$AGENT_ID" \
-        "$values"
+        "$values" \
+        "$CONNECTOR_ACCOUNT_ID"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'

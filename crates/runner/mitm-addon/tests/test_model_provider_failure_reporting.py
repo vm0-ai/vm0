@@ -116,6 +116,16 @@ def _enqueue_provider_unavailable(real_flow, proxy_log_path: Path):
     return flow
 
 
+def _finish_upstream_transport_failure(real_flow, proxy_log_path: Path, mitm_ctx):
+    flow = _make_flow(real_flow, proxy_log_path)
+    flow.response = None
+    model_provider_failure.admit_flow(flow)
+    flow.error = Error("connection reset by peer")
+    with mitm_ctx():
+        mitm_addon.error(flow)
+    return flow
+
+
 def _queue_blocked_reports(
     real_flow,
     proxy_log_path: Path,
@@ -161,6 +171,7 @@ def _assert_report_omission_entry(
     *,
     flow_id: str,
     reason: str,
+    failure_kind: str = "provider_unavailable",
     **details: str | int,
 ) -> None:
     assert entry == {
@@ -173,7 +184,7 @@ def _assert_report_omission_entry(
         "run_id": "run-model-failure",
         "flow_id": flow_id,
         "firewall_name": "model-provider:openai-api-key",
-        "failure_kind": "provider_unavailable",
+        "failure_kind": failure_kind,
         **details,
     }
 
@@ -183,10 +194,17 @@ def _assert_single_report_omission(
     *,
     flow_id: str,
     reason: str,
+    failure_kind: str = "provider_unavailable",
     **details: str | int,
 ) -> None:
     [entry] = _report_omissions(proxy_log_path)
-    _assert_report_omission_entry(entry, flow_id=flow_id, reason=reason, **details)
+    _assert_report_omission_entry(
+        entry,
+        flow_id=flow_id,
+        reason=reason,
+        failure_kind=failure_kind,
+        **details,
+    )
 
 
 def _restart_reporter_after_callbacks(model_provider_failure_api) -> None:
@@ -398,6 +416,241 @@ def test_report_http_failure_logs_omission_and_reclaims_capacity(
         flow_id=flow.id,
         reason="http_error",
         http_status=404,
+    )
+
+
+# Remove these rollout-only fallback tests with the compatibility branch under #29882.
+def test_source_aware_400_retries_once_with_legacy_body(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    proxy_log_path = tmp_path / "legacy-retry.jsonl"
+    model_provider_failure_api.queue_response(400)
+    model_provider_failure_api.queue_response(204)
+
+    _finish_upstream_transport_failure(real_flow, proxy_log_path, mitm_ctx)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {
+            "failureKind": "connection",
+            "connectionSource": "upstream_transport",
+        },
+        {"failureKind": "connection"},
+    ]
+    requests = model_provider_failure_api.requests
+    assert [request.method for request in requests] == ["POST", "POST"]
+    assert [request.path for request in requests] == [
+        "/api/runners/runs/run-model-failure/model-provider-failures",
+        "/api/runners/runs/run-model-failure/model-provider-failures",
+    ]
+    assert [request.header("authorization") for request in requests] == [
+        f"Bearer {id(model_provider_failure_api)}",
+        f"Bearer {id(model_provider_failure_api)}",
+    ]
+    assert [request.body for request in requests] == [
+        b'{"failureKind":"connection","connectionSource":"upstream_transport"}',
+        b'{"failureKind":"connection"}',
+    ]
+    assert _report_omissions(proxy_log_path) == []
+
+
+@pytest.mark.parametrize(
+    (
+        "monotonic_values",
+        "fallback_status",
+        "expected_timeouts",
+        "expected_payloads",
+        "expected_http_status",
+    ),
+    [
+        (
+            (100.0, 100.25, 101.5),
+            204,
+            [2.75, 1.5],
+            [
+                {
+                    "failureKind": "connection",
+                    "connectionSource": "provider_response",
+                },
+                {"failureKind": "connection"},
+            ],
+            None,
+        ),
+        (
+            (100.0, 100.25, 103.0),
+            None,
+            [2.75],
+            [
+                {
+                    "failureKind": "connection",
+                    "connectionSource": "provider_response",
+                }
+            ],
+            400,
+        ),
+    ],
+    ids=("positive-fallback-budget", "exhausted-fallback-budget"),
+)
+def test_source_aware_400_fallback_shares_delivery_deadline(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    monotonic_values: tuple[float, float, float],
+    fallback_status: int | None,
+    expected_timeouts: list[float],
+    expected_payloads: list[dict[str, str]],
+    expected_http_status: int | None,
+    model_provider_failure_api,
+):
+    monotonic_ticks = iter(monotonic_values)
+    request_timeouts: list[float] = []
+    original_build_api_opener = platform_api.build_api_opener
+
+    class ReportTime:
+        @staticmethod
+        def monotonic() -> float:
+            return next(monotonic_ticks)
+
+    class TimeoutRecordingOpener:
+        def __init__(self):
+            self._opener = original_build_api_opener()
+
+        def open(self, request, *, timeout: float):
+            request_timeouts.append(timeout)
+            return self._opener.open(request, timeout=timeout)
+
+    body = b'{"error":{"code":"connection_error"}}'
+    proxy_log_path = tmp_path / "legacy-retry-deadline.jsonl"
+    flow = _make_flow(
+        real_flow,
+        proxy_log_path,
+        response_body=body,
+    )
+    model_provider_failure_api.queue_response(400)
+    if fallback_status is not None:
+        model_provider_failure_api.queue_response(fallback_status)
+
+    with (
+        patch.object(model_provider_failure, "time", ReportTime),
+        patch.object(
+            platform_api,
+            "build_api_opener",
+            side_effect=TimeoutRecordingOpener,
+        ),
+    ):
+        _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
+        assert _reported_payloads(model_provider_failure_api) == expected_payloads
+
+    assert request_timeouts == pytest.approx(expected_timeouts)
+    if expected_http_status is None:
+        assert not jsonl_exists_after_flush(proxy_log_path)
+    else:
+        _assert_single_report_omission(
+            proxy_log_path,
+            flow_id=flow.id,
+            reason="http_error",
+            failure_kind="connection",
+            http_status=expected_http_status,
+        )
+        _assert_full_report_capacity(
+            real_flow,
+            tmp_path / "exhausted-fallback-capacity-recovery.jsonl",
+            model_provider_failure_api,
+        )
+
+
+def test_source_aware_400_failed_fallback_is_not_retried(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    proxy_log_path = tmp_path / "legacy-retry-failed.jsonl"
+    release_target = threading.Event()
+    initial_request_count = model_provider_failure_api.request_count
+    model_provider_failure_api.queue_response(400)
+    model_provider_failure_api.queue_response(503, release_event=release_target)
+
+    flow = _finish_upstream_transport_failure(real_flow, proxy_log_path, mitm_ctx)
+
+    assert model_provider_failure_api.wait_for_request_count(initial_request_count + 2)
+    assert [
+        request.json_body()
+        for request in model_provider_failure_api.requests[
+            initial_request_count : initial_request_count + 2
+        ]
+    ] == [
+        {
+            "failureKind": "connection",
+            "connectionSource": "upstream_transport",
+        },
+        {"failureKind": "connection"},
+    ]
+    _assert_single_reclaimed_report_slot(
+        real_flow,
+        tmp_path / "legacy-retry-failed-capacity-recovery.jsonl",
+        model_provider_failure_api,
+        release_target,
+        initial_request_count=initial_request_count,
+        target_outbound_count=2,
+    )
+    _assert_single_report_omission(
+        proxy_log_path,
+        flow_id=flow.id,
+        reason="http_error",
+        failure_kind="connection",
+        http_status=503,
+    )
+
+
+def test_source_aware_non_400_failure_is_not_retried(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    proxy_log_path = tmp_path / "source-aware-non-400.jsonl"
+    model_provider_failure_api.queue_response(404)
+
+    flow = _finish_upstream_transport_failure(real_flow, proxy_log_path, mitm_ctx)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {
+            "failureKind": "connection",
+            "connectionSource": "upstream_transport",
+        }
+    ]
+    _assert_single_report_omission(
+        proxy_log_path,
+        flow_id=flow.id,
+        reason="http_error",
+        failure_kind="connection",
+        http_status=404,
+    )
+
+
+def test_source_less_400_failure_is_not_retried(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    proxy_log_path = tmp_path / "source-less-400.jsonl"
+    model_provider_failure_api.queue_response(400)
+    flow = _make_flow(real_flow, proxy_log_path, response_status=503)
+
+    _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+    _assert_single_report_omission(
+        proxy_log_path,
+        flow_id=flow.id,
+        reason="http_error",
+        http_status=400,
     )
 
 
@@ -1151,6 +1404,12 @@ def test_combined_sse_overlapping_escaped_field_keeps_failure_byte_limit(
         (
             "model-provider:openai-api-key",
             "/v1/chat/completions",
+            b'{"error":{"code":"invalid_api_key"}}',
+            "authentication",
+        ),
+        (
+            "model-provider:openai-api-key",
+            "/v1/chat/completions",
             b'{"error":{"code":"insufficient_quota"}}',
             "billing",
         ),
@@ -1206,7 +1465,10 @@ def test_protocol_json_failures_are_reported(
 
     _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
 
-    assert _reported_payloads(model_provider_failure_api) == [{"failureKind": expected_kind}]
+    expected_payload = {"failureKind": expected_kind}
+    if expected_kind == "connection":
+        expected_payload["connectionSource"] = "provider_response"
+    assert _reported_payloads(model_provider_failure_api) == [expected_payload]
 
 
 @pytest.mark.parametrize(
@@ -1335,6 +1597,14 @@ def test_overlapping_inference_flows_report_independent_failures(
             b'"message":"provider failed","param":null}\n\n',
             "provider_unavailable",
         ),
+        (
+            "model-provider:openai-api-key",
+            "/v1/responses",
+            b"event: response.failed\n"
+            b'data: {"type":"response.failed","response":{'
+            b'"error":{"code":"connection"}}}\n\n',
+            "connection",
+        ),
     ],
 )
 def test_protocol_sse_failures_are_reported(
@@ -1358,7 +1628,10 @@ def test_protocol_sse_failures_are_reported(
 
     _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
 
-    assert _reported_payloads(model_provider_failure_api) == [{"failureKind": expected_kind}]
+    expected_payload = {"failureKind": expected_kind}
+    if expected_kind == "connection":
+        expected_payload["connectionSource"] = "provider_response"
+    assert _reported_payloads(model_provider_failure_api) == [expected_payload]
 
 
 def test_conflicting_sse_event_type_is_not_reported(
@@ -1388,6 +1661,41 @@ def test_conflicting_sse_event_type_is_not_reported(
 
     with mitm_ctx():
         mitm_addon.response(flow)
+
+
+def test_uninspectable_billable_success_is_not_reported_as_provider_failure(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        firewall_name="model-provider:anthropic-api-key",
+        request_path="/v1/messages",
+        response_headers=header_map(
+            {
+                "content-type": "text/event-stream",
+                "content-encoding": "br",
+            }
+        ),
+    )
+    flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    stream = response_stream(flow)
+    assert stream(b"uninspectable upstream bytes") == b""
+    assert stream(b"") == b""
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == []
 
 
 def test_sse_failure_is_reported_before_response_hook(
@@ -1456,15 +1764,14 @@ def test_connection_error_is_reported(
     mitm_ctx,
     model_provider_failure_api,
 ):
-    flow = _make_flow(real_flow, tmp_path / "proxy.jsonl")
-    flow.response = None
-    model_provider_failure.admit_flow(flow)
-    flow.error = Error("connection reset by peer")
+    _finish_upstream_transport_failure(real_flow, tmp_path / "proxy.jsonl", mitm_ctx)
 
-    with mitm_ctx():
-        mitm_addon.error(flow)
-
-    assert _reported_payloads(model_provider_failure_api) == [{"failureKind": "connection"}]
+    assert _reported_payloads(model_provider_failure_api) == [
+        {
+            "failureKind": "connection",
+            "connectionSource": "upstream_transport",
+        }
+    ]
 
 
 def test_client_disconnect_is_not_reported(
@@ -1565,7 +1872,7 @@ def test_trailing_sse_failure_is_settled_once_during_response_interruption(
     body = (
         b"event: response.failed\n"
         b'data: {"type":"response.failed","response":{'
-        b'"error":{"code":"server_error"}}}'
+        b'"error":{"code":"connection_error"}}}'
     )
     flow = _make_flow(
         real_flow,
@@ -1583,15 +1890,36 @@ def test_trailing_sse_failure_is_settled_once_during_response_interruption(
         mitm_addon.error(flow)
 
     assert _reported_payloads(model_provider_failure_api) == [
-        {"failureKind": "provider_unavailable"}
+        {
+            "failureKind": "connection",
+            "connectionSource": "provider_response",
+        }
     ]
 
 
+@pytest.mark.parametrize(
+    ("failure_code", "expected_payload"),
+    [
+        (
+            "service_unavailable",
+            {"failureKind": "provider_unavailable"},
+        ),
+        (
+            "connection_error",
+            {
+                "failureKind": "connection",
+                "connectionSource": "provider_response",
+            },
+        ),
+    ],
+)
 def test_websocket_failure_is_reported(
     tmp_path,
     real_flow,
     mitm_ctx,
     monkeypatch: pytest.MonkeyPatch,
+    failure_code: str,
+    expected_payload: dict[str, str],
     model_provider_failure_api,
 ):
     flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -1601,7 +1929,7 @@ def test_websocket_failure_is_reported(
     full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
     failed_frame = (
         b'{"type":"response.failed","response":{"id":"resp-1",'
-        b'"error":{"code":"service_unavailable"}}}'
+        b'"error":{"code":"' + failure_code.encode() + b'"}}}'
     )
 
     with mitm_ctx():
@@ -1618,9 +1946,7 @@ def test_websocket_failure_is_reported(
         mitm_addon.websocket_end(flow)
 
     assert full_body_feeds.count(failed_frame) == 1
-    assert _reported_payloads(model_provider_failure_api) == [
-        {"failureKind": "provider_unavailable"}
-    ]
+    assert _reported_payloads(model_provider_failure_api) == [expected_payload]
 
 
 def test_websocket_known_delta_skips_full_parse_without_disabling_failure_state(
@@ -1704,7 +2030,16 @@ def test_websocket_failure_only_flow_uses_one_parse_per_server_frame(
 @pytest.mark.parametrize(
     ("client_state", "server_state", "expected"),
     [
-        (ConnectionState.OPEN, ConnectionState.CLOSED, [{"failureKind": "connection"}]),
+        (
+            ConnectionState.OPEN,
+            ConnectionState.CLOSED,
+            [
+                {
+                    "failureKind": "connection",
+                    "connectionSource": "upstream_transport",
+                }
+            ],
+        ),
         (ConnectionState.CLOSED, ConnectionState.OPEN, []),
     ],
 )

@@ -1,25 +1,27 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
+  chatThreadMetadataContract,
   chatThreadMarkReadContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
+import {
+  CHAT_EVENT_CURSOR_STORE,
   CHAT_EVENT_ROWS_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "../../../signals/external/chat-idb-schema.ts";
-import {
-  chatIdb$,
-  openChatIdb,
-} from "../../../signals/external/chat-idb-store.ts";
+import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
 import { setLogErrorHandler } from "../../../signals/log.ts";
 import { navigateToChat$ } from "../../../signals/okou-page/nav.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -73,15 +75,11 @@ function idbOrgId(): string {
   return `zero-chat-thread-idb-org-${context.resourceId}`;
 }
 
-async function primeRuntimeChatDb(): Promise<
-  Awaited<ReturnType<typeof openChatIdb>>
-> {
-  mockUser({ id: idbUserId(), fullName: "Test User" }, { token: "test-token" });
-  mockOrganization({
-    activeOrg: { id: idbOrgId(), name: "Default Org" },
-    memberships: [{ id: idbOrgId() }],
-  });
-  const db = await context.store.get(chatIdb$);
+async function primeChatDb(): Promise<Awaited<ReturnType<typeof openChatIdb>>> {
+  // Seed the same user/org-scoped database that production opens after
+  // bootstrap. Opening it directly keeps pre-render fixture setup from
+  // reading auth signals before setupPage has run the bootstrap lifecycle.
+  const db = await openChatIdb(idbUserId(), idbOrgId());
   context.signal.addEventListener(
     "abort",
     () => {
@@ -93,6 +91,14 @@ async function primeRuntimeChatDb(): Promise<
 }
 
 function setupChatPage(): void {
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
@@ -105,16 +111,15 @@ function setupChatPage(): void {
 }
 
 function prepareDefaultAgent(): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       ownerId: idbUserId(),
       displayName: "Zero",
       description: null,
       sound: null,
       avatarUrl: null,
       visibility: "public",
-      updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
 }
@@ -178,9 +183,18 @@ function trackActiveAgentError(): () => boolean {
 }
 
 describe("okou chat thread IndexedDB fallback", () => {
-  it("keeps the app skeleton visible until uncached thread metadata syncs", async () => {
+  it("falls back to canonical sync when narrow metadata is incomplete", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
+      return respond(200, {
+        id: THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Older API payload",
+        selectedModel: null,
+        serviceTier: null,
+      });
+    });
     context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: {
@@ -189,7 +203,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         },
       });
     });
-    await primeRuntimeChatDb();
+    await primeChatDb();
     const snapshotRequested = context.mocks.deferred<void>();
     const releaseSnapshot = context.mocks.deferred<void>();
     const activeAgentErrorLogged = trackActiveAgentError();
@@ -224,7 +238,7 @@ describe("okou chat thread IndexedDB fallback", () => {
   });
 
   it("shows chat thread not found after remote metadata sync confirms a miss", async () => {
-    await primeRuntimeChatDb();
+    await primeChatDb();
     const snapshotRequested = context.mocks.deferred<void>();
     const releaseSnapshot = context.mocks.deferred<void>();
     const activeAgentErrorLogged = trackActiveAgentError();
@@ -276,7 +290,7 @@ describe("okou chat thread IndexedDB fallback", () => {
         },
       });
     });
-    await primeRuntimeChatDb();
+    await primeChatDb();
     let notificationThreadAvailable = false;
     let snapshotRequests = 0;
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -377,10 +391,20 @@ describe("okou chat thread IndexedDB fallback", () => {
     expect(snapshotRequests).toBeGreaterThan(completedSnapshotRequests);
   });
 
-  it("renders from cached thread metadata without waiting for remote sync", async () => {
+  it("keeps cached thread shell behind the app skeleton during initial event sync", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
-    const runtimeDb = await primeRuntimeChatDb();
+    let metadataRequests = 0;
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
+      metadataRequests += 1;
+      return respond(404, {
+        error: {
+          code: "CHAT_THREAD_NOT_FOUND",
+          message: "Chat thread not found",
+        },
+      });
+    });
+    const runtimeDb = await primeChatDb();
     await runtimeDb.put(CHAT_THREAD_SNAPSHOT_STORE, {
       id: "current",
       ...currentThreadSnapshot(),
@@ -402,19 +426,84 @@ describe("okou chat thread IndexedDB fallback", () => {
     await expect(
       screen.findByPlaceholderText(PLACEHOLDER),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+    expect(screen.getByTestId("app-skeleton")).not.toHaveAttribute(
       "aria-hidden",
-      "true",
     );
     expect(releaseRemoteEvents.settled()).toBeFalsy();
+    expect(metadataRequests).toBe(0);
     expect(activeAgentErrorLogged()).toBeFalsy();
+  });
+
+  it("replaces stale cached metadata after an expired cursor rebase", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    let metadataRequests = 0;
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
+      metadataRequests += 1;
+      return respond(404, {
+        error: {
+          code: "CHAT_THREAD_NOT_FOUND",
+          message: "Chat thread not found",
+        },
+      });
+    });
+    const runtimeDb = await primeChatDb();
+    await runtimeDb.put(CHAT_THREAD_SNAPSHOT_STORE, {
+      id: "current",
+      ...currentThreadSnapshot(),
+      latestEventId: "00000000-0000-4000-8000-000000000001",
+      latestSeqId: 1,
+    });
+    const rebaseSnapshotRequested = context.mocks.deferred<void>();
+    const releaseRebaseSnapshot = context.mocks.deferred<void>();
+    let returnedExpiredCursor = false;
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      if (query.sinceSeqId === 1 && !returnedExpiredCursor) {
+        returnedExpiredCursor = true;
+        return respond(410, {
+          error: {
+            code: "CHAT_THREAD_EVENTS_EXPIRED",
+            message: "Chat thread events cursor has expired",
+          },
+        });
+      }
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+      rebaseSnapshotRequested.resolve();
+      await releaseRebaseSnapshot.promise;
+      return respond(200, {
+        chatThreads: [],
+        latestEventId: null,
+        latestSeqId: null,
+      });
+    });
+
+    setupChatPage();
+    await rebaseSnapshotRequested.promise;
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+      THREAD_TITLE,
+    );
+    expect(metadataRequests).toBe(0);
+    expect(releaseRebaseSnapshot.settled()).toBeFalsy();
+
+    releaseRebaseSnapshot.resolve();
+
+    await expect(
+      screen.findByRole("heading", { name: "Chat thread not found" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(PLACEHOLDER)).not.toBeInTheDocument();
   });
 
   it("renders IndexedDB rows without an empty state while mark-read is blocked", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
-    const runtimeDb = await primeRuntimeChatDb();
+    const runtimeDb = await primeChatDb();
     const runId = "run-cached-mark-read";
     const cachedMessage = "Cached while mark-read is pending";
     const cachedRows = [
@@ -452,6 +541,13 @@ describe("okou chat thread IndexedDB fallback", () => {
         return runtimeDb.put(CHAT_EVENT_ROWS_STORE, row);
       }),
     );
+    await runtimeDb.put(CHAT_EVENT_CURSOR_STORE, {
+      threadId: THREAD_ID,
+      schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+      lastEventId: cachedRows[1].id,
+      lastSeqId: cachedRows[1].seqId,
+      projection: "tool-redacted",
+    });
 
     const markReadStarted = context.mocks.deferred<void>();
     const releaseMarkRead = context.mocks.deferred<void>();
@@ -466,8 +562,8 @@ describe("okou chat thread IndexedDB fallback", () => {
         });
       },
     );
-    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
-      return respond(200, { rows: [] });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([], query));
     });
     const emptyThread = observeEmptyThreadMessage();
 
@@ -485,7 +581,7 @@ describe("okou chat thread IndexedDB fallback", () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
-    await primeRuntimeChatDb();
+    await primeChatDb();
     const snapshotUrl =
       "https://r2.example.com/chat-events/loading-handoff.ndjson.gz";
     const snapshotBodyRequested = context.mocks.deferred<void>();
@@ -551,6 +647,7 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, {
         url: snapshotUrl,
         expiresInSeconds: 900,
+        projection: "tool-redacted",
         lastEventId: terminalSnapshotRow.id,
         lastSeqId: 3,
       });
@@ -566,8 +663,8 @@ describe("okou chat thread IndexedDB fallback", () => {
           .join("\n")}\n`,
       );
     });
-    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
-      return respond(200, { rows: [] });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([], query));
     });
     context.mocks.api(
       chatThreadMarkReadContract.markRead,
@@ -601,6 +698,8 @@ describe("okou chat thread IndexedDB fallback", () => {
     setupChatPage();
     await snapshotBodyRequested.promise;
 
+    const appSkeleton = await screen.findByTestId("app-skeleton");
+    expect(appSkeleton).not.toHaveAttribute("aria-hidden");
     await waitFor(() => {
       expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
     });
@@ -614,6 +713,7 @@ describe("okou chat thread IndexedDB fallback", () => {
       screen.findByText(ASSISTANT_MESSAGE),
     ).resolves.toBeInTheDocument();
     expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
     expect(screen.queryByText(EMPTY_THREAD_MESSAGE)).not.toBeInTheDocument();
     expect(emptyThread.wasShown()).toBeFalsy();
     expect(uncoveredLoadingGap).toBeFalsy();

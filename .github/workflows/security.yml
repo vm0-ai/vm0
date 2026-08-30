@@ -233,6 +233,9 @@ jobs:
       - name: Audit Okou CLI cutover
         run: .github/scripts/audit-okou-cli-cutover.sh
 
+      - name: Check Release Please workspace coverage
+        run: .github/scripts/check-release-please-workspace-coverage.sh
+
       - name: Run workflow script tests
         run: |
           shopt -s nullglob
@@ -247,6 +250,7 @@ jobs:
             .github/scripts/build-okou-desktop-artifact.sh \
             .github/scripts/cancel-superseded-merge-group-runs.sh \
             .github/scripts/check-release-please-component-releases.sh \
+            .github/scripts/check-release-please-workspace-coverage.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
             .github/scripts/cleanup-turbo-runner-namespace.sh \
             .github/scripts/cloudflare-ssh-command.sh \
@@ -257,6 +261,9 @@ jobs:
             .github/scripts/fetch-okou-desktop-artifact.sh \
             .github/scripts/list-okou-pages-preview-pr-numbers.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
+            .github/scripts/publish-okou-app-assets.sh \
+            .github/scripts/verify-okou-app-assets.sh \
+            .github/scripts/verify-okou-app-runtime.sh \
             .github/scripts/reconcile-and-start-runner-groups.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
             .github/actions/report-memory-peak/report.sh \
@@ -272,6 +279,8 @@ jobs:
             .github/scripts/tests/audit-okou-cli-cutover-test.sh \
             .github/scripts/tests/cancel-superseded-merge-group-runs-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
+            .github/scripts/tests/check-release-please-workspace-coverage-test.sh \
+            .github/scripts/tests/pass-release-pr-ci-gates-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/checkout-depth-test.sh \
             .github/scripts/tests/clerk-test-resource-workflow-test.sh \
@@ -282,6 +291,9 @@ jobs:
             .github/scripts/tests/deploy-cli-local-test.sh \
             .github/scripts/tests/deploy-okou-pages-test.sh \
             .github/scripts/tests/deploy-okou-pages-workflow-test.sh \
+            .github/scripts/tests/publish-okou-app-assets-test.sh \
+            .github/scripts/tests/verify-okou-app-assets-test.sh \
+            .github/scripts/tests/verify-okou-app-runtime-test.sh \
             .github/scripts/tests/download-verified-test.sh \
             .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
             .github/scripts/tests/list-okou-pages-preview-pr-numbers-test.sh \
@@ -291,6 +303,7 @@ jobs:
             .github/scripts/tests/provision-runner-kvm-test.sh \
             .github/scripts/tests/release-tool-downloads-test.sh \
             .github/scripts/tests/resolve-desktop-version-change-test.sh \
+            .github/scripts/tests/runner-attribution-ansible-test.sh \
             .github/scripts/tests/runner-promotion-ansible-test.sh \
             .github/scripts/tests/reconcile-runner-binary-groups-test.sh \
             .github/scripts/tests/report-cgroup-memory-peak-test.sh \
@@ -299,6 +312,7 @@ jobs:
             .github/scripts/tests/runner-lifecycle-ownership-workflow-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
+            .github/scripts/tests/runner-behavior-agent-ready-benchmark-test.sh \
             .github/scripts/tests/runner-behavior-durable-test.sh \
             .github/scripts/tests/validate-desktop-migration-policy-test.sh \
             e2e/scripts/ensure-stripe-cli.sh \
@@ -314,6 +328,20 @@ jobs:
 
       - name: Run actionlint
         run: ./actionlint
+
+  release-workspace-coverage:
+    needs: [detect-release]
+    name: Release Please Workspace Coverage
+    if: ${{ needs.detect-release.outputs.skip == 'true' && github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check Release Please workspace coverage
+        run: .github/scripts/check-release-please-workspace-coverage.sh
 
   gitleaks:
     needs: [detect-release]
@@ -356,6 +384,7 @@ jobs:
       - codeql
       - pnpm-audit
       - actionlint
+      - release-workspace-coverage
       - gitleaks
     # Always run so the gate reports an explicit result (not "skipped").
     if: always()
@@ -364,10 +393,15 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
+          RELEASE_WORKSPACE_COVERAGE_RESULT: ${{ needs.release-workspace-coverage.result }}
         run: |
-          # Auto-pass for release-please PRs, commits, and merge queue entries
+          # Release candidates retain the fast path after workspace validation.
           if [[ "$IS_RELEASE" == "true" ]]; then
-            echo "✅ Release-please — skipping CI gate"
+            if [[ "$EVENT_NAME" != "push" && "$RELEASE_WORKSPACE_COVERAGE_RESULT" != "success" ]]; then
+              echo "::error::release-workspace-coverage: expected success, got $RELEASE_WORKSPACE_COVERAGE_RESULT"
+              exit 1
+            fi
+            echo "✅ Release-please — workspace coverage validated; skipping remaining CI"
             exit 0
           fi
           echo "::group::CI Gate Results"

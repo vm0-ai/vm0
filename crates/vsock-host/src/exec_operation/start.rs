@@ -6,7 +6,8 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time::{self, Instant};
 use vsock_proto::{
-    ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecTimeoutPolicy, MSG_EXEC_CANCEL,
+    ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
+    MSG_EXEC_CANCEL,
 };
 
 use crate::{CompositeNormalOperation, FrameWriteObserver, Shared};
@@ -18,8 +19,8 @@ use super::handle::{
 };
 use super::state::{
     ExecOperationLifecycle, ExecOperationRegistration, ExecOperationRegistrationInput,
-    ExecOperationTracking, output_policy_streams, register_exec_operation_start,
-    stream_queue_capacity_for,
+    ExecOperationTracking, ExecStreamQueueKind, output_policy_streams,
+    register_exec_operation_start, stream_queue_capacity_for,
 };
 use super::types::{
     ExecCaptureRequest, ExecOperationRequest, ExecOperationResult, ExecStreamRequest,
@@ -105,6 +106,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
+            role: ExecProcessRole::Workload,
             timeout: ExecTimeoutPolicy::Duration {
                 timeout_ms: request.timeout_ms,
             },
@@ -127,6 +129,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
         diagnostic,
         result_rx,
         stream_rx,
+        process_output_rx: _,
         mut registration_guard,
         tracks_normal_operation,
     } = register_exec_operation_start(
@@ -136,7 +139,9 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
             stdout: request.stdout,
             stderr: request.stderr,
             stream_queue_capacity,
+            stream_queue_kind: ExecStreamQueueKind::Events,
             lifecycle: ExecOperationLifecycle::OneShot,
+            role: ExecProcessRole::Workload,
             tracking,
         },
     )?;
@@ -172,6 +177,26 @@ pub(crate) async fn start_supervised_exec_on_shared(
     start_supervised_exec_on_shared_with_after_start_write(shared, request, ready(())).await
 }
 
+pub(crate) async fn start_supervised_process_on_shared(
+    shared: &Arc<Shared>,
+    request: SupervisedExecRequest<'_>,
+) -> io::Result<SupervisedExecHandle> {
+    if output_policy_streams(request.stderr) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "supervised process output requires non-streaming stderr",
+        ));
+    }
+    start_supervised_exec_on_shared_with_stream_queue_kind(
+        shared,
+        request,
+        ready(()),
+        EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
+        ExecStreamQueueKind::ProcessOutput,
+    )
+    .await
+}
+
 pub(in crate::exec_operation) async fn start_supervised_exec_on_shared_with_after_start_write<F>(
     shared: &Arc<Shared>,
     request: SupervisedExecRequest<'_>,
@@ -200,6 +225,26 @@ pub(in crate::exec_operation) async fn start_supervised_exec_on_shared_with_afte
 where
     F: Future<Output = ()>,
 {
+    start_supervised_exec_on_shared_with_stream_queue_kind(
+        shared,
+        request,
+        after_start_write,
+        start_timeout_cancel_write_timeout,
+        ExecStreamQueueKind::Events,
+    )
+    .await
+}
+
+async fn start_supervised_exec_on_shared_with_stream_queue_kind<F>(
+    shared: &Arc<Shared>,
+    request: SupervisedExecRequest<'_>,
+    after_start_write: F,
+    start_timeout_cancel_write_timeout: Duration,
+    stream_queue_kind: ExecStreamQueueKind,
+) -> io::Result<SupervisedExecHandle>
+where
+    F: Future<Output = ()>,
+{
     let stream_queue_capacity = stream_queue_capacity_for(
         request.stdout,
         request.stderr,
@@ -221,6 +266,7 @@ where
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
+            role: request.role,
             timeout: request.timeout,
             command: request.command,
             env: request.env,
@@ -242,6 +288,7 @@ where
         diagnostic,
         result_rx,
         stream_rx,
+        process_output_rx,
         mut registration_guard,
         tracks_normal_operation,
     } = register_exec_operation_start(
@@ -251,10 +298,13 @@ where
             stdout: request.stdout,
             stderr: request.stderr,
             stream_queue_capacity,
+            stream_queue_kind,
             lifecycle: ExecOperationLifecycle::SupervisedAwaitingStart {
                 start_tx: Some(start_tx),
+                role: request.role,
                 control_nonce,
             },
+            role: request.role,
             tracking: ExecOperationTracking::Tracked,
         },
     )?;
@@ -284,11 +334,11 @@ where
     }
     after_start_write.await;
 
-    let pid = tokio::select! {
+    let (pid, start_timing) = tokio::select! {
         biased;
         result = start_rx => {
             match result {
-                Ok(Ok(pid)) => pid,
+                Ok(Ok(start)) => start,
                 Ok(Err(error)) => {
                     start_cancel_on_drop.disarm();
                     return Err(error);
@@ -330,6 +380,8 @@ where
                 tracing::warn!(
                     seq = seq,
                     label = %diagnostic.label_log,
+                    process_class = diagnostic.process_class,
+                    operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
                     "supervised exec start timeout cancel write timed out"
                 );
@@ -353,8 +405,10 @@ where
     Ok(SupervisedExecHandle {
         wait_core: ExecWaitCore::new(Arc::clone(shared), route_id, diagnostic, result_rx),
         pid,
+        start_timing,
         cancel_handle_taken: false,
         stream_rx,
+        process_output_rx,
         control: control_nonce.map(|control_nonce| ExecControlHandle {
             shared: Arc::clone(shared),
             target_route_id: route_id,

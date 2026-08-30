@@ -33,7 +33,11 @@ import {
   DropdownMenuSubContent,
   cn,
 } from "@okouai/ui";
-import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
+import {
+  clerk$,
+  currentUserInfo$,
+  ensureClerkUiLoaded$,
+} from "../../signals/auth.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,
   type AccountMenuSubscriptionUsageRowsCacheKey,
@@ -76,6 +80,7 @@ import {
   okouDebugRealtimeIndicator$,
   type OkouDebugRealtimeIndicator,
 } from "../../signals/okou-page/realtime-status.ts";
+import { openAuthV2AddAccountDialog$ } from "../../signals/okou-page/auth-v2-add-account-dialog.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -224,9 +229,11 @@ function renderAccountTrigger(
   if (collapsed) {
     return (
       <Button
+        showTooltip
         type="button"
         variant="quiet"
         size="icon"
+        aria-label={display.name}
         className="shrink-0 p-0"
       >
         <UserAvatar
@@ -721,11 +728,13 @@ export function AccountDropdown({
   settingsOwnerId,
   collapsed = false,
   hidePreferences = false,
+  renderCodexResetDialog = true,
 }: {
   onAccountAction?: (action: AccountAction) => void;
   settingsOwnerId: string;
   collapsed?: boolean;
   hidePreferences?: boolean;
+  renderCodexResetDialog?: boolean;
 }) {
   const { t } = useTranslation();
   const { clerk, accounts } = useAccountSessions();
@@ -734,14 +743,12 @@ export function AccountDropdown({
     userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
+  const authV2AddAccountEnabled =
+    features?.[FeatureSwitchKey.AuthV2AddAccount] ?? false;
   const subscriptionsEnabled =
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
-  // The three-column nav stacks the account mark under the workspace logo, so
-  // it takes the same rounded square there and stays a circle everywhere else.
-  const avatarShape =
-    (features?.[FeatureSwitchKey.ThreeColumnNav] ?? false)
-      ? "square"
-      : "circle";
+  // The account mark aligns with the rounded-square workspace logo in the rail.
+  const avatarShape = "square";
   const realtimeIndicator = useGet(okouDebugRealtimeIndicator$);
   const openSettings = useSet(openSettingsDialogAt$);
   const setPendingSettingsSection = useSet(
@@ -760,6 +767,8 @@ export function AccountDropdown({
   const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
+  const openAuthV2AddAccountDialog = useSet(openAuthV2AddAccountDialog$);
+  const ensureClerkUiLoaded = useSet(ensureClerkUiLoaded$);
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -813,11 +822,25 @@ export function AccountDropdown({
   };
 
   const handleAddAccount = () => {
+    if (authV2AddAccountEnabled) {
+      detach(
+        openAuthV2AddAccountDialog(pageSignal),
+        Reason.DomCallback,
+        "open auth v2 add account dialog",
+      );
+      return;
+    }
+    if (!clerk) {
+      return;
+    }
     detach(
-      clerk?.openSignIn({
-        fallbackRedirectUrl: "/",
-        forceRedirectUrl: "/",
-      }),
+      (async () => {
+        await ensureClerkUiLoaded(pageSignal);
+        await clerk.openSignIn({
+          fallbackRedirectUrl: "/",
+          forceRedirectUrl: "/",
+        });
+      })(),
       Reason.DomCallback,
     );
   };
@@ -939,13 +962,15 @@ export function AccountDropdown({
           <SignOutItem onAccountAction={handleAccountAction} />
         </DropdownMenuContent>
       </DropdownMenu>
-      <CodexResetUsageDialog
-        open={resetDialog.open}
-        resetCredits={resetDialog.resetCredits}
-        resetting={actionPending}
-        onOpenChange={handleCodexResetOpenChange}
-        onConfirm={handleConfirmCodexReset}
-      />
+      {renderCodexResetDialog && (
+        <CodexResetUsageDialog
+          open={resetDialog.open}
+          resetCredits={resetDialog.resetCredits}
+          resetting={actionPending}
+          onOpenChange={handleCodexResetOpenChange}
+          onConfirm={handleConfirmCodexReset}
+        />
+      )}
     </>
   );
 }

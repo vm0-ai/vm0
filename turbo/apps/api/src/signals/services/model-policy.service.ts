@@ -9,8 +9,10 @@ import {
   getDefaultOrgModelPolicySeed,
   getFrameworkForType,
   getVm0ConcreteProviderType,
+  isBuiltInModelProviderType,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
+  normalizeModelProviderWriteType,
   type ModelProviderCredentialScope,
   type OrgModelPoliciesResponse,
   type OrgModelPolicy,
@@ -203,7 +205,7 @@ function modelProviderAllowedForOrgPlan(
   providerType: ModelProviderType,
   capabilities: Pick<OrgPlanCapabilities, "supportByok">,
 ): boolean {
-  return capabilities.supportByok || providerType === "vm0";
+  return capabilities.supportByok || isBuiltInModelProviderType(providerType);
 }
 
 function getSupportedModelRank(model: string): number {
@@ -246,7 +248,7 @@ function shouldReplaceExistingDefaultForPlan(
   return (
     shouldReplaceModel ||
     (!capabilities.supportByok &&
-      (existingDefault.defaultProviderType !== "vm0" ||
+      (!isBuiltInModelProviderType(existingDefault.defaultProviderType) ||
         existingDefault.credentialScope !== "org" ||
         existingDefault.modelProviderId !== null ||
         existingDefault.modelProviderSurfaceId !== null))
@@ -265,7 +267,7 @@ async function ensureModelPolicy(
     .values({
       model,
       isDefault: false,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       orgId,
@@ -309,7 +311,7 @@ async function setDefaultModelPolicy(
       isDefault: true,
       ...(options?.resetRouteToBuiltIn === true
         ? {
-            defaultProviderType: "vm0",
+            defaultProviderType: "built-in",
             credentialScope: "org",
             modelProviderId: null,
             modelProviderSurfaceId: null,
@@ -507,7 +509,7 @@ async function validateOrgProviderRoute(
     return "OAuth provider routes must use member credentials";
   }
 
-  if (policy.defaultProviderType === "vm0") {
+  if (isBuiltInModelProviderType(policy.defaultProviderType)) {
     if (policy.modelProviderId) {
       return "Built-in routes cannot store a provider ID";
     }
@@ -652,7 +654,13 @@ function getRouteStatus(params: {
     }
     return { status: "valid", reason: null };
   }
-  if (providerType === "vm0") {
+  if (isBuiltInModelProviderType(providerType)) {
+    if (modelProviderId !== null) {
+      return {
+        status: "invalid",
+        reason: "Built-in routes cannot store a provider ID",
+      };
+    }
     return { status: "valid", reason: null };
   }
   if (!modelProviderId) {
@@ -683,9 +691,10 @@ function serializePolicy(
     throw new Error("Stored org model policy contains unsupported values");
   }
 
+  const canonicalProviderType = normalizeModelProviderWriteType(providerType);
   const route = getRouteStatus({
     model,
-    providerType,
+    providerType: canonicalProviderType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
     modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
@@ -698,7 +707,7 @@ function serializePolicy(
     model,
     modelLabel: getCanonicalModelDisplayName(model),
     isDefault: policy.isDefault,
-    defaultProviderType: providerType,
+    defaultProviderType: canonicalProviderType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
     modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,

@@ -95,6 +95,37 @@ export const writeIndexedDbChatEventRows$ = command(
   },
 );
 
+export const replaceIndexedDbChatEventRows$ = command(
+  async (
+    { get },
+    {
+      threadId,
+      rows,
+      cursor,
+    }: {
+      readonly threadId: string;
+      readonly rows: readonly ChatEventRow[];
+      readonly cursor: ChatEventCursor;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const stores = await get(chatEventRowStores$);
+    signal.throwIfAborted();
+    await chatIdbWriteBestEffort(
+      "indexedDbEventRows:replace",
+      () => {
+        return stores.writeStore.replaceRowsAndCursor(
+          threadId,
+          rows,
+          cursor,
+          signal,
+        );
+      },
+      signal,
+    );
+  },
+);
+
 export const clearIndexedDbChatEventRows$ = command(
   async ({ get }, threadId: string, signal: AbortSignal): Promise<void> => {
     const stores = await get(chatEventRowStores$);

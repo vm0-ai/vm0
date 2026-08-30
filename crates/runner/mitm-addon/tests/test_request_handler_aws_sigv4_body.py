@@ -16,9 +16,13 @@ from mitmproxy.websocket import WebSocketData
 import auth
 import aws_sigv4_body_admission
 import flow_metadata_keys as metadata_keys
+import matching
 import mitm_addon
+import registry
 import request_classification
 import request_streaming
+import upstream_admission
+import upstream_destination_binding
 from aws_sigv4 import MAX_AWS_SIGV4_QUERY_PAIRS, AwsSigV4BodyHash, hash_request_body
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.aws_sigv4_helpers import (
@@ -40,6 +44,7 @@ from tests.request_handler_helpers import _single_firewall_sandbox, _write_regis
 from tests.requestheaders_helpers import (
     _assert_no_request_stream,
     await_requestheaders_result,
+    track_trusted_authority_validations,
 )
 from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
@@ -231,6 +236,55 @@ async def test_payload_independent_sigv4_signs_before_streaming(
     get_headers.assert_awaited_once()
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+
+async def test_bounded_payload_independent_sigv4_classifies_once_before_auth(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+    monkeypatch,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=b"",
+        content_length="0",
+        content_hash="UNSIGNED-PAYLOAD",
+    )
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+    validated_flows = track_trusted_authority_validations(monkeypatch)
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+        patch.object(
+            registry,
+            "load_registry_state",
+            wraps=registry.load_registry_state,
+        ) as registry_load,
+        patch.object(
+            matching,
+            "match_compiled_firewall_request",
+            wraps=matching.match_compiled_firewall_request,
+        ) as firewall_match,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+
+        assert validated_flows == [flow]
+        assert registry_load.call_count == 1
+        assert firewall_match.call_count == 1
+
+        await await_requestheaders_result(requestheaders_result)
+        await mitm_addon.request(flow)
+        assert f"Credential={RESOLVED_AWS_ACCESS_KEY_ID}/" in flow.request.headers["authorization"]
+
+        flow.response = http.Response.make(200, b"ok")
+        mitm_addon.response(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
 async def test_payload_independent_large_fixed_length_bypasses_buffer_limit(
@@ -638,6 +692,150 @@ async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
     assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
 
 
+async def test_bounded_payload_dependent_sigv4_classifies_once_before_buffering(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+    monkeypatch,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+    validated_flows = track_trusted_authority_validations(monkeypatch)
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+        patch.object(
+            registry,
+            "load_registry_state",
+            wraps=registry.load_registry_state,
+        ) as registry_load,
+        patch.object(
+            matching,
+            "match_compiled_firewall_request",
+            wraps=matching.match_compiled_firewall_request,
+        ) as firewall_match,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        assert validated_flows == [flow]
+        assert registry_load.call_count == 1
+        assert firewall_match.call_count == 1
+        assert aws_sigv4_body_admission.state_for_tests() == (1, len(body))
+
+        await mitm_addon.request(flow)
+        assert f"Credential={RESOLVED_AWS_ACCESS_KEY_ID}/" in flow.request.headers["authorization"]
+
+        flow.response = http.Response.make(200, b"ok")
+        mitm_addon.response(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
+def test_bounded_sigv4_classification_failure_restores_probe_metadata(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            matching,
+            "match_compiled_firewall_request",
+            side_effect=RuntimeError("bounded classification failed"),
+        ),
+        pytest.raises(RuntimeError, match="bounded classification failed"),
+    ):
+        mitm_addon.requestheaders(flow)
+
+    _assert_no_request_stream(flow)
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
+    assert metadata_keys.TRUSTED_AUTHORITY_HOST not in flow.metadata
+    assert metadata_keys.NETWORK_LOG_TARGET not in flow.metadata
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
+def test_bounded_sigv4_revalidates_public_destination_after_prebind(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+    monkeypatch,
+) -> None:
+    registry_path = _write_aws_registry(
+        tmp_path,
+        host_policy={"kind": "publicDestination"},
+    )
+    body = b"body"
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        body=body,
+        content_length=str(len(body)),
+    )
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+    ensure_bound_destination = upstream_admission.ensure_bound_destination
+
+    def connect_private_destination_after_prebind(
+        current_flow: http.HTTPFlow,
+        *,
+        kind: upstream_destination_binding.BindingKind,
+        api_url: str,
+    ) -> bool:
+        admitted = ensure_bound_destination(
+            current_flow,
+            kind=kind,
+            api_url=api_url,
+        )
+        if admitted:
+            mark_connected_tls_upstream(
+                current_flow,
+                sni=STS_HOST,
+                server_address=(STS_HOST, 443),
+                peername=("10.0.0.1", 443),
+            )
+        return admitted
+
+    monkeypatch.setattr(
+        upstream_admission,
+        "ensure_bound_destination",
+        connect_private_destination_after_prebind,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+
+    get_headers.assert_not_called()
+    assert flow.response is None
+    assert flow.error is not None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+    assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.headers["authorization"]
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
 async def test_payload_dependent_sigv4_revalidates_network_policy_before_auth(
     tmp_path,
     real_flow,
@@ -1010,6 +1208,37 @@ def test_payload_dependent_sigv4_rejects_saturated_admission_before_auth(
     )
     assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
     assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
+def test_payload_dependent_sigv4_releases_new_admission_after_attach_failure(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        content_length="4",
+    )
+    original_admission = aws_sigv4_body_admission.reserve(4)
+    aws_sigv4_body_admission.attach_to_flow(flow, original_admission)
+
+    try:
+        with (
+            mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+            pytest.raises(RuntimeError, match="already attached"),
+        ):
+            mitm_addon.requestheaders(flow)
+
+        assert flow.metadata[metadata_keys.AWS_SIGV4_BODY_ADMISSION] is original_admission
+        assert aws_sigv4_body_admission.state_for_tests() == (1, 4)
+    finally:
+        aws_sigv4_body_admission.release_from_flow(flow)
+
+    assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 

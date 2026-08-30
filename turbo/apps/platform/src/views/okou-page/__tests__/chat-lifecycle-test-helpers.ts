@@ -19,7 +19,10 @@ import {
   createMockWorkflowAutomation,
   setMockWorkflowAutomations,
 } from "../../../mocks/handlers/workflow-automations-store.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -407,9 +410,7 @@ export function mockKeyboardNavigationThreads({
       ).filter((row) => {
         return row.seqId > query.sinceSeqId;
       });
-      return respond(200, {
-        rows,
-      });
+      return respond(200, chatEventRowsResponse(rows, query));
     },
   );
   context.mocks.api(chatThreadRenameContract.rename, ({ respond }) => {
@@ -558,14 +559,13 @@ export function mockServerQueuedThreadStories(): void {
     };
   });
 
-  context.mocks.data.team([
+  context.mocks.data.agents([
     {
-      id: AGENT_ID,
+      agentId: AGENT_ID,
       displayName: null,
       description: null,
       sound: null,
       avatarUrl: null,
-      updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -595,9 +595,7 @@ export function mockServerQueuedThreadStories(): void {
       ).filter((row) => {
         return row.seqId > query.sinceSeqId;
       });
-      return respond(200, {
-        rows,
-      });
+      return respond(200, chatEventRowsResponse(rows, query));
     },
   );
   context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {

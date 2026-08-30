@@ -12,7 +12,7 @@ export function AuthV2ErrorAlert({
   return (
     <Alert
       aria-atomic="true"
-      className="px-3 py-2 text-xs text-red-700 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 dark:text-red-300"
+      className="px-3 py-2 text-xs text-red-700 outline-none dark:text-red-300"
       id={id}
       ref={(element) => {
         if (!element || element.dataset.authV2ErrorFocusKey === focusKey) {

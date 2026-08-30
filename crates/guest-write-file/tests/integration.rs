@@ -7,7 +7,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
-const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch";
+const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch [--private]";
 const HELPER_KILL_TIMEOUT: Duration = Duration::from_secs(1);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
@@ -421,6 +421,88 @@ fn batch_mode_truncates_existing_files() {
 
     assert!(output.status.success(), "stderr={:?}", output.stderr);
     assert_eq!(std::fs::read(path).unwrap(), b"new");
+}
+
+#[cfg(unix)]
+#[test]
+fn private_batch_mode_writes_private_files_with_restrictive_umask() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("run/user-env/env.json");
+    let second = dir.path().join("run/run-payload/payload.json");
+    let payload = vsock_proto::encode_write_files(&[
+        vsock_proto::WriteFileBatchEntry {
+            path: first.to_str().unwrap(),
+            content: b"env",
+        },
+        vsock_proto::WriteFileBatchEntry {
+            path: second.to_str().unwrap(),
+            content: b"payload",
+        },
+    ])
+    .unwrap();
+
+    let output = run_helper_with_umask(&["--batch", "--private"], &payload, 0o777);
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&first).unwrap(), b"env");
+    assert_eq!(std::fs::read(&second).unwrap(), b"payload");
+    assert_eq!(mode(&dir.path().join("run")), 0o700);
+    assert_eq!(mode(&dir.path().join("run/user-env")), 0o700);
+    assert_eq!(mode(&dir.path().join("run/run-payload")), 0o700);
+    assert_eq!(mode(&first), 0o600);
+    assert_eq!(mode(&second), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_batch_mode_truncates_existing_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let path = dir.path().join("payload.json");
+    std::fs::write(&path, b"old longer content").unwrap();
+    let payload = vsock_proto::encode_write_files(&[vsock_proto::WriteFileBatchEntry {
+        path: path.to_str().unwrap(),
+        content: b"new",
+    }])
+    .unwrap();
+
+    let output = run_helper(&["--batch", "--private"], &payload);
+
+    assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(std::fs::read(&path).unwrap(), b"new");
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[cfg(unix)]
+#[test]
+fn private_batch_mode_reports_later_failure_after_partial_progress() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("run/user-env/env.json");
+    let target = dir.path().join("target");
+    let link = dir.path().join("link");
+    std::fs::create_dir(&target).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let second = link.join("payload.json");
+    let payload = vsock_proto::encode_write_files(&[
+        vsock_proto::WriteFileBatchEntry {
+            path: first.to_str().unwrap(),
+            content: b"env",
+        },
+        vsock_proto::WriteFileBatchEntry {
+            path: second.to_str().unwrap(),
+            content: b"payload",
+        },
+    ])
+    .unwrap();
+
+    let output = run_helper(&["--batch", "--private"], &payload);
+
+    assert!(!output.status.success());
+    assert_eq!(std::fs::read(&first).unwrap(), b"env");
+    assert_eq!(mode(&first), 0o600);
+    assert!(!target.join("payload.json").exists());
 }
 
 #[test]

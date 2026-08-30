@@ -19,6 +19,7 @@ export interface StoredConnectorConnectionRow {
   readonly externalUsername: string | null;
   readonly externalEmail: string | null;
   readonly oauthScopes: string | null;
+  readonly oauthGrantedScopes: string | null;
   readonly needsReconnect: boolean;
   readonly reconnectReason: string | null;
   readonly storageVersion: number;
@@ -38,7 +39,8 @@ type ConnectorConnectionTarget =
             readonly externalId: string;
             readonly externalUsername: string | null;
             readonly externalEmail: string | null;
-            readonly oauthScopes: readonly string[];
+            readonly oauthRequestedScopes: readonly string[];
+            readonly oauthGrantedScopes: readonly string[];
           };
     }
   | {
@@ -150,6 +152,7 @@ function connectorConnectionSelection() {
     externalUsername: connectors.externalUsername,
     externalEmail: connectors.externalEmail,
     oauthScopes: connectors.oauthScopes,
+    oauthGrantedScopes: connectors.oauthGrantedScopes,
     needsReconnect: connectors.needsReconnect,
     reconnectReason: connectors.reconnectReason,
     storageVersion: connectors.storageVersion,
@@ -181,6 +184,7 @@ export async function resolveConnectorConnectionMutation(
     readonly target: ConnectorAccountTarget;
     readonly mutation: ConnectorAccountMutation;
     readonly allowSiblings: boolean;
+    readonly matchExternalId?: string;
   },
 ): Promise<ConnectorConnectionMutationResolution> {
   await lockConnectorAccountTarget(db, args);
@@ -210,6 +214,37 @@ export async function resolveConnectorConnectionMutation(
       },
       resolution,
     );
+  }
+
+  if (args.mutation.intent === "add" && args.matchExternalId !== undefined) {
+    const existingByExternalId = await db
+      .select(existingConnectorConnectionSelection())
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          targetCondition(args.target),
+          eq(connectors.externalId, args.matchExternalId),
+        ),
+      )
+      .orderBy(connectors.id)
+      .for("update")
+      .limit(2);
+    const [existing, duplicate] = existingByExternalId;
+    if (existing) {
+      const resolution: ConnectorConnectionMutationResolution = duplicate
+        ? { kind: "ambiguous" }
+        : { kind: "ready", mutation: { kind: "update", existing } };
+      return observeConnectorConnectionMutation(
+        {
+          targetKind: args.target.kind,
+          intent: args.mutation.intent,
+          selectedCount: existingByExternalId.length,
+        },
+        resolution,
+      );
+    }
   }
 
   const existing = await db
@@ -276,19 +311,26 @@ export async function writeConnectorConnectionMetadata(
             args.target.oauthScopes === null
               ? null
               : JSON.stringify(args.target.oauthScopes),
+          oauthGrantedScopes: null,
         }
       : args.target.identity.kind === "external"
         ? {
             externalId: args.target.identity.externalId,
             externalUsername: args.target.identity.externalUsername,
             externalEmail: args.target.identity.externalEmail,
-            oauthScopes: JSON.stringify(args.target.identity.oauthScopes),
+            oauthScopes: JSON.stringify(
+              args.target.identity.oauthRequestedScopes,
+            ),
+            oauthGrantedScopes: JSON.stringify(
+              args.target.identity.oauthGrantedScopes,
+            ),
           }
         : {
             externalId: null,
             externalUsername: null,
             externalEmail: null,
             oauthScopes: null,
+            oauthGrantedScopes: null,
           };
   const targetValues =
     args.target.kind === "builtin"

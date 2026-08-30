@@ -19,6 +19,10 @@ import {
   SKILL_FILENAME,
 } from "./workflow-volume.service";
 import { loadWorkflowAutomations } from "./workflow-automation.service";
+import {
+  readAcceptedOfficialWorkflowDefinition,
+  readAcceptedOfficialWorkflowRevision,
+} from "./official-workflow-catalog-read.service";
 
 export function workflowDetail(args: {
   readonly orgId: string;
@@ -50,27 +54,58 @@ export function workflowDetail(args: {
       workflow.ownerUserId,
     );
 
-    const summary = workflowSummary({
+    const officialDefinition = workflow.officialDefinitionName
+      ? await readAcceptedOfficialWorkflowDefinition(
+          db,
+          workflow.officialDefinitionName,
+        )
+      : null;
+    const officialRevision = officialDefinition
+      ? await readAcceptedOfficialWorkflowRevision(db, {
+          name: officialDefinition.name,
+          revision: officialDefinition.revision,
+        })
+      : null;
+
+    const baseSummary = workflowSummary({
       workflow,
       agent,
       member: args.member,
       ownerProfile,
       shadowedBy,
+      officialDefinitionLifecycle: officialDefinition?.lifecycle,
     });
+    const summary = officialRevision
+      ? {
+          ...baseSummary,
+          displayName: officialRevision.definition.workflow.displayName,
+          description: officialRevision.definition.workflow.description,
+        }
+      : baseSummary;
 
     // The synthesized SKILL.md is derived from the DB instruction; users never
     // see it in the file list, so exclude it from both files and fileContents.
     // A `null` volume (no backing storage, or its objects are missing) surfaces
     // as `null` files/fileContents, distinct from an empty-but-loaded volume.
-    const loadedVolume = await get(
-      loadWorkflowVolumeFiles({
-        orgId: args.orgId,
-        workflowId: workflow.id,
-      }),
-    );
-    const volumeFiles = loadedVolume?.filter((file) => {
-      return file.path !== SKILL_FILENAME;
-    });
+    const loadedVolume =
+      workflow.officialDefinitionName === null
+        ? await get(
+            loadWorkflowVolumeFiles({
+              orgId: args.orgId,
+              workflowId: workflow.id,
+            }),
+          )
+        : null;
+    const volumeFiles = officialRevision
+      ? officialRevision.definition.workflow.files.map((file) => {
+          return {
+            ...file,
+            size: new TextEncoder().encode(file.content).length,
+          };
+        })
+      : loadedVolume?.filter((file) => {
+          return file.path !== SKILL_FILENAME;
+        });
 
     const files: WorkflowFileMetadata[] | null =
       volumeFiles?.map((file) => {
@@ -93,7 +128,9 @@ export function workflowDetail(args: {
       updatedByUserId: workflow.updatedBy,
       createdAt: workflow.createdAt.toISOString(),
       updatedAt: workflow.updatedAt.toISOString(),
-      instruction: workflow.instruction,
+      instruction:
+        officialRevision?.definition.workflow.instruction ??
+        workflow.instruction,
       files,
       fileContents,
       automations: [...automations],

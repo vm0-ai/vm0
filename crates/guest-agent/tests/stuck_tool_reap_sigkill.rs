@@ -15,7 +15,10 @@ async fn stuck_tool_reap_escalates_to_sigkill_when_sigterm_ignored()
     let tmp = tempfile::tempdir()?;
     unsafe {
         common::setup_env(&mock, tmp.path(), "@stuck-tool-deaf", 1, 1)?;
-        std::env::set_var("VM0_STUCK_TOOL_TIMEOUT_SECS", "1");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            "1",
+        );
     }
 
     let runtime = common::guest_runtime_from_process_env()?;

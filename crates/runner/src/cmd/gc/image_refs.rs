@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use futures_util::{StreamExt, stream};
 use tracing::warn;
 
 use crate::cmd::service;
@@ -12,6 +13,8 @@ use super::filesystem::{GcDirEntryReader, read_dir_or_missing};
 use super::versions::VersionGcAnalysis;
 
 type ProtectedImageRefMap = HashMap<String, HashSet<String>>;
+
+const ENABLED_SERVICE_QUERY_CONCURRENCY: usize = 4;
 
 pub(super) enum ProtectedImageRefs {
     Complete(ProtectedImageRefMap),
@@ -131,6 +134,11 @@ struct EnabledRunnerServiceConfigPaths {
     inventory_complete: bool,
 }
 
+struct EnabledRunnerServiceConfigPathResult {
+    path: Option<PathBuf>,
+    inventory_complete: bool,
+}
+
 async fn enabled_runner_service_config_paths(system_dir: &Path) -> EnabledRunnerServiceConfigPaths {
     let mut entry_reader = GcDirEntryReader::new();
     enabled_runner_service_config_paths_with_reader(system_dir, &mut entry_reader).await
@@ -159,7 +167,7 @@ async fn enabled_runner_service_config_paths_with_reader(
         };
     };
 
-    let mut paths = Vec::new();
+    let mut units = Vec::new();
     let mut inventory_complete = true;
     loop {
         let entry = match entry_reader
@@ -180,41 +188,74 @@ async fn enabled_runner_service_config_paths_with_reader(
         let Some(unit) = service::RunnerServiceUnit::from_file_name(file_name) else {
             continue;
         };
-        match service::is_unit_enabled(&unit).await {
-            Ok(true) => {}
-            Ok(false) => continue,
-            Err(e) => {
-                warn!(
-                    "runner service image refs: cannot check whether {} is enabled ({e}), protection inventory incomplete",
-                    unit.service_name()
-                );
-                inventory_complete = false;
-                continue;
-            }
+        units.push(unit);
+    }
+
+    let results = stream::iter(units)
+        .map(enabled_runner_service_config_path)
+        .buffered(ENABLED_SERVICE_QUERY_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+    let mut paths = Vec::new();
+    for result in results {
+        if let Some(path) = result.path {
+            paths.push(path);
         }
-        let config_path = match service::read_unit_config_path(&unit).await {
-            Ok(Some(config_path)) => config_path,
-            Ok(None) => {
-                warn!(
-                    "runner service image refs: enabled service {} has no parseable config path, skipping",
-                    unit.service_name()
-                );
-                continue;
-            }
-            Err(e) => {
-                warn!(
-                    "runner service image refs: cannot read effective config for enabled service {} ({e}), protection inventory incomplete",
-                    unit.service_name()
-                );
-                inventory_complete = false;
-                continue;
-            }
-        };
-        paths.push(config_path);
+        inventory_complete &= result.inventory_complete;
     }
     EnabledRunnerServiceConfigPaths {
         paths,
         inventory_complete,
+    }
+}
+
+async fn enabled_runner_service_config_path(
+    unit: service::RunnerServiceUnit,
+) -> EnabledRunnerServiceConfigPathResult {
+    match service::is_unit_enabled(&unit).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return EnabledRunnerServiceConfigPathResult {
+                path: None,
+                inventory_complete: true,
+            };
+        }
+        Err(e) => {
+            warn!(
+                "runner service image refs: cannot check whether {} is enabled ({e}), protection inventory incomplete",
+                unit.service_name()
+            );
+            return EnabledRunnerServiceConfigPathResult {
+                path: None,
+                inventory_complete: false,
+            };
+        }
+    }
+    match service::read_unit_config_path(&unit).await {
+        Ok(Some(path)) => EnabledRunnerServiceConfigPathResult {
+            path: Some(path),
+            inventory_complete: true,
+        },
+        Ok(None) => {
+            warn!(
+                "runner service image refs: enabled service {} has no parseable config path, skipping",
+                unit.service_name()
+            );
+            EnabledRunnerServiceConfigPathResult {
+                path: None,
+                inventory_complete: true,
+            }
+        }
+        Err(e) => {
+            warn!(
+                "runner service image refs: cannot read effective config for enabled service {} ({e}), protection inventory incomplete",
+                unit.service_name()
+            );
+            EnabledRunnerServiceConfigPathResult {
+                path: None,
+                inventory_complete: false,
+            }
+        }
     }
 }
 

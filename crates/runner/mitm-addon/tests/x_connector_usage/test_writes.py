@@ -943,6 +943,52 @@ def test_tweet_create_repeated_unicode_labels_reuse_classification(x_usage, tmp_
     assert p["quantity"] == 1
 
 
+def test_tweet_create_distinct_unicode_labels_stop_at_body_work_limit(x_usage, tmp_path, real_flow):
+    """Distinct labels across candidates stop at one body-wide work limit."""
+    unicode_labels = [chr(0x4E00 + index) for index in range(10_000)]
+    labels_per_candidate = 128
+    text = " ".join(
+        "a." + ".".join(unicode_labels[start : start + labels_per_candidate]) + ".notatld"
+        for start in range(0, len(unicode_labels), labels_per_candidate)
+    )
+    request_body = json.dumps(
+        {"text": text},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.content = request_body
+
+    with (
+        patch.object(
+            x_billing,
+            "normalize_idna_label",
+            wraps=x_billing.normalize_idna_label,
+        ) as normalize_idna_label,
+        patch.object(
+            x_billing,
+            "_label_has_tld_prefix_before_unicode",
+            wraps=x_billing._label_has_tld_prefix_before_unicode,
+        ) as label_has_tld_prefix_before_unicode,
+    ):
+        p = x_usage.call_and_get_single_billing(flow)
+
+    assert normalize_idna_label.call_count == 256
+    assert label_has_tld_prefix_before_unicode.call_count == 255
+    assert p["category"] == "content.create_with_url"
+    assert p["quantity"] == 1
+
+
 def test_tweet_create_rendered_link_signals_stay_on_with_url_bucket(x_usage, tmp_path, real_flow):
     """Quote tweets, attached media, cards, and DM deep links render links;
     we stay on the expensive bucket even when the text has no URL."""

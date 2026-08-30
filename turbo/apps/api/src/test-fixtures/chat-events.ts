@@ -31,6 +31,7 @@ import { conversations } from "@okouai/db/schema/conversation";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
   and,
@@ -66,7 +67,6 @@ import { visibleChatEventCondition } from "../signals/services/chat-event-shared
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
 import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
-import { dispatchGitHubChatDeliveryOnce } from "../signals/services/internal-github-chat-run-callback.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -1558,86 +1558,6 @@ export async function setGitHubInstallationAppIdentityFixture(args: {
   }
 }
 
-/**
- * Reproduce and dispatch the nested GitHub callback shape persisted before
- * publicBrand existed. The observable boundary is the provider comment POST.
- */
-export async function dispatchLegacyGitHubChatCallbackWithoutPublicBrandFixture(
-  args: {
-    readonly runId: string;
-    readonly remoteInstallationId: string;
-    readonly repo: string;
-    readonly subjectNumber: number;
-    readonly subjectKind: "issue" | "pull_request";
-    readonly agentId: string;
-    readonly messageContent: string;
-  },
-  signal: AbortSignal,
-): Promise<void> {
-  const callbackId = await db().transaction(async (tx) => {
-    const [run] = await tx
-      .select({ chatThreadId: agentRuns.chatThreadId })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, args.runId))
-      .limit(1);
-    if (!run?.chatThreadId) {
-      throw new Error("Expected one thread-bound GitHub run");
-    }
-    const [installation] = await tx
-      .select({ id: githubInstallations.id })
-      .from(githubInstallations)
-      .where(eq(githubInstallations.installationId, args.remoteInstallationId))
-      .limit(1);
-    if (!installation) {
-      throw new Error("Expected one GitHub installation");
-    }
-    const [sourceCallback] = await tx
-      .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
-      .from(agentRunCallbacks)
-      .where(
-        and(
-          eq(agentRunCallbacks.runId, args.runId),
-          eq(agentRunCallbacks.internalKind, "chat"),
-        ),
-      )
-      .limit(1);
-    if (!sourceCallback) {
-      throw new Error("Expected one canonical chat callback");
-    }
-    const event = await insertChatEvent(tx, {
-      chatThreadId: run.chatThreadId,
-      eventType: "output.message",
-      content: args.messageContent,
-      runId: args.runId,
-    });
-    if (!event) {
-      throw new Error("Expected one GitHub callback output event");
-    }
-    const [callback] = await tx
-      .insert(agentRunCallbacks)
-      .values({
-        runId: args.runId,
-        internalKind: "github:chat",
-        encryptedSecret: sourceCallback.encryptedSecret,
-        payload: {
-          installationId: installation.id,
-          repo: args.repo,
-          subjectNumber: args.subjectNumber,
-          subjectKind: args.subjectKind,
-          agentId: args.agentId,
-          chatEventId: event.id,
-        },
-      })
-      .returning({ id: agentRunCallbacks.id });
-    if (!callback) {
-      throw new Error("Expected one legacy GitHub delivery callback");
-    }
-    return callback.id;
-  });
-
-  await dispatchGitHubChatDeliveryOnce(db(), callbackId, "completed", signal);
-}
-
 async function transitiveBlockedWaiterCount(
   holderPid: number,
 ): Promise<number> {
@@ -2573,6 +2493,56 @@ export async function holdChatEventInsertTransactionFixture(args: {
     done,
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(pid);
+    },
+  };
+}
+
+/** Holds one existing run-output row to expose writes from later event batches. */
+export async function holdRunOutputMaterializationRowFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the run-output row lock holder pid");
+    }
+    const [row] = await tx
+      .select({ runId: runOutputMaterializations.runId })
+      .from(runOutputMaterializations)
+      .where(eq(runOutputMaterializations.runId, args.runId))
+      .for("update")
+      .limit(1);
+    if (!row) {
+      throw new Error("Expected an existing run-output materialization");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
     },
   };
 }

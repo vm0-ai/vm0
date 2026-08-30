@@ -32,6 +32,7 @@ export const connectorOauthStates = pgTable(
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
     redirectUri: text("redirect_uri").notNull(),
     authorizationUrl: text("authorization_url"),
+    oauthRequestedScopes: text("oauth_requested_scopes"),
     codeVerifier: text("code_verifier"),
     oauthContext: text("oauth_context"),
     accountMutation: jsonb("account_mutation")

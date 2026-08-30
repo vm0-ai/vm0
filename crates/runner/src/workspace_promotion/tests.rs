@@ -18,8 +18,9 @@ use guest_contracts::session_history_identity::{
     SessionHistorySidecarRepresentation, SessionHistorySourceRef,
 };
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
-    Sandbox, SandboxFactory, SandboxId, StartProcessRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
+    GuestProcessHandle, ProcessExit, Sandbox, SandboxFactory, SandboxId, StartAgentProcessRequest,
+    StartProcessRequest,
 };
 use sandbox_mock::{ExecMatcher, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 use sha2::{Digest, Sha256};
@@ -191,6 +192,13 @@ impl Sandbox for PostCopyGateSandbox {
         self.inner.start_process(request).await
     }
 
+    async fn start_agent_process(
+        &self,
+        request: &StartAgentProcessRequest<'_>,
+    ) -> sandbox::Result<GuestAgentProcessHandle> {
+        self.inner.start_agent_process(request).await
+    }
+
     async fn wait_process(
         &self,
         handle: GuestProcessHandle,
@@ -284,6 +292,13 @@ impl Sandbox for PanicExecSandbox {
         _request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
         panic!("unused start_process");
+    }
+
+    async fn start_agent_process(
+        &self,
+        _request: &StartAgentProcessRequest<'_>,
+    ) -> sandbox::Result<GuestAgentProcessHandle> {
+        panic!("unused start_agent_process");
     }
 
     async fn wait_process(
@@ -402,7 +417,7 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
     assert_eq!(
         exec_calls[0].env_keys,
-        vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]
+        vec![guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV]
     );
     assert!(exec_calls[1].cmd.contains("rm -f --"));
     assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));

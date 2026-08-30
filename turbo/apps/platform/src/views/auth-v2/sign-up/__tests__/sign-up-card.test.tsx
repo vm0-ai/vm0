@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 import { mockNow, now } from "../../../../lib/time.ts";
@@ -24,9 +25,15 @@ import {
   type MockedSignUpResourceState,
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
+import { AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY } from "../../../../signals/auth-v2/resend-cooldown.ts";
+import { sessionStorageSignals } from "../../../../signals/external/session-storage.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
+import { renderedCheckboxPresentation } from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
+const signUpResendCooldownStorage = sessionStorageSignals(
+  AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
+);
 
 function currentSignUpResource() {
   return mockedClerk.client.signUp;
@@ -195,8 +202,21 @@ describe("auth v2 sign-up flow", () => {
     expect(
       screen.getByRole("region", { name: "Create your account" }),
     ).toContainElement(signIn);
-    expect(roleElement("link", "Use current sign-up")).toBeDefined();
-    expect(screen.getByRole("checkbox")).toBeVisible();
+    expect(signIn.getAttribute("href")).toMatch(/^\/v2\/sign-in(?:[?#]|$)/);
+    const legalConsent = screen.getByRole("checkbox");
+    expect(legalConsent).toBeVisible();
+    await expect(
+      renderedCheckboxPresentation(legalConsent, context.signal),
+    ).resolves.toStrictEqual({
+      backgroundColor: "rgb(40 50 60)",
+      borderColor: "rgb(10 20 30)",
+      borderRadius: "6px",
+      borderStyle: "solid",
+      borderWidth: "1px",
+      flexShrink: "0",
+      height: "calc(4px * 4)",
+      width: "calc(4px * 4)",
+    });
     expect(roleElement("link", "Terms of Service")).toHaveAttribute(
       "href",
       "https://vm0.ai/legal/terms",
@@ -248,7 +268,6 @@ describe("auth v2 sign-up flow", () => {
       screen.findByLabelText("Verification code"),
     ).resolves.toBeVisible();
     expect(roleElement("link", "Sign in")).toBeUndefined();
-    expect(roleElement("link", "Use current sign-up")).toBeDefined();
     expect(screen.queryByText("Access restricted")).not.toBeInTheDocument();
     expect(
       mockedClerk.signUpPrepareEmailAddressVerification,
@@ -367,10 +386,10 @@ describe("auth v2 sign-up flow", () => {
       const handoff =
         mockedClerk.signUpAuthenticateWithRedirect.mock.calls[0]?.[0];
       expect(handoff).toMatchObject({
-        continueSignIn: false,
         continueSignUp: false,
         strategy,
       });
+      expect(handoff).not.toHaveProperty("continueSignIn");
       const callbackUrl = new URL(handoff?.redirectUrl ?? "", location.origin);
       const completionUrl = new URL(handoff?.redirectUrlComplete ?? "");
       expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");
@@ -635,6 +654,15 @@ describe("auth v2 sign-up flow", () => {
   });
 
   it("recovers a prepared progressive sign-up on a nested refresh without sending another code", async () => {
+    const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
+    mockNow(startedAt + 1000, context.signal);
+    context.store.set(
+      signUpResendCooldownStorage.set$,
+      JSON.stringify({
+        deadlineMs: startedAt + 30_000,
+        identity: "person@example.com",
+      }),
+    );
     setupSignUpPage(readyEmailVerificationState(), {
       path: "/v2/sign-up/verify-email-address",
     });
@@ -642,6 +670,9 @@ describe("auth v2 sign-up flow", () => {
     await expect(
       screen.findByLabelText("Verification code"),
     ).resolves.toBeVisible();
+    await expect(
+      waitForRoleElement("button", "Didn't receive a code? Resend (29)"),
+    ).resolves.toBeDisabled();
     expect(
       mockedClerk.signUpPrepareEmailAddressVerification,
     ).not.toHaveBeenCalled();
@@ -807,6 +838,12 @@ describe("auth v2 sign-up flow", () => {
       "Didn't receive a code? Resend (30)",
     );
     expect(cooldownButton).toBeDisabled();
+    expect(context.store.get(signUpResendCooldownStorage.get$)).toBe(
+      JSON.stringify({
+        deadlineMs: startedAt + 30_000,
+        identity: "person@example.com",
+      }),
+    );
     mockNow(startedAt + 1000, context.signal);
     const advancingCooldownButton = await waitForRoleElement(
       "button",
@@ -888,6 +925,26 @@ describe("auth v2 sign-up flow", () => {
     expect(legalError).toHaveTextContent(
       "Please read and accept the terms to continue",
     );
+    const styleElement = document.createElement("style");
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    styleElement.textContent = tailwindCompiler.build([
+      ...legalError.classList,
+    ]);
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+    const legalErrorStyle = getComputedStyle(legalError);
+    expect([
+      legalErrorStyle.borderTopWidth,
+      legalErrorStyle.borderRightWidth,
+      legalErrorStyle.borderBottomWidth,
+      legalErrorStyle.borderLeftWidth,
+    ]).toStrictEqual(["1px", "1px", "1px", "1px"]);
     expect(document.activeElement).toBe(legalError);
     expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 

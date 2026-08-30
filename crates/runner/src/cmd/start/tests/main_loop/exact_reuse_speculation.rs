@@ -134,7 +134,7 @@ async fn exact_reuse_restores_guest_while_claim_is_blocked() {
     assert_eq!(restore_timezones, [Some("Asia/Shanghai".into())]);
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "agent process must not start before claim succeeds"
     );
     let (idle_reuse_keys, active_runs) =
@@ -455,7 +455,7 @@ async fn unavailable_claim_reparks_speculative_sandbox() {
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 0);
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(!env.start_observer.active_run_status_was_published(run_id));
     let requests = reuse_preparation_requests(&overrides);
     assert_eq!(requests.len(), 1);
@@ -540,7 +540,7 @@ async fn cleanup_failure_destroys_lost_speculative_sandbox() {
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert!(!env.start_observer.active_run_status_was_published(run_id));
 
     shutdown(&env, run_handle).await;
@@ -604,7 +604,7 @@ async fn mismatched_claim_run_id_reparks_speculative_sandbox() {
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 0);
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     {
         let completions = env.handle.completions.lock().unwrap();
         assert!(
@@ -679,7 +679,7 @@ async fn cancellation_during_claim_completes_without_starting_agent_and_reparks(
     assert_eq!(completion.sandbox_id, None);
     wait_idle_pool_reuse_keys(&env.idle_pool, &[&reuse_key], Duration::from_secs(5)).await;
     assert!(!env.start_observer.active_run_status_was_published(run_id));
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_eq!(overrides.park_call_count(), 1);
 
     shutdown(&env, run_handle).await;
@@ -738,7 +738,7 @@ async fn cancellation_during_timezone_correction_does_not_publish_active_or_star
         status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
     assert!(active_runs.is_empty());
     assert!(!env.start_observer.active_run_status_was_published(run_id));
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
 
     exec_gate.release_one();
     exec_gate
@@ -759,7 +759,7 @@ async fn cancellation_during_timezone_correction_does_not_publish_active_or_star
         status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
     assert!(active_runs.is_empty());
     assert!(!env.start_observer.active_run_status_was_published(run_id));
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 0);
 
@@ -818,7 +818,7 @@ async fn cancellation_during_speculative_cleanup_does_not_start_fresh_agent() {
     let (_, active_runs) =
         status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
     assert!(active_runs.is_empty());
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
 
     destroy_gate.release_one();
     let completion = env
@@ -835,7 +835,7 @@ async fn cancellation_during_speculative_cleanup_does_not_start_fresh_agent() {
     wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
     assert!(!env.start_observer.active_run_status_was_published(run_id));
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_eq!(overrides.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
@@ -855,7 +855,7 @@ async fn cancellation_wins_when_speculative_cleanup_is_uncertain() {
     overrides.push_destroy_panic("simulated speculative destroy panic");
     let reuse_key = RunId::new_v4().to_string();
     let generation_run_id = RunId::new_v4();
-    seed_idle_pool_with_speculative_timezone(
+    let sandbox_id = seed_idle_pool_with_speculative_timezone(
         &env.idle_pool,
         &budget,
         &overrides,
@@ -906,11 +906,17 @@ async fn cancellation_wins_when_speculative_cleanup_is_uncertain() {
     );
     wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
-    let (_, active_runs) =
-        status_idle_reuse_keys_and_active_runs(&env._temp_dir.path().join("status.json")).await;
-    assert!(active_runs.is_empty());
+    let status_path = env._temp_dir.path().join("status.json");
+    let (_, active_runs) = status_idle_reuse_keys_and_active_runs(&status_path).await;
+    assert_eq!(active_runs, vec![run_id.to_string()]);
+    let status: serde_json::Value =
+        serde_json::from_str(&tokio::fs::read_to_string(status_path).await.unwrap()).unwrap();
+    assert_eq!(
+        status["active_runs"][0]["sandbox_id"],
+        sandbox_id.to_string()
+    );
     assert!(!env.start_observer.active_run_status_was_published(run_id));
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_eq!(overrides.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
@@ -971,7 +977,7 @@ async fn closed_parking_gate_destroys_lost_speculation_after_repark() {
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
     assert_eq!(overrides.park_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
-    assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
 
     shutdown(&env, run_handle).await;
 }
@@ -1162,10 +1168,20 @@ async fn assert_speculation_failure_falls_back_to_fresh(
         completion.reuse_result,
         Some(SandboxReuseResult::UnparkFailed)
     );
-    assert_eq!(overrides.start_process_calls().len(), 1);
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+    wait_idle_pool_len(&env.idle_pool, 1, Duration::from_secs(5)).await;
+    assert_eq!(
+        env.idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id,
+        fresh_sandbox_id
+    );
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(overrides.destroy_call_count(), 2);
 }
 
 #[tokio::test]
@@ -1222,6 +1238,18 @@ async fn speculative_guest_restore_transport_failure_destroys_before_fresh_fallb
                 reason: sandbox::SandboxOperationReason::Guest,
                 message: "simulated guest restore transport failure".into(),
             }));
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn speculative_guest_restore_panic_destroys_before_fresh_fallback() {
+    assert_speculation_failure_falls_back_to_fresh(
+        GuestTimezoneIntent::Default,
+        None,
+        |overrides| {
+            overrides.push_guest_state_restore_panic("simulated guest restore panic");
         },
     )
     .await;

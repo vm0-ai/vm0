@@ -614,21 +614,25 @@
     "pinAgentDescription": "Escolha um agente para fixar na barra lateral.",
     "pinned": "Fixados",
     "pinnedAgents": "Agentes fixados",
+    "pinSuccess": "{{agentName}} fixado",
     "resultCount_one": "{{count}} resultado",
     "resultCount_many": "{{count}} resultados",
     "resultCount_other": "{{count}} resultados",
     "searchAgents": "Buscar agentes...",
     "searchAgentsAndChats": "Buscar agentes e conversas...",
-    "searchChatsAndMessages": "Buscar conversas e mensagens...",
     "searching": "Pesquisando...",
+    "searchWorkspace": "Buscar chats, mensagens, fluxos de trabalho e artefatos...",
     "sections": {
+      "artifacts": "Artefatos",
       "chats": "Conversas",
       "lead": "Principal",
       "messages": "Mensagens",
-      "others": "Outros"
+      "others": "Outros",
+      "workflows": "Fluxos de trabalho"
     },
     "talkTo": "Conversar com",
-    "unpin": "Desafixar"
+    "unpin": "Desafixar",
+    "unpinSuccess": "{{agentName}} desafixado"
   },
   "status": {
     "unread": "Não lido"

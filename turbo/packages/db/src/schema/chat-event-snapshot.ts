@@ -14,12 +14,11 @@ import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contract
 import { chatThreads } from "./chat-thread";
 
 /**
- * Version pointers for immutable R2 Chat Event Snapshot objects. A thread has
- * at most one pointer per Chat Event schema version and projection. Updating a pointer first
- * uploads a new content-addressed object, then atomically replaces the cursor
- * and object key. Snapshot refreshes reuse the stored prefix and append only
- * Raw Events after its cursor; full PostgreSQL rebuilds are valid only when a
- * thread has never had a Snapshot.
+ * Pointers for immutable, canonical R2 Chat Event Snapshot objects. Updating a
+ * pointer first uploads a new content-addressed object, then atomically
+ * replaces the cursor and object key. Snapshot refreshes reuse the stored
+ * prefix and append only Raw Events after its cursor; full PostgreSQL rebuilds
+ * are valid only when a thread has never had a Snapshot.
  */
 export const chatEventSnapshots = pgTable(
   "chat_event_snapshots",
@@ -33,18 +32,24 @@ export const chatEventSnapshots = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    /** The snapshot object contains every logical thread event through this watermark. */
+    /** Highest physical stream position covered, including projection-omitted rows. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
-    /** Last physical event represented by the Snapshot's terminal cursor. */
+    /** Last physical event observed through the coverage watermark. */
     lastEventId: uuid("last_event_id").notNull(),
-    /** Version of the NDJSON line shape inside the archive object. */
-    archiveSchemaVersion: integer("archive_schema_version").notNull(),
-    /** Existing pointers are the full projection; redacted pointers are explicit. */
+    /** Last retained event exposed as the V7 logical cursor. */
+    terminalEventId: uuid("terminal_event_id"),
+    /** Sequence position paired with terminal_event_id, or zero for an empty V7 body. */
+    terminalSeqId: bigint("terminal_seq_id", { mode: "number" }),
+    /** Current NDJSON line-shape version, retained as a publication invariant. */
+    archiveSchemaVersion: integer("archive_schema_version")
+      .default(7)
+      .notNull(),
+    /** Canonical output.tool-free projection. */
     projection: text("projection")
       .$type<ChatEventSnapshotProjection>()
-      .default("full")
+      .default("tool-redacted")
       .notNull(),
-    /** Multiple projections may safely reference the same content-addressed object. */
+    /** Immutable content-addressed object referenced by this pointer. */
     objectKey: text("object_key").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -59,7 +64,22 @@ export const chatEventSnapshots = pgTable(
       ),
       check(
         "chat_event_snapshots_projection_check",
-        sql`${table.projection} IN ('full', 'tool-redacted')`,
+        sql`${table.projection} = 'tool-redacted'`,
+      ),
+      check(
+        "chat_event_snapshots_archive_schema_version_check",
+        sql`${table.archiveSchemaVersion} = 7`,
+      ),
+      check(
+        "chat_event_snapshots_terminal_cursor_check",
+        sql`(
+          ${table.terminalEventId} IS NULL
+          AND ${table.terminalSeqId} = 0
+        ) OR (
+          ${table.terminalEventId} IS NOT NULL
+          AND ${table.terminalSeqId} > 0
+          AND ${table.terminalSeqId} <= ${table.lastSeqId}
+        )`,
       ),
     ];
   },

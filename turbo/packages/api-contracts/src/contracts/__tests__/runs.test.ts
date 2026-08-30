@@ -6,6 +6,7 @@ import {
   networkLogEntrySchema,
   unifiedRunRequestSchema,
 } from "../runs";
+import { runCreateBodySchema } from "../run-routes";
 
 describe("get run response contract", () => {
   it("parses the current Run response", () => {
@@ -72,6 +73,33 @@ describe("unified run request contract", () => {
         prompt: "resume from checkpoint",
       }).success,
     ).toBe(false);
+  });
+
+  it.each(["vm0", "built-in"])(
+    "rejects the %s built-in alias for direct runs",
+    (modelProviderType) => {
+      expect(
+        unifiedRunRequestSchema.safeParse({
+          prompt: "run directly",
+          modelProviderType,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("normalizes both internal Zero run request aliases to built-in", () => {
+    expect(
+      runCreateBodySchema.parse({
+        prompt: "run through Zero",
+        modelProvider: "vm0",
+      }).modelProvider,
+    ).toBe("built-in");
+    expect(
+      runCreateBodySchema.parse({
+        prompt: "run through Zero",
+        modelProvider: "built-in",
+      }).modelProvider,
+    ).toBe("built-in");
   });
 });
 

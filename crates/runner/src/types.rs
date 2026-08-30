@@ -1621,7 +1621,6 @@ pub struct HeldWorkspaceState {
 #[serde(rename_all = "camelCase")]
 pub struct HeartbeatState {
     pub runner_id: String,
-    pub runner_name: String,
     pub group: String,
     pub snapshot_generation: u64,
     pub snapshot_sequence: u64,
@@ -2642,7 +2641,6 @@ mod tests {
     fn heartbeat_state_serializes_camel_case() {
         let state = HeartbeatState {
             runner_id: "550e8400-e29b-41d4-a716-446655440000".into(),
-            runner_name: "runner-1".into(),
             group: "vm0/production".into(),
             snapshot_generation: 7,
             snapshot_sequence: 42,
@@ -2678,7 +2676,6 @@ mod tests {
             json,
             json!({
                 "runnerId": "550e8400-e29b-41d4-a716-446655440000",
-                "runnerName": "runner-1",
                 "group": "vm0/production",
                 "snapshotGeneration": 7,
                 "snapshotSequence": 42,
@@ -2733,7 +2730,6 @@ mod tests {
     fn heartbeat_state_serializes_empty_held_state_arrays() {
         let state = HeartbeatState {
             runner_id: "550e8400-e29b-41d4-a716-446655440000".into(),
-            runner_name: "runner-1".into(),
             group: "vm0/production".into(),
             snapshot_generation: 7,
             snapshot_sequence: 42,

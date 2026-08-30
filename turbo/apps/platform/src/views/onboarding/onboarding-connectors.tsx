@@ -19,6 +19,7 @@ import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "../okou-page/components/settings/add-connection-dialog.tsx";
 import { ConnectorCard } from "../okou-page/components/settings/connector-card.tsx";
+import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 type ConnectorSetupVariant = "workflow" | "prompt";
 
@@ -70,6 +71,8 @@ export function OnboardingConnectorSetup({
         return connector.slug === selectedConnectorSlug;
       })
     : undefined;
+  const selectedAccountOptions =
+    defaultBuiltinConnectorAccountOptions(selectedConnector);
   const loading = connectorCatalogItemsLoadable.state === "loading";
 
   return (
@@ -91,6 +94,7 @@ export function OnboardingConnectorSetup({
             connectFlowSlug === connectorSlug ||
             pollingAuthCodeSlug === connectorSlug ||
             pollingDeviceAuthSlug === connectorSlug;
+          const accountOptions = defaultBuiltinConnectorAccountOptions(item);
 
           return (
             <ConnectorCard
@@ -104,7 +108,7 @@ export function OnboardingConnectorSetup({
               layout={variant}
               required={requiredSet.has(connectorSlug)}
               connect={
-                item
+                item && accountOptions
                   ? {
                       openModal: () => {
                         setSelectedConnectorSlug(connectorSlug);
@@ -116,6 +120,8 @@ export function OnboardingConnectorSetup({
                           {
                             connectorLabel: item.label,
                             connectorIcon: item.icon,
+                            authorizeVisibleAgents: true,
+                            ...accountOptions,
                           },
                           pageSignal,
                         );
@@ -125,7 +131,11 @@ export function OnboardingConnectorSetup({
                           {
                             connectorSlug,
                             authMethod,
-                            options: { connectorLabel: item.label },
+                            options: {
+                              connectorLabel: item.label,
+                              authorizeVisibleAgents: true,
+                              ...accountOptions,
+                            },
                           },
                           pageSignal,
                         );
@@ -138,9 +148,11 @@ export function OnboardingConnectorSetup({
         })}
         {children}
       </section>
-      {selectedConnector ? (
+      {selectedConnector && selectedAccountOptions ? (
         <ConnectModal
           item={selectedConnector}
+          accountOptions={selectedAccountOptions}
+          authorizeVisibleAgentsOnConnect
           onClose={() => {
             setSelectedConnectorSlug(null);
           }}

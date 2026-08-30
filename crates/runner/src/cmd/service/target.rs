@@ -1,17 +1,21 @@
 use std::path::PathBuf;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::paths::HomePaths;
 
 const UNIT_PREFIX: &str = "vm0-runner-";
+const LOCK_PREFIX: &str = "service-";
+const LOCK_SUFFIX: &str = ".lock";
 
 /// A validated identity for one runner systemd service.
 ///
-/// The suffix `pr-123` maps to four forms belonging to the same identity:
+/// The suffix `pr-123` maps to five forms belonging to the same identity:
 ///
 /// - suffix: `pr-123`
 /// - unit name: `vm0-runner-pr-123`
 /// - service name: `vm0-runner-pr-123.service`
 /// - unit-file path: `/etc/systemd/system/vm0-runner-pr-123.service`
+/// - lock filename: `service-vm0-runner-pr-123.lock`
 ///
 /// Construction validates the suffix before deriving the other forms, so an
 /// instance cannot contain names or a path for an invalid suffix.
@@ -21,6 +25,7 @@ pub(crate) struct RunnerServiceUnit {
     unit_name: String,
     service_name: String,
     unit_file_path: PathBuf,
+    lock_file_name: String,
 }
 
 impl RunnerServiceUnit {
@@ -42,11 +47,13 @@ impl RunnerServiceUnit {
         let unit_name = format!("{UNIT_PREFIX}{suffix}");
         let service_name = format!("{unit_name}.service");
         let unit_file_path = PathBuf::from(format!("/etc/systemd/system/{service_name}"));
+        let lock_file_name = format!("{LOCK_PREFIX}{unit_name}{LOCK_SUFFIX}");
         Ok(Self {
             suffix: suffix.to_string(),
             unit_name,
             service_name,
             unit_file_path,
+            lock_file_name,
         })
     }
 
@@ -60,6 +67,19 @@ impl RunnerServiceUnit {
         let suffix = file_name
             .strip_prefix(UNIT_PREFIX)?
             .strip_suffix(".service")?;
+        Self::from_suffix(suffix).ok()
+    }
+
+    /// Parse a current runner service identity from a lifecycle-lock filename.
+    ///
+    /// Accepts `service-vm0-runner-<suffix>.lock` only when `<suffix>` passes
+    /// the same validation as [`Self::from_suffix`]. Historical lock names
+    /// that fail current validation are rejected.
+    pub(crate) fn from_lock_file_name(file_name: &str) -> Option<Self> {
+        let unit_name = file_name
+            .strip_prefix(LOCK_PREFIX)?
+            .strip_suffix(LOCK_SUFFIX)?;
+        let suffix = unit_name.strip_prefix(UNIT_PREFIX)?;
         Self::from_suffix(suffix).ok()
     }
 
@@ -83,6 +103,16 @@ impl RunnerServiceUnit {
     /// Return the absolute `/etc/systemd/system/<service-name>` unit-file path.
     pub(crate) fn unit_file_path(&self) -> &std::path::Path {
         &self.unit_file_path
+    }
+
+    /// Return the lifecycle-lock filename `service-vm0-runner-<suffix>.lock`.
+    pub(crate) fn lock_file_name(&self) -> &str {
+        &self.lock_file_name
+    }
+
+    /// Return this service's lifecycle-lock path under the runner home.
+    pub(crate) fn lock_path(&self, home: &HomePaths) -> PathBuf {
+        home.locks_dir().join(self.lock_file_name())
     }
 }
 
@@ -176,5 +206,26 @@ mod tests {
         assert!(RunnerServiceUnit::from_file_name("vm0-runner-v1.0.0.timer").is_none());
         assert!(RunnerServiceUnit::from_file_name("vm0-runner-.service").is_none());
         assert!(RunnerServiceUnit::from_file_name("vm0-runner-UPPER.service").is_none());
+    }
+
+    #[test]
+    fn lock_file_name_round_trips_current_runner_service() {
+        let unit = RunnerServiceUnit::from_suffix("v1.0.0").unwrap();
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+
+        assert_eq!(unit.lock_file_name(), "service-vm0-runner-v1.0.0.lock");
+        assert_eq!(
+            unit.lock_path(&home),
+            PathBuf::from("/test/locks/service-vm0-runner-v1.0.0.lock")
+        );
+        assert_eq!(
+            RunnerServiceUnit::from_lock_file_name(unit.lock_file_name()),
+            Some(unit)
+        );
+        assert!(RunnerServiceUnit::from_lock_file_name("service-vm0-runner-staging").is_none());
+        assert!(
+            RunnerServiceUnit::from_lock_file_name("workspace-image-cache-v1.0.0.lock").is_none()
+        );
+        assert!(RunnerServiceUnit::from_lock_file_name("service-vm0-runner-UPPER.lock").is_none());
     }
 }

@@ -31,31 +31,28 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "http://127.0.0.1:1",
         );
         std::env::set_var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV, "300");
-        for (canonical, legacy) in [
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            std::env::var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV)?,
+        );
+        for (legacy, canonical) in [
             (
-                guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-                guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-            ),
-            (
-                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
                 guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             ),
             (
-                guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
                 guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
             ),
             (
-                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
                 guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             ),
         ] {
-            std::env::set_var(canonical, std::env::var(legacy)?);
+            std::env::set_var(legacy, std::env::var(canonical)?);
         }
         std::env::set_var("VM0_SECRET_VALUES", "runner-secret-values");
-        std::env::set_var(
-            process_control_ipc::BOOTSTRAP_ENV,
-            "runner-control-endpoint",
-        );
+        std::env::set_var("VM0_PROCESS_CONTROL_ENDPOINT", "runner-control-endpoint");
         std::env::set_var(
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             "runner-control-endpoint",
@@ -84,10 +81,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &configured_runtime_dir,
         );
-        std::env::set_var(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            &configured_runtime_dir,
-        );
     }
     let runtime_dir = guest_contracts::runtime_paths::run_dir_from_env(&run_id)?;
     let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
@@ -106,7 +99,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         }))?,
     )?;
     unsafe {
-        std::env::set_var("VM0_USER_ENV_FILE", &user_env_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            &user_env_path,
+        );
     }
 
     let runtime = GuestRuntime::from_process_env()?;
@@ -244,7 +240,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     }
     for key in [
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        "VM0_GUEST_RUNTIME_DIR",
         guest_contracts::env::USER_ENV_FILE_ENV,
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
         guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
@@ -292,7 +288,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     }
     assert!(!cli_env.contains_key("CLI_AGENT_TYPE"));
     for key in [
-        process_control_ipc::BOOTSTRAP_ENV,
+        "VM0_PROCESS_CONTROL_ENDPOINT",
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
     ] {
         assert!(

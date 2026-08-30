@@ -614,19 +614,23 @@
     "pinAgentDescription": "サイドバーにピン留めするエージェントを選択してください。",
     "pinned": "ピン留め済み",
     "pinnedAgents": "ピン留めしたエージェント",
+    "pinSuccess": "{{agentName}}をピン留めしました",
     "resultCount_other": "{{count}} 件の結果",
     "searchAgents": "エージェントを検索...",
     "searchAgentsAndChats": "エージェントとチャットを検索...",
-    "searchChatsAndMessages": "チャットとメッセージを検索...",
     "searching": "検索中...",
+    "searchWorkspace": "チャット、メッセージ、ワークフロー、アーティファクトを検索...",
     "sections": {
+      "artifacts": "アーティファクト",
       "chats": "チャット",
       "lead": "リード",
       "messages": "メッセージ",
-      "others": "その他"
+      "others": "その他",
+      "workflows": "ワークフロー"
     },
     "talkTo": "話しかける",
-    "unpin": "固定を解除する"
+    "unpin": "固定を解除する",
+    "unpinSuccess": "{{agentName}}のピン留めを解除しました"
   },
   "status": {
     "unread": "未読"

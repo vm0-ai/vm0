@@ -78,7 +78,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
 interface PaneSpec {
   setPane$: Command<void, [ChatThreadPaneState]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
-  onReady$?: Command<void, [AbortSignal]>;
+  onNotFoundReady$?: Command<void, [AbortSignal]>;
 }
 
 interface RestoredDraftState {
@@ -231,9 +231,6 @@ const setupPaneThread$ = command(
       signal,
     );
     set(spec.setPane$, { kind: "thread", thread });
-    if (spec.onReady$) {
-      set(spec.onReady$, signal);
-    }
 
     await set(
       resolvePaneThread$,
@@ -255,8 +252,8 @@ const setupPaneNotFound$ = command(
   ): void => {
     const signal = set(beginPaneSetup$, spec, parentSignal);
     set(spec.setPane$, { kind: "not-found", threadId });
-    if (spec.onReady$) {
-      set(spec.onReady$, signal);
+    if (spec.onNotFoundReady$) {
+      set(spec.onNotFoundReady$, signal);
     }
   },
 );
@@ -274,7 +271,6 @@ export const setupLeftThread$ = command(
         {
           setPane$: setCurrentLeftPane$,
           resetSetupSignal$: resetLeftSetupSignal$,
-          onReady$: hideAppSkeleton$,
         },
         meta,
         parentSignal,
@@ -295,7 +291,7 @@ export const setupLeftThreadNotFound$ = command(
       {
         setPane$: setCurrentLeftPane$,
         resetSetupSignal$: resetLeftSetupSignal$,
-        onReady$: hideAppSkeleton$,
+        onNotFoundReady$: hideAppSkeleton$,
       },
       threadId,
       parentSignal,

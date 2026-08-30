@@ -43,6 +43,7 @@ import { MarkdownEventBody } from "../components/markdown.tsx";
 import { jsonParseOr } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
+import { retryRichMarkdown$ } from "../../signals/rich-markdown-retry.ts";
 import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
 import {
   ZoomableArtifactImageCanvas,
@@ -916,10 +917,24 @@ function ArtifactSpinner() {
   );
 }
 
-function ArtifactBodyError({ message }: { message: string }): ReactNode {
+function ArtifactBodyError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}): ReactNode {
+  const { t } = useTranslation();
   return (
-    <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-      {message}
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
+      <span>{message}</span>
+      {onRetry !== undefined && (
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          {t(($) => {
+            return $.chat.errors.recovery.tryAgain;
+          })}
+        </Button>
+      )}
     </div>
   );
 }
@@ -988,6 +1003,7 @@ function ArtifactMarkdownBody({
   tree$: MarkdownPreviewTreeComputed;
 }) {
   const { t } = useTranslation();
+  const retry = useSet(retryRichMarkdown$);
   const loadable = useLoadable(tree$);
   if (loadable.state === "loading") {
     return (
@@ -1013,6 +1029,7 @@ function ArtifactMarkdownBody({
                 }),
               },
             )}
+            onRetry={retry}
           />
         </ArtifactStageCard>
       </ArtifactStageShell>
@@ -1233,12 +1250,10 @@ function ArtifactImageNavigationControls({
     <>
       {navigation.onPrevious && (
         <Button
+          showTooltip
           type="button"
           onClick={navigation.onPrevious}
           aria-label={t(($) => {
-            return $.artifacts.actions.previousImage;
-          })}
-          title={t(($) => {
             return $.artifacts.actions.previousImage;
           })}
           data-testid="artifact-sidebar-previous-image"
@@ -1251,12 +1266,10 @@ function ArtifactImageNavigationControls({
       )}
       {navigation.onNext && (
         <Button
+          showTooltip
           type="button"
           onClick={navigation.onNext}
           aria-label={t(($) => {
-            return $.artifacts.actions.nextImage;
-          })}
-          title={t(($) => {
             return $.artifacts.actions.nextImage;
           })}
           data-testid="artifact-sidebar-next-image"
@@ -1277,61 +1290,61 @@ function ArtifactImageZoomControls({
   controls: ZoomableImageControls;
 }) {
   const { t } = useTranslation();
+  const zoomOutLabel = t(($) => {
+    return $.artifacts.actions.zoomOut;
+  });
+  const zoomInLabel = t(($) => {
+    return $.artifacts.actions.zoomIn;
+  });
+  const resetZoomLabel = t(($) => {
+    return $.artifacts.actions.resetZoom;
+  });
   return (
     <div
       className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
       data-testid="artifact-sidebar-image-zoom-controls"
     >
-      <button
-        type="button"
-        onClick={controls.zoomOut}
-        disabled={!controls.canZoomOut}
-        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label={t(($) => {
-          return $.artifacts.actions.zoomOut;
-        })}
-        title={t(($) => {
-          return $.artifacts.actions.zoomOut;
-        })}
-        data-testid="artifact-sidebar-image-zoom-out"
-      >
-        -
-      </button>
+      <ArtifactActionTooltip label={zoomOutLabel}>
+        <button
+          type="button"
+          onClick={controls.zoomOut}
+          disabled={!controls.canZoomOut}
+          className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          aria-label={zoomOutLabel}
+          data-testid="artifact-sidebar-image-zoom-out"
+        >
+          -
+        </button>
+      </ArtifactActionTooltip>
       <span
         className="min-w-10 text-center text-xs font-medium tabular-nums text-foreground"
         data-testid="artifact-sidebar-image-zoom-level"
       >
         {Math.round(controls.zoom * 100)}%
       </span>
-      <button
-        type="button"
-        onClick={controls.zoomIn}
-        disabled={!controls.canZoomIn}
-        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label={t(($) => {
-          return $.artifacts.actions.zoomIn;
-        })}
-        title={t(($) => {
-          return $.artifacts.actions.zoomIn;
-        })}
-        data-testid="artifact-sidebar-image-zoom-in"
-      >
-        +
-      </button>
-      <button
-        type="button"
-        onClick={controls.resetZoom}
-        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-state-hover hover:text-foreground"
-        aria-label={t(($) => {
-          return $.artifacts.actions.resetZoom;
-        })}
-        title={t(($) => {
-          return $.artifacts.actions.resetZoom;
-        })}
-        data-testid="artifact-sidebar-image-reset-zoom"
-      >
-        <RotateCcw size={15} />
-      </button>
+      <ArtifactActionTooltip label={zoomInLabel}>
+        <button
+          type="button"
+          onClick={controls.zoomIn}
+          disabled={!controls.canZoomIn}
+          className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          aria-label={zoomInLabel}
+          data-testid="artifact-sidebar-image-zoom-in"
+        >
+          +
+        </button>
+      </ArtifactActionTooltip>
+      <ArtifactActionTooltip label={resetZoomLabel}>
+        <button
+          type="button"
+          onClick={controls.resetZoom}
+          className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-state-hover hover:text-foreground"
+          aria-label={resetZoomLabel}
+          data-testid="artifact-sidebar-image-reset-zoom"
+        >
+          <RotateCcw size={15} />
+        </button>
+      </ArtifactActionTooltip>
     </div>
   );
 }

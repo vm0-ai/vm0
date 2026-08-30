@@ -19,7 +19,7 @@ import {
   listPublicConnectorCatalog,
   listPublicConnectorCatalogStatus,
 } from "../services/connector-catalog-reader.service";
-import { connectorList } from "../services/connector-data.service";
+import { connectorCatalogConnectionList } from "../services/connector-data.service";
 import { notFound, providerUnavailable } from "../../lib/error";
 import { settle } from "../utils";
 
@@ -51,10 +51,6 @@ function connectorCatalogNotFound() {
 
 function connectorCatalogUnavailable() {
   return providerUnavailable("Connector catalog is temporarily unavailable");
-}
-
-function connectorDiscoveryNotFound() {
-  return notFound("Connector discovery not found");
 }
 
 async function settleConnectorCatalogRead<T>(
@@ -117,7 +113,7 @@ const listConnectorCatalogStatusInner$ = command(
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        connectorList({
+        connectorCatalogConnectionList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),
@@ -133,7 +129,7 @@ const listConnectorCatalogStatusInner$ = command(
       listPublicConnectorCatalogStatus({
         db: context.db,
         featureStates: context.featureStates,
-        connectors: connectorState.value.connectors,
+        connections: connectorState.value,
         publicBrand: context.publicBrand,
       }),
       signal,
@@ -152,13 +148,10 @@ const discoverConnectorCatalogInner$ = command(
     const query = get(queryOf(connectorCatalogContract.discovery));
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
-    if (!context.featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
-      return connectorDiscoveryNotFound();
-    }
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        connectorList({
+        connectorCatalogConnectionList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),
@@ -174,7 +167,7 @@ const discoverConnectorCatalogInner$ = command(
       discoverPublicConnectorCatalogStatus({
         db: context.db,
         featureStates: context.featureStates,
-        connectors: connectorState.value.connectors,
+        connections: connectorState.value,
         keyword: query.keyword,
         publicBrand: context.publicBrand,
       }),
@@ -209,7 +202,7 @@ const getConnectorCatalogInner$ = command(
 
     const connectorState = await settleConnectorCatalogRead(
       get(
-        connectorList({
+        connectorCatalogConnectionList({
           orgId: auth.orgId,
           userId: auth.userId,
         }),
@@ -227,7 +220,7 @@ const getConnectorCatalogInner$ = command(
         db: context.db,
         connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
-        connectors: connectorState.value.connectors,
+        connections: connectorState.value,
         publicBrand: context.publicBrand,
       }),
       signal,

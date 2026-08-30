@@ -47,6 +47,7 @@ use std::path::{Path, PathBuf};
 use nix::fcntl::Flock;
 use serde::{Deserialize, Serialize};
 
+use api_contracts::generated::constants::runners::RUNNER_HOSTNAME_MAX_LENGTH;
 use guest_contracts::process_containment::{
     MIN_PROFILE_MEMORY_MB, MIN_PROFILE_VCPU, WorkloadResourcePolicy,
 };
@@ -71,9 +72,11 @@ pub(crate) const DIAGNOSTIC_CONFIG_MAX_BYTES: u64 = 1024 * 1024;
 /// are resolved against the YAML file's parent directory during [`load`].
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerConfig {
-    /// Human-readable identifier for this runner instance, surfaced in logs
-    /// and reported to the control plane alongside `group`.
-    pub name: String,
+    /// Canonical physical host identity used only for diagnostic attribution.
+    /// The raw configured value is preserved and never used for scheduling,
+    /// authorization, targeting, or ownership.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
     /// Runner group in `org/name` format (e.g. `vm0/prod`). Used to scope
     /// runners on the server and to build on-disk paths; validated by
     /// [`crate::group::validate_or_err`].
@@ -266,6 +269,21 @@ pub(crate) fn validate_concurrency_factor(value: f64) -> RunnerResult<()> {
         return Err(RunnerError::Config(
             "concurrency_factor must be a positive finite number".into(),
         ));
+    }
+    Ok(())
+}
+
+/// Validate a configured hostname against the runner-facing API boundary.
+///
+/// Zod measures JavaScript string length in UTF-16 code units, so the Runner
+/// uses the same rule before publishing this value.
+pub(crate) fn validate_runner_hostname(value: &str) -> RunnerResult<()> {
+    let within_bound = u64::try_from(value.encode_utf16().count())
+        .is_ok_and(|length| length <= RUNNER_HOSTNAME_MAX_LENGTH);
+    if value.is_empty() || !within_bound {
+        return Err(RunnerError::Config(format!(
+            "hostname must be a non-empty string of at most {RUNNER_HOSTNAME_MAX_LENGTH} UTF-16 code units"
+        )));
     }
     Ok(())
 }
@@ -527,6 +545,9 @@ async fn validate(
     validate_image_artifacts: bool,
 ) -> RunnerResult<()> {
     // Pure-CPU checks first — fail fast before any filesystem I/O.
+    if let Some(hostname) = config.hostname.as_deref() {
+        validate_runner_hostname(hostname)?;
+    }
     crate::group::validate_or_err(&config.group)?;
     if config.profiles.is_empty() {
         return Err(RunnerError::Config("profiles must not be empty".into()));
@@ -664,5 +685,4 @@ impl RunnerConfig {
 }
 
 #[cfg(test)]
-#[path = "config_tests.rs"]
 mod tests;

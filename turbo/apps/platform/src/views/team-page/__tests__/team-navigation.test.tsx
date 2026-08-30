@@ -21,6 +21,7 @@ import {
 import {
   agentsByIdContract,
   agentInstructionsContract,
+  type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
   workflowsCollectionContract,
@@ -42,7 +43,6 @@ import {
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -53,7 +53,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { testConnectorPermissionDetails } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
@@ -117,16 +120,18 @@ function applyCustomConnectorUpdate(
   return [...requested];
 }
 
-function createAgent(id: string, displayName: string): TeamComposeItem {
+function createAgent(id: string, displayName: string): AgentResponse {
   return {
-    id,
+    agentId: id,
     ownerId: "test-owner-id",
     displayName,
     description: "Finds and summarizes information",
     sound: null,
     avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
     visibility: "public",
-    updatedAt: "2024-01-02T00:00:00Z",
   };
 }
 
@@ -426,7 +431,7 @@ function mockTeamAPIs({
   readonly customConnector?: CustomConnectorResponse;
   readonly onCustomConnectorUpdate?: () => void;
 } = {}): void {
-  context.mocks.data.team([
+  context.mocks.data.agents([
     createAgent(agentId, "Support Agent"),
     createAgent(researchAgentId, "Research Agent"),
   ]);
@@ -864,7 +869,7 @@ describe("team page navigation", () => {
 
   it("shows a retryable error when agent details fail to load", async () => {
     const unavailableAgentId = "bbbbbbbb-0000-4000-a000-000000000500";
-    context.mocks.data.team([
+    context.mocks.data.agents([
       createAgent(unavailableAgentId, "Archived Agent"),
       createAgent(researchAgentId, "Research Agent"),
     ]);
@@ -1015,33 +1020,37 @@ describe("team page navigation", () => {
     context.mocks.api(
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        return respond(200, {
-          rows: mockChatEventRows(
-            params.threadId === firstThreadId
-              ? [
-                  {
-                    id: firstMessageId,
-                    threadId: firstThreadId,
-                    eventType: "input.prompt" as const,
-                    content: null,
-                    userMessage: {
-                      version: 1,
-                      parts: [
-                        {
-                          type: "text",
-                          text: "First shortcut thread message",
-                        },
-                      ],
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(
+              params.threadId === firstThreadId
+                ? [
+                    {
+                      id: firstMessageId,
+                      threadId: firstThreadId,
+                      eventType: "input.prompt" as const,
+                      content: null,
+                      userMessage: {
+                        version: 1,
+                        parts: [
+                          {
+                            type: "text",
+                            text: "First shortcut thread message",
+                          },
+                        ],
+                      },
+                      seqId: 1,
+                      createdAt: "2026-06-01T00:02:00Z",
                     },
-                    seqId: 1,
-                    createdAt: "2026-06-01T00:02:00Z",
-                  },
-                ]
-              : [],
-          ).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+                  ]
+                : [],
+            ).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     detachedSetupPage({ context, path: `/agents/${researchAgentId}/chat` });

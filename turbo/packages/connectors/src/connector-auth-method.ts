@@ -925,7 +925,7 @@ export function connectorAuthMethodOwnedVariableNames(
 }
 function hasRequiredGrantScopes(
   requiredScopes: readonly string[],
-  storedScopes: string[] | null,
+  storedScopes: readonly string[] | null,
 ): boolean {
   if (requiredScopes.length === 0) return true;
   if (!storedScopes) return false;
@@ -935,9 +935,7 @@ function hasRequiredGrantScopes(
   });
 }
 
-/**
- * Compute the diff between currently required scopes and stored scopes for a connector.
- */
+/** Compare the current authorization request with its stored request snapshot. */
 export interface ScopeDiff {
   addedScopes: string[];
   removedScopes: string[];
@@ -947,7 +945,7 @@ export interface ScopeDiff {
 
 function scopeDiff(
   currentScopes: readonly string[],
-  storedScopes: string[] | null,
+  storedScopes: readonly string[] | null,
 ): ScopeDiff {
   const stored = storedScopes ?? [];
   const storedSet = new Set(stored);
@@ -961,19 +959,19 @@ function scopeDiff(
       return !currentSet.has(s);
     }),
     currentScopes: [...currentScopes],
-    storedScopes: stored,
+    storedScopes: [...stored],
   };
 }
 export function connectorAuthMethodScopeDiff(
   method: ConnectorAuthMethodRuntimeConfig,
-  storedScopes: string[] | null,
+  storedScopes: readonly string[] | null,
 ): ScopeDiff {
   return scopeDiff(connectorGrantScopes(method.grant), storedScopes);
 }
 
 export function connectorAuthMethodHasRequiredScopes(
   method: ConnectorAuthMethodRuntimeConfig,
-  storedScopes: string[] | null,
+  storedScopes: readonly string[] | null,
 ): boolean {
   return hasRequiredGrantScopes(
     connectorGrantScopes(method.grant),

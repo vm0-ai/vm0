@@ -44,6 +44,7 @@ describe("chatEvents schema", () => {
       "revokes_event_id",
       "event_type",
       "payload",
+      "required_official_workflow_ids",
       "context_type",
       "context_id",
       "run_event_sequence_number",
@@ -53,6 +54,8 @@ describe("chatEvents schema", () => {
     ]);
     expect(chatEvents.payload.notNull).toBeFalsy();
     expect(chatEvents.payload.hasDefault).toBeFalsy();
+    expect(chatEvents.requiredOfficialWorkflowIds.notNull).toBeFalsy();
+    expect(chatEvents.requiredOfficialWorkflowIds.hasDefault).toBeFalsy();
     expect(
       config.indexes
         .map((index) => {
@@ -79,12 +82,29 @@ describe("chatEvents schema", () => {
       expect.arrayContaining([
         "chat_events_input_user_message_payload_check",
         "chat_events_input_payload_content_check",
+        "chat_events_official_workflow_queue_claim_check",
         "chat_events_goal_open_payload_check",
         "chat_events_goal_close_payload_check",
         "chat_events_goal_marker_payload_check",
-        "chat_events_output_tool_payload_check",
       ]),
     );
+    const officialWorkflowQueueClaimCheck = config.checks.find((check) => {
+      return check.name === "chat_events_official_workflow_queue_claim_check";
+    });
+    expect(officialWorkflowQueueClaimCheck).toBeDefined();
+    if (!officialWorkflowQueueClaimCheck) {
+      throw new Error("Missing Official Workflow queue claim check");
+    }
+    const officialWorkflowQueueClaimSql = new PgDialect().sqlToQuery(
+      officialWorkflowQueueClaimCheck.value,
+    ).sql;
+    expect(officialWorkflowQueueClaimSql).toContain(
+      '"chat_events"."required_official_workflow_ids" IS NULL',
+    );
+    expect(officialWorkflowQueueClaimSql).toContain(
+      '"chat_events"."event_type" = \'input.prompt\'',
+    );
+    expect(officialWorkflowQueueClaimSql).toContain("cardinality");
     expect(checkNames).not.toEqual(
       expect.arrayContaining([
         "chat_events_input_user_message_check",
@@ -93,30 +113,6 @@ describe("chatEvents schema", () => {
         "chat_events_goal_close_content_check",
       ]),
     );
-  });
-
-  it("enforces the strict output.tool payload at the storage boundary", () => {
-    const config = getTableConfig(chatEvents);
-    const payloadCheck = config.checks.find((check) => {
-      return check.name === "chat_events_output_tool_payload_check";
-    });
-    expect(payloadCheck).toBeDefined();
-    if (!payloadCheck) {
-      throw new Error("Missing output.tool payload check");
-    }
-    const payloadSql = new PgDialect().sqlToQuery(payloadCheck.value).sql;
-
-    expect(payloadSql).toContain("toolUseId");
-    expect(payloadSql).toContain("action");
-    expect(payloadSql).toContain("status");
-    expect(payloadSql).toContain("summary");
-    expect(payloadSql).toContain("'run', 'read', 'write', 'edit'");
-    expect(payloadSql).toContain("'pending', 'success', 'error', 'cancelled'");
-    expect(payloadSql).toContain("-\n              'toolUseId'");
-    expect(payloadSql).toContain("= '{}'::jsonb");
-    expect(payloadSql).toContain("char_length");
-    expect(payloadSql).toContain("<= 240");
-    expect(payloadSql.match(/position\(E'/gu)).toHaveLength(2);
   });
 
   it("keeps run references after runs are deleted", () => {
@@ -144,12 +140,15 @@ describe("chatEvents schema", () => {
 });
 
 describe("chatEventSnapshots schema", () => {
-  it("stores independent full and tool-redacted heads with shared objects", () => {
+  it("constrains pointers to the current canonical snapshot shape", () => {
     const config = getTableConfig(chatEventSnapshots);
 
     expect(chatEventSnapshots.projection.notNull).toBe(true);
+    expect(chatEventSnapshots.terminalEventId.notNull).toBe(false);
+    expect(chatEventSnapshots.terminalSeqId.notNull).toBe(false);
     expect(chatEventSnapshots.projection.hasDefault).toBe(true);
-    expect(chatEventSnapshots.projection.default).toBe("full");
+    expect(chatEventSnapshots.projection.default).toBe("tool-redacted");
+    expect(chatEventSnapshots.archiveSchemaVersion.default).toBe(7);
     expect(
       config.indexes.map((index) => {
         return { name: index.config.name, unique: index.config.unique };
@@ -170,6 +169,12 @@ describe("chatEventSnapshots schema", () => {
       config.checks.map((check) => {
         return check.name;
       }),
-    ).toContain("chat_event_snapshots_projection_check");
+    ).toEqual(
+      expect.arrayContaining([
+        "chat_event_snapshots_projection_check",
+        "chat_event_snapshots_archive_schema_version_check",
+        "chat_event_snapshots_terminal_cursor_check",
+      ]),
+    );
   });
 });

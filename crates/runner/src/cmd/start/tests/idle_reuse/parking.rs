@@ -28,7 +28,7 @@ fn context_with_session_opt(
 }
 
 #[tokio::test(start_paused = true)]
-async fn job_with_session_parks_vm() {
+async fn job_with_session_parks_sandbox() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
@@ -465,7 +465,7 @@ async fn sequential_same_reuse_key_cycle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn same_thread_reuses_vm_across_provider_session_change() {
+async fn same_thread_reuses_sandbox_across_provider_session_change() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
@@ -624,7 +624,7 @@ async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
 /// A successful job with a session triggers `Sandbox::park()` exactly once
 /// when the sandbox is handed off to the idle pool.
 #[tokio::test(start_paused = true)]
-async fn park_called_when_vm_enters_idle_pool() {
+async fn park_called_when_sandbox_enters_idle_pool() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);

@@ -920,9 +920,9 @@ describe("chat lifecycle", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Goal" });
     expect(requestedThreadId).toBe(threadId);
-    expect(
-      within(dialog).getByRole("heading", { name: "Full goal" }),
-    ).toBeInTheDocument();
+    await expect(
+      within(dialog).findByRole("heading", { name: "Full goal" }),
+    ).resolves.toBeInTheDocument();
     expect(dialog.querySelector(".wmde-markdown")).not.toBeNull();
   });
 

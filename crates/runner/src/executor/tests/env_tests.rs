@@ -12,16 +12,15 @@ use super::super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::super::env::{
-    HostEnv, build_env_json_with_host_env, build_run_payload_for_run, build_user_env_json,
-    guest_connector_account_context_file_path, guest_run_payload_file_path,
-    guest_user_env_file_path, is_runner_owned_env_key, validate_execution_context_before_sandbox,
+    HostEnv, build_env_json_with_host_env, build_env_json_with_host_env_for_run,
+    build_run_payload_for_run, build_user_env_json, guest_connector_account_context_file_path,
+    is_runner_owned_env_key, validate_execution_context_before_sandbox,
     validate_model_provider_env_placeholders, write_connector_account_context_file,
-    write_run_payload_file, write_user_env_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
     api_artifact, api_storage, build_env_for_test, build_env_for_test_result,
-    build_env_for_test_with_host_env, context_with_env, minimal_context, sandbox_write_file_error,
+    build_env_for_test_with_host_env, context_with_env, minimal_context,
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
@@ -33,6 +32,7 @@ use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 use crate::types::{
     ConnectorRuntimeTargetRegistration, ExecutionContext, ResumeSession, SandboxReuseResult,
+    WorkspaceReuseResult,
 };
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
@@ -280,7 +280,7 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
 }
 
 #[test]
-fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
+fn execution_context_validation_rejects_translated_tuning_env_nul_before_sandbox() {
     let secret = "3\0";
     let ctx = context_with_env(HashMap::from([(
         "VM0_STUCK_TOOL_TIMEOUT_SECS".into(),
@@ -291,7 +291,7 @@ fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
 
     assert!(error.contains("bootstrap environment"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    assert!(error.contains(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV));
     assert!(!error.contains(secret));
 }
 
@@ -435,75 +435,96 @@ fn model_provider_env_placeholder_validation_accepts_codex_oauth_placeholders() 
 #[test]
 fn build_env_json_required_keys() {
     let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "https://api.example.com");
+    let sandbox_id = "00000000-0000-4000-8000-000000000abc";
+    let env = build_env_json_with_host_env_for_run(
+        &ctx,
+        "https://api.example.com",
+        sandbox_id,
+        SandboxReuseResult::Reused,
+        WorkspaceReuseResult::SandboxReused,
+        &HostEnv::default(),
+    )
+    .expect("test env should build");
 
     assert_eq!(
-        env.get("VM0_API_BACKEND_URL").unwrap(),
+        env.get(guest_contracts::env::CANONICAL_API_URL_ENV)
+            .unwrap(),
         "https://api.example.com"
     );
+    assert!(!env.contains_key(guest_contracts::env::API_URL_ENV));
     assert_eq!(
         env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &RunId::nil().to_string()
     );
     assert!(!env.contains_key("VM0_RUN_ID"));
-    assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
-        env.get(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV)
+        env.get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
+            .unwrap(),
+        "tok"
+    );
+    assert!(!env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV)
             .unwrap(),
         "7200"
     );
+    assert!(!env.contains_key(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV));
     assert_eq!(
-        env.get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+        env.get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
-    assert!(!env.contains_key(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV));
+    assert!(!env.contains_key("VM0_GUEST_RUNTIME_DIR"));
     assert!(!env.contains_key("VM0_PROMPT"));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
     // checkpoint lands before sandbox teardown.
-    assert!(
-        env.get("VM0_SANDBOX_ID")
-            .unwrap()
-            .parse::<uuid::Uuid>()
-            .is_ok()
-    );
-    assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), "reused");
     assert_eq!(
-        env.get(guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV)
+        env.get(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV)
+            .map(String::as_str),
+        Some(sandbox_id)
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV)
+            .map(String::as_str),
+        Some("reused")
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV)
+            .map(String::as_str),
+        Some("sandboxReused")
+    );
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_API_START_TIME_ENV)
             .unwrap(),
-        "sandboxReused"
-    );
-    assert_eq!(
-        env.get(guest_contracts::env::API_START_TIME_ENV).unwrap(),
         ""
     );
-    for canonical_key in [
-        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-        guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-        guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+    assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
+    for legacy_key in [
+        guest_contracts::env::SANDBOX_ID_ENV,
+        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
     ] {
         assert!(
-            !env.contains_key(canonical_key),
-            "reader Stage 1 must not emit canonical key {canonical_key}"
+            !env.contains_key(legacy_key),
+            "canonical writer emitted legacy key {legacy_key}"
         );
     }
 }
 
 #[test]
-fn build_env_json_keeps_api_url_writer_legacy_only() {
+fn build_env_json_keeps_api_url_writer_canonical_only() {
     let ctx = minimal_context();
     let env = build_env_for_test(&ctx, "https://api.example.com");
 
     assert_eq!(
-        env.get(guest_contracts::env::API_URL_ENV)
+        env.get(guest_contracts::env::CANONICAL_API_URL_ENV)
             .map(String::as_str),
         Some("https://api.example.com")
     );
     assert!(
-        !env.contains_key(guest_contracts::env::CANONICAL_API_URL_ENV),
-        "Runner bootstrap writer emitted the reader-only canonical API URL alias"
+        !env.contains_key(guest_contracts::env::API_URL_ENV),
+        "canonical Runner bootstrap writer emitted the legacy API URL alias"
     );
 }
 
@@ -530,7 +551,30 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
             &HostEnv::default(),
         )
         .expect("test env should build");
-        assert_eq!(env.get("VM0_SANDBOX_REUSE_RESULT").unwrap(), expected);
+        assert_eq!(
+            env.get(guest_contracts::env::CANONICAL_SANDBOX_ID_ENV)
+                .map(String::as_str),
+            Some(sid.as_str())
+        );
+        assert_eq!(
+            env.get(guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV)
+                .map(String::as_str),
+            Some(expected)
+        );
+        assert!(
+            !env.contains_key(guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV),
+            "no-workspace builder emitted canonical workspace reuse metadata"
+        );
+        for legacy_key in [
+            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+        ] {
+            assert!(
+                !env.contains_key(legacy_key),
+                "canonical writer emitted legacy key {legacy_key}"
+            );
+        }
     }
 }
 
@@ -727,7 +771,7 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             "/legacy".into(),
         ),
         (
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+            "VM0_GUEST_RUNTIME_DIR".into(),
             "/user/controlled/runtime".into(),
         ),
         (
@@ -765,14 +809,8 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
             guest_contracts::env::SETTINGS_ENV.into(),
             r#"{"hooks":{}}"#.into(),
         ),
-        (
-            guest_contracts::env::MOCK_CLAUDE_PATH_ENV.into(),
-            "/tmp/mock-claude".into(),
-        ),
-        (
-            guest_contracts::env::MOCK_CODEX_PATH_ENV.into(),
-            "/tmp/mock-codex".into(),
-        ),
+        ("VM0_MOCK_CLAUDE_PATH".into(), "/tmp/mock-claude".into()),
+        ("VM0_MOCK_CODEX_PATH".into(), "/tmp/mock-codex".into()),
         (USER_ENV_FILE_ENV_KEY.into(), "/tmp/user-env".into()),
         (
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV.into(),
@@ -789,21 +827,24 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         build_run_payload_for_run(&ctx).unwrap().prompt,
         "test prompt"
     );
-    assert_eq!(bootstrap_env.get("VM0_API_TOKEN").unwrap(), "tok");
+    assert_eq!(
+        bootstrap_env
+            .get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
+            .unwrap(),
+        "tok"
+    );
+    assert!(!bootstrap_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
     assert_eq!(
         bootstrap_env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &ctx.run_id.to_string()
     );
     assert_eq!(
         bootstrap_env
-            .get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+            .get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
-    assert!(
-        !bootstrap_env
-            .contains_key(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
-    );
+    assert!(!bootstrap_env.contains_key("VM0_GUEST_RUNTIME_DIR"));
     assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert_eq!(user_env.get("OKOU_TOKEN").unwrap(), "legitimate-okou-token");
@@ -816,7 +857,7 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::API_TOKEN_ENV,
         guest_contracts::env::WORKING_DIR_ENV,
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        "VM0_GUEST_RUNTIME_DIR",
         guest_contracts::env::FEATURE_FLAGS_ENV,
         "VM0_FUTURE_RUNNER_KEY",
         LEGACY_RUNNER_CONCURRENCY_FACTOR_ENV,
@@ -831,8 +872,8 @@ fn fieldless_context_preserves_pre_platform_environment_filtering() {
         guest_contracts::env::DISALLOWED_TOOLS_ENV,
         guest_contracts::env::TOOLS_ENV,
         guest_contracts::env::SETTINGS_ENV,
-        guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-        guest_contracts::env::MOCK_CODEX_PATH_ENV,
+        "VM0_MOCK_CLAUDE_PATH",
+        "VM0_MOCK_CODEX_PATH",
         USER_ENV_FILE_ENV_KEY,
         guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
     ] {
@@ -910,44 +951,64 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
 }
 
 #[test]
-fn build_env_json_keeps_guest_agent_tuning_writer_legacy_only() {
+fn build_env_json_translates_guest_agent_tuning_inputs_to_canonical_outputs() {
     let mut ctx = minimal_context();
-    ctx.environment = Some(HashMap::from([
-        ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
-        ("VM0_POST_RESULT_SIGTERM_GRACE_SECS".into(), "1".into()),
-        ("VM0_POST_RESULT_TOTAL_CAP_SECS".into(), "4".into()),
-        ("VM0_POST_RESULT_SIGKILL_GRACE_SECS".into(), "2".into()),
-        (
-            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-        (
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV.into(),
-            "canonical-must-not-write".into(),
-        ),
-    ]));
+    let expected_values = ["3", "", " 4 ", "not-a-duration"];
+    let mut environment = HashMap::new();
+    for ((legacy_input, canonical_bootstrap_output), expected_value) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+            .into_iter()
+            .zip(expected_values)
+    {
+        environment.insert(legacy_input.into(), expected_value.into());
+        environment.insert(
+            canonical_bootstrap_output.into(),
+            "hostile-canonical-must-not-override".into(),
+        );
+    }
+    ctx.environment = Some(environment);
 
     let env = build_env_for_test(&ctx, "http://localhost");
 
-    assert_eq!(env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
-    assert_eq!(env.get("VM0_POST_RESULT_SIGTERM_GRACE_SECS").unwrap(), "1");
-    assert_eq!(env.get("VM0_POST_RESULT_TOTAL_CAP_SECS").unwrap(), "4");
-    assert_eq!(env.get("VM0_POST_RESULT_SIGKILL_GRACE_SECS").unwrap(), "2");
-    for key in [
-        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    ] {
-        assert!(!env.contains_key(key), "runner writer emitted {key}");
+    for ((legacy_input, canonical_bootstrap_output), expected_value) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+            .into_iter()
+            .zip(expected_values)
+    {
+        assert_eq!(
+            env.get(canonical_bootstrap_output).map(String::as_str),
+            Some(expected_value)
+        );
+        assert!(
+            !env.contains_key(legacy_input),
+            "runner writer emitted legacy output {legacy_input}"
+        );
+    }
+}
+
+#[test]
+fn build_env_json_does_not_author_guest_agent_tuning_output_without_legacy_inputs() {
+    let canonical_only_environment = guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+        .into_iter()
+        .map(|(_, canonical_bootstrap_output)| {
+            (
+                canonical_bootstrap_output.into(),
+                "hostile-canonical-must-not-author".into(),
+            )
+        })
+        .collect();
+
+    for environment in [None, Some(canonical_only_environment)] {
+        let mut ctx = minimal_context();
+        ctx.environment = environment;
+        let env = build_env_for_test(&ctx, "http://localhost");
+
+        for (legacy_input, canonical_bootstrap_output) in
+            guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+        {
+            assert!(!env.contains_key(legacy_input));
+            assert!(!env.contains_key(canonical_bootstrap_output));
+        }
     }
 }
 
@@ -967,11 +1028,11 @@ fn build_env_json_codex_keeps_shared_runner_env() {
     assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     assert_eq!(payload.append_system_prompt, "Use terse answers.");
     assert_eq!(
-        env.get(guest_contracts::env::RESUME_SESSION_ID_ENV)
+        env.get(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV)
             .unwrap(),
         "019e9154-c304-70f0-adde-36efb1be1701"
     );
-    assert!(!env.contains_key(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV));
+    assert!(!env.contains_key(guest_contracts::env::RESUME_SESSION_ID_ENV));
     assert!(!env.contains_key("VM0_WORKING_DIR"));
 }
 
@@ -1148,11 +1209,11 @@ fn build_env_json_with_resume_session() {
 
     let env = build_env_for_test(&ctx, "http://localhost");
     assert_eq!(
-        env.get(guest_contracts::env::RESUME_SESSION_ID_ENV)
+        env.get(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV)
             .unwrap(),
         "sess-123"
     );
-    assert!(!env.contains_key(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV));
+    assert!(!env.contains_key(guest_contracts::env::RESUME_SESSION_ID_ENV));
 }
 
 #[test]
@@ -1173,97 +1234,6 @@ fn build_env_json_user_vars_cannot_override_system() {
     assert!(!env.contains_key("CUSTOM"));
     assert_eq!(user_env.get("CUSTOM").unwrap(), "value");
     assert!(!user_env.contains_key("VM0_PROMPT"));
-}
-
-#[tokio::test]
-async fn write_user_env_file_skips_empty_env() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-
-    let path = write_user_env_file(&sandbox, run_id, &HashMap::new())
-        .await
-        .unwrap();
-
-    assert!(path.is_none());
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    assert!(sandbox.private_write_file_calls().is_empty());
-}
-
-#[tokio::test]
-async fn write_user_env_file_uses_private_write_for_small_env() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([
-        ("CUSTOM_ENV".to_string(), "value".to_string()),
-        ("TZ".to_string(), "Asia/Shanghai".to_string()),
-    ]);
-
-    let path = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
-    assert!(
-        path.ends_with(&format!(
-            "/{}/{}",
-            guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME,
-            guest_contracts::env::USER_ENV_FILENAME
-        )),
-        "got: {path}"
-    );
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    let decoded: HashMap<String, String> = serde_json::from_slice(&writes[0].content).unwrap();
-    assert_eq!(decoded, user_env);
-}
-
-#[tokio::test]
-async fn write_user_env_file_uses_private_write_for_large_env() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([(
-        "CUSTOM_ENV".to_string(),
-        "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-    )]);
-    let payload = serde_json::to_vec(&user_env).unwrap();
-    assert!(payload.len() > vsock_proto::MAX_EXEC_STDIN_BYTES);
-
-    let path = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    assert_eq!(writes[0].content, payload);
-}
-
-#[tokio::test]
-async fn write_user_env_file_returns_private_write_error() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_private_write_file_result(Err(sandbox_write_file_error("private write failed")));
-    let run_id = RunId::nil();
-    let user_env = HashMap::from([("CUSTOM_ENV".to_string(), "value".to_string())]);
-
-    let err = write_user_env_file(&sandbox, run_id, &user_env)
-        .await
-        .unwrap_err();
-    let message = err.to_string();
-
-    assert!(message.contains("private write failed"), "got: {message}");
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
 }
 
 #[tokio::test]
@@ -1343,53 +1313,6 @@ async fn write_connector_account_context_file_writes_known_empty_projection() {
     );
 }
 
-#[tokio::test]
-async fn write_run_payload_file_uses_private_write_for_large_payload() {
-    let sandbox = MockSandbox::new("test");
-    let run_id = RunId::nil();
-    let payload = guest_contracts::env::RunPayload {
-        prompt: "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
-        append_system_prompt: "system".to_string(),
-        secret_values: "secret".to_string(),
-        ..guest_contracts::env::RunPayload::default()
-    };
-
-    let path = write_run_payload_file(&sandbox, run_id, &payload)
-        .await
-        .unwrap();
-
-    assert_eq!(path, guest_run_payload_file_path(run_id).unwrap());
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    let decoded: guest_contracts::env::RunPayload =
-        serde_json::from_slice(&writes[0].content).unwrap();
-    assert_eq!(decoded, payload);
-}
-
-#[tokio::test]
-async fn write_run_payload_file_returns_private_write_error() {
-    let sandbox = MockSandbox::new("test");
-    sandbox.push_private_write_file_result(Err(sandbox_write_file_error("private write failed")));
-    let run_id = RunId::nil();
-    let payload = guest_contracts::env::RunPayload {
-        prompt: "test prompt".to_string(),
-        ..guest_contracts::env::RunPayload::default()
-    };
-
-    let err = write_run_payload_file(&sandbox, run_id, &payload)
-        .await
-        .unwrap_err();
-    let message = err.to_string();
-
-    assert!(message.contains("private write failed"), "got: {message}");
-    assert!(sandbox.exec_calls().is_empty());
-    assert!(sandbox.write_file_calls().is_empty());
-    assert_eq!(sandbox.private_write_file_calls().len(), 1);
-}
-
 #[test]
 fn build_env_json_with_environment() {
     let mut ctx = minimal_context();
@@ -1412,7 +1335,12 @@ fn build_env_json_with_api_start_time() {
     ctx.api_start_time = Some(1_700_000_000_500);
 
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert_eq!(env.get("VM0_API_START_TIME").unwrap(), "1700000000500");
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_API_START_TIME_ENV)
+            .unwrap(),
+        "1700000000500"
+    );
+    assert!(!env.contains_key(guest_contracts::env::API_START_TIME_ENV));
 }
 
 #[test]
@@ -1541,6 +1469,7 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     ctx.pi_launch_config.as_mut().unwrap()["futureLaunchField"] = json!("launch-root");
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["futureFirstTurnField"] =
         json!("first-turn");
+    ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["sandboxEventSequenceStart"] = json!(4);
     ctx.pi_model_config.as_mut().unwrap()["futureModelField"] = json!("model-root");
     let sandbox_id = SandboxId::new_v4().to_string();
     let payload = validate_execution_context_before_sandbox(
@@ -1561,6 +1490,7 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     assert_eq!(launch["schemaVersion"], 2);
     assert_eq!(launch["futureLaunchField"], "launch-root");
     assert_eq!(launch["apiFirstTurn"]["futureFirstTurnField"], "first-turn");
+    assert_eq!(launch["apiFirstTurn"]["sandboxEventSequenceStart"], 4);
     let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
@@ -1642,8 +1572,13 @@ fn pi_execution_context_rejects_invalid_launch_fields_before_sandbox() {
         ),
         (
             "/apiFirstTurn/sandboxEventSequenceStart",
-            json!(2),
-            "event sequence must start at 1",
+            json!(0),
+            "event sequence start must be between 1 and 2147483647",
+        ),
+        (
+            "/apiFirstTurn/sandboxEventSequenceStart",
+            json!(i64::from(i32::MAX) + 1),
+            "event sequence start must be between 1 and 2147483647",
         ),
         (
             "/apiFirstTurn/baseSession/sha256",
@@ -1781,11 +1716,17 @@ fn build_env_json_environment_cannot_override_system() {
     // System variables take precedence over user environment
     assert!(!env.contains_key("VM0_PROMPT"));
     assert_eq!(payload.prompt, "test prompt");
-    assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+    assert_eq!(
+        env.get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
+            .unwrap(),
+        "tok"
+    );
+    assert!(!env.contains_key(guest_contracts::env::API_TOKEN_ENV));
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert!(!user_env.contains_key("VM0_PROMPT"));
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
+    assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
 }
 
 #[test]

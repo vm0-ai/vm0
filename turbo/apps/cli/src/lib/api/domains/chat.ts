@@ -30,14 +30,22 @@ export interface ChatThreadSnapshot {
   readonly latestSeqId: number | null;
 }
 
+interface ChatThreadUnread {
+  readonly threadId: string;
+  readonly unreadAt: string;
+}
+
 export type ChatThreadEvent = ApiChatThreadEvent;
 
-interface ZeroChatEventSnapshotDownload {
-  readonly url: string;
-  readonly lastEventId: string;
-  readonly lastSeqId: number;
-  readonly projection: ChatEventSnapshotProjection;
-}
+type ZeroChatEventSnapshotResult =
+  | {
+      readonly kind: "snapshot";
+      readonly url: string;
+      readonly lastEventId: string | null;
+      readonly lastSeqId: number;
+      readonly projection: ChatEventSnapshotProjection;
+    }
+  | { readonly kind: "missing" };
 
 type ZeroChatEventRowsPage =
   | {
@@ -48,10 +56,15 @@ type ZeroChatEventRowsPage =
     }
   | { readonly kind: "expired" };
 
-const CHAT_EVENT_SCHEMA_VERSION_HEADERS = Object.freeze({
-  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-    CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-});
+type ChatEventSchemaVersionHeaders = Readonly<{
+  [CHAT_EVENT_SCHEMA_VERSION_HEADER]: string;
+}>;
+
+const CHAT_EVENT_SCHEMA_VERSION_HEADERS: ChatEventSchemaVersionHeaders =
+  Object.freeze({
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+  });
 
 function assertChatEventSchemaVersion(headers: Headers): void {
   const version = headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
@@ -151,6 +164,20 @@ export async function listChatThreadEvents(options: {
   handleError(result, "Failed to list chat thread events");
 }
 
+export async function listChatThreadUnreads(options: {
+  agentId: string;
+}): Promise<readonly ChatThreadUnread[]> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadsContract, config);
+  const result = await client.unreads({
+    query: { agentId: options.agentId },
+  });
+  if (result.status === 200) {
+    return result.body.unreads;
+  }
+  handleError(result, "Failed to list unread chat threads");
+}
+
 export async function createChatThread(options: {
   agentId: string;
   title: string;
@@ -233,7 +260,7 @@ export async function sendChatEvent(
 
 export async function getChatEventSnapshot(options: {
   readonly threadId: string;
-}): Promise<ZeroChatEventSnapshotDownload | null> {
+}): Promise<ZeroChatEventSnapshotResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.snapshot({
@@ -242,17 +269,16 @@ export async function getChatEventSnapshot(options: {
   });
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
-    // New pinned CLI -> old API fallback. Remove with #29362 after the old API
-    // leaves rollback and contexts pinned to this CLI have drained.
     return {
+      kind: "snapshot",
       url: result.body.url,
       lastEventId: result.body.lastEventId,
       lastSeqId: result.body.lastSeqId,
-      projection: result.body.projection ?? "full",
+      projection: result.body.projection,
     };
   }
   if (result.status === 404) {
-    return null;
+    return { kind: "missing" };
   }
   handleError(result, "Failed to get chat event snapshot");
 }
@@ -266,7 +292,7 @@ export async function listChatEventRows(
     | {
         readonly sinceEventId: string;
         readonly sinceSeqId: number;
-        readonly sinceProjection?: ChatEventSnapshotProjection;
+        readonly sinceProjection: ChatEventSnapshotProjection;
       }
   ),
 ): Promise<ZeroChatEventRowsPage> {
@@ -281,40 +307,17 @@ export async function listChatEventRows(
         : {
             sinceSeqId: options.sinceSeqId,
             sinceEventId: options.sinceEventId,
-            ...(options.sinceProjection === undefined
-              ? {}
-              : { sinceProjection: options.sinceProjection }),
+            sinceProjection: options.sinceProjection,
             limit: options.limit,
           },
   });
   assertChatEventSchemaVersion(result.headers);
   if (result.status === 200) {
-    // New pinned CLI -> old API fallback. Remove with #29362 after the old API
-    // leaves rollback and contexts pinned to this CLI have drained.
-    const projection =
-      result.body.projection ??
-      (options.sinceEventId === null ? undefined : options.sinceProjection) ??
-      "full";
-    const lastRow = result.body.rows.at(-1);
     return {
       kind: "rows",
       rows: result.body.rows,
-      cursor:
-        result.body.cursor ??
-        (lastRow === undefined
-          ? options.sinceEventId === null
-            ? { lastEventId: null, lastSeqId: 0 }
-            : {
-                lastEventId: options.sinceEventId,
-                lastSeqId: options.sinceSeqId,
-                projection,
-              }
-          : {
-              lastEventId: lastRow.id,
-              lastSeqId: lastRow.seqId,
-              projection,
-            }),
-      hasMore: result.body.hasMore ?? result.body.rows.length === options.limit,
+      cursor: result.body.cursor,
+      hasMore: result.body.hasMore,
     };
   }
   if (result.status === 410) {

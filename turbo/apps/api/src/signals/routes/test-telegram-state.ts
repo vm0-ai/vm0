@@ -35,7 +35,6 @@ import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
-import { dispatchTelegramChatDeliveryOnce } from "../services/internal-telegram-chat-run-callback.service";
 import {
   normalizeRunMetadata,
   writeRunMetadata,
@@ -1330,7 +1329,7 @@ async function seedModelPoliciesForAction(
       orgId: required.org_id!,
       model: "claude-sonnet-5",
       isDefault: true,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       createdByUserId: required.user_id!,
       updatedByUserId: required.user_id!,
@@ -1338,7 +1337,7 @@ async function seedModelPoliciesForAction(
     {
       orgId: required.org_id!,
       model: "claude-opus-4-8",
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       createdByUserId: required.user_id!,
       updatedByUserId: required.user_id!,
@@ -1346,7 +1345,7 @@ async function seedModelPoliciesForAction(
     {
       orgId: required.org_id!,
       model: "deepseek-v4-flash",
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       createdByUserId: required.user_id!,
       updatedByUserId: required.user_id!,
@@ -1438,68 +1437,6 @@ async function seedPendingUserLinkForAction(
   });
   signal.throwIfAborted();
   return actionOk();
-}
-
-async function redriveLegacyChatCallbackForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const runId = readActionString(body, "run_id");
-  if (!runId) {
-    return actionBadRequest("run_id is required");
-  }
-  const [callback] = await db
-    .select({
-      id: agentRunCallbacks.id,
-      payload: agentRunCallbacks.payload,
-    })
-    .from(agentRunCallbacks)
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, runId),
-        eq(agentRunCallbacks.internalKind, "telegram:chat"),
-        eq(agentRunCallbacks.status, "delivered"),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  if (
-    !callback ||
-    typeof callback.payload !== "object" ||
-    callback.payload === null ||
-    Array.isArray(callback.payload) ||
-    !Object.hasOwn(callback.payload, "publicBrand")
-  ) {
-    return actionBadRequest(
-      "A branded delivered Telegram callback is required",
-    );
-  }
-
-  // Current writers cannot author this historical shape. Remove only the
-  // rollout field, then redrive the real Telegram callback consumer.
-  const legacyPayload: Record<string, unknown> = { ...callback.payload };
-  delete legacyPayload.publicBrand;
-  const [requeued] = await db
-    .update(agentRunCallbacks)
-    .set({
-      payload: legacyPayload,
-      status: "pending",
-      attempts: 0,
-      lastAttemptAt: null,
-      lastError: null,
-      deliveredAt: null,
-    })
-    .where(eq(agentRunCallbacks.id, callback.id))
-    .returning({ id: agentRunCallbacks.id });
-  signal.throwIfAborted();
-  if (!requeued) {
-    return actionBadRequest("Failed to requeue Telegram callback");
-  }
-
-  await dispatchTelegramChatDeliveryOnce(db, requeued.id, "completed", signal);
-  signal.throwIfAborted();
-  return actionOk({ callback_id: requeued.id });
 }
 
 async function updateRunCallbackForAction(
@@ -1905,7 +1842,6 @@ const telegramStateActionHandlers = {
   "seed-org-credits": seedOrgCreditsForAction,
   "get-selected-model": getSelectedModelForAction,
   "seed-pending-user-link": seedPendingUserLinkForAction,
-  "redrive-legacy-chat-callback": redriveLegacyChatCallbackForAction,
   "update-run-callback": updateRunCallbackForAction,
   "update-run": updateRunForAction,
   "get-run": getRunForAction,

@@ -1,4 +1,7 @@
-import { isLimitedFree1RestrictedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import {
+  isBuiltInModelProviderType,
+  isLimitedFree1RestrictedRunModel,
+} from "@okouai/api-contracts/contracts/model-providers";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, gt, lte, sql, sum } from "drizzle-orm";
@@ -125,7 +128,7 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
     return planAdmission;
   }
 
-  if (params.modelProviderType !== "vm0") {
+  if (!isBuiltInModelProviderType(params.modelProviderType)) {
     return undefined;
   }
 
@@ -151,7 +154,8 @@ export function checkOrgPlanRunAdmission(params: {
   if (!capabilities || capabilities.status !== "active") {
     return insufficientCredits();
   }
-  return (!capabilities.supportByok && params.modelProviderType !== "vm0") ||
+  return (!capabilities.supportByok &&
+    !isBuiltInModelProviderType(params.modelProviderType)) ||
     (capabilities.restrictedVm0Models &&
       isLimitedFree1RestrictedRunModel(params.selectedModel))
     ? insufficientCredits()

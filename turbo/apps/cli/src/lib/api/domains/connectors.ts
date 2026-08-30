@@ -4,9 +4,13 @@ import type {
   ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import {
+  CONNECTOR_ACCOUNT_LIST_MAX_LIMIT,
   connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
+  type ConnectorAccountConnection,
   type ConnectorAccountInspectionResult,
   type ConnectorAccountSelection,
+  type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorManualGrantContract,
@@ -54,6 +58,62 @@ type ZeroConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
 type ZeroConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
 export type ConnectorCatalogPermissionDetail =
   PublicConnectorCatalogPermissionDetail;
+
+type ConnectorAccountConnectionsResult =
+  | {
+      readonly state: "available";
+      readonly connections: readonly ConnectorAccountConnection[];
+    }
+  | { readonly state: "unavailable" };
+
+export type ConnectorManualGrantAccountMutation = Extract<
+  ConnectorAccountMutationIntent,
+  { intent: "add" | "reconnect" }
+>;
+
+export async function listConnectorAccountConnections(
+  target: ConnectorAccountTarget,
+  search?: string,
+): Promise<ConnectorAccountConnectionsResult> {
+  const config = await getClientConfig();
+  const client = initClient(connectorAccountsContract, {
+    ...config,
+    validateResponse: true,
+  });
+  const connections: ConnectorAccountConnection[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const paging = {
+      limit: CONNECTOR_ACCOUNT_LIST_MAX_LIMIT,
+      ...(cursor ? { cursor } : {}),
+      ...(search ? { search } : {}),
+    };
+    const query =
+      target.kind === "builtin"
+        ? {
+            ...paging,
+            kind: "builtin" as const,
+            connectorSlug: target.connectorSlug,
+          }
+        : {
+            ...paging,
+            kind: "custom" as const,
+            customConnectorId: target.customConnectorId,
+          };
+    const result = await client.connections({ headers: {}, query });
+    if (result.status === 404) {
+      return { state: "unavailable" };
+    }
+    if (result.status !== 200) {
+      handleError(result, "Failed to list connector accounts");
+    }
+    connections.push(...result.body.connections);
+    cursor = result.body.nextCursor;
+  } while (cursor);
+
+  return { state: "available", connections };
+}
 
 export async function inspectConnectorAccounts(
   selections: readonly ConnectorAccountSelection[],
@@ -194,6 +254,7 @@ export async function getConnector(
 export async function connectConnectorManualGrant(
   connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
+  account: ConnectorManualGrantAccountMutation,
   values: Record<string, string>,
 ): Promise<Connector> {
   const config = await getClientConfig();
@@ -202,7 +263,7 @@ export async function connectConnectorManualGrant(
   const result = await client.connect({
     params: { connectorSlug },
     body: {
-      account: { intent: "single-account" },
+      account,
       authMethod,
       values,
     },

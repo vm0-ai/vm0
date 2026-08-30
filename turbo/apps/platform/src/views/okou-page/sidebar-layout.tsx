@@ -47,6 +47,12 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ConcurrencyConfirmDialog } from "./components/org-manage/org-billing-tab.tsx";
 import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
+import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
+import { AttachmentLightbox } from "./attachment-chips.tsx";
+import {
+  applyColorThemeDocumentAttributes,
+  colorTheme$,
+} from "../../signals/theme.ts";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -101,6 +107,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
 
   return (
     <Button
+      showTooltip
       type="button"
       onClick={() => {
         reloadArtifacts();
@@ -166,6 +173,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
   }
   return (
     <Button
+      showTooltip
       type="button"
       onClick={() => {
         detach(
@@ -265,6 +273,7 @@ function MobileTopBar() {
     <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       <MobileSharingOverlayLeaf />
       <Button
+        showTooltip
         type="button"
         onClick={() => {
           setExpanded(true);
@@ -329,18 +338,37 @@ function SettingsDialogMount() {
   );
 }
 
+function AttachmentLightboxMount() {
+  const lightboxUrl = useGet(lightboxUrl$);
+  return lightboxUrl ? <AttachmentLightbox /> : null;
+}
+
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
+  const colorTheme = useGet(colorTheme$);
+  const gradientColorThemesEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.GradientColorThemes] ?? false;
   const { t } = useTranslation();
 
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background">
+    <div
+      ref={(element) => {
+        applyColorThemeDocumentAttributes(
+          element !== null && gradientColorThemesEnabled,
+          colorTheme,
+        );
+      }}
+      className="zero-app zero-viewport-shell flex w-full bg-background"
+      data-gradient-color-themes={gradientColorThemesEnabled || undefined}
+      data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
+    >
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
       <ConcurrencyConfirmDialog />
       <CreditPurchaseConfirmDialog />
       <SubscriptionPurchaseConfirmDialog />
+      <AttachmentLightboxMount />
       <QueueDrawer />
       <Sidebar />
       <div

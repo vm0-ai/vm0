@@ -32,7 +32,7 @@ export const orgModelPolicies = pgTable(
       length: 50,
     })
       .notNull()
-      .default("vm0"),
+      .default("built-in"),
     credentialScope: varchar("credential_scope", { length: 20 })
       .notNull()
       .default("org"),
@@ -78,7 +78,7 @@ export const orgModelPolicies = pgTable(
       ),
       check(
         "chk_org_model_policies_builtin_route_no_provider_id",
-        sql`default_provider_type <> 'vm0' OR (model_provider_id IS NULL AND model_provider_surface_id IS NULL)`,
+        sql`default_provider_type <> 'built-in' OR (model_provider_id IS NULL AND model_provider_surface_id IS NULL)`,
       ),
       check(
         "chk_org_model_policies_one_route_id",

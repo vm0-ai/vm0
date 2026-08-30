@@ -121,7 +121,10 @@
         "cacheMiss": "कोई भी कैश किया गया कार्यस्थान पुन: उपयोग कुंजी से मेल नहीं खाता।",
         "deviceLimitMismatch": "निष्क्रिय पूल प्रविष्टि मौजूद है लेकिन इसकी डिवाइस दर सीमक स्थिति मेल नहीं खाती है।",
         "diskPressure": "रनर पर डिस्क दबाव के कारण कार्यस्थान का पुन: उपयोग छोड़ दिया गया।",
+        "environment": "परिवेश",
         "featureDisabled": "इस रन के लिए सैंडबॉक्स का पुन: उपयोग अक्षम है।",
+        "generation": "जनरेशन",
+        "hostname": "होस्टनाम",
         "invalidMetadata": "कैश किए गए कार्यस्थान का मेटाडेटा अमान्य था।",
         "invalidWorkingDir": "अनुरोधित कार्य निर्देशिका का पुन: उपयोग नहीं किया जा सका।",
         "lockBusy": "कोई अन्य रन उसी कार्यस्थान को तैयार कर रहा था।",
@@ -129,21 +132,28 @@
         "noSessionId": "पुराना परिणाम: सैंडबॉक्स का पुन: उपयोग न होने का सटीक कारण उपलब्ध नहीं है।",
         "notConfigured": "इस रन के लिए कार्यस्थान का पुन: उपयोग कॉन्फ़िगर नहीं किया गया था।",
         "notReused": "पुन: उपयोग नहीं किया गया",
+        "outcomeUnavailableDescription": "अतिरिक्त विवरण उपलब्ध नहीं हैं।",
         "poolMiss": "निष्क्रिय पूल में कोई मेल खाता सैंडबॉक्स नहीं मिला।",
         "profileMismatch": "निष्क्रिय पूल प्रविष्टि मौजूद है लेकिन इसकी प्रोफ़ाइल मेल नहीं खाती।",
         "provisioning": "तैयार किया जा रहा है",
         "reused": "पुन: उपयोग",
         "reusedDescription": "सैंडबॉक्स को निष्क्रिय पूल से हटा दिया गया था।",
+        "runnerId": "रनर आईडी",
         "sandbox": "सैंडबॉक्स",
         "sandboxPrepareFallback": "कैश किया गया कार्यस्थान मिला, लेकिन सैंडबॉक्स तैयार होने के बाद उसका उपयोग नहीं किया जा सका।",
         "sandboxReusedDescription": "पुन: उपयोग किए गए सैंडबॉक्स में कार्यस्थान उपलब्ध रहा।",
         "startup": "प्रारंभ",
         "startupCold": "कोल्ड स्टार्ट",
+        "startupColdDescription": "एक नया सैंडबॉक्स और कार्यस्थान तैयार किया गया।",
         "startupSandbox": "सैंडबॉक्स पुन: उपयोग",
+        "startupSandboxDescription": "सैंडबॉक्स और उसके कार्यस्थान का पुन: उपयोग किया गया।",
         "startupUnknown": "अज्ञात",
+        "startupUnknownDescription": "स्टार्टअप पुन: उपयोग का विवरण उपलब्ध नहीं है।",
         "startupWorkspace": "कार्यस्थान पुन: उपयोग",
+        "startupWorkspaceDescription": "एक नए सैंडबॉक्स ने कैश किए गए कार्यस्थान को पुनर्स्थापित किया।",
         "unavailable": "अनुपलब्ध",
         "unparkFailed": "अनपार्क प्रयास विफल; एक ताज़ा सैंडबॉक्स का प्रावधान किया गया था।",
+        "version": "संस्करण",
         "workspace": "कार्यस्थान",
         "workspaceNoReuseKey": "कोई कार्यस्थान पुन: उपयोग कुंजी उपलब्ध नहीं थी।",
         "workspaceReusedDescription": "कार्यस्थान को रनर कैश से पुनर्स्थापित किया गया।"
@@ -431,7 +441,6 @@
       "ariaLabel": "साइड बार",
       "chat": "चैट",
       "collapse": "साइडबार को संक्षिप्त करें",
-      "expand": "साइडबार का विस्तार करें",
       "hideChatList": "चैट सूची छिपाएं",
       "manage": "प्रबंधित करें",
       "mobile": {
@@ -455,7 +464,7 @@
         "workflows": "वर्कफ़्लो",
         "works": "काम करता है"
       },
-      "searchConversations": "वार्तालाप खोजें",
+      "searchWorkspace": "वर्कस्पेस खोजें",
       "showChatList": "चैट सूची दिखाएं",
       "workspaceSwitcher": {
         "create": "वर्कस्पेस बनाएं",
@@ -506,7 +515,6 @@
         "arrow": "तीर",
         "box": "बॉक्स",
         "pen": "बनाएँ",
-        "redact": "छिपाएँ",
         "text": "टेक्स्ट"
       },
       "undo": "पूर्ववत करें"
@@ -1066,6 +1074,7 @@
         "secondFactorDescription": "इस साइन-इन के लिए एक अतिरिक्त सत्यापन चरण आवश्यक है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
         "secondFactorTitle": "अतिरिक्त सत्यापन आवश्यक है",
         "selectOrganization": "{{organizationName}} के साथ जारी रखें",
+        "signedInAs": "{{identifier}} के रूप में साइन इन किया गया",
         "unsupportedDescription": "आपके खाते ने ऐसा प्रमाणीकरण चरण लौटाया है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
         "unsupportedTitle": "साइन-इन चरण उपलब्ध नहीं है"
       },
@@ -1074,7 +1083,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "मौजूदा साइन-इन का उपयोग करें",
         "addAccount": "खाता जोड़ें",
         "appleMethod": "Apple के साथ जारी रखें",
         "back": "वापस",
@@ -1104,6 +1112,7 @@
         "hidePassword": "पासवर्ड छिपाएँ",
         "identifierLabel": "ईमेल पता या उपयोगकर्ता नाम",
         "identifierPlaceholder": "अपना ईमेल पता या उपयोगकर्ता नाम दर्ज करें",
+        "lastUsed": "अंतिम समय प्रयोग हुआ",
         "methodsHelpPrompt": "इनमें से कोई विकल्प नहीं है?",
         "newPasswordLabel": "नया पासवर्ड",
         "newPasswordSubtitle": "सुरक्षा कारणों से, आपका पासवर्ड रीसेट करना आवश्यक है।",
@@ -1141,7 +1150,6 @@
         "verify": "सत्यापित करें"
       },
       "signUp": {
-        "action": "मौजूदा साइन-अप का उपयोग करें",
         "alreadyHaveAccount": "पहले से ही खाता है?",
         "appleMethod": "Apple के साथ जारी रखें",
         "back": "वापस",
@@ -1691,7 +1699,6 @@
         "inviteMember": "इंसानों को बुलाएँ 🤝",
         "otherChannels": "Telegram और फ़ोन"
       },
-      "invitePeople": "लोगों को आमंत्रित करें",
       "taglines": {
         "anonymous": {
           "buildSomething": "कुछ बनाने के लिए तैयार हैं?",
@@ -1888,18 +1895,17 @@
       "agentSuggestions": "एजेंट",
       "configureModel": "मॉडल कॉन्फ़िगर करें",
       "createWorkflow": "वर्कफ़्लो बनाएँ",
+      "imageModelForThisChat": "इस चैट के लिए इमेज मॉडल",
       "message": "संदेश",
+      "modelForThisChat": "इस चैट के लिए मॉडल",
       "placeholder": "मुझसे वर्कफ़्लो ऑटोमेट करने और टास्क मैनेज करने के लिए कहें...",
       "selectedModelUnavailable": "चयनित मॉडल उपलब्ध नहीं है. भेजने से पहले इसे कॉन्फ़िगर करें.",
       "selectedModelUnavailableToast": "चयनित मॉडल उपलब्ध नहीं है",
       "selectModel": "मॉडल चुनें",
-      "setAsDefault": "डिफ़ॉल्ट के रूप में सेट करें",
-      "temporaryFastModeDisabledNotice": "इस रन के लिए फ़ास्ट मोड अस्थायी रूप से बंद है",
-      "temporaryFastModeEnabledNotice": "इस रन के लिए फ़ास्ट मोड अस्थायी रूप से चालू है",
-      "temporaryImageModelNotice": "इमेज के लिए अस्थायी रूप से {{model}} पर स्विच किया गया",
-      "temporaryModelNotice": "अस्थायी रूप से {{model}} पर स्विच किया गया",
-      "temporaryVideoModelNotice": "वीडियो के लिए अस्थायी रूप से {{model}} पर स्विच किया गया",
+      "temporarilySwitchTo": "अस्थायी रूप से इस पर स्विच करें",
       "threadSuggestions": "चैट थ्रेड",
+      "useForFutureChats": "भविष्य की चैट के लिए इस मॉडल का इस्तेमाल करें",
+      "videoModelForThisChat": "इस चैट के लिए वीडियो मॉडल",
       "visualAttachmentsUnsupported": "{{modelName}} छवियों या वीडियो को नहीं पहचान सकता। उन्हें संलग्न करने के लिए दृष्टि-सक्षम मॉडल पर स्विच करें।",
       "workflows": {
         "empty": "कोई मेल खाता वर्कफ़्लो नहीं",
@@ -1936,6 +1942,7 @@
       "authorized": "{{connectorName}} जुड़ा हुआ है और {{agentName}} के लिए अधिकृत है",
       "available_one": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
+      "back": "पीछे",
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
       "defaultAccountFor": "{{connector}} · डिफ़ॉल्ट खाता उपयोग हो रहा है: {{account}}",
@@ -1991,7 +1998,7 @@
       "agents": "एजेंट",
       "back": "वापस",
       "content": "सामग्री",
-      "description": "चुनी गई सामग्री को किसी एजेंट या चैट में फ़ॉरवर्ड करें।",
+      "description": "चुनी गई सामग्री पर काम जारी रखने के लिए उसे किसी एजेंट या चैट में भेजें।",
       "noResults": "कोई एजेंट या चैट नहीं मिली",
       "search": "एजेंट और चैट खोजें...",
       "sent": "सफलतापूर्वक फ़ॉरवर्ड किया गया",
@@ -2304,48 +2311,6 @@
       "copied": "कॉपी किया गया",
       "deleted": "चैट हटा दी गई"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "फ़ाइलें बदल रहे हैं",
-            "singular": "एक फ़ाइल बदल रहे हैं"
-          },
-          "terminal": {
-            "plural": "फ़ाइलें बदलीं",
-            "singular": "एक फ़ाइल बदली"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "फ़ाइलें पढ़ रहे हैं",
-            "singular": "एक फ़ाइल पढ़ रहे हैं"
-          },
-          "terminal": {
-            "plural": "फ़ाइलें पढ़ीं",
-            "singular": "एक फ़ाइल पढ़ी"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "कमांड चला रहे हैं",
-            "singular": "एक कमांड चला रहे हैं"
-          },
-          "terminal": {
-            "plural": "कमांड चलाए",
-            "singular": "एक कमांड चलाया"
-          }
-        }
-      },
-      "collapse": "टूल गतिविधि संक्षिप्त करें",
-      "expand": "टूल गतिविधि विस्तृत करें",
-      "status": {
-        "cancelled": "रद्द",
-        "error": "विफल",
-        "pending": "जारी",
-        "success": "पूरा हुआ"
-      }
-    },
     "voice": {
       "checkingLimit": "ध्वनि इनपुट सीमा की जाँच की जा रही है",
       "input": "ध्वनि इनपुट",
@@ -2416,10 +2381,9 @@
       "summaryOne": "{{value}} खाता",
       "summaryOne_one": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} पर ध्यान देना आवश्यक है",
+      "summaryWithAttention": "{{value}}/{{total}} पर ध्यान देना आवश्यक है",
       "summaryWithAttention_one": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "आवेदन करना",
@@ -2483,6 +2447,8 @@
       "access": {
         "add": "पहुंच जोड़ें",
         "manage": "{{connector}} पहुंच प्रबंधित करें",
+        "summaryMany": "{{value}} एजेंट",
+        "unavailable": "पहुंच उपलब्ध नहीं है",
         "usedBy": "द्वारा उपयोग किया जाता है"
       },
       "categories": {
@@ -5031,6 +4997,20 @@
         "sectionTitle": "खाता एवं सुरक्षा"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "हर इंटरफ़ेस परत में एक चमकदार और हल्का रंग पैलेट लागू करें।",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "कलर थीम"
+        },
         "description": "चुनें कि इंटरफ़ेस कैसा दिखेगा.",
         "sectionTitle": "उपस्थिति",
         "theme": {
@@ -5331,15 +5311,20 @@
       "viewSource": "आरेख स्रोत"
     },
     "notFound": {
+      "action": "होम पर वापस जाएँ",
       "description": "आप जिस पृष्ठ की तलाश कर रहे हैं वह मौजूद नहीं है।",
       "title": "पृष्ठ नहीं मिला"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "यह साझा बातचीत मौजूद नहीं है।",
+    "handoffDescription": "{{assistantName}} संदर्भ को एक नई चैट में ले जाता है",
+    "handoffPrompt": "इस साझा बातचीत को मेरे साथ जारी रखें: {{url}}",
+    "makeConversationYours": "इस बातचीत को अपना बनाएं",
     "notFoundTitle": "साझा बातचीत नहीं मिली",
-    "tryOkou": "{{assistantName}} आज़माएँ"
+    "share": "साझा करें",
+    "signIn": "साइन इन करें",
+    "signUp": "साइन अप करें",
+    "tryItYourself": "खुद आज़माएं"
   },
   "usage": {
     "displayNames": {
@@ -6084,6 +6069,67 @@
       },
       "title": "वर्कफ़्लो",
       "viewAutomations": "ऑटोमेशन देखें"
+    },
+    "official": {
+      "activeInstallationDescription": "यह आधिकारिक वर्कफ़्लो चालू रहता है और इसकी प्रबंधित सामग्री केवल पढ़ने योग्य रहती है।",
+      "activeInstallationTitle": "आधिकारिक वर्कफ़्लो",
+      "agent": "एजेंट",
+      "automationCount_one": "{{count}} ऑटोमेशन",
+      "automationCount_other": "{{count}} ऑटोमेशन",
+      "badge": "आधिकारिक",
+      "browse": "आधिकारिक वर्कफ़्लो देखें",
+      "chooseValue": "मान चुनें",
+      "copySucceededUninstallFailed": "कॉपी तैयार है, लेकिन मूल आधिकारिक वर्कफ़्लो को अनइंस्टॉल नहीं किया जा सका।",
+      "description": "vm0 द्वारा प्रबंधित वर्कफ़्लो इंस्टॉल करें।",
+      "empty": "कोई आधिकारिक वर्कफ़्लो उपलब्ध नहीं है।",
+      "includedAutomations": "शामिल ऑटोमेशन",
+      "install": "इंस्टॉल करें",
+      "installDescription": "एक एजेंट चुनें और हर आवश्यक पैरामीटर पूरा करें। सभी शामिल ऑटोमेशन इंस्टॉल किए जाएंगे।",
+      "installed": "आधिकारिक वर्कफ़्लो इंस्टॉल हो गया",
+      "installErrorDescription": "एजेंट और पैरामीटर मान जांचें, फिर दोबारा कोशिश करें।",
+      "installErrorTitle": "आधिकारिक वर्कफ़्लो इंस्टॉल नहीं किया जा सका",
+      "installTitle": "{{name}} इंस्टॉल करें",
+      "intendedOff": "बंद रहना चाहिए",
+      "intendedOn": "चालू रहना चाहिए",
+      "loadErrorDescription": "यह कैटलॉग उपलब्ध नहीं हो सकता है या आपके खाते के लिए सक्षम नहीं है।",
+      "loadErrorTitle": "आधिकारिक वर्कफ़्लो लोड नहीं किए जा सके",
+      "no": "नहीं",
+      "noParameters": "किसी पैरामीटर की आवश्यकता नहीं है।",
+      "noResults": "आपकी खोज से कोई आधिकारिक वर्कफ़्लो मेल नहीं खाता।",
+      "notFound": "यह आधिकारिक वर्कफ़्लो नहीं मिला।",
+      "parameterCount_one": "{{count}} पैरामीटर",
+      "parameterCount_other": "{{count}} पैरामीटर",
+      "parameterRequired": "{{key}} (आवश्यक)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "फिर से कॉन्फ़िगर करें",
+      "reconfigured": "आधिकारिक वर्कफ़्लो फिर से कॉन्फ़िगर किया गया",
+      "reconfigureDescription": "इस वर्कफ़्लो या इसके ऑटोमेशन को बदले बिना टाइप किए गए पैरामीटर अपडेट करें।",
+      "reconfigureDialogDescription": "हर प्रबंधित ऑटोमेशन की समीक्षा करें और उसके पैरामीटर अपडेट करें।",
+      "reconfigureErrorDescription": "आवश्यक मानों की समीक्षा करें और फिर से कोशिश करें।",
+      "reconfigureErrorTitle": "आधिकारिक वर्कफ़्लो फिर से कॉन्फ़िगर नहीं किया जा सका",
+      "reconfigureTitle": "इंस्टॉलेशन पैरामीटर",
+      "reconfigureUnavailable": "प्रामाणिक पैरामीटर मेटाडेटा अस्थायी रूप से उपलब्ध नहीं है।",
+      "retiredBadge": "आधिकारिक · सेवानिवृत्त",
+      "retiredDefinitionDescription": "इस सुरक्षित परिभाषा को देखा जा सकता है, लेकिन अब इसे इंस्टॉल नहीं किया जा सकता।",
+      "retiredInstallationDescription": "यह परिभाषा सेवानिवृत्त है। आपकी मौजूदा इंस्टॉलेशन अनइंस्टॉल किए जाने तक चालू और केवल पढ़ने योग्य रहेगी।",
+      "retiredInstallationTitle": "आधिकारिक वर्कफ़्लो सेवानिवृत्त",
+      "retiredTitle": "सेवानिवृत्त परिभाषा",
+      "retry": "फिर से कोशिश करें",
+      "search": "आधिकारिक वर्कफ़्लो खोजें",
+      "selectAgent": "एजेंट चुनें",
+      "statusCurrent": "वर्तमान",
+      "statusFailed": "विफल",
+      "statusNeedsReconfiguration": "फिर से कॉन्फ़िगर करना आवश्यक है",
+      "statusReconciling": "समन्वय हो रहा है",
+      "title": "आधिकारिक वर्कफ़्लो",
+      "unavailableInstallationDescription": "स्वीकृत परिभाषा अस्थायी रूप से उपलब्ध नहीं है। मौजूदा संचालन नियंत्रण उपलब्ध रहते हैं।",
+      "unavailableInstallationTitle": "आधिकारिक परिभाषा उपलब्ध नहीं है",
+      "uninstall": "अनइंस्टॉल करें",
+      "uninstallConfirm": "इससे आधिकारिक इंस्टॉलेशन और उसके सभी ऑटोमेशन हट जाएंगे। इस क्रिया को पूर्ववत नहीं किया जा सकता।",
+      "uninstallDescription": "इस आधिकारिक वर्कफ़्लो इंस्टॉलेशन को उसके प्रबंधित जीवनचक्र के माध्यम से हटाएं।",
+      "uninstallTitle": "आधिकारिक वर्कफ़्लो अनइंस्टॉल करें",
+      "viewAndInstall": "देखें और इंस्टॉल करें",
+      "yes": "हाँ"
     }
   },
   "works": {

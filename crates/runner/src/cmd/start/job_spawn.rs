@@ -29,6 +29,7 @@ use super::sandbox_finalization::{
 };
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
+use crate::error::RunnerError;
 use crate::executor::{
     self, ExecutorConfig, RunnerPreSpawnConcurrency, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
     SessionHistoryRestorePlan,
@@ -215,7 +216,7 @@ impl ExecutorInvocation {
                     exec_config_for_panic.http.clone(),
                     run_id,
                     sandbox_token,
-                    exec_config_for_panic.runner_name.clone(),
+                    exec_config_for_panic.runner_hostname.clone(),
                 );
                 let failure =
                     executor::ExecutionFailure::from_error(format!("executor task panicked: {e}"));
@@ -644,15 +645,17 @@ pub(super) async fn run_job(
             move |run_id, sandbox_id| {
                 let status = Arc::clone(&status_for_prepared);
                 async move {
-                    if !status
+                    match status
                         .mark_run_running_if_matching(run_id, sandbox_id)
                         .await
                     {
-                        warn!(
-                            run_id = %run_id,
-                            sandbox_id = %sandbox_id,
-                            "sandbox prepared after active run status changed"
-                        );
+                        Ok(true) => Ok(()),
+                        Ok(false) => Err(RunnerError::Internal(format!(
+                            "sandbox {sandbox_id} prepared after active status changed for run {run_id}"
+                        ))),
+                        Err(error) => Err(RunnerError::Internal(format!(
+                            "persist prepared sandbox {sandbox_id} as running for run {run_id}: {error}"
+                        ))),
                     }
                 }
                 .boxed()
@@ -946,7 +949,7 @@ mod tests {
                 None,
                 None,
             ));
-            status.write_initial().await;
+            status.write_initial().await.unwrap();
             let parking_gate = ParkingGate::new_open();
             let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
                 IdlePoolConfig { max_idle: 10 },
@@ -1045,12 +1048,7 @@ mod tests {
             },
             exit_code: 0,
             err: None,
-            telemetry: JobTelemetry::new(
-                test_http_client(),
-                run_id,
-                "sandbox-token".into(),
-                "test-runner".into(),
-            ),
+            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into(), None),
         }
     }
 
@@ -1070,12 +1068,7 @@ mod tests {
             },
             exit_code: 1,
             err: Some("sandbox unavailable".into()),
-            telemetry: JobTelemetry::new(
-                test_http_client(),
-                run_id,
-                "sandbox-token".into(),
-                "test-runner".into(),
-            ),
+            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into(), None),
         }
     }
 
@@ -1484,8 +1477,9 @@ mod tests {
             .map(|idle_sandboxes| {
                 idle_sandboxes
                     .iter()
-                    .filter_map(|vm| {
-                        vm.get("reuse_key")
+                    .filter_map(|sandbox| {
+                        sandbox
+                            .get("reuse_key")
                             .and_then(|reuse_key| reuse_key.as_str())
                             .map(str::to_string)
                     })
@@ -1592,11 +1586,12 @@ mod tests {
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        fixture.status.add_run(run_id, sandbox_id).await;
+        fixture.status.add_run(run_id, sandbox_id).await.unwrap();
         fixture
             .status
             .remove_run_if_matching(run_id, sandbox_id)
-            .await;
+            .await
+            .unwrap();
         cleanup_state.mark_status_removed();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
@@ -1613,7 +1608,7 @@ mod tests {
         let fixture = CleanupPanickedJobFixture::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        fixture.status.add_run(run_id, sandbox_id).await;
+        fixture.status.add_run(run_id, sandbox_id).await.unwrap();
         fixture
             .cleanup(run_id, sandbox_id, RunCleanupState::new())
             .await;
@@ -1631,7 +1626,7 @@ mod tests {
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        fixture.status.add_run(run_id, sandbox_id).await;
+        fixture.status.add_run(run_id, sandbox_id).await.unwrap();
         cleanup_state.mark_destroy_completed();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
@@ -1650,8 +1645,16 @@ mod tests {
         let run_id = RunId::new_v4();
         let completed_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
-        fixture.status.add_run(run_id, completed_sandbox_id).await;
-        fixture.status.add_run(run_id, current_sandbox_id).await;
+        fixture
+            .status
+            .add_run(run_id, completed_sandbox_id)
+            .await
+            .unwrap();
+        fixture
+            .status
+            .add_run(run_id, current_sandbox_id)
+            .await
+            .unwrap();
         let stale_cancellation = fixture.tokens.register(run_id).await.unwrap();
         assert!(stale_cancellation.unregister().await);
         let replacement_cancellation = fixture.tokens.register(run_id).await.unwrap();
@@ -1694,7 +1697,7 @@ mod tests {
             fixture.idle_pool.lock().await.park(candidate),
             ParkResult::Parked
         ));
-        fixture.status.add_run(run_id, sandbox_id).await;
+        fixture.status.add_run(run_id, sandbox_id).await.unwrap();
         cleanup_state.mark_idle_pool_owned();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;

@@ -8,11 +8,12 @@ import {
   firewallSchema,
   networkPolicySchema,
   networkPoliciesSchema,
-} from "@okouai/connectors/firewall-types";
-import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "./connector-catalog";
+} from "@okouai/connectors/firewall-contracts";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
+import { modelUsageObservationEventsSchema } from "./model-usage-observations";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
+import { eventSequenceNumberSchema } from "./runs";
 
 const c = initContract();
 
@@ -36,6 +37,9 @@ export const CANONICAL_PI_SESSION_DIR = `${PI_AGENT_DIR}/sessions/--home-user-wo
 // binding from `api_contracts::generated::constants`.
 export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES = 1024 * 1024;
+// Shared by the runner's enforced deadline and the agent-facing system prompt
+// so the documented execution budget cannot drift from runtime behavior.
+export const AGENT_EXECUTION_TIMEOUT_SECONDS = 2 * 60 * 60;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_ENCODING_ZSTD = "zstd";
@@ -50,8 +54,7 @@ export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
 export const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION = 1;
-export const BUILTIN_FIREWALL_CATALOG_MAX_BYTES =
-  CONNECTOR_CATALOG_MAX_RAW_BYTES;
+export const BUILTIN_FIREWALL_CATALOG_MAX_BYTES = 16 * 1024 * 1024;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -95,11 +98,22 @@ export const runnerClaimPollReasonSchema = z.enum([
   "fast",
 ]);
 
-const runnerHeartbeatGenerationSchema = z
+export const runnerHeartbeatGenerationSchema = z
   .number()
   .int()
   .positive()
   .max(Number.MAX_SAFE_INTEGER);
+
+export const RUNNER_HOSTNAME_MAX_LENGTH = 255;
+export const RUNNER_VERSION_MAX_LENGTH = 128;
+export const runnerHostnameSchema = z
+  .string()
+  .min(1)
+  .max(RUNNER_HOSTNAME_MAX_LENGTH);
+export const runnerVersionSchema = z
+  .string()
+  .min(1)
+  .max(RUNNER_VERSION_MAX_LENGTH);
 
 const runnerProcessIdentitySchema = z
   .object({
@@ -108,16 +122,18 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
-const builtInModelProviderFailureKindSchema = z.enum([
-  "authentication",
-  "billing",
-  "rate_limit",
-  "provider_unavailable",
-  "timeout",
-  "connection",
+export const builtInModelProviderConnectionSourceSchema = z.enum([
+  "provider_response",
+  "upstream_transport",
 ]);
 
 const BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS = 300;
+const builtInModelProviderRetryAfterSecondsSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
+  .optional();
 
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
@@ -548,6 +564,7 @@ export const storageMountEntrySchema = z
     archiveUrl: z.string().optional(),
     archiveSize: archiveSizeSchema.optional(),
     empty: z.boolean().optional(),
+    baselineCandidate: z.literal(true).optional(),
     instructionsTargetFilename: z.string().optional(),
     missingRootPolicy: artifactMissingRootPolicySchema.optional(),
     writeback: z.boolean().optional(),
@@ -577,6 +594,13 @@ export const storageMountEntrySchema = z
         code: z.ZodIssueCode.custom,
         path: ["instructionsTargetFilename"],
         message: "instructionsTargetFilename is not valid for writeback mounts",
+      });
+    }
+    if (writeback && mount.baselineCandidate === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["baselineCandidate"],
+        message: "baselineCandidate is not valid for writeback mounts",
       });
     }
     if (!writeback && mount.missingRootPolicy !== undefined) {
@@ -769,26 +793,46 @@ export const piResourceSnapshotSchema = z
   .strict()
   .readonly();
 
-export const piApiFirstTurnManifestSchema = z
+const piApiFirstTurnSessionSchema = z
+  .object({
+    sessionId: z.uuid(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    rawSize: z
+      .number()
+      .int()
+      .positive()
+      .max(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
+  })
+  .strict()
+  .readonly();
+
+const piSandboxEventSequenceStartSchema = eventSequenceNumberSchema.min(1);
+
+export const piApiFirstTurnManifestV1Schema = z
   .object({
     schemaVersion: z.literal(1),
     outcome: z.literal("handoff"),
     baseSession: piSessionCheckpointSchema,
-    session: z
-      .object({
-        sessionId: z.uuid(),
-        sha256: z.string().regex(/^[a-f0-9]{64}$/),
-        rawSize: z
-          .number()
-          .int()
-          .positive()
-          .max(PI_API_FIRST_TURN_SESSION_MAX_BYTES),
-      })
-      .strict()
-      .readonly(),
+    session: piApiFirstTurnSessionSchema,
   })
   .strict()
   .readonly();
+
+export const piApiFirstTurnManifestV2Schema = z
+  .object({
+    schemaVersion: z.literal(2),
+    outcome: z.literal("handoff"),
+    baseSession: piSessionCheckpointSchema,
+    session: piApiFirstTurnSessionSchema,
+    sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
+  })
+  .strict()
+  .readonly();
+
+export const piApiFirstTurnManifestSchema = z.discriminatedUnion(
+  "schemaVersion",
+  [piApiFirstTurnManifestV1Schema, piApiFirstTurnManifestV2Schema],
+);
 
 export const piApiFirstTurnConfigSchema = z
   .object({
@@ -798,7 +842,7 @@ export const piApiFirstTurnConfigSchema = z
     sessionUrl: z.url(),
     deadlineAt: z.number().int().positive(),
     baseSession: piSessionCheckpointSchema,
-    sandboxEventSequenceStart: z.literal(1),
+    sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
   })
   .strict()
   .readonly();
@@ -1117,6 +1161,7 @@ export const runnersJobClaimContract = c.router({
     }),
     body: z.object({
       runnerIdentity: runnerProcessIdentitySchema.optional(),
+      runnerHostname: runnerHostnameSchema.optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),
     }),
     responses: {
@@ -1139,21 +1184,49 @@ export const runnersModelProviderFailuresContract = c.router({
     pathParams: z.object({
       runId: z.uuid(),
     }),
-    body: z
-      .object({
-        failureKind: builtInModelProviderFailureKindSchema,
-        retryAfterSeconds: z
-          .number()
-          .int()
-          .positive()
-          .max(BUILT_IN_MODEL_PROVIDER_RETRY_AFTER_MAX_SECONDS)
-          .optional(),
-      })
-      .strict(),
+    body: z.discriminatedUnion("failureKind", [
+      z
+        .object({
+          failureKind: z.literal("authentication"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("billing"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("rate_limit"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("provider_unavailable"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("timeout"),
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+      z
+        .object({
+          failureKind: z.literal("connection"),
+          connectionSource: builtInModelProviderConnectionSourceSchema,
+          retryAfterSeconds: builtInModelProviderRetryAfterSecondsSchema,
+        })
+        .strict(),
+    ]),
     responses: {
       200: z
         .object({
-          outcome: z.enum(["recorded", "ignored"]),
+          outcome: z.enum(["recorded", "observed", "ignored"]),
         })
         .strict(),
       400: apiErrorSchema,
@@ -1162,6 +1235,29 @@ export const runnersModelProviderFailuresContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Report a built-in model provider failure for a run",
+  },
+});
+
+export const runnersModelUsageObservationsContract = c.router({
+  report: {
+    method: "POST",
+    path: "/api/runners/model-usage-observations",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        events: modelUsageObservationEventsSchema,
+      })
+      .strict(),
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive compact model usage observations from official runner",
   },
 });
 
@@ -1287,7 +1383,6 @@ export const runnersBuiltinFirewallsResolveContract = c.router({
 export const heartbeatBodySchema = z
   .object({
     runnerId: z.uuid(),
-    runnerName: z.string(),
     group: runnerGroupSchema,
     snapshotGeneration: runnerHeartbeatGenerationSchema,
     snapshotSequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),

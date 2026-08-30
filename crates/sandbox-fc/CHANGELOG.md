@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.37.270](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.269...sandbox-fc-v0.37.270) (2026-08-29)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** release balloon fully under guest pressure ([#30227](https://github.com/vm0-ai/vm0/issues/30227)) ([3bb5c13](https://github.com/vm0-ai/vm0/commit/3bb5c13907716ad7a18e8848a2057420aa92edab))
+
+## [0.37.269](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.268...sandbox-fc-v0.37.269) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
+## [0.37.268](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.267...sandbox-fc-v0.37.268) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
+## [0.37.267](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.266...sandbox-fc-v0.37.267) (2026-08-28)
+
+## [0.37.266](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.265...sandbox-fc-v0.37.266) (2026-08-28)
+
+## [0.37.265](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.264...sandbox-fc-v0.37.265) (2026-08-28)
+
+## [0.37.264](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.263...sandbox-fc-v0.37.264) (2026-08-28)
+
+## [0.37.263](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.262...sandbox-fc-v0.37.263) (2026-08-28)
+
+## [0.37.262](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.261...sandbox-fc-v0.37.262) (2026-08-28)
+
+## [0.37.261](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.260...sandbox-fc-v0.37.261) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
+## [0.37.260](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.259...sandbox-fc-v0.37.260) (2026-08-28)
+
+## [0.37.259](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.258...sandbox-fc-v0.37.259) (2026-08-27)
+
+## [0.37.258](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.257...sandbox-fc-v0.37.258) (2026-08-27)
+
+## [0.37.257](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.256...sandbox-fc-v0.37.257) (2026-08-27)
+
+## [0.37.256](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.255...sandbox-fc-v0.37.256) (2026-08-27)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** guard balloon deflation after unpark ([#29840](https://github.com/vm0-ai/vm0/issues/29840)) ([604d2f8](https://github.com/vm0-ai/vm0/commit/604d2f8c44c87ed576b63b12460c4176343fe994))
+
+## [0.37.255](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.254...sandbox-fc-v0.37.255) (2026-08-27)
+
+## [0.37.254](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.253...sandbox-fc-v0.37.254) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+* **rust:** avoid duplicating process stream capacity ([#29784](https://github.com/vm0-ai/vm0/issues/29784)) ([30918ec](https://github.com/vm0-ai/vm0/commit/30918ec96e76b1498fded4d16943fa6f005ae1bb))
+
+## [0.37.253](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.252...sandbox-fc-v0.37.253) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
+## [0.37.252](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.251...sandbox-fc-v0.37.252) (2026-08-26)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** reset leak cleanup watchdog on progress ([#29621](https://github.com/vm0-ai/vm0/issues/29621)) ([6d49df4](https://github.com/vm0-ai/vm0/commit/6d49df40f0e62ad68369d9b871549fbc33c90209))
+
 ## [0.37.251](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.250...sandbox-fc-v0.37.251) (2026-08-26)
 
 ## [0.37.250](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.249...sandbox-fc-v0.37.250) (2026-08-26)

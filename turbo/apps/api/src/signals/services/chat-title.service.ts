@@ -285,7 +285,7 @@ async function updateChatThreadTitle(
   db: Db,
   threadId: string,
   userId: string,
-  orgId: string | null,
+  orgId: string,
   title: string,
 ): Promise<void> {
   const updated = await db.transaction(async (tx) => {
@@ -322,7 +322,7 @@ async function updateChatThreadTitle(
     return;
   }
 
-  await publishThreadListChanged(userId);
+  await publishThreadListChanged({ userId, orgId });
 }
 
 async function shouldGenerateChatThreadTitle(
@@ -342,7 +342,7 @@ async function generateAndPersistChatThreadTitle(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
-  readonly orgId: string | null;
+  readonly orgId: string;
   readonly prompt: string;
   readonly includePriorRounds: boolean;
 }): Promise<void> {
@@ -388,7 +388,7 @@ export function scheduleChatThreadTitleGeneration(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
-  readonly orgId: string | null;
+  readonly orgId: string;
   readonly prompt: string;
   readonly includePriorRounds: boolean;
 }): void {

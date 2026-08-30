@@ -38,7 +38,8 @@ export const connectors = pgTable(
     externalId: varchar("external_id", { length: 255 }),
     externalUsername: varchar("external_username", { length: 255 }),
     externalEmail: varchar("external_email", { length: 255 }),
-    oauthScopes: text("oauth_scopes"), // JSON array of scopes
+    oauthScopes: text("oauth_scopes"), // Custom grants; legacy built-in fact and requested mirror for new built-in writes
+    oauthGrantedScopes: text("oauth_granted_scopes"), // JSON array of effective built-in OAuth grants
     tokenExpiresAt: timestamp("token_expires_at"), // null = unknown; refreshable OAuth connectors auto-refresh on next use to backfill
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),

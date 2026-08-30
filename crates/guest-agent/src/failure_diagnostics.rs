@@ -66,7 +66,7 @@ pub fn cli_control_failure_for_config(
         session_metadata,
         FailureClass::CliExecutionError,
         cli_result.exit_code,
-        cli_result.claude_result,
+        cli_result.jsonl_result,
     );
     let diagnostic =
         with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit.as_ref().cloned());
@@ -85,7 +85,7 @@ pub fn event_delivery_failure_for_config(
         session_metadata,
         FailureClass::EventUploadFailed,
         cli_result.exit_code,
-        cli_result.claude_result,
+        cli_result.jsonl_result,
     )
     .with_event_delivery(event_delivery);
     let diagnostic =
@@ -109,7 +109,7 @@ pub fn cli_nonzero_failure_for_config(
         session_metadata,
         FailureClass::CliNonzero,
         cli_result.exit_code,
-        cli_result.claude_result,
+        cli_result.jsonl_result,
     )
     .with_failure_detail_source(failure_message.source);
     let diagnostic =
@@ -221,7 +221,7 @@ fn cli_result_failure_diagnostic_for_config(
     session_metadata: Option<&CapturedSessionMetadata>,
     failure_class: FailureClass,
     cli_exit_code: i32,
-    claude_result: Option<cli::ClaudeResultSummary>,
+    jsonl_result: Option<cli::JsonlResultSummary>,
 ) -> FailureDiagnostic {
     let mut diagnostic = base_failure_diagnostic_for_config(config, failure_class)
         .with_cli_exit_code(cli_exit_code)
@@ -229,7 +229,9 @@ fn cli_result_failure_diagnostic_for_config(
             config,
             session_metadata,
         ));
-    if let Some(result) = claude_result {
+    if matches!(config.framework, env::Framework::ClaudeCode)
+        && let Some(result) = jsonl_result
+    {
         diagnostic = diagnostic.with_claude_num_turns(result.num_turns);
     }
     diagnostic

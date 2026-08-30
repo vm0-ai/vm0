@@ -1045,6 +1045,7 @@ pub struct CodexAppServerEnvConfig<'a> {
 pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
     for key in [
         guest_contracts::env::API_URL_ENV,
+        guest_contracts::env::CANONICAL_API_URL_ENV,
         guest_contracts::env::RUN_ID_ENV,
         guest_contracts::env::API_TOKEN_ENV,
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,
@@ -1084,11 +1085,9 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
-        guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-        guest_contracts::env::MOCK_CODEX_PATH_ENV,
+        guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+        guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-        process_control_ipc::BOOTSTRAP_ENV,
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
@@ -1128,7 +1127,7 @@ pub unsafe fn set_run_payload_file_env_for_test(
 ) -> Result<(), String> {
     let path = write_run_payload_file_for_test(runtime_dir, payload)?;
     unsafe {
-        std::env::set_var(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, path);
+        std::env::set_var(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV, path);
     }
     Ok(())
 }
@@ -1148,7 +1147,7 @@ pub unsafe fn set_user_env_file_env_for_test(
         serde_json::to_vec(user_env).map_err(|error| format!("serialize user env: {error}"))?;
     std::fs::write(&path, bytes).map_err(|error| format!("write user env: {error}"))?;
     unsafe {
-        std::env::set_var(guest_contracts::env::USER_ENV_FILE_ENV, path);
+        std::env::set_var(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV, path);
     }
     Ok(())
 }
@@ -1169,7 +1168,10 @@ pub unsafe fn setup_codex_app_server_env(
     unsafe {
         clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
-        std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+            mock_path,
+        );
         std::env::set_var("USE_MOCK_CODEX", "true");
         if let Some(scenario) = config.scenario {
             std::env::set_var("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
@@ -1177,10 +1179,19 @@ pub unsafe fn setup_codex_app_server_env(
             std::env::remove_var("MOCK_CODEX_APP_SERVER_SCENARIO");
         }
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, config.run_id);
-        std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
-        std::env::set_var("VM0_API_TOKEN", "");
-        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
-        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
         std::env::set_var("HOME", home);
         std::env::set_var("OKOU_TEST_CODEX_HOME_DIR", home.join("codex-home"));
         let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(home, config.run_id)
@@ -1193,9 +1204,12 @@ pub unsafe fn setup_codex_app_server_env(
             },
         )?;
         if let Some(resume_session_id) = config.resume_session_id {
-            std::env::set_var("VM0_RESUME_SESSION_ID", resume_session_id);
+            std::env::set_var(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                resume_session_id,
+            );
         } else {
-            std::env::remove_var("VM0_RESUME_SESSION_ID");
+            std::env::remove_var(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV);
         }
     }
     std::fs::create_dir_all(home).map_err(|error| format!("create home: {error}"))?;
@@ -1300,17 +1314,23 @@ pub unsafe fn setup_env(
         clear_guest_agent_bootstrap_env_for_test();
         // Route the CLI binary resolution to the cargo-built mock.
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
-        std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            mock_path,
+        );
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var(
-            "VM0_POST_RESULT_SIGTERM_GRACE_SECS",
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             sigterm_grace_secs.to_string(),
         );
         std::env::set_var(
-            "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
+            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             sigkill_grace_secs.to_string(),
         );
-        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "60");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            "60",
+        );
         // Derive run_id from the test binary's filename (which cargo
         // hashes per target) so concurrently running integration-test
         // binaries don't collide on the run-scoped files that paths.rs
@@ -1332,10 +1352,19 @@ pub unsafe fn setup_env(
             },
         )?;
         // Empty API token → has_api() false → no network calls.
-        std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
-        std::env::set_var("VM0_API_TOKEN", "");
-        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
-        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
+            "00000000-0000-4000-8000-000000000abc",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
         // Redirect HOME so the mock's session-history write
         // (`$CLAUDE_CONFIG_DIR/projects/.../<session>.jsonl`) stays inside
         // the tempdir and gets cleaned up with it, instead of

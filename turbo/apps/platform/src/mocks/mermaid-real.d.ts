@@ -1,9 +1,9 @@
 /**
- * The `mermaid-real` alias (vitest.config.ts) resolves to the actual mermaid
- * distribution, bypassing the `mermaid` stub alias, the same way `idb-real`
- * does for idb.
+ * The `mermaid-lite-real` alias (vitest.config.ts) resolves to the actual
+ * lightweight distribution, bypassing the package's stub alias, the same
+ * way `idb-real` does for idb.
  */
-declare module "mermaid-real" {
-  const mermaid: (typeof import("mermaid"))["default"];
+declare module "mermaid-lite-real" {
+  const mermaid: (typeof import("@okouai/mermaid-lite"))["default"];
   export default mermaid;
 }

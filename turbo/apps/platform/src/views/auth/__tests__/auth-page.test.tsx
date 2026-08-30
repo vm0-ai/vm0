@@ -13,9 +13,8 @@ import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onb
 import type { SupportedLocale } from "../../../i18n/resources.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setLocale$ } from "../../../signals/locale.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { i18n } from "../../../i18n/index.ts";
-import { getClerkLocalization } from "../clerk-localization.ts";
 
 const context = testContext();
 
@@ -33,19 +32,12 @@ function okouBrandLink(): HTMLElement {
   return link;
 }
 
-function authV2ActionLink(name: string): HTMLAnchorElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === name;
-  });
-  if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error("Auth v2 action link not found");
-  }
-  return link;
-}
-
 function authV2Button(name: string): HTMLButtonElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim() === name;
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.trim() === name
+    );
   });
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error("Auth v2 button not found");
@@ -210,15 +202,12 @@ describe("app auth pages", () => {
       expect(screen.getByLabelText(localeCase.toggleTheme)).toBeInTheDocument();
       expect(document.title).toBe(localeCase.documentTitle);
 
-      const localization = getClerkLocalization(
-        "VM0",
-        localeCase.locale,
-        i18n.t,
-      );
-      expect(localization.signIn?.start?.actionLink).toBe(
+      expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+        "data-clerk-sign-in-start-action-link",
         localeCase.actionLink,
       );
-      expect(localization.unstable__errors?.not_allowed_access).toBe(
+      expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+        "data-clerk-access-not-allowed-error",
         localeCase.accessNotAllowed,
       );
 
@@ -241,9 +230,12 @@ describe("app auth pages", () => {
     expect(screen.getByLabelText("テーマの切り替え")).toBeInTheDocument();
     expect(document.title).toBe("サインアップ | VM0");
 
-    const localization = getClerkLocalization("VM0", "ja-JP", i18n.t);
-    expect(localization.signIn?.start?.actionLink).toBe("サインアップ");
-    expect(localization.unstable__errors?.not_allowed_access).toBe(
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-action-link",
+      "サインアップ",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-access-not-allowed-error",
       "アクセスは許可されていません。",
     );
 
@@ -263,9 +255,12 @@ describe("app auth pages", () => {
     expect(screen.getByLabelText("테마 전환")).toBeInTheDocument();
     expect(document.title).toBe("회원가입 | VM0");
 
-    const localization = getClerkLocalization("VM0", "ko-KR", i18n.t);
-    expect(localization.signIn?.start?.actionLink).toBe("회원가입");
-    expect(localization.unstable__errors?.not_allowed_access).toBe(
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-action-link",
+      "회원가입",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-access-not-allowed-error",
       "접근이 허용되지 않습니다.",
     );
 
@@ -287,9 +282,12 @@ describe("app auth pages", () => {
     expect(screen.getByLabelText("Design wechseln")).toBeInTheDocument();
     expect(document.title).toBe("Registrieren | VM0");
 
-    const localization = getClerkLocalization("VM0", "de-DE", i18n.t);
-    expect(localization.signIn?.start?.actionLink).toBe("Registrieren");
-    expect(localization.unstable__errors?.not_allowed_access).toBe(
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-action-link",
+      "Registrieren",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-access-not-allowed-error",
       "Zugriff nicht gestattet.",
     );
 
@@ -311,9 +309,12 @@ describe("app auth pages", () => {
     expect(screen.getByLabelText("Cambiar tema")).toBeInTheDocument();
     expect(document.title).toBe("Crear una cuenta | VM0");
 
-    const localization = getClerkLocalization("VM0", "es-ES", i18n.t);
-    expect(localization.signIn?.start?.actionLink).toBe("Regístrese");
-    expect(localization.unstable__errors?.not_allowed_access).toBe(
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-action-link",
+      "Regístrese",
+    );
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-access-not-allowed-error",
       "Acceso no permitido.",
     );
 
@@ -322,10 +323,40 @@ describe("app auth pages", () => {
     });
   });
 
-  it("uses Italian Clerk resources", () => {
-    const localization = getClerkLocalization("VM0", "it-IT", i18n.t);
+  it("uses Italian Clerk resources", async () => {
+    useLocale("it-IT");
+    setBrowserUrl("https://app.vm0.ai/sign-up");
 
-    expect(localization.signIn?.start?.actionLink).toBe("Registrati");
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+        "data-clerk-sign-in-start-action-link",
+        "Registrati",
+      );
+    });
+  });
+
+  it("updates the rendered Clerk provider after a runtime locale switch", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+        "data-clerk-sign-in-start-action-link",
+        "Sign up",
+      );
+    });
+
+    await act(async () => {
+      await context.store.set(setLocale$, "fr-FR", context.signal);
+    });
+
+    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
+      "data-clerk-sign-in-start-action-link",
+      "S'inscrire",
+    );
+    expect(document.documentElement.lang).toBe("fr-FR");
   });
 
   it("mounts the Clerk sign-up route before Clerk finishes loading", async () => {
@@ -413,24 +444,18 @@ describe("app auth pages", () => {
 
   it.each([
     {
-      action: "Use current sign-in",
       documentTitle: "Sign in | VM0",
       heading: "Sign in to VM0",
-      legacyPath: "/sign-in",
       path: "/v2/sign-in",
     },
     {
-      action: "Use current sign-up",
       documentTitle: "Sign up | VM0",
       heading: "Create your account",
-      legacyPath: "/sign-up",
       path: "/v2/sign-up",
     },
     {
-      action: "Use current sign-up",
       documentTitle: "Sign up | VM0",
       heading: "Create your account",
-      legacyPath: "/sign-up",
       path: "/v2/sign-up/verify-email-address",
     },
   ])("renders the auth v2 scaffold at $path", async (routeCase) => {
@@ -442,9 +467,6 @@ describe("app auth pages", () => {
       screen.findByRole("region", { name: routeCase.heading }),
     ).resolves.toBeVisible();
     expect(screen.getByTestId("app-auth-v2")).toBeVisible();
-    const actionLink = authV2ActionLink(routeCase.action);
-    expect(actionLink).toHaveTextContent(routeCase.action);
-    expect(actionLink).toHaveAttribute("href", routeCase.legacyPath);
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
     expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
@@ -467,11 +489,6 @@ describe("app auth pages", () => {
       screen.findByRole("region", { name: "Choose an organization" }),
     ).resolves.toBeVisible();
     expect(authV2Button("Continue with Route Organization")).toBeVisible();
-    expect(
-      queryAllByRoleFast("link").some((candidate) => {
-        return candidate.textContent?.trim() === "Use current sign-in";
-      }),
-    ).toBeFalsy();
     expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(document.title).toBe("Sign in | VM0");
@@ -496,11 +513,6 @@ describe("app auth pages", () => {
     );
     expect(document.title).toBe("Sign in | Okou");
     expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
-    expect(screen.getByTestId("clerk-provider-config")).toHaveAttribute(
-      "data-clerk-sign-in-start-title",
-      "Sign in to Okou",
-    );
-
     fireEvent.click(authV2Button("Continue with Okou Organization"));
 
     await waitFor(() => {
@@ -743,6 +755,60 @@ describe("app auth pages", () => {
 
     expect(getComputedStyle(checkbox).width).toBe("16px");
     expect(getComputedStyle(checkbox).height).toBe("16px");
+  });
+
+  it("presents the Clerk passkey action as a full-width outline control", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-in");
+
+    detachedSetupPage({ context, path: "/sign-in" });
+
+    const clerkSurface = await screen.findByTestId("clerk-sign-in");
+    const action = document.createElement("div");
+    action.className = "cl-footerAction cl-footerAction__usePasskey";
+    const link = document.createElement("a");
+    link.className = "cl-footerActionLink cl-footerActionLink__usePasskey";
+    link.href = "#";
+    link.textContent = "Use passkey instead";
+    action.append(link);
+    clerkSurface.append(action);
+
+    expect(getComputedStyle(action).width).toBe("100%");
+    expect(getComputedStyle(link).display).toBe("inline-flex");
+    expect(getComputedStyle(link).height).toBe("36px");
+    expect(getComputedStyle(link).width).toBe("100%");
+    expect(getComputedStyle(link).borderStyle).toBe("solid");
+  });
+
+  it("presents Clerk page actions with the standard button and link treatment", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-in");
+
+    detachedSetupPage({ context, path: "/sign-in" });
+
+    const clerkSurface = await screen.findByTestId("clerk-sign-in");
+    clerkSurface.style.setProperty("--primary", "20, 99%, 47%");
+    clerkSurface.style.setProperty("--primary-foreground", "0, 0%, 100%");
+
+    const primaryAction = document.createElement("button");
+    primaryAction.className = "cl-formButtonPrimary";
+    primaryAction.type = "submit";
+    const primaryLabel = document.createElement("span");
+    primaryLabel.textContent = "Continue";
+    primaryAction.append(primaryLabel);
+
+    const footerAction = document.createElement("div");
+    footerAction.className = "cl-footerAction";
+    const footerLink = document.createElement("a");
+    footerLink.className = "cl-footerActionLink";
+    footerLink.href = "/sign-up";
+    footerLink.textContent = "Sign up";
+    footerAction.append(footerLink);
+    clerkSurface.append(primaryAction, footerAction);
+
+    expect(getComputedStyle(primaryAction).backgroundColor).toBe(
+      "hsl(20, 99%, 47%)",
+    );
+    expect(getComputedStyle(primaryLabel).color).toBe("hsl(0, 0%, 100%)");
+    expect(getComputedStyle(footerLink).textDecoration).toBe("none");
   });
 
   it("routes ad-attributed sign-up visits through onboarding", async () => {

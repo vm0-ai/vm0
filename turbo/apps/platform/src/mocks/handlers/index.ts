@@ -59,7 +59,7 @@ import {
 } from "./api-integrations-github.ts";
 import {
   apiAgentsHandlers,
-  resetMockTeam,
+  resetMockAgents,
   resetMockUserConnectors,
 } from "./api-agents.ts";
 import { apiWorkflowsHandlers, resetMockWorkflows } from "./api-workflows.ts";
@@ -95,8 +95,12 @@ import {
 import { apiVoiceIoHandlers } from "./api-voice-io.ts";
 import { apiBuildInfoHandlers } from "./api-build-info.ts";
 import { apiWebFilesHandlers } from "./api-web-files.ts";
+import { localeResourceHandlers } from "./locale-resources.ts";
+import { clerkLocalizationHandlers } from "./clerk-localizations.ts";
 
 export const handlers = [
+  ...clerkLocalizationHandlers,
+  ...localeResourceHandlers,
   ...apiBuildInfoHandlers,
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
@@ -155,7 +159,7 @@ export function resetAllMockHandlers(): void {
   resetMockUsageMembers();
   resetMockUsageRecord();
   resetMockWorkflowAutomations();
-  resetMockTeam();
+  resetMockAgents();
   resetMockUserConnectors();
   resetMockWorkflows();
   resetMockOnboardingStatus();

@@ -7,6 +7,7 @@ type ArtifactThumbnailImageProps = {
   className: string;
   fallback: ReactNode;
   load: ImageLoadSignals;
+  loading?: "eager" | "lazy";
   src: string;
   testId: string;
 };
@@ -19,6 +20,7 @@ function ArtifactThumbnailImageInstance({
   className,
   fallback,
   load,
+  loading = "lazy",
   src,
   testId,
 }: ArtifactThumbnailImageProps) {
@@ -34,7 +36,7 @@ function ArtifactThumbnailImageInstance({
         alt=""
         aria-hidden="true"
         data-testid={testId}
-        loading="lazy"
+        loading={loading}
         onLoad={markLoaded}
         onError={markFailed}
         className={cn(className, failed && "hidden")}

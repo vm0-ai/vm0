@@ -14,9 +14,24 @@ const emailOutboxItemStatusSchema = z.enum([
 
 export const testEmailOutboxStateItemSchema = z.object({
   id: z.string().uuid(),
+  from_address: z.string(),
+  to_addresses: z.union([z.string(), z.array(z.string())]),
+  subject: z.string(),
+  headers: z.record(z.string(), z.string()).nullable(),
+  public_brand: z.enum(["vm0", "okou"]),
+  template: z.unknown(),
+  source_run_id: z.string().uuid().nullable(),
+  source_workflow_automation_id: z.string().uuid().nullable(),
   status: emailOutboxItemStatusSchema,
   attempts: z.number().int().nonnegative(),
+  last_error: z.string().nullable(),
   resend_id: z.string().nullable(),
+});
+
+export const testOfficialAutomationResultEmailClaimSchema = z.object({
+  source_run_id: z.string().uuid(),
+  source_workflow_automation_id: z.string().uuid(),
+  email_outbox_id: z.string().uuid(),
 });
 
 export const testEmailOutboxStateActionBodySchema = z.discriminatedUnion(
@@ -33,6 +48,11 @@ export const testEmailOutboxStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("find-item"),
       to_address: z.string().min(1),
       subject: z.string().min(1),
+    }),
+    z.object({
+      action: z.literal("find-source"),
+      source_run_id: z.string().uuid(),
+      source_workflow_automation_id: z.string().uuid(),
     }),
     z.object({
       action: z.literal("read-items"),
@@ -55,6 +75,11 @@ export const testEmailOutboxStateActionResponseSchema = z.discriminatedUnion(
     z.object({
       action: z.literal("find-item"),
       items: z.array(testEmailOutboxStateItemSchema),
+    }),
+    z.object({
+      action: z.literal("find-source"),
+      items: z.array(testEmailOutboxStateItemSchema),
+      claim: testOfficialAutomationResultEmailClaimSchema.nullable(),
     }),
     z.object({
       action: z.literal("read-items"),
@@ -118,6 +143,9 @@ export const testEmailOutboxStateContract = c.router({
 
 export type TestEmailOutboxStateItem = z.infer<
   typeof testEmailOutboxStateItemSchema
+>;
+export type TestOfficialAutomationResultEmailClaim = z.infer<
+  typeof testOfficialAutomationResultEmailClaimSchema
 >;
 export type TestEmailOutboxStateActionBody = z.infer<
   typeof testEmailOutboxStateActionBodySchema

@@ -35,6 +35,7 @@ interface TestOAuthApiRefreshResult {
     readonly refreshedTenantId?: string;
   };
   readonly expiresIn?: number;
+  readonly scopes?: readonly string[];
 }
 
 interface TestOAuthApiTokenRefreshResult {
@@ -212,6 +213,7 @@ function createTestOauthApiAccess(): RefreshTokenAccessProvider<
         ...(result.expiresIn === undefined
           ? {}
           : { expiresIn: result.expiresIn }),
+        ...(result.scopes === null ? {} : { scopes: result.scopes }),
       };
       return providerResult;
     },

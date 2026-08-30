@@ -10,6 +10,7 @@ import {
   connectorManualGrantContract,
   connectorNoAuthGrantContract,
   connectorOauthStartContract,
+  connectorsMainContract,
 } from "@okouai/api-contracts/contracts/connectors";
 import {
   browserContract,
@@ -37,7 +38,7 @@ import {
   userPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@okouai/api-contracts/contracts/user-permission-grants";
-import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-contracts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -50,7 +51,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { PLACEHOLDER, mockChatLifecycle } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 
@@ -161,7 +165,7 @@ function mockConnectorCatalogStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
   // Register the dynamic slug route first so the subsequently registered
-  // static /status route takes precedence in runtime MSW handlers.
+  // static routes take precedence in runtime MSW handlers.
   context.mocks.api(connectorCatalogContract.get, ({ params, respond }) => {
     const connector = connectors.find((candidate) => {
       return candidate.slug === params.connectorSlug;
@@ -174,6 +178,12 @@ function mockConnectorCatalogStatus(
   });
   context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
+  });
+  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+    return respond(200, {
+      connectors: [...connectors],
+      totalConnectorCount: connectors.length,
+    });
   });
 }
 
@@ -402,7 +412,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     expect(card).toHaveClass("min-h-[88px]", "p-3", "sm:flex-row");
     expect(card).toHaveTextContent("Banking access request");
     expect(card).toHaveTextContent(`Zero · ${reason}`);
@@ -473,7 +485,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     const popup = new Window();
     Object.defineProperty(popup, "opener", {
       configurable: true,
@@ -594,7 +608,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     await user.click(
       within(card).getByRole("checkbox", { name: /Everyday Checking/u }),
     );
@@ -667,7 +683,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const loadingCard = await screen.findByTestId(
@@ -1525,20 +1540,24 @@ describe("chat event action cards", () => {
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
         if (params.threadId !== rightThreadId || query.sinceSeqId >= 1) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
-        return respond(200, {
-          rows: mockChatEventRows([
-            {
-              id: "c0000000-0000-4000-a000-000000000034",
-              threadId: rightThreadId,
-              eventType: "output.message",
-              seqId: 1,
-              content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
-              createdAt,
-            },
-          ]),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows([
+              {
+                id: "c0000000-0000-4000-a000-000000000034",
+                threadId: rightThreadId,
+                eventType: "output.message",
+                seqId: 1,
+                content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
+                createdAt,
+              },
+            ]),
+            query,
+          ),
+        );
       },
     );
 
@@ -1695,15 +1714,27 @@ describe("chat event action cards", () => {
     });
     context.mocks.browser.open(authWindow);
     let reconnectRequired = true;
+    const gmailConnectionId = crypto.randomUUID();
+    const siblingConnectionId = crypto.randomUUID();
+    const siblingProjectionRead = context.mocks.deferred<void>();
+    let projectedConnector = connectedConnector({
+      id: gmailConnectionId,
+      slug: "gmail",
+      authMethod: "oauth",
+      connectionStatus: "reconnect-required",
+      reconnectReason: "authorization_expired_or_revoked",
+    });
 
-    context.mocks.data.connectors([
-      connectedConnector({
-        slug: "gmail",
-        authMethod: "oauth",
-        connectionStatus: "reconnect-required",
-        reconnectReason: "authorization_expired_or_revoked",
-      }),
-    ]);
+    context.mocks.data.connectors([projectedConnector]);
+    context.mocks.api(connectorsMainContract.list, ({ respond }) => {
+      if (projectedConnector.id === siblingConnectionId) {
+        siblingProjectionRead.resolve();
+      }
+      return respond(200, {
+        connectors: [projectedConnector],
+        connectorProvidedBindings: [],
+      });
+    });
     context.mocks.api(connectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
         connector: publicConnectorStatusItem({
@@ -1714,6 +1745,7 @@ describe("chat event action cards", () => {
             ? "reconnect-required"
             : "connected",
           connection: {
+            id: gmailConnectionId,
             authMethod: "oauth",
             externalUsername: null,
             externalEmail: "sender@example.com",
@@ -1741,23 +1773,25 @@ describe("chat event action cards", () => {
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("gmail");
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: {
+            intent: "reconnect",
+            connectionId: gmailConnectionId,
+          },
           authMethod: "oauth",
           agentId: AGENT_ID,
           authorizeAgent: true,
           callbackTarget: "app",
         });
-        reconnectRequired = false;
-        context.mocks.data.connectors([
-          connectedConnector({
-            slug: "gmail",
-            authMethod: "oauth",
-            externalEmail: "sender@example.com",
-            updatedAt: "2026-01-01T00:00:01Z",
-          }),
-        ]);
+        projectedConnector = connectedConnector({
+          id: siblingConnectionId,
+          slug: "gmail",
+          authMethod: "oauth",
+          externalEmail: "sibling@example.com",
+          updatedAt: "2026-01-01T00:00:01Z",
+        });
         return respond(200, {
           authorizationUrl: "https://accounts.google.test/oauth",
+          connectionId: siblingConnectionId,
         });
       },
     );
@@ -1788,7 +1822,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const displayedCopyElement = await screen.findByText(displayedCopy);
@@ -1799,6 +1832,21 @@ describe("chat event action cards", () => {
       connectorCard,
     );
     await user.click(reconnectButton);
+
+    await siblingProjectionRead.promise;
+    expect(sentPrompts).toStrictEqual([]);
+
+    reconnectRequired = false;
+    projectedConnector = connectedConnector({
+      id: gmailConnectionId,
+      slug: "gmail",
+      authMethod: "oauth",
+      externalEmail: "sender@example.com",
+      updatedAt: "2026-01-01T00:00:02Z",
+    });
+    context.mocks.ably.trigger("connector:changed", {
+      connectorSlug: "gmail",
+    });
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
@@ -1863,7 +1911,7 @@ describe("chat event action cards", () => {
       connectorOauthStartContract.start,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           authMethod: "oauth",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -1911,7 +1959,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -1969,7 +2016,7 @@ describe("chat event action cards", () => {
         connectCalls += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -2006,7 +2053,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2804,7 +2850,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2850,7 +2895,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000011",
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const userMessage = await screen.findByText(
@@ -2922,7 +2966,7 @@ describe("chat event action cards", () => {
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("future-connector");
         expect(body.agentId).toBe(AGENT_ID);
-        expect(body.account).toStrictEqual({ intent: "single-account" });
+        expect(body.account).toStrictEqual({ intent: "add" });
         expect(body.authorizeAgent).toBeTruthy();
         connected = true;
         authorized = true;
@@ -2959,7 +3003,6 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000012",
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");

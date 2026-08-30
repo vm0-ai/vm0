@@ -13,7 +13,7 @@ use super::systemctl::{
     BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state_bounded,
     is_unit_active, is_unit_enabled_bounded, run_systemctl, run_systemctl_bounded,
 };
-use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock};
+use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock, read_unit_config_path};
 
 const CLEANUP_LOCK_TIMEOUT: TokioDuration = TokioDuration::from_secs(20);
 const CLEANUP_LOCK_POLL_INTERVAL: TokioDuration = TokioDuration::from_millis(250);
@@ -103,7 +103,7 @@ async fn acquire_cleanup_service_lock(
     unit: &RunnerServiceUnit,
     home: &HomePaths,
 ) -> RunnerResult<nix::fcntl::Flock<std::fs::File>> {
-    let path = home.service_lock(unit.unit_name());
+    let path = unit.lock_path(home);
     let deadline = TokioInstant::now() + CLEANUP_LOCK_TIMEOUT;
 
     loop {
@@ -278,6 +278,13 @@ impl ServiceStopOps for RealServiceStopOps {
 impl ActiveJobsGateOps for RealServiceStopOps {
     fn is_unit_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
         Box::pin(async move { is_unit_active(unit).await })
+    }
+
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<std::path::PathBuf>> {
+        Box::pin(async move { read_unit_config_path(unit).await })
     }
 }
 
@@ -596,6 +603,7 @@ mod tests {
         events: Vec<&'static str>,
         acquire_lock_error: bool,
         gate_active_results: VecDeque<RunnerResult<bool>>,
+        gate_config_path: Option<PathBuf>,
         active_results: VecDeque<RunnerResult<bool>>,
         stop_results: VecDeque<RunnerResult<()>>,
         bounded_stop_results: VecDeque<RunnerResult<BoundedSystemctlOutcome>>,
@@ -615,6 +623,7 @@ mod tests {
                 events: Vec::new(),
                 acquire_lock_error: false,
                 gate_active_results: VecDeque::from([Ok(false)]),
+                gate_config_path: Some(PathBuf::from("/tmp/runner-config.yaml")),
                 active_results: VecDeque::from([Ok(true)]),
                 stop_results: VecDeque::from([Ok(())]),
                 bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::Success)]),
@@ -643,6 +652,14 @@ mod tests {
                     .pop_front()
                     .expect("unexpected gate unit-active query"),
             ))
+        }
+
+        fn read_unit_config_path<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, Option<PathBuf>> {
+            self.events.push("gate_config_path");
+            Box::pin(std::future::ready(Ok(self.gate_config_path.clone())))
         }
     }
 
@@ -834,11 +851,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stop_default_active_jobs_refuses_before_service_mutation() {
+    async fn stop_uses_selected_config_base_dir_before_service_mutation() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let unit = service_unit();
-        let base_dir = home.runners_dir().join(unit.suffix());
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: config_path.clone(),
+                base_dir: base_dir.clone(),
+                runner_group: "test".to_string(),
+                subcommand: "start".to_string(),
+            },
+        )
+        .await
+        .unwrap();
         tokio::fs::create_dir_all(&base_dir).await.unwrap();
         let started_at = (chrono::Utc::now() - chrono::Duration::minutes(10))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -862,6 +891,7 @@ mod tests {
         .unwrap();
         let mut ops = FakeStopOps {
             gate_active_results: VecDeque::from([Ok(true)]),
+            gate_config_path: Some(config_path),
             ..FakeStopOps::default()
         };
 
@@ -871,7 +901,10 @@ mod tests {
             .unwrap_err();
         let after_gate = chrono::Utc::now();
 
-        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
+        assert_eq!(
+            ops.events,
+            ["acquire_lock", "gate_is_active", "gate_config_path"]
+        );
         let RunnerError::ActiveJobs(error) = error else {
             panic!("expected active-jobs refusal");
         };
@@ -892,6 +925,26 @@ mod tests {
         assert!(error.runner_uptime <= (after_gate - parsed_started_at).to_std().unwrap());
         assert_eq!(error.command_name, "stop");
         assert!(!error.draining);
+    }
+
+    #[tokio::test]
+    async fn stop_fails_closed_when_gate_unit_state_is_unavailable() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            gate_active_results: VecDeque::from([Err(fake_error("systemd unavailable"))]),
+            ..FakeStopOps::default()
+        };
+
+        let error = stop_with_ops(&unit, &home, false, None, &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("vm0-runner-test"));
+        assert!(message.contains("before service stop"));
+        assert!(message.contains("systemd unavailable"));
+        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
     }
 
     #[tokio::test]

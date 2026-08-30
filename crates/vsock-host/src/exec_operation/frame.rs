@@ -348,6 +348,8 @@ async fn write_encoded_frame_with_pre_write_decision(
             seq = diagnostic.seq,
             label = %diagnostic.label_log,
             frame = diagnostic.frame,
+            process_class = diagnostic.process_class,
+            operation_kind = diagnostic.operation_kind,
             wait_elapsed_ms,
             "slow exec operation frame writer lock wait"
         );
@@ -361,6 +363,8 @@ async fn write_encoded_frame_with_pre_write_decision(
             seq = diagnostic.seq,
             label = %diagnostic.label_log,
             frame = diagnostic.frame,
+            process_class = diagnostic.process_class,
+            operation_kind = diagnostic.operation_kind,
             write_elapsed_ms,
             "slow exec operation frame write"
         );
@@ -372,6 +376,8 @@ async fn write_encoded_frame_with_pre_write_decision(
                 seq = diagnostic.seq,
                 label = %diagnostic.label_log,
                 frame = diagnostic.frame,
+                process_class = diagnostic.process_class,
+                operation_kind = diagnostic.operation_kind,
                 write_elapsed_ms,
                 error = %e,
                 "exec operation frame write failed"

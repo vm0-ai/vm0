@@ -95,10 +95,7 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
           deviceCatalog,
         },
         expiresIn: token.expiresIn,
-        scopes:
-          token.scopes.length > 0
-            ? token.scopes
-            : args.externalCodeGrant.scopes,
+        scopes: token.scopes ?? args.externalCodeGrant.scopes,
         userInfo: nintendoSwitchParentalControlsUserInfo(token.idToken),
       };
     },
@@ -166,6 +163,7 @@ function createRefreshTokenAccessProvider(): RefreshTokenAccessProvider<
           ...(deviceCatalog === undefined ? {} : { deviceCatalog }),
         },
         expiresIn: token.expiresIn,
+        ...(token.scopes === null ? {} : { scopes: token.scopes }),
       };
     },
   };

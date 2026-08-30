@@ -80,23 +80,6 @@ describe("okou resource pull registry resolver", () => {
     );
   });
 
-  it("resolves the pre-cutover stable website SHA outside the rollout", () => {
-    expect(
-      findRegistryResourceForPull("template:dot-matrix", "previous"),
-    ).toEqual(
-      expect.objectContaining({
-        id: "template:dot-matrix",
-        source: expect.objectContaining({
-          archive: {
-            type: "tar.gz",
-            sha256:
-              "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
-          },
-        }),
-      }),
-    );
-  });
-
   it("resolves every website template v2 package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       const resourceId = `${item.resourceId}-v2`;
@@ -206,7 +189,7 @@ describe("okou resource pull command", () => {
 
   it("resolves the pull-only presentation reverse-template guide through the command", async () => {
     const reverseTemplateSha256 =
-      "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5";
+      "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11";
     server.use(
       http.get(
         "http://localhost:3000/api/registry/resources/download",
@@ -228,8 +211,8 @@ describe("okou resource pull command", () => {
             sha256: "0".repeat(64),
             expiresInSeconds: 900,
             versionId,
-            fileCount: 17,
-            size: 270_821,
+            fileCount: 3,
+            size: 30_489,
           });
         },
       ),

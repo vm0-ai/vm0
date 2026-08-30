@@ -9,7 +9,13 @@ import {
   connectorsMainContract,
   connectorsSearchContract,
 } from "@okouai/api-contracts/contracts/connectors";
+import {
+  CLIENT_FORCE_UPGRADE_STATUS,
+  CLIENT_TYPE_CLI,
+  CLIENT_TYPE_HEADER,
+} from "@okouai/api-contracts/contracts/client-headers";
 import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/connector-catalog";
+import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -94,6 +100,12 @@ function internalServerError(message: string) {
       },
     },
   };
+}
+
+function requestedScopeSnapshot(
+  grant: Parameters<typeof connectorGrantScopes>[0],
+): string {
+  return JSON.stringify(connectorGrantScopes(grant));
 }
 
 function connectorAccountMutationFailureResponse(
@@ -252,6 +264,21 @@ const connectManualGrantConnectorInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
+    if (
+      get(request$).header(CLIENT_TYPE_HEADER) === CLIENT_TYPE_CLI &&
+      (!bodyResult.data.account ||
+        bodyResult.data.account.intent === "single-account")
+    ) {
+      return {
+        status: CLIENT_FORCE_UPGRADE_STATUS,
+        body: {
+          error: {
+            message: "Update the CLI to connect this connector",
+            code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
+          },
+        },
+      };
+    }
     const agentTarget = await set(
       validateConnectorAuthorizationTarget$,
       {
@@ -403,10 +430,9 @@ const connectNoAuthConnectorInner$ = command(
 
 const startConnectorOauthInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const params = get(pathParamsOf(connectorOauthStartContract.start));
-    const bodyResult = await get(
-      bodyResultOf(connectorOauthStartContract.start),
-    );
+    const route = connectorOauthStartContract.start;
+    const params = get(pathParamsOf(route));
+    const bodyResult = await get(bodyResultOf(route));
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
@@ -415,7 +441,6 @@ const startConnectorOauthInner$ = command(
     const publicBrand = get(publicBrand$);
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
-
     if (!auth.orgId) {
       return badRequestMessage(
         "Explicit org context required — ensure active org in session",
@@ -511,6 +536,7 @@ const startConnectorOauthInner$ = command(
         authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
         redirectUri: prepared.redirectUri,
         authorizationUrl: authResult.url,
+        oauthRequestedScopes: requestedScopeSnapshot(resolved.method.grant),
         codeVerifier: authResult.codeVerifier,
         oauthContext: authResult.oauthContext,
         accountMutation: bodyResult.data.account,
@@ -640,6 +666,7 @@ const startConnectorOpenIdInner$ = command(
         agentId: bodyResult.data.agentId,
         authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
         redirectUri: prepared.expectedReturnTo,
+        oauthRequestedScopes: requestedScopeSnapshot(resolved.method.grant),
         codeVerifier: authResult.codeVerifier,
         oauthContext: JSON.stringify({ realm: prepared.realm }),
         accountMutation: bodyResult.data.account,

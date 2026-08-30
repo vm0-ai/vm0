@@ -102,6 +102,7 @@ function activeProBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions: [],
+    concurrencyUnitAmountCents: 10_000,
   };
 }
 
@@ -320,78 +321,122 @@ async function waitForAnimationFrame(): Promise<void> {
   await frame.promise;
 }
 
-describe("organization billing settings", () => {
-  it("configures member usage", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Usage Pack Org",
-      role: "admin",
-    });
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, noActiveBillingStatus());
-    });
-    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-      return respond(200, usagePackCatalogResponse());
-    });
-    context.mocks.data.orgMembers({
-      name: "Usage Pack Org",
-      role: "admin",
-      members: [
-        {
-          userId: "user_1",
-          email: "alex@example.com",
-          firstName: "Alex",
-          lastName: "Chen",
-          imageUrl: "",
-          role: "admin",
-          joinedAt: "2026-01-01T00:00:00Z",
-        },
-        {
-          userId: "user_2",
-          email: "sam@example.com",
-          firstName: "Sam",
-          lastName: "Lee",
-          imageUrl: "",
-          role: "member",
-          joinedAt: "2026-01-02T00:00:00Z",
-        },
-      ],
-      pendingInvitations: [
-        {
-          id: "invitation_1",
-          email: "pending@example.com",
-          role: "member",
-          createdAt: "2026-01-03T00:00:00Z",
-        },
-      ],
-      membershipRequests: [],
-      createdAt: "2026-01-01T00:00:00Z",
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=billing",
-      user: {
-        id: "user_1",
-        fullName: "Alex Chen",
+function mockInitialUsagePackPurchase(): void {
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Usage Pack Org",
+    role: "admin",
+  });
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
+    return respond(200, noActiveBillingStatus());
+  });
+  context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+    return respond(200, usagePackCatalogResponse());
+  });
+  context.mocks.data.orgMembers({
+    name: "Usage Pack Org",
+    role: "admin",
+    members: [
+      {
+        userId: "user_1",
         email: "alex@example.com",
+        firstName: "Alex",
+        lastName: "Chen",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2026-01-01T00:00:00Z",
       },
-    });
+      {
+        userId: "user_2",
+        email: "sam@example.com",
+        firstName: "Sam",
+        lastName: "Lee",
+        imageUrl: "",
+        role: "member",
+        joinedAt: "2026-01-02T00:00:00Z",
+      },
+    ],
+    pendingInvitations: [
+      {
+        id: "invitation_1",
+        email: "pending@example.com",
+        role: "member",
+        createdAt: "2026-01-03T00:00:00Z",
+      },
+    ],
+    membershipRequests: [],
+    createdAt: "2026-01-01T00:00:00Z",
+  });
+}
 
-    await waitFor(() => {
-      expect(screen.getByText("No active plan")).toBeInTheDocument();
-    });
-    click(buttonByText("Upgrade"));
+async function openUsagePackPlanSelection(): Promise<{
+  choosePlanHeading: HTMLElement;
+  proPlan: HTMLElement;
+  teamPlan: HTMLElement;
+}> {
+  detachedSetupPage({
+    context,
+    path: "/?settings=billing",
+    user: {
+      id: "user_1",
+      fullName: "Alex Chen",
+      email: "alex@example.com",
+    },
+  });
 
-    const choosePlanHeading = await screen.findByRole("heading", {
-      name: "Choose a plan",
-    });
+  await waitFor(() => {
+    expect(screen.getByText("No active plan")).toBeInTheDocument();
+  });
+  click(buttonByText("Upgrade"));
+
+  const choosePlanHeading = await screen.findByRole("heading", {
+    name: "Choose a plan",
+  });
+  const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+  const teamPlan = screen.getByRole("article", { name: "Team plan" });
+  return { choosePlanHeading, proPlan, teamPlan };
+}
+
+async function openTeamMemberPackages(teamPlan: HTMLElement): Promise<{
+  configurePackagesHeading: HTMLElement;
+  memberUsage: HTMLElement;
+  orderSummary: HTMLElement;
+}> {
+  click(buttonByText("Start with Team", teamPlan));
+  const configurePackagesHeading = await screen.findByRole("heading", {
+    name: "Configure member packages",
+  });
+  const memberUsage = screen.getByRole("group", {
+    name: "Member usage",
+  });
+  const orderSummary = screen.getByRole("region", {
+    name: "Order summary",
+  });
+  return { configurePackagesHeading, memberUsage, orderSummary };
+}
+
+async function selectMemberUsagePack(
+  memberUsage: HTMLElement,
+  memberName: string,
+  optionName: string,
+): Promise<void> {
+  click(
+    within(memberUsage).getByRole("combobox", {
+      name: `Usage for ${memberName}`,
+    }),
+  );
+  click(await screen.findByRole("option", { name: optionName }));
+}
+
+describe("organization billing settings", () => {
+  it("shows usage pack plan pricing and capabilities", async () => {
+    mockInitialUsagePackPurchase();
+    const { choosePlanHeading, proPlan, teamPlan } =
+      await openUsagePackPlanSelection();
     expect(choosePlanHeading).toBeInTheDocument();
     // The plan steps are a dialog over the billing tab, not a page that
     // replaces it, so the plan the workspace is deciding against stays visible.
     expect(screen.getByText("No active plan")).toBeInTheDocument();
-    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
-    const teamPlan = screen.getByRole("article", { name: "Team plan" });
     // The figure is a floor, not a fixed total: a workspace pays the plan plus
     // one package for every member, and packages run $20 to $200.
     expect(proPlan).toHaveTextContent("from $20/month");
@@ -470,20 +515,14 @@ describe("organization billing settings", () => {
     ]) {
       expect(within(teamPlan).queryByText(item)).toBeNull();
     }
+  });
 
-    click(buttonByText("Start with Team", teamPlan));
-
-    const configurePackagesHeading = await screen.findByRole("heading", {
-      name: "Configure member packages",
-    });
+  it("configures member usage and updates package totals", async () => {
+    mockInitialUsagePackPurchase();
+    const { teamPlan } = await openUsagePackPlanSelection();
+    const { configurePackagesHeading, memberUsage, orderSummary } =
+      await openTeamMemberPackages(teamPlan);
     expect(configurePackagesHeading).toBeInTheDocument();
-
-    const memberUsage = screen.getByRole("group", {
-      name: "Member usage",
-    });
-    const orderSummary = screen.getByRole("region", {
-      name: "Order summary",
-    });
     expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
     expect(
       within(memberUsage).getByText("alex@example.com"),
@@ -556,6 +595,22 @@ describe("organization billing settings", () => {
     expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
+  });
+
+  it("navigates back and closes member package configuration", async () => {
+    mockInitialUsagePackPurchase();
+    const { teamPlan } = await openUsagePackPlanSelection();
+    const { memberUsage } = await openTeamMemberPackages(teamPlan);
+    await selectMemberUsagePack(
+      memberUsage,
+      "Alex Chen",
+      "$50 · 54,321 credits · 8% off",
+    );
+    await selectMemberUsagePack(
+      memberUsage,
+      "pending@example.com",
+      "$100 · 109,999 credits · 9% off",
+    );
 
     click(screen.getByLabelText("Back"));
     const returnedChoosePlanHeading = await screen.findByRole("heading", {
@@ -588,6 +643,32 @@ describe("organization billing settings", () => {
     // Closing the flow lands back on the billing overview it was opened from.
     expect(screen.getByText("No active plan")).toBeInTheDocument();
     expect(buttonByText("Upgrade")).toBeInTheDocument();
+  });
+
+  it("discards unsubmitted usage before checkout after reopening settings", async () => {
+    mockInitialUsagePackPurchase();
+    const { teamPlan } = await openUsagePackPlanSelection();
+    const { memberUsage } = await openTeamMemberPackages(teamPlan);
+    await selectMemberUsagePack(
+      memberUsage,
+      "Alex Chen",
+      "$50 · 54,321 credits · 8% off",
+    );
+    await selectMemberUsagePack(
+      memberUsage,
+      "pending@example.com",
+      "$100 · 109,999 credits · 9% off",
+    );
+
+    const packagesDialog = screen.getByRole("dialog", {
+      name: "Configure member packages",
+    });
+    click(within(packagesDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Configure member packages" }),
+      ).not.toBeInTheDocument();
+    });
 
     const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
     click(within(settingsDialog).getByLabelText("Close"));
@@ -629,24 +710,15 @@ describe("organization billing settings", () => {
     const resetOrderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-
-    const resetAlexUsage = within(resetMemberUsage).getByRole("combobox", {
-      name: "Usage for Alex Chen",
-    });
-    click(resetAlexUsage);
-    click(
-      await screen.findByRole("option", {
-        name: "$50 · 54,321 credits · 8% off",
-      }),
+    await selectMemberUsagePack(
+      resetMemberUsage,
+      "Alex Chen",
+      "$50 · 54,321 credits · 8% off",
     );
-    const resetPendingUsage = within(resetMemberUsage).getByRole("combobox", {
-      name: "Usage for pending@example.com",
-    });
-    click(resetPendingUsage);
-    click(
-      await screen.findByRole("option", {
-        name: "$100 · 109,999 credits · 9% off",
-      }),
+    await selectMemberUsagePack(
+      resetMemberUsage,
+      "pending@example.com",
+      "$100 · 109,999 credits · 9% off",
     );
     context.mocks.api(
       billingUsagePackCheckoutContract.create,
@@ -3443,6 +3515,7 @@ describe("organization billing settings", () => {
     context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
+        concurrencyUnitAmountCents: 4200,
         concurrencyPurchaseReviewAvailable: true,
       });
     });
@@ -3487,7 +3560,7 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(
-        within(purchaseDialog).getByText("$500/month"),
+        within(purchaseDialog).getByText("$210/month"),
       ).toBeInTheDocument();
     });
 
@@ -3530,7 +3603,10 @@ describe("organization billing settings", () => {
       role: "admin",
     });
     context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, activeTeamBillingStatus());
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        concurrencyUnitAmountCents: undefined,
+      });
     });
     context.mocks.api(
       billingConcurrencyCheckoutContract.create,
@@ -3548,7 +3624,8 @@ describe("organization billing settings", () => {
     const purchaseDialog = await screen.findByRole("dialog", {
       name: "Buy concurrency",
     });
-    click(buttonByText("Buy $100/month", purchaseDialog));
+    expect(within(purchaseDialog).getByText("—")).toBeInTheDocument();
+    click(buttonByText("Buy concurrency", purchaseDialog));
 
     await waitFor(() => {
       expect(requestedQuantity).toBe(1);
@@ -3747,10 +3824,6 @@ describe("organization billing settings", () => {
     const decreaseQuantity = within(dialog).getByLabelText(
       "Decrease additional concurrency quantity",
     );
-    const increaseQuantity = within(dialog).getByLabelText(
-      "Increase additional concurrency quantity",
-    );
-
     expect(quantityInput).toHaveValue("1");
     expect(decreaseQuantity).toBeDisabled();
     fireEvent.change(quantityInput, { target: { value: "0" } });
@@ -3758,7 +3831,9 @@ describe("organization billing settings", () => {
 
     fireEvent.change(quantityInput, { target: { value: "1000" } });
     expect(quantityInput).toHaveValue("1000");
-    expect(increaseQuantity).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Increase additional concurrency quantity"),
+    ).toBeDisabled();
     expect(within(dialog).getByText("$100,000/month")).toBeInTheDocument();
     fireEvent.change(quantityInput, { target: { value: "1001" } });
     expect(quantityInput).toHaveValue("1000");
@@ -3815,9 +3890,6 @@ describe("organization billing settings", () => {
       dialog,
     );
     const cancel = buttonByText("Cancel", dialog);
-    const decreaseQuantity = within(dialog).getByLabelText(
-      "Decrease additional concurrency quantity",
-    );
     const increaseQuantity = within(dialog).getByLabelText(
       "Increase additional concurrency quantity",
     );
@@ -3832,8 +3904,12 @@ describe("organization billing settings", () => {
     });
     expect(cancelSubscription).toBeDisabled();
     expect(cancel).toBeDisabled();
-    expect(decreaseQuantity).toBeDisabled();
-    expect(increaseQuantity).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Decrease additional concurrency quantity"),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByLabelText("Increase additional concurrency quantity"),
+    ).toBeDisabled();
 
     previewReady.resolve(undefined);
     await screen.findByRole("dialog", { name: "Review concurrency change" });

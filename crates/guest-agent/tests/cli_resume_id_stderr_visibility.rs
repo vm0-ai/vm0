@@ -25,7 +25,10 @@ async fn cli_failure_preserves_resume_session_id_in_stderr()
             3,
             1,
         )?;
-        std::env::set_var("VM0_RESUME_SESSION_ID", resume_id);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+            resume_id,
+        );
     }
 
     let runtime = common::guest_runtime_from_process_env()?;

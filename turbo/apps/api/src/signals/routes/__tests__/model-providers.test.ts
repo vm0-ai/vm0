@@ -1093,7 +1093,7 @@ describe("POST /api/model-providers", () => {
     ).toBeFalsy();
   });
 
-  it("creates a vm0 no-secret org provider", async () => {
+  it("accepts the vm0 alias and creates a canonical no-secret org provider", async () => {
     const fixture = uniqueOrgUser("zmp-vm0");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: modelProvidersRoutes })(
@@ -1108,7 +1108,7 @@ describe("POST /api/model-providers", () => {
       [201],
     );
 
-    expect(response.body.provider.type).toBe("vm0");
+    expect(response.body.provider.type).toBe("built-in");
     expect(response.body.provider.secretName).toBeNull();
     expect(response.body.provider.authMethod).toBeNull();
     expect(response.body.provider.selectedModel).toBeNull();

@@ -16,6 +16,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import {
   createConnectorBddApi,
@@ -796,6 +797,66 @@ describe("POST /api/zero/chat-threads", () => {
     expect(afterDisconnect.body.selections).toStrictEqual([]);
   });
 
+  it("routes thread-list invalidations to the feature-selected realtime channel", async () => {
+    const fixture = await seedAgent();
+    const token = okouToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.SharedChatDatabase]: false,
+    });
+    await flushWaitUntilForTest();
+    context.mocks.ably.channelGet.mockClear();
+    context.mocks.ably.publish.mockClear();
+
+    await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [201],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user:${fixture.userId}`],
+    ]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "threadListChanged",
+      null,
+    );
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.SharedChatDatabase]: true,
+    });
+    context.mocks.ably.channelGet.mockClear();
+    context.mocks.ably.publish.mockClear();
+
+    await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [201],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${fixture.userId}:${fixture.orgId}`],
+    ]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "threadListChanged",
+      null,
+    );
+  });
+
   it("creates a titled thread with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedAgent();
     const token = okouToken({
@@ -817,8 +878,10 @@ describe("POST /api/zero/chat-threads", () => {
       }),
       [201],
     );
-    expect(response.body).toMatchObject({
+    expect(response.body).toStrictEqual({
+      id: expect.any(String),
       title: "Deep dive on P2",
+      createdAt: expect.any(String),
       selectedModel: OTHER_WORKSPACE_MODEL,
       serviceTier: null,
     });
@@ -834,8 +897,13 @@ describe("POST /api/zero/chat-threads", () => {
       id: response.body.id,
       agentId: fixture.agentId,
       title: "Deep dive on P2",
+      pinnedAt: null,
       selectedModel: OTHER_WORKSPACE_MODEL,
       serviceTier: null,
+      computerUseHostId: null,
+      cloudBrowserEnabled: false,
+      selectedVideoModel: EXPLICIT_VIDEO_MODEL,
+      selectedImageModel: EXPLICIT_IMAGE_MODEL,
     });
     await expect(
       readCreatedThreadEvent(response.body.id, token),

@@ -3,6 +3,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
+use sandbox::ProcessOutputReceiver;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{self, Instant};
 use vsock_proto::{ExecControlNonce, ExecControlStatus, ExecTermination, MSG_EXEC_CANCEL};
@@ -20,7 +21,7 @@ use super::frame::{
 use super::state::{PendingExecControl, PendingExecControlGuard};
 use super::types::{
     ExecControlAck, ExecControlOutcome, ExecOperationResult, ExecOutputEvent,
-    exec_control_status_error,
+    SupervisedExecStartTiming, exec_control_status_error,
 };
 
 /// Handle for a host-side exec operation.
@@ -127,6 +128,8 @@ impl ExecWaitLifecycle {
                 tracing::info!(
                     seq = seq,
                     label = %diagnostic.label_log,
+                    process_class = diagnostic.process_class,
+                    operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
                     "exec operation cancel sent"
                 );
@@ -135,6 +138,8 @@ impl ExecWaitLifecycle {
                 tracing::info!(
                     seq = seq,
                     label = %diagnostic.label_log,
+                    process_class = diagnostic.process_class,
+                    operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
                     "supervised exec operation cancel sent"
                 );
@@ -232,6 +237,8 @@ impl ExecWaitCore {
                 tracing::warn!(
                     seq = seq,
                     label = %self.diagnostic.label_log,
+                    process_class = self.diagnostic.process_class,
+                    operation_kind = self.diagnostic.operation_kind,
                     elapsed_ms = self.diagnostic.elapsed_ms(),
                     poison_connection = poison_on_timeout,
                     "exec operation wait timeout"
@@ -241,6 +248,8 @@ impl ExecWaitCore {
                 tracing::warn!(
                     seq = seq,
                     label = %self.diagnostic.label_log,
+                    process_class = self.diagnostic.process_class,
+                    operation_kind = self.diagnostic.operation_kind,
                     elapsed_ms = self.diagnostic.elapsed_ms(),
                     poison_connection = poison_on_timeout,
                     "supervised exec operation wait timeout"
@@ -463,6 +472,8 @@ impl ExecWaitCore {
                         tracing::warn!(
                             seq = seq,
                             label = %diagnostic.label_log,
+                            process_class = diagnostic.process_class,
+                            operation_kind = diagnostic.operation_kind,
                             elapsed_ms = diagnostic.elapsed_ms(),
                             "{}",
                             match lifecycle {
@@ -644,8 +655,10 @@ impl Drop for ExecOperationHandle {
 pub struct SupervisedExecHandle {
     pub(in crate::exec_operation) wait_core: ExecWaitCore,
     pub(in crate::exec_operation) pid: u32,
+    pub(in crate::exec_operation) start_timing: SupervisedExecStartTiming,
     pub(in crate::exec_operation) cancel_handle_taken: bool,
     pub(in crate::exec_operation) stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
+    pub(in crate::exec_operation) process_output_rx: Option<ProcessOutputReceiver>,
     pub(in crate::exec_operation) control: Option<ExecControlHandle>,
 }
 
@@ -685,6 +698,8 @@ impl SupervisedExecCancelHandle {
             tracing::warn!(
                 seq = self.route_id.wire_seq(),
                 label = %self.diagnostic.label_log,
+                process_class = self.diagnostic.process_class,
+                operation_kind = self.diagnostic.operation_kind,
                 elapsed_ms = self.diagnostic.elapsed_ms(),
                 "supervised exec operation cancel write timed out"
             );
@@ -700,6 +715,11 @@ impl SupervisedExecHandle {
     /// Guest process id reported by the `exec_started` acknowledgement.
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    /// Host and guest timing captured while the supervised start completed.
+    pub fn start_timing(&self) -> SupervisedExecStartTiming {
+        self.start_timing
     }
 
     /// Return a cloneable exec-control handle when control was enabled.
@@ -749,11 +769,18 @@ impl SupervisedExecHandle {
         self.stream_rx.take()
     }
 
+    /// Take the bounded process stdout receiver for sandbox process operations.
+    pub fn take_process_output_receiver(&mut self) -> Option<ProcessOutputReceiver> {
+        self.process_output_rx.take()
+    }
+
     fn clear_unclaimed_stream_sender(&mut self) {
         let Some(route_id) = self.wait_core.active_route_id() else {
             return;
         };
-        if self.stream_rx.take().is_some() {
+        let event_stream_unclaimed = self.stream_rx.take().is_some();
+        let process_output_unclaimed = self.process_output_rx.take().is_some();
+        if event_stream_unclaimed || process_output_unclaimed {
             clear_exec_operation_stream_sender(self.wait_core.shared(), route_id);
         }
     }
@@ -1025,6 +1052,8 @@ impl Drop for ExecOperationCancelOnDropGuard {
                 tracing::warn!(
                     seq = seq,
                     label = %diagnostic.label_log,
+                    process_class = diagnostic.process_class,
+                    operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
                     error = %err,
                     "exec operation cancel on drop admission failed"
@@ -1054,6 +1083,8 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     tracing::info!(
                         seq = seq,
                         label = %diagnostic.label_log,
+                        process_class = diagnostic.process_class,
+                        operation_kind = diagnostic.operation_kind,
                         elapsed_ms = diagnostic.elapsed_ms(),
                         "exec operation cancel sent on drop"
                     );
@@ -1062,6 +1093,8 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     tracing::warn!(
                         seq = seq,
                         label = %diagnostic.label_log,
+                        process_class = diagnostic.process_class,
+                        operation_kind = diagnostic.operation_kind,
                         elapsed_ms = diagnostic.elapsed_ms(),
                         error = %err,
                         "exec operation cancel on drop failed"
@@ -1071,6 +1104,8 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     tracing::warn!(
                         seq = seq,
                         label = %diagnostic.label_log,
+                        process_class = diagnostic.process_class,
+                        operation_kind = diagnostic.operation_kind,
                         elapsed_ms = diagnostic.elapsed_ms(),
                         "exec operation cancel on drop timed out"
                     );

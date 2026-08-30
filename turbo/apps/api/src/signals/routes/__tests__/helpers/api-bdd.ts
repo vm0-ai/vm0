@@ -20,6 +20,7 @@ import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-pr
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { apiTestS3PresignedUrl } from "../../../../__tests__/mocks";
 import { now } from "../../../../lib/time";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
@@ -200,8 +201,10 @@ export function createBddApi(context: TestContext) {
 
   function acceptAgentStorageWrites(): void {
     context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
-    context.mocks.s3.getSignedUrl.mockResolvedValue(
-      "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
+    context.mocks.s3.getSignedUrl.mockImplementation(
+      (_client: unknown, command: unknown) => {
+        return Promise.resolve(apiTestS3PresignedUrl(command));
+      },
     );
   }
 

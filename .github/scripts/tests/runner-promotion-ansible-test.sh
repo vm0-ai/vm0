@@ -59,17 +59,17 @@ trap cleanup EXIT
 test_home="$tmp/home"
 data_dir="$tmp/vm0-runner"
 test_bin="$tmp/bin"
-runner_name=v999.0.0
-runner_dir="$data_dir/bin/$runner_name"
+runner_release=v999.0.0
+runner_bin_dir="$data_dir/bin/$runner_release"
 invocation_log="$data_dir/runner-invocations"
 gc_arrivals="$data_dir/gc-arrivals"
 mkdir -p \
   "$test_home" \
   "$test_bin" \
   "$data_dir/locks" \
-  "$data_dir/runners/$runner_name" \
+  "$data_dir/runners/$runner_release" \
   "$gc_arrivals" \
-  "$runner_dir"
+  "$runner_bin_dir"
 
 ln -s "$(command -v flock)" "$test_bin/real-flock"
 cat > "$test_bin/flock" <<'EOF'
@@ -87,7 +87,7 @@ exec "$(dirname "$0")/real-flock" "$@"
 EOF
 chmod +x "$test_bin/flock"
 
-fake_runner="$runner_dir/runner"
+fake_runner="$runner_bin_dir/runner"
 cat > "$fake_runner" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -164,6 +164,7 @@ if ! PATH="$test_bin:$PATH" \
     -i "$inventory" \
     --forks 2 \
     -e "data_dir=$data_dir" \
+    -e "runner_host_env_file=$tmp/host.env" \
     -e "runner_version=999.0.0" \
     -e "runner_target=$runner_target" \
     "$promote_playbook" >"$tmp/promote-output" 2>&1; then
@@ -172,9 +173,9 @@ if ! PATH="$test_bin:$PATH" \
 fi
 
 assert_line_count "$invocation_log" 2 \
-  "gc --keep-latest 6 --protect-version $runner_name"
-assert_line_count "$invocation_log" 4 "doctor --name $runner_name"
+  "gc --keep-latest 6 --protect-version $runner_release"
+assert_line_count "$invocation_log" 4 "doctor --name $runner_release"
 assert_line_count "$invocation_log" 2 \
-  "service wait-running --name $runner_name --timeout-secs 120"
+  "service wait-running --name $runner_release --timeout-secs 120"
 
 echo "runner-promotion-ansible-test: ok"

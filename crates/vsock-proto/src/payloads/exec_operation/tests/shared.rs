@@ -290,6 +290,7 @@ impl ExecStartStdinLayout {
 
 pub(super) struct ExecStartLayout {
     pub lifecycle_offset: usize,
+    pub role_offset: usize,
     pub timeout_policy_offset: usize,
     pub timeout_value_offset: Option<usize>,
     pub flags_offset: usize,
@@ -312,6 +313,9 @@ impl ExecStartLayout {
         let mut offset = 0;
 
         let lifecycle_offset = offset;
+        offset += 1;
+
+        let role_offset = offset;
         offset += 1;
 
         let timeout_policy_offset = offset;
@@ -380,6 +384,7 @@ impl ExecStartLayout {
 
         Self {
             lifecycle_offset,
+            role_offset,
             timeout_policy_offset,
             timeout_value_offset,
             flags_offset,

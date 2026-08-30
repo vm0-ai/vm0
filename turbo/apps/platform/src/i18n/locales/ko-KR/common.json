@@ -121,7 +121,10 @@
         "cacheMiss": "재사용 키와 일치하는 캐시된 작업 공간이 없습니다.",
         "deviceLimitMismatch": "유휴 풀 항목이 존재하지만 장치 속도 제한기 상태가 일치하지 않습니다.",
         "diskPressure": "러너의 디스크 여유 공간이 부족하여 작업 공간 재사용을 건너뛰었습니다.",
+        "environment": "환경",
         "featureDisabled": "이 실행에 대해 샌드박스 재사용이 비활성화되었습니다.",
+        "generation": "세대",
+        "hostname": "호스트 이름",
         "invalidMetadata": "캐시된 작업 공간 메타데이터가 유효하지 않습니다.",
         "invalidWorkingDir": "요청한 작업 디렉터리를 재사용할 수 없습니다.",
         "lockBusy": "다른 실행이 동일한 작업 공간을 준비하고 있었습니다.",
@@ -129,21 +132,28 @@
         "noSessionId": "레거시 결과: 샌드박스가 재사용되지 않은 정확한 이유를 확인할 수 없습니다.",
         "notConfigured": "이 실행에는 작업 공간 재사용이 구성되지 않았습니다.",
         "notReused": "재사용되지 않음",
+        "outcomeUnavailableDescription": "추가 세부 정보를 확인할 수 없습니다.",
         "poolMiss": "유휴 풀에서 일치하는 샌드박스를 찾을 수 없습니다.",
         "profileMismatch": "유휴 풀 항목이 존재하지만 프로필이 일치하지 않습니다.",
         "provisioning": "프로비저닝 중",
         "reused": "재사용됨",
         "reusedDescription": "샌드박스가 유휴 풀에서 활성화되었습니다.",
+        "runnerId": "러너 ID",
         "sandbox": "샌드박스",
         "sandboxPrepareFallback": "캐시된 작업 공간을 찾았지만 샌드박스 준비 후 사용할 수 없었습니다.",
         "sandboxReusedDescription": "재사용된 샌드박스 안에서 작업 공간을 계속 사용할 수 있었습니다.",
         "startup": "시작",
         "startupCold": "콜드 스타트",
+        "startupColdDescription": "새 샌드박스와 작업 공간이 준비되었습니다.",
         "startupSandbox": "샌드박스 재사용",
+        "startupSandboxDescription": "샌드박스와 해당 작업 공간이 재사용되었습니다.",
         "startupUnknown": "알 수 없음",
+        "startupUnknownDescription": "시작 시 재사용 세부 정보를 확인할 수 없습니다.",
         "startupWorkspace": "작업 공간 재사용",
+        "startupWorkspaceDescription": "새 샌드박스에서 캐시된 작업 공간을 복원했습니다.",
         "unavailable": "사용할 수 없음",
         "unparkFailed": "활성화 시도가 실패하여 새 샌드박스가 프로비저닝되었습니다.",
+        "version": "버전",
         "workspace": "작업 공간",
         "workspaceNoReuseKey": "작업 공간 재사용 키가 없었습니다.",
         "workspaceReusedDescription": "작업 공간이 러너 캐시에서 복원되었습니다."
@@ -431,7 +441,6 @@
       "ariaLabel": "사이드바",
       "chat": "채팅",
       "collapse": "사이드바 접기",
-      "expand": "사이드바 펼치기",
       "hideChatList": "채팅 목록 숨기기",
       "manage": "관리",
       "mobile": {
@@ -455,7 +464,7 @@
         "workflows": "워크플로",
         "works": "작업"
       },
-      "searchConversations": "대화 검색",
+      "searchWorkspace": "워크스페이스 검색",
       "showChatList": "채팅 목록 표시",
       "workspaceSwitcher": {
         "create": "워크스페이스 만들기",
@@ -505,7 +514,6 @@
         "arrow": "화살표",
         "box": "사각형",
         "pen": "그리기",
-        "redact": "가리기",
         "text": "텍스트"
       },
       "undo": "실행 취소"
@@ -1065,6 +1073,7 @@
         "secondFactorDescription": "이 로그인에는 이 페이지에서 지원하지 않는 추가 확인 단계가 필요합니다. 다른 로그인 방법을 사용하려면 처음부터 다시 시작하세요.",
         "secondFactorTitle": "추가 확인 필요",
         "selectOrganization": "{{organizationName}}(으)로 계속",
+        "signedInAs": "{{identifier}}(으)로 로그인됨",
         "unsupportedDescription": "계정에서 이 페이지가 지원하지 않는 인증 단계를 반환했습니다. 다른 로그인 방법을 사용하려면 처음부터 다시 시작하세요.",
         "unsupportedTitle": "로그인 단계를 사용할 수 없음"
       },
@@ -1073,7 +1082,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "현재 로그인 사용",
         "addAccount": "계정 추가",
         "appleMethod": "Apple로 계속하기",
         "back": "돌아가기",
@@ -1103,6 +1111,7 @@
         "hidePassword": "비밀번호 숨기기",
         "identifierLabel": "이메일 주소 혹은 아이디",
         "identifierPlaceholder": "이메일 주소 또는 사용자 이름을 입력하세요",
+        "lastUsed": "최근 사용",
         "methodsHelpPrompt": "이 방법들을 사용할 수 없나요?",
         "newPasswordLabel": "새 비밀번호",
         "newPasswordSubtitle": "보안을 위해 비밀번호를 재설정해야 해요.",
@@ -1140,7 +1149,6 @@
         "verify": "확인하기"
       },
       "signUp": {
-        "action": "현재 회원가입 사용",
         "alreadyHaveAccount": "계정이 있으신가요?",
         "appleMethod": "Apple로 계속하기",
         "back": "돌아가기",
@@ -1690,7 +1698,6 @@
         "inviteMember": "사람 초대 🤝",
         "otherChannels": "Telegram, 전화"
       },
-      "invitePeople": "사람 초대",
       "taglines": {
         "anonymous": {
           "buildSomething": "무언가 만들 준비가 되셨나요?",
@@ -1885,18 +1892,17 @@
       "agentSuggestions": "에이전트",
       "configureModel": "모델 구성",
       "createWorkflow": "워크플로 생성",
+      "imageModelForThisChat": "이 채팅의 이미지 모델",
       "message": "메시지",
+      "modelForThisChat": "이 채팅의 모델",
       "placeholder": "워크플로 자동화, 작업 관리 등을 요청하세요...",
       "selectedModelUnavailable": "선택한 모델을 사용할 수 없습니다. 전송 전에 구성하세요.",
       "selectedModelUnavailableToast": "선택한 모델을 사용할 수 없습니다",
       "selectModel": "모델 선택",
-      "setAsDefault": "기본값으로 설정",
-      "temporaryFastModeDisabledNotice": "이 실행에서는 빠른 모드가 일시적으로 비활성화되었습니다",
-      "temporaryFastModeEnabledNotice": "이 실행에서는 빠른 모드가 일시적으로 활성화되었습니다",
-      "temporaryImageModelNotice": "이미지 모델을 일시적으로 {{model}}(으)로 전환함",
-      "temporaryModelNotice": "일시적으로 {{model}}(으)로 전환됨",
-      "temporaryVideoModelNotice": "동영상 모델을 일시적으로 {{model}}(으)로 전환함",
+      "temporarilySwitchTo": "임시로 전환할 모델",
       "threadSuggestions": "채팅 스레드",
+      "useForFutureChats": "향후 채팅에도 사용",
+      "videoModelForThisChat": "이 채팅의 동영상 모델",
       "visualAttachmentsUnsupported": "{{modelName}}은 이미지나 비디오를 인식할 수 없습니다. 첨부하려면 비전 기능이 있는 모델로 전환하세요.",
       "workflows": {
         "empty": "일치하는 워크플로가 없습니다",
@@ -1933,6 +1939,7 @@
       "authorized": "{{connectorName}}가 연결되고 {{agentName}}에 권한이 부여되었습니다",
       "available_one": "연결 가능한 커넥터 ({{count}})",
       "available_other": "연결 가능한 커넥터 ({{count}})",
+      "back": "뒤로",
       "configurePermissions": "{{connectorName}} 권한 구성",
       "customAuthorizeDescription": "이 맞춤 커넥터를 검토하고 연결한 후 에이전트에 권한을 부여하세요.",
       "defaultAccountFor": "{{connector}} · 기본 계정 사용 중: {{account}}",
@@ -1988,7 +1995,7 @@
       "agents": "에이전트",
       "back": "뒤로",
       "content": "내용",
-      "description": "선택한 내용을 에이전트 또는 채팅으로 전달합니다.",
+      "description": "선택한 내용을 에이전트 또는 채팅으로 보내 계속 작업하세요.",
       "noResults": "에이전트 또는 채팅을 찾을 수 없습니다",
       "search": "에이전트 및 채팅 검색...",
       "sent": "전달했습니다",
@@ -2300,48 +2307,6 @@
       "copied": "복사됨",
       "deleted": "채팅 삭제됨"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "여러 파일 변경 중",
-            "singular": "파일 변경 중"
-          },
-          "terminal": {
-            "plural": "여러 파일 변경",
-            "singular": "파일 변경"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "여러 파일 읽는 중",
-            "singular": "파일 읽는 중"
-          },
-          "terminal": {
-            "plural": "여러 파일 읽음",
-            "singular": "파일 읽음"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "여러 명령 실행 중",
-            "singular": "명령 실행 중"
-          },
-          "terminal": {
-            "plural": "여러 명령 실행",
-            "singular": "명령 실행"
-          }
-        }
-      },
-      "collapse": "도구 활동 접기",
-      "expand": "도구 활동 펼치기",
-      "status": {
-        "cancelled": "취소됨",
-        "error": "실패",
-        "pending": "진행 중",
-        "success": "완료"
-      }
-    },
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",
       "input": "음성 입력",
@@ -2409,9 +2374,8 @@
       "summaryMany_other": "",
       "summaryOne": "계정 {{value}}개",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}}개에 주의 필요",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention": "{{value}}/{{total}}개에 주의 필요",
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "적용",
@@ -2475,6 +2439,8 @@
       "access": {
         "add": "접근 권한 추가",
         "manage": "{{connector}} 접근 권한 관리",
+        "summaryMany": "에이전트 {{value}}개",
+        "unavailable": "접근 권한을 사용할 수 없음",
         "usedBy": "사용 중 "
       },
       "categories": {
@@ -5023,6 +4989,20 @@
         "sectionTitle": "계정 및 보안"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "밝고 은은한 팔레트를 인터페이스의 모든 계층에 적용합니다.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "컬러 테마"
+        },
         "description": "인터페이스 모양을 선택하세요.",
         "sectionTitle": "외관",
         "theme": {
@@ -5323,15 +5303,20 @@
       "viewSource": "다이어그램 소스"
     },
     "notFound": {
+      "action": "홈으로 돌아가기",
       "description": "찾으시는 페이지가 존재하지 않습니다.",
       "title": "페이지를 찾을 수 없습니다"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "이 공유된 대화는 존재하지 않습니다.",
+    "handoffDescription": "{{assistantName}}가 컨텍스트를 새 채팅으로 가져갑니다",
+    "handoffPrompt": "이 공유 대화를 저와 계속하세요: {{url}}",
+    "makeConversationYours": "이 대화를 내 것으로",
     "notFoundTitle": "공유된 대화를 찾을 수 없습니다",
-    "tryOkou": "{{assistantName}} 사용해 보기"
+    "share": "공유",
+    "signIn": "로그인",
+    "signUp": "회원가입",
+    "tryItYourself": "직접 사용해 보기"
   },
   "usage": {
     "displayNames": {
@@ -6076,6 +6061,67 @@
       },
       "title": "워크플로",
       "viewAutomations": "자동화 보기"
+    },
+    "official": {
+      "activeInstallationDescription": "이 공식 워크플로는 계속 작동하며 관리되는 콘텐츠는 읽기 전용으로 유지됩니다.",
+      "activeInstallationTitle": "공식 워크플로",
+      "agent": "에이전트",
+      "automationCount_one": "자동화 {{count}}개",
+      "automationCount_other": "자동화 {{count}}개",
+      "badge": "공식",
+      "browse": "공식 워크플로 둘러보기",
+      "chooseValue": "값 선택",
+      "copySucceededUninstallFailed": "복사본은 준비되었지만 원본 공식 워크플로를 제거하지 못했습니다.",
+      "description": "vm0에서 관리하고 유지하는 워크플로를 설치합니다.",
+      "empty": "사용 가능한 공식 워크플로가 없습니다.",
+      "includedAutomations": "포함된 자동화",
+      "install": "설치",
+      "installDescription": "에이전트를 선택하고 모든 필수 매개변수를 입력하세요. 포함된 모든 자동화가 설치됩니다.",
+      "installed": "공식 워크플로가 설치되었습니다",
+      "installErrorDescription": "에이전트와 매개변수 값을 확인한 후 다시 시도하세요.",
+      "installErrorTitle": "공식 워크플로를 설치하지 못했습니다",
+      "installTitle": "{{name}} 설치",
+      "intendedOff": "꺼짐으로 설정",
+      "intendedOn": "켜짐으로 설정",
+      "loadErrorDescription": "이 카탈로그를 사용할 수 없거나 계정에 활성화되지 않았을 수 있습니다.",
+      "loadErrorTitle": "공식 워크플로를 불러오지 못했습니다",
+      "no": "아니요",
+      "noParameters": "필요한 매개변수가 없습니다.",
+      "noResults": "검색과 일치하는 공식 워크플로가 없습니다.",
+      "notFound": "이 공식 워크플로를 찾을 수 없습니다.",
+      "parameterCount_one": "매개변수 {{count}}개",
+      "parameterCount_other": "매개변수 {{count}}개",
+      "parameterRequired": "{{key}}(필수)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "재구성",
+      "reconfigured": "공식 워크플로가 재구성되었습니다",
+      "reconfigureDescription": "이 워크플로나 자동화를 교체하지 않고 형식이 지정된 매개변수를 업데이트합니다.",
+      "reconfigureDialogDescription": "관리되는 모든 자동화를 검토하고 매개변수를 업데이트하세요.",
+      "reconfigureErrorDescription": "필수 값을 검토한 후 다시 시도하세요.",
+      "reconfigureErrorTitle": "공식 워크플로를 재구성하지 못했습니다",
+      "reconfigureTitle": "설치 매개변수",
+      "reconfigureUnavailable": "공식 매개변수 메타데이터를 일시적으로 사용할 수 없습니다.",
+      "retiredBadge": "공식 · 사용 중단",
+      "retiredDefinitionDescription": "보존된 이 정의는 볼 수 있지만 더 이상 설치할 수 없습니다.",
+      "retiredInstallationDescription": "이 정의는 사용 중단되었습니다. 기존 설치는 제거할 때까지 계속 작동하며 읽기 전용으로 유지됩니다.",
+      "retiredInstallationTitle": "사용 중단된 공식 워크플로",
+      "retiredTitle": "사용 중단된 정의",
+      "retry": "다시 시도",
+      "search": "공식 워크플로 검색",
+      "selectAgent": "에이전트 선택",
+      "statusCurrent": "최신",
+      "statusFailed": "실패",
+      "statusNeedsReconfiguration": "재구성 필요",
+      "statusReconciling": "동기화 중",
+      "title": "공식 워크플로",
+      "unavailableInstallationDescription": "승인된 정의를 일시적으로 사용할 수 없습니다. 기존 운영 제어는 계속 사용할 수 있습니다.",
+      "unavailableInstallationTitle": "공식 정의를 사용할 수 없음",
+      "uninstall": "제거",
+      "uninstallConfirm": "공식 설치와 모든 자동화를 제거합니다. 이 작업은 실행 취소할 수 없습니다.",
+      "uninstallDescription": "관리되는 수명 주기를 통해 이 공식 워크플로 설치를 제거합니다.",
+      "uninstallTitle": "공식 워크플로 제거",
+      "viewAndInstall": "보고 설치",
+      "yes": "예"
     }
   },
   "works": {

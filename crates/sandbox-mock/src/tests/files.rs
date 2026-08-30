@@ -650,6 +650,99 @@ async fn sandbox_write_private_file_queued_error_and_records_calls() {
 }
 
 #[tokio::test]
+async fn sandbox_write_private_files_consumes_one_result_and_records_one_batch() {
+    let sandbox = MockSandbox::new("test-1");
+    sandbox.push_private_write_files_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "private batch failed".into(),
+    }));
+    let files = [
+        WriteFileEntry {
+            path: "/tmp/private-a.env",
+            content: b"alpha",
+        },
+        WriteFileEntry {
+            path: "/tmp/private-b.json",
+            content: b"beta",
+        },
+    ];
+
+    let error = sandbox.write_private_files(&files).await.unwrap_err();
+    assert_operation_error(
+        error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "private batch failed",
+    );
+    sandbox.write_private_files(&files).await.unwrap();
+
+    assert!(sandbox.private_write_file_calls().is_empty());
+    let calls = sandbox.private_write_files_calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].files.len(), 2);
+    assert_eq!(calls[0].files[0].path, "/tmp/private-a.env");
+    assert_eq!(calls[0].files[0].content, b"alpha");
+    assert_eq!(calls[0].files[1].path, "/tmp/private-b.json");
+    assert_eq!(calls[0].files[1].content, b"beta");
+}
+
+#[tokio::test]
+async fn shared_private_write_gate_blocks_private_batch_before_recording() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let gate = MockLifecycleGate::new();
+    overrides.set_private_write_file_lifecycle_gate(gate.clone());
+    overrides.push_private_write_files_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "queued private batch failed".into(),
+    }));
+    let sandbox = Arc::new(MockSandbox::with_overrides(
+        "test-1",
+        Arc::clone(&overrides),
+    ));
+
+    let blocked_write = {
+        let sandbox = Arc::clone(&sandbox);
+        tokio::spawn(async move {
+            sandbox
+                .write_private_files(&[
+                    WriteFileEntry {
+                        path: "/tmp/private-a.env",
+                        content: b"alpha",
+                    },
+                    WriteFileEntry {
+                        path: "/tmp/private-b.json",
+                        content: b"beta",
+                    },
+                ])
+                .await
+        })
+    };
+    assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+    assert!(overrides.private_write_files_calls().is_empty());
+
+    blocked_write.abort();
+    assert!(blocked_write.await.unwrap_err().is_cancelled());
+    overrides.clear_private_write_file_lifecycle_gate();
+
+    let error = sandbox
+        .write_private_files(&[WriteFileEntry {
+            path: "/tmp/private-next.env",
+            content: b"next",
+        }])
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "queued private batch failed",
+    );
+    assert_eq!(overrides.private_write_files_calls().len(), 1);
+}
+
+#[tokio::test]
 async fn shared_private_write_gate_blocks_before_recording_or_result_consumption() {
     let overrides = Arc::new(MockSandboxOverrides::new());
     let gate = MockLifecycleGate::new();

@@ -8,7 +8,8 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 use vsock_proto::{
     DecodedExecStart, ExecOutputPolicy, MSG_ERROR, MSG_EXEC_START, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, RawMessage,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, MSG_WRITE_PRIVATE_FILES,
+    RawMessage,
 };
 
 use super::super::support::read_guest_message;
@@ -143,6 +144,22 @@ pub(super) fn spawn_write_files(
     })
 }
 
+pub(super) fn spawn_write_private_files(
+    host: Arc<VsockHost>,
+    files: Vec<(&'static str, Vec<u8>)>,
+) -> JoinHandle<io::Result<()>> {
+    tokio::spawn(async move {
+        let entries = files
+            .iter()
+            .map(|(path, content)| WriteFileEntry {
+                path,
+                content: content.as_slice(),
+            })
+            .collect::<Vec<_>>();
+        host.write_private_files(&entries).await
+    })
+}
+
 pub(super) struct ExecStartFrame {
     pub(super) msg: RawMessage,
     pub(super) command: String,
@@ -242,8 +259,19 @@ pub(super) async fn expect_write_file(guest: &mut UnixStream) -> WriteFileFrame 
 }
 
 pub(super) async fn expect_write_files(guest: &mut UnixStream) -> WriteFilesFrame {
+    expect_write_files_message(guest, MSG_WRITE_FILES).await
+}
+
+pub(super) async fn expect_write_private_files(guest: &mut UnixStream) -> WriteFilesFrame {
+    expect_write_files_message(guest, MSG_WRITE_PRIVATE_FILES).await
+}
+
+async fn expect_write_files_message(
+    guest: &mut UnixStream,
+    expected_msg_type: u8,
+) -> WriteFilesFrame {
     let msg = read_guest_message(guest).await;
-    assert_eq!(msg.msg_type, MSG_WRITE_FILES);
+    assert_eq!(msg.msg_type, expected_msg_type);
     let files = vsock_proto::decode_write_files(&msg.payload)
         .unwrap()
         .into_iter()

@@ -5,6 +5,7 @@ import {
   deferNextAblySubscribe,
   getAuthTokenHistory,
   hasChannelSubscription,
+  hasChannelSubscriptionOnChannel,
   hasSubscription,
   hasSubscriptionOnChannel,
   rejectAblySubscribe,
@@ -17,7 +18,7 @@ import {
   triggerAblyReauth,
   triggerAblyReconnect,
 } from "../../mocks/ably.ts";
-import { setMockTeam } from "../../mocks/handlers/api-agents.ts";
+import { setMockAgents } from "../../mocks/handlers/api-agents.ts";
 import { setMockRedeemResponse } from "../../mocks/handlers/api-billing.ts";
 import { setMockConnectors } from "../../mocks/handlers/api-connectors.ts";
 import { setMockAgentPhoneIntegration } from "../../mocks/handlers/api-integrations-agentphone.ts";
@@ -67,6 +68,19 @@ interface BrowserUrlOptions {
   readonly apiOriginMarker?: string | null;
 }
 
+interface BrowserFedCmOptions {
+  readonly credentials?: boolean;
+  readonly identityCredential?: boolean;
+  readonly secureContext?: boolean;
+}
+
+interface BrowserWebAuthnOptions {
+  readonly credentials?: boolean;
+  readonly platformAuthenticatorResult?: boolean | "error";
+  readonly publicKeyCredential?: boolean;
+  readonly secureContext?: boolean;
+}
+
 interface LocationAssignMock {
   calls: string[];
 }
@@ -103,6 +117,10 @@ interface BrowserDownloadMock {
   readonly blobForUrl: (url: string) => Blob | null;
   readonly downloads: BrowserDownload[];
   readonly revokedUrls: string[];
+}
+
+interface BrowserServiceWorkerMock {
+  readonly dispatchMessage: (data: unknown) => void;
 }
 
 interface ImageDimensionsMockValue {
@@ -177,8 +195,8 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
     },
     data: {
-      team: (...args: Parameters<typeof setMockTeam>) => {
-        setMockTeam(...args);
+      agents: (...args: Parameters<typeof setMockAgents>) => {
+        setMockAgents(...args);
       },
       org: (...args: Parameters<typeof setMockOrg>) => {
         setMockOrg(...args);
@@ -282,8 +300,108 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           return query === "(display-mode: standalone)" ? enabled : false;
         });
       },
+      serviceWorker: (): BrowserServiceWorkerMock => {
+        return mockServiceWorker(getSignal());
+      },
       userAgent: (ua: string): void => {
         vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+      },
+      fedCm: (options: BrowserFedCmOptions = {}): void => {
+        const secureContextDescriptor = defineWindowProperty(
+          window,
+          "isSecureContext",
+          options.secureContext ?? true,
+        );
+        const credentialsDescriptor = defineWindowProperty(
+          navigator,
+          "credentials",
+          options.credentials === false
+            ? undefined
+            : {
+                get: () => {
+                  return Promise.resolve(null);
+                },
+              },
+        );
+        const identityCredentialDescriptor = defineWindowProperty(
+          window,
+          "IdentityCredential",
+          options.identityCredential === false
+            ? undefined
+            : class TestIdentityCredential {},
+        );
+        restoreOnAbort(getSignal(), () => {
+          restoreWindowProperty(
+            window,
+            "isSecureContext",
+            secureContextDescriptor,
+          );
+          restoreWindowProperty(
+            navigator,
+            "credentials",
+            credentialsDescriptor,
+          );
+          restoreWindowProperty(
+            window,
+            "IdentityCredential",
+            identityCredentialDescriptor,
+          );
+        });
+      },
+      webAuthn: (options: BrowserWebAuthnOptions = {}): void => {
+        const platformAuthenticatorResult = options.platformAuthenticatorResult;
+        const secureContextDescriptor = defineWindowProperty(
+          window,
+          "isSecureContext",
+          options.secureContext ?? true,
+        );
+        const credentialsDescriptor = defineWindowProperty(
+          navigator,
+          "credentials",
+          options.credentials === false
+            ? undefined
+            : {
+                get: () => {
+                  return Promise.resolve(null);
+                },
+              },
+        );
+        const publicKeyCredential =
+          options.publicKeyCredential === false
+            ? undefined
+            : platformAuthenticatorResult === undefined
+              ? class TestPublicKeyCredential {}
+              : class TestPublicKeyCredential {
+                  static isUserVerifyingPlatformAuthenticatorAvailable(): Promise<boolean> {
+                    return platformAuthenticatorResult === "error"
+                      ? Promise.reject(
+                          new Error("Platform authenticator check failed"),
+                        )
+                      : Promise.resolve(platformAuthenticatorResult);
+                  }
+                };
+        const publicKeyCredentialDescriptor = defineWindowProperty(
+          window,
+          "PublicKeyCredential",
+          publicKeyCredential,
+        );
+        restoreOnAbort(getSignal(), () => {
+          restoreWindowProperty(
+            window,
+            "isSecureContext",
+            secureContextDescriptor,
+          );
+          restoreWindowProperty(
+            navigator,
+            "credentials",
+            credentialsDescriptor,
+          );
+          restoreWindowProperty(
+            window,
+            "PublicKeyCredential",
+            publicKeyCredentialDescriptor,
+          );
+        });
       },
       platform: (platform: string): void => {
         vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
@@ -362,6 +480,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       rejectNextSubscribe: rejectNextAblySubscribe,
       hasChannelSubscription,
+      hasChannelSubscriptionOnChannel,
       hasSubscription,
       hasSubscriptionOnChannel,
       getAuthTokenHistory,
@@ -441,6 +560,24 @@ function mockMatchMedia(matches: boolean | ((query: string) => boolean)): void {
     };
     return mediaQueryList;
   });
+}
+
+function mockServiceWorker(signal: AbortSignal): BrowserServiceWorkerMock {
+  const serviceWorker = new EventTarget();
+  const descriptor = defineWindowProperty(
+    navigator,
+    "serviceWorker",
+    serviceWorker,
+  );
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(navigator, "serviceWorker", descriptor);
+  });
+
+  return {
+    dispatchMessage(data: unknown): void {
+      serviceWorker.dispatchEvent(new MessageEvent("message", { data }));
+    },
+  };
 }
 
 function mockClipboardWriteText(): ClipboardWriteMock {

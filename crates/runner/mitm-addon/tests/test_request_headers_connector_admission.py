@@ -185,9 +185,9 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         "urlparse",
         track_api_url_parse,
     )
-    expected_derivation = (
+    expected_cached_api_derivation = (
         (("api.vm0.ai", 443),),
-        ("https://api.vm0.ai",),
+        (),
     )
 
     with (
@@ -195,13 +195,16 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         assert mitm_addon.requestheaders(flow) is None
-        assert admission_derivations == [expected_derivation]
+        assert admission_derivations == [expected_cached_api_derivation]
         _assert_no_request_stream(flow)
         assert flow.server_conn.address == ("api.vm0.ai", 443)
 
         await mitm_addon.request(flow)
 
-    assert admission_derivations == [expected_derivation, expected_derivation]
+    assert admission_derivations == [
+        expected_cached_api_derivation,
+        expected_cached_api_derivation,
+    ]
     auth_fetch.assert_awaited_once()
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved"

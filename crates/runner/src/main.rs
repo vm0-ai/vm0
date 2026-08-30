@@ -164,57 +164,29 @@ enum Command {
     Local(cmd::LocalArgs),
 }
 
-/// Extract the runner `name` field from a runner config YAML.
+const RUNNER_RELEASE: &str = concat!("v", env!("CARGO_PKG_VERSION"));
+
+/// Read the optional canonical hostname before tracing starts.
 ///
-/// Called before tracing is initialized, so warnings go to stderr directly.
-/// The returned value is sanitized to contain only `[a-zA-Z0-9_-]` characters
-/// so it is safe for use as a log file prefix.
-fn runner_name_from_config(path: &Path) -> String {
+/// Normal config loading remains responsible for reporting read, parse, and
+/// validation failures. This early read only supplies trusted common Axiom
+/// dimensions when the same Runner config boundary already accepts the value.
+fn runner_hostname_from_config(path: &Path) -> Option<String> {
     #[derive(serde::Deserialize)]
     struct Partial {
-        name: String,
+        hostname: Option<String>,
     }
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!(
-                "warn: could not read config for runner name: {}: {e}",
-                path.display()
-            );
-            return "default".into();
-        }
-    };
-    let raw = match serde_yaml_ng::from_str::<Partial>(&content) {
-        Ok(p) => p.name,
-        Err(e) => {
-            eprintln!(
-                "warn: could not parse runner name from {}: {e}",
-                path.display()
-            );
-            return "default".into();
-        }
-    };
-    sanitize_name(&raw)
+
+    let content = std::fs::read_to_string(path).ok()?;
+    let hostname = serde_yaml_ng::from_str::<Partial>(&content)
+        .ok()?
+        .hostname?;
+    config::validate_runner_hostname(&hostname).ok()?;
+    Some(hostname)
 }
 
-/// Replace non-`[a-zA-Z0-9_-]` characters with `-`.
-/// Returns `"default"` if the result is empty.
-fn sanitize_name(raw: &str) -> String {
-    let sanitized: String = raw
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    if sanitized.is_empty() {
-        "default".into()
-    } else {
-        sanitized
-    }
+fn runner_log_prefix(release: &str) -> String {
+    format!("runner-{release}")
 }
 
 /// Initialize tracing with a tee writer (stderr + rolling log file) plus an
@@ -223,15 +195,13 @@ fn sanitize_name(raw: &str) -> String {
 /// Returns the [`tracing_appender::non_blocking::WorkerGuard`] that must be
 /// held alive until the process exits so buffered logs are flushed.
 fn init_tracing_with_file(
-    config_path: &Path,
     axiom_layer: Option<axiom_layer::AxiomLayer>,
 ) -> Result<tracing_appender::non_blocking::WorkerGuard, Box<dyn std::error::Error>> {
     let home = paths::HomePaths::new()?;
     let log_dir = home.logs_dir();
     log_file::ensure_log_dir(&log_dir).map_err(|e| format!("create {}: {e}", log_dir.display()))?;
 
-    let name = runner_name_from_config(config_path);
-    let prefix = format!("runner-{name}");
+    let prefix = runner_log_prefix(RUNNER_RELEASE);
 
     let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
@@ -293,16 +263,21 @@ async fn main() -> ExitCode {
 
     let cli = Cli::parse_with_environment_aliases();
 
+    let runner_hostname = match &cli.command {
+        Command::Start(args) => runner_hostname_from_config(&args.config),
+        _ => None,
+    };
+
     // Axiom layer (dual-write with fmt). Returns None — zero overhead — when
     // AXIOM_TOKEN_TELEMETRY / AXIOM_DATASET_SUFFIX are unset.
-    let (axiom_layer, axiom_guard) = match axiom_layer::init() {
+    let (axiom_layer, axiom_guard) = match axiom_layer::init(runner_hostname) {
         Some((layer, guard)) => (Some(layer), Some(guard)),
         None => (None, None),
     };
 
     let was_enabled = axiom_layer.is_some();
     let (_guard, axiom_installed) = match &cli.command {
-        Command::Start(args) => match init_tracing_with_file(&args.config, axiom_layer) {
+        Command::Start(_) => match init_tracing_with_file(axiom_layer) {
             Ok(guard) => (Some(guard), was_enabled),
             Err(e) => {
                 // The failed `init_tracing_with_file` already consumed `axiom_layer`,
@@ -521,8 +496,6 @@ mod tests {
                 "rootfs-hash",
                 "--snapshot-hash",
                 "snapshot-hash",
-                "--name",
-                "runner-test",
                 "--group",
                 "vm0/test",
                 "--runner-dirname",
@@ -550,8 +523,6 @@ mod tests {
                 "rootfs-hash",
                 "--snapshot-hash",
                 "snapshot-hash",
-                "--name",
-                "runner-test",
                 "--group",
                 "vm0/test",
                 "--runner-dirname",
@@ -569,36 +540,32 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_name_passthrough() {
-        assert_eq!(sanitize_name("my-runner_01"), "my-runner_01");
+    fn runner_log_prefix_uses_explicit_release_identity() {
+        assert_eq!(runner_log_prefix("v1.2.3"), "runner-v1.2.3");
+        assert_ne!(runner_log_prefix("v1.2.3"), runner_log_prefix("v1.2.4"));
     }
 
     #[test]
-    fn sanitize_name_replaces_slashes() {
-        assert_eq!(sanitize_name("foo/bar"), "foo-bar");
-    }
+    fn runner_hostname_partial_read_preserves_valid_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("runner.yaml");
+        std::fs::write(&config_path, "hostname: prod-1.aws.vm3.ai\n").unwrap();
 
-    #[test]
-    fn sanitize_name_replaces_path_traversal() {
-        assert_eq!(sanitize_name("../../etc/passwd"), "------etc-passwd");
-    }
-
-    #[test]
-    fn sanitize_name_replaces_non_ascii() {
-        assert_eq!(sanitize_name("runner-日本語"), "runner----");
-    }
-
-    #[test]
-    fn sanitize_name_empty_returns_default() {
-        assert_eq!(sanitize_name(""), "default");
-    }
-
-    #[test]
-    fn runner_name_missing_file_returns_default() {
         assert_eq!(
-            runner_name_from_config(Path::new("/nonexistent.yaml")),
-            "default"
+            runner_hostname_from_config(&config_path).as_deref(),
+            Some("prod-1.aws.vm3.ai")
         );
+    }
+
+    #[test]
+    fn runner_hostname_partial_read_omits_missing_or_invalid_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("runner.yaml");
+        std::fs::write(&config_path, "group: vm0/test\n").unwrap();
+        assert_eq!(runner_hostname_from_config(&config_path), None);
+
+        std::fs::write(&config_path, "hostname: ''\n").unwrap();
+        assert_eq!(runner_hostname_from_config(&config_path), None);
     }
 
     #[test]

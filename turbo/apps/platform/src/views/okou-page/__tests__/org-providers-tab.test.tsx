@@ -7,8 +7,10 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 import type {
   ModelProviderResponse,
+  ModelProviderType,
   OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import {
   modelProviderConnectionsByIdContract,
   modelProviderConnectionsMainContract,
@@ -86,13 +88,14 @@ function builtInPolicy(
   model: OrgModelPolicy["model"],
   modelLabel: string,
   isDefault: boolean,
+  defaultProviderType: Extract<ModelProviderType, "vm0" | "built-in"> = "vm0",
 ): OrgModelPolicy {
   return {
     id,
     model,
     modelLabel,
     isDefault,
-    defaultProviderType: "vm0",
+    defaultProviderType,
     credentialScope: "org",
     modelProviderId: null,
     routeStatus: "valid",
@@ -857,6 +860,50 @@ describe("organization model providers settings", () => {
       expect(
         screen.queryByTestId("org-model-policy-row-claude-opus-4-8"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders both built-in read aliases once and writes the canonical type", async () => {
+    const canonicalPolicy = builtInPolicy(
+      "00000000-0000-4000-a000-000000000219",
+      "deepseek-v4-flash",
+      "DeepSeek V4 Flash",
+      true,
+      "built-in",
+    );
+    mockAdminOrg();
+    mockBillingCapabilities({
+      supportByok: false,
+      restrictedVm0Models: false,
+    });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([canonicalPolicy]);
+    let writtenProviderType: string | null = null;
+    context.mocks.api(modelPoliciesMainContract.update, ({ body, respond }) => {
+      writtenProviderType = body.policies[0]?.defaultProviderType ?? null;
+      return respond(200, {
+        policies: [{ ...canonicalPolicy, defaultProviderType: "vm0" }],
+        workspaceDefaultModel: canonicalPolicy.model,
+        workspaceDefaultPolicyId: canonicalPolicy.id,
+      });
+    });
+
+    await openProvidersTab();
+    const row = await screen.findByTestId(
+      "org-model-policy-row-deepseek-v4-flash",
+    );
+    expect(within(row).getByText("Built-in")).toBeInTheDocument();
+    click(within(row).getByLabelText("Actions for DeepSeek V4 Flash"));
+    click(menuItemByText("Edit model"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit model" });
+    expect(
+      within(dialog).getAllByRole("radio", { name: /Built-in/u }),
+    ).toHaveLength(1);
+    click(buttonByText("Save changes"));
+
+    await waitFor(() => {
+      expect(writtenProviderType).toBe("built-in");
     });
   });
 

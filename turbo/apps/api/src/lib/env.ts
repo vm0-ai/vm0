@@ -3,9 +3,6 @@ import { z, type ZodType } from "zod";
 
 import { testOverride } from "./singleton";
 
-const CANONICAL_WEB_URL_KEY = "OKOU_WEB_URL";
-const LEGACY_WEB_URL_KEY = "VM0_WEB_URL";
-
 const priceIdsSchema = z
   .string()
   .optional()
@@ -54,16 +51,13 @@ const SCHEMA = {
   ENV: z.enum(["production", "preview", "development"]),
   VITEST: z.enum(["true", "false"]).default("false"),
   OKOU_DEBUG: z.string().default(""),
-  VM0_DEBUG: z.string().default(""),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   // Direct origin of the API backend for self-dispatched internal callbacks
   // (`/api/internal/**`). Optional; when unset, production defaults to the API
   // backend origin and other environments fall back to the configured web URL.
   OKOU_API_BACKEND_URL: z.url().optional(),
-  VM0_API_BACKEND_URL: z.url().optional(),
   FEISHU_CALLBACK_BASE_URL: z.url(),
-  OKOU_WEB_URL: z.url().optional(),
-  VM0_WEB_URL: z.url().optional(),
+  OKOU_WEB_URL: z.url(),
   APP_URL: z.url(),
   CLI_PKG_URL: z.url(),
   RESEND_API_KEY: z.string().min(1).optional(),
@@ -120,7 +114,6 @@ const SCHEMA = {
   STRIPE_SECRET_KEY: z.string().min(1),
   ATOM_URL: z.url().optional(),
   ATOM_GRANT_PRICE: z.string().min(1).optional(),
-  VM0_MACHINE_SECRET_KEY: z.string().min(1).optional(),
   OKOU_PRICE_PRO: priceIdsSchema,
   OKOU_PRICE_TEAM: priceIdsSchema,
   OKOU_PRICE_USAGE_PACK_PLAN_PRO: priceIdsSchema,
@@ -172,22 +165,10 @@ const SCHEMA = {
   CONCURRENT_RUN_LIMIT_CAP: z.coerce.number().int().min(0).optional(),
 } as const;
 
-const runtimeEnvironment: Readonly<Record<string, string | undefined>> =
-  process.env;
-
 const baseEnv = createEnv<undefined, typeof SCHEMA>({
   server: SCHEMA,
   runtimeEnv: {
     ...process.env,
-    // Preserve the required web alias contract across createEnv's global
-    // empty-string normalization: an explicitly empty alias is invalid input,
-    // not an absent value that may fall through to its sibling.
-    OKOU_WEB_URL: SCHEMA.OKOU_WEB_URL.parse(
-      runtimeEnvironment[CANONICAL_WEB_URL_KEY],
-    ),
-    VM0_WEB_URL: SCHEMA.VM0_WEB_URL.parse(
-      runtimeEnvironment[LEGACY_WEB_URL_KEY],
-    ),
     S3_PUBLIC_ENDPOINT:
       process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT,
   },

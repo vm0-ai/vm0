@@ -5,7 +5,6 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type {
   TestTelegramStateActionBody,
   TestTelegramStateActionResponse,
@@ -34,7 +33,6 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { integrationsTelegramRoutes } from "../integrations-telegram";
 
@@ -728,13 +726,6 @@ async function seedPendingUserLink(
   });
 }
 
-async function redriveLegacyTelegramChatCallback(runId: string): Promise<void> {
-  await postTelegramStateAction({
-    action: "redrive-legacy-chat-callback",
-    run_id: runId,
-  });
-}
-
 describe("POST /api/telegram/setup-status", () => {
   it("requires an authenticated organization session", async () => {
     const response = await accept(
@@ -887,8 +878,8 @@ describe("POST /api/telegram/register", () => {
       seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-    mockEnv("VM0_WEB_URL", "https://www.example.test");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.example.test");
+    mockEnv("OKOU_WEB_URL", "https://www.example.test");
     mockEnv("APP_URL", "https://app.example.test");
     mockTelegramGetMe({ botId: telegramBotId, username: "registered_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
@@ -937,7 +928,7 @@ describe("POST /api/telegram/register", () => {
       seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
     mockEnv("APP_URL", "https://app.vm0.ai");
     mockTelegramGetMe({ botId: telegramBotId, username: "owner_named_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
@@ -2039,85 +2030,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     ).toHaveLength(1);
   });
 
-  it("falls back to the custom-bot binding brand for legacy delivery callbacks", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    const runnerGroup = configureCanonicalTelegramRunner();
-    const fixture = await trackFixture(
-      seedTelegramPostFixture({ linkTelegramUser: true }),
-    );
-    await seedModelPolicies({
-      fixture,
-      selectedModel: "claude-sonnet-5",
-    });
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        orgRole: "org:admin",
-      },
-      { [FeatureSwitchKey.OkouDebug]: true },
-    );
-    const telegramMocks = telegramApiMocks();
-    const botUsername = `bot_${fixture.telegramBotId}`;
-    const prompt = "verify legacy Telegram callback branding";
-
-    const response = await postWebhook({
-      telegramBotId: fixture.telegramBotId,
-      secret: fixture.webhookSecret,
-      apiOrigin: "https://api.okou.ai",
-      body: {
-        update_id: 250,
-        message: {
-          message_id: 2250,
-          chat: { id: -77_250, type: "supergroup" },
-          from: {
-            id: Number(fixture.telegramUserId),
-            username: "alice",
-            first_name: "Alice",
-          },
-          text: `@${botUsername} ${prompt}`,
-          entities: [mentionEntity(botUsername)],
-        },
-      },
-    });
-    expect(response.status).toBe(200);
-    await flushWaitUntilForTest();
-
-    const runState = await telegramPostRunState(fixture, prompt);
-    const claim = await claimTelegramRun(runState.run!.id, runnerGroup);
-    await completeCanonicalChatRun({
-      runId: runState.run!.id,
-      sandboxToken: claim.sandboxToken,
-    });
-
-    expect(telegramMocks.sentMessages).toHaveLength(1);
-    expect(telegramMocks.sentMessages[0]?.text).toContain(
-      `https://app.okou.ai/activities/${runState.run!.id}`,
-    );
-
-    await redriveLegacyTelegramChatCallback(runState.run!.id);
-
-    expect(telegramMocks.sentMessages).toHaveLength(2);
-    expect(telegramMocks.sentMessages[1]?.text).toContain(
-      `https://app.vm0.ai/activities/${runState.run!.id}`,
-    );
-    expect(telegramMocks.sentMessages[1]?.text).not.toContain(
-      "https://app.okou.ai/activities/",
-    );
-    const redrivenState = await telegramPostRunState(fixture, prompt);
-    const redrivenCallback = redrivenState.callbacks.find((callback) => {
-      return callback.internalKind === "telegram:chat";
-    });
-    expect(redrivenCallback?.status).toBe("delivered");
-    expect(stateRecord(redrivenCallback?.payload)).not.toHaveProperty(
-      "publicBrand",
-    );
-  });
-
-  it("keeps Telegram callbacks typed when VM0_API_BACKEND_URL is set", async () => {
-    mockEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
-    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  it("keeps Telegram callbacks typed when OKOU_API_BACKEND_URL is set", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
@@ -3029,7 +2944,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.sessionId).not.toBe(previousSessionId);
     await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
-        modelProvider: "vm0",
+        modelProvider: "built-in",
         selectedModel: "claude-sonnet-5",
       }),
     );
@@ -3082,7 +2997,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.sessionId).not.toBe(previousSessionId);
     await expect(latestAgentRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
-        modelProvider: "vm0",
+        modelProvider: "built-in",
         selectedModel: "claude-sonnet-5",
       }),
     );

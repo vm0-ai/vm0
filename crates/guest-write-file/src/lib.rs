@@ -16,7 +16,7 @@ struct Args {
     path: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch";
+const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch [--private]";
 
 fn parse_args<I>(args: I) -> Result<Args, String>
 where
@@ -65,10 +65,8 @@ where
     }
 
     if batch {
-        if append || create_parents || private {
-            return Err(
-                "--batch cannot be used with --append, --create-parents, or --private".to_string(),
-            );
+        if append || create_parents {
+            return Err("--batch cannot be used with --append or --create-parents".to_string());
         }
         if path.is_some() {
             return Err("--batch does not accept a path".to_string());
@@ -77,7 +75,7 @@ where
             append: false,
             batch: true,
             create_parents: false,
-            private: false,
+            private,
             path: None,
         });
     }
@@ -101,7 +99,7 @@ where
 
 fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
     if args.batch {
-        return run_batch(stdin);
+        return run_batch(stdin, args.private);
     }
     let Some(path) = args.path else {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing path"));
@@ -123,7 +121,7 @@ fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
     file.flush()
 }
 
-fn run_batch(mut stdin: impl Read) -> io::Result<()> {
+fn run_batch(mut stdin: impl Read, private: bool) -> io::Result<()> {
     let mut payload = Vec::new();
     let max_payload_size = vsock_proto::MAX_MESSAGE_SIZE - vsock_proto::MIN_BODY_SIZE;
     let mut limited = stdin.by_ref().take(max_payload_size as u64 + 1);
@@ -139,12 +137,16 @@ fn run_batch(mut stdin: impl Read) -> io::Result<()> {
 
     for file in files {
         let path = Path::new(file.path);
-        if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            fs::create_dir_all(parent)?;
-        }
-        let mut output = open_output_file(path, false)?;
+        let mut output = if private {
+            open_private_output_file(path, false)?
+        } else {
+            if let Some(parent) = path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent)?;
+            }
+            open_output_file(path, false)?
+        };
         output.write_all(file.content)?;
         output.flush()?;
     }
@@ -236,7 +238,7 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 ///
 /// ```text
 /// guest-write-file [--private] [--append | --create-parents] [--] <path>
-/// guest-write-file --batch
+/// guest-write-file --batch [--private]
 /// ```
 ///
 /// Use `--` before `<path>` when the literal path begins with `-`. `stdin`
@@ -251,7 +253,9 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// parent components.
 ///
 /// `--batch` reads a `vsock-proto` `write_files` payload from stdin and writes
-/// every ordinary file entry with create-parent and truncate semantics.
+/// every entry with create-parent and truncate semantics. Combined with
+/// `--private`, every entry uses the private runtime-file behavior described
+/// above.
 ///
 /// Returns process-style exit codes: `0` for success, `1` for runtime or write
 /// failures, and `2` for usage or argument errors.
@@ -376,6 +380,22 @@ mod tests {
                 batch: true,
                 create_parents: false,
                 private: false,
+                path: None,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_private_batch() {
+        let args = parse_args(["--batch".to_string(), "--private".to_string()]).unwrap();
+
+        assert_eq!(
+            args,
+            Args {
+                append: false,
+                batch: true,
+                create_parents: false,
+                private: true,
                 path: None,
             }
         );

@@ -353,7 +353,7 @@ mod tests {
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
+        status.add_run(run_id, sandbox_id).await.unwrap();
 
         FinalizationReady::new(BudgetOwnership::active(ActiveBudgetLease::new(lease)))
             .settle(
@@ -419,7 +419,7 @@ mod tests {
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
+        status.add_run(run_id, sandbox_id).await.unwrap();
 
         FinalizationReady::new(BudgetOwnership::idle_owned())
             .settle(
@@ -453,8 +453,8 @@ mod tests {
         let run_id = RunId::new_v4();
         let completed_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, completed_sandbox_id).await;
-        status.add_run(run_id, current_sandbox_id).await;
+        status.add_run(run_id, completed_sandbox_id).await.unwrap();
+        status.add_run(run_id, current_sandbox_id).await.unwrap();
 
         FinalizationReady::new(BudgetOwnership::active(ActiveBudgetLease::new(lease)))
             .settle(
@@ -485,7 +485,7 @@ mod tests {
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
+        status.add_run(run_id, sandbox_id).await.unwrap();
 
         FinalizationReady::new(BudgetOwnership::active(
             ActiveBudgetLease::from_idle_park_lease(lease),

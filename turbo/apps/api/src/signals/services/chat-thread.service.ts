@@ -15,6 +15,7 @@ import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models"
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
+  normalizeModelProviderWriteType,
   type ModelProviderCredentialScope,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -58,6 +59,7 @@ import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "./chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "./chat-thread-organization.service";
 import { cancelRun$, type CancelRunResult } from "./run-cancel.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./chat-active-run.service";
@@ -193,9 +195,12 @@ function ownedChatThread(
       computerUseHostId: thread.computerUseHostId,
       cloudBrowserEnabled: thread.cloudBrowserEnabled,
       modelProviderId: thread.modelProviderId,
-      modelProviderType: modelProviderTypeSchema
-        .nullable()
-        .parse(thread.modelProviderType),
+      modelProviderType:
+        thread.modelProviderType === null
+          ? null
+          : normalizeModelProviderWriteType(
+              modelProviderTypeSchema.parse(thread.modelProviderType),
+            ),
       modelProviderCredentialScope: modelProviderCredentialScopeSchema
         .nullable()
         .parse(thread.modelProviderCredentialScope),
@@ -319,6 +324,7 @@ export function chatThreadDetail(args: {
  */
 export function chatThreadUnreads(args: {
   readonly userId: string;
+  readonly orgId: string;
   readonly agentId: string;
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
@@ -330,10 +336,12 @@ export function chatThreadUnreads(args: {
         unreadAt: lastRunFinish.createdAt,
       })
       .from(chatThreads)
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .crossJoinLateral(lastRunFinish)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
+          eq(agents.orgId, args.orgId),
           eq(chatThreads.agentId, args.agentId),
           or(
             isNull(chatThreads.lastReadAt),
@@ -687,7 +695,12 @@ export const createChatThread$ = command(
           title: args.title ?? null,
           lastReadAt: sql`NOW()`,
           modelProviderId: args.modelProviderId,
-          modelProviderType: args.modelProviderType,
+          modelProviderType:
+            args.modelProviderType === null
+              ? null
+              : normalizeModelProviderWriteType(
+                  modelProviderTypeSchema.parse(args.modelProviderType),
+                ),
           modelProviderCredentialScope: args.modelProviderCredentialScope,
           selectedModel: args.selectedModel,
           codexServiceTier: args.codexServiceTier,
@@ -733,11 +746,16 @@ export const createChatThread$ = command(
 export async function chatThreadForRunFromDb(
   db: Pick<Db, "select">,
   runId: string,
-): Promise<{ readonly chatThreadId: string; readonly userId: string } | null> {
+): Promise<{
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+} | null> {
   const [row] = await db
     .select({
       chatThreadId: agentRuns.chatThreadId,
       userId: chatThreads.userId,
+      orgId: agentRuns.orgId,
     })
     .from(agentRuns)
     .innerJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
@@ -747,7 +765,11 @@ export async function chatThreadForRunFromDb(
   if (!row?.chatThreadId) {
     return null;
   }
-  return { chatThreadId: row.chatThreadId, userId: row.userId };
+  return {
+    chatThreadId: row.chatThreadId,
+    userId: row.userId,
+    orgId: row.orgId,
+  };
 }
 
 interface ThreadRunToCancel {
@@ -779,7 +801,7 @@ export const deleteChatThread$ = command(
     args: {
       readonly threadId: string;
       readonly userId: string;
-      readonly orgId?: string | null;
+      readonly orgId: string;
       readonly eventId?: string;
     },
     signal: AbortSignal,
@@ -800,6 +822,7 @@ export const deleteChatThread$ = command(
           and(
             eq(chatThreads.id, args.threadId),
             eq(chatThreads.userId, args.userId),
+            chatThreadOrganizationCondition(tx, args.orgId),
           ),
         )
         .for("update");

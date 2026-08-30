@@ -15,7 +15,10 @@ async fn stuck_tool_reap_survives_stdout_eof_before_child_exit()
     let tmp = tempfile::tempdir()?;
     unsafe {
         common::setup_env(&mock, tmp.path(), "@stuck-tool-closed-stdout-deaf", 1, 1)?;
-        std::env::set_var("VM0_STUCK_TOOL_TIMEOUT_SECS", "1");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            "1",
+        );
     }
 
     let runtime = common::guest_runtime_from_process_env()?;

@@ -24,6 +24,20 @@ async fn wait_for_blocked_routine_heartbeat(env: &MockRunEnv) {
     );
 }
 
+async fn trigger_routine_heartbeat(
+    trigger: &tokio::sync::mpsc::UnboundedSender<()>,
+    env: &MockRunEnv,
+    expected_mode: RunnerMode,
+) {
+    let cursor = env.start_observer.cursor();
+    trigger
+        .send(())
+        .expect("manual routine heartbeat receiver should remain open");
+    env.start_observer
+        .wait_routine_heartbeat_requested_after(cursor, expected_mode, Duration::from_secs(5))
+        .await;
+}
+
 // -----------------------------------------------------------------------
 // Test 2: Discover survives heartbeat ticks (regression #8783)
 //
@@ -120,13 +134,15 @@ async fn blocked_heartbeat_does_not_block_job_discovery_or_reaping() {
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        Arc::clone(&gate),
-    ));
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let (heartbeat_trigger, heartbeat_trigger_rx) = tokio::sync::mpsc::unbounded_channel();
+    config.test_hooks.manual_routine_heartbeat_rx = Some(heartbeat_trigger_rx);
+    let status_path = env._temp_dir.path().join("status.json");
     env.handle.block_heartbeats();
     let run_handle = tokio::spawn(run(config));
 
@@ -134,8 +150,12 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
     let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("job should finish pre-spawn before the first routine heartbeat");
 
-    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    trigger_routine_heartbeat(&heartbeat_trigger, &env, RunnerMode::Running).await;
     assert!(
         env.handle
             .wait_heartbeat_past(0, Duration::from_secs(5))
@@ -155,27 +175,12 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
         *mode = RunnerMode::Draining;
         false
     });
-    let second_tick_cursor = env.start_observer.cursor();
-    tokio::time::advance(HEARTBEAT_PERIOD).await;
-    env.start_observer
-        .wait_routine_heartbeat_requested_after(
-            second_tick_cursor,
-            RunnerMode::Draining,
-            Duration::from_secs(5),
-        )
-        .await;
+    trigger_routine_heartbeat(&heartbeat_trigger, &env, RunnerMode::Draining).await;
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
 
     // A further tick while the first request is blocked must collapse into
     // the same dirty follow-up rather than overlap or queue another payload.
-    let third_tick_cursor = env.start_observer.cursor();
-    tokio::time::advance(HEARTBEAT_PERIOD).await;
-    env.start_observer
-        .wait_routine_heartbeat_requested_after(
-            third_tick_cursor,
-            RunnerMode::Draining,
-            Duration::from_secs(5),
-        )
-        .await;
+    trigger_routine_heartbeat(&heartbeat_trigger, &env, RunnerMode::Draining).await;
     assert_eq!(env.handle.heartbeat_count(), 1);
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 
@@ -218,7 +223,7 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
     }
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 
-    gate.notify_one();
+    wait_gate.release_one();
     assert!(
         env.handle
             .wait_completion(run_id, Duration::from_secs(5))

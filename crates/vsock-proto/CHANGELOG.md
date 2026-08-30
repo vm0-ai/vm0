@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.18.41](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.40...vsock-proto-v0.18.41) (2026-08-28)
+
+
+### Documentation
+
+* **rust:** document exec-start process contracts ([#30083](https://github.com/vm0-ai/vm0/issues/30083)) ([598b61b](https://github.com/vm0-ai/vm0/commit/598b61b22a54af2f711ab05c7ed09431d0924ceb))
+
+## [0.18.40](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.39...vsock-proto-v0.18.40) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
+## [0.18.39](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.38...vsock-proto-v0.18.39) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
+## [0.18.38](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.37...vsock-proto-v0.18.38) (2026-08-26)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.18.37](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.36...vsock-proto-v0.18.37) (2026-08-26)
 
 

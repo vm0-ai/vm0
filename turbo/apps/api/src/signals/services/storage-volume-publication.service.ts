@@ -207,13 +207,14 @@ const uploadAndVerifyVolumeObjects$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    await Promise.all([
+    const uploadResults = await Promise.allSettled([
       get(
         putS3Object(
           args.bucketName,
           `${args.s3Key}/archive.tar.gz`,
           args.archiveBuffer,
           "application/gzip",
+          signal,
         ),
       ),
       get(
@@ -222,10 +223,16 @@ const uploadAndVerifyVolumeObjects$ = command(
           `${args.s3Key}/manifest.json`,
           JSON.stringify(args.manifest),
           "application/json",
+          signal,
         ),
       ),
     ]);
     signal.throwIfAborted();
+    for (const uploadResult of uploadResults) {
+      if (uploadResult.status === "rejected") {
+        throw uploadResult.reason;
+      }
+    }
 
     const uploadVerified = await get(
       verifyS3FilesExist(args.bucketName, args.s3Key, args.fileCount),

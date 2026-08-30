@@ -9,7 +9,10 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
 } from "./bridge.ts";
-import type { SharedDatabaseWorkerMessage } from "./protocol.ts";
+import type {
+  SharedDatabaseHeartbeatResult,
+  SharedDatabaseWorkerMessage,
+} from "./protocol.ts";
 import {
   bootstrapSharedDatabaseWorker$,
   connectSharedDatabaseWorkerClient$,
@@ -28,7 +31,13 @@ import { createDeferredPromise } from "../signals/utils.ts";
 
 type DirectWorkerEvent = Extract<
   SharedDatabaseWorkerMessage,
-  { readonly type: "append" | "reload-required" | "status" }
+  {
+    readonly type:
+      | "append"
+      | "authentication-required"
+      | "reload-required"
+      | "status";
+  }
 >;
 
 async function waitForWorkerOperation<T>(
@@ -42,7 +51,10 @@ async function waitForWorkerOperation<T>(
 
 class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly clientId = crypto.randomUUID();
-  private readonly callbacks = new Map<string, () => void>();
+  private readonly subscriptions = new Map<
+    string,
+    { readonly callback: () => void; readonly dataKey: SharedDatabaseDataKey }
+  >();
   private ownerSignal: AbortSignal | null = null;
 
   constructor(
@@ -55,35 +67,48 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     workerStore.set(
       connectSharedDatabaseWorkerClient$,
       this.clientId,
-      (event: DirectWorkerEvent) => {
-        if (event.type === "append") {
-          this.callbacks.get(event.subscriptionId)?.();
-          return;
-        }
-        if (event.type === "reload-required") {
-          location.reload();
-          return;
-        }
-        this.platformStore.set(
-          setSharedDatabaseConnectionStatus$,
-          event.status,
-        );
-      },
+      this.emit,
     );
   }
+
+  private readonly emit = (event: DirectWorkerEvent): void => {
+    if (event.type === "append") {
+      this.subscriptions.get(event.subscriptionId)?.callback();
+      return;
+    }
+    if (event.type === "reload-required") {
+      location.reload();
+      return;
+    }
+    if (event.type === "authentication-required") {
+      return;
+    }
+    this.platformStore.set(setSharedDatabaseConnectionStatus$, event.status);
+  };
 
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<SharedDatabaseHeartbeatResult> {
     this.bindOwner(signal);
-    await this.workerStore.set(
+    const result = await this.workerStore.set(
       heartbeatSharedDatabaseWorker$,
       this.clientId,
-      { ...heartbeat, apiBaseUrl: this.apiBaseUrl },
+      { ...heartbeat, apiBaseUrl: this.apiBaseUrl, emit: this.emit },
       this.workerSignal,
     );
+    if (result.clientReconnected) {
+      for (const [subscriptionId, subscription] of this.subscriptions) {
+        this.workerStore.set(
+          subscribeSharedDatabaseWorker$,
+          this.clientId,
+          subscriptionId,
+          subscription.dataKey,
+        );
+      }
+    }
     await this.afterWorkerHeartbeat?.();
+    return result;
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -109,7 +134,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   ): Promise<void> {
     signal.throwIfAborted();
     const subscriptionId = crypto.randomUUID();
-    this.callbacks.set(subscriptionId, callback);
+    this.subscriptions.set(subscriptionId, { callback, dataKey });
     this.workerStore.set(
       subscribeSharedDatabaseWorker$,
       this.clientId,
@@ -119,7 +144,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     signal.addEventListener(
       "abort",
       () => {
-        this.callbacks.delete(subscriptionId);
+        this.subscriptions.delete(subscriptionId);
         this.workerStore.set(
           unsubscribeSharedDatabaseWorker$,
           this.clientId,
@@ -143,7 +168,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     signal.addEventListener(
       "abort",
       () => {
-        this.callbacks.clear();
+        this.subscriptions.clear();
         this.workerStore.set(
           disconnectSharedDatabaseWorkerClient$,
           this.clientId,

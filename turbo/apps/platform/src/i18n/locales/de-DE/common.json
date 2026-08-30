@@ -121,7 +121,10 @@
         "cacheMiss": "Kein zwischengespeicherter Arbeitsbereich entsprach dem Wiederverwendungsschlüssel.",
         "deviceLimitMismatch": "Der Leerlauf-Pool-Eintrag ist vorhanden, aber der Geräteratenbegrenzerstatus stimmt nicht überein.",
         "diskPressure": "Die Wiederverwendung des Arbeitsbereichs wurde wegen Speicherdrucks auf dem Runner übersprungen.",
+        "environment": "Umgebung",
         "featureDisabled": "Die Wiederverwendung von Sandboxen ist für diese Ausführung deaktiviert.",
+        "generation": "Generation",
+        "hostname": "Hostname",
         "invalidMetadata": "Die Metadaten des zwischengespeicherten Arbeitsbereichs waren ungültig.",
         "invalidWorkingDir": "Das angeforderte Arbeitsverzeichnis konnte nicht wiederverwendet werden.",
         "lockBusy": "Eine andere Ausführung bereitete denselben Arbeitsbereich vor.",
@@ -129,21 +132,28 @@
         "noSessionId": "Altes Ergebnis: Der genaue Grund, warum die Sandbox nicht wiederverwendet wurde, ist nicht verfügbar.",
         "notConfigured": "Die Wiederverwendung des Arbeitsbereichs war für diese Ausführung nicht konfiguriert.",
         "notReused": "Nicht wiederverwendet",
+        "outcomeUnavailableDescription": "Weitere Details sind nicht verfügbar.",
         "poolMiss": "Im Leerlaufpool wurde keine passende Sandbox gefunden.",
         "profileMismatch": "Ein Leerlaufpooleintrag ist vorhanden, sein Profil stimmt jedoch nicht überein.",
         "provisioning": "Wird bereitgestellt",
         "reused": "Wiederverwendet",
         "reusedDescription": "Sandbox wurde aus dem Ruhepool entparkt.",
+        "runnerId": "Runner-ID",
         "sandbox": "Sandbox",
         "sandboxPrepareFallback": "Ein zwischengespeicherter Arbeitsbereich wurde gefunden, konnte aber nach der Sandbox-Vorbereitung nicht verwendet werden.",
         "sandboxReusedDescription": "Der Arbeitsbereich blieb in der wiederverwendeten Sandbox verfügbar.",
         "startup": "Start",
         "startupCold": "Kaltstart",
+        "startupColdDescription": "Eine neue Sandbox und ein neuer Arbeitsbereich wurden vorbereitet.",
         "startupSandbox": "Sandbox-Wiederverwendung",
+        "startupSandboxDescription": "Die Sandbox und ihr Arbeitsbereich wurden wiederverwendet.",
         "startupUnknown": "Unbekannt",
+        "startupUnknownDescription": "Details zur Wiederverwendung beim Start sind nicht verfügbar.",
         "startupWorkspace": "Arbeitsbereich-Wiederverwendung",
+        "startupWorkspaceDescription": "Eine neue Sandbox stellte einen zwischengespeicherten Arbeitsbereich wieder her.",
         "unavailable": "Nicht verfügbar",
         "unparkFailed": "Entparkversuch fehlgeschlagen; Eine neue Sandbox wurde bereitgestellt.",
+        "version": "Version",
         "workspace": "Arbeitsbereich",
         "workspaceNoReuseKey": "Es war kein Wiederverwendungsschlüssel für den Arbeitsbereich verfügbar.",
         "workspaceReusedDescription": "Der Arbeitsbereich wurde aus dem Runner-Cache wiederhergestellt."
@@ -431,7 +441,6 @@
       "ariaLabel": "Seitenleiste",
       "chat": "Chat",
       "collapse": "Seitenleiste einklappen",
-      "expand": "Seitenleiste erweitern",
       "hideChatList": "Chatliste ausblenden",
       "manage": "Verwalten",
       "mobile": {
@@ -455,7 +464,7 @@
         "workflows": "Workflows",
         "works": "Kanäle"
       },
-      "searchConversations": "Gespräche suchen",
+      "searchWorkspace": "Arbeitsbereich durchsuchen",
       "showChatList": "Chatliste anzeigen",
       "workspaceSwitcher": {
         "create": "Arbeitsbereich erstellen",
@@ -506,7 +515,6 @@
         "arrow": "Pfeil",
         "box": "Rechteck",
         "pen": "Zeichnen",
-        "redact": "Schwärzen",
         "text": "Text"
       },
       "undo": "Rückgängig"
@@ -1066,6 +1074,7 @@
         "secondFactorDescription": "Diese Anmeldung erfordert einen zusätzlichen Bestätigungsschritt, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
         "secondFactorTitle": "Zusätzliche Bestätigung erforderlich",
         "selectOrganization": "Mit {{organizationName}} fortfahren",
+        "signedInAs": "Angemeldet als {{identifier}}",
         "unsupportedDescription": "Dein Konto hat einen Authentifizierungsschritt zurückgegeben, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
         "unsupportedTitle": "Anmeldeschritt nicht verfügbar"
       },
@@ -1074,7 +1083,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Aktuelle Anmeldung verwenden",
         "addAccount": "Konto hinzufügen",
         "appleMethod": "Weiter mit Apple",
         "back": "Zurück",
@@ -1104,6 +1112,7 @@
         "hidePassword": "Passwort ausblenden",
         "identifierLabel": "E-Mail-Adresse oder Benutzername",
         "identifierPlaceholder": "E-Mail-Adresse oder Benutzernamen eingeben",
+        "lastUsed": "Zuletzt verwendet",
         "methodsHelpPrompt": "Keine dieser Methoden verfügbar?",
         "newPasswordLabel": "Neues Passwort",
         "newPasswordSubtitle": "Es existiert bereits ein Konto mit einer nicht verifizierten E-Mail Adresse. Bitte setzen Sie Ihr Passwort zur Sicherheit zurück.",
@@ -1141,7 +1150,6 @@
         "verify": "Verifizieren"
       },
       "signUp": {
-        "action": "Aktuelle Registrierung verwenden",
         "alreadyHaveAccount": "Haben Sie ein Konto?",
         "appleMethod": "Weiter mit Apple",
         "back": "Zurück",
@@ -1691,7 +1699,6 @@
         "inviteMember": "Menschen einladen 🤝",
         "otherChannels": "Telegram und Telefon"
       },
-      "invitePeople": "Personen einladen",
       "taglines": {
         "anonymous": {
           "buildSomething": "Bereit, etwas aufzubauen?",
@@ -1888,18 +1895,17 @@
       "agentSuggestions": "Agenten",
       "configureModel": "Modell konfigurieren",
       "createWorkflow": "Workflow erstellen",
+      "imageModelForThisChat": "Bildmodell für diesen Chat",
       "message": "Nachricht",
+      "modelForThisChat": "Modell für diesen Chat",
       "placeholder": "Bitten Sie mich, Workflows zu automatisieren und Aufgaben zu verwalten...",
       "selectedModelUnavailable": "Das ausgewählte Modell ist nicht verfügbar. Konfigurieren Sie es vor dem Senden.",
       "selectedModelUnavailableToast": "Das ausgewählte Modell ist nicht verfügbar",
       "selectModel": "Modell auswählen",
-      "setAsDefault": "Als Standard festlegen",
-      "temporaryFastModeDisabledNotice": "Der Fast-Modus ist für diesen Lauf vorübergehend deaktiviert",
-      "temporaryFastModeEnabledNotice": "Der Fast-Modus ist für diesen Lauf vorübergehend aktiviert",
-      "temporaryImageModelNotice": "Für Bilder vorübergehend zu {{model}} gewechselt",
-      "temporaryModelNotice": "Vorübergehend zu {{model}} gewechselt",
-      "temporaryVideoModelNotice": "Für Videos vorübergehend zu {{model}} gewechselt",
+      "temporarilySwitchTo": "Vorübergehend wechseln zu",
       "threadSuggestions": "Chat-Threads",
+      "useForFutureChats": "Dieses Modell für zukünftige Chats verwenden",
+      "videoModelForThisChat": "Videomodell für diesen Chat",
       "visualAttachmentsUnsupported": "{{modelName}} kann Bilder oder Videos nicht erkennen. Wechseln Sie vor dem Anhängen zu einem visionsfähigen Modell.",
       "workflows": {
         "empty": "Keine passenden Workflows",
@@ -1936,6 +1942,7 @@
       "authorized": "{{connectorName}} verbunden und autorisiert für {{agentName}}",
       "available_one": "Verfügbare Integration ({{count}})",
       "available_other": "Verfügbare Integrationen ({{count}})",
+      "back": "Zurück",
       "configurePermissions": "Konfigurieren Sie {{connectorName}}-Berechtigungen",
       "customAuthorizeDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration und autorisieren Sie sie für den Agenten.",
       "defaultAccountFor": "{{connector}} · Standardkonto wird verwendet: {{account}}",
@@ -1991,7 +1998,7 @@
       "agents": "Agenten",
       "back": "Zurück",
       "content": "Inhalt",
-      "description": "Ausgewählten Inhalt an einen Agenten oder Chat weiterleiten.",
+      "description": "Sende ausgewählte Inhalte an einen Agenten oder Chat, um daran weiterzuarbeiten.",
       "noResults": "Keine Agenten oder Chats gefunden",
       "search": "Agenten und Chats suchen...",
       "sent": "Erfolgreich weitergeleitet",
@@ -2304,48 +2311,6 @@
       "copied": "Kopiert",
       "deleted": "Chat gelöscht"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Dateien werden geändert",
-            "singular": "Datei wird geändert"
-          },
-          "terminal": {
-            "plural": "Dateien geändert",
-            "singular": "Datei geändert"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Dateien werden gelesen",
-            "singular": "Datei wird gelesen"
-          },
-          "terminal": {
-            "plural": "Dateien gelesen",
-            "singular": "Datei gelesen"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Befehle werden ausgeführt",
-            "singular": "Befehl wird ausgeführt"
-          },
-          "terminal": {
-            "plural": "Befehle ausgeführt",
-            "singular": "Befehl ausgeführt"
-          }
-        }
-      },
-      "collapse": "Tool-Aktivität einklappen",
-      "expand": "Tool-Aktivität ausklappen",
-      "status": {
-        "cancelled": "Abgebrochen",
-        "error": "Fehlgeschlagen",
-        "pending": "In Bearbeitung",
-        "success": "Abgeschlossen"
-      }
-    },
     "voice": {
       "checkingLimit": "Überprüfung des Spracheingabelimits",
       "input": "Spracheingabe",
@@ -2416,10 +2381,9 @@
       "summaryOne": "{{value}} Konto",
       "summaryOne_one": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} erfordern Aufmerksamkeit",
+      "summaryWithAttention": "{{value}}/{{total}} erfordern Aufmerksamkeit",
       "summaryWithAttention_one": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Anwenden",
@@ -2483,6 +2447,8 @@
       "access": {
         "add": "Zugriff hinzufügen",
         "manage": "Verwalten Sie den {{connector}}-Zugriff",
+        "summaryMany": "{{value}} Agenten",
+        "unavailable": "Zugriff nicht verfügbar",
         "usedBy": "Verwendet von "
       },
       "categories": {
@@ -5031,6 +4997,20 @@
         "sectionTitle": "Konto & Sicherheit"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Übertragen Sie eine helle, dezente Farbpalette auf alle Ebenen der Benutzeroberfläche.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Farbthema"
+        },
         "description": "Wählen Sie, wie die Benutzeroberfläche aussehen soll.",
         "sectionTitle": "Aussehen",
         "theme": {
@@ -5331,15 +5311,20 @@
       "viewSource": "Diagrammquelle"
     },
     "notFound": {
+      "action": "Zurück zur Startseite",
       "description": "Die gesuchte Seite existiert nicht.",
       "title": "Seite nicht gefunden"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Diese geteilte Unterhaltung existiert nicht.",
+    "handoffDescription": "{{assistantName}} übernimmt den Kontext in einen neuen Chat",
+    "handoffPrompt": "Setze diese geteilte Unterhaltung mit mir fort: {{url}}",
+    "makeConversationYours": "Mach diese Unterhaltung zu deiner",
     "notFoundTitle": "Geteilte Unterhaltung nicht gefunden",
-    "tryOkou": "{{assistantName}} ausprobieren"
+    "share": "Teilen",
+    "signIn": "Anmelden",
+    "signUp": "Registrieren",
+    "tryItYourself": "Selbst ausprobieren"
   },
   "usage": {
     "displayNames": {
@@ -6084,6 +6069,67 @@
       },
       "title": "Workflows",
       "viewAutomations": "Automatisierungen anzeigen"
+    },
+    "official": {
+      "activeInstallationDescription": "Dieser offizielle Workflow bleibt funktionsfähig, und seine verwalteten Inhalte bleiben schreibgeschützt.",
+      "activeInstallationTitle": "Offizieller Workflow",
+      "agent": "Agent",
+      "automationCount_one": "{{count}} Automatisierung",
+      "automationCount_other": "{{count}} Automatisierungen",
+      "badge": "Offiziell",
+      "browse": "Offizielle durchsuchen",
+      "chooseValue": "Wert auswählen",
+      "copySucceededUninstallFailed": "Die Kopie ist bereit, aber der ursprüngliche offizielle Workflow konnte nicht deinstalliert werden.",
+      "description": "Installiere verwaltete Workflows, die von vm0 gepflegt werden.",
+      "empty": "Keine offiziellen Workflows verfügbar.",
+      "includedAutomations": "Enthaltene Automatisierungen",
+      "install": "Installieren",
+      "installDescription": "Wähle einen Agenten und fülle alle erforderlichen Parameter aus. Alle enthaltenen Automatisierungen werden installiert.",
+      "installed": "Offizieller Workflow installiert",
+      "installErrorDescription": "Prüfe den Agenten und die Parameterwerte und versuche es erneut.",
+      "installErrorTitle": "Offizieller Workflow konnte nicht installiert werden",
+      "installTitle": "{{name}} installieren",
+      "intendedOff": "soll aus sein",
+      "intendedOn": "soll an sein",
+      "loadErrorDescription": "Dieser Katalog ist möglicherweise nicht verfügbar oder für dein Konto nicht aktiviert.",
+      "loadErrorTitle": "Offizielle Workflows konnten nicht geladen werden",
+      "no": "Nein",
+      "noParameters": "Keine Parameter erforderlich.",
+      "noResults": "Keine offiziellen Workflows entsprechen deiner Suche.",
+      "notFound": "Dieser offizielle Workflow wurde nicht gefunden.",
+      "parameterCount_one": "{{count}} Parameter",
+      "parameterCount_other": "{{count}} Parameter",
+      "parameterRequired": "{{key}} (erforderlich)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Neu konfigurieren",
+      "reconfigured": "Offizieller Workflow neu konfiguriert",
+      "reconfigureDescription": "Aktualisiere typisierte Parameter, ohne diesen Workflow oder seine Automatisierungen zu ersetzen.",
+      "reconfigureDialogDescription": "Prüfe jede verwaltete Automatisierung und aktualisiere ihre Parameter.",
+      "reconfigureErrorDescription": "Prüfe die erforderlichen Werte und versuche es erneut.",
+      "reconfigureErrorTitle": "Offizieller Workflow konnte nicht neu konfiguriert werden",
+      "reconfigureTitle": "Installationsparameter",
+      "reconfigureUnavailable": "Verbindliche Parameter-Metadaten sind vorübergehend nicht verfügbar.",
+      "retiredBadge": "Offiziell · Eingestellt",
+      "retiredDefinitionDescription": "Diese beibehaltene Definition kann angezeigt, aber nicht mehr installiert werden.",
+      "retiredInstallationDescription": "Diese Definition wurde eingestellt. Deine bestehende Installation bleibt bis zur Deinstallation funktionsfähig und schreibgeschützt.",
+      "retiredInstallationTitle": "Offizieller Workflow eingestellt",
+      "retiredTitle": "Eingestellte Definition",
+      "retry": "Erneut versuchen",
+      "search": "Offizielle Workflows durchsuchen",
+      "selectAgent": "Agenten auswählen",
+      "statusCurrent": "Aktuell",
+      "statusFailed": "Fehlgeschlagen",
+      "statusNeedsReconfiguration": "Neukonfiguration erforderlich",
+      "statusReconciling": "Wird abgeglichen",
+      "title": "Offizielle Workflows",
+      "unavailableInstallationDescription": "Die akzeptierte Definition ist vorübergehend nicht verfügbar. Bestehende Betriebssteuerungen bleiben verfügbar.",
+      "unavailableInstallationTitle": "Offizielle Definition nicht verfügbar",
+      "uninstall": "Deinstallieren",
+      "uninstallConfirm": "Dadurch werden die offizielle Installation und alle ihre Automatisierungen entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "uninstallDescription": "Entferne diese offizielle Workflow-Installation über ihren verwalteten Lebenszyklus.",
+      "uninstallTitle": "Offiziellen Workflow deinstallieren",
+      "viewAndInstall": "Anzeigen und installieren",
+      "yes": "Ja"
     }
   },
   "works": {

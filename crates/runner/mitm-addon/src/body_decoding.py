@@ -8,14 +8,13 @@ Exports:
 - JSON usage decompression with diagnostic error classification.
 """
 
-import contextlib
 import zlib
 from collections.abc import Callable
 from typing import Literal, NamedTuple
 
 import brotli  # type: ignore[import-untyped]
 import zstandard
-from mitmproxy import ctx, http
+from mitmproxy import http
 
 from body_limits import (
     DEFAULT_BODY_DECODE_LIMIT,
@@ -79,18 +78,6 @@ class StreamDecodeSession(NamedTuple):
     finish_error: _StreamDecodeFinishError
 
 
-def _log_streaming_decode_error(encoding_label: str, exc: Exception) -> None:
-    with contextlib.suppress(AttributeError):
-        # ctx.log unavailable outside mitmproxy runtime
-        ctx.log.debug(f"Streaming decompression failed ({encoding_label}): {exc}")
-
-
-def _log_streaming_decode_skipped(reason: str) -> None:
-    with contextlib.suppress(AttributeError):
-        # ctx.log unavailable outside mitmproxy runtime
-        ctx.log.debug(f"Streaming decompression skipped: {reason}")
-
-
 def _feed_chunks(feed: _StreamDecodeFeed, data: bytes, max_decoded_chunk: int) -> None:
     for offset in range(0, len(data), max_decoded_chunk):
         feed(data[offset : offset + max_decoded_chunk])
@@ -148,14 +135,13 @@ def _create_zlib_stream_decode_session(
             )
             try:
                 decoded = obj.decompress(data, max_length=max_length)
-            except zlib.error as exc:
+            except zlib.error:
                 if pending_decoded:
                     feed(bytes(pending_decoded))
                     if should_continue is not None and not should_continue():
                         inspection_stopped = True
                         return
                 decode_error = INVALID_COMPRESSED_BODY
-                _log_streaming_decode_error(encoding_label, exc)
                 return
             if probing_for_additional_output and decoded:
                 if pending_decoded:
@@ -230,11 +216,7 @@ def stream_decode_skip_reason(headers: http.Headers) -> str | None:
 
 def can_stream_decode_usage(headers: http.Headers) -> bool:
     """Return whether usage parsers can safely consume this response stream."""
-    reason = stream_decode_skip_reason(headers)
-    if reason is None:
-        return True
-    _log_streaming_decode_skipped(reason)
-    return False
+    return stream_decode_skip_reason(headers) is None
 
 
 def can_decode_json_usage_body(headers: http.Headers) -> bool:
@@ -329,9 +311,7 @@ def decompress_body(
     body returns ``b""`` — callers that short-circuit via ``if not body`` rely
     on that (see #10287).
     """
-    result = _decode_body_bounded(data, headers, max_output=max_output)
-    _log_body_decompression_failure(result, headers)
-    return result.body
+    return _decode_body_bounded(data, headers, max_output=max_output).body
 
 
 def _decode_single_zlib_stream_for_network_log_capture(
@@ -375,9 +355,15 @@ def _decode_zstd_for_network_log_capture(data: bytes, max_output: int) -> bytes 
             data,
             read_across_frames=True,
         ) as reader:
-            return reader.read(max_output)
+            body = reader.read(max_output)
     except zstandard.ZstdError:
         return None
+
+    if len(body) >= max_output:
+        return body
+    if _validate_complete_zstd_frames(data, max_output) is not None:
+        return None
+    return body
 
 
 def decode_response_body_for_network_log_capture(
@@ -386,7 +372,31 @@ def decode_response_body_for_network_log_capture(
     *,
     max_output: int = DEFAULT_BODY_DECODE_LIMIT,
 ) -> bytes | None:
-    """Decode a buffered response body with bounded mitmproxy compatibility."""
+    """Decode a buffered response body with bounded mitmproxy-compatible semantics.
+
+    Missing or ``identity`` encoding returns ``data`` unchanged. A supported
+    encoding returns decoded bytes on success, including ``b""`` for a
+    successful empty result. ``None`` means that the encoding is unsupported or
+    that decoding failed. For supported encodings, decoded output is bounded by
+    ``max_output``; reaching that bound returns the successful decoded prefix,
+    even when the compressed input has not reached a complete frame where the
+    codec policy permits that result.
+
+    The supported codec compatibility is intentionally aligned with mitmproxy:
+
+    - ``gzip`` accepts gzip and zlib wrappers and may return output from an
+      incomplete stream.
+    - ``deflate`` tries the zlib wrapper and then the raw-deflate wrapper, and
+      requires a complete stream unless the decoded-output bound is reached.
+    - ``br`` rejects invalid or incomplete input, except that reaching the
+      decoded-output bound returns the bounded prefix.
+    - ``zstd`` reads concatenated frames up to ``max_output`` bytes and rejects
+      malformed or incomplete frames unless the decoded-output bound is reached.
+
+    This is stricter than the best-effort ``decompress_body()`` path used for
+    retained streaming buffers, which can preserve original wire bytes or
+    partial decoded output after a decode problem.
+    """
     encoding = headers.get("content-encoding", "").strip().lower()
     if not encoding or encoding == "identity":
         return data
@@ -422,16 +432,6 @@ def decode_response_body_for_network_log_capture(
     if encoding == "zstd":
         return _decode_zstd_for_network_log_capture(data, max_output)
     return None
-
-
-def _log_body_decompression_failure(result: _BodyDecodeResult, headers: http.Headers) -> None:
-    if result.failed and result.error is not None:
-        with contextlib.suppress(AttributeError):
-            # ctx.log unavailable outside mitmproxy runtime
-            ctx.log.debug(
-                "Decompression failed "
-                f"({headers.get('content-encoding', '').strip().lower()}): {result.error}"
-            )
 
 
 def _decompress_zlib_best_effort_bounded(
@@ -567,8 +567,6 @@ def _decompress_zlib_json_usage_body(
     data: bytes,
     encoding: Literal["gzip", "deflate"],
     max_output: int,
-    *,
-    log_errors: bool,
 ) -> tuple[bytes, str | None]:
     if max_output <= 0:
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
@@ -586,11 +584,7 @@ def _decompress_zlib_json_usage_body(
             member_data = input_cursor.take()
             try:
                 decoded = obj.decompress(member_data, max_length=remaining_output + 1)
-            except zlib.error as exc:
-                if log_errors:
-                    with contextlib.suppress(AttributeError):
-                        # ctx.log unavailable outside mitmproxy runtime
-                        ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+            except zlib.error:
                 return b"", INVALID_COMPRESSED_BODY
 
             if len(decoded) > remaining_output:
@@ -649,8 +643,6 @@ def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
 def _decompress_zstd_json_usage_body(
     data: bytes,
     max_output: int,
-    *,
-    log_errors: bool,
 ) -> tuple[bytes, str | None]:
     if max_output <= 0:
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
@@ -660,11 +652,7 @@ def _decompress_zstd_json_usage_body(
             body = reader.read(max_output)
             # Force validation of any trailing frame without accumulating it.
             extra = reader.read(1)
-    except zstandard.ZstdError as exc:
-        if log_errors:
-            with contextlib.suppress(AttributeError):
-                # ctx.log unavailable outside mitmproxy runtime
-                ctx.log.debug(f"Decompression failed (zstd): {exc}")
+    except zstandard.ZstdError:
         return b"", INVALID_COMPRESSED_BODY
 
     if extra:
@@ -676,15 +664,12 @@ def _decode_supported_body_with_complete_status(
     data: bytes,
     encoding: str,
     max_output: int,
-    *,
-    log_errors: bool = True,
 ) -> tuple[bytes, str | None]:
     if encoding in ("gzip", "deflate"):
         return _decompress_zlib_json_usage_body(
             data,
             encoding,
             max_output,
-            log_errors=log_errors,
         )
     if encoding == "br":
         try:
@@ -693,11 +678,7 @@ def _decode_supported_body_with_complete_status(
                 max_output,
                 validate_complete_input=True,
             )
-        except brotli.error as exc:
-            if log_errors:
-                with contextlib.suppress(AttributeError):
-                    # ctx.log unavailable outside mitmproxy runtime
-                    ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+        except brotli.error:
             return b"", INVALID_COMPRESSED_BODY
         if limited:
             return body, DECODED_BODY_LIMIT_EXCEEDED
@@ -705,7 +686,7 @@ def _decode_supported_body_with_complete_status(
             return body, INCOMPLETE_COMPRESSED_BODY
         return body, None
     if encoding == "zstd":
-        return _decompress_zstd_json_usage_body(data, max_output, log_errors=log_errors)
+        return _decompress_zstd_json_usage_body(data, max_output)
     raise ValueError(f"unsupported content encoding: {encoding}")
 
 
@@ -738,8 +719,6 @@ def decompress_json_usage_body(
     data: bytes,
     headers: http.Headers,
     max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT,
-    *,
-    log_errors: bool = True,
 ) -> tuple[bytes, str | None]:
     """Decompress a JSON usage response body with an observable empty-prefix error.
 
@@ -749,8 +728,6 @@ def decompress_json_usage_body(
     needs to distinguish a valid compressed empty response from an incomplete
     compressed frame that produced no JSON bytes.
 
-    Set ``log_errors`` to ``False`` when decoding on a worker thread where the
-    mitmproxy logging context must not be accessed.
     """
     encoding = headers.get("content-encoding", "").strip().lower()
     if encoding in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
@@ -758,7 +735,6 @@ def decompress_json_usage_body(
             data,
             encoding,
             max_output,
-            log_errors=log_errors,
         )
     if encoding and encoding != "identity" and data:
         return b"", "unsupported content encoding"

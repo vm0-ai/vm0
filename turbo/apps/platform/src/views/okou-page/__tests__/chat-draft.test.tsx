@@ -11,9 +11,11 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
-import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
+import {
+  agentsByIdContract,
+  agentsMainContract,
+} from "@okouai/api-contracts/contracts/agents";
 import { runsQueueContract } from "@okouai/api-contracts/contracts/run-routes";
-import { teamContract } from "@okouai/api-contracts/contracts/team";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
@@ -24,6 +26,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
+import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 const THREAD_ONE_ID = "b0000000-0000-4000-a000-000000000801";
@@ -123,16 +126,13 @@ function mockAgentChatPage(agentId: string): void {
     serviceTier: null,
     updatedAt: "2026-03-10T00:00:00Z",
   });
-  context.mocks.api(teamContract.list, ({ respond }) => {
+  context.mocks.api(agentsMainContract.list, ({ respond }) => {
     return respond(200, [
-      {
-        id: agentId,
+      createMockAgentResponse({
+        agentId,
         displayName: "Draft Agent",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
+        visibility: "public",
+      }),
     ]);
   });
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
@@ -1965,7 +1965,7 @@ describe("chat drafts", () => {
     });
   });
 
-  it("falls back to plain text when copied chat html only carries attachments", async () => {
+  it("falls back to plain text from another locale when copied chat html only carries attachments", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e3000000-0000-4000-a000-000000000004";
     const pastedText = "123";
@@ -2003,7 +2003,7 @@ describe("chat drafts", () => {
             return [
               pastedText,
               "",
-              "Attachments:",
+              "Pièces jointes:",
               `- [${filename}](${url}): ${url}`,
             ].join("\n");
           }

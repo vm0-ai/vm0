@@ -14,10 +14,11 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
+  chatEventRowsResponse,
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
-import { Markdown } from "../markdown.tsx";
+import { Markdown as RichMarkdown } from "../rich-markdown.tsx";
 import { mockChatEventRows } from "../../okou-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
@@ -61,21 +62,25 @@ function mockThread(
     chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
       if (query.sinceSeqId >= 1) {
-        return respond(200, { rows: [] });
+        return respond(200, chatEventRowsResponse([], query));
       }
 
-      return respond(200, {
-        rows: mockChatEventRows([
-          {
-            id: `msg-${params.threadId}`,
-            threadId: params.threadId,
-            eventType: "output.message" as const,
-            content,
-            seqId: 1,
-            createdAt: "2026-01-01T00:00:00Z",
-          },
-        ]),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows([
+            {
+              id: `msg-${params.threadId}`,
+              threadId: params.threadId,
+              eventType: "output.message" as const,
+              content,
+              seqId: 1,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ]),
+          query,
+        ),
+      );
     },
   );
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -170,7 +175,7 @@ describe("assistant markdown", () => {
   it("escapes html-like source when requested", () => {
     const { container } = render(
       <StoreProvider value={context.store}>
-        <Markdown source="<span> 123 </span>" escapeHtml />
+        <RichMarkdown source="<span> 123 </span>" escapeHtml />
       </StoreProvider>,
     );
 
@@ -181,7 +186,7 @@ describe("assistant markdown", () => {
   it("keeps blockquotes rendering when html is escaped", () => {
     const { container } = render(
       <StoreProvider value={context.store}>
-        <Markdown
+        <RichMarkdown
           source={"Feedback on this part of your reply:\n\n> quoted passage"}
           escapeHtml
         />
@@ -194,6 +199,48 @@ describe("assistant markdown", () => {
     // The leading `>` must be consumed as the blockquote marker, not shown as
     // literal text alongside the passage.
     expect(blockquote?.textContent).not.toContain(">");
+  });
+
+  it("renders syntax-free assistant text without a rich loading state", async () => {
+    mockThread("Plain response with punctuation: ready (now).");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await expect(
+      screen.findByText("Plain response with punctuation: ready (now)."),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByTestId("rich-content-loading")).toBeNull();
+  });
+
+  it("renders code fences without syntax token decoration", async () => {
+    mockThread("```ts\nconst value = 1;\n```");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const code = await screen.findByText("const value = 1;", {
+      selector: "code",
+    });
+    expect(code).toBeInTheDocument();
+    expect(code.querySelector(".token")).toBeNull();
+  });
+
+  it("keeps math source visible as plain text", async () => {
+    const source = "$$a^2 + b^2 = c^2$$";
+    mockThread(source);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await expect(screen.findByText(source)).resolves.toBeInTheDocument();
+    expect(document.querySelector(".katex")).toBeNull();
   });
 
   it("renders formatted text and follows theme changes", async () => {
@@ -338,6 +385,22 @@ describe("assistant markdown", () => {
     });
   });
 
+  it("leaves an opening-only mermaid fence as code", async () => {
+    mockThread("```mermaid");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("code.language-mermaid"),
+      ).toBeInTheDocument();
+    });
+    expect(document.querySelector(".mermaid-block")).toBeNull();
+  });
+
   it("renders mermaid code blocks as diagrams", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
@@ -347,12 +410,26 @@ describe("assistant markdown", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
+    const renderingButton = await waitFor(() => {
+      const button = screen.getByLabelText("Expand diagram");
+      expect(button).toBeDisabled();
+      expect(
+        button.closest('[data-mermaid-status="rendering"]'),
+      ).not.toBeNull();
+      return button;
+    });
+    expect(
+      renderingButton.closest('[data-slot="tooltip-trigger"]'),
+    ).toHaveClass("icon-tooltip-trigger");
+
     // The diagram is shown by an <img>, so the SVG itself never reaches the
     // document — its markup travels behind a registry-owned blob URL.
     const diagram = await screen.findByAltText("Diagram");
     await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
       'data-testid="mermaid-svg"',
     );
+    const renderedButton = screen.getByLabelText("Expand diagram");
+    expect(renderedButton).toBeEnabled();
     expect(document.querySelector("code.language-mermaid")).toBeNull();
     // The source stays reachable next to the diagram.
     expect(screen.getByText("Diagram source")).toBeInTheDocument();
@@ -622,6 +699,33 @@ describe("assistant markdown", () => {
     expect(document.querySelector(".mermaid-block")).toBeNull();
   });
 
+  it("keeps raw html mermaid separate from a streaming fence", async () => {
+    context.mocks.browser.blobDownload();
+    const rawHtml = [
+      '<pre><code class="language-mermaid">',
+      "flowchart TD",
+      "  X --> Y",
+      "</code></pre>",
+    ].join("\n");
+    mockThread(`${rawHtml}\n\n\`\`\`mermaid\nflowchart TD\n  A --> B`);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await screen.findByAltText("Diagram");
+    const streamingCode = await waitFor(() => {
+      const blocks = document.querySelectorAll("code.language-mermaid");
+      expect(blocks).toHaveLength(1);
+      return blocks[0];
+    });
+    expect(streamingCode.textContent?.trim()).toBe("flowchart TD\n  A --> B");
+    expect(
+      document.querySelector("[data-vm0-markdown-mermaid-fence]"),
+    ).toBeNull();
+  });
+
   it("renders a closed mermaid fence that ends the message", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     mockThread("Here is the flow:\n\n```mermaid\nflowchart TD\n  A --> B\n```");
@@ -656,6 +760,26 @@ describe("assistant markdown", () => {
     expect(screen.queryByAltText("Diagram")).toBeNull();
   });
 
+  it("keeps unsupported mermaid diagram types as ordinary code blocks", async () => {
+    context.mocks.browser.blobDownload();
+    const source = "classDiagram\n  A <|-- B";
+    mockThread(`\`\`\`mermaid\n${source}\n\`\`\``);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("code.language-mermaid")).not.toBeNull();
+    });
+    expect(document.querySelector("code.language-mermaid")?.textContent).toBe(
+      source,
+    );
+    expect(document.querySelector(".mermaid-block")).toBeNull();
+    expect(screen.queryByAltText("Diagram")).toBeNull();
+  });
+
   it("keeps external links safe", async () => {
     mockThread("[example](https://example.com)");
 
@@ -671,59 +795,6 @@ describe("assistant markdown", () => {
       expect(link).toHaveAttribute("href", "https://example.com");
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    });
-  });
-
-  // CJK sentences put punctuation directly against the closing delimiter with
-  // no space, which plain CommonMark refuses to close.
-  it("emphasizes text wrapped in delimiters that touch cjk punctuation", async () => {
-    mockThread(
-      [
-        "**加粗（x）**后面",
-        "",
-        "*斜体（x）*后面",
-        "",
-        "***粗斜（x）***后面",
-        "",
-        "他说**「重要」**的事",
-      ].join("\n"),
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("加粗（x）", { selector: "strong, b" }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("斜体（x）", { selector: "em, i" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("粗斜（x）", { selector: "em strong, strong em" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("「重要」", { selector: "strong, b" }),
-    ).toBeInTheDocument();
-  });
-
-  // Guards the `pluginsFilter` reorder: the strikethrough companion only wins
-  // over `remark-gfm`'s own `~~` extension when it runs after it.
-  it("strikes through text that touches cjk punctuation", async () => {
-    mockThread("~~删除线（test）~~后面");
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("删除线（test）", { selector: "del, s" }),
-      ).toBeInTheDocument();
     });
   });
 

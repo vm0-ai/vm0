@@ -15,7 +15,10 @@ import {
 import { sql } from "drizzle-orm";
 import { agents } from "./agent";
 import { chatThreads } from "./chat-thread";
-import type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
+import type {
+  OfficialWorkflowParameterBindings,
+  WorkflowAutomationEventConfig,
+} from "@okouai/db/jsonb-contracts/workflow";
 export type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/workflow";
 
 /**
@@ -26,6 +29,18 @@ export type { WorkflowAutomationEventConfig } from "@okouai/db/jsonb-contracts/w
  * stored through the existing custom-skill volume storage name.
  */
 export type WorkflowVisibility = "public" | "private";
+export type OfficialWorkflowInstallationState = "installing" | "installed";
+export type OfficialWorkflowReconciliationStatus =
+  | "current"
+  | "reconciling"
+  | "needs_reconfiguration"
+  | "failed";
+export type OfficialWorkflowAutomationIdentityState =
+  | "active"
+  | "reconciling"
+  | "needs_reconfiguration"
+  | "failed"
+  | "removed";
 
 /**
  * Workflows table
@@ -33,7 +48,7 @@ export type WorkflowVisibility = "public" | "private";
  * Workflow content is stored in the storages system.
  */
 export const workflows = pgTable(
-  "zero_workflows",
+  "workflows",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
@@ -52,6 +67,10 @@ export const workflows = pgTable(
     ownerUserId: text("owner_user_id").notNull(),
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
+    officialDefinitionName: varchar("official_definition_name", { length: 64 }),
+    officialInstallationState: varchar("official_installation_state", {
+      length: 32,
+    }).$type<OfficialWorkflowInstallationState>(),
     createdBy: text("created_by").notNull(),
     updatedBy: text("updated_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -60,29 +79,42 @@ export const workflows = pgTable(
   (table) => {
     return {
       canonicalAgentFk: foreignKey({
-        name: "zero_workflows_agent_id_agents_id_fk",
+        name: "workflows_agent_id_agents_id_fk",
         columns: [table.agentId],
         foreignColumns: [agents.id],
       }).onDelete("cascade"),
-      agentIdx: index("idx_zero_workflows_agent").on(table.agentId, table.name),
+      agentIdx: index("idx_workflows_agent").on(table.agentId, table.name),
       // Public workflow slugs are the shared namespace for an agent. Private
       // workflows may duplicate public slugs as user-specific forks/overrides,
       // but one owner cannot have two private workflows with the same slug on
       // the same agent.
-      publicAgentNameIdx: uniqueIndex(
-        "idx_zero_workflows_public_agent_name_unique",
-      )
+      publicAgentNameIdx: uniqueIndex("idx_workflows_public_agent_name_unique")
         .on(table.orgId, table.agentId, table.name)
         .where(sql`visibility = 'public'`),
       privateOwnerAgentNameIdx: uniqueIndex(
-        "idx_zero_workflows_private_owner_agent_name_unique",
+        "idx_workflows_private_owner_agent_name_unique",
       )
         .on(table.orgId, table.agentId, table.ownerUserId, table.name)
         .where(sql`visibility = 'private'`),
-      orgIdx: index("idx_zero_workflows_org").on(table.orgId),
-      ownerIdx: index("idx_zero_workflows_org_owner").on(
+      orgIdx: index("idx_workflows_org").on(table.orgId),
+      ownerIdx: index("idx_workflows_org_owner").on(
         table.orgId,
         table.ownerUserId,
+      ),
+      officialInstallationCheck: check(
+        "workflows_official_installation_check",
+        sql`(
+          ${table.officialDefinitionName} IS NULL
+          AND ${table.officialInstallationState} IS NULL
+        ) OR (
+          ${table.officialDefinitionName} IS NOT NULL
+          AND ${table.officialInstallationState} IN ('installing', 'installed')
+          AND ${table.officialDefinitionName} = ${table.name}
+          AND ${table.visibility} = 'private'
+          AND ${table.instruction} IS NULL
+          AND ${table.displayName} IS NULL
+          AND ${table.description} IS NULL
+        )`,
       ),
     };
   },
@@ -182,7 +214,7 @@ export type WorkflowWebhookDisabledReason = "paid_plan_required";
  * `next_run_at = NULL` and fire from their event-specific junction.
  */
 export const workflowAutomations = pgTable(
-  "zero_workflow_automations",
+  "workflow_automations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
@@ -218,20 +250,32 @@ export const workflowAutomations = pgTable(
     lastRunId: uuid("last_run_id"),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
     autonomyBudget: integer("autonomy_budget").notNull().default(10),
+    officialBlueprintKey: varchar("official_blueprint_key", { length: 64 }),
+    officialAppliedFingerprint: varchar("official_applied_fingerprint", {
+      length: 64,
+    }),
+    officialReconciliationStatus: varchar("official_reconciliation_status", {
+      length: 32,
+    }).$type<OfficialWorkflowReconciliationStatus>(),
+    officialParameterBindings: jsonb(
+      "official_parameter_bindings",
+    ).$type<OfficialWorkflowParameterBindings>(),
+    officialIntendedEnabled: boolean("official_intended_enabled"),
+    officialResultEmailEnabled: boolean("official_result_email_enabled"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      index("idx_zero_workflow_automations_workflow").on(table.workflowId),
-      index("idx_zero_workflow_automations_org").on(table.orgId),
+      index("idx_workflow_automations_workflow").on(table.workflowId),
+      index("idx_workflow_automations_org").on(table.orgId),
       // Partial index for the time poller: enabled automations with a due run.
-      index("idx_zero_workflow_automations_next_run")
+      index("idx_workflow_automations_next_run")
         .on(table.nextRunAt)
         .where(sql`enabled = true`),
       // Each automation kind carries exactly its own config.
       check(
-        "zero_workflow_automations_schedule_config_check",
+        "workflow_automations_schedule_config_check",
         sql`(
             kind = 'schedule'
             AND event_type IS NULL
@@ -253,15 +297,111 @@ export const workflowAutomations = pgTable(
           )`,
       ),
       check(
-        "zero_workflow_automations_autonomy_budget_check",
+        "workflow_automations_autonomy_budget_check",
         sql`${table.autonomyBudget} BETWEEN 0 AND 10`,
+      ),
+      uniqueIndex("idx_workflow_automations_official_blueprint_unique")
+        .on(table.workflowId, table.officialBlueprintKey)
+        .where(sql`${table.officialBlueprintKey} IS NOT NULL`),
+      check(
+        "workflow_automations_official_binding_check",
+        sql`(
+          ${table.officialBlueprintKey} IS NULL
+          AND ${table.officialAppliedFingerprint} IS NULL
+          AND ${table.officialReconciliationStatus} IS NULL
+          AND ${table.officialParameterBindings} IS NULL
+          AND ${table.officialIntendedEnabled} IS NULL
+          AND ${table.officialResultEmailEnabled} IS NULL
+        ) OR (
+          ${table.officialBlueprintKey} IS NOT NULL
+          AND ${table.officialAppliedFingerprint} ~ '^[0-9a-f]{64}$'
+          AND ${table.officialReconciliationStatus} IN ('current', 'reconciling', 'needs_reconfiguration', 'failed')
+          AND jsonb_typeof(${table.officialParameterBindings}) = 'array'
+          AND ${table.officialIntendedEnabled} IS NOT NULL
+          AND ${table.officialResultEmailEnabled} IS NOT NULL
+        )`,
+      ),
+    ];
+  },
+);
+
+/**
+ * Permanent logical identity for one Official Automation Blueprint projection.
+ *
+ * Executable configuration remains in `workflow_automations`. This row
+ * survives Blueprint removal and can represent a newly introduced Blueprint
+ * whose required parameters are not yet resolvable, without exposing an
+ * incomplete trigger configuration to mixed-version readers.
+ */
+export const officialWorkflowAutomationIdentities = pgTable(
+  "official_workflow_automation_identities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workflowId: uuid("workflow_id").notNull(),
+    automationId: uuid("automation_id"),
+    blueprintKey: varchar("blueprint_key", { length: 64 }).notNull(),
+    state: varchar("state", { length: 32 })
+      .$type<OfficialWorkflowAutomationIdentityState>()
+      .notNull(),
+    retainedParameterBindings: jsonb(
+      "retained_parameter_bindings",
+    ).$type<OfficialWorkflowParameterBindings>(),
+    retainedIntendedEnabled: boolean("retained_intended_enabled"),
+    retainedAppliedFingerprint: varchar("retained_applied_fingerprint", {
+      length: 64,
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      foreignKey({
+        name: "official_workflow_automation_identity_workflow_fk",
+        columns: [table.workflowId],
+        foreignColumns: [workflows.id],
+      }).onDelete("cascade"),
+      foreignKey({
+        name: "official_workflow_automation_identity_automation_fk",
+        columns: [table.automationId],
+        foreignColumns: [workflowAutomations.id],
+      }).onDelete("set null"),
+      uniqueIndex("idx_official_workflow_automation_identities_key").on(
+        table.workflowId,
+        table.blueprintKey,
+      ),
+      uniqueIndex(
+        "idx_official_workflow_automation_identities_automation_unique",
+      )
+        .on(table.automationId)
+        .where(sql`${table.automationId} IS NOT NULL`),
+      index("idx_official_workflow_automation_identities_workflow").on(
+        table.workflowId,
+      ),
+      check(
+        "official_workflow_automation_identities_state_check",
+        sql`(
+          ${table.state} = 'active'
+          AND ${table.automationId} IS NOT NULL
+          AND ${table.retainedParameterBindings} IS NULL
+          AND ${table.retainedIntendedEnabled} IS NULL
+          AND ${table.retainedAppliedFingerprint} IS NULL
+        ) OR (
+          ${table.state} IN ('reconciling', 'needs_reconfiguration', 'failed', 'removed')
+          AND ${table.automationId} IS NULL
+          AND jsonb_typeof(${table.retainedParameterBindings}) = 'array'
+          AND ${table.retainedIntendedEnabled} IS NOT NULL
+          AND (
+            ${table.retainedAppliedFingerprint} IS NULL
+            OR ${table.retainedAppliedFingerprint} ~ '^[0-9a-f]{64}$'
+          )
+        )`,
       ),
     ];
   },
 );
 
 export const workflowWebhookAutomations = pgTable(
-  "zero_workflow_webhook_automations",
+  "workflow_webhook_automations",
   {
     automationId: uuid("automation_id")
       .primaryKey()
@@ -284,7 +424,7 @@ export const workflowWebhookAutomations = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_zero_workflow_webhook_automations_token_hash").on(
+      uniqueIndex("idx_workflow_webhook_automations_token_hash").on(
         table.tokenHash,
       ),
     ];
@@ -292,7 +432,7 @@ export const workflowWebhookAutomations = pgTable(
 );
 
 export const workflowWebhookDeliveries = pgTable(
-  "zero_workflow_webhook_deliveries",
+  "workflow_webhook_deliveries",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     automationId: uuid("automation_id")
@@ -313,11 +453,11 @@ export const workflowWebhookDeliveries = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_zero_workflow_webhook_deliveries_automation_key").on(
+      uniqueIndex("idx_workflow_webhook_deliveries_automation_key").on(
         table.automationId,
         table.deliveryKey,
       ),
-      index("idx_zero_workflow_webhook_deliveries_automation_received").on(
+      index("idx_workflow_webhook_deliveries_automation_received").on(
         table.automationId,
         table.receivedAt,
       ),
@@ -326,7 +466,7 @@ export const workflowWebhookDeliveries = pgTable(
 );
 
 export const workflowGithubProcessedEvents = pgTable(
-  "zero_workflow_github_processed_events",
+  "workflow_github_processed_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     automationId: uuid("automation_id")
@@ -349,11 +489,11 @@ export const workflowGithubProcessedEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_zero_workflow_github_processed_automation_delivery").on(
+      uniqueIndex("idx_workflow_github_processed_automation_delivery").on(
         table.automationId,
         table.githubDeliveryId,
       ),
-      index("idx_zero_workflow_github_processed_subject").on(
+      index("idx_workflow_github_processed_subject").on(
         table.repo,
         table.subjectType,
         table.subjectNumber,

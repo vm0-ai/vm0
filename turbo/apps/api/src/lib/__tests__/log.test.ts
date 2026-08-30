@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { EVENT } from "@axiomhq/logging";
 import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
 
@@ -11,121 +9,8 @@ const { axiom, axiomLogging, console: consoleOutput } = testContext().mocks;
 
 const CANONICAL_DEBUG_KEY = "OKOU_DEBUG";
 const LEGACY_DEBUG_KEY = "VM0_DEBUG";
-const DEBUG_ALIAS_RESOLUTION_EVENT = "debug_environment_alias_resolution";
-const DEBUG_ALIAS_LOG_CONTEXT = "DebugEnvironment";
-const DEBUG_ALIAS_CONFLICT_ERROR =
-  "Debug environment aliases conflict: canonicalKey=OKOU_DEBUG legacyKey=VM0_DEBUG state=conflicting-dual";
-
-type NonConflictingDebugAliasState =
-  | "absent"
-  | "canonical-only"
-  | "legacy-only"
-  | "equal-dual";
-
-interface DebugAliasFixture {
-  readonly description: string;
-  readonly canonical: string | undefined;
-  readonly legacy: string | undefined;
-  readonly state: NonConflictingDebugAliasState;
-  readonly expectedLevel: "debug" | "info";
-}
-
-const DEBUG_ALIAS_FIXTURES: readonly DebugAliasFixture[] = [
-  {
-    description: "missing aliases",
-    canonical: undefined,
-    legacy: undefined,
-    state: "absent",
-    expectedLevel: "info",
-  },
-  {
-    description: "empty aliases",
-    canonical: "",
-    legacy: "",
-    state: "absent",
-    expectedLevel: "info",
-  },
-  {
-    description: "empty canonical and missing legacy aliases",
-    canonical: "",
-    legacy: undefined,
-    state: "absent",
-    expectedLevel: "info",
-  },
-  {
-    description: "missing canonical and empty legacy aliases",
-    canonical: undefined,
-    legacy: "",
-    state: "absent",
-    expectedLevel: "info",
-  },
-  {
-    description: "canonical-only alias",
-    canonical: "debug-matrix-target",
-    legacy: undefined,
-    state: "canonical-only",
-    expectedLevel: "debug",
-  },
-  {
-    description: "canonical alias with empty legacy",
-    canonical: "debug-matrix-target",
-    legacy: "",
-    state: "canonical-only",
-    expectedLevel: "debug",
-  },
-  {
-    description: "legacy-only alias",
-    canonical: undefined,
-    legacy: "debug-matrix-target",
-    state: "legacy-only",
-    expectedLevel: "debug",
-  },
-  {
-    description: "legacy alias with empty canonical",
-    canonical: "",
-    legacy: "debug-matrix-target",
-    state: "legacy-only",
-    expectedLevel: "debug",
-  },
-  {
-    description: "byte-equal dual aliases",
-    canonical: "debug-matrix-target",
-    legacy: "debug-matrix-target",
-    state: "equal-dual",
-    expectedLevel: "debug",
-  },
-];
-
-function configureDebugAliases(
-  canonical: string | undefined,
-  legacy: string | undefined,
-): void {
-  mockEnv(CANONICAL_DEBUG_KEY, canonical);
-  mockEnv(LEGACY_DEBUG_KEY, legacy);
-}
-
-function debugAliasEvidence(state: string): Readonly<Record<string, unknown>> {
-  return {
-    [EVENT]: { source: "api" },
-    canonicalKey: CANONICAL_DEBUG_KEY,
-    legacyKey: LEGACY_DEBUG_KEY,
-    state,
-    context: DEBUG_ALIAS_LOG_CONTEXT,
-  };
-}
-
-function expectValueFree(diagnostics: string, values: readonly string[]): void {
-  for (const value of values) {
-    const forbiddenDerivatives = [
-      value,
-      String(value.length),
-      createHash("sha256").update(value).digest("hex"),
-      JSON.stringify(value),
-    ];
-    for (const derivative of forbiddenDerivatives) {
-      expect(diagnostics).not.toContain(derivative);
-    }
-  }
+function configureDebug(value: string | undefined): void {
+  mockEnv(CANONICAL_DEBUG_KEY, value);
 }
 
 beforeEach(() => {
@@ -133,55 +18,14 @@ beforeEach(() => {
   axiomLogging.flush.mockResolvedValue(undefined);
 });
 
-describe("debug environment aliases", () => {
-  it.each(DEBUG_ALIAS_FIXTURES)(
-    "resolves $description with bounded source evidence",
-    ({ canonical, legacy, state, expectedLevel }) => {
-      configureDebugAliases(canonical, legacy);
-      const infoLogCount = axiomLogging.info.mock.calls.length;
+describe("debug environment", () => {
+  it.each([
+    { description: "missing canonical input", value: undefined },
+    { description: "empty canonical input", value: "" },
+  ])("keeps the info level for $description", ({ value }) => {
+    configureDebug(value);
 
-      expect(logger("debug-matrix-target").level).toBe(expectedLevel);
-      expect(logger("another-logger").level).toBe("info");
-
-      const calls = axiomLogging.info.mock.calls.slice(infoLogCount);
-      expect(calls).toStrictEqual([
-        [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence(state)],
-      ]);
-      expectValueFree(
-        JSON.stringify(calls),
-        [canonical, legacy].filter((value): value is string => {
-          return Boolean(value);
-        }),
-      );
-      expect(axiomLogging.debug).not.toHaveBeenCalled();
-      expect(axiomLogging.warn).not.toHaveBeenCalled();
-    },
-  );
-
-  it("fails closed on byte-unequal aliases before pattern normalization", () => {
-    const canonical = `canonical-sentinel-${"x".repeat(113)}:*`;
-    const legacy = ` ${canonical} `;
-    configureDebugAliases(canonical, legacy);
-    const warnLogCount = axiomLogging.warn.mock.calls.length;
-
-    expect(() => {
-      logger("canonical-sentinel:child");
-    }).toThrow(DEBUG_ALIAS_CONFLICT_ERROR);
-    expect(() => {
-      logger("canonical-sentinel:child");
-    }).toThrow(DEBUG_ALIAS_CONFLICT_ERROR);
-
-    expect(axiomLogging.warn.mock.calls.slice(warnLogCount)).toStrictEqual([
-      [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence("conflicting-dual")],
-    ]);
-    expect(axiomLogging.debug).not.toHaveBeenCalled();
-    expect(axiomLogging.info).not.toHaveBeenCalled();
-
-    const diagnostics = JSON.stringify({
-      error: DEBUG_ALIAS_CONFLICT_ERROR,
-      logs: axiomLogging.warn.mock.calls,
-    });
-    expectValueFree(diagnostics, [canonical, legacy]);
+    expect(logger("debug-target").level).toBe("info");
   });
 
   it.each([
@@ -222,7 +66,7 @@ describe("debug environment aliases", () => {
       disabled: ["target-logger"],
     },
   ])("preserves $description behavior", ({ value, enabled, disabled }) => {
-    configureDebugAliases(value, undefined);
+    configureDebug(value);
 
     for (const name of enabled) {
       expect(logger(name).level).toBe("debug");
@@ -232,9 +76,37 @@ describe("debug environment aliases", () => {
     }
   });
 
+  it("ignores a retired legacy-only input", () => {
+    configureDebug(undefined);
+    mockOptionalEnv(LEGACY_DEBUG_KEY, "legacy-only-target");
+
+    expect(logger("legacy-only-target").level).toBe("info");
+  });
+
+  it("does not let a retired legacy value override or conflict with canonical", () => {
+    configureDebug("canonical:*");
+    mockOptionalEnv(LEGACY_DEBUG_KEY, "legacy:*");
+
+    expect(() => {
+      logger("canonical:child");
+    }).not.toThrow();
+    expect(logger("canonical:child").level).toBe("debug");
+    expect(logger("legacy:child").level).toBe("info");
+  });
+
+  it("does not emit the canonical environment value to logs", () => {
+    const value = `private-debug-pattern-${"x".repeat(113)}`;
+    configureDebug(value);
+
+    expect(logger(value).level).toBe("debug");
+    expect(axiomLogging.debug).not.toHaveBeenCalled();
+    expect(axiomLogging.info).not.toHaveBeenCalled();
+    expect(axiomLogging.warn).not.toHaveBeenCalled();
+    expect(axiomLogging.error).not.toHaveBeenCalled();
+  });
+
   it("keeps configuration and logger levels cached until the existing reset", () => {
-    configureDebugAliases("CachedLogger", undefined);
-    const infoLogCount = axiomLogging.info.mock.calls.length;
+    configureDebug("CachedLogger");
 
     const cached = logger("CachedLogger");
     expect(cached.level).toBe("debug");
@@ -243,21 +115,14 @@ describe("debug environment aliases", () => {
     expect(logger("CachedLogger")).toBe(cached);
     expect(logger("CachedLogger").level).toBe("debug");
     expect(logger("AfterResetLogger").level).toBe("info");
-    expect(axiomLogging.info.mock.calls.slice(infoLogCount)).toStrictEqual([
-      [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence("canonical-only")],
-    ]);
 
     __resetForTest();
 
     expect(logger("AfterResetLogger").level).toBe("debug");
-    expect(axiomLogging.info.mock.calls.slice(infoLogCount)).toStrictEqual([
-      [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence("canonical-only")],
-      [DEBUG_ALIAS_RESOLUTION_EVENT, debugAliasEvidence("canonical-only")],
-    ]);
   });
 
   it("keeps the generic DEBUG convention unrelated", () => {
-    configureDebugAliases(undefined, undefined);
+    configureDebug(undefined);
     mockOptionalEnv("DEBUG", "*");
 
     expect(logger("generic-debug-convention").level).toBe("info");

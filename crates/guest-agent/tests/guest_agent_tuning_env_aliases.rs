@@ -316,15 +316,24 @@ fn clear_tuning_env() {
 }
 
 fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
-    guest_common::log::set_system_log_file(log_path);
-    let raw = GuestConfigRaw::from_process_env();
     guest_common::log::clear_system_log_file();
-    let log = match std::fs::read_to_string(log_path) {
-        Ok(log) => log,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error),
-    };
-    Ok((raw, log))
+    let raw = GuestConfigRaw::from_process_env();
+    assert!(
+        !log_path.exists(),
+        "raw capture installed or wrote a system-log sink"
+    );
+    let evidence = raw
+        .as_ref()
+        .map(|raw| {
+            raw.bootstrap_alias_source_events()
+                .map(|(family, key, source)| {
+                    format!("[captured] {family} key={key} source={source}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    Ok((raw, evidence))
 }
 
 fn assert_source_evidence(
@@ -520,17 +529,19 @@ fn assert_conflict_precedes_private_file_consumption(
 
     for key in [
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
     ] {
         remove_test_env(key);
     }
     set_test_env(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         &runtime_dir,
     );
-    set_test_env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, &payload_path);
+    set_test_env(
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+        &payload_path,
+    );
     set_test_env(pair.canonical, CANONICAL_CONFLICT_VALUE);
     set_test_env(pair.legacy, LEGACY_CONFLICT_VALUE);
 

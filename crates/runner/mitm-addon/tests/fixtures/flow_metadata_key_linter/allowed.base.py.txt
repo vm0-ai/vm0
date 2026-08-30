@@ -64,7 +64,21 @@ flow.metadata.update(dict.fromkeys(({metadata_keys.FIREWALL_ACTION: "ALLOW"} | {
 flow.metadata.update(
     dict.fromkeys({metadata_keys.FIREWALL_ERROR: "auth_failed"}.copy(), "auth_failed")
 )
+flow.metadata.update([*dict.fromkeys([(metadata_keys.SANDBOX_RUN_ID, "run-1")])])
+flow.metadata.update(
+    [*dict.fromkeys([(metadata_keys.SANDBOX_RUN_ID, "run-1")]).keys()]
+)
+flow.metadata.update(dict.fromkeys([(metadata_keys.FIREWALL_NAME, "github")]).keys())
+flow.metadata.update([*{(metadata_keys.FIREWALL_ACTION, "ALLOW"): None}])
+flow.metadata.update(
+    [*{(metadata_keys.FIREWALL_PERMISSION, value): None for value in rows}]
+)
+flow.metadata.update([*dict.fromkeys([("external", "sandbox_run_id")])])
 flow.metadata.update(zip([metadata_keys.SANDBOX_RUN_ID], ["run-1"]))
+flow.metadata.update(zip(dict.fromkeys([metadata_keys.SANDBOX_RUN_ID]), ["run-1"]))
+flow.metadata.update(
+    zip(dict.fromkeys([metadata_keys.SANDBOX_RUN_ID]).keys(), ["run-1"])
+)
 flow.metadata = dict(zip([metadata_keys.FIREWALL_NAME], ["github"]))
 flow.metadata.update(dict(zip((metadata_keys.FIREWALL_ACTION,), ("ALLOW",))))
 flow.metadata.update([*[(metadata_keys.FIREWALL_PERMISSION, "read")]])

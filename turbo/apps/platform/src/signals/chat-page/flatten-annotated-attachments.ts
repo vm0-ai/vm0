@@ -1,5 +1,6 @@
 import { command } from "ccstate";
-import { settle } from "../utils.ts";
+import { timeout } from "signal-timers";
+import { createChildAbortController, settle } from "../utils.ts";
 import type { ResolvedAttachFile } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   uploadFileToStorage$,
@@ -11,6 +12,16 @@ import {
 } from "../okou-page/image-annotation.ts";
 import { flattenAnnotatedImage } from "../okou-page/flatten-annotated-image.ts";
 import { composerImageAnnotationEnabled$ } from "../external/feature-switch.ts";
+
+/**
+ * A decode that neither loads nor errors — a stalled CDN connection is the
+ * common way — leaves the image element waiting forever, and the send waits
+ * with it. The message never leaves and nothing explains why. Past this
+ * deadline the copy is abandoned and the notes go on their own. Three seconds
+ * is several times what a large screenshot needs to decode and re-encode, and
+ * short enough that a stall reads as a slow send rather than a dead one.
+ */
+const FLATTEN_DEADLINE_MS = 3000;
 
 interface AttachmentToFlatten {
   readonly attachment: ChatAttachment;
@@ -64,15 +75,24 @@ export const flattenAnnotatedAttachments$ = command(
         annotation,
       );
 
+      const deadline = createChildAbortController(signal);
+      timeout(
+        () => {
+          deadline.abort(new Error("Timed out flattening an annotated image"));
+        },
+        FLATTEN_DEADLINE_MS,
+        { signal: deadline.signal },
+      );
       const flattened = await settle(
         flattenAnnotatedImage(
           entry.info.url,
           annotation,
           entry.attachment.filename,
-          signal,
+          deadline.signal,
         ),
         signal,
       );
+      deadline.abort();
       if (!flattened.ok) {
         results.set(entry.info.id, { description });
         continue;

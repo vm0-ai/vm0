@@ -65,23 +65,32 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
         )
         .env("SHELL", "/bin/sh")
         .env("HOME", &home)
-        .env(guest_contracts::env::API_URL_ENV, "http://127.0.0.1:1")
+        .env(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        )
         .env(token_env, API_TOKEN)
         .env(guest_contracts::env::RUN_ID_ENV, format!("{RUN_ID}-{case}"))
         .env(
-            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",
         )
-        .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
+        .env(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        )
         .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "claude-code")
         .env(guest_contracts::env::USE_MOCK_CLAUDE_ENV, "true")
-        .env(guest_contracts::env::MOCK_CLAUDE_PATH_ENV, &probe_path)
         .env(
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            &probe_path,
+        )
+        .env(
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             &run_payload_path,
         )
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         );
     if launch_unprivileged {

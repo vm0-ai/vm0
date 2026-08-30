@@ -690,8 +690,8 @@ fn preserves_successful_post_result_cleanup(
         && cli_result.control_error.is_none()
         && cli_result.exit_code != 0
         && cli_result
-            .post_result_cleanup_result
-            .is_some_and(|result| result.status == cli::ClaudeResultStatus::Success)
+            .post_result_cleanup_jsonl_result
+            .is_some_and(|result| result.status == cli::JsonlResultStatus::Success)
         && cli_result
             .cli_termination
             .as_ref()
@@ -1142,15 +1142,18 @@ mod tests {
         let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
         unsafe {
             clear_test_env();
-            std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            );
+            std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
             std::env::set_var(guest_contracts::env::RUN_ID_ENV, "main-recovery-checkpoint");
             std::env::set_var(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 test_runtime_dir(),
             );
             std::env::set_var(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 write_test_run_payload(prompt),
             );
         }
@@ -1197,11 +1200,9 @@ mod tests {
             guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,
-            guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-            guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            process_control_ipc::BOOTSTRAP_ENV,
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
@@ -1247,12 +1248,12 @@ mod tests {
 
     #[test]
     fn successful_post_result_cleanup_preserves_semantic_success_only_for_narrow_case() {
-        let success_result = cli::ClaudeResultSummary {
+        let success_result = cli::JsonlResultSummary {
             num_turns: Some(1),
-            status: cli::ClaudeResultStatus::Success,
+            status: cli::JsonlResultStatus::Success,
         };
-        let make_result = |claude_result: cli::ClaudeResultSummary,
-                           cleanup_result: cli::ClaudeResultSummary,
+        let make_result = |jsonl_result: cli::JsonlResultSummary,
+                           cleanup_result: cli::JsonlResultSummary,
                            termination_reason: CliTerminationReason| {
             let termination = CliTerminationDiagnostic::new(termination_reason)
                 .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(1_000))
@@ -1263,8 +1264,8 @@ mod tests {
                 stderr_lines: Vec::new(),
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: Some(claude_result),
-                post_result_cleanup_result: Some(cleanup_result),
+                jsonl_result: Some(jsonl_result),
+                post_result_cleanup_jsonl_result: Some(cleanup_result),
                 failure_diagnostic: None,
                 control_error: None,
                 cli_termination: Some(termination),
@@ -1287,9 +1288,9 @@ mod tests {
         ));
 
         let late_error_result_after_successful_cleanup = make_result(
-            cli::ClaudeResultSummary {
+            cli::JsonlResultSummary {
                 num_turns: Some(1),
-                status: cli::ClaudeResultStatus::Error,
+                status: cli::JsonlResultStatus::Error,
             },
             success_result,
             CliTerminationReason::PostResultReap,
@@ -1301,9 +1302,9 @@ mod tests {
 
         let error_cleanup = make_result(
             success_result,
-            cli::ClaudeResultSummary {
+            cli::JsonlResultSummary {
                 num_turns: Some(1),
-                status: cli::ClaudeResultStatus::Error,
+                status: cli::JsonlResultStatus::Error,
             },
             CliTerminationReason::PostResultReap,
         );

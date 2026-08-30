@@ -1,10 +1,33 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type { ReactNode, SyntheticEvent } from "react";
-import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastResolved,
+  useLoadable,
+  type Loadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { Loader2, Search, X, Pin, PinOff } from "lucide-react";
+import {
+  File,
+  Globe,
+  Image,
+  Loader2,
+  MessagesSquare,
+  Pin,
+  PinOff,
+  Presentation,
+  Route,
+  Search,
+  User,
+  Video,
+  X,
+} from "lucide-react";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ChatSearchResult } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ArtifactCatalogKind } from "@okouai/api-contracts/contracts/artifact-catalog";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import {
   Button,
   CommandDialog,
@@ -18,8 +41,10 @@ import {
   Input,
   RunningIndicator,
 } from "@okouai/ui";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { useTranslation } from "react-i18next";
 import { formatRelativeTimestamp } from "../../i18n/format.ts";
+import { i18n } from "../../i18n/index.ts";
 import { emptySearchImg } from "./platform-assets.ts";
 import {
   chatListQuery$,
@@ -58,14 +83,20 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./sidebar-shared.tsx";
 import { AgentRowSideActions } from "./sidebar-agent-row-actions.tsx";
+import {
+  threeColumnArtifactSearchResults$,
+  threeColumnWorkflowSearchResults$,
+  type ThreeColumnArtifactSearchItem,
+} from "../../signals/okou-page/three-column-search-resources.ts";
+import { ArtifactThumbnailImage } from "./artifact-thumbnail.tsx";
 
 interface AgentDialogItem {
-  readonly id: string;
+  readonly agentId: string;
   readonly displayName?: string | null;
 }
 
 function agentDialogLabel(agent: AgentDialogItem): string {
-  return agent.displayName ?? agent.id;
+  return agent.displayName ?? agent.agentId;
 }
 
 export function agentDialogMatchesQuery(
@@ -73,7 +104,7 @@ export function agentDialogMatchesQuery(
   trimmedQuery: string,
 ): boolean {
   return (
-    agent.id.toLowerCase().includes(trimmedQuery) ||
+    agent.agentId.toLowerCase().includes(trimmedQuery) ||
     (agent.displayName ?? "").toLowerCase().includes(trimmedQuery)
   );
 }
@@ -107,6 +138,7 @@ export function AgentDialogSearch({
         />
         {query && (
           <Button
+            showTooltip
             type="button"
             onClick={() => {
               return setQuery("");
@@ -165,7 +197,7 @@ export function AgentDialogAgentButton({
     >
       {avatar ?? (
         <AgentAvatarImg
-          name={agent.id}
+          name={agent.agentId}
           alt={label}
           className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
         />
@@ -197,13 +229,12 @@ function AgentCommandSearch({
     <div className="px-5 pb-3">
       <div className="relative w-full">
         <CommandInput
-          value={query}
-          onValueChange={setQuery}
           placeholder={placeholder}
           className={query ? "pr-7" : ""}
         />
         {query && (
           <Button
+            showTooltip
             type="button"
             onClick={() => {
               return setQuery("");
@@ -235,7 +266,7 @@ function AgentCommandSection({
   return (
     <CommandGroup
       heading={label}
-      className={`px-5 ${className} [&_[cmdk-group-items]]:mt-1 [&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col`}
+      className={`px-5 ${className} [&_[data-slot=command-group-items]]:mt-1 [&_[data-slot=command-group-items]]:flex [&_[data-slot=command-group-items]]:flex-col`}
     >
       {children}
     </CommandGroup>
@@ -256,7 +287,7 @@ function AgentCommandAgentContent({
     <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
       {avatar ?? (
         <AgentAvatarImg
-          name={agent.id}
+          name={agent.agentId}
           alt={label}
           className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
         />
@@ -274,7 +305,7 @@ function AgentCommandAgentContent({
 }
 
 /**
- * Trailing pin toggle for a pin-dialog row. It stays hidden until cmdk selects
+ * Trailing pin toggle for a pin-dialog row. It stays hidden until the command highlights
  * the row — hovering or arrowing onto it — so a resting row never shows the
  * pin glyph the rest of the app uses to mean "already pinned".
  */
@@ -282,17 +313,20 @@ function AgentCommandPinToggle({
   label,
   icon,
   onToggle,
+  disabled,
 }: {
   readonly label: string;
   readonly icon: ReactNode;
   readonly onToggle: () => void;
+  readonly disabled: boolean;
 }) {
   return (
     <Button
       type="button"
       variant="quiet"
       size="xs"
-      className="ml-auto shrink-0 gap-1.5 opacity-0 transition-opacity duration-150 group-data-[selected=true]:opacity-100 focus-visible:opacity-100"
+      disabled={disabled}
+      className="ml-auto shrink-0 gap-1.5 opacity-0 transition-opacity duration-150 group-data-[highlighted]:opacity-100 focus-visible:opacity-100"
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
@@ -311,7 +345,7 @@ function agentsInRenderOrder(
 ): SubagentInfo[] {
   const agentById = new Map(
     subagents.map((agent) => {
-      return [agent.id, agent];
+      return [agent.agentId, agent];
     }),
   );
   return renderOrder
@@ -452,7 +486,7 @@ function PinnedAgentCommandItem({
 
   return (
     <CommandItem
-      value={agent.id}
+      value={agent.agentId}
       onSelect={onChat}
       className="group w-full gap-2 px-1 py-2"
     >
@@ -508,7 +542,7 @@ function LeadAgentCommandSection({
         className="group w-full gap-2 px-1 py-2"
       >
         <AgentCommandAgentContent
-          agent={{ id: "lead", displayName }}
+          agent={{ agentId: "lead", displayName }}
           avatar={
             <AvatarFromUrl
               avatarUrl={avatarUrl}
@@ -557,16 +591,16 @@ function PinnedAgentsCommandSection({
       {agents.map((agent) => {
         return (
           <PinnedAgentCommandItem
-            key={agent.id}
+            key={agent.agentId}
             agent={agent}
             onUnpin={() => {
-              return onTogglePin(agent.id);
+              return onTogglePin(agent.agentId);
             }}
             onChat={() => {
-              return onChat(agent.id);
+              return onChat(agent.agentId);
             }}
             disabled={disabled}
-            hasUnread={setHasId(unreadAgentIds, agent.id)}
+            hasUnread={setHasId(unreadAgentIds, agent.agentId)}
           />
         );
       })}
@@ -602,17 +636,17 @@ function UnpinnedAgentsCommandSection({
       {agents.map((agent) => {
         return (
           <CommandItem
-            key={agent.id}
-            value={agent.id}
+            key={agent.agentId}
+            value={agent.agentId}
             onSelect={() => {
-              return onChat(agent.id);
+              return onChat(agent.agentId);
             }}
             className="group w-full gap-2 px-1 py-2"
           >
             <AgentCommandAgentContent agent={agent} />
             <AgentCommandSideActions>
               <AgentRowSideActions
-                hasUnread={setHasId(unreadAgentIds, agent.id)}
+                hasUnread={setHasId(unreadAgentIds, agent.agentId)}
                 action={{
                   label: t(($) => {
                     return $.sidebar.pin;
@@ -620,7 +654,7 @@ function UnpinnedAgentsCommandSection({
                   disabled,
                   icon: <Pin size={16} />,
                   onSelect: () => {
-                    return onTogglePin(agent.id);
+                    return onTogglePin(agent.agentId);
                   },
                 }}
               />
@@ -704,7 +738,7 @@ function ChatThreadCommandSectionContainer({
 
 interface UnifiedAgentSearchItem extends AgentDialogItem {
   readonly kind: "agent";
-  readonly agentId: string | null;
+  readonly targetAgentId: string | null;
   readonly isLead: boolean;
 }
 
@@ -978,6 +1012,166 @@ function SpotlightMessageCommandItem({
   );
 }
 
+const SPOTLIGHT_RESOURCE_ICON_CLASS =
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground";
+const SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX = 64;
+
+function SpotlightWorkflowCommandItem({
+  workflow,
+  onSelect,
+}: {
+  readonly workflow: WorkflowSummary;
+  readonly onSelect: () => void;
+}) {
+  const title = workflow.displayName ?? workflow.name;
+  return (
+    <CommandItem
+      value={`spotlight-workflow-${workflow.id}`}
+      onSelect={onSelect}
+      className={SPOTLIGHT_ROW_CLASS}
+    >
+      <span className={SPOTLIGHT_RESOURCE_ICON_CLASS} aria-hidden="true">
+        <Route size={16} />
+      </span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-sm text-foreground">{title}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          /{workflow.name}
+        </span>
+      </span>
+      <SpotlightRowMeta
+        indicator={null}
+        timestamp={formatRelativeTimestamp(workflow.createdAt)}
+      />
+    </CommandItem>
+  );
+}
+
+function artifactKindLabel(kind: ArtifactCatalogKind): string {
+  switch (kind) {
+    case "presentation": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.presentation;
+      });
+    }
+    case "hosted-site": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.hostedSite;
+      });
+    }
+    case "image": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.image;
+      });
+    }
+    case "video": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.video;
+      });
+    }
+    case "avatar": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.avatar;
+      });
+    }
+    case "shared-thread": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.sharedConversation;
+      });
+    }
+    case "file": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.file;
+      });
+    }
+  }
+}
+
+function SpotlightArtifactKindIcon({
+  kind,
+}: {
+  readonly kind: ArtifactCatalogKind;
+}) {
+  const icon =
+    kind === "presentation" ? (
+      <Presentation size={16} />
+    ) : kind === "hosted-site" ? (
+      <Globe size={16} />
+    ) : kind === "image" ? (
+      <Image size={16} />
+    ) : kind === "video" ? (
+      <Video size={16} />
+    ) : kind === "avatar" ? (
+      <User size={16} />
+    ) : kind === "shared-thread" ? (
+      <MessagesSquare size={16} />
+    ) : (
+      <File size={16} />
+    );
+  return (
+    <span
+      className={SPOTLIGHT_RESOURCE_ICON_CLASS}
+      aria-hidden="true"
+      data-testid={`spotlight-artifact-kind-icon-${kind}`}
+    >
+      {icon}
+    </span>
+  );
+}
+
+function SpotlightArtifactThumbnail({
+  artifact,
+}: {
+  readonly artifact: ThreeColumnArtifactSearchItem;
+}) {
+  if (!artifact.thumbnail) {
+    return <SpotlightArtifactKindIcon kind={artifact.kind} />;
+  }
+  return (
+    <ArtifactThumbnailImage
+      src={r2ImageTransformUrl(artifact.thumbnail.url, {
+        width: SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX,
+        fit: "scale-down",
+      })}
+      load={artifact.thumbnailLoad}
+      loading="eager"
+      className="h-8 w-8 shrink-0 rounded-lg bg-gray-50 object-cover"
+      fallback={<SpotlightArtifactKindIcon kind={artifact.kind} />}
+      testId="spotlight-artifact-thumbnail"
+    />
+  );
+}
+
+function SpotlightArtifactCommandItem({
+  artifact,
+  onSelect,
+}: {
+  readonly artifact: ThreeColumnArtifactSearchItem;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <CommandItem
+      value={`spotlight-artifact-${artifact.id}`}
+      onSelect={onSelect}
+      className={SPOTLIGHT_ROW_CLASS}
+    >
+      <SpotlightArtifactThumbnail artifact={artifact} />
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-sm text-foreground">
+          {artifact.title}
+        </span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {artifactKindLabel(artifact.kind)}
+        </span>
+      </span>
+      <SpotlightRowMeta
+        indicator={null}
+        timestamp={formatRelativeTimestamp(artifact.createdAt)}
+      />
+    </CommandItem>
+  );
+}
+
 function SpotlightFilterButton({
   active,
   label,
@@ -1004,13 +1198,7 @@ function SpotlightFilterButton({
   );
 }
 
-function SpotlightSearchInput({
-  query,
-  onValueChange,
-}: {
-  readonly query: string;
-  readonly onValueChange: (query: string) => void;
-}) {
+function SpotlightSearchInput() {
   const { t } = useTranslation("agents");
 
   return (
@@ -1019,10 +1207,8 @@ function SpotlightSearchInput({
     <div className="p-5">
       <div className="relative">
         <CommandInput
-          value={query}
-          onValueChange={onValueChange}
           placeholder={t(($) => {
-            return $.sidebar.searchChatsAndMessages;
+            return $.sidebar.searchWorkspace;
           })}
           wrapperClassName="h-10"
           className="pr-12"
@@ -1070,13 +1256,28 @@ function SpotlightSearchFilterBar({
         return $.sidebar.sections.messages;
       }),
     },
+    {
+      value: "workflows",
+      label: t(($) => {
+        return $.sidebar.sections.workflows;
+      }),
+    },
+    {
+      value: "artifacts",
+      label: t(($) => {
+        return $.sidebar.sections.artifacts;
+      }),
+    },
   ];
 
   return (
     // No divider: the search field and the list are already separated by their
     // own padding, and a full-bleed rule ran into the dialog's 24px corners.
     <div className="mb-3 flex h-7 items-center justify-between px-5">
-      <div role="tablist" className="flex items-center gap-1">
+      <div
+        role="tablist"
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+      >
         {options.map((option) => {
           return (
             <SpotlightFilterButton
@@ -1090,7 +1291,10 @@ function SpotlightSearchFilterBar({
           );
         })}
       </div>
-      <span className="text-xs text-muted-foreground" role="status">
+      <span
+        className="ml-2 shrink-0 text-xs text-muted-foreground"
+        role="status"
+      >
         {t(
           ($) => {
             return $.sidebar.resultCount;
@@ -1105,27 +1309,126 @@ function SpotlightSearchFilterBar({
 interface SpotlightSearchResultsProps {
   readonly threads: readonly AgentListDialogChatThread[];
   readonly messages: readonly ChatSearchResult[];
+  readonly workflows: readonly WorkflowSummary[];
+  readonly artifacts: readonly ThreeColumnArtifactSearchItem[];
   readonly threadMap: ReadonlyMap<string, AgentListDialogChatThread>;
   readonly activeThreadIds: ReadonlySet<string> | undefined;
   readonly unreadThreadIds: ReadonlySet<string> | undefined;
   readonly showThreads: boolean;
   readonly showMessages: boolean;
+  readonly showWorkflows: boolean;
+  readonly showArtifacts: boolean;
   readonly searching: boolean;
   readonly showNoResults: boolean;
-  readonly onSelect: (threadId: string) => void;
+  readonly onSelectChatThread: (threadId: string) => void;
+  readonly onSelectWorkflow: (workflowId: string) => void;
+  readonly onSelectArtifact: (artifact: ThreeColumnArtifactSearchItem) => void;
+}
+
+interface SpotlightQueryResult {
+  readonly query: string;
+}
+
+function spotlightRowsFromLoadable<Result extends SpotlightQueryResult, Item>(
+  loadable: Loadable<Result>,
+  query: string,
+  selectRows: (result: Result) => readonly Item[],
+): readonly Item[] {
+  if (loadable.state !== "hasData") {
+    return [];
+  }
+  if (loadable.data.query !== query) {
+    return [];
+  }
+  return selectRows(loadable.data);
+}
+
+function spotlightLoadableIsSearching<Result extends SpotlightQueryResult>(
+  loadable: Loadable<Result>,
+  query: string,
+): boolean {
+  if (loadable.state === "loading") {
+    return true;
+  }
+  if (loadable.state !== "hasData") {
+    return false;
+  }
+  return loadable.data.query !== query;
+}
+
+function spotlightFilterShows(
+  filter: ThreeColumnSearchFilter,
+  category: Exclude<ThreeColumnSearchFilter, "all">,
+): boolean {
+  return filter === "all" || filter === category;
+}
+
+function spotlightVisibleResultCount({
+  showThreads,
+  showMessages,
+  showWorkflows,
+  showArtifacts,
+  threadCount,
+  messageCount,
+  workflowCount,
+  artifactCount,
+}: {
+  readonly showThreads: boolean;
+  readonly showMessages: boolean;
+  readonly showWorkflows: boolean;
+  readonly showArtifacts: boolean;
+  readonly threadCount: number;
+  readonly messageCount: number;
+  readonly workflowCount: number;
+  readonly artifactCount: number;
+}): number {
+  return (
+    Number(showThreads) * threadCount +
+    Number(showMessages) * messageCount +
+    Number(showWorkflows) * workflowCount +
+    Number(showArtifacts) * artifactCount
+  );
+}
+
+function spotlightVisibleSearchIsPending({
+  showMessages,
+  showWorkflows,
+  showArtifacts,
+  messageSearching,
+  workflowSearching,
+  artifactSearching,
+}: {
+  readonly showMessages: boolean;
+  readonly showWorkflows: boolean;
+  readonly showArtifacts: boolean;
+  readonly messageSearching: boolean;
+  readonly workflowSearching: boolean;
+  readonly artifactSearching: boolean;
+}): boolean {
+  return (
+    (showMessages && messageSearching) ||
+    (showWorkflows && workflowSearching) ||
+    (showArtifacts && artifactSearching)
+  );
 }
 
 function SpotlightSearchResults({
   threads,
   messages,
+  workflows,
+  artifacts,
   threadMap,
   activeThreadIds,
   unreadThreadIds,
   showThreads,
   showMessages,
+  showWorkflows,
+  showArtifacts,
   searching,
   showNoResults,
-  onSelect,
+  onSelectChatThread,
+  onSelectWorkflow,
+  onSelectArtifact,
 }: SpotlightSearchResultsProps) {
   const { t } = useTranslation("agents");
 
@@ -1138,7 +1441,7 @@ function SpotlightSearchResults({
         No group heading: the filter row above already names what is listed, and
         "Best matches" was labelling the only group there is.
       */}
-      <CommandGroup className="[&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col">
+      <CommandGroup className="[&_[data-slot=command-group-items]]:flex [&_[data-slot=command-group-items]]:flex-col">
         {showThreads
           ? threads.map((thread) => {
               return (
@@ -1151,7 +1454,7 @@ function SpotlightSearchResults({
                     unreadThreadIds,
                   )}
                   onSelect={() => {
-                    return onSelect(thread.id);
+                    return onSelectChatThread(thread.id);
                   }}
                 />
               );
@@ -1170,7 +1473,33 @@ function SpotlightSearchResults({
                     unreadThreadIds,
                   )}
                   onSelect={() => {
-                    return onSelect(message.chatThreadId);
+                    return onSelectChatThread(message.chatThreadId);
+                  }}
+                />
+              );
+            })
+          : null}
+        {showWorkflows
+          ? workflows.map((workflow) => {
+              return (
+                <SpotlightWorkflowCommandItem
+                  key={workflow.id}
+                  workflow={workflow}
+                  onSelect={() => {
+                    return onSelectWorkflow(workflow.id);
+                  }}
+                />
+              );
+            })
+          : null}
+        {showArtifacts
+          ? artifacts.map((artifact) => {
+              return (
+                <SpotlightArtifactCommandItem
+                  key={artifact.id}
+                  artifact={artifact}
+                  onSelect={() => {
+                    return onSelectArtifact(artifact);
                   }}
                 />
               );
@@ -1215,10 +1544,14 @@ export function ThreeColumnSearchDialog({
   open,
   onOpenChange,
   onSelectChatThread,
+  onSelectWorkflow,
+  onSelectArtifact,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onSelectChatThread: (threadId: string) => void;
+  readonly onSelectWorkflow: (workflowId: string) => void;
+  readonly onSelectArtifact: (artifact: ThreeColumnArtifactSearchItem) => void;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(chatListQuery$);
@@ -1228,6 +1561,8 @@ export function ThreeColumnSearchDialog({
   const threadResult = useGet(agentListDialogChatThreads$);
   const threadMap = useGet(agentListDialogChatThreadMap$);
   const messageLoadable = useLoadable(agentListDialogChatMessages$);
+  const workflowLoadable = useLoadable(threeColumnWorkflowSearchResults$);
+  const artifactLoadable = useLoadable(threeColumnArtifactSearchResults$);
   const activeThreadIds = useLastResolved(sidebarActiveThreadIds$, {
     equalityFn: equalSets,
   });
@@ -1237,26 +1572,70 @@ export function ThreeColumnSearchDialog({
   const trimmedQuery = query.trim().toLowerCase();
   const threadMatches =
     threadResult.query === trimmedQuery ? threadResult.chatThreads : [];
-  const messageResult =
-    messageLoadable.state === "hasData" &&
-    messageLoadable.data.query === trimmedQuery
-      ? messageLoadable.data
-      : undefined;
-  const messageMatches = messageResult?.chatMessages ?? [];
-  const searching =
-    messageLoadable.state === "loading" ||
-    (messageLoadable.state === "hasData" &&
-      messageLoadable.data.query !== trimmedQuery);
-  const showThreads = filter !== "messages";
-  const showMessages = filter !== "chats";
-  const resultCount =
-    (showThreads ? threadMatches.length : 0) +
-    (showMessages ? messageMatches.length : 0);
-  const visibleSearching = searching && showMessages;
+  const messageMatches = spotlightRowsFromLoadable(
+    messageLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.chatMessages;
+    },
+  );
+  const workflowMatches = spotlightRowsFromLoadable(
+    workflowLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.workflows;
+    },
+  );
+  const artifactMatches = spotlightRowsFromLoadable(
+    artifactLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.artifacts;
+    },
+  );
+  const showThreads = spotlightFilterShows(filter, "chats");
+  const showMessages = spotlightFilterShows(filter, "messages");
+  const showWorkflows = spotlightFilterShows(filter, "workflows");
+  const showArtifacts = spotlightFilterShows(filter, "artifacts");
+  const resultCount = spotlightVisibleResultCount({
+    showThreads,
+    showMessages,
+    showWorkflows,
+    showArtifacts,
+    threadCount: threadMatches.length,
+    messageCount: messageMatches.length,
+    workflowCount: workflowMatches.length,
+    artifactCount: artifactMatches.length,
+  });
+  const visibleSearching = spotlightVisibleSearchIsPending({
+    showMessages,
+    showWorkflows,
+    showArtifacts,
+    messageSearching: spotlightLoadableIsSearching(
+      messageLoadable,
+      trimmedQuery,
+    ),
+    workflowSearching: spotlightLoadableIsSearching(
+      workflowLoadable,
+      trimmedQuery,
+    ),
+    artifactSearching: spotlightLoadableIsSearching(
+      artifactLoadable,
+      trimmedQuery,
+    ),
+  });
   const showNoResults = !visibleSearching && resultCount === 0;
   const selectThread = (threadId: string) => {
     onOpenChange(false);
     onSelectChatThread(threadId);
+  };
+  const selectWorkflow = (workflowId: string) => {
+    onOpenChange(false);
+    onSelectWorkflow(workflowId);
+  };
+  const selectArtifact = (artifact: ThreeColumnArtifactSearchItem) => {
+    onOpenChange(false);
+    onSelectArtifact(artifact);
   };
 
   return (
@@ -1268,21 +1647,26 @@ export function ThreeColumnSearchDialog({
       })}
       className="zero-app w-[calc(100vw-2rem)] gap-0 sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
       commandClassName="gap-0"
-      commandProps={{ shouldFilter: false, loop: true }}
+      commandProps={{
+        shouldFilter: false,
+        loop: true,
+        value: query,
+        onValueChange: setQuery,
+      }}
     >
       <DialogHeader className="sr-only">
         <DialogTitle>
           {t(($) => {
-            return $.sidebar.searchChatsAndMessages;
+            return $.sidebar.searchWorkspace;
           })}
         </DialogTitle>
         <DialogDescription>
           {t(($) => {
-            return $.sidebar.searchChatsAndMessages;
+            return $.sidebar.searchWorkspace;
           })}
         </DialogDescription>
       </DialogHeader>
-      <SpotlightSearchInput query={query} onValueChange={setQuery} />
+      <SpotlightSearchInput />
       <SpotlightSearchFilterBar
         filter={filter}
         resultCount={resultCount}
@@ -1291,14 +1675,20 @@ export function ThreeColumnSearchDialog({
       <SpotlightSearchResults
         threads={threadMatches}
         messages={messageMatches}
+        workflows={workflowMatches}
+        artifacts={artifactMatches}
         threadMap={threadMap}
         activeThreadIds={activeThreadIds}
         unreadThreadIds={unreadThreadIds}
         showThreads={showThreads}
         showMessages={showMessages}
+        showWorkflows={showWorkflows}
+        showArtifacts={showArtifacts}
         searching={visibleSearching}
         showNoResults={showNoResults}
-        onSelect={selectThread}
+        onSelectChatThread={selectThread}
+        onSelectWorkflow={selectWorkflow}
+        onSelectArtifact={selectArtifact}
       />
     </CommandDialog>
   );
@@ -1324,13 +1714,13 @@ function UnifiedAgentCommandItem({
   readonly onTogglePin: (agentId: string) => void;
 }) {
   const { t } = useTranslation("agents");
-  const agentId = item.agentId;
+  const agentId = item.targetAgentId;
   const pinned = agentId ? pinnedIdSet.has(agentId) : false;
   return (
     <CommandItem
-      value={`agent-${item.agentId ?? "lead"}`}
+      value={`agent-${item.targetAgentId ?? "lead"}`}
       onSelect={() => {
-        return onChat(item.agentId);
+        return onChat(item.targetAgentId);
       }}
       className="group w-full gap-2 px-1 py-2"
     >
@@ -1355,7 +1745,10 @@ function UnifiedAgentCommandItem({
       />
       <AgentCommandSideActions>
         <AgentRowSideActions
-          hasUnread={setHasId(unreadAgentIds, item.agentId ?? defaultAgentId)}
+          hasUnread={setHasId(
+            unreadAgentIds,
+            item.targetAgentId ?? defaultAgentId,
+          )}
           action={
             agentId
               ? {
@@ -1412,23 +1805,26 @@ function AgentListDialogUnifiedSearch({
     equalityFn: equalSets,
   });
   const orderedSubagents = [...subagents].sort((left, right) => {
-    return Number(pinnedIdSet.has(right.id)) - Number(pinnedIdSet.has(left.id));
+    return (
+      Number(pinnedIdSet.has(right.agentId)) -
+      Number(pinnedIdSet.has(left.agentId))
+    );
   });
   const agentMatches = rankAgentListDialogAgents<UnifiedAgentSearchItem>(
     [
       {
         kind: "agent",
-        id: "lead",
+        agentId: defaultAgentId ?? "lead",
         displayName,
-        agentId: null,
+        targetAgentId: null,
         isLead: true,
       },
       ...orderedSubagents.map((agent) => {
         return {
           kind: "agent" as const,
-          id: agent.id,
+          agentId: agent.agentId,
           displayName: agent.displayName,
-          agentId: agent.id,
+          targetAgentId: agent.agentId,
           isLead: false,
         };
       }),
@@ -1471,12 +1867,12 @@ function AgentListDialogUnifiedSearch({
   const showNoResults = messageResult !== undefined && !hasResult;
 
   return (
-    <CommandGroup className="px-5 pb-3 [&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col">
+    <CommandGroup className="px-5 pb-3 [&_[data-slot=command-group-items]]:flex [&_[data-slot=command-group-items]]:flex-col">
       {items.map((item) => {
         if (item.kind === "agent") {
           return (
             <UnifiedAgentCommandItem
-              key={`agent-${item.agentId ?? "lead"}`}
+              key={`agent-${item.targetAgentId ?? "lead"}`}
               item={item}
               avatarUrl={avatarUrl}
               defaultAgentId={defaultAgentId}
@@ -1578,7 +1974,7 @@ export function AgentListDialog({
   const pinned = agentsInRenderOrder(subagents, pinnedRenderOrder);
 
   const unpinned = subagents.filter((a) => {
-    return !pinnedIdSet.has(a.id);
+    return !pinnedIdSet.has(a.agentId);
   });
 
   const trimmedQuery = query.trim().toLowerCase();
@@ -1615,7 +2011,12 @@ export function AgentListDialog({
       })}
       className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
       commandClassName="gap-0"
-      commandProps={{ shouldFilter: false, loop: true }}
+      commandProps={{
+        shouldFilter: false,
+        loop: true,
+        value: query,
+        onValueChange: setQuery,
+      }}
     >
       <DialogHeader className="px-5 pt-5 pb-3">
         <DialogTitle className="text-base font-semibold">
@@ -1694,12 +2095,14 @@ export function PinAgentDialog({
   open,
   onOpenChange,
   subagents,
+  saving,
   onSetAgentPinned,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subagents: SubagentInfo[];
-  onSetAgentPinned: (agentId: string, pinned: boolean) => void;
+  saving: boolean;
+  onSetAgentPinned: (agentId: string, pinned: boolean) => Promise<void>;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(pinAgentDialogQuery$);
@@ -1711,23 +2114,40 @@ export function PinAgentDialog({
   const trimmedQuery = query.trim().toLowerCase();
   const matches = filterAgentDialogItems(subagents, trimmedQuery);
   const pinnable = matches.filter((agent) => {
-    return !pinnedIdSet.has(agent.id);
+    return !pinnedIdSet.has(agent.agentId);
   });
   const matchedIds = new Set(
     matches.map((agent) => {
-      return agent.id;
+      return agent.agentId;
     }),
   );
   const alreadyPinned = agentsInRenderOrder(
     subagents,
     pinnedRenderOrder,
   ).filter((agent) => {
-    return matchedIds.has(agent.id);
+    return matchedIds.has(agent.agentId);
   });
 
-  const setAgentPinned = (agentId: string, pinned: boolean) => {
-    onOpenChange(false);
-    onSetAgentPinned(agentId, pinned);
+  const saveAgentPinned = async (agent: SubagentInfo, pinned: boolean) => {
+    await onSetAgentPinned(agent.agentId, pinned);
+    toast.success(
+      pinned
+        ? t(
+            ($) => {
+              return $.sidebar.pinSuccess;
+            },
+            { agentName: agentDialogLabel(agent) },
+          )
+        : t(
+            ($) => {
+              return $.sidebar.unpinSuccess;
+            },
+            { agentName: agentDialogLabel(agent) },
+          ),
+    );
+  };
+  const setAgentPinned = (agent: SubagentInfo, pinned: boolean) => {
+    detach(saveAgentPinned(agent, pinned), Reason.DomCallback);
   };
   const pinLabel = t(($) => {
     return $.sidebar.addPin;
@@ -1745,7 +2165,12 @@ export function PinAgentDialog({
       })}
       className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
       commandClassName="gap-0"
-      commandProps={{ shouldFilter: false, loop: true }}
+      commandProps={{
+        shouldFilter: false,
+        loop: true,
+        value: query,
+        onValueChange: setQuery,
+      }}
     >
       <DialogHeader className="px-5 pt-5 pb-3">
         <DialogTitle className="text-base font-semibold">
@@ -1789,10 +2214,11 @@ export function PinAgentDialog({
             {pinnable.map((agent) => {
               return (
                 <CommandItem
-                  key={agent.id}
-                  value={agent.id}
+                  key={agent.agentId}
+                  value={agent.agentId}
+                  disabled={saving}
                   onSelect={() => {
-                    return setAgentPinned(agent.id, true);
+                    return setAgentPinned(agent, true);
                   }}
                   className="group w-full gap-2 px-1 py-2"
                 >
@@ -1800,8 +2226,9 @@ export function PinAgentDialog({
                   <AgentCommandPinToggle
                     label={pinLabel}
                     icon={<Pin size={16} />}
+                    disabled={saving}
                     onToggle={() => {
-                      return setAgentPinned(agent.id, true);
+                      return setAgentPinned(agent, true);
                     }}
                   />
                 </CommandItem>
@@ -1819,10 +2246,11 @@ export function PinAgentDialog({
             {alreadyPinned.map((agent) => {
               return (
                 <CommandItem
-                  key={agent.id}
-                  value={agent.id}
+                  key={agent.agentId}
+                  value={agent.agentId}
+                  disabled={saving}
                   onSelect={() => {
-                    return setAgentPinned(agent.id, false);
+                    return setAgentPinned(agent, false);
                   }}
                   className="group w-full gap-2 px-1 py-2"
                 >
@@ -1830,8 +2258,9 @@ export function PinAgentDialog({
                   <AgentCommandPinToggle
                     label={unpinLabel}
                     icon={<PinOff size={16} />}
+                    disabled={saving}
                     onToggle={() => {
-                      return setAgentPinned(agent.id, false);
+                      return setAgentPinned(agent, false);
                     }}
                   />
                 </CommandItem>

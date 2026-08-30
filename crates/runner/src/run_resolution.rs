@@ -172,7 +172,6 @@ mod tests {
             starttime: 1,
             config_path: base_dir.join("runner.yaml"),
             base_dir: base_dir.to_path_buf(),
-            runner_name: "test-runner".into(),
             runner_group: "vm0/test".into(),
             subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
@@ -373,7 +372,6 @@ mod tests {
             crate::live_runner_instances::LiveRunnerInstanceMetadata {
                 config_path: base.join("runner.yaml"),
                 base_dir: base,
-                runner_name: "test-runner".into(),
                 runner_group: "vm0/test".into(),
                 subcommand: "start".into(),
             },

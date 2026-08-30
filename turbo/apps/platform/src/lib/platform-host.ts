@@ -5,6 +5,10 @@ type PlatformPublicBrand = "vm0" | "okou";
 
 export type PlatformService = "api" | "www" | "app" | "platform";
 
+// Resolved from `location` and build-time constants alone. The shared database
+// SharedWorker is a second entry point into this bundle and has no DOM, so
+// nothing here may read page state: every value must come from the hostname or
+// from an `import.meta.env` constant that the build inlines.
 interface PlatformRuntimeConfig {
   readonly environment: PlatformEnvironment;
   readonly publicBrand: PlatformPublicBrand;
@@ -186,6 +190,9 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
     return {
       environment,
       publicBrand,
+      // Both keys are inlined into every artifact and selected by hostname,
+      // mirroring the early bootstrap in index.html. Keep the two selections
+      // in step; src/__tests__/clerk-entrypoint.test.ts pins them together.
       clerkPublishableKey: requiredBuildValue(
         import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PROD,
         "VITE_CLERK_PUBLISHABLE_KEY_PROD",

@@ -1,13 +1,18 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { platformVm0LogoImg } from "../../../lib/static-assets.ts";
+import {
+  platformVm0LogoDarkImg,
+  platformVm0LogoImg,
+} from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { renderedAuthV2LinkContrast } from "./auth-v2-style-assertions.ts";
 
 const context = testContext();
 
@@ -31,22 +36,22 @@ function useGermanLocale(): void {
   });
 }
 
-function linkByText(text: string): HTMLAnchorElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === text;
-  });
-  if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error(`Link not found: ${text}`);
-  }
-  return link;
-}
-
 function linkByLabel(label: string): HTMLAnchorElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
     return candidate.getAttribute("aria-label") === label;
   });
   if (!(link instanceof HTMLAnchorElement)) {
     throw new Error(`Link not found: ${label}`);
+  }
+  return link;
+}
+
+function linkByText(text: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === text;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Link not found: ${text}`);
   }
   return link;
 }
@@ -84,26 +89,41 @@ describe("auth v2 presentation", () => {
       name: "Choose an account",
     });
 
+    const styleElement = document.createElement("style");
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    styleElement.textContent = [
+      "h1 { box-shadow: none; }",
+      tailwindCompiler.build([...heading.classList]),
+    ].join("\n");
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+    const headingStyle = getComputedStyle(heading);
+    expect(headingStyle.boxShadow).toBe("none");
+    expect(headingStyle.outlineStyle).toBe("none");
     expect(screen.getByRole("main")).toContainElement(heading);
     expect(
       screen.getByRole("region", { name: "Choose an account" }),
     ).toHaveAccessibleDescription(
       "Select the account with which you wish to continue.",
     );
+    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
+      "src",
+      platformVm0LogoDarkImg,
+    );
     expect(linkByLabel("Go to VM0 home")).toHaveAttribute("href", "/");
 
     const announcer = screen.getByTestId("auth-v2-announcer");
     expect(announcer).toHaveAttribute("aria-atomic", "true");
     expect(announcer).toHaveAttribute("aria-live", "polite");
-
-    const currentSignInAction = linkByText("Use current sign-in");
-    expect(currentSignInAction).toHaveAttribute("href", "/sign-in");
-    expect(
-      currentSignInAction.closest('[data-testid="app-auth-v2"]'),
-    ).toBeNull();
   });
 
-  it("keeps password controls and fallback navigation in their accessible regions", async () => {
+  it("keeps password controls in their accessible region", async () => {
     setBrowserUrl("https://app.vm0.ai/v2/sign-up");
 
     detachedSetupPage({ context, path: "/v2/sign-up" });
@@ -114,11 +134,41 @@ describe("auth v2 presentation", () => {
 
     expect(region).toContainElement(passwordVisibilityAction);
     expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
-    const currentSignUpAction = linkByText("Use current sign-up");
-    expect(currentSignUpAction).toHaveAttribute("href", "/sign-up");
-    expect(
-      currentSignUpAction.closest('[data-testid="app-auth-v2"]'),
-    ).toBeNull();
+  });
+
+  it("keeps link actions at WCAG AA contrast in both themes", async () => {
+    const user = userEvent.setup();
+    context.mocks.browser.matchMedia(false);
+    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+
+    detachedSetupPage({
+      context,
+      path: "/v2/sign-in",
+      session: null,
+      user: null,
+    });
+
+    const linkAction = await waitFor(() => {
+      return linkByText("Sign up");
+    });
+    const surface = screen.getByTestId("app-auth-v2");
+    const lightContrast = await renderedAuthV2LinkContrast(
+      linkAction,
+      surface,
+      "light",
+      context.signal,
+    );
+    expect(lightContrast).toBeGreaterThanOrEqual(4.5);
+
+    await user.click(buttonByLabel("Toggle theme"));
+
+    const darkContrast = await renderedAuthV2LinkContrast(
+      linkAction,
+      surface,
+      "dark",
+      context.signal,
+    );
+    expect(darkContrast).toBeGreaterThanOrEqual(4.5);
   });
 
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {
@@ -141,6 +191,10 @@ describe("auth v2 presentation", () => {
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     expect(screen.getByRole("status")).toHaveTextContent("Dark theme enabled");
     expect(screen.getByAltText("VM0")).toHaveAttribute(
+      "src",
+      platformVm0LogoImg,
+    );
+    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
       "src",
       platformVm0LogoImg,
     );
@@ -167,10 +221,7 @@ describe("auth v2 presentation", () => {
       screen.getByRole("region", { name: "アカウントを作成" }),
     ).toHaveAccessibleDescription("ようこそ！始めるには詳細を入力してください");
     expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
-    expect(linkByText("現在のサインアップを使用")).toHaveAttribute(
-      "href",
-      "/sign-up",
-    );
+    expect(screen.queryByTestId("auth-v2-brand-logo")).not.toBeInTheDocument();
     expect(heading).toBeVisible();
     expect(document.title).toBe("サインアップ | Okou");
   });

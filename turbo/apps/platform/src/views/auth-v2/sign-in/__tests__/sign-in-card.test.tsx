@@ -23,10 +23,22 @@ import {
   type MockedSignInResourceState,
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
+import { AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY } from "../../../../signals/auth-v2/resend-cooldown.ts";
+import { sessionStorageSignals } from "../../../../signals/external/session-storage.ts";
+import { ROUTES } from "../../../../signals/route-paths.ts";
+import { detachedNavigateTo$ } from "../../../../signals/route.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
 import { mockNow } from "../../../../lib/time.ts";
+import { renderedIdentityEditPresentation } from "../../__tests__/auth-v2-button-style-assertions.ts";
+import {
+  renderedCheckboxPresentation,
+  renderedFocusedElementPresentation,
+} from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
+const signInResendCooldownStorage = sessionStorageSignals(
+  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
+);
 
 function passwordFactor(): MockedSignInFactor {
   return { strategy: "password" };
@@ -144,6 +156,13 @@ async function waitForRoleElement(
     throw new Error(`Expected ${role} named ${name}`);
   }
   return element;
+}
+
+function navigateToLegacySignIn(): void {
+  // These cases exercise teardown after address-bar navigation. JSDOM cannot
+  // perform a document navigation, and the removed fallback leaves no rendered
+  // control for this transition, so invoke the production router command.
+  context.store.set(detachedNavigateTo$, ROUTES.signIn);
 }
 
 function expectFieldErrorAssociation(
@@ -454,7 +473,21 @@ describe("auth v2 sign-in flow", () => {
 
     await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expect(roleElement("link", "Use current sign-in")).toBeDefined();
+    const editIdentifier = await waitForRoleElement(
+      "button",
+      "Edit identifier",
+    );
+    await expect(
+      renderedIdentityEditPresentation(editIdentifier, context.signal),
+    ).resolves.toStrictEqual({
+      borderRadius: "8px",
+      color: "rgb(100 110 120)",
+      height: "calc(4px * 6)",
+      iconHeight: "calc(4px * 4)",
+      iconWidth: "calc(4px * 4)",
+      rowMinHeight: "calc(4px * 6)",
+      width: "calc(4px * 6)",
+    });
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
 
@@ -500,6 +533,7 @@ describe("auth v2 sign-in flow", () => {
       googleOAuth: true,
       passkey: true,
     });
+    context.mocks.browser.webAuthn({ platformAuthenticatorResult: true });
     setupSignInPage({ status: "needs_identifier" });
     await submitIdentifier("person@example.com", [
       passwordFactor(),
@@ -647,6 +681,20 @@ describe("auth v2 sign-in flow", () => {
     });
   });
 
+  it("marks Google's last authentication strategy", async () => {
+    mockAuthV2Capabilities({
+      appleOAuth: true,
+      googleOAuth: true,
+      lastAuthenticationStrategy: "oauth_google",
+    });
+    setupSignInPage({ status: "needs_identifier" });
+
+    const apple = await waitForRoleElement("button", "Continue with Apple");
+    const google = await waitForRoleElement("button", "Continue with Google");
+    expect(within(google).getByText("Last used")).toBeVisible();
+    expect(within(apple).queryByText("Last used")).not.toBeInTheDocument();
+  });
+
   it("hands Google OAuth to Clerk once with typed callback and completion URLs", async () => {
     const redirectUrl = "https://app.okou.ai/onboarding?source=oauth";
     const authSearch = new URLSearchParams({
@@ -672,8 +720,6 @@ describe("auth v2 sign-in flow", () => {
       );
     });
     expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledWith({
-      continueSignIn: true,
-      continueSignUp: false,
       redirectUrl: `/v2/sign-in/sso-callback?${authSearch.toString()}${authHash}`,
       redirectUrlComplete: redirectUrl,
       strategy: "oauth_google",
@@ -724,6 +770,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("exchanges one Google One Tap credential only on the exact base route", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -767,6 +814,7 @@ describe("auth v2 sign-in flow", () => {
   it.each(["dismissed", "skipped"] as const)(
     "settles a FedCM %s moment without legacy notification methods",
     async (momentType) => {
+      context.mocks.browser.fedCm();
       mockAuthV2Capabilities({
         googleOAuth: true,
         googleOneTapClientId: "google-client-id",
@@ -791,6 +839,7 @@ describe("auth v2 sign-in flow", () => {
   );
 
   it("ignores a legacy display moment until a terminal moment arrives", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -819,6 +868,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("cancels an aborted FedCM prompt and ignores late credential events", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -838,7 +888,7 @@ describe("auth v2 sign-in flow", () => {
       throw new Error("Expected Google One Tap callbacks to be registered");
     }
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -858,6 +908,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("does not start Google One Tap on a nested sign-in route", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -878,6 +929,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("retries Google One Tap after a script failure and back navigation", async () => {
+    context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
       googleOneTapClientId: "google-client-id",
@@ -895,7 +947,7 @@ describe("auth v2 sign-in flow", () => {
     });
     await expect(screen.findByRole("alert")).resolves.toBeVisible();
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -933,12 +985,160 @@ describe("auth v2 sign-in flow", () => {
 
   it.each([
     {
+      fedCm: { secureContext: false },
+      name: "an insecure context",
+    },
+    {
+      fedCm: { identityCredential: false },
+      name: "a missing IdentityCredential API",
+    },
+    {
+      fedCm: { credentials: false },
+      name: "a missing credentials container",
+    },
+  ] as const)("does not start Google One Tap for $name", async ({ fedCm }) => {
+    context.mocks.browser.fedCm(fedCm);
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+
+    setupSignInPage({ status: "needs_identifier" });
+
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    expect(
+      document.querySelector("script[data-auth-v2-google-one-tap]"),
+    ).toBeNull();
+    expect(mockedGoogleOneTap.initialize).not.toHaveBeenCalled();
+    expect(mockedGoogleOneTap.prompt).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("silently falls back when the FedCM runtime is unavailable", async () => {
+    context.mocks.browser.fedCm();
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+    mockGoogleOneTapCredential(null);
+    mockedGoogleOneTap.prompt.mockImplementation(() => {
+      throw new Error("Error connecting to Web Authentication service.");
+    });
+
+    setupSignInPage({ status: "needs_identifier" });
+
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    await waitFor(() => {
+      expect(mockedGoogleOneTap.prompt).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      name: "an insecure context",
+      webAuthn: { secureContext: false },
+    },
+    {
+      name: "a missing PublicKeyCredential API",
+      webAuthn: { publicKeyCredential: false },
+    },
+    {
+      name: "a missing credentials container",
+      webAuthn: { credentials: false },
+    },
+  ] as const)(
+    "suppresses passkey and preserves alternate methods for $name",
+    async ({ webAuthn }) => {
+      context.mocks.browser.webAuthn(webAuthn);
+      mockAuthV2Capabilities({ googleOAuth: true, passkey: true });
+      setupSignInPage({
+        status: "needs_first_factor",
+        supportedFirstFactors: [
+          passwordFactor(),
+          emailCodeFactor(),
+          googleOAuthFactor(),
+          passkeyFactor(),
+        ],
+      });
+
+      await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+        "Passkeys are not supported on this device.",
+      );
+      expect(
+        roleElement("button", "Sign in with your passkey"),
+      ).toBeUndefined();
+      for (const method of [
+        "Continue with Google",
+        "Email code to p***@example.com",
+        "Sign in with your password",
+      ]) {
+        await expect(
+          waitForRoleElement("button", method),
+        ).resolves.toBeEnabled();
+      }
+
+      fireEvent.click(
+        await waitForRoleElement("button", "Sign in with your password"),
+      );
+      await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
+    },
+  );
+
+  it.each([
+    {
+      name: "a missing optional capability check",
+      webAuthn: {},
+    },
+    {
+      name: "a negative optional capability result",
+      webAuthn: { platformAuthenticatorResult: false },
+    },
+    {
+      name: "a rejected optional capability check",
+      webAuthn: { platformAuthenticatorResult: "error" as const },
+    },
+    {
+      name: "a confirmed platform authenticator",
+      webAuthn: { platformAuthenticatorResult: true },
+    },
+  ] as const)(
+    "settles $name without conservatively blocking passkey",
+    async ({ webAuthn }) => {
+      context.mocks.browser.webAuthn(webAuthn);
+      mockAuthV2Capabilities({ googleOAuth: true, passkey: true });
+      setupSignInPage({ status: "needs_identifier" });
+
+      await expect(
+        waitForRoleElement("button", "Sign in with your passkey"),
+      ).resolves.toBeEnabled();
+      expect(screen.queryByRole("alert")).toBeNull();
+    },
+  );
+
+  it.each([
+    {
       clerkError: {
         code: "passkey_retrieval_cancelled",
         message: "The passkey request was cancelled.",
       },
       expectedMessage: "Passkey verification was cancelled or timed out.",
       name: "user cancellation",
+      suppressPasskey: false,
+    },
+    {
+      clerkError: new DOMException(
+        "The passkey request was cancelled.",
+        "AbortError",
+      ),
+      expectedMessage: "Passkey verification was cancelled or timed out.",
+      name: "a native AbortError cancellation",
+      suppressPasskey: false,
     },
     {
       clerkError: {
@@ -947,6 +1147,48 @@ describe("auth v2 sign-in flow", () => {
       },
       expectedMessage: "Passkeys are not supported on this device.",
       name: "an unavailable device",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: {
+        code: "passkey_pa_not_supported",
+        message: "Platform authenticator is not supported.",
+      },
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "Clerk's singular platform-authenticator code",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: {
+        code: "passkeys_pa_not_supported",
+        message: "Platform authenticator is not supported.",
+      },
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "Clerk's plural platform-authenticator code",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: new Error(
+        "Resident credentials or empty 'allowCredentials' lists are not supported at this time.",
+      ),
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "the resident-credentials production error",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: new Error("Error connecting to Web Authentication service."),
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "the Web Authentication service production error",
+      suppressPasskey: true,
+    },
+    {
+      clerkError: new DOMException(
+        "The runtime cannot start Web Authentication.",
+        "NotSupportedError",
+      ),
+      expectedMessage: "Passkeys are not supported on this device.",
+      name: "a native NotSupportedError",
+      suppressPasskey: true,
     },
     {
       clerkError: {
@@ -956,15 +1198,22 @@ describe("auth v2 sign-in flow", () => {
       expectedMessage:
         "This action couldn't be completed. Please try again later or contact support if this persists.",
       name: "a verification error",
+      suppressPasskey: false,
     },
-  ])("keeps another enabled method available after $name", async (testCase) => {
+  ])("settles $name and keeps alternate methods usable", async (testCase) => {
+    context.mocks.browser.webAuthn({ platformAuthenticatorResult: true });
     mockAuthV2Capabilities({ googleOAuth: true, passkey: true });
     mockedClerk.signInAuthenticateWithPasskey.mockRejectedValue(
       testCase.clerkError,
     );
     setupSignInPage({
       status: "needs_first_factor",
-      supportedFirstFactors: [googleOAuthFactor(), passkeyFactor()],
+      supportedFirstFactors: [
+        passwordFactor(),
+        emailCodeFactor(),
+        googleOAuthFactor(),
+        passkeyFactor(),
+      ],
     });
 
     const passkey = await waitForRoleElement(
@@ -979,9 +1228,20 @@ describe("auth v2 sign-in flow", () => {
     );
     expect(screen.queryByText(testCase.clerkError.message)).toBeNull();
     expect(mockedClerk.signInAuthenticateWithPasskey).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(roleElement("button", "Sign in with your passkey")).toBe(
+        testCase.suppressPasskey ? undefined : passkey,
+      );
+    });
     const google = await waitForRoleElement("button", "Continue with Google");
-    expect(google).toBeVisible();
-    expect(passkey).toBeVisible();
+    for (const method of [
+      google,
+      await waitForRoleElement("button", "Email code to p***@example.com"),
+      await waitForRoleElement("button", "Sign in with your password"),
+    ]) {
+      expect(method).toBeVisible();
+      expect(method).toBeEnabled();
+    }
 
     fireEvent.click(google);
     await waitFor(() => {
@@ -1016,6 +1276,7 @@ describe("auth v2 sign-in flow", () => {
               status: "active",
               user: {
                 fullName: "Ada Lovelace",
+                imageUrl: "https://cdn.vm0.test/users/ada.png",
                 primaryEmailAddress: { emailAddress: "ada@example.com" },
               },
             },
@@ -1024,6 +1285,7 @@ describe("auth v2 sign-in flow", () => {
               status: "active",
               user: {
                 fullName: "Grace Hopper",
+                imageUrl: "https://cdn.vm0.test/users/grace.png",
                 primaryEmailAddress: { emailAddress: "grace@example.com" },
               },
             },
@@ -1044,6 +1306,10 @@ describe("auth v2 sign-in flow", () => {
     if (!adaAccount) {
       throw new Error("Ada Lovelace account button not found");
     }
+    expect(screen.getByRole("img", { name: "Ada Lovelace" })).toHaveAttribute(
+      "src",
+      "https://cdn.vm0.test/users/ada.png",
+    );
     fireEvent.click(adaAccount);
     fireEvent.click(adaAccount);
 
@@ -1216,6 +1482,12 @@ describe("auth v2 sign-in flow", () => {
       "Didn't receive a code? Resend (30)",
     );
     expect(coolingDownButton).toBeDisabled();
+    expect(context.store.get(signInResendCooldownStorage.get$)).toBe(
+      JSON.stringify({
+        deadlineMs: startedAt + 30_000,
+        identity: "email-code:email_primary",
+      }),
+    );
     fireEvent.click(coolingDownButton);
     fireEvent.click(coolingDownButton);
     expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(1);
@@ -1374,12 +1646,14 @@ describe("auth v2 sign-in flow", () => {
 
   it.each([
     {
+      cooldownIdentity: "email-code:email_primary",
       factor: emailCodeFactor(),
       name: "email-code",
       showsMethodChooser: true,
       strategy: "email_code" as const,
     },
     {
+      cooldownIdentity: "password-reset:email_primary",
       factor: passwordResetFactor(),
       name: "password-reset-code",
       showsMethodChooser: false,
@@ -1388,6 +1662,15 @@ describe("auth v2 sign-in flow", () => {
   ])(
     "restores a prepared $name step and its editable identifier without another initial dispatch",
     async (testCase) => {
+      const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
+      mockNow(startedAt + 1000, context.signal);
+      context.store.set(
+        signInResendCooldownStorage.set$,
+        JSON.stringify({
+          deadlineMs: startedAt + 30_000,
+          identity: testCase.cooldownIdentity,
+        }),
+      );
       mockPreparedFirstFactor(testCase.strategy);
       setupSignInPage({
         identifier: "person@example.com",
@@ -1398,6 +1681,9 @@ describe("auth v2 sign-in flow", () => {
       await expect(
         screen.findByLabelText("Verification code"),
       ).resolves.toBeVisible();
+      await expect(
+        waitForRoleElement("button", "Didn't receive a code? Resend (29)"),
+      ).resolves.toBeDisabled();
       expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getByLabelText("Toggle theme"));
@@ -1504,7 +1790,7 @@ describe("auth v2 sign-in flow", () => {
     const passwordInput = await screen.findByLabelText("Password");
     fireEvent.change(passwordInput, { target: { value: "route-secret" } });
 
-    fireEvent.click(await waitForRoleElement("link", "Use current sign-in"));
+    navigateToLegacySignIn();
     await expect(
       screen.findByTestId("clerk-sign-in"),
     ).resolves.toBeInTheDocument();
@@ -1572,6 +1858,18 @@ describe("auth v2 sign-in flow", () => {
       name: "Sign out of all other devices",
     });
     expect(signOutOtherDevices).toBeChecked();
+    await expect(
+      renderedCheckboxPresentation(signOutOtherDevices, context.signal),
+    ).resolves.toStrictEqual({
+      backgroundColor: "rgb(70 80 90)",
+      borderColor: "rgb(70 80 90)",
+      borderRadius: "6px",
+      borderStyle: "solid",
+      borderWidth: "1px",
+      flexShrink: "0",
+      height: "calc(4px * 4)",
+      width: "calc(4px * 4)",
+    });
     expect(
       screen.getByRole("region", { name: "Set new password" }),
     ).not.toHaveAttribute("aria-describedby");
@@ -1598,6 +1896,9 @@ describe("auth v2 sign-in flow", () => {
     const mismatchAlert = await screen.findByRole("alert");
     expect(mismatchAlert).toHaveTextContent("Passwords don't match.");
     expect(document.activeElement).toBe(mismatchAlert);
+    await expect(
+      renderedFocusedElementPresentation(mismatchAlert, context.signal),
+    ).resolves.toStrictEqual({ boxShadow: "none" });
     expectNoFieldErrorAssociation(newPasswordInput);
     expectFieldErrorAssociation(confirmPasswordInput, mismatchAlert);
     expect(mockedClerk.signInResetPassword).not.toHaveBeenCalled();
@@ -1726,7 +2027,6 @@ describe("auth v2 sign-in flow", () => {
       waitForRoleElement("link", "Email support"),
     ).resolves.toHaveAttribute("href", "mailto:support@vm0.ai");
     expect(roleElement("link", "Sign up")).toBeUndefined();
-    expect(roleElement("link", "Use current sign-in")).toBeDefined();
     expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 
     fireEvent.click(await waitForRoleElement("button", "Back"));

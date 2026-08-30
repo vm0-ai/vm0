@@ -36,29 +36,7 @@ import { i18n } from "../../i18n/index.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(AgentChatPage), "sidebar");
-    set(
-      updateDocumentTitle$,
-      i18n.t(($) => {
-        return $.chat.documentTitle;
-      }),
-    );
-    set(reloadTagline$);
-
-    set(resetChatPageModelSelection$);
-
-    // Read agent ID from URL immediately (synchronous) and update sidebar
-    // highlight early so the UI responds without waiting for async data.
     const agentId = get(currentAgentId$);
-    let agentDraft: EnsuredAgentDraft | undefined;
-    if (agentId) {
-      set(setChatAgentId$, agentId);
-      agentDraft = set(ensureAgentDraft$, agentId);
-      set(setAgentComposerContext$, { agentId, agentDraft });
-      set(setTalkDraft$, agentDraft.draft);
-    }
-
-    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;
@@ -68,10 +46,20 @@ export const setupAgentChatPage$ = command(
       throw new Error("Chat page requires an active agent, but none found");
     }
 
+    set(setChatAgentId$, agentId);
+    const agentDraft: EnsuredAgentDraft = set(ensureAgentDraft$, agentId);
+    set(setAgentComposerContext$, { agentId, agentDraft });
+    set(setTalkDraft$, agentDraft.draft);
+    set(reloadTagline$);
+    set(resetChatPageModelSelection$);
+    set(updatePage$, createElement(AgentChatPage), "sidebar");
+
+    await set(hideAppSkeleton$, signal);
+
     const agents = await get(agents$);
     signal.throwIfAborted();
     const agent = agents.find((candidate) => {
-      return candidate.id === agentId;
+      return candidate.agentId === agentId;
     });
     if (!agent) {
       const defaultAgentId = await get(defaultAgentId$);

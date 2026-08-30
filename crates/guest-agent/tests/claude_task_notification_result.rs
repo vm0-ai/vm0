@@ -77,8 +77,14 @@ async fn task_notification_result_does_not_end_the_user_command()
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 1, 1)?;
-        std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "1");
-        std::env::set_var(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV, "2");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            "1",
+        );
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+            "2",
+        );
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
@@ -119,8 +125,8 @@ async fn task_notification_result_does_not_end_the_user_command()
             .reason,
         CliTerminationReason::ExecutionTimeout
     );
-    assert!(result.claude_result.is_none());
-    assert!(result.post_result_cleanup_result.is_none());
+    assert!(result.jsonl_result.is_none());
+    assert!(result.post_result_cleanup_jsonl_result.is_none());
 
     let agent_log = std::fs::read_to_string(runtime.paths.agent_log_file())?;
     assert!(agent_log.contains(r#""kind":"task-notification""#));

@@ -22,7 +22,7 @@ interface PlaystationAuthToken {
   readonly idToken: string;
   readonly refreshToken: string;
   readonly refreshTokenExpiresIn?: number;
-  readonly scope: string;
+  readonly scope: string | null;
   readonly tokenType: string;
 }
 
@@ -205,7 +205,7 @@ function playstationTokenFromResponse(
     ...(raw.refresh_token_expires_in === undefined
       ? {}
       : { refreshTokenExpiresIn: raw.refresh_token_expires_in }),
-    scope: raw.scope ?? "",
+    scope: raw.scope ?? null,
     tokenType: raw.token_type ?? "bearer",
   };
 }

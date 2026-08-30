@@ -41,6 +41,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
       ),
       mode,
       navigation: platformContext.navigation,
+      presentation: "route",
     });
     const continuationSignals = diagnostics.instrumentContinuation(
       continuationController,

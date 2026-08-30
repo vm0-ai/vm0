@@ -2245,7 +2245,10 @@ async function markRefreshSuccess(
   prepared: PreparedRefreshTokenContext,
   context: RefreshTokenContext,
   outputs: readonly ValidatedRefreshOutput[],
-  expiresIn: number | undefined,
+  refresh: {
+    readonly expiresIn?: number;
+    readonly scopes?: readonly string[];
+  },
 ): Promise<Record<string, string>> {
   const returnedSecretValues = await persistRefreshOutputValues(
     args,
@@ -2256,7 +2259,7 @@ async function markRefreshSuccess(
 
   const expiresAt = new Date(
     nowDate().getTime() +
-      (expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
+      (refresh.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
   );
   if (prepared.sourceType === "model-provider") {
     if (args.sourceId) {
@@ -2319,6 +2322,9 @@ async function markRefreshSuccess(
   await args.db
     .update(connectors)
     .set({
+      ...(refresh.scopes === undefined
+        ? {}
+        : { oauthGrantedScopes: JSON.stringify(refresh.scopes) }),
       tokenExpiresAt: expiresAt,
       storageVersion: prepared.runtimeMethod.method.storage.version,
       needsReconnect: false,
@@ -2796,7 +2802,7 @@ async function refreshLockedAccessToken(args: {
     args.prepared,
     args.prepared.context,
     outputValidation.outputs,
-    refreshResult.value.expiresIn,
+    refreshResult.value,
   );
   const refreshedSecrets = runtimeSecretsFromRefreshResult({
     accessSourceKey: args.refreshArgs.accessSourceKey,

@@ -1,5 +1,6 @@
 """Tests for URL reconstruction and rewrite utilities."""
 
+import urllib.parse
 from collections.abc import Iterator
 
 import pytest
@@ -62,6 +63,25 @@ class TestBuildRewriteUrl:
             "",
         )
         assert url == "https://example.com/hook?token=secret"
+
+    def test_resolved_base_does_not_enter_global_parse_cache(self):
+        urllib.parse.urlsplit.cache_clear()
+        try:
+            urllib.parse.urlsplit("https://stable-config.example.com")
+            stable_cache = urllib.parse.urlsplit.cache_info()
+
+            url = auth_base_rewrite.build_rewrite_url(
+                "https://hooks.example.com/webhook/secret?token=trusted",
+                "/events",
+                "client=visible",
+            )
+
+            assert url == (
+                "https://hooks.example.com/webhook/secret/events?token=trusted&client=visible"
+            )
+            assert urllib.parse.urlsplit.cache_info() == stable_cache
+        finally:
+            urllib.parse.urlsplit.cache_clear()
 
     def test_base_unicode_host_normalized_for_forwarding(self):
         url = auth_base_rewrite.build_rewrite_url(

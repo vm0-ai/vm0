@@ -1,7 +1,8 @@
 use vsock_proto::{
     self, ExecControlNonce, ExecControlPolicy, ExecControlStatus, ExecLifecyclePolicy,
     ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest, ExecTimeoutPolicy, MSG_ERROR,
-    MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_STARTED,
+    MSG_EXEC_AGENT_READY, MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT,
+    MSG_EXEC_RESULT, MSG_EXEC_STARTED,
 };
 
 use super::support::{read_message, send_exec_start_request};
@@ -34,6 +35,7 @@ pub(super) fn send_supervised_exec_start(
         seq,
         ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
+            role: vsock_proto::ExecProcessRole::Workload,
             timeout,
             command,
             env: &[],
@@ -53,6 +55,16 @@ pub(super) fn read_exec_started(stream: &mut impl std::io::Read, seq: u32) -> u3
     assert_eq!(msg.msg_type, MSG_EXEC_STARTED);
     assert_eq!(msg.seq, seq);
     vsock_proto::decode_exec_started(&msg.payload).unwrap().pid
+}
+
+pub(super) fn read_exec_agent_ready(
+    stream: &mut impl std::io::Read,
+    seq: u32,
+) -> vsock_proto::ExecAgentReadyTiming {
+    let msg = read_message(stream);
+    assert_eq!(msg.msg_type, MSG_EXEC_AGENT_READY);
+    assert_eq!(msg.seq, seq);
+    vsock_proto::decode_exec_agent_ready(&msg.payload).unwrap()
 }
 
 pub(super) fn read_exec_stdout_output(stream: &mut impl std::io::Read, seq: u32) -> Vec<u8> {

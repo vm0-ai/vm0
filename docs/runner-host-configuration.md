@@ -1,5 +1,52 @@
 # Runner Host Configuration
 
+## Diagnostic Host Attribution
+
+`runner.yaml` may contain an optional `hostname` used only to identify the
+physical runner in claims, sandbox telemetry, and Runner Axiom warning/error
+events. Production automation writes the exact Ansible `inventory_hostname`;
+it does not derive the value from DNS or the operating system at runtime.
+
+The value must be non-empty and no longer than 255 JavaScript string units
+(UTF-16 code units). `runner config --hostname <value>` validates and preserves
+the raw value. Existing configuration files without `hostname` continue to
+load and omit the canonical hostname fields.
+
+Hostname does not select a service, directory, release, or rollback target.
+Systemd service suffixes are opaque local instance names. Production currently
+passes its explicit `runner_release` value as the service name and Runner
+directory name, but version logic uses `runner_release` directly and does not
+interpret a runner name as a version. Live processes are selected by their
+exact config path and process identity, and rolling log files use the release
+compiled into the Runner binary. Current Runner binaries send optional
+canonical `runnerHostname` from configuration and canonical `runnerVersion`
+compiled into the binary. They no longer send legacy `runnerName` in
+heartbeats or sandbox telemetry. Current API revisions no longer declare,
+persist, or map that field. During deployment overlap, an extra `runnerName`
+from an older Runner payload is tolerated but discarded before request
+handling.
+
+Current `runner.yaml` has no legacy `name` field. Repository automation writes
+`hostname` through `runner config`, while `--runner-dirname` and systemd service
+`--name` remain opaque local lifecycle inputs. Live-runner records contain exact
+config/process metadata and no legacy runner name. Readiness and doctor select
+live processes by the unit's exact config path.
+
+Operational queries and alerts should use `runner_hostname` and
+`runner_version`. A bounded historical fallback may use `runner_name` only for
+records that lack the canonical dimensions from before the cutover. Never
+interpret `runner_name` as a hostname.
+
+Runner Axiom warning/error events similarly include optional
+`runner_hostname` and required `runner_version`. The rollout order is compatible
+API and nullable heartbeat storage, Runner producer cutover, then logical API
+receiver removal, followed by physical state-column removal after pre-cutover
+serving API instances drained. The current schema no longer contains
+`runner_state.runner_name`. Canary each transition and verify claim snapshots,
+telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
+version. Remove any historical query fallback only after its bounded
+observation window expires.
+
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses
 `runner.yaml` for its concurrency factor and leaves I/O limiters disabled.
@@ -50,6 +97,73 @@ the canonical names as unsupported. Rolling back to an older reader therefore
 requires atomically restoring the legacy spellings before starting the older
 binary. Every file change still requires the normal runner drain and restart;
 the running process does not reload it.
+
+Every successful `host.env` load emits exactly one informational `runner host
+environment loaded` event. Its dedicated tracing target, serialized to the
+Axiom `context` field, is `runner::host_env::alias_sources`. The Runner Axiom
+filter admits this exact informational target in addition to its existing
+warning-and-error traffic; other informational events remain local. The event
+contains these five fixed, value-free fields:
+
+| Field                                     | Classification                     |
+| ----------------------------------------- | ---------------------------------- |
+| `concurrency_factor_alias_source`         | `absent`, `canonical`, or `legacy` |
+| `disk_bandwidth_mib_per_sec_alias_source` | `absent`, `canonical`, or `legacy` |
+| `disk_iops_alias_source`                  | `absent`, `canonical`, or `legacy` |
+| `net_rx_mib_per_sec_alias_source`         | `absent`, `canonical`, or `legacy` |
+| `net_tx_mib_per_sec_alias_source`         | `absent`, `canonical`, or `legacy` |
+
+`absent` means the logical setting was omitted, `canonical` means the
+`OKOU_*` spelling supplied it, and `legacy` means the `VM0_*` spelling supplied
+it. Configured values, raw lines, and arbitrary input are never included.
+`runner_hostname` and `runner_version` are added automatically by the Axiom
+layer.
+
+Before removing the temporary legacy readers, use this event to cover every
+intended Runner host and supported rollback version for the full drain window.
+Every field must remain either `canonical` or `absent`, with no `legacy`
+classification during that window. A parse or alias-conflict failure emits no
+successful-load event, so missing expected host coverage is a failed gate, not
+evidence that the legacy spelling is absent.
+
+## Promotion-Integrated Canonical Cutover
+
+The pre-cutover production evidence gate used only the value-free alias-source
+event above. A fixed query over
+`2026-08-28T10:40:00Z..2026-08-29T00:55:56Z` found nine successful loads: all
+three production hosts on Runner `0.178.0`, `0.178.1`, and `0.178.2`. Every
+concurrency override used the legacy spelling, while all four I/O settings were
+absent. The query did not retrieve configured values, raw lines, or file
+contents.
+
+Every rollback target covered by that gate, Runner `0.177.5` through `0.178.2`,
+is a descendant of the dual-reader merge
+`88cf42132c3150a1f116d888049f083010fd598f`. Those targets can therefore start
+from either spelling. A target outside that ancestry is not a supported
+rollback until its host-file compatibility is established separately.
+
+The normal Runner promotion migrates the five logical alias pairs immediately
+before installing the target service. It fails before mutation when one
+logical setting has duplicate active definitions or both spellings. Otherwise
+it rewrites every legacy key, including all present I/O keys, through one
+same-directory flushed temporary file and atomic rename. Values, comments,
+blank lines, file ownership, and mode are preserved. Missing files and files
+that are already canonical are no-ops, and a replay after the atomic rename
+reuses the same transaction state instead of creating another backup.
+
+The already-running Runner does not reload `host.env`, so it remains available
+with its previously loaded value while the file changes. Promotion starts and
+health-checks the target against the canonical file before draining any old
+service. If target installation, readiness, or health fails, promotion stops
+the failed target and atomically restores the exact pre-migration file before
+reporting failure. Task output reports only fixed states and never includes a
+configured value, raw line, temporary-file content, or whole-file diff.
+
+The cutover does not remove the legacy readers or alias-source telemetry. After
+a Runner release containing this promotion change, every intended host must
+report each field as `canonical` or `absent`, with no `legacy` result, for the
+full Runner drain and rollback observation window before #28914 can remove
+compatibility.
 
 Bandwidth values may be fractional. After conversion from MiB/s, the byte/s
 value must be at least `1`, must fit in a `u64`, and is rounded down to an

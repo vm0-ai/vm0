@@ -110,7 +110,7 @@ import {
   permSavingConnectorSlug$,
   setPermSavingConnectorSlug$,
 } from "../../signals/okou-page/job-detail-page.ts";
-import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
+import type { FirewallPolicies } from "@okouai/connectors/firewall-contracts";
 import type {
   PlatformConnectorCatalogStatusItem,
   PlatformConnectorPermissionMetadata,
@@ -481,6 +481,7 @@ function ConnectedConnectorPermissions({
                 className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
               />
               <Button
+                showTooltip
                 type="button"
                 onClick={() => {
                   setSearch("");
@@ -499,6 +500,7 @@ function ConnectedConnectorPermissions({
           )}
           {!searchActive && (
             <Button
+              showTooltip
               type="button"
               onClick={() => {
                 return setSearchActive(true);
@@ -983,10 +985,10 @@ function AgentProfileSettings({
     agentsLoadable.state === "hasData"
       ? agentsLoadable.data
           .filter((agent) => {
-            return agent.id !== agentId;
+            return agent.agentId !== agentId;
           })
           .map((agent) => {
-            return { id: agent.id, displayName: agent.displayName };
+            return { id: agent.agentId, displayName: agent.displayName };
           })
       : [];
 

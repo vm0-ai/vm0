@@ -106,7 +106,7 @@ async fn fresh_pre_spawn_admission_cancels_before_factory_create() {
 }
 
 #[tokio::test]
-async fn fresh_pre_spawn_admission_releases_after_process_spawn() {
+async fn fresh_pre_spawn_admission_releases_after_agent_ready() {
     let dir = tempfile::tempdir().unwrap();
     let config = Arc::new(test_executor_config(dir.path()).await);
     let total_tokens = config.pre_spawn_admission.total_tokens();
@@ -157,7 +157,7 @@ async fn fresh_pre_spawn_admission_releases_after_process_spawn() {
         .unwrap();
     tokio::time::timeout(Duration::from_secs(2), admission_probe)
         .await
-        .expect("fresh admission remained held after process spawn")
+        .expect("fresh admission remained held after Agent ready")
         .unwrap();
     wait_gate.release_one();
 
@@ -235,9 +235,10 @@ async fn execute_inner_carries_early_codex_catalog_prefetch_into_agent_run() {
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
     let start_calls = overrides.start_process_calls();
-    assert_eq!(start_calls.len(), 2);
+    assert_eq!(start_calls.len(), 1);
     assert!(start_calls[0].cmd.contains("codex --version"));
-    assert!(!start_calls[1].cmd.contains("codex --version"));
+    let agent_calls = overrides.start_agent_process_calls();
+    assert_eq!(agent_calls.len(), 1);
     assert_proxy_registry_empty(dir.path()).await;
 }
 
@@ -270,6 +271,7 @@ async fn execute_inner_does_not_prefetch_after_early_guest_state_failure() {
         overrides.start_process_calls().is_empty(),
         "neither prefetch nor agent may start after guest state failure"
     );
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_proxy_registry_empty(dir.path()).await;
 }
 
@@ -433,6 +435,7 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
             assert_eq!(run_id, expected_run_id);
             assert_eq!(prepared_sandbox_id, sandbox_id);
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -462,6 +465,51 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
 }
 
 #[tokio::test]
+async fn execute_new_sandbox_destroys_before_workload_when_prepared_notification_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let notifier = SandboxPreparedNotifier::new(move |_run_id, _sandbox_id| {
+        async move {
+            Err(RunnerError::Internal(
+                "status publication failed".to_owned(),
+            ))
+        }
+        .boxed()
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox_with_prepared_notifier(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        NewSandboxHooks {
+            controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
+            sandbox_prepared: Some(&notifier),
+        },
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("prepared notification failure should stop sandbox execution"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("status publication failed"));
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -480,6 +528,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
         async move {
             assert_eq!(prepared_sandbox_id, sandbox_id);
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -507,7 +556,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
     assert_eq!(outcome.exit_code(), 0);
     assert_eq!(overrides.create_configs().len(), 2);
     assert_eq!(overrides.destroy_call_count(), 1);
-    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
     assert_eq!(notifications.load(Ordering::SeqCst), 1);
     assert_proxy_registry_empty(dir.path()).await;
     assert_telemetry_action(
@@ -570,6 +619,7 @@ async fn execute_new_sandbox_does_not_replace_guest_exec_timing_failures() {
         assert_eq!(overrides.create_configs().len(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(overrides.start_process_calls().is_empty());
+        assert!(overrides.start_agent_process_calls().is_empty());
         assert_proxy_registry_empty(dir.path()).await;
         assert_no_telemetry_action(&telemetry, "runner_fresh_sandbox_dns_readiness_retry");
     }
@@ -671,6 +721,7 @@ async fn execute_new_sandbox_stops_after_two_dns_unready_attachments() {
     assert_eq!(overrides.create_configs().len(), 2);
     assert_eq!(overrides.destroy_call_count(), 2);
     assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_proxy_registry_empty(dir.path()).await;
     assert_telemetry_action(
         &telemetry,
@@ -767,6 +818,7 @@ async fn execute_new_sandbox_suppresses_dns_retry_after_uncertain_destroy() {
     assert_eq!(overrides.create_configs().len(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
     assert!(overrides.start_process_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
     assert_telemetry_action(
         &telemetry,
         "runner_fresh_sandbox_dns_readiness_retry",
@@ -853,6 +905,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
         let notifications = Arc::clone(&notifications_for_callback);
         async move {
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -896,6 +949,7 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
         let notifications = Arc::clone(&notifications_for_callback);
         async move {
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -1034,9 +1088,14 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
+    ctx.prompt = "p".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES);
     ctx.user_timezone = Some("Asia/Shanghai".into());
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_USER_ENV".into(), "visible-to-cli".into()),
+        (
+            "LARGE_USER_ENV".into(),
+            "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
+        ),
         (
             "OKOU_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
@@ -1079,32 +1138,46 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
 
-    let start_calls = overrides.start_process_calls();
+    let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
     let expected_user_env_file = guest_user_env_file_path(ctx.run_id).unwrap();
     let expected_run_payload_file = guest_run_payload_file_path(ctx.run_id).unwrap();
     let expected_connector_account_context_file =
         guest_connector_account_context_file_path(ctx.run_id).unwrap();
-    assert_eq!(start_env.get("VM0_API_TOKEN").unwrap(), "tok");
-    assert_eq!(start_env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
     assert_eq!(
-        start_env.get(USER_ENV_FILE_ENV_KEY).map(String::as_str),
+        start_env
+            .get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
+            .unwrap(),
+        "tok"
+    );
+    assert!(!start_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert_eq!(
+        start_env
+            .get(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV)
+            .map(String::as_str),
+        Some("3")
+    );
+    assert!(!start_env.contains_key(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV));
+    assert_eq!(
+        start_env
+            .get(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV)
+            .map(String::as_str),
         Some(expected_user_env_file.as_str())
     );
     assert_eq!(
         start_env
-            .get(guest_contracts::env::RUN_PAYLOAD_FILE_ENV)
+            .get(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV)
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
-    for canonical_key in [
-        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+    for legacy_key in [
+        USER_ENV_FILE_ENV_KEY,
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
     ] {
         assert!(
-            !start_env.contains_key(canonical_key),
-            "reader Stage 1 must not emit canonical key {canonical_key}"
+            !start_env.contains_key(legacy_key),
+            "canonical writer must not emit legacy key {legacy_key}"
         );
     }
     for key in [
@@ -1124,6 +1197,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     }
     for key in [
         "CUSTOM_USER_ENV",
+        "LARGE_USER_ENV",
         "OKOU_APP_URL",
         "ZERO_APP_URL",
         "VM0_APP_URL",
@@ -1146,22 +1220,25 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "user env file should not be written through shell exec"
     );
     let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 3);
-    let user_env_write = private_writes
-        .iter()
-        .find(|write| write.path == expected_user_env_file)
-        .unwrap();
-    let run_payload_write = private_writes
-        .iter()
-        .find(|write| write.path == expected_run_payload_file)
-        .unwrap();
+    assert_eq!(private_writes.len(), 1);
     let connector_account_context_write = private_writes
         .iter()
         .find(|write| write.path == expected_connector_account_context_file)
         .unwrap();
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 2);
+    let user_env_write = &private_batches[0].files[0];
+    assert_eq!(user_env_write.path, expected_user_env_file);
+    let run_payload_write = &private_batches[0].files[1];
+    assert_eq!(run_payload_write.path, expected_run_payload_file);
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
+    assert_eq!(
+        user_env.get("LARGE_USER_ENV").unwrap().len(),
+        vsock_proto::MAX_EXEC_STDIN_BYTES
+    );
     assert_eq!(
         user_env.get("OKOU_APP_URL").unwrap(),
         "https://app.runner-env.example.test/path"
@@ -1178,6 +1255,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
     assert!(!user_env.contains_key("VM0_APP_URL"));
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
+    assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
     assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
     assert_eq!(
@@ -1229,18 +1307,32 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
     assert!(error_msg.is_none());
     let private_writes = overrides.private_write_file_calls();
     assert_eq!(private_writes.len(), 2);
+    assert!(overrides.private_write_files_calls().is_empty());
     assert_eq!(
         private_writes[0].path,
         guest_connector_account_context_file_path(context.run_id).unwrap()
     );
-    assert_eq!(
-        private_writes[1].path,
-        guest_run_payload_file_path(context.run_id).unwrap()
-    );
-    let start_calls = overrides.start_process_calls();
+    let expected_run_payload_file = guest_run_payload_file_path(context.run_id).unwrap();
+    assert_eq!(private_writes[1].path, expected_run_payload_file);
+    let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
-    assert!(!start_env.contains_key(USER_ENV_FILE_ENV_KEY));
+    for user_env_key in [
+        USER_ENV_FILE_ENV_KEY,
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+    ] {
+        assert!(
+            !start_env.contains_key(user_env_key),
+            "absent user environment must not emit {user_env_key}"
+        );
+    }
+    assert_eq!(
+        start_env
+            .get(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV)
+            .map(String::as_str),
+        Some(expected_run_payload_file.as_str())
+    );
+    assert!(!start_env.contains_key(guest_contracts::env::RUN_PAYLOAD_FILE_ENV));
 }
 
 #[tokio::test]
@@ -1249,8 +1341,7 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_private_write_file_result(Ok(()));
-    overrides.push_private_write_file_result(Ok(()));
-    overrides.push_private_write_file_result(Err(sandbox_write_file_error(
+    overrides.push_private_write_files_result(Err(sandbox_write_file_error(
         "No space left on device (os error 28)",
     )));
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
@@ -1281,16 +1372,26 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
         Some(ResourceFailureKind::GuestRootFilesystemFull)
     );
     let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 3);
+    assert_eq!(private_writes.len(), 1);
     assert!(
-        private_writes[2]
+        private_writes[0]
+            .path
+            .ends_with("/connector-account-context/context.json"),
+        "got: {}",
+        private_writes[0].path
+    );
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 2);
+    assert!(
+        private_batches[0].files[1]
             .path
             .ends_with("/run-payload/payload.json"),
         "got: {}",
-        private_writes[2].path
+        private_batches[0].files[1].path
     );
     assert!(
-        overrides.start_process_calls().is_empty(),
+        overrides.start_agent_process_calls().is_empty(),
         "agent must not start after run payload write failure"
     );
     assert_eq!(
@@ -1349,13 +1450,12 @@ async fn execute_inner_launches_agent_stream_only_without_guest_log_tee() {
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
 
-    let calls = overrides.start_process_calls();
+    let calls = overrides.start_agent_process_calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(
         calls[0].output,
         ProcessOutputMode::stream_with_stderr_capture(64 * 1024)
     );
-    assert_eq!(calls[0].control, ProcessControlMode::Enabled);
 }
 
 #[tokio::test]

@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { requireConnectorGrantUserId } from "../../grant-result";
 import { throwOAuthError } from "../../oauth/error";
-import { effectiveOAuthScopes } from "../../oauth/scope";
+import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
 
 const DOCUSIGN_TOKEN_URL = "https://account-d.docusign.com/oauth/token";
 
@@ -29,6 +29,7 @@ interface DocuSignRefreshResult {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
 }
 
 /**
@@ -192,6 +193,7 @@ export async function refreshDocuSignToken(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
+      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -209,6 +211,7 @@ export async function refreshDocuSignToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }
 

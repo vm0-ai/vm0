@@ -26,6 +26,9 @@ teardown() {
     run runner_e2e_connect_manual_connector discord-webhook api-token "$AGENT_ID" "$values"
     echo "$output"
     assert_success
+    CONNECTOR_ACCOUNT_ID=$(jq -er \
+        '.id | select(type == "string" and length > 0)' \
+        <<<"$output")
 
     # Raw DNS has dedicated runner coverage. Pin the synthetic placeholder's
     # public sink so this test owns only firewall classification and rewriting.

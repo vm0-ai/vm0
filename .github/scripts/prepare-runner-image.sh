@@ -103,7 +103,7 @@ UNIT_PREFIX="vm0-runner-${JOB_REF}-"
 
 declare -a PRIMARY_UNITS=()
 discover_primary_units() {
-  local output unit rest suffix
+  local output line unit load_state active_state sub_state description suffix
   if ! output=$(sudo systemctl list-units \
     --all --full --no-legend --plain "${UNIT_PREFIX}*.service" 2>&1); then
     printf '%s\n' "$output" >&2
@@ -111,13 +111,21 @@ discover_primary_units() {
   fi
 
   PRIMARY_UNITS=()
-  while read -r unit rest; do
+  while IFS= read -r line; do
+    read -r unit load_state active_state sub_state description <<< "$line"
     [ -n "$unit" ] || continue
     case "$unit" in
       "${UNIT_PREFIX}"*.service)
         suffix=${unit#"${UNIT_PREFIX}"}
         suffix=${suffix%.service}
         if [[ "$suffix" =~ ^[0-9]+$ ]]; then
+          if [ "$load_state" != "loaded" ]; then
+            continue
+          fi
+          if [ -z "$active_state" ] || [ -z "$sub_state" ]; then
+            echo "malformed loaded runner service row: ${line}" >&2
+            return 1
+          fi
           PRIMARY_UNITS+=("$unit")
         fi
         ;;

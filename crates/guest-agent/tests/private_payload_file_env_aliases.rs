@@ -238,26 +238,46 @@ fn apply_alias(key: &str, input: AliasInput) {
     }
 }
 
-fn read_log(path: &Path) -> std::io::Result<String> {
-    match std::fs::read_to_string(path) {
-        Ok(log) => Ok(log),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-        Err(error) => Err(error),
-    }
-}
-
 fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
-    guest_common::log::set_system_log_file(log_path);
-    let raw = GuestConfigRaw::from_process_env();
     guest_common::log::clear_system_log_file();
-    Ok((raw, read_log(log_path)?))
+    let raw = GuestConfigRaw::from_process_env();
+    assert!(
+        !log_path.exists(),
+        "raw capture installed or wrote a system-log sink"
+    );
+    let evidence = raw
+        .as_ref()
+        .map(|raw| {
+            raw.bootstrap_alias_source_events()
+                .map(|(family, key, source)| {
+                    format!("[captured] {family} key={key} source={source}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    Ok((raw, evidence))
 }
 
 fn capture_config(log_path: &Path) -> std::io::Result<(Result<GuestConfig, String>, String)> {
-    guest_common::log::set_system_log_file(log_path);
-    let config = GuestConfig::from_process_env();
     guest_common::log::clear_system_log_file();
-    Ok((config, read_log(log_path)?))
+    let raw = GuestConfigRaw::from_process_env();
+    assert!(
+        !log_path.exists(),
+        "raw capture installed or wrote a system-log sink"
+    );
+    let evidence = raw
+        .as_ref()
+        .map(|raw| {
+            raw.bootstrap_alias_source_events()
+                .map(|(family, key, source)| {
+                    format!("[captured] {family} key={key} source={source}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    Ok((raw.and_then(GuestConfig::from_raw), evidence))
 }
 
 fn assert_value_free(text: &str, forbidden_values: &[&str], context: &str) {
@@ -354,7 +374,7 @@ fn configure_private_files(files: &PrivateFiles, name: &str) -> TestResult {
     );
     set_test_env("HOME", root.join(format!("{name}-process-home")));
     set_test_env(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         &files.runtime_dir,
     );
     Ok(())

@@ -5,14 +5,12 @@ import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 import {
-  INTRO_VIDEO_TEMPLATE_ITEMS,
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@okouai/core";
-import { INTRO_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/intro-video-template-items";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -74,7 +72,9 @@ import {
 } from "../../../test-fixtures/agent-runs";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
+import { seededSystemSkillArchive } from "../../../test-fixtures/seeded-system-skill-archive";
 import {
   API_TEST_CONNECTOR_CATALOG,
   apiTestConnectorCatalogValidationAuthority,
@@ -215,6 +215,14 @@ const API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE =
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_agent_run_source";
 const API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE =
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata";
+const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets",
+] as const;
+const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
@@ -231,6 +239,7 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
   "api_dispatch_pre_create_zero_web_chat_validate_revocation",
   "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
+  ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
   "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
   "api_dispatch_pre_create_zero_web_chat_create_normal_run",
   "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
@@ -619,6 +628,18 @@ function claimEnvironment(claim: RunnerClaim): Record<string, string> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function templateUsageEvents(): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.ingest.mock.calls.flatMap((call) => {
+    const events = call[1];
+    if (!Array.isArray(events)) {
+      return [];
+    }
+    return events.filter(isRecord).filter((event) => {
+      return event.type === "template_used";
+    });
+  });
 }
 
 function sandboxOperationEvents(): readonly Record<string, unknown>[] {
@@ -1817,6 +1838,9 @@ describe("CHAT-02: web chat send and client ids", () => {
       API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
+    expectNoApiDispatchActions(timingEvents, [
+      API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
+    ]);
     expectApiDispatchSpanKind(
       timingEvents,
       ["api_dispatch_pre_create_agent_run"],
@@ -3914,7 +3938,7 @@ describe("CHAT-02: admission without spendable credits", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -4228,6 +4252,139 @@ function piResponsesTextSse(text: string, sequence: number): string {
     .join("");
 }
 
+type PiResponsesSemanticBlock =
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "toolCall";
+      readonly callId: string;
+      readonly name: string;
+      readonly arguments: Record<string, unknown>;
+    };
+
+function piResponsesContentSse(args: {
+  readonly blocks: readonly PiResponsesSemanticBlock[];
+  readonly sequence: number;
+  readonly includeReasoning?: boolean;
+}): string {
+  const responseId = `resp_pi_content_${args.sequence.toString()}`;
+  const output: Record<string, unknown>[] = [];
+  const events: Record<string, unknown>[] = [
+    {
+      type: "response.created",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+  ];
+  if (args.includeReasoning) {
+    const reasoningText = "API-first reasoning preserved for Sandbox resume";
+    const reasoningItem = {
+      type: "reasoning",
+      id: `rs_pi_content_${args.sequence.toString()}`,
+      content: [{ type: "reasoning_text", text: reasoningText }],
+      summary: [],
+    };
+    output.push(reasoningItem);
+    events.push(
+      {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { ...reasoningItem, content: [] },
+      },
+      {
+        type: "response.reasoning_text.delta",
+        output_index: 0,
+        content_index: 0,
+        delta: reasoningText,
+      },
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: reasoningItem,
+      },
+    );
+  }
+  const outputIndexOffset = output.length;
+  for (const [blockIndex, block] of args.blocks.entries()) {
+    const outputIndex = outputIndexOffset + blockIndex;
+    if (block.type === "text") {
+      const item = {
+        type: "message",
+        id: `msg_pi_content_${args.sequence.toString()}_${blockIndex.toString()}`,
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text: block.text, annotations: [] }],
+      };
+      output.push(item);
+      events.push(
+        {
+          type: "response.output_item.added",
+          output_index: outputIndex,
+          item: { ...item, status: "in_progress", content: [] },
+        },
+        {
+          type: "response.output_text.delta",
+          output_index: outputIndex,
+          content_index: 0,
+          delta: block.text,
+        },
+        { type: "response.output_item.done", output_index: outputIndex, item },
+      );
+      continue;
+    }
+    const functionArguments = JSON.stringify(block.arguments);
+    const itemId = `fc_pi_content_${args.sequence.toString()}_${blockIndex.toString()}`;
+    const item = {
+      type: "function_call",
+      id: itemId,
+      call_id: block.callId,
+      name: block.name,
+      arguments: functionArguments,
+      status: "completed",
+    };
+    output.push(item);
+    events.push(
+      {
+        type: "response.output_item.added",
+        output_index: outputIndex,
+        item: { ...item, arguments: "", status: "in_progress" },
+      },
+      {
+        type: "response.function_call_arguments.delta",
+        output_index: outputIndex,
+        item_id: itemId,
+        delta: functionArguments,
+      },
+      {
+        type: "response.function_call_arguments.done",
+        output_index: outputIndex,
+        item_id: itemId,
+        arguments: functionArguments,
+      },
+      { type: "response.output_item.done", output_index: outputIndex, item },
+    );
+  }
+  events.push({
+    type: "response.completed",
+    response: {
+      id: responseId,
+      object: "response",
+      status: "completed",
+      output,
+      usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+    },
+  });
+  return events
+    .map((event) => {
+      return `data: ${JSON.stringify(event)}\n\n`;
+    })
+    .join("");
+}
+
 function piResponsesToolSse(args: {
   readonly callId: string;
   readonly name: string;
@@ -4327,9 +4484,7 @@ interface PiCheckpointS3Command {
   };
 }
 
-function piCheckpointObjectKey(
-  candidate: PiCheckpointS3Command,
-): string | undefined {
+function piS3ObjectKey(candidate: PiCheckpointS3Command): string | undefined {
   const bucket = candidate.input?.Bucket;
   const key = candidate.input?.Key;
   return typeof bucket === "string" && typeof key === "string"
@@ -4341,7 +4496,7 @@ function mockPiPutObject(
   objects: Map<string, Buffer>,
   candidate: PiCheckpointS3Command,
 ): Promise<unknown> | undefined {
-  const objectKey = piCheckpointObjectKey(candidate);
+  const objectKey = piS3ObjectKey(candidate);
   if (candidate.constructor?.name !== "PutObjectCommand" || !objectKey) {
     return undefined;
   }
@@ -4360,7 +4515,7 @@ function mockPiGetObject(
   objects: Map<string, Buffer>,
   candidate: PiCheckpointS3Command,
 ): Promise<unknown> | undefined {
-  const objectKey = piCheckpointObjectKey(candidate);
+  const objectKey = piS3ObjectKey(candidate);
   if (candidate.constructor?.name !== "GetObjectCommand" || !objectKey) {
     return undefined;
   }
@@ -4410,22 +4565,60 @@ function mockPiCheckpointObjectStore(): Map<string, Buffer> {
   return objects;
 }
 
-function latestStoredArchive(): Buffer {
+const PI_RESOURCE_ARCHIVE_DOWNLOAD_URL =
+  "https://r2.example.com/storage/archive.tar.gz";
+
+function uploadedPiS3Object(objectKey: string): Buffer | undefined {
   for (const [command] of [...context.mocks.s3.send.mock.calls].reverse()) {
-    const candidate = command as {
-      readonly constructor?: { readonly name?: string };
-      readonly input?: { readonly Body?: unknown; readonly Key?: unknown };
-    };
+    const candidate = command as PiCheckpointS3Command;
     if (
       candidate.constructor?.name === "PutObjectCommand" &&
-      typeof candidate.input?.Key === "string" &&
-      candidate.input.Key.endsWith("/archive.tar.gz") &&
-      candidate.input.Body instanceof Uint8Array
+      piS3ObjectKey(candidate) === objectKey
     ) {
+      if (!(candidate.input?.Body instanceof Uint8Array)) {
+        throw new Error(
+          `Expected uploaded Pi S3 object bytes for ${objectKey}`,
+        );
+      }
       return Buffer.from(candidate.input.Body);
     }
   }
-  throw new Error("Expected an uploaded Storage archive fixture");
+  return undefined;
+}
+
+function piS3Object(objectKey: string): Buffer {
+  const uploaded = uploadedPiS3Object(objectKey);
+  if (uploaded) {
+    return uploaded;
+  }
+  const bucketPrefix = `${env("R2_USER_STORAGES_BUCKET_NAME")}/`;
+  const seeded = objectKey.startsWith(bucketPrefix)
+    ? seededSystemSkillArchive(objectKey.slice(bucketPrefix.length))
+    : undefined;
+  if (seeded) {
+    return seeded;
+  }
+  throw new Error(`Expected Pi S3 object ${objectKey}`);
+}
+
+function mockPiResourceArchiveDownloads(unavailable = false): void {
+  server.use(
+    http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, ({ request }) => {
+      if (unavailable) {
+        return HttpResponse.json(
+          { error: "archive unavailable" },
+          { status: 503 },
+        );
+      }
+      const objectKey = new URL(request.url).searchParams.get("object");
+      if (!objectKey) {
+        throw new Error("Expected Pi resource archive object identity");
+      }
+      return new HttpResponse(piS3Object(objectKey), {
+        headers: { "content-type": "application/gzip" },
+      });
+    }),
+  );
 }
 
 function occurrences(haystack: string, needle: string): number {
@@ -4502,6 +4695,7 @@ describe("CHAT-02: model-first provider policies", () => {
     let previousSectionIndex = -1;
     for (const section of [
       "# Agent Identity",
+      "# Execution Time Limit",
       "# Agent Tools",
       "# Current User Info",
       "# Current Integration",
@@ -4613,11 +4807,19 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
     ]);
+    if (!actor.orgId) {
+      throw new Error("Expected the built-in admission actor to have an org");
+    }
+    await setOrgModelPolicyProviderTypeFixture({
+      orgId: actor.orgId,
+      model: "claude-sonnet-5",
+      defaultProviderType: "built-in",
+    });
     const vm0Prompt = "vm0-backed admission with spendable credits";
     const vm0Send = await requestSendEventRaw(actor, {
       agentId,
@@ -4669,14 +4871,7 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
-      const discoveryArchive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return new HttpResponse(discoveryArchive, {
-            headers: { "content-type": "application/gzip" },
-          });
-        }),
-      );
+      mockPiResourceArchiveDownloads();
       const checkpointObjects = mockPiCheckpointObjectStore();
       const modelRequests: {
         readonly authorization: string | null;
@@ -4812,6 +5007,118 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
+  it("projects complete API-first text blocks in source order and completes at N", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek",
+      secret: "pi-content-block-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "deepseek",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    const consumedAgentEvents: Record<string, unknown>[] = [];
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected an Axiom event array");
+          }
+          consumedAgentEvents.push(
+            ...events.filter((event): event is Record<string, unknown> => {
+              return (
+                typeof event === "object" &&
+                event !== null &&
+                !Array.isArray(event)
+              );
+            }),
+          );
+          return HttpResponse.json({
+            ingested: events.length,
+            failed: 0,
+            processedBytes: 123,
+          });
+        },
+      ),
+      http.post("https://api.deepseek.com/responses", () => {
+        return new HttpResponse(
+          piResponsesContentSse({
+            blocks: [
+              { type: "text", text: "alpha" },
+              { type: "text", text: "beta" },
+              { type: "text", text: "gamma" },
+              { type: "text", text: "delta" },
+            ],
+            sequence: 1,
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    mockPiCheckpointObjectStore();
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "preserve each complete API-first text block",
+      model: "deepseek-v4-flash",
+    });
+    await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
+
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(
+      consumedAgentEvents
+        .filter((event) => {
+          return event.runId === run.runId;
+        })
+        .map((event) => {
+          return {
+            sequenceNumber: event.sequenceNumber,
+            eventType: event.eventType,
+          };
+        }),
+    ).toStrictEqual([
+      { sequenceNumber: 0, eventType: "assistant" },
+      { sequenceNumber: 1, eventType: "assistant" },
+      { sequenceNumber: 2, eventType: "assistant" },
+      { sequenceNumber: 3, eventType: "assistant" },
+      { sequenceNumber: 4, eventType: "result" },
+    ]);
+    const thread = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      eventBackedContents(thread.events, run.runId).map((message) => {
+        return {
+          content: message.content,
+          sequenceNumber: message.sequenceNumber,
+          runEventId: message.runEventId,
+        };
+      }),
+    ).toStrictEqual([
+      { content: "alpha", sequenceNumber: 0, runEventId: "event:0" },
+      { content: "beta", sequenceNumber: 1, runEventId: "event:1" },
+      { content: "gamma", sequenceNumber: 2, runEventId: "event:2" },
+      { content: "delta", sequenceNumber: 3, runEventId: "event:3" },
+    ]);
+  }, 90_000);
+
   it.each([
     {
       failure: "resource download",
@@ -4850,19 +5157,7 @@ describe("CHAT-02: model-first provider policies", () => {
         { ...actor, orgId: actor.orgId },
         { [FeatureSwitchKey.PiLoop]: true },
       );
-      const archive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return failResource
-            ? HttpResponse.json(
-                { error: "archive unavailable" },
-                { status: 503 },
-              )
-            : new HttpResponse(archive, {
-                headers: { "content-type": "application/gzip" },
-              });
-        }),
-      );
+      mockPiResourceArchiveDownloads(failResource);
       let modelCalls = 0;
       server.use(
         http.post("https://api.deepseek.com/responses", () => {
@@ -4920,14 +5215,7 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId: actor.orgId },
       { [FeatureSwitchKey.PiLoop]: true },
     );
-    const archive = latestStoredArchive();
-    server.use(
-      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-        return new HttpResponse(archive, {
-          headers: { "content-type": "application/gzip" },
-        });
-      }),
-    );
+    mockPiResourceArchiveDownloads();
     let modelCalls = 0;
     server.use(
       http.post("https://api.deepseek.com/responses", () => {
@@ -4995,7 +5283,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
-  it("publishes one H1 and hands an explicit Sandbox tool turn to H2", async () => {
+  it("publishes ordered mixed blocks and hands explicit Sandbox tool turns to H2", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
@@ -5016,27 +5304,48 @@ describe("CHAT-02: model-first provider policies", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+      },
     );
-    const archive = latestStoredArchive();
-    server.use(
-      http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-        return new HttpResponse(archive, {
-          headers: { "content-type": "application/gzip" },
-        });
-      }),
-    );
+    mockPiResourceArchiveDownloads();
     let modelCalls = 0;
     server.use(
       http.post("https://api.deepseek.com/responses", () => {
         modelCalls += 1;
         return new HttpResponse(
-          piResponsesToolSse({
-            callId: "call_pi_read",
-            name: "read",
-            arguments: { path: "/home/user/workspace/handoff.txt" },
-            sequence: modelCalls,
-          }),
+          modelCalls === 1
+            ? piResponsesContentSse({
+                blocks: [
+                  { type: "text", text: "before parallel tools" },
+                  {
+                    type: "toolCall",
+                    callId: "call_pi_read",
+                    name: "read",
+                    arguments: {
+                      path: "/home/user/workspace/***/handoff.txt",
+                    },
+                  },
+                  {
+                    type: "toolCall",
+                    callId: "call_pi_write",
+                    name: "write",
+                    arguments: {
+                      path: "/home/user/workspace/***/handoff-copy.txt",
+                      content: "PI_API_FIRST_WRITE_CONTENT_SECRET",
+                    },
+                  },
+                  { type: "text", text: "after parallel tools" },
+                ],
+                sequence: modelCalls,
+                includeReasoning: true,
+              })
+            : piResponsesToolSse({
+                callId: "call_pi_read",
+                name: "read",
+                arguments: { path: "/home/user/workspace/***/handoff.txt" },
+                sequence: modelCalls,
+              }),
           { headers: { "content-type": "text/event-stream" } },
         );
       }),
@@ -5058,6 +5367,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const manifest = JSON.parse(
       checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
     ) as {
+      readonly schemaVersion?: unknown;
       readonly outcome?: unknown;
       readonly baseSession?: unknown;
       readonly session?: {
@@ -5065,8 +5375,10 @@ describe("CHAT-02: model-first provider policies", () => {
         readonly sha256?: unknown;
         readonly rawSize?: unknown;
       };
+      readonly sandboxEventSequenceStart?: unknown;
     };
     expect(manifest).toMatchObject({
+      schemaVersion: 2,
       outcome: "handoff",
       baseSession: { sessionId: run.threadId, sha256: null },
       session: {
@@ -5074,7 +5386,26 @@ describe("CHAT-02: model-first provider policies", () => {
         sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
         rawSize: expect.any(Number),
       },
+      sandboxEventSequenceStart: 4,
     });
+    const projected = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (messages) => {
+        return eventBackedContents(messages, run.runId).length === 2;
+      },
+    );
+    expect(
+      eventBackedContents(projected.events, run.runId).map((message) => {
+        return {
+          content: message.content,
+          sequenceNumber: message.sequenceNumber,
+        };
+      }),
+    ).toStrictEqual([
+      { content: "before parallel tools", sequenceNumber: 0 },
+      { content: "after parallel tools", sequenceNumber: 3 },
+    ]);
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);
@@ -5121,14 +5452,122 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       ],
     });
+    expect(
+      h1Assistant?.role === "assistant"
+        ? h1Assistant.content
+            .filter((content) => {
+              return content.type !== "thinking";
+            })
+            .map((content) => {
+              return content.type === "text"
+                ? { type: content.type, text: content.text }
+                : {
+                    type: content.type,
+                    id: content.id,
+                    name: content.name,
+                  };
+            })
+        : [],
+    ).toStrictEqual([
+      { type: "text", text: "before parallel tools" },
+      {
+        type: "toolCall",
+        id: "call_pi_read|fc_pi_content_1_1",
+        name: "read",
+      },
+      {
+        type: "toolCall",
+        id: "call_pi_write|fc_pi_content_1_2",
+        name: "write",
+      },
+      { type: "text", text: "after parallel tools" },
+    ]);
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              content: [{ type: "text", text: "before parallel tools" }],
+            },
+          },
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_pi_read|fc_pi_content_1_1",
+                  name: "read",
+                  input: { path: "/home/user/workspace/***/handoff.txt" },
+                },
+              ],
+            },
+          },
+          {
+            type: "assistant",
+            sequenceNumber: 2,
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_pi_write|fc_pi_content_1_2",
+                  name: "write",
+                  input: {
+                    path: "/home/user/workspace/***/handoff-copy.txt",
+                    content: "PI_REPLAY_WRITE_CONTENT_SECRET",
+                  },
+                },
+              ],
+            },
+          },
+          {
+            type: "assistant",
+            sequenceNumber: 3,
+            message: {
+              content: [{ type: "text", text: "after parallel tools" }],
+            },
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(
+      eventBackedContents(
+        (await chat.listThreadEvents(actor, run.threadId)).events,
+        run.runId,
+      ).map((message) => {
+        return {
+          content: message.content,
+          sequenceNumber: message.sequenceNumber,
+        };
+      }),
+    ).toStrictEqual([
+      { content: "before parallel tools", sequenceNumber: 0 },
+      { content: "after parallel tools", sequenceNumber: 3 },
+    ]);
     h2Session.appendMessage({
       role: "toolResult",
-      toolCallId: "call_pi_read|fc_pi_tool_1",
+      toolCallId: "call_pi_read|fc_pi_content_1_1",
       toolName: "read",
       content: [{ type: "text", text: "Sandbox tool output" }],
       details: {},
       isError: false,
       timestamp: 2,
+    });
+    h2Session.appendMessage({
+      role: "toolResult",
+      toolCallId: "call_pi_write|fc_pi_content_1_2",
+      toolName: "write",
+      content: [{ type: "text", text: "Sandbox write output" }],
+      details: {},
+      isError: false,
+      timestamp: 3,
     });
     h2Session.appendMessage({
       role: "assistant",
@@ -5145,7 +5584,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
       stopReason: "stop",
-      timestamp: 3,
+      timestamp: 4,
     });
     const h2 = h2Session.toJsonl();
     const h2Hash = createHash("sha256").update(h2).digest("hex");
@@ -5708,6 +6147,8 @@ describe("CHAT-02: model-first provider policies", () => {
       [
         ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
         API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
+        ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
+        API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
       ],
       "nested",
     );
@@ -5763,7 +6204,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         model: "gpt-5.6-terra",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -6067,21 +6508,21 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         model: "gpt-5.6-sol",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
       {
         model: "gpt-5.6-luna",
         isDefault: false,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
       {
         model: "claude-sonnet-5",
         isDefault: false,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -6146,9 +6587,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(fastClaim.claim.cliAgentType).toBe("codex");
     expect(environment.OPENAI_MODEL).toBe("gpt-5.6-sol");
     expect(environment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
-    expect(environment.VM0_CODEX_SERVICE_TIER).toBe(
-      environment.OKOU_CODEX_SERVICE_TIER,
-    );
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     expect(environment.OPENAI_API_KEY).toBeTruthy();
     expect(environment.CHATGPT_ACCESS_TOKEN).toBeUndefined();
     await cancelChatRun(actor, fast.runId, fastClaim.sandboxHeaders);
@@ -6346,9 +6785,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(environment.OPENAI_MODEL).toBe("gpt-5.6-luna");
     expect(environment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
-    expect(environment.VM0_CODEX_SERVICE_TIER).toBe(
-      environment.OKOU_CODEX_SERVICE_TIER,
-    );
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     expect(
       (await readThreadProjection(actor, first.threadId)).serviceTier,
     ).toBe("priority");
@@ -6487,19 +6924,12 @@ describe("CHAT-02: model-first provider policies", () => {
         {
           model: "deepseek-v4-flash",
           isDefault: true,
-          defaultProviderType: "vm0",
+          defaultProviderType: "built-in",
           credentialScope: "org",
           modelProviderId: null,
         },
       ]);
-      const archive = latestStoredArchive();
-      server.use(
-        http.get("https://r2.example.com/storage/archive.tar.gz", () => {
-          return new HttpResponse(archive, {
-            headers: { "content-type": "application/gzip" },
-          });
-        }),
-      );
+      mockPiResourceArchiveDownloads();
       mockPiCheckpointObjectStore();
       const modelRequests: {
         readonly authorization: string | null;
@@ -6541,7 +6971,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("selects a vm0 built-in model key by vendor", async () => {
+  it("selects a built-in model key from a canonical policy without switching the run writer", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
@@ -6568,11 +6998,19 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         model: "claude-opus-4-8",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
     ]);
+    if (!actor.orgId) {
+      throw new Error("Expected the built-in model actor to have an org");
+    }
+    await setOrgModelPolicyProviderTypeFixture({
+      orgId: actor.orgId,
+      model: "claude-opus-4-8",
+      defaultProviderType: "built-in",
+    });
 
     const run = await sendChatRun(actor, {
       agentId,
@@ -6580,6 +7018,12 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "claude-opus-4-8",
     });
     runId = run.runId;
+    await expect(
+      readRunModelRuntimeRouteFixture(run.runId),
+    ).resolves.toMatchObject({
+      modelProvider: "built-in",
+      selectedModel: "claude-opus-4-8",
+    });
 
     const { claim, sandboxHeaders } = await claimChatRun(
       runnerGroup,
@@ -7036,7 +7480,7 @@ describe("CHAT-02: run-level model overrides", () => {
       {
         model: selectedModel,
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -7060,7 +7504,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await expect(
       readRunModelRuntimeRouteFixture(first.runId),
     ).resolves.toMatchObject({
-      modelProvider: "vm0",
+      modelProvider: "built-in",
       selectedModel,
       modelRuntimeProvider: "anthropic-api-key",
       modelRuntimeModel: selectedModel,
@@ -9660,8 +10104,11 @@ describe("CHAT-02: generation templates and attachments", () => {
       const colorToken = template.colorSystemId
         .replace("color-system:", "")
         .replaceAll("-", "_");
-      expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
+      expect(presentationPrompt).toContain(`Color system token: ${colorToken}`);
     }
+    expect(presentationPrompt).toContain(
+      "./generated/resources/playful-launch/SKILL.md",
+    );
     expect(presentationPrompt).toContain(
       "Keep all slides and visible content in index.html; render the first slide without JavaScript",
     );
@@ -9812,35 +10259,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).not.toContain("resolve-images.mjs");
     expect(websitePrompt).not.toContain("render.mjs");
     await cancelChatRun(actor, website.runId);
-
-    // The rollout keeps its rollback lever: an override back to off restores
-    // the pre-cutover renderer guidance without a deployment.
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.LatestWebsiteTemplates]: false },
-    );
-    const previousWebsite = await sendChatRun(actor, {
-      agentId,
-      prompt: "make a campaign landing page with the pre-cutover template",
-      template: {
-        type: "website",
-        selection: { websiteTemplateId: websiteTemplate.id },
-      },
-    });
-    const previousWebsiteRun = await api.readRun(actor, previousWebsite.runId);
-    const previousWebsitePrompt = previousWebsiteRun.appendSystemPrompt ?? "";
-    expect(previousWebsitePrompt).toContain(
-      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
-    );
-    expect(previousWebsitePrompt).toContain(
-      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
-    );
-    expect(previousWebsitePrompt).toContain("resolve-images.mjs");
-    expect(previousWebsitePrompt).toContain(
-      "okou host <output-dir> --site <slug>",
-    );
-    await cancelChatRun(actor, previousWebsite.runId);
   }, 90_000);
 
   it("uses R2 for archive-backed styles", async () => {
@@ -10204,50 +10622,192 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(events.body.events).toStrictEqual([]);
   }, 60_000);
 
-  it("gates intro-video templates before prompt and CLI activation", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
+  it("reports one template usage per template that reached the prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0];
-    if (!template || !actor.orgId) {
-      throw new Error("Expected an org-scoped intro-video template actor");
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
     }
-    const selection: GenerationTemplateRequest = {
-      type: "intro-video",
-      selection: { templateId: template.id },
-    };
+    context.mocks.axiom.ingest.mockClear();
 
-    const switchedOff = await chat.requestSendEvent(
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a fox",
+      template: {
+        type: "illustration",
+        selection: { illustrationStyleId: style.illustrationStyleId },
+      },
+    });
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "normal-send",
+        orgId: actor.orgId,
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+        templateSlug: style.slug,
+        templateSource: "builtin",
+        userId: actor.userId,
+      }),
+    ]);
+    await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
+  it("reports every template on a multi-template message with its position", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const [first, second] = ILLUSTRATION_TEMPLATE_ITEMS;
+    if (!first || !second) {
+      throw new Error("Expected two registered illustration styles");
+    }
+    context.mocks.axiom.ingest.mockClear();
+
+    const sent = await chat.requestSendEvent(
       actor,
       {
         agentId,
-        prompt: "turn this interview into a video",
-        userMessage: userMessageWithTemplate(
-          "turn this interview into a video",
-          selection,
-        ),
+        prompt: "draw both",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Draw " },
+            {
+              type: "template",
+              titleSnapshot: first.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: first.illustrationStyleId },
+              },
+            },
+            { type: "text", text: " then " },
+            {
+              type: "template",
+              titleSnapshot: second.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: second.illustrationStyleId },
+              },
+            },
+          ],
+        },
       },
-      [400],
+      [201],
     );
-    expectApiError(switchedOff.body);
-    expect(switchedOff.body.error.message).toBe("Unknown intro-video template");
+    if (sent.status !== 201) {
+      throw new Error("Expected the multi-template send to be accepted");
+    }
 
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.IntroVideoTemplates]: true },
-    );
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        templateCount: 2,
+        templateId: first.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+      expect.objectContaining({
+        templateCount: 2,
+        templateId: second.illustrationStyleId,
+        templateIndex: 1,
+        templateRole: "inline",
+      }),
+    ]);
+    const { runId } = sent.body;
+    if (runId) {
+      await cancelChatRun(actor, runId);
+    }
+  }, 60_000);
+
+  it("reports an avatar selection as avatar rather than video", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    context.mocks.axiom.ingest.mockClear();
+
     const sent = await sendChatRun(actor, {
       agentId,
-      prompt: "turn this interview into a video",
-      template: selection,
+      prompt: "introduce the product",
+      template: {
+        type: "video",
+        selection: { stylePresetId: avatarTemplateStylePresetId(1) },
+      },
     });
-    const run = await api.readRun(actor, sent.runId);
-    expect(run.appendSystemPrompt ?? "").toContain(
-      `okou generate intro-video --template ${template.id}`,
-    );
-    const { claim } = await claimChatRun(runnerGroup, sent.runId);
-    expect(claim.environment?.[INTRO_VIDEO_TEMPLATES_ENABLED_ENV]).toBe("1");
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        templateCategory: "avatar",
+        templateId: avatarTemplateStylePresetId(1),
+      }),
+    ]);
     await cancelChatRun(actor, sent.runId);
+  }, 60_000);
+
+  it("reports an active-input usage once even when its delivery is retrieved again", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
+    if (!style) {
+      throw new Error("Expected a registered illustration style");
+    }
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor active input template usage",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "restyle it mid-run",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Restyle with " },
+            {
+              type: "template",
+              titleSnapshot: style.title,
+              template: {
+                type: "illustration",
+                selection: { illustrationStyleId: style.illustrationStyleId },
+              },
+            },
+          ],
+        },
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    context.mocks.axiom.ingest.mockClear();
+
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected the templated active input to be reserved");
+    }
+    // The same open delivery is rematerialized on retrieval, which must not
+    // count the steered prompt a second time.
+    await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "active-input",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+    ]);
+    await cancelChatRun(actor, active.runId);
   }, 90_000);
 
   it("resolves attachment metadata in ordered waves of four", async () => {
@@ -12712,6 +13272,11 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
+    // The busy thread makes queue-first take the wait path, which builds this
+    // message's run input before re-checking admission and leaving it queued.
+    // Building is not using: reporting there would count the message again when
+    // it is really dispatched below.
+    expect(templateUsageEvents()).toStrictEqual([]);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -12749,6 +13314,19 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
+
+    // Exactly one event: the send left the message queued, so only the claim
+    // that created this run reports it.
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "queued-claim",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: style.illustrationStyleId,
+        templateIndex: 0,
+        templateRole: "primary",
+      }),
+    ]);
 
     await expect
       .poll(() => {

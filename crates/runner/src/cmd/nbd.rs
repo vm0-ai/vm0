@@ -26,7 +26,7 @@ fn nbd_orphan_candidate_is_reportable(candidate: NbdOrphanCandidate) -> bool {
                 device_index = candidate.device_index(),
                 owner_tid = candidate.owner_tid(),
                 error = %error,
-                "skipping NBD orphan candidate because device lock probe failed"
+                "skipping NBD orphan candidate because revalidation failed"
             );
             false
         }
@@ -43,9 +43,19 @@ pub(crate) fn find_nbd_orphans() -> (u32, Vec<(u32, u32)>) {
     let max_devs = read_nbds_max();
     let mut orphans = Vec::new();
     for device_index in 0..max_devs {
-        if let Some(candidate) = orphan::observe(device_index, NbdOrphanPolicy::DeadOwner)
-            && nbd_orphan_candidate_is_reportable(candidate)
-        {
+        let candidate = match orphan::observe(device_index, NbdOrphanPolicy::DeadOwner) {
+            Ok(Some(candidate)) => candidate,
+            Ok(None) => continue,
+            Err(error) => {
+                tracing::warn!(
+                    device_index,
+                    error = %error,
+                    "skipping NBD device because owner liveness check failed"
+                );
+                continue;
+            }
+        };
+        if nbd_orphan_candidate_is_reportable(candidate) {
             orphans.push((candidate.device_index(), candidate.owner_tid()));
         }
     }

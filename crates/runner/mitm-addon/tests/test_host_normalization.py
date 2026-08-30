@@ -37,6 +37,47 @@ def test_ascii_hostname_bypasses_unicode_pipeline():
     unicode_bidirectional.assert_not_called()
 
 
+def test_unicode_label_reuses_normalized_text():
+    with (
+        patch.object(
+            host_normalization,
+            "_normalize_label_text",
+            wraps=host_normalization._normalize_label_text,
+        ) as normalize_label_text,
+        patch.object(
+            host_normalization,
+            "_validate_normalized_label_text",
+            wraps=host_normalization._validate_normalized_label_text,
+        ) as validate_normalized_label_text,
+    ):
+        normalized = host_normalization.normalize_idna_label("faß")
+
+    assert normalized == "xn--fa-hia"
+    normalize_label_text.assert_called_once_with("faß")
+    validate_normalized_label_text.assert_called_once_with("faß")
+
+
+def test_overlength_unicode_label_skips_normalized_text_validation():
+    oversized_label = "".join(chr(0x4E00 + index) for index in range(1365))
+    with (
+        patch.object(
+            host_normalization,
+            "_normalize_label_text",
+            wraps=host_normalization._normalize_label_text,
+        ) as normalize_label_text,
+        patch.object(
+            host_normalization,
+            "_validate_normalized_label_text",
+            wraps=host_normalization._validate_normalized_label_text,
+        ) as validate_normalized_label_text,
+        pytest.raises(UnicodeError, match="IDNA label too long"),
+    ):
+        host_normalization.normalize_idna_label(oversized_label)
+
+    normalize_label_text.assert_called_once_with(oversized_label)
+    validate_normalized_label_text.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("label", "expected"),
     [

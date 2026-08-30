@@ -1,6 +1,7 @@
 import { computed } from "ccstate";
 import {
   isLimitedFree1RestrictedRunModel,
+  isBuiltInModelProviderType,
   type ModelProviderType,
   type OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -42,7 +43,7 @@ function modelProviderAllowedForPlan(
   providerType: ModelProviderType,
   capabilities: Pick<ModelPlanCapabilities, "supportByok">,
 ): boolean {
-  return capabilities.supportByok || providerType === "vm0";
+  return capabilities.supportByok || isBuiltInModelProviderType(providerType);
 }
 
 export function modelPolicyAllowedForPlan(

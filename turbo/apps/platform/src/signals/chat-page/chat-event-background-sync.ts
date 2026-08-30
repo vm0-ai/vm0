@@ -8,6 +8,7 @@ import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
   clearIndexedDbChatEventRows$,
   loadIndexedDbChatEventCursor$,
+  replaceIndexedDbChatEventRows$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
 import {
@@ -76,35 +77,30 @@ const coldStartChatThreadRows$ = command(
     readonly events: readonly ChatEvent[];
     readonly cursor: ChatEventCursor;
   }> => {
-    const snapshot = await set(fetchChatEventSnapshotRows$, threadId, signal);
-    if (snapshot === null) {
-      return {
-        events: [],
-        cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },
-      };
-    }
+    const result = await set(fetchChatEventSnapshotRows$, threadId, signal);
+    const snapshot = result.snapshot;
+    const cursor: ChatEventCursor =
+      snapshot === null || snapshot.lastEventId === null
+        ? { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID }
+        : {
+            lastEventId: snapshot.lastEventId,
+            lastSeqId: snapshot.lastSeqId,
+            projection: snapshot.projection,
+          };
     await set(
-      writeIndexedDbChatEventRows$,
+      replaceIndexedDbChatEventRows$,
       {
         threadId,
-        rows: snapshot.rows,
-        cursor: {
-          lastEventId: snapshot.lastEventId,
-          lastSeqId: snapshot.lastSeqId,
-          projection: snapshot.projection,
-        },
+        rows: snapshot?.rows ?? [],
+        cursor,
       },
       signal,
     );
     return {
-      events: snapshot.rows.map((row) => {
+      events: (snapshot?.rows ?? []).map((row) => {
         return chatEventFromRow(row);
       }),
-      cursor: {
-        lastEventId: snapshot.lastEventId,
-        lastSeqId: snapshot.lastSeqId,
-        projection: snapshot.projection,
-      },
+      cursor,
     };
   },
 );
@@ -176,7 +172,11 @@ const syncChatThreadRowsToIndexedDb$ = command(
       cursor = page.cursor;
       await set(
         writeIndexedDbChatEventRows$,
-        { threadId, rows: page.rows, cursor },
+        {
+          threadId,
+          rows: page.rows,
+          cursor,
+        },
         signal,
       );
       syncedEvents.push(

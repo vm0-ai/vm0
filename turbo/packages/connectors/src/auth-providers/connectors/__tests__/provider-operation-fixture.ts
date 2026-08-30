@@ -1,6 +1,7 @@
-import type {
-  ConnectorAuthClient,
-  ConnectorEnvReader,
+import {
+  connectorGrantScopes,
+  type ConnectorAuthClient,
+  type ConnectorEnvReader,
 } from "../../../connector-auth-method";
 import type { ConnectorAuthMethodRuntimeConfig } from "../../../connector-config";
 import {
@@ -61,6 +62,7 @@ export function providerOperationFixture(fixture: ProviderMethodFixture) {
         {
           ...selection,
           authClient: args.authClient,
+          authorizationScopes: connectorGrantScopes(selection.method.grant),
           code: args.code,
           providerState: args.providerState,
         },

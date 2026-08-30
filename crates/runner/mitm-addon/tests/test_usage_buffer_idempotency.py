@@ -4,7 +4,7 @@ import uuid
 
 import usage
 import usage.buffer as usage_buffer
-from tests.usage_buffer_helpers import RecordingEnqueue, event
+from tests.usage_buffer_helpers import RecordingEnqueue, event, observation
 
 
 def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
@@ -121,6 +121,29 @@ def test_aggregate_idempotency_key_changes_between_flush_batches(tmp_path):
     assert keys[0] != keys[1]
     for key in keys:
         uuid.UUID(key)
+
+
+def test_model_observation_aggregate_idempotency_key_survives_retained_retry(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/runners/model-usage-observations",
+        "runner-token",
+        "run-1",
+        [observation(source_key="source-1", input_tokens=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert usage.flush_model_usage_observations(trigger="test") == 0
+    first_key = enqueue.last_call.payload["events"][0]["idempotencyKey"]
+
+    enqueue.return_value = True
+    assert usage.flush_model_usage_observations(trigger="test") == 1
+    second_key = enqueue.last_call.payload["events"][0]["idempotencyKey"]
+
+    assert first_key == second_key
+    uuid.UUID(first_key)
 
 
 def test_source_dedupe_survives_flush_boundary(tmp_path):

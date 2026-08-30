@@ -28,7 +28,7 @@ interface CustomConnectorDiscoveryItem {
   readonly customConnector: CustomConnectorResponse;
 }
 
-type ConnectorDiscoveryItem =
+export type ConnectorDiscoveryItem =
   | CatalogConnectorDiscoveryItem
   | CustomConnectorDiscoveryItem;
 

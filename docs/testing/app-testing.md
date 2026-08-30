@@ -60,9 +60,12 @@ Page setup may start long polling flows, so page tests should call
 `detachedSetupPage` without awaiting it and then wait for the rendered page
 state that matters to the story.
 
-Signal bootstrap tests should use `setupPage({ withoutRender: true })`, await
-setup completion, and assert state transitions that cannot be observed through
-a rendered page. They should still configure API and browser behavior through
+Signal bootstrap tests that only need application-level initialization should
+use `setupBootstrap()`, await setup completion, and assert state transitions
+that cannot be observed through a rendered page. This follows the production
+`bootstrap$` path without starting the Router or authenticated page daemons.
+Use `setupPage({ withoutRender: true })` when route or page setup is part of the
+behavior. Both forms should configure API and browser behavior through
 `context.mocks` before setup.
 
 ## Mock Infrastructure

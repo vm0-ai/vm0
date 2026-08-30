@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use ::sandbox::{ExecOutputLimits, ProcessControlMode, ProcessOutputMode, SandboxControlTarget};
+use ::sandbox::{ExecOutputLimits, ProcessOutputMode, SandboxControlTarget};
 
 /// Behavior override applied to exec calls whose command contains the pattern.
 ///
@@ -115,8 +115,17 @@ pub struct StartProcessCall {
     pub sudo: bool,
     /// Output mode requested for the guest process.
     pub output: ProcessOutputMode,
-    /// Control mode requested for the guest process.
-    pub control: ProcessControlMode,
+}
+
+/// Captured controlled-Agent request fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartAgentProcessCall {
+    /// Timeout passed to `StartAgentProcessRequest.timeout`.
+    pub timeout: Duration,
+    /// Environment variable names and values from `StartAgentProcessRequest.env`.
+    pub env: Vec<(String, String)>,
+    /// Output mode requested for the Guest Agent.
+    pub output: ProcessOutputMode,
 }
 
 /// Captured `wait_process` request fields recorded for test assertions.

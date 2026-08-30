@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { throwOAuthError } from "../../oauth/error";
+import { reportedOAuthScopes } from "../../oauth/scope";
 
 export const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CHATGPT_OAUTH_ISSUER = "https://auth.openai.com";
@@ -46,6 +47,7 @@ interface ChatgptRefreshResult {
   accessToken: string;
   refreshToken: string | null;
   expiresIn?: number;
+  scopes: string[] | null;
 }
 
 const refreshResponseSchema = z.object({
@@ -53,6 +55,7 @@ const refreshResponseSchema = z.object({
   access_token: z.string().optional(),
   refresh_token: z.string().nullable().optional(),
   expires_in: z.number().optional(),
+  scope: z.string().optional(),
 });
 
 const refreshErrorBodySchema = z.object({
@@ -120,6 +123,7 @@ export async function refreshChatgptToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
+    scopes: reportedOAuthScopes(data.scope, " "),
   };
 }
 

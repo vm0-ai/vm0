@@ -200,7 +200,7 @@ describe("POST /api/integrations/feishu/message", () => {
 
   beforeEach(() => {
     captured = [];
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
     mockEnv("APP_URL", "https://app.vm0.test");
     mockEnv("FEISHU_CALLBACK_BASE_URL", "https://www.vm0.test");
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);

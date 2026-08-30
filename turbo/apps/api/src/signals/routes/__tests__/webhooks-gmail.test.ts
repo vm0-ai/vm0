@@ -411,7 +411,7 @@ async function configureWorkspaceModelProvider(
       return policy.model === GMAIL_WORKSPACE_MODEL;
     }),
   ).toMatchObject({
-    defaultProviderType: "vm0",
+    defaultProviderType: "built-in",
     modelProviderId: null,
   });
 }

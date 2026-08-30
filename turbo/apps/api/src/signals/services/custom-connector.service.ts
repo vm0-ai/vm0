@@ -60,7 +60,7 @@ import {
 import { deleteConnectorSelectionsForCustomConnectorDefinition } from "./connector-credential-storage-write.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
-  customConnectorDefinitionHasConnectedConnection,
+  customConnectorDefinitionConnectedAccount,
   loadCurrentCustomConnectorStoredValues,
   loadCurrentCustomConnectorValueMarkers,
   loadConnectedCustomConnectorConnections,
@@ -731,7 +731,8 @@ function effectivePermissionBundleRef(
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
   readonly valueMarkers: readonly CustomConnectorCredentialValueMarker[];
-  readonly connectedConnection: boolean;
+  readonly connectedAccountId: string | null;
+  readonly connectedAccountUpdatedAt?: Date | null;
 }): CustomConnectorResponse {
   const connectorMarkers = args.valueMarkers.filter((marker) => {
     return (
@@ -752,12 +753,12 @@ export function serialiseCustomConnector(args: {
     args.row.authMode !== "manual" ||
     customConnectorManualAuthReferencesMemberField(args.row);
   const connected =
-    args.connectedConnection &&
+    args.connectedAccountId !== null &&
     validManualAuth &&
     missingRequiredFields.length === 0;
   const responseMissingRequiredFields = [
     ...missingRequiredFields,
-    ...(args.row.authMode === "oauth" && !args.connectedConnection
+    ...(args.row.authMode === "oauth" && args.connectedAccountId === null
       ? ["oauth"]
       : []),
   ];
@@ -775,6 +776,17 @@ export function serialiseCustomConnector(args: {
     skillMarkdown: args.row.skillMarkdown,
     storageVersion: args.row.storageVersion,
     connected,
+    ...(connected && args.connectedAccountId
+      ? {
+          connectedAccountId: args.connectedAccountId,
+          ...(args.connectedAccountUpdatedAt
+            ? {
+                connectedAccountUpdatedAt:
+                  args.connectedAccountUpdatedAt.toISOString(),
+              }
+            : {}),
+        }
+      : {}),
     missingRequiredFields: [...responseMissingRequiredFields],
     configuredFieldKeys: [...configured],
     createdAt: args.row.createdAt.toISOString(),
@@ -2489,13 +2501,15 @@ export function getCustomConnectorResponse(args: {
         userId: args.userId,
       }),
     ]);
+    const connectedAccount = customConnectorDefinitionConnectedAccount({
+      connectedConnections,
+      definition: connector,
+    });
     return serialiseCustomConnector({
       row: connector,
       valueMarkers: markers,
-      connectedConnection: customConnectorDefinitionHasConnectedConnection({
-        connectedConnections,
-        definition: connector,
-      }),
+      connectedAccountId: connectedAccount?.id ?? null,
+      connectedAccountUpdatedAt: connectedAccount?.updatedAt,
     });
   });
 }
@@ -2964,7 +2978,7 @@ export const setCustomConnectorValues$ = command(
       ...serialiseCustomConnector({
         row: writeResult.connector,
         valueMarkers: markers,
-        connectedConnection: writeResult.connectedConnection,
+        connectedAccountId: writeResult.connectedAccountId,
       }),
       connectedAccountId: writeResult.connectedAccountId,
     };

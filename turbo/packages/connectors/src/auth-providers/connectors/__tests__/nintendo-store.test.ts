@@ -82,6 +82,7 @@ async function startNintendoStoreSession() {
 function mockNintendoStoreTokenExchange(args?: {
   readonly accessToken?: string;
   readonly idToken?: string;
+  readonly scope?: string | readonly string[] | null;
 }) {
   const captured: {
     profileRequestHeaders?: Headers;
@@ -111,7 +112,13 @@ function mockNintendoStoreTokenExchange(args?: {
             email: "player@example.com",
             name: "Nintendo Player",
           }),
-        scope: "openid user user.mii user.email user.links[].id",
+        ...(args?.scope === null
+          ? {}
+          : {
+              scope:
+                args?.scope ??
+                "openid user user.mii user.email user.links[].id",
+            }),
         token_type: "Bearer",
       });
     }),
@@ -230,6 +237,42 @@ describe("Nintendo Store external-code provider", () => {
       NINTENDO_STORE_USER_AGENT,
     );
   });
+
+  it.each([
+    {
+      name: "reported empty",
+      tokenScope: "",
+      expectedScopes: [],
+    },
+    {
+      name: "omitted",
+      tokenScope: null,
+      expectedScopes: [
+        "openid",
+        "user",
+        "user.mii",
+        "user.email",
+        "user.links[].id",
+      ],
+    },
+  ] as const)(
+    "preserves $name token scope semantics",
+    async ({ tokenScope, expectedScopes }) => {
+      const { result, providerState } = await startNintendoStoreSession();
+      mockNintendoStoreTokenExchange({ scope: tokenScope });
+
+      const completed = await completeConnectorExternalCodeAuthorization({
+        connectorSlug: "nintendo-store",
+        authMethod: "api",
+        authClient: nintendoStoreAuthClient(),
+        providerState: result.providerState,
+        code: `${NINTENDO_STORE_REDIRECT_URI}#session_token_code=nintendo-session-code&state=${providerState.state}`,
+        signal: testSignal(),
+      });
+
+      expect(completed.scopes).toStrictEqual(expectedScopes);
+    },
+  );
 
   it("accepts a raw Nintendo session token code", async () => {
     const { result } = await startNintendoStoreSession();

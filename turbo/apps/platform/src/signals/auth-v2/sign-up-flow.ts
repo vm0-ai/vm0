@@ -33,6 +33,10 @@ import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 import type { AuthV2OAuthStrategy } from "./oauth-strategies.ts";
 import {
+  AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
+  createAuthV2ResendCooldownStorage,
+} from "./resend-cooldown.ts";
+import {
   discoverAuthV2SignUpExternalCapabilities,
   recoverAuthV2OAuthSignUp,
   startAuthV2OAuthSignUp,
@@ -43,6 +47,9 @@ const L = logger("AuthV2SignUp");
 export const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS = 30;
 const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS =
   AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS * 1000;
+const signUpResendCooldownStorage = createAuthV2ResendCooldownStorage(
+  AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
+);
 
 const SUPPORTED_SIGN_UP_ATTRIBUTES = [
   "email_address",
@@ -880,13 +887,12 @@ function createScheduleExpiryCommand(
 function createStartCooldownCommand(
   atoms: SignUpFlowAtoms,
   runtime: SignUpFlowRuntime,
-): Command<void, [AbortSignal]> {
-  return command(({ set }, signal: AbortSignal): void => {
+): Command<void, [string, AbortSignal]> {
+  return command(({ set }, identity: string, signal: AbortSignal): void => {
     signal.throwIfAborted();
-    set(
-      runtime.cooldownDeadlineMs$,
-      now() + AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS,
-    );
+    const deadlineMs = now() + AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS;
+    set(signUpResendCooldownStorage.save$, identity, deadlineMs);
+    set(runtime.cooldownDeadlineMs$, deadlineMs);
     set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS);
   });
 }
@@ -916,6 +922,7 @@ function createResendCooldownLifecycleRef(
             if (remainingSeconds > 0) {
               return false;
             }
+            set(signUpResendCooldownStorage.clear$);
             set(runtime.cooldownDeadlineMs$, null);
             return true;
           },
@@ -1026,6 +1033,30 @@ function createResourceCommands(
       set(atoms.fatalState$, null);
       set(scheduleExpiry$, snapshot.verification.expireAtMs, signal);
       if (
+        snapshot.emailAddress !== null &&
+        snapshot.unverifiedEmailAddress &&
+        snapshot.verification.strategy === "email_code" &&
+        snapshot.verification.status !== "expired"
+      ) {
+        const deadlineMs = set(
+          signUpResendCooldownStorage.restore$,
+          snapshot.emailAddress,
+        );
+        set(runtime.cooldownDeadlineMs$, deadlineMs);
+        set(
+          atoms.resendRemainingSeconds$,
+          deadlineMs === null ? 0 : Math.ceil((deadlineMs - now()) / 1000),
+        );
+      }
+      if (
+        snapshot.verification.status === "expired" ||
+        snapshot.clerkStatus === "complete"
+      ) {
+        set(signUpResendCooldownStorage.clear$);
+        set(runtime.cooldownDeadlineMs$, null);
+        set(atoms.resendRemainingSeconds$, 0);
+      }
+      if (
         snapshot.transferable ||
         snapshot.clerkStatus !== "complete" ||
         !snapshot.createdSessionId
@@ -1085,7 +1116,7 @@ function createResourceCommands(
       set(atoms.verificationExpired$, false);
       await set(applyResource$, prepared.value, signal);
       signal.throwIfAborted();
-      set(startCooldown$, signal);
+      set(startCooldown$, flowState.emailAddress, signal);
     },
   );
 
@@ -1402,7 +1433,7 @@ function createResendOperation(
     set(atoms.code$, "");
     await set(applyResource$, prepared.value, signal);
     signal.throwIfAborted();
-    set(startCooldown$, signal);
+    set(startCooldown$, flowState.emailAddress, signal);
   });
 }
 
@@ -1424,6 +1455,7 @@ function createRestartOperation(
       return;
     }
     set(runtime.automaticPreparationAttempted$, false);
+    set(signUpResendCooldownStorage.clear$);
     set(runtime.cooldownDeadlineMs$, null);
     set(atoms.editDetails$, false);
     set(atoms.fatalState$, null);

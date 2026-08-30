@@ -103,12 +103,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Expensify accounting connector",
     enabled: false,
   },
-  [FeatureSwitchKey.ManagedSocialKit]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable vm0-managed SocialKit data and analysis operations",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",
@@ -203,6 +197,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AuthV2AddAccount]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Use the custom Auth v2 sign-in flow when adding another account.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.MorningBrief]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -235,6 +236,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable Stripe invoice-paid workflow automations with immutable Live-mode OAuth bindings.",
     enabled: false,
+  },
+  [FeatureSwitchKey.OfficialWorkflows]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Official Workflow catalog discovery and new installations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -283,12 +291,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
-  [FeatureSwitchKey.IntroVideoTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Expose intro-video templates and their implementation-specific authoring flows.",
-    enabled: false,
-  },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -303,18 +305,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.LatestWebsiteTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use the latest built-in Website template archives, independent registry, and seedream4 default instead of the pre-cutover release.",
-    enabled: true,
-  },
   [FeatureSwitchKey.LatestPresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Use the latest built-in presentation template archives, direct-HTML authoring guidance, and seedream4 image generation instead of the pre-cutover renderer release.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatConversationLocator]: {
     maintainer: "tongx@vm0.ai",
@@ -342,13 +337,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatToolActivity]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Generate and deliver redacted tool activity events in Chat history.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.BuiltInModelProviderFallback]: {
     maintainer: "liangyou@vm0.ai",
     description: "Select healthy fallback routes for built-in platform models.",
@@ -360,6 +348,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
@@ -369,13 +358,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
-  },
-  [FeatureSwitchKey.ComposerFlatFeedbackNote]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Rebuild the composer quote block on ProseMirror's native machinery: the note content element is the block itself and the quote chip is a widget decoration, removing the editable wrapper elements and the custom mutation filtering that let WebKit damage go unnoticed.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
@@ -397,19 +379,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.HomeGrowthEntry]: {
+  [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@vm0.ai",
     description:
-      "Show the home growth entry for Slack, Telegram, phone, member invites, and credits.",
+      "Apply a palette-derived tint across interface surfaces, borders, states, and workspace ambience.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ConnectorDiscovery]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Browse a bounded featured connector catalog and search it by slug or label.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    // Ming only for the first pass; widen once the system mapping settles.
+    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.ConnectorCatalogCount]: {
     maintainer: "ethan@vm0.ai",
@@ -423,14 +399,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Create immutable public snapshots from explicitly selected chat messages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ThreeColumnNav]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Slack-style three-column navigation: a labeled icon rail, a pinned-agents and chat-threads list column, and the conversation pane.",
-    enabled: false,
-    // Ming only for the first pass; widen to staff once it settles.
-    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
@@ -451,6 +419,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable multiple credential accounts per built-in or custom connector.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConcurrencyMemberUsage]: {
     maintainer: "ethan@vm0.ai",

@@ -9,13 +9,13 @@
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
 //! - `provider_event_normalization`: provider semantic arrays before sequencing.
-//! - `claude`: Claude result parsing and tool tracking.
+//! - `claude`: Claude Code tool tracking.
+//! - `jsonl_result`: shared terminal result parsing for JSONL CLI backends.
 //! - `termination`: process-group termination FSM.
 //!
-//! `execute_cli` owns the Claude Code subprocess orchestration, while
-//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle and
-//! Pi uses the same JSONL subprocess lifecycle as Claude Code. Each path retains
-//! ownership of its process, event delivery, heartbeat races, and child
+//! `execute_cli` owns the shared Claude Code/Pi JSONL subprocess orchestration,
+//! while `codex_app_server_backend` owns the Codex JSON-RPC lifecycle. Each path
+//! retains ownership of its process, event delivery, heartbeat races, and child
 //! reaping until completion.
 
 mod child_env;
@@ -33,15 +33,16 @@ mod command;
 mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
+mod jsonl_result;
 mod line_reader;
 mod pi_rpc;
 mod process_group;
 mod provider_event_normalization;
 mod termination;
 
-pub use claude::{ClaudeResultStatus, ClaudeResultSummary};
 pub use codex_setup::setup_codex_for_config;
 pub use codex_startup::CodexStartupTiming;
+pub use jsonl_result::{JsonlResultStatus, JsonlResultSummary};
 
 use crate::active_input::{ActiveInputController, ActiveInputWriter, ReplayUserEventAction};
 use crate::constants;
@@ -55,7 +56,7 @@ use crate::paths;
 use crate::session_metadata::{SessionHistoryLaunchSource, SessionMetadataStore};
 use crate::timing;
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
-use event_delivery::{EventDeliveryRuntime, EventDeliverySender};
+use event_delivery::{EventDeliveryReport, EventDeliveryRuntime, EventDeliverySender};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
@@ -83,10 +84,9 @@ const AGENT_LOG_BUFFER_BYTES: usize = 8 * 1024;
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
 const CODEX_SERVICE_TIER_CANONICAL_ENV: &str = "OKOU_CODEX_SERVICE_TIER";
-const CODEX_SERVICE_TIER_LEGACY_ENV: &str = "VM0_CODEX_SERVICE_TIER";
-const CODEX_SERVICE_TIER_RESOLUTION_EVENT: &str = "codex_service_tier_environment_resolution";
 const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
+const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
 const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
     "analytics.enabled=false",
     "features.plugins=false",
@@ -97,23 +97,6 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CodexServiceTierSource {
-    CanonicalOnly,
-    LegacyOnly,
-    Dual,
-}
-
-impl CodexServiceTierSource {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::CanonicalOnly => "canonical_only",
-            Self::LegacyOnly => "legacy_only",
-            Self::Dual => "dual",
-        }
-    }
-}
 
 #[derive(serde::Serialize)]
 struct ClaudeUserFrame<'a> {
@@ -263,14 +246,14 @@ pub struct CliExecutionResult {
     /// Bounded event-delivery failure details, when delivery was terminally incomplete.
     pub event_delivery: Option<EventDeliveryDiagnostic>,
 
-    /// Claude Code's final result metadata, when a terminal result event was
-    /// observed. Codex uses its own event schema and leaves this unset.
-    pub claude_result: Option<ClaudeResultSummary>,
+    /// Final JSONL result metadata, when a terminal result event was observed.
+    /// Codex uses its own event schema and leaves this unset.
+    pub jsonl_result: Option<JsonlResultSummary>,
 
-    /// Claude Code result that armed post-result cleanup, when cleanup was
-    /// armed. This is intentionally separate from `claude_result` because late
-    /// drained stdout may contain another result event after cleanup starts.
-    pub post_result_cleanup_result: Option<ClaudeResultSummary>,
+    /// JSONL result that armed post-result cleanup, when cleanup was armed.
+    /// This is intentionally separate from `jsonl_result` because late drained
+    /// stdout may contain another result event after cleanup starts.
+    pub post_result_cleanup_jsonl_result: Option<JsonlResultSummary>,
 
     /// Best-effort, secret-masked terminal failure diagnostic parsed from the
     /// framework event stream.
@@ -384,18 +367,6 @@ impl<'a> CliRuntimeConfig<'a> {
         } else {
             None
         };
-        let codex_service_tier = if matches!(config.framework, env::Framework::Codex) {
-            resolve_codex_service_tier(&config.user_env)?
-        } else {
-            None
-        };
-        if let Some((_, source)) = codex_service_tier {
-            log_info!(
-                LOG_TAG,
-                "{CODEX_SERVICE_TIER_RESOLUTION_EVENT} source={}",
-                source.as_str()
-            );
-        }
         let disable_builtin_web_search = config.user_env.contains_key(OKOU_AGENT_ID_ENV_KEY);
         let disallowed_tools = disallowed_tools_with_builtin_web_search_disabled(
             &config.disallowed_tools,
@@ -444,7 +415,8 @@ impl<'a> CliRuntimeConfig<'a> {
             )),
             codex_runtime_config,
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
-            codex_fast_mode: codex_service_tier.is_some_and(|(value, _)| value == "fast"),
+            codex_fast_mode: matches!(config.framework, env::Framework::Codex)
+                && user_env_value(&config.user_env, CODEX_SERVICE_TIER_CANONICAL_ENV) == "fast",
             disable_builtin_web_search,
             agent_execution_deadline,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
@@ -509,28 +481,6 @@ impl<'a> CliRuntimeConfig<'a> {
         let mut user_env = self.user_env.clone();
         user_env.remove(OPENAI_BASE_URL_ENV_KEY);
         Cow::Owned(user_env)
-    }
-}
-
-/// Stage 1 compatibility for the API-authored Codex service tier environment.
-/// Remove the legacy reader only after #28914 cuts the API writer over and
-/// observes zero legacy-only use through the supported rollback window.
-fn resolve_codex_service_tier(
-    user_env: &HashMap<String, String>,
-) -> Result<Option<(&str, CodexServiceTierSource)>, AgentError> {
-    match (
-        user_env.get(CODEX_SERVICE_TIER_CANONICAL_ENV),
-        user_env.get(CODEX_SERVICE_TIER_LEGACY_ENV),
-    ) {
-        (None, None) => Ok(None),
-        (Some(value), None) => Ok(Some((value, CodexServiceTierSource::CanonicalOnly))),
-        (None, Some(value)) => Ok(Some((value, CodexServiceTierSource::LegacyOnly))),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            Ok(Some((canonical, CodexServiceTierSource::Dual)))
-        }
-        (Some(_), Some(_)) => Err(AgentError::Execution(format!(
-            "conflicting Codex service-tier environment keys: {CODEX_SERVICE_TIER_CANONICAL_ENV} and {CODEX_SERVICE_TIER_LEGACY_ENV}"
-        ))),
     }
 }
 
@@ -603,30 +553,6 @@ fn write_claude_append_system_prompt_file(
     paths::ensure_parent_dir(path)?;
     paths::write_private(path, runtime.append_system_prompt.as_bytes())?;
     Ok(())
-}
-
-fn pi_sandbox_event_sequence_start(runtime: &CliRuntimeConfig<'_>) -> Result<u32, AgentError> {
-    let launch_config: serde_json::Value = serde_json::from_str(runtime.pi_launch_config.as_ref())
-        .map_err(|error| AgentError::Execution(format!("parse Pi launch config: {error}")))?;
-    let sequence = launch_config
-        .pointer("/apiFirstTurn/sandboxEventSequenceStart")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| {
-            AgentError::Execution(
-                "Pi launch config requires apiFirstTurn.sandboxEventSequenceStart".to_string(),
-            )
-        })?;
-    let sequence = u32::try_from(sequence).map_err(|_| {
-        AgentError::Execution(
-            "Pi launch config apiFirstTurn.sandboxEventSequenceStart exceeds u32".to_string(),
-        )
-    })?;
-    if sequence != 1 {
-        return Err(AgentError::Execution(
-            "Pi Sandbox event sequence must start at 1".to_string(),
-        ));
-    }
-    Ok(sequence)
 }
 
 fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 4] {
@@ -839,7 +765,16 @@ impl<'a> CliEventIngestor<'a> {
     ) -> Result<(), AgentError> {
         for event in provider_event_normalization::normalize_for_sequencing(self.framework, event) {
             let sequence = self.seq;
-            self.seq += 1;
+            if sequence > MAX_EVENT_SEQUENCE_NUMBER {
+                return Err(AgentError::Execution(
+                    "CLI event sequence exceeds the supported maximum".to_string(),
+                ));
+            }
+            self.seq = sequence.checked_add(1).ok_or_else(|| {
+                AgentError::Execution(
+                    "CLI event sequence exceeds the supported maximum".to_string(),
+                )
+            })?;
             if should_send_events {
                 let event = events::prepare_event_for_delivery(event, sequence, masker);
                 if self.framework == env::Framework::Codex {
@@ -875,6 +810,30 @@ impl<'a> CliEventIngestor<'a> {
 
     fn failure_diagnostic(&self) -> Option<CliFailureDiagnostic> {
         self.failure_diagnostic.clone()
+    }
+}
+
+struct CliEventPipeline<'a> {
+    ingestor: CliEventIngestor<'a>,
+    delivery: EventDeliveryRuntime,
+}
+
+impl<'a> CliEventPipeline<'a> {
+    fn start(
+        runtime: &CliRuntimeConfig<'_>,
+        session_metadata: SessionMetadataStore,
+        http: &HttpClient,
+        initial_sequence: u32,
+    ) -> Result<Self, AgentError> {
+        let delivery =
+            EventDeliveryRuntime::start(http.clone(), &runtime.run_id, initial_sequence)?;
+        let ingestor = CliEventIngestor::new_with_session_metadata(
+            runtime,
+            None,
+            session_metadata,
+            initial_sequence,
+        );
+        Ok(Self { ingestor, delivery })
     }
 }
 
@@ -1002,12 +961,6 @@ async fn execute_cli_inner(
         .await;
     }
 
-    let initial_event_sequence = if matches!(runtime.framework, env::Framework::Pi) {
-        pi_sandbox_event_sequence_start(runtime)?
-    } else {
-        0
-    };
-
     let CliExecutionControls {
         active_input,
         user_cancellation,
@@ -1112,7 +1065,7 @@ async fn execute_cli_inner(
 
     let mut child = cmd.spawn()?;
 
-    let Some(claude_stdin) = child.stdin.take() else {
+    let Some(cli_stdin) = child.stdin.take() else {
         let _ = child.start_kill();
         return Err(AgentError::Execution("no stdin".into()));
     };
@@ -1137,14 +1090,15 @@ async fn execute_cli_inner(
     let mut pi_rpc_projection = pi_execution.then(|| {
         pi_rpc::PiRpcProjection::new(runtime.run_id.as_ref(), runtime.pi_session_id.as_ref())
     });
-    let mut claude_stdin_write_handle = Some({
+    let mut pi_rpc_startup_boundary = pi_execution.then(pi_rpc::PiRpcStartupBoundary::default);
+    let mut stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
         let pi_rpc_cancellation = pi_rpc_cancellation.clone();
         tokio::spawn(async move {
             if pi_execution {
                 pi_rpc::write_commands(
-                    claude_stdin,
+                    cli_stdin,
                     &run_id,
                     &prompt,
                     active_input,
@@ -1154,13 +1108,12 @@ async fn execute_cli_inner(
                 .await
             } else {
                 drop(pi_rpc_response_rx);
-                write_claude_stream_json_to_stdin(claude_stdin, &run_id, &prompt, active_input)
-                    .await
+                write_claude_stream_json_to_stdin(cli_stdin, &run_id, &prompt, active_input).await
             }
         })
     });
 
-    // Stream Claude Code stdout JSONL, racing against heartbeat and process exit.
+    // Stream CLI stdout JSONL, racing against heartbeat and process exit.
     //
     // Event sending is decoupled from stdout reading via an mpsc channel
     // to prevent a deadlock: Bun (Claude CLI runtime) uses blocking stdout
@@ -1228,21 +1181,23 @@ async fn execute_cli_inner(
     // no collection delay or concurrent POST path. Overload enters controlled
     // CLI termination rather than blocking stdout.
     let mut should_send_events = http.has_api();
-    let event_delivery =
-        EventDeliveryRuntime::start(http.clone(), &runtime.run_id, initial_event_sequence)?;
+    let mut event_pipeline = if pi_execution {
+        None
+    } else {
+        Some(CliEventPipeline::start(
+            runtime,
+            session_metadata.clone(),
+            &http,
+            0,
+        )?)
+    };
 
     let mut heartbeat_done = false;
     let mut user_cancellation_handled = false;
     let mut pi_user_cancelled = false;
     let mut cli_exit_at: Option<Instant> = None;
-    let mut claude_result = None;
-    let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new_with_session_metadata(
-        runtime,
-        None,
-        session_metadata,
-        initial_event_sequence,
-    );
+    let mut jsonl_result = None;
+    let mut post_result_cleanup_jsonl_result = None;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -1319,12 +1274,12 @@ async fn execute_cli_inner(
                 );
             }
             stdin_write_result = async {
-                match claude_stdin_write_handle.as_mut() {
+                match stdin_write_handle.as_mut() {
                     Some(handle) => Some(handle.await),
                     None => std::future::pending().await,
                 }
-            }, if claude_stdin_write_handle.is_some() => {
-                claude_stdin_write_handle = None;
+            }, if stdin_write_handle.is_some() => {
+                stdin_write_handle = None;
                 match try_observe_cli_exit(
                     &mut child,
                     &mut cli_status,
@@ -1348,7 +1303,7 @@ async fn execute_cli_inner(
                         termination_runtime.begin_control_failure(
                             TerminationReason::InitialPromptStdin,
                             error,
-                            ControlTerminationLog::ClaudeStdinWriterFailed { error: error_log },
+                            ControlTerminationLog::StdinWriterFailed { error: error_log },
                             termination_deadline.as_mut(),
                         );
                     }
@@ -1359,11 +1314,11 @@ async fn execute_cli_inner(
                         active_input_controller.close_terminal();
                         let error_log = error.to_string();
                         let control_error =
-                            AgentError::Execution(format!("Claude stdin writer task failed: {error_log}"));
+                            AgentError::Execution(format!("CLI stdin writer task failed: {error_log}"));
                         termination_runtime.begin_control_failure(
                             TerminationReason::InitialPromptStdin,
                             control_error,
-                            ControlTerminationLog::ClaudeStdinWriterTaskFailed { error: error_log },
+                            ControlTerminationLog::StdinWriterTaskFailed { error: error_log },
                             termination_deadline.as_mut(),
                         );
                     }
@@ -1386,6 +1341,82 @@ async fn execute_cli_inner(
                         }
 
                         if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            if let Some(startup_boundary) = pi_rpc_startup_boundary.as_mut() {
+                                match startup_boundary.admit(&event) {
+                                    Ok(pi_rpc::PiRpcRecordAdmission::InstallBoundary(sequence)) => {
+                                        match CliEventPipeline::start(
+                                            runtime,
+                                            session_metadata.clone(),
+                                            &http,
+                                            sequence,
+                                        ) {
+                                            Ok(pipeline) => {
+                                                event_pipeline = Some(pipeline);
+                                            }
+                                            Err(error) => {
+                                                startup_boundary.discard_remaining();
+                                                active_input_controller.close_terminal();
+                                                if cli_status.is_some() {
+                                                    break Err(error);
+                                                }
+                                                let error_log = error.to_string();
+                                                termination_runtime.begin_control_failure(
+                                                    TerminationReason::StdoutIngestion,
+                                                    error,
+                                                    ControlTerminationLog::StdoutIngestionFailed {
+                                                        error: error_log,
+                                                    },
+                                                    termination_deadline.as_mut(),
+                                                );
+                                            }
+                                        }
+                                        // The startup control is private CLI/guest state. It is
+                                        // consumed before official RPC projection and is never
+                                        // written to the agent transcript or public delivery.
+                                        continue;
+                                    }
+                                    Ok(pi_rpc::PiRpcRecordAdmission::Project) => {
+                                        if event_pipeline.is_none() {
+                                            startup_boundary.discard_remaining();
+                                            let error = AgentError::Execution(
+                                                "CLI event pipeline was not initialized before Pi RPC projection"
+                                                    .to_string(),
+                                            );
+                                            active_input_controller.close_terminal();
+                                            if cli_status.is_some() {
+                                                break Err(error);
+                                            }
+                                            let error_log = error.to_string();
+                                            termination_runtime.begin_control_failure(
+                                                TerminationReason::StdoutIngestion,
+                                                error,
+                                                ControlTerminationLog::StdoutIngestionFailed {
+                                                    error: error_log,
+                                                },
+                                                termination_deadline.as_mut(),
+                                            );
+                                            continue;
+                                        }
+                                    }
+                                    Ok(pi_rpc::PiRpcRecordAdmission::Discard) => continue,
+                                    Err(error) => {
+                                        active_input_controller.close_terminal();
+                                        if cli_status.is_some() {
+                                            break Err(error);
+                                        }
+                                        let error_log = error.to_string();
+                                        termination_runtime.begin_control_failure(
+                                            TerminationReason::StdoutIngestion,
+                                            error,
+                                            ControlTerminationLog::StdoutIngestionFailed {
+                                                error: error_log,
+                                            },
+                                            termination_deadline.as_mut(),
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
                             if let Some(projection) = pi_rpc_projection.as_mut() {
                                 match projection.project(event, &pi_rpc_response_tx) {
                                     Ok(Some(projected)) => event = projected,
@@ -1439,9 +1470,31 @@ async fn execute_cli_inner(
                                 continue;
                             }
 
+                            let Some(event_pipeline) = event_pipeline.as_mut() else {
+                                let error = AgentError::Execution(
+                                    "CLI event pipeline was not initialized before projection"
+                                        .to_string(),
+                                );
+                                active_input_controller.close_terminal();
+                                if cli_status.is_some() {
+                                    break Err(error);
+                                }
+                                let error_log = error.to_string();
+                                termination_runtime.begin_control_failure(
+                                    TerminationReason::StdoutIngestion,
+                                    error,
+                                    ControlTerminationLog::StdoutIngestionFailed {
+                                        error: error_log,
+                                    },
+                                    termination_deadline.as_mut(),
+                                );
+                                continue;
+                            };
+
                             let post_result_cleanup_was_armed =
                                 termination_runtime.has_post_result_cleanup();
-                            let event_action = event_ingestor
+                            let event_action = event_pipeline
+                                .ingestor
                                 .begin_event(
                                     &mut agent_log,
                                     line.as_bytes(),
@@ -1477,32 +1530,45 @@ async fn execute_cli_inner(
                                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                                 }
                             }
-                            // Print Claude Code final result to stdout if applicable.
+                            // Print the terminal JSONL result to stdout if applicable.
                             if is_terminal_result_event {
-                                let result_summary = ClaudeResultSummary::from_event(&event);
-                                claude_result = Some(result_summary);
+                                let result_summary = JsonlResultSummary::from_event(&event);
+                                jsonl_result = Some(result_summary);
                                 if let Some(diagnostic) =
-                                    events::masked_claude_failure_diagnostic(&event, masker)
+                                    events::masked_jsonl_result_failure_diagnostic(&event, masker)
                                 {
                                     let subtype = diagnostic.subtype.unwrap_or("unknown");
+                                    let (source, result_owner) = match runtime.framework {
+                                        env::Framework::ClaudeCode => {
+                                            (FailureDetailSource::ClaudeResult, "Claude")
+                                        }
+                                        env::Framework::Pi => {
+                                            (FailureDetailSource::PiResult, "Pi")
+                                        }
+                                        env::Framework::Codex => {
+                                            (FailureDetailSource::CodexJsonl, "Codex")
+                                        }
+                                    };
                                     let candidate = CliFailureDiagnostic {
                                         message: diagnostic.message,
-                                        source: FailureDetailSource::ClaudeResult,
+                                        source,
                                         failure_reason: None,
                                     };
                                     log_warn!(
                                         LOG_TAG,
-                                        "Claude JSONL failure result seq={} subtype={subtype}: {}",
-                                        event_ingestor.current_sequence(),
+                                        "{result_owner} JSONL failure result seq={} subtype={subtype}: {}",
+                                        event_pipeline.ingestor.current_sequence(),
                                         candidate.message
                                     );
-                                    event_ingestor.replace_failure_diagnostic(candidate);
+                                    event_pipeline
+                                        .ingestor
+                                        .replace_failure_diagnostic(candidate);
                                 }
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
                                     // Guest-agent stdout is captured as
                                     // system-stream logs, so mask before
-                                    // printing Claude's final result.
+                                    // printing the final result.
                                     println!("{}", masker.mask_string(result));
                                 }
                                 let active_input_idle =
@@ -1519,7 +1585,7 @@ async fn execute_cli_inner(
                                         termination_deadline.as_mut(),
                                     )
                                 {
-                                    post_result_cleanup_result = Some(result_summary);
+                                    post_result_cleanup_jsonl_result = Some(result_summary);
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
@@ -1534,11 +1600,11 @@ async fn execute_cli_inner(
                             );
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
-                            if let Err(error) = event_ingestor.enqueue_event(
+                            if let Err(error) = event_pipeline.ingestor.enqueue_event(
                                 event,
                                 masker,
                                 should_send_events,
-                                event_delivery.sender(),
+                                event_pipeline.delivery.sender(),
                             ) {
                                 should_send_events = false;
                                 if cli_status.is_some() {
@@ -1552,6 +1618,30 @@ async fn execute_cli_inner(
                                     termination_deadline.as_mut(),
                                 );
                             }
+                        } else if pi_rpc_startup_boundary
+                            .as_ref()
+                            .is_some_and(|boundary| {
+                                boundary.requires_boundary()
+                                    || pi_rpc::PiRpcStartupBoundary::looks_like_control(stripped)
+                            })
+                        {
+                            if let Some(boundary) = pi_rpc_startup_boundary.as_mut() {
+                                boundary.discard_remaining();
+                            }
+                            let error = pi_rpc::PiRpcStartupBoundary::malformed_record_error();
+                            active_input_controller.close_terminal();
+                            if cli_status.is_some() {
+                                break Err(error);
+                            }
+                            let error_log = error.to_string();
+                            termination_runtime.begin_control_failure(
+                                TerminationReason::StdoutIngestion,
+                                error,
+                                ControlTerminationLog::StdoutIngestionFailed {
+                                    error: error_log,
+                                },
+                                termination_deadline.as_mut(),
+                            );
                         } else {
                             agent_log.write_raw_line(line.as_bytes()).await;
                         }
@@ -1559,6 +1649,28 @@ async fn execute_cli_inner(
                     Ok(None) => {
                         stdout_closed = true;
                         active_input_controller.close_terminal();
+                        if pi_rpc_startup_boundary
+                            .as_ref()
+                            .is_some_and(pi_rpc::PiRpcStartupBoundary::requires_boundary)
+                        {
+                            if let Some(boundary) = pi_rpc_startup_boundary.as_mut() {
+                                boundary.discard_remaining();
+                            }
+                            let error = pi_rpc::PiRpcStartupBoundary::missing_error();
+                            if cli_status.is_some() {
+                                break Err(error);
+                            }
+                            let error_log = error.to_string();
+                            termination_runtime.begin_control_failure(
+                                TerminationReason::StdoutIngestion,
+                                error,
+                                ControlTerminationLog::StdoutIngestionFailed {
+                                    error: error_log,
+                                },
+                                termination_deadline.as_mut(),
+                            );
+                            continue;
+                        }
                         if cli_status.is_some() {
                             break Ok(());
                         }
@@ -1766,27 +1878,24 @@ async fn execute_cli_inner(
 
     active_input_controller.close_terminal();
     let mut active_input_error = None;
-    if let Some(handle) = claude_stdin_write_handle.take() {
+    if let Some(handle) = stdin_write_handle.take() {
         if handle.is_finished() {
             match handle.await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => {
                     log_warn!(
                         LOG_TAG,
-                        "Claude stdin writer finished after CLI loop with error: {error}"
+                        "CLI stdin writer finished after CLI loop with error: {error}"
                     );
                     if active_input_controller.has_activity() {
                         active_input_error = Some(error);
                     }
                 }
                 Err(error) => {
-                    log_warn!(
-                        LOG_TAG,
-                        "Claude stdin writer failed after CLI loop: {error}"
-                    );
+                    log_warn!(LOG_TAG, "CLI stdin writer failed after CLI loop: {error}");
                     if active_input_controller.has_activity() {
                         active_input_error = Some(AgentError::Execution(format!(
-                            "Claude stdin writer task failed during active-input quiescence: {error}"
+                            "CLI stdin writer task failed during active-input quiescence: {error}"
                         )));
                     }
                 }
@@ -1803,21 +1912,21 @@ async fn execute_cli_inner(
                 Ok(Ok(Err(error))) => active_input_error = Some(error),
                 Ok(Err(error)) => {
                     active_input_error = Some(AgentError::Execution(format!(
-                        "Claude stdin writer task failed during active-input quiescence: {error}"
+                        "CLI stdin writer task failed during active-input quiescence: {error}"
                     )));
                 }
                 Err(_) => {
                     handle.abort();
                     let _ = handle.await;
                     active_input_error = Some(AgentError::Execution(
-                        "Claude stdin writer did not quiesce after terminal close".to_string(),
+                        "CLI stdin writer did not quiesce after terminal close".to_string(),
                     ));
                 }
             }
         } else {
             handle.abort();
             let _ = handle.await;
-            log_info!(LOG_TAG, "Stopped Claude stdin writer after CLI loop");
+            log_info!(LOG_TAG, "Stopped CLI stdin writer after CLI loop");
         }
     }
 
@@ -1839,14 +1948,25 @@ async fn execute_cli_inner(
     } else {
         event_result.err()
     };
+    let last_read_event_at = event_pipeline
+        .as_ref()
+        .and_then(|pipeline| pipeline.ingestor.last_read_event_at());
+    let failure_diagnostic = event_pipeline
+        .as_ref()
+        .and_then(|pipeline| pipeline.ingestor.failure_diagnostic());
 
     // On success, boundedly drain accepted events. On any execution or
     // control error, abort unsent delivery rather than stalling on retries.
-    let delivery_report = if event_error.is_none() && !has_control_error {
-        event_delivery.finish().await
-    } else {
-        Ok(event_delivery.abort().await)
-    }?;
+    let delivery_report = match event_pipeline {
+        Some(pipeline) if event_error.is_none() && !has_control_error => {
+            pipeline.delivery.finish().await?
+        }
+        Some(pipeline) => pipeline.delivery.abort().await,
+        None => EventDeliveryReport {
+            last_acknowledged_sequence: None,
+            diagnostic: None,
+        },
+    };
     let status = match cli_status {
         Some(s) => s,
         None => {
@@ -1855,9 +1975,7 @@ async fn execute_cli_inner(
             status
         }
     };
-    if let (Some(last_read_event_at), Some(cli_exit_at)) =
-        (event_ingestor.last_read_event_at(), cli_exit_at)
-    {
+    if let (Some(last_read_event_at), Some(cli_exit_at)) = (last_read_event_at, cli_exit_at) {
         record_sandbox_op(
             "last_read_event_to_cli_exit",
             cli_exit_at
@@ -1868,8 +1986,7 @@ async fn execute_cli_inner(
         );
     }
     let (mut exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
-    if pi_execution
-        && claude_result.is_some_and(|result| result.status == ClaudeResultStatus::Error)
+    if pi_execution && jsonl_result.is_some_and(|result| result.status == JsonlResultStatus::Error)
     {
         exit_code = 1;
     }
@@ -1917,9 +2034,9 @@ async fn execute_cli_inner(
         stderr_lines: masked_stderr_lines,
         last_event_sequence: delivery_report.last_acknowledged_sequence,
         event_delivery: delivery_report.diagnostic,
-        claude_result,
-        post_result_cleanup_result,
-        failure_diagnostic: event_ingestor.failure_diagnostic(),
+        jsonl_result,
+        post_result_cleanup_jsonl_result,
+        failure_diagnostic,
         control_error,
         cli_termination,
         active_input_delivery_ids,
@@ -2081,9 +2198,8 @@ mod tests {
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, command, exec_boundary,
-        pi_child_env_values, pi_sandbox_event_sequence_start, record_cli_exit,
-        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
-        write_pi_launch_payload_file,
+        pi_child_env_values, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason, write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::paths;
@@ -2158,24 +2274,23 @@ mod tests {
         }
     }
 
-    fn assert_codex_service_tier_resolution(
+    fn assert_codex_service_tier_fast_mode(
         user_env: HashMap<String, String>,
-        expected: Option<(&str, super::CodexServiceTierSource)>,
         expected_fast_mode: bool,
     ) {
-        let _system_log_state_guard = crate::lock_system_log_test_state();
-        guest_common::log::clear_system_log_file();
-        assert_eq!(
-            super::resolve_codex_service_tier(&user_env).unwrap(),
-            expected
-        );
-
         let config = guest_config_for_agent_context(user_env);
         let paths =
             crate::paths::GuestPaths::from_runtime_dir("/tmp/codex-service-tier-resolution-test");
         let runtime = CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
 
         assert_eq!(runtime.codex_fast_mode, expected_fast_mode);
+        let startup_configs = runtime.codex_startup_config_overrides();
+        for config in super::CODEX_FAST_MODE_STARTUP_CONFIGS {
+            assert_eq!(
+                startup_configs.contains(&config.to_string()),
+                expected_fast_mode
+            );
+        }
     }
 
     fn runtime_for_command_test<'a>(
@@ -2365,30 +2480,6 @@ mod tests {
     }
 
     #[test]
-    fn pi_event_sequence_continues_after_the_api_first_turn() {
-        let user_env = HashMap::new();
-        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
-        runtime.pi_launch_config =
-            Cow::Borrowed(r#"{"schemaVersion":2,"apiFirstTurn":{"sandboxEventSequenceStart":1}}"#);
-
-        assert_eq!(pi_sandbox_event_sequence_start(&runtime).unwrap(), 1);
-    }
-
-    #[test]
-    fn pi_event_sequence_rejects_a_missing_handoff_boundary() {
-        let user_env = HashMap::new();
-        let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
-        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
-
-        assert_eq!(
-            pi_sandbox_event_sequence_start(&runtime)
-                .unwrap_err()
-                .to_string(),
-            "execution: Pi launch config requires apiFirstTurn.sandboxEventSequenceStart"
-        );
-    }
-
-    #[test]
     fn codex_runtime_accepts_okou_agent_context() {
         let config = guest_config_for_agent_context(HashMap::from([(
             super::OKOU_AGENT_ID_ENV_KEY.to_string(),
@@ -2407,169 +2498,61 @@ mod tests {
     }
 
     #[test]
-    fn codex_service_tier_resolver_preserves_absence() {
-        assert_codex_service_tier_resolution(HashMap::new(), None, false);
-    }
-
-    #[test]
-    fn codex_service_tier_resolver_accepts_canonical_only() {
+    fn codex_service_tier_preserves_canonical_semantics() {
+        assert_codex_service_tier_fast_mode(HashMap::new(), false);
         for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
-            assert_codex_service_tier_resolution(
+            assert_codex_service_tier_fast_mode(
                 HashMap::from([(
                     super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
                     value.to_string(),
                 )]),
-                Some((value, super::CodexServiceTierSource::CanonicalOnly)),
                 expected_fast_mode,
             );
         }
     }
 
     #[test]
-    fn codex_service_tier_resolver_accepts_legacy_only() {
-        for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
-            assert_codex_service_tier_resolution(
-                HashMap::from([(
-                    super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                    value.to_string(),
-                )]),
-                Some((value, super::CodexServiceTierSource::LegacyOnly)),
-                expected_fast_mode,
-            );
-        }
-    }
+    fn codex_service_tier_ignores_retired_alias() {
+        let retired_key = "VM0_CODEX_SERVICE_TIER";
+        assert_codex_service_tier_fast_mode(
+            HashMap::from([(retired_key.to_string(), "fast".to_string())]),
+            false,
+        );
 
-    #[test]
-    fn codex_service_tier_resolver_accepts_equal_dual() {
-        for (value, expected_fast_mode) in [("fast", true), ("", false), ("priority", false)] {
-            assert_codex_service_tier_resolution(
+        for (canonical, legacy, expected_fast_mode) in
+            [("fast", "priority", true), ("priority", "fast", false)]
+        {
+            assert_codex_service_tier_fast_mode(
                 HashMap::from([
                     (
                         super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                        value.to_string(),
+                        canonical.to_string(),
                     ),
-                    (
-                        super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                        value.to_string(),
-                    ),
+                    (retired_key.to_string(), legacy.to_string()),
                 ]),
-                Some((value, super::CodexServiceTierSource::Dual)),
                 expected_fast_mode,
             );
         }
     }
 
     #[test]
-    fn codex_service_tier_resolver_rejects_conflicting_dual_without_values() {
-        let canonical_value = "canonical-value-must-not-leak";
-        let legacy_value = "legacy-value-must-not-leak";
-        let user_env = HashMap::from([
-            (
-                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                canonical_value.to_string(),
-            ),
-            (
-                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                legacy_value.to_string(),
-            ),
-        ]);
-
-        let resolver_error = super::resolve_codex_service_tier(&user_env)
-            .expect_err("conflicting aliases must fail")
-            .to_string();
-        let config = guest_config_for_agent_context(user_env);
-        let paths =
-            crate::paths::GuestPaths::from_runtime_dir("/tmp/codex-service-tier-conflict-test");
-        let config_error = CliRuntimeConfig::from_config(&config, &paths, Instant::now())
-            .err()
-            .expect("conflicting aliases must fail before Codex startup")
-            .to_string();
-
-        assert_eq!(resolver_error, config_error);
-        assert!(
-            resolver_error.contains(super::CODEX_SERVICE_TIER_CANONICAL_ENV)
-                && resolver_error.contains(super::CODEX_SERVICE_TIER_LEGACY_ENV)
-        );
-        assert!(!resolver_error.contains(canonical_value));
-        assert!(!resolver_error.contains(legacy_value));
-    }
-
-    #[test]
-    fn codex_service_tier_resolution_log_is_fixed_shape_and_value_free() {
+    fn codex_service_tier_value_is_not_logged() {
         let _system_log_state_guard = crate::lock_system_log_test_state();
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
+        std::fs::File::create(&system_log_path).unwrap();
         let system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
         let paths = crate::paths::GuestPaths::from_runtime_dir(tmp.path());
-        let successful_cases = [
-            HashMap::from([(
-                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                "canonical-value-must-not-log".to_string(),
-            )]),
-            HashMap::from([(
-                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                "legacy-value-must-not-log".to_string(),
-            )]),
-            HashMap::from([
-                (
-                    super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                    "dual-value-must-not-log".to_string(),
-                ),
-                (
-                    super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                    "dual-value-must-not-log".to_string(),
-                ),
-            ]),
-        ];
-
-        for user_env in successful_cases {
-            let config = guest_config_for_agent_context(user_env);
-            CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
-        }
-        let absent_config = guest_config_for_agent_context(HashMap::new());
-        CliRuntimeConfig::from_config(&absent_config, &paths, Instant::now()).unwrap();
-        let conflict_config = guest_config_for_agent_context(HashMap::from([
-            (
-                super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                "conflicting-canonical-value-must-not-log".to_string(),
-            ),
-            (
-                super::CODEX_SERVICE_TIER_LEGACY_ENV.to_string(),
-                "conflicting-legacy-value-must-not-log".to_string(),
-            ),
-        ]));
-        assert!(CliRuntimeConfig::from_config(&conflict_config, &paths, Instant::now()).is_err());
+        let value = "canonical-value-must-not-log";
+        let config = guest_config_for_agent_context(HashMap::from([(
+            super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
+            value.to_string(),
+        )]));
+        CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
 
         drop(system_log_guard);
         let system_log = std::fs::read_to_string(&system_log_path).unwrap();
-        let event_prefix = format!("[{}] ", super::LOG_TAG);
-        let evidence = system_log
-            .lines()
-            .filter(|line| line.contains(super::CODEX_SERVICE_TIER_RESOLUTION_EVENT))
-            .map(|line| {
-                line.rsplit_once(&event_prefix)
-                    .expect("resolution evidence must use the guest logger tag")
-                    .1
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            evidence,
-            [
-                "codex_service_tier_environment_resolution source=canonical_only",
-                "codex_service_tier_environment_resolution source=legacy_only",
-                "codex_service_tier_environment_resolution source=dual",
-            ]
-        );
-        for value in [
-            "canonical-value-must-not-log",
-            "legacy-value-must-not-log",
-            "dual-value-must-not-log",
-            "conflicting-canonical-value-must-not-log",
-            "conflicting-legacy-value-must-not-log",
-        ] {
-            assert!(!system_log.contains(value));
-        }
+        assert!(!system_log.contains(value));
     }
 
     #[test]

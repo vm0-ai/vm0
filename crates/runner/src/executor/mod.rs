@@ -40,6 +40,7 @@ mod session_history_restore_plan;
 mod session_id;
 mod session_restore;
 mod storage;
+mod storage_baseline_observation;
 mod telemetry;
 mod workspace_session_history_materializer;
 
@@ -72,13 +73,13 @@ use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationSignals;
 use api_contracts::generated::constants::runners::{
-    RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+    AGENT_EXECUTION_TIMEOUT_SECONDS, RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
     paths::{CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR},
 };
 use guest_contracts::exec_terminal::EXEC_TERMINAL_CLEANUP_BUDGET;
 
-/// Maximum guest-side runtime budget for a single agent process (2 hours).
-const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
+/// Maximum guest-side runtime budget for a single agent process.
+const JOB_TIMEOUT: Duration = Duration::from_secs(AGENT_EXECUTION_TIMEOUT_SECONDS);
 /// Exit code used when the runner's job timeout stops an agent process.
 const JOB_TIMEOUT_EXIT_CODE: i32 = guest_contracts::diagnostics::AGENT_EXECUTION_TIMEOUT_EXIT_CODE;
 /// Bounded best-effort window after the execution budget for recovery
@@ -187,7 +188,7 @@ fn guest_runtime_path(
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
     pub api_url: String,
-    pub runner_name: String,
+    pub runner_hostname: Option<String>,
     pub registry: ProxyRegistryHandle,
     pub http: HttpClient,
     pub log_paths: LogPaths,
@@ -200,6 +201,7 @@ pub struct ExecutorConfig {
     pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,
     pub(crate) background_fill: crate::storage_cache::StorageCacheBackgroundFillCoordinator,
     pub(crate) pre_spawn_admission: crate::pre_spawn_admission::PreSpawnAdmission,
+    pub(crate) storage_baseline_observer: storage_baseline_observation::StorageBaselineObserver,
     pub home: HomePaths,
     pub workspace_cache: Option<WorkspaceImageCache>,
 }
@@ -216,20 +218,23 @@ pub struct JobParams {
 
 #[derive(Clone)]
 pub(crate) struct SandboxPreparedNotifier {
-    callback: Arc<dyn Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync>,
+    callback: Arc<dyn Fn(RunId, SandboxId) -> BoxFuture<'static, RunnerResult<()>> + Send + Sync>,
 }
 
 impl SandboxPreparedNotifier {
     pub(crate) fn new(
-        callback: impl Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync + 'static,
+        callback: impl Fn(RunId, SandboxId) -> BoxFuture<'static, RunnerResult<()>>
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         Self {
             callback: Arc::new(callback),
         }
     }
 
-    async fn notify(&self, run_id: RunId, sandbox_id: SandboxId) {
-        (self.callback)(run_id, sandbox_id).await;
+    async fn notify(&self, run_id: RunId, sandbox_id: SandboxId) -> RunnerResult<()> {
+        (self.callback)(run_id, sandbox_id).await
     }
 }
 
@@ -605,12 +610,15 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         config.http.clone(),
         run_id,
         context.sandbox_token.clone(),
-        config.runner_name.clone(),
+        config.runner_hostname.clone(),
     );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
+    config
+        .storage_baseline_observer
+        .record(&context, params, &mut telemetry);
 
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
-    record_api_latency("api_to_vm_start", &context, &mut telemetry);
+    record_api_latency("api_to_sandbox_start", &context, &mut telemetry);
 
     let sandbox_id = dispatch.id.to_string();
     let outcome = match validate_execution_context_before_sandbox(
@@ -713,12 +721,15 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         config.http.clone(),
         run_id,
         context.sandbox_token.clone(),
-        config.runner_name.clone(),
+        config.runner_hostname.clone(),
     );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
+    config
+        .storage_baseline_observer
+        .record(&context, params, &mut telemetry);
 
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
-    record_api_latency("api_to_vm_start", &context, &mut telemetry);
+    record_api_latency("api_to_sandbox_start", &context, &mut telemetry);
 
     let sandbox_id = idle_sandbox.sandbox_id();
     let ReusableIdleSandboxParts {

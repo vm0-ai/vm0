@@ -14,6 +14,7 @@ type FirewallSupportedProvider = Exclude<
   | "custom-anthropic-messages"
   | "custom-openai-responses"
   | "vm0"
+  | "built-in"
 >;
 type LegacySingleSecretProvider = Exclude<
   FirewallSupportedProvider,

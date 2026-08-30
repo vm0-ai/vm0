@@ -227,7 +227,7 @@ def test_unparseable_no_hints_writes_error_to_proxy_log(x_usage, tmp_path, real_
     assert "parse_error" not in entry
 
 
-def test_unparseable_no_hints_without_proxy_log_path_logs_stderr(
+def test_unparseable_no_hints_without_proxy_log_path_emits_process_event(
     x_usage, tmp_path, real_flow, mitm_ctx
 ):
     flow = x_usage.make_flow(
@@ -242,13 +242,13 @@ def test_unparseable_no_hints_without_proxy_log_path_logs_stderr(
     with mitm_ctx(api_url="https://api.vm0.ai") as log:
         usage.report_connector_usage(flow, "run-abc-123")
 
-    messages = [call.args[0] for call in log.error.call_args_list]
+    fields = [call.args[1] for call in log.error.call_args_list]
     assert any(
-        message.startswith(
-            "type=usage_underbilling reason=unparseable_usage_response "
-            "underbilling_class=confirmed component=mitm_addon "
-        )
-        for message in messages
+        field["type"] == "usage_underbilling"
+        and field["reason"] == "unparseable_usage_response"
+        and field["underbilling_class"] == "confirmed"
+        and field["component"] == "mitm_addon"
+        for field in fields
     )
 
 

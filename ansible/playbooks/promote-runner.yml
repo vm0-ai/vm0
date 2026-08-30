@@ -32,14 +32,26 @@
     # Connection failures can replay the current task. Keep remote tasks
     # convergent or protect their complete operation with a stable lock.
     ansible_ssh_retries: 1
-    runner_name: "v{{ runner_version }}"
+    runner_release: "v{{ runner_version }}"
     data_dir: /var/lib/vm0-runner
-    bin_dir: "{{ data_dir }}/bin/{{ runner_name }}"
-    runner_dir: "{{ data_dir }}/runners/{{ runner_name }}"
+    bin_dir: "{{ data_dir }}/bin/{{ runner_release }}"
+    runner_dir: "{{ data_dir }}/runners/{{ runner_release }}"
+    runner_host_env_file: /etc/vm0-runner/host.env
 
   tasks:
     - name: Validate runner architecture
       include_tasks: ../tasks/validate-runner-architecture.yml
+
+    - name: Migrate runner host tuning aliases atomically
+      script:
+        cmd: >-
+          ../files/runner-host-env-alias-cutover.py migrate
+          {{ runner_host_env_file | quote }}
+        executable: python3
+      register: runner_host_env_alias_migration
+      changed_when: >-
+        'host_env_alias_cutover=migrated'
+        in runner_host_env_alias_migration.stdout
 
     # ========================================
     # Phase 3b: Install systemd service (traffic cutover point)
@@ -49,7 +61,7 @@
         - name: Install and start runner service
           command: >
             {{ bin_dir }}/runner service install
-            --name {{ runner_name }}
+            --name {{ runner_release }}
             --config {{ runner_dir }}/runner.yaml
             {% if sentry_dsn is defined and sentry_dsn %}
             --env SENTRY_DSN={{ sentry_dsn }}
@@ -65,20 +77,43 @@
         # Phase 4: Readiness + health check
         # ========================================
         - name: Wait for target runner readiness
-          command: "{{ bin_dir }}/runner service wait-running --name {{ runner_name }} --timeout-secs 120"
+          command: "{{ bin_dir }}/runner service wait-running --name {{ runner_release }} --timeout-secs 120"
           changed_when: false
 
         - name: Verify runner health
-          command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
+          command: "{{ bin_dir }}/runner doctor --name {{ runner_release }}"
       rescue:
         - name: Stop failed target runner service with runner cleanup
-          command: "{{ bin_dir }}/runner service stop --name {{ runner_name }} --force --cleanup failed-start"
+          command: "{{ bin_dir }}/runner service stop --name {{ runner_release }} --force --cleanup failed-start"
+          failed_when: false
+
+        - name: Restore runner host tuning aliases after target failure
+          script:
+            cmd: >-
+              ../files/runner-host-env-alias-cutover.py restore
+              {{ runner_host_env_file | quote }}
+            executable: python3
+          register: runner_host_env_alias_restoration
+          changed_when: >-
+            'host_env_alias_cutover=restored'
+            in runner_host_env_alias_restoration.stdout
 
         - name: Fail promote after target runner readiness failure
           fail:
             msg: >-
-              Runner {{ runner_name }} failed readiness or health checks and
-              was stopped to avoid leaving a non-admitting service running.
+              Runner {{ runner_release }} failed readiness or health checks and
+              the exact pre-promotion host configuration was restored.
+
+    - name: Finalize runner host tuning alias migration
+      script:
+        cmd: >-
+          ../files/runner-host-env-alias-cutover.py finalize
+          {{ runner_host_env_file | quote }}
+        executable: python3
+      register: runner_host_env_alias_finalization
+      changed_when: >-
+        'host_env_alias_cutover=migrated'
+        in runner_host_env_alias_finalization.stdout
 
     # ========================================
     # Phase 5: Drain old runners + Cleanup
@@ -96,7 +131,7 @@
     - name: Drain old runner services
       command: "{{ bin_dir }}/runner service drain --name {{ item }}"
       loop: "{{ runner_service_candidates.stdout_lines | default([]) }}"
-      when: item != runner_name
+      when: item != runner_release
       ignore_errors: true
 
     - name: Garbage collect old artifacts
@@ -106,4 +141,4 @@
     # Phase 6: Final health check
     # ========================================
     - name: Verify runner health after cleanup
-      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
+      command: "{{ bin_dir }}/runner doctor --name {{ runner_release }}"

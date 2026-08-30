@@ -2523,6 +2523,10 @@ describe("RUN-04: agent run telemetry families", () => {
       expect(runner.body).toStrictEqual({
         sandboxReuseResult: scenario.sandboxResult,
         workspaceReuseResult: scenario.workspaceResult ?? null,
+        runnerHostname: null,
+        runnerVersion: null,
+        runnerId: expect.any(String),
+        runnerHeartbeatGeneration: 1,
       });
     }
   });
@@ -2571,6 +2575,10 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(sandboxResult.body).toStrictEqual({
       sandboxReuseResult: null,
       workspaceReuseResult: "reused",
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
     const workspaceResult = await api.requestRunRunner(
       actor,
@@ -2580,6 +2588,10 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(workspaceResult.body).toStrictEqual({
       sandboxReuseResult: "poolMiss",
       workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
   });
 
@@ -3156,12 +3168,24 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(runner.body).toStrictEqual({
       sandboxReuseResult: "reused",
       workspaceReuseResult: "sandboxReused",
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: expect.any(String),
+      runnerHeartbeatGeneration: 1,
     });
     const bareRunner = await api.requestRunRunner(actor, bareRun.runId, [200]);
     expect(bareRunner.body).toStrictEqual({
       sandboxReuseResult: null,
       workspaceReuseResult: null,
+      runnerHostname: null,
+      runnerVersion: null,
+      runnerId: null,
+      runnerHeartbeatGeneration: null,
     });
+
+    const memberRunner = await api.requestRunRunner(member, runId, [404]);
+    expectApiError(memberRunner.body);
+    expect(memberRunner.body.error.message).toBe("Agent run not found");
 
     await api.requestCancelRun(actor, bareRun.runId, [200]);
   });

@@ -121,7 +121,10 @@
         "cacheMiss": "Tidak ada workspace dalam cache yang cocok dengan kunci penggunaan ulang.",
         "deviceLimitMismatch": "Entri pool idle ada, tetapi status rate limiter perangkatnya tidak cocok.",
         "diskPressure": "Penggunaan ulang workspace dilewati karena runner mengalami tekanan disk.",
+        "environment": "Lingkungan",
         "featureDisabled": "Penggunaan ulang sandbox dinonaktifkan untuk run ini.",
+        "generation": "Generasi",
+        "hostname": "Nama host",
         "invalidMetadata": "Metadata workspace dalam cache tidak valid.",
         "invalidWorkingDir": "Direktori kerja yang diminta tidak dapat digunakan ulang.",
         "lockBusy": "Run lain sedang menyiapkan workspace yang sama.",
@@ -129,21 +132,28 @@
         "noSessionId": "Hasil lama: alasan pasti sandbox tidak digunakan ulang tidak tersedia.",
         "notConfigured": "Penggunaan ulang workspace tidak dikonfigurasi untuk run ini.",
         "notReused": "Tidak digunakan ulang",
+        "outcomeUnavailableDescription": "Detail tambahan tidak tersedia.",
         "poolMiss": "Tidak ada sandbox yang cocok ditemukan di pool idle.",
         "profileMismatch": "Entri pool idle ada, tetapi profilnya tidak cocok.",
         "provisioning": "Menyiapkan",
         "reused": "Digunakan ulang",
         "reusedDescription": "Sandbox dibuka kembali dari pool idle.",
+        "runnerId": "ID runner",
         "sandbox": "Sandbox",
         "sandboxPrepareFallback": "Workspace dalam cache ditemukan, tetapi tidak dapat digunakan setelah persiapan sandbox.",
         "sandboxReusedDescription": "Workspace tetap tersedia di dalam sandbox yang digunakan ulang.",
         "startup": "Startup",
         "startupCold": "Cold start",
+        "startupColdDescription": "Sandbox dan workspace baru disiapkan.",
         "startupSandbox": "Penggunaan ulang sandbox",
+        "startupSandboxDescription": "Sandbox dan workspace-nya digunakan kembali.",
         "startupUnknown": "Tidak diketahui",
+        "startupUnknownDescription": "Detail penggunaan kembali saat startup tidak tersedia.",
         "startupWorkspace": "Penggunaan ulang workspace",
+        "startupWorkspaceDescription": "Sandbox baru memulihkan workspace yang di-cache.",
         "unavailable": "Tidak tersedia",
         "unparkFailed": "Percobaan membuka kembali gagal; sandbox baru disediakan.",
+        "version": "Versi",
         "workspace": "Workspace",
         "workspaceNoReuseKey": "Tidak ada kunci penggunaan ulang workspace yang tersedia.",
         "workspaceReusedDescription": "Workspace dipulihkan dari cache runner."
@@ -431,7 +441,6 @@
       "ariaLabel": "Bilah samping",
       "chat": "Chat",
       "collapse": "Ciutkan sidebar",
-      "expand": "Perluas sidebar",
       "hideChatList": "Sembunyikan daftar chat",
       "manage": "Kelola",
       "mobile": {
@@ -455,7 +464,7 @@
         "workflows": "Alur kerja",
         "works": "Bekerja"
       },
-      "searchConversations": "Cari percakapan",
+      "searchWorkspace": "Cari ruang kerja",
       "showChatList": "Tampilkan daftar chat",
       "workspaceSwitcher": {
         "create": "Buat ruang kerja",
@@ -505,7 +514,6 @@
         "arrow": "Panah",
         "box": "Kotak",
         "pen": "Gambar",
-        "redact": "Sensor",
         "text": "Teks"
       },
       "undo": "Urungkan"
@@ -1065,6 +1073,7 @@
         "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "secondFactorTitle": "Verifikasi tambahan diperlukan",
         "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "signedInAs": "Masuk sebagai {{identifier}}",
         "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "unsupportedTitle": "Langkah masuk tidak tersedia"
       },
@@ -1073,7 +1082,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Gunakan proses masuk saat ini",
         "addAccount": "Tambah akun",
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",
@@ -1103,6 +1111,7 @@
         "hidePassword": "Sembunyikan kata sandi",
         "identifierLabel": "Alamat email atau nama pengguna",
         "identifierPlaceholder": "Masukkan alamat email atau nama pengguna Anda",
+        "lastUsed": "Terakhir digunakan",
         "methodsHelpPrompt": "Tidak memiliki salah satu opsi ini?",
         "newPasswordLabel": "Kata sandi baru",
         "newPasswordSubtitle": "Untuk alasan keamanan, Anda harus mereset kata sandi.",
@@ -1140,7 +1149,6 @@
         "verify": "Verifikasi"
       },
       "signUp": {
-        "action": "Gunakan pendaftaran saat ini",
         "alreadyHaveAccount": "Sudah punya akun?",
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",
@@ -1690,7 +1698,6 @@
         "inviteMember": "Undang manusia 🤝",
         "otherChannels": "Telegram dan telepon"
       },
-      "invitePeople": "Undang orang",
       "taglines": {
         "anonymous": {
           "buildSomething": "Siap membangun sesuatu?",
@@ -1885,18 +1892,17 @@
       "agentSuggestions": "Agen",
       "configureModel": "Konfigurasikan model",
       "createWorkflow": "Buat alur kerja",
+      "imageModelForThisChat": "Model gambar untuk chat ini",
       "message": "Pesan",
+      "modelForThisChat": "Model untuk chat ini",
       "placeholder": "Minta saya mengotomatiskan alur kerja, mengelola tugas...",
       "selectedModelUnavailable": "Model yang dipilih tidak tersedia. Konfigurasikan sebelum mengirim.",
       "selectedModelUnavailableToast": "Model yang dipilih tidak tersedia",
       "selectModel": "Pilih model",
-      "setAsDefault": "Jadikan default",
-      "temporaryFastModeDisabledNotice": "Mode Cepat dinonaktifkan sementara untuk proses ini",
-      "temporaryFastModeEnabledNotice": "Mode Cepat diaktifkan sementara untuk proses ini",
-      "temporaryImageModelNotice": "Sementara beralih ke {{model}} untuk gambar",
-      "temporaryModelNotice": "Sementara beralih ke {{model}}",
-      "temporaryVideoModelNotice": "Sementara beralih ke {{model}} untuk video",
+      "temporarilySwitchTo": "Beralih sementara ke",
       "threadSuggestions": "Thread chat",
+      "useForFutureChats": "Gunakan ini untuk chat berikutnya",
+      "videoModelForThisChat": "Model video untuk chat ini",
       "visualAttachmentsUnsupported": "{{modelName}} tidak dapat mengenali gambar atau video. Ganti ke model yang mendukung visi untuk melampirkannya.",
       "workflows": {
         "empty": "Tidak ada alur kerja yang cocok",
@@ -1933,6 +1939,7 @@
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
+      "back": "Kembali",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
       "defaultAccountFor": "{{connector}} · Menggunakan akun default: {{account}}",
@@ -1988,7 +1995,7 @@
       "agents": "Agen",
       "back": "Kembali",
       "content": "Konten",
-      "description": "Teruskan konten yang dipilih ke agen atau chat.",
+      "description": "Kirim konten yang dipilih ke agen atau chat untuk melanjutkan pengerjaannya.",
       "noResults": "Agen atau chat tidak ditemukan",
       "search": "Cari agen dan chat...",
       "sent": "Berhasil diteruskan",
@@ -2300,48 +2307,6 @@
       "copied": "Disalin",
       "deleted": "Chat dihapus"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Sedang mengubah file",
-            "singular": "Sedang mengubah sebuah file"
-          },
-          "terminal": {
-            "plural": "File telah diubah",
-            "singular": "Sebuah file telah diubah"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Sedang membaca file",
-            "singular": "Sedang membaca sebuah file"
-          },
-          "terminal": {
-            "plural": "File telah dibaca",
-            "singular": "Sebuah file telah dibaca"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Sedang menjalankan perintah",
-            "singular": "Sedang menjalankan sebuah perintah"
-          },
-          "terminal": {
-            "plural": "Perintah telah dijalankan",
-            "singular": "Sebuah perintah telah dijalankan"
-          }
-        }
-      },
-      "collapse": "Ciutkan aktivitas alat",
-      "expand": "Luaskan aktivitas alat",
-      "status": {
-        "cancelled": "Dibatalkan",
-        "error": "Gagal",
-        "pending": "Sedang berlangsung",
-        "success": "Selesai"
-      }
-    },
     "voice": {
       "checkingLimit": "Memeriksa batas input suara",
       "input": "Input suara",
@@ -2409,9 +2374,8 @@
       "summaryMany_other": "",
       "summaryOne": "{{value}} akun",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} memerlukan perhatian",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention": "{{value}}/{{total}} memerlukan perhatian",
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Terapkan",
@@ -2475,6 +2439,8 @@
       "access": {
         "add": "Tambah akses",
         "manage": "Kelola akses {{connector}}",
+        "summaryMany": "{{value}} agen",
+        "unavailable": "Akses tidak tersedia",
         "usedBy": "Digunakan oleh "
       },
       "categories": {
@@ -5023,6 +4989,20 @@
         "sectionTitle": "Akun & Keamanan"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Terapkan palet yang cerah dan lembut ke setiap lapisan antarmuka.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Tema warna"
+        },
         "description": "Pilih tampilan antarmuka.",
         "sectionTitle": "Tampilan",
         "theme": {
@@ -5323,15 +5303,20 @@
       "viewSource": "Sumber diagram"
     },
     "notFound": {
+      "action": "Kembali ke beranda",
       "description": "Halaman yang Anda cari tidak ada.",
       "title": "Halaman tidak ditemukan"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Percakapan yang dibagikan ini tidak ada.",
+    "handoffDescription": "{{assistantName}} membawa konteks ke percakapan baru",
+    "handoffPrompt": "Lanjutkan percakapan yang dibagikan ini dengan saya: {{url}}",
+    "makeConversationYours": "Jadikan percakapan ini milik Anda",
     "notFoundTitle": "Percakapan yang dibagikan tidak ditemukan",
-    "tryOkou": "Coba {{assistantName}}"
+    "share": "Bagikan",
+    "signIn": "Masuk",
+    "signUp": "Daftar",
+    "tryItYourself": "Coba sendiri"
   },
   "usage": {
     "displayNames": {
@@ -6076,6 +6061,67 @@
       },
       "title": "Alur kerja",
       "viewAutomations": "Lihat otomatisasi"
+    },
+    "official": {
+      "activeInstallationDescription": "Workflow Resmi ini tetap beroperasi dan konten terkelolanya tetap hanya-baca.",
+      "activeInstallationTitle": "Workflow Resmi",
+      "agent": "Agen",
+      "automationCount_one": "{{count}} automasi",
+      "automationCount_other": "{{count}} automasi",
+      "badge": "Resmi",
+      "browse": "Jelajahi yang Resmi",
+      "chooseValue": "Pilih nilai",
+      "copySucceededUninstallFailed": "Salinan sudah siap, tetapi Workflow Resmi asli tidak dapat dihapus instalasinya.",
+      "description": "Instal workflow terkelola yang dipelihara oleh vm0.",
+      "empty": "Tidak ada Workflow Resmi yang tersedia.",
+      "includedAutomations": "Automasi yang disertakan",
+      "install": "Instal",
+      "installDescription": "Pilih Agen dan lengkapi setiap parameter wajib. Semua automasi yang disertakan akan diinstal.",
+      "installed": "Workflow Resmi telah diinstal",
+      "installErrorDescription": "Periksa Agen dan nilai parameter, lalu coba lagi.",
+      "installErrorTitle": "Workflow Resmi tidak dapat diinstal",
+      "installTitle": "Instal {{name}}",
+      "intendedOff": "seharusnya nonaktif",
+      "intendedOn": "seharusnya aktif",
+      "loadErrorDescription": "Katalog ini mungkin tidak tersedia atau belum diaktifkan untuk akun Anda.",
+      "loadErrorTitle": "Workflow Resmi tidak dapat dimuat",
+      "no": "Tidak",
+      "noParameters": "Tidak ada parameter yang diperlukan.",
+      "noResults": "Tidak ada Workflow Resmi yang cocok dengan pencarian Anda.",
+      "notFound": "Workflow Resmi ini tidak ditemukan.",
+      "parameterCount_one": "{{count}} parameter",
+      "parameterCount_other": "{{count}} parameter",
+      "parameterRequired": "{{key}} (wajib)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Konfigurasi ulang",
+      "reconfigured": "Workflow Resmi dikonfigurasi ulang",
+      "reconfigureDescription": "Perbarui parameter bertipe tanpa mengganti Workflow ini atau automasinya.",
+      "reconfigureDialogDescription": "Tinjau setiap automasi terkelola dan perbarui parameternya.",
+      "reconfigureErrorDescription": "Tinjau nilai yang wajib, lalu coba lagi.",
+      "reconfigureErrorTitle": "Workflow Resmi tidak dapat dikonfigurasi ulang",
+      "reconfigureTitle": "Parameter instalasi",
+      "reconfigureUnavailable": "Metadata parameter otoritatif untuk sementara tidak tersedia.",
+      "retiredBadge": "Resmi · Dipensiunkan",
+      "retiredDefinitionDescription": "Definisi yang dipertahankan ini dapat dilihat, tetapi tidak dapat diinstal lagi.",
+      "retiredInstallationDescription": "Definisi ini telah dipensiunkan. Instalasi Anda yang ada tetap beroperasi dan hanya-baca hingga Anda menghapus instalasinya.",
+      "retiredInstallationTitle": "Workflow Resmi dipensiunkan",
+      "retiredTitle": "Definisi dipensiunkan",
+      "retry": "Coba lagi",
+      "search": "Cari Workflow Resmi",
+      "selectAgent": "Pilih Agen",
+      "statusCurrent": "Terkini",
+      "statusFailed": "Gagal",
+      "statusNeedsReconfiguration": "Perlu konfigurasi ulang",
+      "statusReconciling": "Menyelaraskan",
+      "title": "Workflow Resmi",
+      "unavailableInstallationDescription": "Definisi yang diterima untuk sementara tidak tersedia. Kontrol operasional yang ada tetap tersedia.",
+      "unavailableInstallationTitle": "Definisi Resmi tidak tersedia",
+      "uninstall": "Hapus instalasi",
+      "uninstallConfirm": "Tindakan ini menghapus instalasi Resmi dan semua automasinya. Tindakan ini tidak dapat dibatalkan.",
+      "uninstallDescription": "Hapus instalasi Workflow Resmi ini melalui siklus hidup terkelolanya.",
+      "uninstallTitle": "Hapus instalasi Workflow Resmi",
+      "viewAndInstall": "Lihat dan instal",
+      "yes": "Ya"
     }
   },
   "works": {

@@ -1,11 +1,6 @@
-import {
-  outputToolPayloadSchema,
-  type OutputToolPayload,
-} from "@okouai/api-contracts/contracts/chat-events";
 import { command } from "ccstate";
-import { and, asc, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { chatEvents } from "@okouai/db/schema/chat-event";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 
 import type {
@@ -26,16 +21,7 @@ import {
 } from "./chat-first-assistant-event-metric.service";
 import { chatThreadForRunFromDb } from "./chat-thread.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
-import {
-  normalizeAgentToolEvent,
-  terminalToolSummary,
-} from "./agent-tool-event-normalization";
-import {
-  toolUseIdForProviderOperation,
-  toolUseIdForRunEvent,
-} from "./assistant-event-id";
 
-const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
 interface OutputCandidate {
@@ -43,21 +29,24 @@ interface OutputCandidate {
   readonly content: string;
 }
 
-type ToolOperationState = Pick<
-  OutputToolPayload,
-  "action" | "status" | "summary"
->;
-
 export interface MaterializedChatProjection {
   readonly thread: {
     readonly chatThreadId: string;
     readonly userId: string;
+    readonly orgId: string;
   };
   readonly insertedRowCount: number;
   readonly firstAssistantAcknowledgement: {
     readonly apiStartedAt: number;
     readonly acknowledgedAt: number;
   } | null;
+}
+
+export class AgentEventRunNotFoundError extends Error {
+  constructor(runId: string) {
+    super(`Run ${runId} is missing during output materialization`);
+    this.name = "AgentEventRunNotFoundError";
+  }
 }
 
 function recordOf(value: unknown): Record<string, unknown> | null {
@@ -180,79 +169,10 @@ function eventOutputId(event: AgentEvent): string {
   return `event:${event.sequenceNumber}`;
 }
 
-function nextProjectionSequenceState(
-  currentProcessedThroughSequence: number,
-  currentPendingSequenceNumbers: readonly number[],
-  events: readonly AgentEvent[],
-): {
-  readonly processedThroughSequence: number;
-  readonly pendingSequenceNumbers: number[];
-} {
-  const sortedSequences = Array.from(
-    new Set(
-      [
-        ...currentPendingSequenceNumbers,
-        ...events.map((event) => {
-          return event.sequenceNumber;
-        }),
-      ].filter((sequenceNumber) => {
-        return Number.isInteger(sequenceNumber) && sequenceNumber >= 0;
-      }),
-    ),
-  ).sort((left, right) => {
-    return left - right;
-  });
-
-  let nextProcessedThroughSequence = currentProcessedThroughSequence;
-  for (const sequenceNumber of sortedSequences) {
-    if (sequenceNumber <= nextProcessedThroughSequence) {
-      continue;
-    }
-    if (sequenceNumber !== nextProcessedThroughSequence + 1) {
-      break;
-    }
-    nextProcessedThroughSequence = sequenceNumber;
-  }
-
-  return {
-    processedThroughSequence: nextProcessedThroughSequence,
-    pendingSequenceNumbers: sortedSequences.filter((sequenceNumber) => {
-      return sequenceNumber > nextProcessedThroughSequence;
-    }),
-  };
-}
-
-function nextStoredProjectionSequenceState(
-  current:
-    | {
-        readonly processedThroughSequence: number;
-        readonly pendingSequenceNumbers: readonly number[];
-      }
-    | undefined,
-  events: readonly AgentEvent[],
-): {
-  readonly processedThroughSequence: number;
-  readonly pendingSequenceNumbers: number[];
-} {
-  return nextProjectionSequenceState(
-    current?.processedThroughSequence ?? INITIAL_PROCESSED_THROUGH_SEQUENCE,
-    current?.pendingSequenceNumbers ?? [],
-    events,
-  );
-}
-
-function toolRunEventId(sequenceNumber: number): string {
-  return `tool:event:${sequenceNumber}`;
-}
-
 function assistantEventItems(args: {
   readonly events: readonly AgentEvent[];
-  readonly runId: string;
-  readonly toolActivityEnabled: boolean;
-  readonly priorToolOperations: ReadonlyMap<string, ToolOperationState>;
 }): InsertAssistantEventsInput["items"] {
   const items: InsertAssistantEventsInput["items"][number][] = [];
-  const toolOperations = new Map(args.priorToolOperations);
   const events = [...args.events].sort((left, right) => {
     return left.sequenceNumber - right.sequenceNumber;
   });
@@ -278,120 +198,8 @@ function assistantEventItems(args: {
       });
       continue;
     }
-
-    if (!args.toolActivityEnabled) {
-      continue;
-    }
-    const normalized = normalizeAgentToolEvent(event);
-    if (normalized === null) {
-      continue;
-    }
-
-    const runEventId = toolRunEventId(event.sequenceNumber);
-    if (normalized.kind === "standalone") {
-      const toolUseId = toolUseIdForRunEvent(args.runId, runEventId);
-      items.push({
-        eventType: "output.tool",
-        runEventSequenceNumber: event.sequenceNumber,
-        runEventId,
-        toolUseId,
-        action: normalized.action,
-        status: normalized.status,
-        summary: normalized.summary,
-      });
-      toolOperations.set(toolUseId, {
-        action: normalized.action,
-        status: normalized.status,
-        summary: normalized.summary,
-      });
-      continue;
-    }
-
-    const toolUseId = toolUseIdForProviderOperation(
-      args.runId,
-      normalized.provider,
-      normalized.providerOperationId,
-    );
-    const prior = toolOperations.get(toolUseId);
-    if (normalized.kind === "correlated-terminal") {
-      const sourceOperation =
-        prior ??
-        (normalized.standaloneOperation === undefined
-          ? undefined
-          : {
-              ...normalized.standaloneOperation,
-              status: normalized.status,
-            });
-      if (sourceOperation === undefined) {
-        continue;
-      }
-      const operation: ToolOperationState = {
-        action: sourceOperation.action,
-        status: normalized.status,
-        summary:
-          sourceOperation.status === "pending"
-            ? terminalToolSummary(
-                sourceOperation.action,
-                sourceOperation.summary,
-              )
-            : sourceOperation.summary,
-      };
-      items.push({
-        eventType: "output.tool",
-        runEventSequenceNumber: event.sequenceNumber,
-        runEventId,
-        toolUseId,
-        action: operation.action,
-        status: operation.status,
-        summary: operation.summary,
-      });
-      toolOperations.set(toolUseId, operation);
-      continue;
-    }
-
-    const operation = {
-      action: normalized.action,
-      status: normalized.status,
-      summary: normalized.summary,
-    };
-    items.push({
-      eventType: "output.tool",
-      runEventSequenceNumber: event.sequenceNumber,
-      runEventId,
-      toolUseId,
-      action: operation.action,
-      status: operation.status,
-      summary: operation.summary,
-    });
-    toolOperations.set(toolUseId, operation);
   }
   return items;
-}
-
-async function priorToolOperationsForRun(
-  tx: Tx,
-  runId: string,
-  signal: AbortSignal,
-): Promise<ReadonlyMap<string, ToolOperationState>> {
-  const rows = await tx
-    .select({ payload: chatEvents.payload })
-    .from(chatEvents)
-    .where(
-      and(eq(chatEvents.runId, runId), eq(chatEvents.eventType, "output.tool")),
-    )
-    .orderBy(asc(chatEvents.seqId));
-  signal.throwIfAborted();
-
-  const operations = new Map<string, ToolOperationState>();
-  for (const row of rows) {
-    const payload = outputToolPayloadSchema.parse(row.payload);
-    operations.set(payload.toolUseId, {
-      action: payload.action,
-      status: payload.status,
-      summary: payload.summary,
-    });
-  }
-  return operations;
 }
 
 interface AssistantEventInsertion {
@@ -405,28 +213,8 @@ async function insertRunOutputChatEvents(
   thread: MaterializedChatProjection["thread"],
   signal: AbortSignal,
 ): Promise<AssistantEventInsertion> {
-  const [run] = await tx
-    .select({
-      chatToolActivityEnabled: agentRuns.chatToolActivityEnabled,
-    })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, payload.runId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (run === undefined) {
-    throw new Error(
-      `Run ${payload.runId} is missing during output materialization`,
-    );
-  }
-  const toolActivityEnabled = run.chatToolActivityEnabled;
-  const priorToolOperations = toolActivityEnabled
-    ? await priorToolOperationsForRun(tx, payload.runId, signal)
-    : new Map<string, ToolOperationState>();
   const assistantItems = assistantEventItems({
     events: payload.events,
-    runId: payload.runId,
-    toolActivityEnabled,
-    priorToolOperations,
   });
   return await insertAssistantEventsInTransaction(
     tx,
@@ -434,6 +222,7 @@ async function insertRunOutputChatEvents(
       runId: payload.runId,
       threadId: thread.chatThreadId,
       userId: thread.userId,
+      orgId: thread.orgId,
       items: assistantItems,
     },
     signal,
@@ -458,6 +247,23 @@ async function lockRunOutputProjection(
   signal.throwIfAborted();
 }
 
+async function lockAgentRunForOutputMaterialization(
+  tx: Tx,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [run] = await tx
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("key share")
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    throw new AgentEventRunNotFoundError(runId);
+  }
+}
+
 async function materializeRunOutputEvents(
   writeDb: Db,
   payload: EventConsumerPayload,
@@ -468,6 +274,7 @@ async function materializeRunOutputEvents(
 
   return await writeDb.transaction(async (tx) => {
     await lockRunOutputProjection(tx, payload.runId, signal);
+    await lockAgentRunForOutputMaterialization(tx, payload.runId, signal);
 
     const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
@@ -486,57 +293,41 @@ async function materializeRunOutputEvents(
         insertion.shouldAttemptFirstAssistantEventClaim;
     }
 
-    const [existingState] = await tx
-      .select({
-        processedThroughSequence:
-          runOutputMaterializations.processedThroughSequence,
-        pendingSequenceNumbers:
-          runOutputMaterializations.pendingSequenceNumbers,
-      })
-      .from(runOutputMaterializations)
-      .where(eq(runOutputMaterializations.runId, payload.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    const { processedThroughSequence, pendingSequenceNumbers } =
-      nextStoredProjectionSequenceState(existingState, payload.events);
-    const updatedAt = nowDate();
-    await tx
-      .insert(runOutputMaterializations)
-      .values({
-        runId: payload.runId,
-        processedThroughSequence,
-        pendingSequenceNumbers,
-        latestResultSequence: latestResult?.sequenceNumber,
-        latestResultText: latestResult?.content,
-        latestOutputSequence: latestOutput?.sequenceNumber,
-        latestOutputText: latestOutput?.content,
-        updatedAt,
-      })
-      .onConflictDoUpdate({
-        target: runOutputMaterializations.runId,
-        set: {
-          processedThroughSequence: sql`greatest(${runOutputMaterializations.processedThroughSequence}, ${processedThroughSequence})`,
-          pendingSequenceNumbers,
-          latestResultSequence:
-            latestResult === null
-              ? runOutputMaterializations.latestResultSequence
-              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.sequenceNumber} else ${runOutputMaterializations.latestResultSequence} end`,
-          latestResultText:
-            latestResult === null
-              ? runOutputMaterializations.latestResultText
-              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.content} else ${runOutputMaterializations.latestResultText} end`,
-          latestOutputSequence:
-            latestOutput === null
-              ? runOutputMaterializations.latestOutputSequence
-              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.sequenceNumber} else ${runOutputMaterializations.latestOutputSequence} end`,
-          latestOutputText:
-            latestOutput === null
-              ? runOutputMaterializations.latestOutputText
-              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.content} else ${runOutputMaterializations.latestOutputText} end`,
+    if (latestResult !== null || latestOutput !== null) {
+      const updatedAt = nowDate();
+      await tx
+        .insert(runOutputMaterializations)
+        .values({
+          runId: payload.runId,
+          latestResultSequence: latestResult?.sequenceNumber,
+          latestResultText: latestResult?.content,
+          latestOutputSequence: latestOutput?.sequenceNumber,
+          latestOutputText: latestOutput?.content,
           updatedAt,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: runOutputMaterializations.runId,
+          set: {
+            latestResultSequence:
+              latestResult === null
+                ? runOutputMaterializations.latestResultSequence
+                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.sequenceNumber} else ${runOutputMaterializations.latestResultSequence} end`,
+            latestResultText:
+              latestResult === null
+                ? runOutputMaterializations.latestResultText
+                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.content} else ${runOutputMaterializations.latestResultText} end`,
+            latestOutputSequence:
+              latestOutput === null
+                ? runOutputMaterializations.latestOutputSequence
+                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.sequenceNumber} else ${runOutputMaterializations.latestOutputSequence} end`,
+            latestOutputText:
+              latestOutput === null
+                ? runOutputMaterializations.latestOutputText
+                : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.content} else ${runOutputMaterializations.latestOutputText} end`,
+            updatedAt,
+          },
+        });
+    }
     signal.throwIfAborted();
 
     if (!thread) {
@@ -597,6 +388,7 @@ export async function publishMaterializedChatProjection(
   if (projection.firstAssistantAcknowledgement) {
     await publishFirstAssistantEventCreatedSignalSafely({
       userId: projection.thread.userId,
+      orgId: projection.thread.orgId,
       threadId: projection.thread.chatThreadId,
     });
     recordFirstAssistantEventAcknowledgementMetric({
@@ -604,10 +396,11 @@ export async function publishMaterializedChatProjection(
       ...projection.firstAssistantAcknowledgement,
     });
   } else {
-    await publishChatThreadMessageCreatedSafely(
-      projection.thread.userId,
-      projection.thread.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: projection.thread.userId,
+      orgId: projection.thread.orgId,
+      threadId: projection.thread.chatThreadId,
+    });
   }
   signal.throwIfAborted();
 }

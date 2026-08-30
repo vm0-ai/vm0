@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.4.82](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.81...nbd-cow-v0.4.82) (2026-08-28)
+
+
+### Refactoring
+
+* **rust:** forbid path attributes ([#30129](https://github.com/vm0-ai/vm0/issues/30129)) ([c46da3e](https://github.com/vm0-ai/vm0/commit/c46da3ea8fb48b7595bc582036a1f28a0d676f5f))
+
+## [0.4.81](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.80...nbd-cow-v0.4.81) (2026-08-28)
+
+
+### Documentation
+
+* **nbd-cow:** clarify host disk benchmark attribution ([#30031](https://github.com/vm0-ai/vm0/issues/30031)) ([df7a764](https://github.com/vm0-ai/vm0/commit/df7a7646389f1b4937dfbdfd5c9b6faa04a7ffda))
+
+## [0.4.80](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.79...nbd-cow-v0.4.80) (2026-08-27)
+
+
+### Bug Fixes
+
+* **rust:** fail closed on nbd owner lookup errors ([#29897](https://github.com/vm0-ai/vm0/issues/29897)) ([96f4511](https://github.com/vm0-ai/vm0/commit/96f451182cd012db06b0c615ee13fd2de0657a33))
+
+## [0.4.79](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.78...nbd-cow-v0.4.79) (2026-08-27)
+
+
+### Documentation
+
+* **nbd-cow:** clarify relocation ordering contract ([#29714](https://github.com/vm0-ai/vm0/issues/29714)) ([f94ec05](https://github.com/vm0-ai/vm0/commit/f94ec05d3c16e0368c885a52ee2cdf904633a518))
+
 ## [0.4.78](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.77...nbd-cow-v0.4.78) (2026-08-21)
 
 

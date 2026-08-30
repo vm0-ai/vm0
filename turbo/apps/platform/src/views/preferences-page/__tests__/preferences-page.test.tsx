@@ -16,11 +16,14 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const TEST_FRONTEND_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
 const TEST_FRONTEND_VERSION = "0.540.0";
+const themeStorage = localStorageSignals("theme");
+const colorThemeStorage = localStorageSignals("colorTheme");
 
 function createMockPreferences(
   overrides?: Partial<UserPreferencesResponse>,
@@ -31,6 +34,8 @@ function createMockPreferences(
     supportedLocales: [...SUPPORTED_USER_LOCALES],
     pinnedAgentIds: [],
     sendMode: "enter",
+    theme: "system",
+    colorTheme: "blue-horizon",
     morningBriefEnabled: false,
     morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
@@ -50,6 +55,14 @@ function getSegmentByText(text: string): HTMLElement {
     throw new Error(`Segment not found: ${text}`);
   }
   return segment;
+}
+
+function getButtonByText(text: string): HTMLButtonElement {
+  const button = screen.getByText(text).closest("button");
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${text}`);
+  }
+  return button;
 }
 
 describe("preferences page", () => {
@@ -80,6 +93,147 @@ describe("preferences page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps gradient color themes behind their feature switch", async () => {
+    context.mocks.data.userPreferences(createMockPreferences());
+
+    renderPreferencesPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Color theme")).not.toBeInTheDocument();
+    expect(
+      document.querySelector(".zero-app[data-gradient-color-themes]"),
+    ).not.toBeInTheDocument();
+    expect(document.documentElement).not.toHaveAttribute(
+      "data-gradient-color-themes",
+    );
+    expect(document.documentElement).not.toHaveAttribute("data-color-theme");
+  });
+
+  it("selects a palette-derived interface theme", async () => {
+    context.mocks.data.userPreferences(createMockPreferences());
+
+    detachedSetupPage({
+      context,
+      path: "/settings",
+      featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Blue horizon")).toBeInTheDocument();
+    });
+    const blueHorizon = getButtonByText("Blue horizon");
+    const app = document.querySelector(".zero-app");
+    expect(app).toHaveAttribute("data-gradient-color-themes");
+    expect(app).toHaveAttribute("data-color-theme", "blue-horizon");
+    expect(document.documentElement).toHaveAttribute(
+      "data-gradient-color-themes",
+    );
+    expect(document.documentElement).toHaveAttribute(
+      "data-color-theme",
+      "blue-horizon",
+    );
+    expect(blueHorizon).toHaveAttribute("aria-pressed", "true");
+
+    click(getButtonByText("Golden hour"));
+
+    await waitFor(() => {
+      expect(app).toHaveAttribute("data-color-theme", "golden-hour");
+      expect(document.documentElement).toHaveAttribute(
+        "data-color-theme",
+        "golden-hour",
+      );
+      expect(getButtonByText("Golden hour")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
+  it("restores and saves server-backed appearance preferences", async () => {
+    const capturedBodies: Record<string, unknown>[] = [];
+    let storedPreferences = createMockPreferences({
+      theme: "dark",
+      colorTheme: "golden-hour",
+    });
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+      return respond(200, storedPreferences);
+    });
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      storedPreferences = { ...storedPreferences, ...body };
+      return respond(200, storedPreferences);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/settings",
+      featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.getByText("Golden hour")).toBeInTheDocument();
+    });
+    const darkSegment = getSegmentByText("Dark");
+    await waitFor(() => {
+      expect(darkSegment).toHaveAttribute("aria-checked", "true");
+      expect(getButtonByText("Golden hour")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    click(getSegmentByText("Light"));
+    click(getButtonByText("Limelight"));
+
+    await waitFor(() => {
+      expect(capturedBodies).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ theme: "light" }),
+          expect.objectContaining({ colorTheme: "limelight" }),
+        ]),
+      );
+    });
+  });
+
+  it("migrates cached appearance choices when server preferences are unset", async () => {
+    const capturedBodies: Record<string, unknown>[] = [];
+    let storedPreferences = createMockPreferences({
+      theme: null,
+      colorTheme: null,
+    });
+    context.store.set(themeStorage.set$, "dark");
+    context.store.set(colorThemeStorage.set$, "daydream");
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+      return respond(200, storedPreferences);
+    });
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      capturedBodies.push(body as Record<string, unknown>);
+      storedPreferences = { ...storedPreferences, ...body };
+      return respond(200, storedPreferences);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/settings",
+      featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
+    });
+
+    await waitFor(() => {
+      expect(capturedBodies).toContainEqual({
+        theme: "dark",
+        colorTheme: "daydream",
+      });
+      expect(getSegmentByText("Dark")).toHaveAttribute("aria-checked", "true");
+      expect(getButtonByText("Daydream")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
   });
 

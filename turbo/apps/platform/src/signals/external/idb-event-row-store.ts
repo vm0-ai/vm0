@@ -85,14 +85,16 @@ function storedChatEventCursor(raw: unknown): ChatEventCursor {
   if (typeof raw.lastEventId !== "string" || raw.lastSeqId === 0) {
     throw new Error("Invalid cached Chat Event cursor");
   }
-  const projection =
-    "projection" in raw && isChatEventSnapshotProjection(raw.projection)
-      ? raw.projection
-      : undefined;
+  if (
+    !("projection" in raw) ||
+    !isChatEventSnapshotProjection(raw.projection)
+  ) {
+    throw new Error("Invalid cached Chat Event cursor");
+  }
   return {
     lastEventId: raw.lastEventId,
     lastSeqId: raw.lastSeqId,
-    ...(projection === undefined ? {} : { projection }),
+    projection: raw.projection,
   };
 }
 
@@ -126,8 +128,18 @@ function createRowReadStore(
       L.debug("readRowsAfter:start", { threadId, afterSeqId });
       const db = await getDb();
       signal?.throwIfAborted();
-      const tx = db.transaction(storeName, "readonly");
-      const index = tx.store.index(CHAT_EVENT_ROWS_ORDER_INDEX);
+      const tx = db.transaction([storeName, cursorStoreName], "readonly");
+      const rawCursor = await tx.objectStore(cursorStoreName).get(threadId);
+      signal?.throwIfAborted();
+      if (rawCursor === undefined) {
+        return [];
+      }
+      // A cursor versions the whole row generation. Reject it before exposing
+      // rows so a retired cache shape cannot enter the current projection.
+      storedChatEventCursor(rawCursor);
+      const index = tx
+        .objectStore(storeName)
+        .index(CHAT_EVENT_ROWS_ORDER_INDEX);
       const storedRows = await index.getAll(
         threadRowRange(threadId, afterSeqId),
       );

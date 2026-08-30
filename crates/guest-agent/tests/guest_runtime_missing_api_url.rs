@@ -25,11 +25,14 @@ fn runtime_bootstrap_logs_missing_api_url_to_system_log() {
         )
         .env("HOME", tmp.path().join("home"))
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         )
-        .env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, run_payload_file)
-        .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+        .env(
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+            run_payload_file,
+        )
+        .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
         .env(guest_contracts::env::API_URL_ENV, "")
         .output()
         .unwrap();

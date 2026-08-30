@@ -7,30 +7,31 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestMemorySnapshot,
-    GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter,
-    GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
-    ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlMode,
-    ProcessControlOutcome, ProcessControlWriteState, ProcessExit, ProcessOutputChunk,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
+    GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
+    GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, GuestStateRestoreRequest,
+    GuestStateRestoreTimezone, ProcessControlAck, ProcessControlFailureKind,
+    ProcessControlGuestStatus, ProcessControlOutcome, ProcessControlWriteState, ProcessExit,
     ProcessOutputMode, Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkHandoff,
     SandboxFinalExecParkHandoffOutcome, SandboxFinalExecParkHandoffPoint,
     SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome, SandboxFinalExecParkStage,
     SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome, SandboxIdleTransition,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
     SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
-    SevereMemoryRetentionDiagnostics, StartProcessRequest, StorageManifestRequest, WriteFileEntry,
+    SevereMemoryRetentionDiagnostics, StartAgentProcessRequest, StartProcessRequest,
+    StorageManifestRequest, WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use vsock_host::{
-    ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver,
-    GuestStateRestoreResult, GuestStorageManifestResult, NormalOperationFence,
-    NormalOperationFenceRejection, SupervisedExecControl, SupervisedExecRequest, VsockHost,
+    ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver, GuestStateRestoreResult,
+    GuestStorageManifestResult, NormalOperationFence, NormalOperationFenceRejection,
+    SupervisedExecControl, SupervisedExecRequest, SupervisedExecStartTiming, VsockHost,
 };
 use vsock_proto::{
-    ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy,
+    ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
     GuestStateRestoreTimezone as VsockGuestStateRestoreTimezone,
 };
 
@@ -612,6 +613,15 @@ impl SandboxNetwork {
     pub(crate) fn has_lease(&self) -> bool {
         self.lease.is_some()
     }
+}
+
+struct ProcessStartContractRequest<'a> {
+    command: &'a str,
+    timeout_ms: u32,
+    env: &'a [(&'a str, &'a str)],
+    sudo: bool,
+    output: ProcessOutputMode,
+    label: &'a str,
 }
 
 impl FirecrackerSandbox {
@@ -1828,70 +1838,6 @@ fn supervised_exec_result_to_process_exit(
     }
 }
 
-fn supervised_stdout_receiver(
-    mut stream_rx: mpsc::Receiver<ExecOutputEvent>,
-    queue_capacity: usize,
-) -> (
-    sandbox::ProcessOutputReceiver,
-    Box<dyn FnOnce() + Send + 'static>,
-) {
-    let (stdout_tx, stdout_rx) = mpsc::channel(queue_capacity.max(1));
-    let stdout_closed = stdout_tx.clone();
-    let close = CancellationToken::new();
-    let task_close = close.clone();
-
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                biased;
-                () = task_close.cancelled() => {
-                    break;
-                }
-                () = stdout_closed.closed() => {
-                    break;
-                }
-                event = stream_rx.recv() => {
-                    let Some(event) = event else {
-                        break;
-                    };
-                    match event.stream {
-                        ExecOutputStream::Stdout => {
-                            let chunk = ProcessOutputChunk {
-                                bytes: event.chunk,
-                                truncated: event.truncated,
-                            };
-                            tokio::select! {
-                                biased;
-                                () = task_close.cancelled() => {
-                                    break;
-                                }
-                                result = stdout_tx.send(chunk) => {
-                                    if result.is_err() {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        ExecOutputStream::Stderr => {
-                            warn!(
-                                output_seq = event.output_seq,
-                                "discarding unexpected stderr event from stdout-only process stream"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    (
-        stdout_rx,
-        Box::new(move || {
-            close.cancel();
-        }),
-    )
-}
-
 fn exec_capture_request<'a>(
     request: &ExecRequest<'a>,
     timeout_ms: u32,
@@ -1913,6 +1859,96 @@ fn exec_capture_request<'a>(
 }
 
 impl FirecrackerSandbox {
+    async fn start_process_with_contract(
+        &self,
+        request: ProcessStartContractRequest<'_>,
+        operation: SandboxOperation,
+        role: ExecProcessRole,
+        control: SupervisedExecControl,
+    ) -> sandbox::Result<(GuestProcessHandle, SupervisedExecStartTiming)> {
+        let vsock = self.begin_guest_operation(operation).await?;
+        Self::validate_exec_env_keys(operation, request.env)?;
+        request.output.validate(operation)?;
+
+        let start_future = async move {
+            vsock
+                .start_supervised_process(SupervisedExecRequest {
+                    role,
+                    timeout: process_timeout_policy(request.timeout_ms),
+                    command: request.command,
+                    env: request.env,
+                    sudo: request.sudo,
+                    label: request.label,
+                    stdout: process_stdout_policy(request.output),
+                    stderr: process_stderr_policy(request.output),
+                    expected_exit_codes: &[],
+                    stdin_bytes: None,
+                    control,
+                    stream_queue_capacity: process_stream_queue_capacity(request.output),
+                    start_timeout: PROCESS_START_ACK_TIMEOUT,
+                })
+                .await
+        };
+
+        tokio::select! {
+            result = start_future => {
+                let mut handle = match result {
+                    Ok(handle) => handle,
+                    Err(error) => {
+                        let backend_crashed = self.has_backend_crashed();
+                        return Err(Self::operation_error(operation, error, backend_crashed));
+                    }
+                };
+                let guest_pid = handle.pid();
+                let start_timing = handle.start_timing();
+                let process_control = handle.control_handle().map(|control| {
+                    let coordinator = self.park_coordinator.clone();
+                    let state = Arc::clone(&self.state);
+                    let state_rx = self.state_tx.subscribe();
+                    GuestProcessControlHandle::new_with_outcome(
+                        move |message_id, payload, timeout| {
+                            let control = control.clone();
+                            let coordinator = coordinator.clone();
+                            let state = Arc::clone(&state);
+                            let state_rx = state_rx.clone();
+                            Box::pin(async move {
+                                Self::exec_process_control(
+                                    coordinator, state, state_rx, control, message_id, payload, timeout,
+                                )
+                                .await
+                            })
+                        },
+                    )
+                });
+                let stdout_rx = if request.output.streams_stdout() {
+                    handle.take_process_output_receiver()
+                } else {
+                    None
+                };
+                let process_cancel = handle.take_cancel_handle().map(|cancel| {
+                    GuestProcessCancelHandle::new(move |timeout| {
+                        Box::pin(async move { cancel.cancel(timeout).await })
+                    })
+                });
+                let wait = GuestProcessWaiter::new(move |timeout| {
+                    Box::pin(async move {
+                        let result = handle.wait(timeout).await?;
+                        Ok(supervised_exec_result_to_process_exit(guest_pid, result))
+                    })
+                });
+                let mut public_handle =
+                    GuestProcessHandle::new(guest_pid, stdout_rx, process_control, wait);
+                if let Some(process_cancel) = process_cancel {
+                    public_handle = public_handle.with_cancel_handle(process_cancel);
+                }
+                Ok((public_handle, start_timing))
+            }
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
+            }
+        }
+    }
+
     async fn final_exec_and_park_with_optional_observer(
         &mut self,
         request: &ExecRequest<'_>,
@@ -2559,107 +2595,92 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn write_private_files(&self, files: &[WriteFileEntry<'_>]) -> sandbox::Result<()> {
+        let operation = SandboxOperation::WriteFile;
+        let files = files
+            .iter()
+            .map(|file| vsock_host::WriteFileEntry {
+                path: file.path,
+                content: file.content,
+            })
+            .collect::<Vec<_>>();
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest.write_private_files(&files).await
+        })
+        .await
+    }
+
     async fn start_process(
         &self,
         request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
-        let operation = SandboxOperation::StartProcess;
-        let vsock = self.begin_guest_operation(operation).await?;
-        Self::validate_exec_env_keys(operation, request.env)?;
-        request.output.validate()?;
-
-        let start_future = async move {
-            vsock
-                .start_supervised_exec(SupervisedExecRequest {
-                    timeout: process_timeout_policy(request.timeout_ms()),
+        let (process, _) = self
+            .start_process_with_contract(
+                ProcessStartContractRequest {
                     command: request.cmd,
+                    timeout_ms: request.timeout_ms(),
                     env: request.env,
                     sudo: request.sudo,
+                    output: request.output,
                     label: request.cmd,
-                    stdout: process_stdout_policy(request.output),
-                    stderr: process_stderr_policy(request.output),
-                    expected_exit_codes: &[],
-                    stdin_bytes: None,
-                    control: match request.control {
-                        ProcessControlMode::None => SupervisedExecControl::Disabled,
-                        ProcessControlMode::Enabled => {
-                            SupervisedExecControl::Enabled { sink: true }
-                        }
-                    },
-                    stream_queue_capacity: process_stream_queue_capacity(request.output),
-                    start_timeout: PROCESS_START_ACK_TIMEOUT,
-                })
-                .await
-        };
+                },
+                SandboxOperation::StartProcess,
+                ExecProcessRole::Workload,
+                SupervisedExecControl::Disabled,
+            )
+            .await?;
+        Ok(process)
+    }
 
-        tokio::select! {
-            result = start_future => {
-                let mut handle = match result {
-                    Ok(handle) => handle,
-                    Err(error) => {
-                        let backend_crashed = self.has_backend_crashed();
-                        return Err(Self::operation_error(operation, error, backend_crashed));
-                    }
-                };
-                let guest_pid = handle.pid();
-                let process_control = handle.control_handle().map(|control| {
-                    let coordinator = self.park_coordinator.clone();
-                    let state = Arc::clone(&self.state);
-                    let state_rx = self.state_tx.subscribe();
-                    GuestProcessControlHandle::new_with_outcome(
-                        move |message_id, payload, timeout| {
-                        let control = control.clone();
-                        let coordinator = coordinator.clone();
-                        let state = Arc::clone(&state);
-                        let state_rx = state_rx.clone();
-                        Box::pin(async move {
-                            Self::exec_process_control(
-                                coordinator, state, state_rx, control, message_id, payload, timeout,
-                            )
-                            .await
-                        })
-                        },
-                    )
-                });
-                let (stdout_rx, close_stdout) = if request.output.streams_stdout() {
-                    match handle.take_stream_receiver() {
-                        Some(stream_rx) => {
-                            let queue_capacity = process_stream_queue_capacity(request.output)
-                                .unwrap_or(ProcessOutputMode::DEFAULT_QUEUE_CAPACITY);
-                            let (stdout_rx, close_stdout) =
-                                supervised_stdout_receiver(stream_rx, queue_capacity);
-                            (Some(stdout_rx), Some(close_stdout))
-                        }
-                        None => (None, None),
-                    }
-                } else {
-                    (None, None)
-                };
-                let process_cancel = handle.take_cancel_handle().map(|cancel| {
-                    GuestProcessCancelHandle::new(move |timeout| {
-                        Box::pin(async move { cancel.cancel(timeout).await })
-                    })
-                });
-                let wait = GuestProcessWaiter::new(move |timeout| {
-                    Box::pin(async move {
-                        let result = handle.wait(timeout).await?;
-                        Ok(supervised_exec_result_to_process_exit(guest_pid, result))
-                    })
-                });
-                let mut public_handle =
-                    GuestProcessHandle::new(guest_pid, stdout_rx, process_control, wait);
-                if let Some(process_cancel) = process_cancel {
-                    public_handle = public_handle.with_cancel_handle(process_cancel);
-                }
-                Ok(match close_stdout {
-                    Some(close_stdout) => public_handle.with_unclaimed_stdout_cleanup(close_stdout),
-                    None => public_handle,
-                })
-            }
-            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
-                Err(Self::backend_crashed_error(operation))
-            }
-        }
+    async fn start_agent_process(
+        &self,
+        request: &StartAgentProcessRequest<'_>,
+    ) -> sandbox::Result<GuestAgentProcessHandle> {
+        let (process, timing) = self
+            .start_process_with_contract(
+                ProcessStartContractRequest {
+                    command: "",
+                    timeout_ms: request.timeout_ms(),
+                    env: request.env,
+                    sudo: false,
+                    output: request.output,
+                    label: "guest-agent",
+                },
+                SandboxOperation::StartAgentProcess,
+                ExecProcessRole::Agent,
+                SupervisedExecControl::Enabled { sink: true },
+            )
+            .await?;
+        let ready_at = timing.agent_ready_at.ok_or_else(|| {
+            Self::operation_error(
+                SandboxOperation::StartAgentProcess,
+                io::Error::other("guest Agent start completed without readiness timestamp"),
+                self.has_backend_crashed(),
+            )
+        })?;
+        let ready = timing.agent_ready.ok_or_else(|| {
+            Self::operation_error(
+                SandboxOperation::StartAgentProcess,
+                io::Error::other("guest Agent start completed without readiness timing"),
+                self.has_backend_crashed(),
+            )
+        })?;
+        GuestAgentProcessHandle::try_from_process(
+            process,
+            GuestAgentStartTiming {
+                shell_started_at: timing.shell_started_at,
+                ready_at,
+                containment_create: Duration::from_micros(u64::from(ready.containment_create_us)),
+                placement_broker_setup: Duration::from_micros(u64::from(
+                    ready.placement_broker_setup_us,
+                )),
+                shell_spawn: Duration::from_micros(u64::from(ready.shell_spawn_us)),
+                bootstrap_ready_wait: Duration::from_micros(u64::from(
+                    ready.bootstrap_ready_wait_us,
+                )),
+            },
+        )
     }
 
     async fn wait_process(
@@ -4401,7 +4422,12 @@ async fn unpark_inner(
                 message: format!("balloon deflate: {e}"),
             })?;
 
-        *balloon_controller = Some(balloon::spawn(client, memory_mb, state_rx));
+        *balloon_controller = Some(balloon::spawn_after_unpark_deflation(
+            client,
+            memory_mb,
+            state_rx,
+            log_id.to_owned(),
+        ));
     }
 
     *is_parked = false;

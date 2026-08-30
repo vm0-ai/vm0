@@ -73,6 +73,7 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
         status
             .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
             .await
+            .unwrap()
     );
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,

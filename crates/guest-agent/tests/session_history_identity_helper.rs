@@ -28,6 +28,7 @@ use tokio::process::Command;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const SESSION_HISTORY_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
+const RETIRED_GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
 
 fn claude_history_fixture(
     root: &Path,
@@ -630,10 +631,25 @@ async fn export_session_history_sidecar_rejects_symlinked_metadata_without_openi
 }
 
 #[tokio::test]
-async fn default_identity_path_dual_reads_runtime_aliases_without_protocol_output() -> TestResult {
+async fn default_identity_path_reads_only_canonical_runtime_without_protocol_output() -> TestResult
+{
+    #[derive(Clone, Copy)]
+    enum CanonicalInput {
+        Absent,
+        Empty,
+        Selected,
+    }
+
+    struct Case {
+        name: &'static str,
+        canonical: CanonicalInput,
+        retired: bool,
+        use_canonical: bool,
+    }
+
     let dir = tempfile::tempdir()?;
     let history = br#"{"type":"system"}"#;
-    let session_id = "runtime-alias-default-path";
+    let session_id = "runtime-env-default-path";
     let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     std::fs::write(&history_path, history)?;
     let identity = SessionHistoryIdentity::new(
@@ -645,83 +661,105 @@ async fn default_identity_path_dual_reads_runtime_aliases_without_protocol_outpu
         history_source,
     )?;
 
-    for (name, canonical, legacy) in [
-        ("canonical-only", true, false),
-        ("legacy-only", false, true),
-        ("equal-dual", true, true),
+    for case in [
+        Case {
+            name: "canonical-only",
+            canonical: CanonicalInput::Selected,
+            retired: false,
+            use_canonical: true,
+        },
+        Case {
+            name: "canonical-is-not-overridden-by-retired",
+            canonical: CanonicalInput::Selected,
+            retired: true,
+            use_canonical: true,
+        },
+        Case {
+            name: "retired-only-is-ignored",
+            canonical: CanonicalInput::Absent,
+            retired: true,
+            use_canonical: false,
+        },
+        Case {
+            name: "canonical-empty-does-not-fall-back-to-retired",
+            canonical: CanonicalInput::Empty,
+            retired: true,
+            use_canonical: false,
+        },
     ] {
-        let runtime_dir = dir.path().join(name);
+        let run_id = if case.use_canonical {
+            "not/validated/when/runtime-dir-is-set".to_string()
+        } else {
+            format!("helper-runtime-{}", case.name)
+        };
+        let home = dir.path().join(format!("{}-home", case.name));
+        let canonical_dir = dir.path().join(format!("{}-canonical", case.name));
+        let retired_dir = dir.path().join(format!("{}-retired", case.name));
+        let fallback_dir = if case.use_canonical {
+            None
+        } else {
+            Some(guest_contracts::runtime_paths::run_dir_for_home(
+                &home, &run_id,
+            )?)
+        };
+        let runtime_dir = if case.use_canonical {
+            &canonical_dir
+        } else {
+            fallback_dir
+                .as_ref()
+                .ok_or("fallback runtime is required")?
+        };
         let metadata_path =
-            guest_contracts::runtime_paths::final_session_history_identity_file(&runtime_dir);
+            guest_contracts::runtime_paths::final_session_history_identity_file(runtime_dir);
         guest_contracts::runtime_paths::write_private(&metadata_path, identity.to_json_vec()?)?;
         let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
         command
             .env_clear()
-            .env(
-                guest_contracts::env::RUN_ID_ENV,
-                "not/validated/when/runtime-dir-is-set",
-            )
+            .env(guest_contracts::env::RUN_ID_ENV, &run_id)
+            .env("HOME", &home)
             .arg("verify-session-history-identity");
-        if canonical {
-            command.env(
-                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-                &runtime_dir,
-            );
+        match case.canonical {
+            CanonicalInput::Absent => {}
+            CanonicalInput::Empty => {
+                command.env(
+                    guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+                    "",
+                );
+            }
+            CanonicalInput::Selected => {
+                command.env(
+                    guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+                    &canonical_dir,
+                );
+            }
         }
-        if legacy {
-            command.env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-                &runtime_dir,
-            );
+        if case.retired {
+            command.env(RETIRED_GUEST_RUNTIME_DIR_ENV, &retired_dir);
         }
 
         let output = common::command_output_with_timeout(
             &mut command,
             SESSION_HISTORY_HELPER_TIMEOUT,
-            &format!("{name} default identity-path helper exceeded its completion budget"),
+            &format!(
+                "{} default identity-path helper exceeded its completion budget",
+                case.name
+            ),
         )
         .await?;
         assert!(
             output.status.success(),
-            "{name}: stdout={}, stderr={}",
+            "{}: stdout={}, stderr={}",
+            case.name,
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert!(output.stdout.is_empty(), "{name} changed stdout");
-        assert!(output.stderr.is_empty(), "{name} changed stderr");
+        assert!(output.stdout.is_empty(), "{} changed stdout", case.name);
+        assert!(output.stderr.is_empty(), "{} changed stderr", case.name);
+        assert!(
+            !guest_contracts::runtime_paths::final_session_history_identity_file(retired_dir)
+                .exists()
+        );
     }
-
-    let canonical_dir = dir.path().join("canonical-must-not-leak");
-    let legacy_dir = dir.path().join("legacy-must-not-leak");
-    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
-    command
-        .env_clear()
-        .env(guest_contracts::env::RUN_ID_ENV, "run-id")
-        .env(
-            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-            &canonical_dir,
-        )
-        .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            &legacy_dir,
-        )
-        .arg("verify-session-history-identity");
-    let output = common::command_output_with_timeout(
-        &mut command,
-        SESSION_HISTORY_HELPER_TIMEOUT,
-        "conflicting default identity-path aliases exceeded their completion budget",
-    )
-    .await?;
-    assert!(!output.status.success());
-    assert!(output.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains(
-        "conflicting guest runtime directory environment aliases: \
-         canonical_key=OKOU_GUEST_RUNTIME_DIR legacy_key=VM0_GUEST_RUNTIME_DIR state=conflict"
-    ));
-    assert!(!stderr.contains("canonical-must-not-leak"));
-    assert!(!stderr.contains("legacy-must-not-leak"));
-    assert!(!stderr.contains("guest_runtime_dir_env_source"));
 
     Ok(())
 }

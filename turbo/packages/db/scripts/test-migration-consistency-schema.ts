@@ -53,16 +53,47 @@ import {
   validateAgentRunLaunchSnapshotMigration,
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
+import { validateAgentRunOfficialWorkflowProvenanceSchema } from "./test-agent-run-official-workflow-provenance";
+import {
+  validateOfficialAutomationResultEmailMigration,
+  validateOfficialAutomationResultEmailSchema,
+} from "./test-official-automation-result-email-schema";
 import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-built-in-model-key-permanent";
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
+import { validatePermanentBuiltInProviderDiscriminatorState } from "./test-built-in-provider-discriminator-permanent";
+import { validateBuiltInProviderDiscriminatorMigration } from "./test-built-in-provider-discriminator-migration";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
+import { validateOrgPlanEntitlementRestrictionExpansion } from "./test-org-plan-entitlement-restriction-expansion";
+import {
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION,
+  validateOrgPlanEntitlementRestrictionBackfill,
+  validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema,
+} from "./test-org-plan-entitlement-restriction-backfill";
+import { validateOrgPlanEntitlementRestrictionNotNull } from "./test-org-plan-entitlement-restriction-not-null";
+import {
+  installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema,
+  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
+  validatePermanentOrgPlanEntitlementRestrictionState,
+} from "./test-org-plan-entitlement-restriction-permanent";
 import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
+import { validateWorkflowCompatibilityViews } from "./test-workflow-compatibility-views";
+import { LEGACY_DATABASE_IDENTITY_MANIFEST } from "./legacy-database-identity-manifest";
+import {
+  assertLegacyDatabaseIdentityInventory,
+  countLegacyIdentitiesByKind,
+  discoverLatestLegacySnapshotIdentities,
+  discoverPersistedSemanticLegacyIdentities,
+  discoverReplayedCatalogLegacyIdentities,
+} from "./legacy-database-identity-inventory";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -2312,6 +2343,36 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "chat_events",
     triggerName: "chat_events_reject_update",
   },
+  // Temporary #29910 old-writer/new-DB bridges. Remove only with #28368's
+  // separately reviewed legacy-acceptor contract after the production drain.
+  {
+    definition:
+      "CREATE TRIGGER canonicalize_agent_run_builtin_provider BEFORE INSERT OR UPDATE OF model_provider ON public.agent_runs FOR EACH ROW EXECUTE FUNCTION canonicalize_agent_run_builtin_provider()",
+    schemaName: "public",
+    tableName: "agent_runs",
+    triggerName: "canonicalize_agent_run_builtin_provider",
+  },
+  {
+    definition:
+      "CREATE TRIGGER canonicalize_chat_thread_builtin_provider BEFORE INSERT OR UPDATE OF model_provider_type ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION canonicalize_chat_thread_builtin_provider()",
+    schemaName: "public",
+    tableName: "chat_threads",
+    triggerName: "canonicalize_chat_thread_builtin_provider",
+  },
+  {
+    definition:
+      "CREATE TRIGGER canonicalize_model_provider_builtin_type BEFORE INSERT OR UPDATE ON public.model_providers FOR EACH ROW EXECUTE FUNCTION canonicalize_model_provider_builtin_type()",
+    schemaName: "public",
+    tableName: "model_providers",
+    triggerName: "canonicalize_model_provider_builtin_type",
+  },
+  {
+    definition:
+      "CREATE TRIGGER canonicalize_org_model_policy_builtin_provider BEFORE INSERT OR UPDATE OF default_provider_type, model_provider_id, model_provider_surface_id ON public.org_model_policies FOR EACH ROW EXECUTE FUNCTION canonicalize_org_model_policy_builtin_provider()",
+    schemaName: "public",
+    tableName: "org_model_policies",
+    triggerName: "canonicalize_org_model_policy_builtin_provider",
+  },
   {
     definition:
       "CREATE TRIGGER allocate_legacy_chat_thread_event_seq_id BEFORE INSERT ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION allocate_legacy_chat_thread_event_seq_id()",
@@ -2389,6 +2450,9 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
+  // Temporary #30162 expand/mirror bridge. Remove only with #28368 after the
+  // canonical reader/writer switch, backfill, and rollback drain are accepted.
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_can_buy_credits()",
@@ -2443,6 +2507,35 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
+  // Same temporary #29910 bridge and #28368 removal gate as the triggers.
+  {
+    bodyHash: "08ccacae72d432c06fecb49b4f01dcbf",
+    functionName: "canonicalize_agent_run_builtin_provider",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "8184f2daa343c7eb811308c17a6a2b65",
+    functionName: "canonicalize_chat_thread_builtin_provider",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "90eafccc4fe3a0ffa32dec184c340e77",
+    functionName: "canonicalize_model_provider_builtin_type",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "dfd0098b8afe609bbbcd336b22f6ec3b",
+    functionName: "canonicalize_org_model_policy_builtin_provider",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -2500,13 +2593,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
-  {
-    bodyHash: "903925177de13d29257fec494957b1cd",
-    functionName: "ensure_legacy_org_metadata_plan_entitlement",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
+  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -2528,6 +2615,8 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
+  // Same temporary #30162 bridge and #28368 removal gate as its trigger.
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
   {
     bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
@@ -2646,6 +2735,56 @@ async function validatePermanentTriggerAndFunctionInventory(
     });
 
     console.log("   ✅ Permanent trigger and function inventories match\n");
+  } finally {
+    await client.end();
+  }
+}
+
+async function validateActiveLegacyDatabaseIdentityInventory(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.5.1.1: Validate active legacy database identity inventory ===\n",
+  );
+  const snapshot = await discoverLatestLegacySnapshotIdentities(MIGRATIONS_DIR);
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    const catalog = await discoverReplayedCatalogLegacyIdentities(client);
+    const semanticContracts = discoverPersistedSemanticLegacyIdentities(
+      snapshot.snapshot,
+    );
+    const discovered = [
+      ...snapshot.identities,
+      ...catalog,
+      ...semanticContracts,
+    ];
+    assertLegacyDatabaseIdentityInventory({
+      discovered,
+      manifest: LEGACY_DATABASE_IDENTITY_MANIFEST,
+    });
+    const counts = countLegacyIdentitiesByKind(discovered);
+    const nonEmptyCounts = Object.entries(counts)
+      .filter(([, count]) => {
+        return count > 0;
+      })
+      .map(([kind, count]) => {
+        return `${kind}=${count}`;
+      })
+      .join(", ");
+
+    console.log(
+      `   Latest snapshot: ${snapshot.migrationTag} (${snapshot.identities.length} identities)`,
+    );
+    console.log(`   Replayed catalog: ${catalog.length} identities`);
+    console.log(
+      `   Persisted semantic contracts: ${semanticContracts.length} families`,
+    );
+    console.log(`   Authoritative manifest: ${nonEmptyCounts}`);
+    console.log(
+      "   ✅ Active legacy database identity inventory matches exactly\n",
+    );
   } finally {
     await client.end();
   }
@@ -4090,6 +4229,25 @@ async function addCurrentChatEventPayloadStorage(
   await client.query(`
     ALTER TABLE "chat_events"
     ADD COLUMN "payload" jsonb
+  `);
+  await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+}
+
+async function addCurrentChatEventOfficialWorkflowQueueStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "required_official_workflow_ids" uuid[]
+  `);
+}
+
+async function removeCurrentChatEventOfficialWorkflowQueueStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    DROP COLUMN "required_official_workflow_ids"
   `);
 }
 
@@ -7546,6 +7704,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
+      await addCurrentChatEventOfficialWorkflowQueueStorage(client);
       await client.query(
         `
           INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
@@ -7664,6 +7823,10 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         seqId: 10,
         threadId: fixture.threadId,
       });
+      // Migration 0910 intentionally asserts its historical exact column set.
+      // The private queue column arrived later, so remove the test-only current
+      // ORM shim while 0910 runs and restore it for the post-migration probe.
+      await removeCurrentChatEventOfficialWorkflowQueueStorage(client);
 
       await client.query(
         `
@@ -7691,6 +7854,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         client,
         CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
       );
+      await addCurrentChatEventOfficialWorkflowQueueStorage(client);
 
       const retained = await client.query<{ row: Record<string, unknown> }>(
         `
@@ -7710,6 +7874,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         "event_type",
         "id",
         "payload",
+        "required_official_workflow_ids",
         "revokes_event_id",
         "run_event_id",
         "run_event_sequence_number",
@@ -10440,6 +10605,174 @@ const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION =
   "0928_contract_chat_event_snapshots";
 const CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION = "0929_cold_azazel";
 
+const CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_PREVIOUS_MIGRATION =
+  "1026_org_plan_entitlement_restriction_not_null";
+const CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_MIGRATION =
+  "1028_contract_chat_event_snapshot_v7";
+
+async function validateChatEventSnapshotV7Contraction(): Promise<void> {
+  console.log("=== Validate Chat Event Snapshot V7 contraction ===\n");
+  const testDb = "migration_chat_event_snapshot_v7_contract";
+  const testDbUrl = createTestDbUrl(testDb);
+  const coveredThreadId = "00000000-0000-4000-8000-000000102601";
+  const blockedThreadId = "00000000-0000-4000-8000-000000102602";
+
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: testDbUrl });
+  await client.connect();
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    await client.query("SET session_replication_role = replica");
+    await client.query(
+      `
+        INSERT INTO "chat_event_snapshots" (
+          "id", "chat_thread_id", "last_seq_id", "last_event_id",
+          "terminal_event_id", "terminal_seq_id",
+          "archive_schema_version", "projection", "object_key"
+        ) VALUES
+          (
+            '00000000-0000-4000-8000-000000102611', $1, 20,
+            '00000000-0000-4000-8000-000000102621', NULL, NULL,
+            6, 'full',
+            'chat-events/00000000-0000-4000-8000-000000102601/20-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.ndjson.gz'
+          ),
+          (
+            '00000000-0000-4000-8000-000000102612', $1, 20,
+            '00000000-0000-4000-8000-000000102622',
+            '00000000-0000-4000-8000-000000102622', 20,
+            7, 'tool-redacted',
+            'chat-events/00000000-0000-4000-8000-000000102601/20-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ndjson.gz'
+          ),
+          (
+            '00000000-0000-4000-8000-000000102613', $2, 30,
+            '00000000-0000-4000-8000-000000102623', NULL, NULL,
+            5, 'tool-redacted',
+            'chat-events/00000000-0000-4000-8000-000000102602/30-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ndjson.gz'
+          ),
+          (
+            '00000000-0000-4000-8000-000000102614', $2, 29,
+            '00000000-0000-4000-8000-000000102624',
+            '00000000-0000-4000-8000-000000102624', 29,
+            7, 'tool-redacted',
+            'chat-events/00000000-0000-4000-8000-000000102602/29-dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.ndjson.gz'
+          )
+      `,
+      [coveredThreadId, blockedThreadId],
+    );
+
+    await assert.rejects(
+      applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_MIGRATION,
+      ),
+      (error: unknown) => {
+        return (
+          error instanceof Error &&
+          error.message.includes(
+            "Chat Event Snapshot V7 contraction blocked: uncovered_legacy=1, future_version=0",
+          )
+        );
+      },
+    );
+    const preserved = await client.query<{ count: number }>(`
+      SELECT count(*)::integer AS "count"
+      FROM "chat_event_snapshots"
+      WHERE "archive_schema_version" < 7
+    `);
+    assert.deepEqual(preserved.rows, [{ count: 2 }]);
+
+    await client.query(
+      `
+        UPDATE "chat_event_snapshots"
+        SET
+          "last_seq_id" = 30,
+          "last_event_id" = '00000000-0000-4000-8000-000000102625',
+          "terminal_event_id" = '00000000-0000-4000-8000-000000102625',
+          "terminal_seq_id" = 30,
+          "object_key" = 'chat-events/00000000-0000-4000-8000-000000102602/30-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.ndjson.gz'
+        WHERE "id" = '00000000-0000-4000-8000-000000102614'
+      `,
+    );
+    await applyMigrationsUpToTag(
+      client,
+      CHAT_EVENT_SNAPSHOT_V7_CONTRACTION_MIGRATION,
+    );
+
+    const contracted = await client.query<{
+      archiveSchemaVersion: number;
+      projection: string;
+    }>(`
+      SELECT
+        "archive_schema_version" AS "archiveSchemaVersion",
+        "projection"
+      FROM "chat_event_snapshots"
+      ORDER BY "chat_thread_id"
+    `);
+    assert.deepEqual(contracted.rows, [
+      { archiveSchemaVersion: 7, projection: "tool-redacted" },
+      { archiveSchemaVersion: 7, projection: "tool-redacted" },
+    ]);
+
+    await client.query(
+      `
+        INSERT INTO "chat_event_snapshots" (
+          "chat_thread_id", "last_seq_id", "last_event_id",
+          "terminal_event_id", "terminal_seq_id", "object_key"
+        ) VALUES (
+          '00000000-0000-4000-8000-000000102603', 1,
+          '00000000-0000-4000-8000-000000102626',
+          '00000000-0000-4000-8000-000000102626', 1,
+          'chat-events/00000000-0000-4000-8000-000000102603/1-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.ndjson.gz'
+        )
+      `,
+    );
+    const defaults = await client.query<{
+      archiveSchemaVersion: number;
+      projection: string;
+    }>(`
+      SELECT
+        "archive_schema_version" AS "archiveSchemaVersion",
+        "projection"
+      FROM "chat_event_snapshots"
+      WHERE "chat_thread_id" =
+        '00000000-0000-4000-8000-000000102603'
+    `);
+    assert.deepEqual(defaults.rows, [
+      { archiveSchemaVersion: 7, projection: "tool-redacted" },
+    ]);
+
+    await assert.rejects(
+      client.query(
+        `
+          INSERT INTO "chat_event_snapshots" (
+            "chat_thread_id", "last_seq_id", "last_event_id",
+            "terminal_event_id", "terminal_seq_id",
+            "archive_schema_version", "projection", "object_key"
+          ) VALUES (
+            '00000000-0000-4000-8000-000000102604', 1,
+            '00000000-0000-4000-8000-000000102627', NULL, NULL,
+            6, 'full', 'chat-events/retired.ndjson.gz'
+          )
+        `,
+      ),
+      (error: unknown) => {
+        return databaseErrorCode(error) === "23514";
+      },
+    );
+
+    console.log("   ✅ uncovered legacy physical coverage fails closed");
+    console.log("   ✅ failed contraction preserves every legacy pointer");
+    console.log("   ✅ covered V5/V6 pointers contract to canonical V7 only");
+    console.log("   ✅ defaults and constraints reject retired shapes\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateChatEventSnapshotContraction(): Promise<void> {
   console.log("=== Validate Chat Event Snapshot contraction ===\n");
   const testDb = "migration_chat_event_snapshot_contract";
@@ -10822,12 +11155,14 @@ async function main(): Promise<void> {
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateChatEventSnapshotContraction();
+    await validateChatEventSnapshotV7Contraction();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
+    await validateOfficialAutomationResultEmailMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
     await validateConnectorAuthorizationAccountMutationPresence();
@@ -10837,6 +11172,11 @@ async function main(): Promise<void> {
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateSlackOfficialBrandMigration();
     await validateAgentDraftsCompatibilityRelation();
+    await validateWorkflowCompatibilityViews();
+    await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -10857,12 +11197,17 @@ async function main(): Promise<void> {
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl1);
+    await validatePermanentBuiltInProviderDiscriminatorState(dbUrl1);
+    await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
     await validatePermanentBuiltInModelCooldownState(dbUrl1);
     await validatePermanentBuiltInModelKeyState(dbUrl1);
     await validatePermanentSlackPublicBrandState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
+    await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl1);
+    await validateOfficialAutomationResultEmailSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
@@ -10872,6 +11217,20 @@ async function main(): Promise<void> {
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
+    const orgPlanEntitlementRestrictionMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
+    const orgPlanEntitlementRestrictionBackfillMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
     await backupMigrations();
     migrationsBackedUp = true;
     await generateFreshMigrations();
@@ -10881,11 +11240,22 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionMigrationSql,
+    );
+    await validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionBackfillMigrationSql,
+    );
+    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl2);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validatePermanentSlackPublicBrandState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
+    await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl2);
+    await validateOfficialAutomationResultEmailSchema(dbUrl2);
 
     // Step 4: Restore original migrations
     await restoreMigrations();
@@ -10922,6 +11292,9 @@ async function main(): Promise<void> {
         "   ✅ Old run creation paths synchronize metadata into agent_runs",
       );
       console.log("   ✅ Agent-run model-key canonical schemas match");
+      console.log(
+        "   ✅ Org plan restriction expansion, backfill, NOT NULL, and mirror invariants match",
+      );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",

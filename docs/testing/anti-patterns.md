@@ -97,13 +97,13 @@ afterEach(() => {
 
 it("should write file", () => {
   const testPath = join(tempDir, "registry.json");
-  const registry = new VMRegistry(testPath);
+  const registry = new SandboxRegistry(testPath);
 
   registry.register("172.16.0.2", "run-123", "token-abc");
 
   // Verify actual file was written
   const content = JSON.parse(readFileSync(testPath, "utf-8"));
-  expect(content.vms["172.16.0.2"]).toMatchObject({
+  expect(content.sandboxes["172.16.0.2"]).toMatchObject({
     runId: "run-123",
     sandboxToken: "token-abc",
   });

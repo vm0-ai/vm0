@@ -733,7 +733,7 @@ class TestErrorHandler:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/runners/model-usage-observations",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-002"
@@ -750,10 +750,8 @@ class TestErrorHandler:
         ]
         billing_key = body["events"][0]["idempotencyKey"]
         uuid.UUID(billing_key)
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
-        assert observation_body["runId"] == "run-int-002"
+        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
+        assert set(observation_body) == {"events"}
         assert [
             {key: value for key, value in event.items() if key != "idempotencyKey"}
             for event in observation_body["events"]

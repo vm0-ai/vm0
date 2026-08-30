@@ -33,6 +33,10 @@ pub mod error_code {
     pub const TIMEOUT: i32 = 80014;
     pub const CHANNEL_OPERATION_FAILED: i32 = 90000;
     pub const BAD_REQUEST: i32 = 40000;
+
+    pub(crate) fn is_token_error(code: i32) -> bool {
+        (40140..40150).contains(&code)
+    }
 }
 
 pub mod flags {

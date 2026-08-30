@@ -1243,14 +1243,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       {
         model: "deepseek-v4-flash",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
       {
         model: "gpt-5.6-luna",
         isDefault: false,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -2451,7 +2451,7 @@ describe("CHAT-03 run usage events", () => {
       {
         model: selectedModel,
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },

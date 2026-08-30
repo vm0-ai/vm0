@@ -288,15 +288,24 @@ fn clear_timeout_env() {
 }
 
 fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
-    guest_common::log::set_system_log_file(log_path);
-    let raw = GuestConfigRaw::from_process_env();
     guest_common::log::clear_system_log_file();
-    let log = match std::fs::read_to_string(log_path) {
-        Ok(log) => log,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error),
-    };
-    Ok((raw, log))
+    let raw = GuestConfigRaw::from_process_env();
+    assert!(
+        !log_path.exists(),
+        "raw capture installed or wrote a system-log sink"
+    );
+    let evidence = raw
+        .as_ref()
+        .map(|raw| {
+            raw.bootstrap_alias_source_events()
+                .map(|(family, key, source)| {
+                    format!("[captured] {family} key={key} source={source}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    Ok((raw, evidence))
 }
 
 fn assert_source_evidence(log: &str, case_name: &str, expected_source: Option<&str>) {
@@ -489,7 +498,6 @@ fn process_env_dual_reads_agent_execution_timeout_aliases_without_value_leaks() 
         LEGACY_CONFLICT_TIMEOUT,
     );
     for key in [
-        process_control_ipc::BOOTSTRAP_ENV,
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
         guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,

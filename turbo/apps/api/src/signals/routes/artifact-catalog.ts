@@ -24,6 +24,7 @@ const listArtifactCatalogInner$ = command(
         cursor: query.cursor,
         kind: query.kind,
         chatThreadId: query.chatThreadId,
+        keyword: query.keyword,
       },
       signal,
     );

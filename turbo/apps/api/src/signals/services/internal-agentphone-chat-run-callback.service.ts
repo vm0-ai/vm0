@@ -106,9 +106,9 @@ async function loadAgentPhoneRouteBinding(
     readonly run: AgentPhoneChatRunContext;
   },
   signal: AbortSignal,
-): Promise<{ readonly publicBrand: PublicBrand } | undefined> {
+): Promise<{ readonly userLinkId: string } | undefined> {
   const [route] = await args.db
-    .select({ publicBrand: agentphoneUserLinks.publicBrand })
+    .select({ userLinkId: agentphoneUserLinks.id })
     .from(agentphoneChatThreadRoutes)
     .innerJoin(
       agentphoneUserLinks,
@@ -327,18 +327,12 @@ async function deliverClaimedAgentPhoneChatCallback(
   if (!binding) {
     return "skipped_revoked";
   }
-  // API/backend persisted-callback rollout compatibility: mixed versions have
-  // overlapped for up to about 102 minutes, and callbacks created by an old API
-  // have no snapshot. Remove with #27750 after old/rollback APIs are gone and
-  // all pre-rollout AgentPhone callbacks have drained from persisted state.
-  const publicBrand = payload.publicBrand ?? binding.publicBrand;
-
   const presentation = await resolveAgentPhonePresentation(
     {
       db: args.db,
       runId: args.callback.runId,
       run,
-      publicBrand,
+      publicBrand: payload.publicBrand,
     },
     signal,
   );
@@ -359,7 +353,7 @@ async function deliverClaimedAgentPhoneChatCallback(
     target: payload,
     sent,
     body,
-    publicBrand,
+    publicBrand: payload.publicBrand,
   });
   return "delivered";
 }

@@ -5,8 +5,7 @@ from __future__ import annotations
 import reprlib
 from typing import Literal
 
-from mitmproxy import ctx
-
+import addon_process_logging
 from logging_utils import log_proxy_entry, sanitize_proxy_log_extra_value
 
 UnderbillingClass = Literal["confirmed", "risk"]
@@ -59,7 +58,7 @@ _SECRET_COMPACT_FIELD_MARKERS = (
 )
 
 
-def _stderr_field_key_words(key: str) -> tuple[str, ...]:
+def _process_event_field_key_words(key: str) -> tuple[str, ...]:
     words: list[str] = []
     current = ""
     for index, ch in enumerate(key):
@@ -85,16 +84,15 @@ _SECRET_FIELD_MARKERS = (
     "password",
     "secret",
 )
-_STDERR_FIELD_KEY_MAX_CHARS = 80
-_STDERR_FIELD_VALUE_MAX_CHARS = 256
-_STDERR_MESSAGE_MAX_CHARS = 512
+_PROCESS_EVENT_FIELD_VALUE_MAX_CHARS = 256
+_PROCESS_EVENT_MESSAGE_MAX_CHARS = 512
 _TRUNCATION_SUFFIX = "..."
 
 
-def _stderr_field_is_secret_like(key: str, value: object) -> bool:
+def _process_event_field_is_secret_like(key: str, value: object) -> bool:
     if value is None or isinstance(value, bool):
         return False
-    words = _stderr_field_key_words(key)
+    words = _process_event_field_key_words(key)
     normalized_key = "".join(words)
     if any(pair[0] in words and pair[1] in words for pair in _SECRET_FIELD_WORD_PAIRS):
         return True
@@ -111,21 +109,14 @@ def _stderr_field_is_secret_like(key: str, value: object) -> bool:
     return any(marker in normalized_key for marker in _SECRET_FIELD_MARKERS)
 
 
-def _truncate_stderr_text(value: str, max_chars: int) -> str:
+def _truncate_process_event_text(value: str, max_chars: int) -> str:
     if len(value) <= max_chars:
         return value
     limit = max_chars - len(_TRUNCATION_SUFFIX)
     return value[:limit] + _TRUNCATION_SUFFIX
 
 
-def _render_stderr_field_key(key: str) -> str:
-    rendered = "".join(
-        ch if ch.isascii() and (ch.isalnum() or ch in ("_", "-", ".")) else "_" for ch in key
-    )
-    return _truncate_stderr_text(rendered or "_", _STDERR_FIELD_KEY_MAX_CHARS)
-
-
-def _render_stderr_text(value: str, max_chars: int, *, preserve_spaces: bool) -> str:
+def _render_process_event_text(value: str, max_chars: int, *, preserve_spaces: bool) -> str:
     rendered: list[str] = []
     truncated_prefix: list[str] = []
     rendered_len = 0
@@ -158,35 +149,38 @@ def _render_stderr_text(value: str, max_chars: int, *, preserve_spaces: bool) ->
     return "".join(rendered)
 
 
-def _single_token_stderr_value(value: str) -> str:
-    return _render_stderr_text(value, _STDERR_FIELD_VALUE_MAX_CHARS, preserve_spaces=False)
+def _single_token_process_event_value(value: str) -> str:
+    return _render_process_event_text(
+        value,
+        _PROCESS_EVENT_FIELD_VALUE_MAX_CHARS,
+        preserve_spaces=False,
+    )
 
 
-def _render_stderr_message(value: str) -> str:
-    return _render_stderr_text(value, _STDERR_MESSAGE_MAX_CHARS, preserve_spaces=True)
+def _render_process_event_message(value: str) -> str:
+    return _render_process_event_text(value, _PROCESS_EVENT_MESSAGE_MAX_CHARS, preserve_spaces=True)
 
 
-def _render_stderr_field_value(key: str, value: object) -> str:
-    if _stderr_field_is_secret_like(key, value):
+def _render_process_event_field_value(key: str, value: object) -> object:
+    if _process_event_field_is_secret_like(key, value):
         return "[redacted]"
     sanitized = sanitize_proxy_log_extra_value(key, value)
-    if isinstance(sanitized, bool):
-        rendered = "true" if sanitized else "false"
-    elif sanitized is None:
-        rendered = "null"
-    elif isinstance(sanitized, str | int | float):
-        rendered = str(sanitized)
-    else:
-        rendered = reprlib.repr(sanitized)
-    return _single_token_stderr_value(rendered)
+    if sanitized is None or isinstance(sanitized, bool | int | float):
+        return sanitized
+    if isinstance(sanitized, str):
+        return _truncate_process_event_text(sanitized, _PROCESS_EVENT_FIELD_VALUE_MAX_CHARS)
+    return _truncate_process_event_text(
+        reprlib.repr(sanitized),
+        _PROCESS_EVENT_FIELD_VALUE_MAX_CHARS,
+    )
 
 
-def _render_stderr_extra_fields(fields: dict[str, object]) -> str:
-    return " ".join(
-        f"{_render_stderr_field_key(key)}={_render_stderr_field_value(key, fields[key])}"
+def _render_process_event_extra_fields(fields: dict[str, object]) -> dict[str, object]:
+    return {
+        key: _render_process_event_field_value(key, fields[key])
         for key in sorted(fields)
         if key not in _UNDERBILLING_PROTECTED_FIELDS
-    )
+    }
 
 
 def underbilling_fields(
@@ -215,34 +209,31 @@ def log_usage_underbilling(
     """Log a usage-underbilling signal with the underbilling field contract.
 
     ``type``, ``reason``, ``underbilling_class``, and ``component`` are owned
-    by this helper and cannot be overridden by caller context.  Without a
-    proxy log path, the stderr fallback additionally applies key-based secret
-    redaction, exact-``url`` sanitization, escaping, and truncation.
+    by this helper and cannot be overridden by caller context. The Axiom copy
+    applies key-based secret redaction, exact-``url`` sanitization, and value
+    bounds before using the generic addon log transport.
 
-    When a proxy log path is available, this still writes structured JSONL
-    through ``log_proxy_entry``.  In that path, the proxy-log extra-field
-    contract still applies; callers must not assume broad proxy-log redaction
-    for arbitrary context.
+    When a proxy log path is available, the signal is also written as
+    structured JSONL through ``log_proxy_entry``. In that path, the proxy-log
+    extra-field contract still applies; callers must not assume broad proxy-log
+    redaction for arbitrary context.
     """
     fields = underbilling_fields(reason, underbilling_class, **extra)
-    if not proxy_log_path:
-        parts = [
-            (
-                f"type={USAGE_UNDERBILLING_LOG_TYPE} "
-                f"reason={_single_token_stderr_value(str(reason))} "
-                f"underbilling_class={_single_token_stderr_value(str(underbilling_class))} "
-                f"component={USAGE_UNDERBILLING_COMPONENT_MITM_ADDON}"
-            )
-        ]
-        if rendered_fields := _render_stderr_extra_fields(fields):
-            parts.append(rendered_fields)
-        parts.append(_render_stderr_message(str(message)))
-        ctx.log.error(" ".join(parts))
-        return
-
-    log_proxy_entry(
-        proxy_log_path,
+    process_event_fields = _render_process_event_extra_fields(fields)
+    addon_process_logging.emit_addon_process_event(
         "error",
-        message,
-        **fields,
+        _render_process_event_message(str(message)),
+        **process_event_fields,
+        type=USAGE_UNDERBILLING_LOG_TYPE,
+        reason=_single_token_process_event_value(str(reason)),
+        underbilling_class=_single_token_process_event_value(str(underbilling_class)),
+        component=USAGE_UNDERBILLING_COMPONENT_MITM_ADDON,
     )
+
+    if proxy_log_path:
+        log_proxy_entry(
+            proxy_log_path,
+            "error",
+            message,
+            **fields,
+        )

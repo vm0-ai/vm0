@@ -30,16 +30,6 @@ export {
   type VideoTemplateItem,
 } from "./video-template-items";
 export {
-  HYPERFRAMES_AUTHORING_SOURCE,
-  HYPERFRAMES_RUNTIME,
-} from "./hyperframes-source";
-export {
-  INTRO_VIDEO_TEMPLATE_ITEMS,
-  INTRO_VIDEO_TEMPLATES_ENABLED_ENV,
-  findIntroVideoTemplateItem,
-  type IntroVideoTemplateItem,
-} from "./intro-video-template-items";
-export {
   WEBSITE_TEMPLATE_ITEMS,
   findWebsiteTemplateItem,
   type WebsiteTemplateItem,
@@ -231,6 +221,9 @@ export {
   userPreferencesResponseSchema,
   updateUserPreferencesRequestSchema,
   sendModeSchema,
+  themePreferenceSchema,
+  COLOR_THEMES,
+  colorThemeSchema,
   userLocaleSchema,
   featureSwitchesResponseSchema,
   updateFeatureSwitchesRequestSchema,
@@ -467,6 +460,8 @@ export {
   type UserPreferencesResponse,
   type UpdateUserPreferencesRequest,
   type SendMode,
+  type ThemePreference,
+  type ColorTheme,
   type UserLocale,
   type FeatureSwitchesResponse,
   type UpdateFeatureSwitchesRequest,

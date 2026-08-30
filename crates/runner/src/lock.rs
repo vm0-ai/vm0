@@ -88,14 +88,36 @@ impl LockMode {
     }
 }
 
+/// The result of an acquisition that reports contention instead of waiting
+/// indefinitely.
+///
+/// `Acquired` owns the kernel flock for as long as its `Flock<File>` is kept.
+/// Dropping that guard releases the lock. The guard's exclusive or shared mode
+/// is determined by the helper that returned it. `Busy` means that the helper
+/// did not obtain the lock because another lock holder had the current path;
+/// filesystem, validation, and task failures are returned as `RunnerError`
+/// values instead.
 pub(crate) enum TryLock {
+    /// The requested flock was acquired and remains held by this guard.
     Acquired(Flock<File>),
+    /// The requested flock could not be acquired because it was busy.
     Busy,
 }
 
+/// The result of a nonblocking acquisition that probes an existing lock path.
+///
+/// `Acquired` owns the kernel flock for as long as its `Flock<File>` is kept;
+/// dropping that guard releases the lock. The guard's exclusive or shared mode
+/// is determined by the helper that returned it. `Busy` reports contention on
+/// an existing path. `Missing` is reserved for an absent parent directory or
+/// lock file; other filesystem, validation, and task failures are returned as
+/// `RunnerError` values.
 pub(crate) enum ExistingTryLock {
+    /// The requested flock was acquired and remains held by this guard.
     Acquired(Flock<File>),
+    /// The existing lock path is currently held by another lock holder.
     Busy,
+    /// The lock parent directory or lock file does not exist.
     Missing,
 }
 
@@ -230,6 +252,10 @@ async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>
 
 /// Acquire an exclusive flock on the given path, waiting asynchronously until available.
 ///
+/// Missing parent directories and the lock file are created as needed. The
+/// path is checked for a trusted parent and a runner-owned, regular, private
+/// lock file; invalid or insecure paths return a `RunnerError`.
+///
 /// Waiting is cancellation-safe: dropping the returned future stops future attempts.
 /// The returned guard holds the lock until dropped.
 pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
@@ -239,6 +265,10 @@ pub async fn acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
 /// Acquire a shared flock on the given path, waiting asynchronously until available.
 ///
 /// Multiple shared locks can coexist; only exclusive locks conflict.
+/// Missing parent directories and the lock file are created as needed. The
+/// path is checked for a trusted parent and a runner-owned, regular, private
+/// lock file; invalid or insecure paths return a `RunnerError`.
+///
 /// Waiting is cancellation-safe: dropping the returned future stops future attempts.
 /// The returned guard holds the lock until dropped.
 pub async fn acquire_shared(path: PathBuf) -> RunnerResult<Flock<File>> {
@@ -246,6 +276,11 @@ pub async fn acquire_shared(path: PathBuf) -> RunnerResult<Flock<File>> {
 }
 
 /// Try to acquire an exclusive flock, returning an error immediately if held by another process.
+///
+/// This helper does not wait for contention. It creates missing parent
+/// directories and the lock file as needed, validates the path as a trusted
+/// private lock path, and maps contention to `RunnerError::Config`. Other path,
+/// validation, flock, and task failures are returned as `RunnerError` values.
 ///
 /// The returned guard holds the lock until dropped.
 pub async fn try_acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
@@ -255,6 +290,11 @@ pub async fn try_acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
 /// Acquire an exclusive flock, bounding only the wait after observed contention.
 ///
 /// Scheduling delay before the first acquisition attempt does not consume the timeout.
+/// The first attempt uses the create-or-open path and is immediate with
+/// respect to lock contention. If it observes contention, retries wait
+/// asynchronously for at most `contention_timeout`; expiration returns
+/// `TryLock::Busy`. Path, validation, flock, and task failures remain errors.
+/// On success, the `TryLock::Acquired` guard holds the lock until dropped.
 pub async fn acquire_with_contention_timeout(
     path: PathBuf,
     contention_timeout: Duration,
@@ -294,6 +334,13 @@ pub(crate) async fn acquire_with_contention_timeout_after_busy_for_test(
     acquire_with_contention_timeout_after_busy(path, contention_timeout, after_busy).await
 }
 
+/// Try to acquire an exclusive flock without waiting for contention.
+///
+/// This helper creates missing parent directories and the lock file as needed
+/// and validates the path as a trusted, runner-owned, regular, private lock
+/// file. Contention is returned as `TryLock::Busy`; path, validation, flock,
+/// and task failures are returned as `RunnerError` values. On success, the
+/// `TryLock::Acquired` guard holds the lock until dropped.
 pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
     tokio::task::spawn_blocking(move || try_acquire_or_busy_blocking(&path))
         .await
@@ -307,6 +354,13 @@ pub(crate) fn try_acquire_or_busy_blocking(path: &Path) -> RunnerResult<TryLock>
     }
 }
 
+/// Try to acquire a shared flock without waiting for an exclusive lock holder.
+///
+/// This helper creates missing parent directories and the lock file as needed
+/// and validates the path as a trusted, runner-owned, regular, private lock
+/// file. Contention is returned as `TryLock::Busy`; path, validation, flock,
+/// and task failures are returned as `RunnerError` values. On success, the
+/// `TryLock::Acquired` guard holds the shared lock until dropped.
 pub async fn try_acquire_shared_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
     match acquire_result_with(path, LockMode::TryShared).await? {
         LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
@@ -314,6 +368,15 @@ pub async fn try_acquire_shared_or_busy(path: PathBuf) -> RunnerResult<TryLock> 
     }
 }
 
+/// Try to acquire an exclusive flock on an existing path without waiting.
+///
+/// This is an existing-only probe: it does not create missing parent
+/// directories or a lock file. `ExistingTryLock::Missing` is returned when
+/// either is absent, while contention is returned as
+/// `ExistingTryLock::Busy`. An existing path is still required to be a
+/// trusted, runner-owned, regular, private lock file; invalid or insecure
+/// paths return a `RunnerError` rather than `Missing`. A successful
+/// `ExistingTryLock::Acquired` guard holds the lock until dropped.
 pub async fn try_acquire_existing_or_missing(path: PathBuf) -> RunnerResult<ExistingTryLock> {
     tokio::task::spawn_blocking(move || try_acquire_existing_or_missing_blocking(&path))
         .await
@@ -330,6 +393,16 @@ pub(crate) fn try_acquire_existing_or_missing_blocking(
     }
 }
 
+/// Try to acquire a shared flock on an existing path without waiting for an
+/// exclusive lock holder.
+///
+/// This is an existing-only probe: it does not create missing parent
+/// directories or a lock file. `ExistingTryLock::Missing` is returned when
+/// either is absent, while contention is returned as
+/// `ExistingTryLock::Busy`. An existing path is still required to be a
+/// trusted, runner-owned, regular, private lock file; invalid or insecure
+/// paths return a `RunnerError` rather than `Missing`. A successful
+/// `ExistingTryLock::Acquired` guard holds the shared lock until dropped.
 pub async fn try_acquire_existing_shared_or_missing(
     path: PathBuf,
 ) -> RunnerResult<ExistingTryLock> {

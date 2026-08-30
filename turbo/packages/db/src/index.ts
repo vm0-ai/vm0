@@ -114,6 +114,7 @@ import * as artifactSchema from "./schema/artifact";
 import * as sharedThreadSchema from "./schema/shared-thread";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
+import * as socialKitDownloadJobSchema from "./schema/socialkit-download-job";
 import * as bankingSchema from "./schema/banking";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
@@ -123,6 +124,7 @@ import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleFormsEventSchema from "./schema/google-forms-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
+import * as officialWorkflowCatalogSchema from "./schema/official-workflow-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
 import * as presentationTemplateSchema from "./schema/presentation-template";
@@ -245,6 +247,7 @@ export const schema = {
   ...sharedThreadSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
+  ...socialKitDownloadJobSchema,
   ...bankingSchema,
   ...gmailEventSchema,
   ...notionEventSchema,
@@ -254,6 +257,7 @@ export const schema = {
   ...googleFormsEventSchema,
   ...googleWorkspaceEventSchema,
   ...connectorCatalogSchema,
+  ...officialWorkflowCatalogSchema,
   ...mailDraftSchema,
   ...browserSessionSchema,
   ...presentationTemplateSchema,

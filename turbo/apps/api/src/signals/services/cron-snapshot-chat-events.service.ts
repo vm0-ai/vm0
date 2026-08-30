@@ -7,7 +7,7 @@ import {
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
-  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
+  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
@@ -15,13 +15,10 @@ import { command, computed, type Computed } from "ccstate";
 import {
   and,
   asc,
-  count,
-  desc,
   eq,
-  exists,
   gt,
   inArray,
-  isNotNull,
+  isNull,
   lt,
   lte,
   or,
@@ -51,12 +48,7 @@ import {
   prepareChatEventArchiveWithNormalizedIds,
   type DuplicateEventIdNormalizationStats,
 } from "./chat-event-snapshot-duplicate-id-normalization";
-import {
-  decodeChatEventSnapshotBody,
-  encodeChatEventSnapshotBody,
-  projectChatEventSnapshotRows,
-} from "./chat-event-snapshot-body.service";
-import { upgradeChatEventSnapshotBody } from "./chat-event-snapshot-upgrade.service";
+import { decodeChatEventSnapshotBody } from "./chat-event-snapshot-body.service";
 
 const log = logger("api:cron:snapshot-chat-events");
 
@@ -67,12 +59,10 @@ interface ChatEventSnapshotStats {
   readonly skippedUnreadableHeads: number;
   readonly skippedUndecodableHeads: number;
   readonly skippedIncompleteHeads: number;
-  readonly skippedUnsupportedHeads: number;
   readonly duplicateEventIdConflictThreads: number;
   readonly duplicateEventIdConflicts: number;
   readonly duplicateEventIdsRemapped: number;
   readonly duplicateEventReferencesRemapped: number;
-  readonly retiredSnapshotReferencesDeleted: number;
   readonly r2ObjectsScanned: number;
   readonly r2ObjectsMeasured: number;
   readonly r2ObjectsDeleted: number;
@@ -80,20 +70,6 @@ interface ChatEventSnapshotStats {
   readonly r2BytesDeleted: number;
   readonly r2GcShardsScanned: number;
   readonly r2GcSubpartitionedShards: number;
-  readonly snapshotHeads: number;
-  readonly nonCurrentSnapshotHeads: number;
-  readonly snapshotHeadVersions: readonly ChatEventSnapshotHeadVersion[];
-}
-
-interface ChatEventSnapshotHeadVersion {
-  readonly archiveSchemaVersion: number;
-  readonly heads: number;
-}
-
-interface ChatEventSnapshotConvergence {
-  readonly snapshotHeads: number;
-  readonly nonCurrentSnapshotHeads: number;
-  readonly snapshotHeadVersions: readonly ChatEventSnapshotHeadVersion[];
 }
 
 type ChatEventSnapshotScope =
@@ -111,6 +87,8 @@ interface SnapshotCandidate {
   readonly headId: string | null;
   readonly headLastSeqId: number | null;
   readonly headLastEventId: string | null;
+  readonly headTerminalSeqId: number | null;
+  readonly headTerminalEventId: string | null;
   readonly headObjectKey: string | null;
   readonly headArchiveSchemaVersion: number | null;
 }
@@ -119,8 +97,6 @@ interface SnapshotCandidate {
  * Version of the Chat Event row contract stored in Snapshot NDJSON. Bump it
  * whenever the row schema changes; object encoding remains gzip NDJSON.
  */
-const ARCHIVE_SCHEMA_VERSION = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
-const MINIMUM_UPGRADABLE_ARCHIVE_SCHEMA_VERSION = 5;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 const gzipAsync = promisify(gzip);
@@ -143,10 +119,6 @@ const SNAPSHOT_GC_DELETE_QUOTA = 1000;
  */
 const R2_GC_SLOT_MS = 10 * 60 * 1000;
 const HEX_DIGITS = "0123456789abcdef";
-const currentFullSnapshot = alias(
-  chatEventSnapshots,
-  "current_full_chat_event_snapshot",
-);
 const currentToolRedactedSnapshot = alias(
   chatEventSnapshots,
   "current_tool_redacted_chat_event_snapshot",
@@ -228,20 +200,26 @@ function chatEventSnapshotObjectKey(
   return `chat-events/${chatThreadId}/${lastSeqId}-${contentSha256}.ndjson.gz`;
 }
 
+interface CanonicalEventArchive {
+  readonly lines: readonly Buffer[];
+  readonly count: number;
+  readonly lastPhysicalEventId: string | null;
+  readonly lastRetainedEventId: string | null;
+  readonly lastRetainedSeqId: number | null;
+  readonly lastSeqId: number;
+}
+
 async function readCanonicalEvents(
   db: Db,
   candidate: SnapshotCandidate,
   fromSeqId: number,
-): Promise<{
-  readonly lines: readonly Buffer[];
-  readonly count: number;
-  readonly lastEventId: string | null;
-  readonly lastSeqId: number;
-}> {
+): Promise<CanonicalEventArchive> {
   const lines: Buffer[] = [];
   let cursor = fromSeqId;
   let count = 0;
-  let lastEventId: string | null = null;
+  let lastPhysicalEventId: string | null = null;
+  let lastRetainedEventId: string | null = null;
+  let lastRetainedSeqId: number | null = null;
   for (;;) {
     const rows = await db
       .select({
@@ -269,10 +247,10 @@ async function readCanonicalEvents(
       .orderBy(asc(chatEvents.seqId))
       .limit(EVENT_PAGE_SIZE);
     for (const row of rows) {
-      lastEventId = row.id;
-      if (candidate.projection === "full" || row.eventType !== "output.tool") {
-        lines.push(archiveLine(row));
-      }
+      lastPhysicalEventId = row.id;
+      lines.push(archiveLine(row));
+      lastRetainedEventId = row.id;
+      lastRetainedSeqId = row.seqId;
     }
     count += rows.length;
     const lastRow = rows[rows.length - 1];
@@ -283,7 +261,9 @@ async function readCanonicalEvents(
       return {
         lines,
         count,
-        lastEventId,
+        lastPhysicalEventId,
+        lastRetainedEventId,
+        lastRetainedSeqId,
         lastSeqId: candidate.indexedSeqId,
       };
     }
@@ -294,16 +274,14 @@ interface SnapshotSource {
   readonly id: string;
   readonly lastSeqId: number;
   readonly lastEventId: string;
+  readonly terminalSeqId: number | null;
+  readonly terminalEventId: string | null;
   readonly objectKey: string;
   readonly schemaVersion: number;
   readonly projection: ChatEventSnapshotProjection;
 }
 
-type SnapshotSkipReason =
-  | "unreadable"
-  | "undecodable"
-  | "incomplete"
-  | "unsupported";
+type SnapshotSkipReason = "unreadable" | "undecodable" | "incomplete";
 
 type SnapshotSourceResolution =
   | { readonly kind: "initial" }
@@ -314,6 +292,8 @@ interface SnapshotSourceMetadata {
   readonly id: string;
   readonly lastSeqId: number | null;
   readonly lastEventId: string | null;
+  readonly terminalSeqId: number | null;
+  readonly terminalEventId: string | null;
   readonly objectKey: string | null;
   readonly schemaVersion: number | null;
   readonly projection: ChatEventSnapshotProjection;
@@ -336,10 +316,15 @@ function resolveSnapshotSource(
     return { kind: "skipped", reason: "incomplete" };
   }
   if (
-    source.schemaVersion < MINIMUM_UPGRADABLE_ARCHIVE_SCHEMA_VERSION ||
-    source.schemaVersion > CURRENT_CHAT_EVENT_SCHEMA_VERSION
+    !(
+      (source.terminalSeqId === 0 && source.terminalEventId === null) ||
+      (source.terminalSeqId !== null &&
+        source.terminalSeqId > 0 &&
+        source.terminalSeqId <= source.lastSeqId &&
+        source.terminalEventId !== null)
+    )
   ) {
-    return { kind: "skipped", reason: "unsupported" };
+    return { kind: "skipped", reason: "incomplete" };
   }
   return {
     kind: "reusable",
@@ -347,6 +332,8 @@ function resolveSnapshotSource(
       id: source.id,
       lastSeqId: source.lastSeqId,
       lastEventId: source.lastEventId,
+      terminalSeqId: source.terminalSeqId,
+      terminalEventId: source.terminalEventId,
       objectKey: source.objectKey,
       schemaVersion: source.schemaVersion,
       projection: source.projection,
@@ -354,21 +341,29 @@ function resolveSnapshotSource(
   };
 }
 
-function candidateCurrentSource(
+function candidateSourceResolution(
   candidate: SnapshotCandidate,
-): SnapshotSource | null {
-  const resolved = resolveSnapshotSource(
+): SnapshotSourceResolution {
+  return resolveSnapshotSource(
     candidate.headId === null
       ? undefined
       : {
           id: candidate.headId,
           lastSeqId: candidate.headLastSeqId,
           lastEventId: candidate.headLastEventId,
+          terminalSeqId: candidate.headTerminalSeqId,
+          terminalEventId: candidate.headTerminalEventId,
           objectKey: candidate.headObjectKey,
           schemaVersion: candidate.headArchiveSchemaVersion,
           projection: candidate.projection,
         },
   );
+}
+
+function candidateCurrentSource(
+  candidate: SnapshotCandidate,
+): SnapshotSource | null {
+  const resolved = candidateSourceResolution(candidate);
   if (resolved.kind === "initial") {
     return null;
   }
@@ -378,63 +373,87 @@ function candidateCurrentSource(
   return resolved.source;
 }
 
-async function storedSnapshotSource(
-  db: Db,
-  candidate: SnapshotCandidate,
-): Promise<SnapshotSourceResolution> {
-  if (candidate.headId !== null) {
-    return resolveSnapshotSource({
-      id: candidate.headId,
-      lastSeqId: candidate.headLastSeqId,
-      lastEventId: candidate.headLastEventId,
-      objectKey: candidate.headObjectKey,
-      schemaVersion: candidate.headArchiveSchemaVersion,
-      projection: candidate.projection,
-    });
-  }
-  const sources = await db
-    .select({
-      id: chatEventSnapshots.id,
-      lastSeqId: chatEventSnapshots.lastSeqId,
-      lastEventId: chatEventSnapshots.lastEventId,
-      objectKey: chatEventSnapshots.objectKey,
-      schemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      projection: chatEventSnapshots.projection,
-    })
-    .from(chatEventSnapshots)
-    .where(
-      and(
-        eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId),
-        candidate.projection === "full"
-          ? eq(chatEventSnapshots.projection, "full")
-          : undefined,
-      ),
-    )
-    .orderBy(
-      desc(eq(chatEventSnapshots.projection, candidate.projection)),
-      desc(chatEventSnapshots.lastSeqId),
-      desc(chatEventSnapshots.archiveSchemaVersion),
-      desc(chatEventSnapshots.createdAt),
-      desc(chatEventSnapshots.id),
-    );
-  const source = sources[0];
-  return resolveSnapshotSource(source);
-}
-
 type SnapshotPrefixResolution =
-  | { readonly kind: "reusable"; readonly body: Buffer }
+  | {
+      readonly kind: "reusable";
+      readonly body: Buffer;
+      readonly terminalSeqId: number;
+      readonly terminalEventId: string | null;
+    }
   | {
       readonly kind: "skipped";
       readonly reason: "unreadable" | "undecodable";
     };
 
+interface SnapshotPrefixArgs {
+  readonly bucket: string;
+  readonly chatThreadId: string;
+  readonly source: SnapshotSource;
+  readonly projection: ChatEventSnapshotProjection;
+}
+
+function validateSnapshotPrefixRows(
+  rows: readonly ChatEventRow[],
+  args: SnapshotPrefixArgs,
+): void {
+  for (const [index, row] of rows.entries()) {
+    if (
+      row.chatThreadId !== args.chatThreadId ||
+      row.seqId > args.source.lastSeqId ||
+      (index > 0 && row.seqId <= (rows[index - 1]?.seqId ?? 0))
+    ) {
+      throw new Error("Chat Event Snapshot body violates prefix ordering");
+    }
+  }
+}
+
+function validateSnapshotPrefixTerminal(
+  args: SnapshotPrefixArgs,
+  terminalSeqId: number,
+  terminalEventId: string | null,
+): void {
+  if (
+    args.source.terminalSeqId !== terminalSeqId ||
+    args.source.terminalEventId !== terminalEventId
+  ) {
+    throw new Error(
+      "Chat Event Snapshot body does not match its terminal cursor",
+    );
+  }
+}
+
+async function decodeSnapshotPrefix(
+  compressed: Buffer,
+  args: SnapshotPrefixArgs,
+): Promise<{
+  readonly body: Buffer;
+  readonly terminalSeqId: number;
+  readonly terminalEventId: string | null;
+}> {
+  const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(
+    args.source.objectKey,
+  )?.[1];
+  if (digest === undefined || sha256Hex(compressed) !== digest) {
+    throw new Error(
+      "Chat Event Snapshot object checksum does not match its key",
+    );
+  }
+  const decompressed = await gunzipAsync(compressed);
+  const rows = decodeChatEventSnapshotBody(decompressed);
+  validateSnapshotPrefixRows(rows, args);
+  const terminal = rows.at(-1);
+  const terminalSeqId = terminal?.seqId ?? 0;
+  const terminalEventId = terminal?.id ?? null;
+  validateSnapshotPrefixTerminal(args, terminalSeqId, terminalEventId);
+  return {
+    body: decompressed,
+    terminalSeqId,
+    terminalEventId,
+  };
+}
+
 function readSnapshotPrefix(
-  args: {
-    readonly bucket: string;
-    readonly chatThreadId: string;
-    readonly source: SnapshotSource;
-    readonly projection: ChatEventSnapshotProjection;
-  },
+  args: SnapshotPrefixArgs,
   signal: AbortSignal,
 ): Computed<Promise<SnapshotPrefixResolution>> {
   return computed(async (get): Promise<SnapshotPrefixResolution> => {
@@ -446,55 +465,11 @@ function readSnapshotPrefix(
       return { kind: "skipped", reason: "unreadable" };
     }
     const decoded = await settle(
-      (async () => {
-        const digest = /-([0-9a-f]{64})\.ndjson\.gz$/u.exec(
-          args.source.objectKey,
-        )?.[1];
-        if (digest === undefined || sha256Hex(downloaded.value) !== digest) {
-          throw new Error(
-            "Chat Event Snapshot object checksum does not match its key",
-          );
-        }
-        const decompressed = await gunzipAsync(downloaded.value);
-        const upgraded = upgradeChatEventSnapshotBody(
-          decompressed,
-          args.source.schemaVersion,
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-        );
-        const rows = decodeChatEventSnapshotBody(upgraded);
-        const last = rows.at(-1);
-        if (args.projection === "full" && args.source.projection !== "full") {
-          throw new Error("A full Snapshot cannot reuse a redacted prefix");
-        }
-        if (
-          args.source.projection === "full" &&
-          (last === undefined || last.id !== args.source.lastEventId)
-        ) {
-          throw new Error("Chat Event Snapshot body does not match its cursor");
-        }
-        for (const [index, row] of rows.entries()) {
-          if (
-            row.chatThreadId !== args.chatThreadId ||
-            row.seqId > args.source.lastSeqId ||
-            (args.source.projection === "tool-redacted" &&
-              row.eventType === "output.tool") ||
-            (index > 0 && row.seqId <= (rows[index - 1]?.seqId ?? 0))
-          ) {
-            throw new Error(
-              "Chat Event Snapshot body violates prefix ordering",
-            );
-          }
-        }
-        return args.source.projection === args.projection
-          ? upgraded
-          : encodeChatEventSnapshotBody(
-              projectChatEventSnapshotRows(rows, args.projection),
-            );
-      })(),
+      decodeSnapshotPrefix(downloaded.value, args),
       signal,
     );
     return decoded.ok
-      ? { kind: "reusable", body: decoded.value }
+      ? { kind: "reusable", ...decoded.value }
       : { kind: "skipped", reason: "undecodable" };
   });
 }
@@ -504,13 +479,19 @@ function exactSnapshotPointer(source: SnapshotSource) {
     eq(chatEventSnapshots.id, source.id),
     eq(chatEventSnapshots.lastSeqId, source.lastSeqId),
     eq(chatEventSnapshots.lastEventId, source.lastEventId),
+    source.terminalSeqId === null
+      ? isNull(chatEventSnapshots.terminalSeqId)
+      : eq(chatEventSnapshots.terminalSeqId, source.terminalSeqId),
+    source.terminalEventId === null
+      ? isNull(chatEventSnapshots.terminalEventId)
+      : eq(chatEventSnapshots.terminalEventId, source.terminalEventId),
     eq(chatEventSnapshots.objectKey, source.objectKey),
     eq(chatEventSnapshots.archiveSchemaVersion, source.schemaVersion),
     eq(chatEventSnapshots.projection, source.projection),
   );
 }
 
-/** Publish one version pointer only if its exact source is still current. */
+/** Publish the current pointer only if its exact source is still current. */
 async function publishSnapshotVersion(
   db: Db,
   candidate: SnapshotCandidate,
@@ -518,20 +499,34 @@ async function publishSnapshotVersion(
   pointer: {
     readonly lastSeqId: number;
     readonly lastEventId: string;
+    readonly terminalSeqId: number;
+    readonly terminalEventId: string | null;
     readonly objectKey: string;
   },
 ): Promise<boolean> {
-  const { lastSeqId, lastEventId, objectKey } = pointer;
+  const { lastSeqId, lastEventId, terminalSeqId, terminalEventId, objectKey } =
+    pointer;
   return await db.transaction(async (tx) => {
     const current = candidateCurrentSource(candidate);
-    const replaceableSource =
-      source?.projection === candidate.projection ? source : null;
+    if (source !== null && source.id !== current?.id) {
+      const [lockedSource] = await tx
+        .select({ id: chatEventSnapshots.id })
+        .from(chatEventSnapshots)
+        .where(exactSnapshotPointer(source))
+        .for("update")
+        .limit(1);
+      if (lockedSource === undefined) {
+        return false;
+      }
+    }
     if (current !== null) {
       const updated = await tx
         .update(chatEventSnapshots)
         .set({
           lastSeqId,
           lastEventId,
+          terminalSeqId,
+          terminalEventId,
           objectKey,
           createdAt: nowDate(),
         })
@@ -543,41 +538,14 @@ async function publishSnapshotVersion(
       return true;
     }
 
-    if (
-      replaceableSource !== null &&
-      replaceableSource.objectKey === objectKey
-    ) {
-      const upgraded = await tx
-        .update(chatEventSnapshots)
-        .set({
-          archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          lastSeqId,
-          lastEventId,
-          createdAt: nowDate(),
-        })
-        .where(exactSnapshotPointer(replaceableSource))
-        .returning({ id: chatEventSnapshots.id });
-      if (upgraded.length === 0) {
-        return false;
-      }
-      return true;
-    }
-
-    if (replaceableSource !== null) {
-      const deleted = await tx
-        .delete(chatEventSnapshots)
-        .where(exactSnapshotPointer(replaceableSource))
-        .returning({ id: chatEventSnapshots.id });
-      if (deleted.length === 0) {
-        return false;
-      }
-    }
     const [inserted] = await tx
       .insert(chatEventSnapshots)
       .values({
         chatThreadId: candidate.chatThreadId,
         lastSeqId,
         lastEventId,
+        terminalSeqId,
+        terminalEventId,
         archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         projection: candidate.projection,
         objectKey,
@@ -617,28 +585,32 @@ type ArchivePrefixResolution =
       readonly kind: "reusable";
       readonly source: SnapshotSource | null;
       readonly prefix: Buffer | null;
+      readonly terminalSeqId: number;
+      readonly terminalEventId: string | null;
     }
   | { readonly kind: "skipped"; readonly reason: SnapshotSkipReason };
 
 function resolveArchivePrefix(
   args: {
-    readonly db: Db;
     readonly bucket: string;
     readonly candidate: SnapshotCandidate;
   },
   signal: AbortSignal,
 ): Computed<Promise<ArchivePrefixResolution>> {
   return computed(async (get): Promise<ArchivePrefixResolution> => {
-    const sourceResolution = await storedSnapshotSource(
-      args.db,
-      args.candidate,
-    );
+    const sourceResolution = candidateSourceResolution(args.candidate);
     signal.throwIfAborted();
     if (sourceResolution.kind === "skipped") {
       return sourceResolution;
     }
     if (sourceResolution.kind === "initial") {
-      return { kind: "reusable", source: null, prefix: null };
+      return {
+        kind: "reusable",
+        source: null,
+        prefix: null,
+        terminalSeqId: 0,
+        terminalEventId: null,
+      };
     }
     const prefixResolution = await get(
       readSnapshotPrefix(
@@ -658,11 +630,13 @@ function resolveArchivePrefix(
       kind: "reusable",
       source: sourceResolution.source,
       prefix: prefixResolution.body,
+      terminalSeqId: prefixResolution.terminalSeqId,
+      terminalEventId: prefixResolution.terminalEventId,
     };
   });
 }
 
-function terminalSnapshotEventId(
+function physicalSnapshotEventId(
   archiveLastEventId: string | null,
   source: SnapshotSource | null,
 ): string {
@@ -671,6 +645,31 @@ function terminalSnapshotEventId(
     throw new Error("Chat Event Snapshot has no terminal event ID");
   }
   return lastEventId;
+}
+
+function terminalSnapshotCursor(
+  archive: {
+    readonly lastRetainedEventId: string | null;
+    readonly lastRetainedSeqId: number | null;
+  },
+  prefix: {
+    readonly terminalEventId: string | null;
+    readonly terminalSeqId: number;
+  },
+): { readonly eventId: string | null; readonly seqId: number } {
+  if (archive.lastRetainedSeqId === null) {
+    return {
+      eventId: prefix.terminalEventId,
+      seqId: prefix.terminalSeqId,
+    };
+  }
+  if (archive.lastRetainedEventId === null) {
+    throw new Error("Chat Event Snapshot retained cursor is incomplete");
+  }
+  return {
+    eventId: archive.lastRetainedEventId,
+    seqId: archive.lastRetainedSeqId,
+  };
 }
 
 function isCurrentSnapshotWithoutTail(
@@ -685,6 +684,93 @@ function isCurrentSnapshotWithoutTail(
   );
 }
 
+interface PreparedSnapshotArchive {
+  readonly body: Buffer;
+  readonly terminalSeqId: number;
+  readonly terminalEventId: string | null;
+  readonly normalization: DuplicateEventIdNormalizationStats;
+}
+
+function logDuplicateEventIdNormalization(
+  chatThreadId: string,
+  normalization: DuplicateEventIdNormalizationStats,
+): void {
+  if (normalization.conflictingEventIds === 0) {
+    return;
+  }
+  log.warn("Normalized duplicate chat event IDs in snapshot", {
+    type: "chat_event_snapshot_duplicate_ids_normalized",
+    chatThreadId,
+    conflictingEventIdCount: normalization.conflictingEventIds,
+    remappedEventIdCount: normalization.remappedEventIds,
+    remappedReferenceCount: normalization.remappedEventReferences,
+  });
+}
+
+function prepareSnapshotArchive(
+  candidate: SnapshotCandidate,
+  prefix: Buffer | null,
+  prefixTerminal: {
+    readonly terminalSeqId: number;
+    readonly terminalEventId: string | null;
+  },
+  archive: CanonicalEventArchive,
+): PreparedSnapshotArchive {
+  const terminal = terminalSnapshotCursor(archive, prefixTerminal);
+  const prepared =
+    prefix === null
+      ? {
+          body: Buffer.concat(archive.lines),
+          normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+        }
+      : prepareChatEventArchiveWithNormalizedIds(
+          candidate.chatThreadId,
+          prefix,
+          archive.lines,
+        );
+  logDuplicateEventIdNormalization(
+    candidate.chatThreadId,
+    prepared.normalization,
+  );
+  const preparedTerminal = decodeChatEventSnapshotBody(prepared.body).at(-1);
+  const terminalSeqId = preparedTerminal?.seqId ?? 0;
+  if (terminalSeqId !== terminal.seqId) {
+    throw new Error("Chat Event Snapshot normalization changed event ordering");
+  }
+  return {
+    ...prepared,
+    terminalSeqId,
+    terminalEventId: preparedTerminal?.id ?? null,
+  };
+}
+
+function archivedThreadFromPublication(
+  published:
+    | { readonly ok: true; readonly value: boolean }
+    | { readonly ok: false; readonly error: unknown },
+  archiveCount: number,
+  normalization: DuplicateEventIdNormalizationStats,
+): ArchivedThread {
+  if (!published.ok) {
+    if (
+      !isForeignKeyViolation(published.error) &&
+      !isUniqueViolation(published.error)
+    ) {
+      throw published.error;
+    }
+    return {
+      archivedEvents: null,
+      skippedHead: null,
+      normalization,
+    };
+  }
+  return {
+    archivedEvents: published.value ? archiveCount : null,
+    skippedHead: null,
+    normalization,
+  };
+}
+
 const archiveThread$ = command(async function archiveThread(
   { get },
   args: {
@@ -696,13 +782,13 @@ const archiveThread$ = command(async function archiveThread(
 ): Promise<ArchivedThread> {
   const { db, bucket, candidate } = args;
   const resolved = await get(
-    resolveArchivePrefix({ db, bucket, candidate }, signal),
+    resolveArchivePrefix({ bucket, candidate }, signal),
   );
   signal.throwIfAborted();
   if (resolved.kind === "skipped") {
     return skippedArchivedThread(candidate, resolved.reason);
   }
-  const { source, prefix } = resolved;
+  const { source, prefix, terminalSeqId, terminalEventId } = resolved;
   const targetSeqId = Math.max(candidate.indexedSeqId, source?.lastSeqId ?? 0);
   const archive = await readCanonicalEvents(
     db,
@@ -724,27 +810,19 @@ const archiveThread$ = command(async function archiveThread(
       `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
     );
   }
-  const lastEventId = terminalSnapshotEventId(archive.lastEventId, source);
-  const prepared =
-    prefix === null
-      ? {
-          body: Buffer.concat(archive.lines),
-          normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
-        }
-      : prepareChatEventArchiveWithNormalizedIds(
-          candidate.chatThreadId,
-          prefix,
-          archive.lines,
-        );
-  if (prepared.normalization.conflictingEventIds > 0) {
-    log.warn("Normalized duplicate chat event IDs in snapshot", {
-      type: "chat_event_snapshot_duplicate_ids_normalized",
-      chatThreadId: candidate.chatThreadId,
-      conflictingEventIdCount: prepared.normalization.conflictingEventIds,
-      remappedEventIdCount: prepared.normalization.remappedEventIds,
-      remappedReferenceCount: prepared.normalization.remappedEventReferences,
-    });
-  }
+  const lastEventId = physicalSnapshotEventId(
+    archive.lastPhysicalEventId,
+    source,
+  );
+  const prepared = prepareSnapshotArchive(
+    candidate,
+    prefix,
+    {
+      terminalSeqId,
+      terminalEventId,
+    },
+    archive,
+  );
   const compressed = await gzipAsync(prepared.body);
   signal.throwIfAborted();
   const objectKey = chatEventSnapshotObjectKey(
@@ -781,139 +859,18 @@ const archiveThread$ = command(async function archiveThread(
     publishSnapshotVersion(db, candidate, source, {
       lastSeqId: targetSeqId,
       lastEventId,
+      terminalSeqId: prepared.terminalSeqId,
+      terminalEventId: prepared.terminalEventId,
       objectKey,
     }),
   );
   signal.throwIfAborted();
-  if (!published.ok) {
-    if (
-      !isForeignKeyViolation(published.error) &&
-      !isUniqueViolation(published.error)
-    ) {
-      throw published.error;
-    }
-    return {
-      archivedEvents: null,
-      skippedHead: null,
-      normalization: prepared.normalization,
-    };
-  }
-  return {
-    archivedEvents: published.value ? archive.count : null,
-    skippedHead: null,
-    normalization: prepared.normalization,
-  };
+  return archivedThreadFromPublication(
+    published,
+    archive.count,
+    prepared.normalization,
+  );
 });
-
-/**
- * Persist the current-version pointer on demand from an existing Snapshot plus
- * its latest Raw Event tail. A thread with no Snapshot remains a normal cold
- * start and is left for the bounded cron.
- */
-export const migrateCurrentChatEventSnapshot$ = command(
-  async (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly projection: ChatEventSnapshotProjection;
-    },
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const { chatThreadId, projection } = args;
-    const db = set(writeDb$);
-    const [thread] = await db
-      .select({ indexedSeqId: chatThreads.lastChatEventSeqId })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, chatThreadId))
-      .limit(1);
-    signal.throwIfAborted();
-    if (thread === undefined) {
-      return false;
-    }
-    const [head] = await db
-      .select({
-        headId: chatEventSnapshots.id,
-        headLastSeqId: chatEventSnapshots.lastSeqId,
-        headLastEventId: chatEventSnapshots.lastEventId,
-        headObjectKey: chatEventSnapshots.objectKey,
-        headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      })
-      .from(chatEventSnapshots)
-      .where(
-        and(
-          eq(chatEventSnapshots.chatThreadId, chatThreadId),
-          eq(
-            chatEventSnapshots.archiveSchemaVersion,
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
-          eq(chatEventSnapshots.projection, projection),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-    if (head !== undefined) {
-      return true;
-    }
-    const candidate: SnapshotCandidate = {
-      chatThreadId,
-      indexedSeqId: thread.indexedSeqId,
-      projection,
-      headId: null,
-      headLastSeqId: null,
-      headLastEventId: null,
-      headObjectKey: null,
-      headArchiveSchemaVersion: null,
-    };
-    const stored = await storedSnapshotSource(db, candidate);
-    signal.throwIfAborted();
-    if (stored.kind === "initial") {
-      return false;
-    }
-    const archived = await set(
-      archiveThread$,
-      {
-        db,
-        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
-        candidate,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    return archived.skippedHead === null;
-  },
-);
-
-async function chatEventSnapshotConvergence(
-  db: Db,
-  chatThreadIds: readonly string[] | null,
-): Promise<ChatEventSnapshotConvergence> {
-  const versions = await db
-    .select({
-      archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      heads: count(),
-    })
-    .from(chatEventSnapshots)
-    .where(
-      chatThreadIds === null
-        ? undefined
-        : inArray(chatEventSnapshots.chatThreadId, chatThreadIds),
-    )
-    .groupBy(chatEventSnapshots.archiveSchemaVersion)
-    .orderBy(asc(chatEventSnapshots.archiveSchemaVersion));
-  const snapshotHeads = versions.reduce((total, version) => {
-    return total + version.heads;
-  }, 0);
-  const nonCurrentSnapshotHeads = versions.reduce((total, version) => {
-    return version.archiveSchemaVersion === ARCHIVE_SCHEMA_VERSION
-      ? total
-      : total + version.heads;
-  }, 0);
-  return {
-    snapshotHeads,
-    nonCurrentSnapshotHeads,
-    snapshotHeadVersions: versions,
-  };
-}
 
 interface R2GcStats {
   readonly scanned: number;
@@ -929,145 +886,6 @@ interface R2GcOptions {
   readonly deleteQuota: number;
   readonly ownedObjectKeys: ReadonlySet<string> | null;
 }
-
-interface RetiredSnapshotVersionGcStats {
-  readonly selected: number;
-  readonly referencesDeleted: number;
-}
-
-interface RetiredSnapshotVersionGcOptions {
-  readonly deleteQuota: number;
-  readonly chatThreadIds: readonly string[] | null;
-}
-
-const deleteRetiredSnapshotVersions$ = command(
-  async (
-    _,
-    db: Db,
-    options: RetiredSnapshotVersionGcOptions,
-    signal: AbortSignal,
-  ): Promise<RetiredSnapshotVersionGcStats> => {
-    const candidates = await db
-      .select({
-        id: chatEventSnapshots.id,
-      })
-      .from(chatEventSnapshots)
-      .where(
-        and(
-          lt(
-            chatEventSnapshots.archiveSchemaVersion,
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
-          // Never discard the only durable historical prefix. Once a current
-          // pointer exists, older stored pointers are superseded.
-          exists(
-            db
-              .select({ id: currentFullSnapshot.id })
-              .from(currentFullSnapshot)
-              .where(
-                and(
-                  eq(
-                    currentFullSnapshot.chatThreadId,
-                    chatEventSnapshots.chatThreadId,
-                  ),
-                  eq(
-                    currentFullSnapshot.archiveSchemaVersion,
-                    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-                  ),
-                  eq(currentFullSnapshot.projection, "full"),
-                ),
-              ),
-          ),
-          exists(
-            db
-              .select({ id: currentToolRedactedSnapshot.id })
-              .from(currentToolRedactedSnapshot)
-              .where(
-                and(
-                  eq(
-                    currentToolRedactedSnapshot.chatThreadId,
-                    chatEventSnapshots.chatThreadId,
-                  ),
-                  eq(
-                    currentToolRedactedSnapshot.archiveSchemaVersion,
-                    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-                  ),
-                  eq(currentToolRedactedSnapshot.projection, "tool-redacted"),
-                ),
-              ),
-          ),
-          options.chatThreadIds === null
-            ? undefined
-            : inArray(chatEventSnapshots.chatThreadId, options.chatThreadIds),
-        ),
-      )
-      .limit(options.deleteQuota);
-    signal.throwIfAborted();
-    if (candidates.length === 0) {
-      return { selected: 0, referencesDeleted: 0 };
-    }
-
-    const candidateIds = candidates.map((candidate) => {
-      return candidate.id;
-    });
-    const deletedReferences = await db
-      .delete(chatEventSnapshots)
-      .where(
-        and(
-          inArray(chatEventSnapshots.id, candidateIds),
-          lt(
-            chatEventSnapshots.archiveSchemaVersion,
-            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
-          exists(
-            db
-              .select({ id: currentFullSnapshot.id })
-              .from(currentFullSnapshot)
-              .where(
-                and(
-                  eq(
-                    currentFullSnapshot.chatThreadId,
-                    chatEventSnapshots.chatThreadId,
-                  ),
-                  eq(
-                    currentFullSnapshot.archiveSchemaVersion,
-                    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-                  ),
-                  eq(currentFullSnapshot.projection, "full"),
-                ),
-              ),
-          ),
-          exists(
-            db
-              .select({ id: currentToolRedactedSnapshot.id })
-              .from(currentToolRedactedSnapshot)
-              .where(
-                and(
-                  eq(
-                    currentToolRedactedSnapshot.chatThreadId,
-                    chatEventSnapshots.chatThreadId,
-                  ),
-                  eq(
-                    currentToolRedactedSnapshot.archiveSchemaVersion,
-                    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-                  ),
-                  eq(currentToolRedactedSnapshot.projection, "tool-redacted"),
-                ),
-              ),
-          ),
-        ),
-      )
-      .returning({ id: chatEventSnapshots.id });
-    signal.throwIfAborted();
-    // Object deletion belongs to the reference-aware R2 GC below. A historical
-    // and current version may share one content-addressed key, so deleting the
-    // key alongside just one pointer would be unsafe.
-    return {
-      selected: candidates.length,
-      referencesDeleted: deletedReferences.length,
-    };
-  },
-);
 
 function chatEventSnapshotGcPrefixes(now: Date): readonly string[] {
   const slot = Math.floor(now.getTime() / R2_GC_SLOT_MS);
@@ -1226,33 +1044,19 @@ async function loadSnapshotCandidates(
     .select({
       chatThreadId: chatThreads.id,
       indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId,
-      fullHeadId: currentFullSnapshot.id,
-      fullHeadLastSeqId: currentFullSnapshot.lastSeqId,
-      fullHeadLastEventId: currentFullSnapshot.lastEventId,
-      fullHeadObjectKey: currentFullSnapshot.objectKey,
-      fullHeadArchiveSchemaVersion: currentFullSnapshot.archiveSchemaVersion,
-      redactedHeadId: currentToolRedactedSnapshot.id,
-      redactedHeadLastSeqId: currentToolRedactedSnapshot.lastSeqId,
-      redactedHeadLastEventId: currentToolRedactedSnapshot.lastEventId,
-      redactedHeadObjectKey: currentToolRedactedSnapshot.objectKey,
-      redactedHeadArchiveSchemaVersion:
+      headId: currentToolRedactedSnapshot.id,
+      headLastSeqId: currentToolRedactedSnapshot.lastSeqId,
+      headLastEventId: currentToolRedactedSnapshot.lastEventId,
+      headTerminalSeqId: currentToolRedactedSnapshot.terminalSeqId,
+      headTerminalEventId: currentToolRedactedSnapshot.terminalEventId,
+      headObjectKey: currentToolRedactedSnapshot.objectKey,
+      headArchiveSchemaVersion:
         currentToolRedactedSnapshot.archiveSchemaVersion,
     })
     .from(chatThreads)
     .innerJoin(
       chatEventSearchMessageWatermarks,
       eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreads.id),
-    )
-    .leftJoin(
-      currentFullSnapshot,
-      and(
-        eq(currentFullSnapshot.chatThreadId, chatThreads.id),
-        eq(
-          currentFullSnapshot.archiveSchemaVersion,
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-        ),
-        eq(currentFullSnapshot.projection, "full"),
-      ),
     )
     .leftJoin(
       currentToolRedactedSnapshot,
@@ -1262,7 +1066,10 @@ async function loadSnapshotCandidates(
           currentToolRedactedSnapshot.archiveSchemaVersion,
           CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         ),
-        eq(currentToolRedactedSnapshot.projection, "tool-redacted"),
+        eq(
+          currentToolRedactedSnapshot.projection,
+          CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
+        ),
       ),
     )
     .where(
@@ -1270,70 +1077,37 @@ async function loadSnapshotCandidates(
         chatThreadIds === null
           ? undefined
           : inArray(chatThreads.id, chatThreadIds),
+        gt(chatEventSearchMessageWatermarks.indexedSeqId, 0),
         or(
-          gt(
+          isNull(currentToolRedactedSnapshot.id),
+          lt(
+            currentToolRedactedSnapshot.lastSeqId,
             chatEventSearchMessageWatermarks.indexedSeqId,
-            sql`COALESCE(${currentFullSnapshot.lastSeqId}, 0)`,
           ),
-          and(
-            isNotNull(currentFullSnapshot.id),
-            or(
-              lte(currentFullSnapshot.lastSeqId, 0),
-              sql`btrim(${currentFullSnapshot.objectKey}) = ''`,
-            ),
-          ),
-          gt(
-            chatEventSearchMessageWatermarks.indexedSeqId,
-            sql`COALESCE(${currentToolRedactedSnapshot.lastSeqId}, 0)`,
-          ),
-          and(
-            isNotNull(currentToolRedactedSnapshot.id),
-            or(
-              lte(currentToolRedactedSnapshot.lastSeqId, 0),
-              sql`btrim(${currentToolRedactedSnapshot.objectKey}) = ''`,
-            ),
-          ),
+          lte(currentToolRedactedSnapshot.lastSeqId, 0),
+          isNull(currentToolRedactedSnapshot.terminalSeqId),
+          sql`btrim(${currentToolRedactedSnapshot.objectKey}) = ''`,
+          sql`NOT (${currentToolRedactedSnapshot.objectKey}
+            ~ '-[0-9a-f]{64}[.]ndjson[.]gz$')`,
         ),
       ),
     )
     .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))
     .limit(chatEventSnapshotThreadBatchSize());
 
-  return rows.flatMap((row): readonly SnapshotCandidate[] => {
-    return CHAT_EVENT_SNAPSHOT_PROJECTIONS.flatMap((projection) => {
-      const full = projection === "full";
-      const headId = full ? row.fullHeadId : row.redactedHeadId;
-      const headLastSeqId = full
-        ? row.fullHeadLastSeqId
-        : row.redactedHeadLastSeqId;
-      const headLastEventId = full
-        ? row.fullHeadLastEventId
-        : row.redactedHeadLastEventId;
-      const headObjectKey = full
-        ? row.fullHeadObjectKey
-        : row.redactedHeadObjectKey;
-      const headArchiveSchemaVersion = full
-        ? row.fullHeadArchiveSchemaVersion
-        : row.redactedHeadArchiveSchemaVersion;
-      const needsRefresh =
-        row.indexedSeqId > (headLastSeqId ?? 0) ||
-        (headId !== null &&
-          ((headLastSeqId ?? 0) <= 0 || headObjectKey?.trim().length === 0));
-      return needsRefresh
-        ? [
-            {
-              chatThreadId: row.chatThreadId,
-              indexedSeqId: row.indexedSeqId,
-              projection,
-              headId,
-              headLastSeqId,
-              headLastEventId,
-              headObjectKey,
-              headArchiveSchemaVersion,
-            },
-          ]
-        : [];
-    });
+  return rows.map((row): SnapshotCandidate => {
+    return {
+      chatThreadId: row.chatThreadId,
+      indexedSeqId: row.indexedSeqId,
+      projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
+      headId: row.headId,
+      headLastSeqId: row.headLastSeqId,
+      headLastEventId: row.headLastEventId,
+      headTerminalSeqId: row.headTerminalSeqId,
+      headTerminalEventId: row.headTerminalEventId,
+      headObjectKey: row.headObjectKey,
+      headArchiveSchemaVersion: row.headArchiveSchemaVersion,
+    };
   });
 }
 
@@ -1341,11 +1115,10 @@ async function loadSnapshotCandidates(
  * Archives Chat Events into immutable, content-addressed R2 Snapshots. The
  * first Snapshot may bootstrap from the currently available Raw Event prefix,
  * whose sequence positions may start above 1 and contain gaps. Every later
- * refresh or schema upgrade must reuse a stored Snapshot prefix and append only
- * the Raw Event tail after its paired cursor. Missing objects and missing
- * migrations fail closed because older Raw Events may be reclaimed. Publication
- * uses an exact pointer CAS, so a lost race can only leave a collectable orphan
- * object.
+ * refresh must reuse a stored Snapshot prefix and append only the Raw Event
+ * tail after its paired cursor. Missing objects and incomplete pointers fail
+ * closed because older Raw Events may be reclaimed. Publication uses an exact
+ * pointer CAS, so a lost race can only leave a collectable orphan object.
  */
 export const snapshotChatEvents$ = command(
   async (
@@ -1367,7 +1140,6 @@ export const snapshotChatEvents$ = command(
     let skippedUnreadableHeads = 0;
     let skippedUndecodableHeads = 0;
     let skippedIncompleteHeads = 0;
-    let skippedUnsupportedHeads = 0;
     let duplicateEventIdConflictThreads = 0;
     let duplicateEventIdConflicts = 0;
     let duplicateEventIdsRemapped = 0;
@@ -1394,15 +1166,11 @@ export const snapshotChatEvents$ = command(
           skippedIncompleteHeads += 1;
           break;
         }
-        case "unsupported": {
-          skippedUnsupportedHeads += 1;
-          break;
-        }
         case null: {
           break;
         }
       }
-      if (candidate.projection === "full" && archived.archivedEvents !== null) {
+      if (archived.archivedEvents !== null) {
         snapshots += 1;
         archivedEvents += archived.archivedEvents;
       }
@@ -1414,25 +1182,13 @@ export const snapshotChatEvents$ = command(
       duplicateEventReferencesRemapped +=
         archived.normalization.remappedEventReferences;
     }
-    const retiredSnapshots = await set(
-      deleteRetiredSnapshotVersions$,
-      db,
-      {
-        deleteQuota: SNAPSHOT_GC_DELETE_QUOTA,
-        chatThreadIds,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    const convergence = await chatEventSnapshotConvergence(db, chatThreadIds);
-    signal.throwIfAborted();
     const r2Gc = await set(
       collectR2SnapshotGarbage$,
       {
         db,
         bucket,
         options: {
-          deleteQuota: SNAPSHOT_GC_DELETE_QUOTA - retiredSnapshots.selected,
+          deleteQuota: SNAPSHOT_GC_DELETE_QUOTA,
           ownedObjectKeys,
         },
       },
@@ -1446,12 +1202,10 @@ export const snapshotChatEvents$ = command(
       skippedUnreadableHeads,
       skippedUndecodableHeads,
       skippedIncompleteHeads,
-      skippedUnsupportedHeads,
       duplicateEventIdConflictThreads,
       duplicateEventIdConflicts,
       duplicateEventIdsRemapped,
       duplicateEventReferencesRemapped,
-      retiredSnapshotReferencesDeleted: retiredSnapshots.referencesDeleted,
       r2ObjectsScanned: r2Gc.scanned,
       r2ObjectsMeasured: r2Gc.measured,
       r2ObjectsDeleted: r2Gc.deleted,
@@ -1459,7 +1213,6 @@ export const snapshotChatEvents$ = command(
       r2BytesDeleted: r2Gc.bytesDeleted,
       r2GcShardsScanned: r2Gc.shardsScanned,
       r2GcSubpartitionedShards: r2Gc.subpartitionedShards,
-      ...convergence,
     };
   },
 );

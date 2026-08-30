@@ -389,11 +389,6 @@ export default [
     // exceptions. Route tests cover constructible behavior, while these exact
     // transition inputs are not available through production APIs.
     files: [
-      // Provider wrapper decoding, surrogate-safe bounds, and opaque UUIDv5
-      // identities are exact pure contracts required by #29367. Route tests
-      // cover their persisted behavior, while this corpus pins the parser and
-      // namespace values independently from database state.
-      "src/signals/services/__tests__/agent-tool-event-normalization.test.ts",
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",
@@ -528,11 +523,6 @@ export default [
       // Central test lifecycle owns connection-pool teardown; it does not
       // construct or assert API behavior.
       "src/__tests__/test-context.ts",
-      // Provider wrapper decoding, surrogate-safe bounds, and opaque UUIDv5
-      // identities are exact pure contracts required by #29367. Route tests
-      // cover their persisted behavior, while this corpus pins the parser and
-      // namespace values independently from database state.
-      "src/signals/services/__tests__/agent-tool-event-normalization.test.ts",
       // A finite event-type matrix locks persisted payload rendering and
       // policy lookup byte-for-byte; individual provider routes cannot cover
       // every lookup-table row without duplicating the contract under test.

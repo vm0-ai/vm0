@@ -54,7 +54,10 @@ async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prom
         }))?,
     )?;
     unsafe {
-        std::env::set_var("VM0_USER_ENV_FILE", &user_env_path);
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
+            &user_env_path,
+        );
     }
 
     let runtime = GuestRuntime::from_process_env()?;

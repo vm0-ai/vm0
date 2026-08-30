@@ -1,6 +1,6 @@
 {
   "name": "@okouai/connectors",
-  "version": "1.210.2",
+  "version": "1.210.7",
   "private": true,
   "type": "module",
   "exports": {
@@ -23,6 +23,10 @@
     "./firewall-rule-matcher": {
       "import": "./src/firewall-rule-matcher.ts",
       "types": "./src/firewall-rule-matcher.ts"
+    },
+    "./firewall-contracts": {
+      "import": "./src/firewall-contracts.ts",
+      "types": "./src/firewall-contracts.ts"
     },
     "./firewall-types": {
       "import": "./src/firewall-types.ts",

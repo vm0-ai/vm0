@@ -618,9 +618,7 @@ export async function validateAgentRunLaunchSnapshotMigration(): Promise<void> {
     );
     console.log("   ✅ ordinary DML remains healthy under validation lock");
     console.log("   ✅ migration retries are exact and idempotent");
-    console.log(
-      "   ✅ runtime callers contain no launch-snapshot dependency\n",
-    );
+    console.log("   ✅ runtime launch-snapshot caller inventory is exact\n");
   } finally {
     await blocker.query("ROLLBACK");
     await migrator.query("ROLLBACK");

@@ -12,8 +12,8 @@ import {
   DialogTitle,
   Input,
 } from "@okouai/ui";
+import { connectorAccountEffectiveLabel } from "@okouai/api-contracts/contracts/connector-accounts";
 
-import { connectorAccountEffectiveLabel } from "../../../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { renameConnectorAccount$ } from "../../../../signals/okou-page/settings/connector-accounts.ts";
 import {

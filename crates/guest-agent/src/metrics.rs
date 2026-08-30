@@ -5,6 +5,7 @@
 
 use crate::constants;
 use serde::Serialize;
+use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -17,6 +18,43 @@ struct MetricsEntry {
     mem_total: u64,
     disk_used: u64,
     disk_total: u64,
+}
+
+/// Loop-owned metrics destination with a lazily opened append handle.
+///
+/// The retained descriptor continues targeting the opened inode across path
+/// replacement. A write failure drops it so the next tick securely reopens the
+/// configured path.
+struct MetricsSink {
+    path: String,
+    file: Option<File>,
+}
+
+impl MetricsSink {
+    fn new(path: String) -> Self {
+        Self { path, file: None }
+    }
+
+    fn append(&mut self, entry: &MetricsEntry) {
+        let Ok(json) = serde_json::to_string(entry) else {
+            return;
+        };
+
+        let file = match self.file.as_mut() {
+            Some(file) => file,
+            None => {
+                let Ok(file) = guest_contracts::runtime_paths::open_private_append(&self.path)
+                else {
+                    return;
+                };
+                self.file.insert(file)
+            }
+        };
+
+        if writeln!(file, "{json}").is_err() {
+            self.file = None;
+        }
+    }
 }
 
 /// Tracks previous `/proc/stat` counters for delta-based CPU measurement.
@@ -166,24 +204,17 @@ fn collect_metrics(cpu_tracker: &mut CpuTracker) -> MetricsEntry {
     }
 }
 
-fn write_metrics_entry(metrics_log_file: &str, entry: &MetricsEntry) {
-    if let Ok(json) = serde_json::to_string(entry)
-        && let Ok(mut f) = guest_contracts::runtime_paths::open_private_append(metrics_log_file)
-    {
-        let _ = writeln!(f, "{json}");
-    }
-}
-
 /// Background loop writing metrics JSONL to an explicit runtime metrics file.
 pub async fn metrics_loop_for_path(shutdown: CancellationToken, metrics_log_file: String) {
     let mut interval = tokio::time::interval(Duration::from_secs(constants::METRICS_INTERVAL_SECS));
     let mut cpu_tracker = CpuTracker::new();
+    let mut metrics_sink = MetricsSink::new(metrics_log_file);
     loop {
         tokio::select! {
             _ = shutdown.cancelled() => break,
             _ = interval.tick() => {
                 let entry = collect_metrics(&mut cpu_tracker);
-                write_metrics_entry(&metrics_log_file, &entry);
+                metrics_sink.append(&entry);
             }
         }
     }
@@ -394,26 +425,5 @@ mod tests {
         assert!(parsed["cpu"].is_f64());
         assert!(parsed["mem_total"].is_u64());
         assert!(parsed["disk_total"].is_u64());
-    }
-
-    #[test]
-    fn write_metrics_entry_writes_to_explicit_path() {
-        let temp = tempfile::tempdir().unwrap();
-        let metrics_log_file = temp
-            .path()
-            .join("runtime")
-            .join("metrics.jsonl")
-            .to_string_lossy()
-            .into_owned();
-
-        let mut tracker = CpuTracker::new();
-        let entry = collect_metrics(&mut tracker);
-        write_metrics_entry(&metrics_log_file, &entry);
-
-        let content = std::fs::read_to_string(metrics_log_file).unwrap();
-        let first_line = content.lines().next().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(first_line).unwrap();
-        assert!(parsed["ts"].is_string());
-        assert!(parsed["cpu"].is_f64());
     }
 }

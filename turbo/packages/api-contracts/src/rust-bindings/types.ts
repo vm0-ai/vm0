@@ -4,6 +4,7 @@ import {
   activeInputDeliveryReserveResponseSchema,
   activeInputDeliveryReceiptResponseSchema,
   artifactMissingRootPolicySchema,
+  builtInModelProviderConnectionSourceSchema,
   piLaunchConfigSchema,
   piModelConfigSchema,
   runnersModelProviderFailuresContract,
@@ -286,15 +287,36 @@ export const rustTypeBindings = [
     ],
   },
   {
+    schema: builtInModelProviderConnectionSourceSchema,
+    rustModulePath: ["runners", "runs", "model_provider_failures"],
+    rustTypeName: "RequestConnectionSource",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "RequestConnectionSource",
+        rustDoc: ["Source of an eligible connection failure."],
+        variants: {
+          provider_response: ["The provider returned a connection failure."],
+          upstream_transport: [
+            "The runner observed an upstream transport failure.",
+          ],
+        },
+      },
+    ],
+  },
+  {
     schema: runnersModelProviderFailuresContract.report.body,
     rustModulePath: ["runners", "runs", "model_provider_failures"],
     rustTypeName: "Request",
     direction: "request",
+    fieldTypeOverrides: {
+      connectionSource: "RequestConnectionSource",
+    },
     declarations: [
       {
-        rustTypeName: "RequestFailureKind",
+        rustTypeName: "Request",
         rustDoc: [
-          "Bounded provider-independent failure eligible for route cooldown.",
+          "Request body for reporting a built-in model provider failure.",
         ],
         variants: {
           authentication: ["Provider authentication failed."],
@@ -306,14 +328,8 @@ export const rustTypeBindings = [
           timeout: ["The provider inference request timed out."],
           connection: ["The provider connection failed."],
         },
-      },
-      {
-        rustTypeName: "Request",
-        rustDoc: [
-          "Request body for reporting a built-in model provider failure.",
-        ],
         fields: {
-          failureKind: ["Normalized eligible provider failure kind."],
+          connectionSource: ["Required source of the connection failure."],
           retryAfterSeconds: [
             "Optional bounded provider retry delay in seconds.",
           ],
@@ -363,6 +379,9 @@ export const rustTypeBindings = [
           ],
           archiveSize: ["Optional exact encoded archive size in bytes."],
           empty: ["Whether the resolved Storage version is explicitly empty."],
+          baselineCandidate: [
+            "Whether this read-only mount participates in baseline stability observation.",
+          ],
           instructionsTargetFilename: [
             "Optional filename used when Storage instructions are normalized.",
           ],

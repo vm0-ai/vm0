@@ -39,7 +39,7 @@ tail -f /dev/null
 
     assert_eq!(cli_result.exit_code, common::SIGTERM_EXIT);
     assert_eq!(
-        cli_result.claude_result.and_then(|result| result.num_turns),
+        cli_result.jsonl_result.and_then(|result| result.num_turns),
         Some(1)
     );
     Ok(())

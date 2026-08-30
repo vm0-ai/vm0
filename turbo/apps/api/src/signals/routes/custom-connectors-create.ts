@@ -46,7 +46,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     body: serialiseCustomConnector({
       row: result,
       valueMarkers: [],
-      connectedConnection: false,
+      connectedAccountId: null,
     }),
   };
 });

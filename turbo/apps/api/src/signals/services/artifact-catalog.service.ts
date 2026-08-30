@@ -4,6 +4,7 @@ import {
   asc,
   desc,
   eq,
+  ilike,
   inArray,
   isNotNull,
   like,
@@ -718,6 +719,7 @@ interface ListArtifactCatalogArgs {
   readonly cursor?: string;
   readonly kind?: ArtifactCatalogKind;
   readonly chatThreadId?: string;
+  readonly keyword?: string;
 }
 
 interface ListArtifactCatalogResult {
@@ -841,6 +843,12 @@ export const listArtifactCatalog$ = command(
     signal.throwIfAborted();
     const limit = args.limit ?? ARTIFACT_CATALOG_DEFAULT_LIMIT;
     const cursor = args.cursor ? decodeArtifactCursor(args.cursor) : null;
+    const keywordPattern = args.keyword
+      ? `%${args.keyword
+          .replaceAll("\\", String.raw`\\`)
+          .replaceAll("%", String.raw`\%`)
+          .replaceAll("_", String.raw`\_`)}%`
+      : undefined;
     const rows = await db
       .select({
         id: artifacts.id,
@@ -865,6 +873,7 @@ export const listArtifactCatalog$ = command(
           args.chatThreadId
             ? chatThreadFilter(db, args.chatThreadId)
             : undefined,
+          keywordPattern ? ilike(artifacts.title, keywordPattern) : undefined,
           cursor
             ? lt(
                 sql`(${artifacts.createdAt}, ${artifacts.id})`,

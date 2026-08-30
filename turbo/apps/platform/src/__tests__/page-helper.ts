@@ -81,16 +81,19 @@ function ensureTestLocalStorage(): void {
   });
 }
 
-export async function setupPage(options: {
+export interface SetupBootstrapOptions {
   context: TestContext;
   path: string;
+  beforeBootstrap?: (signal: AbortSignal) => void;
   user?: {
     id: string;
     fullName: string;
     email?: string;
     firstName?: string;
     imageUrl?: string;
+    createdAt?: Date;
     createOrganizationEnabled?: boolean;
+    createOrganizationsLimit?: number | null;
     clientSessions?: MockedClientSession[];
   } | null;
   session?: { token: string } | null;
@@ -109,13 +112,26 @@ export async function setupPage(options: {
   cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
+}
+
+export interface SetupPageOptions extends SetupBootstrapOptions {
   withoutRender?: boolean;
-}) {
+}
+
+/**
+ * Run the production bootstrap lifecycle. Signal tests omit `render`; page
+ * tests provide the Router setup through `setupPage` below.
+ */
+export async function setupBootstrap(
+  options: SetupBootstrapOptions,
+  render: () => void = () => {},
+): Promise<void> {
   ensureTestLocalStorage();
   // setupPage exercises the shared MSW fixture data even when a test does not
   // customize a handler. Start the lazy mock lifecycle so abort resets any
   // fixture mutations made by the application during this test.
   void options.context.mocks;
+  options.beforeBootstrap?.(options.context.signal);
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
@@ -193,21 +209,21 @@ export async function setupPage(options: {
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
   // act" warnings are suppressed in setup.ts.
-  await options.context.store.set(
-    bootstrap$,
-    () => {
-      setupRouter(options.context.store, (element) => {
-        if (options.withoutRender) {
-          return;
-        }
-        const { unmount } = render(element);
-        options.context.signal.addEventListener("abort", () => {
-          unmount();
-        });
+  await options.context.store.set(bootstrap$, render, options.context.signal);
+}
+
+export async function setupPage(options: SetupPageOptions): Promise<void> {
+  await setupBootstrap(options, () => {
+    setupRouter(options.context.store, (element) => {
+      if (options.withoutRender) {
+        return;
+      }
+      const { unmount } = render(element);
+      options.context.signal.addEventListener("abort", () => {
+        unmount();
       });
-    },
-    options.context.signal,
-  );
+    });
+  });
 }
 
 /**

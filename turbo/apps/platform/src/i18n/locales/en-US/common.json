@@ -121,7 +121,10 @@
         "cacheMiss": "No cached workspace matched the reuse key.",
         "deviceLimitMismatch": "Idle pool entry exists but its device rate limiter state does not match.",
         "diskPressure": "Workspace reuse was skipped because the runner was under disk pressure.",
+        "environment": "Environment",
         "featureDisabled": "Sandbox reuse is disabled for this run.",
+        "generation": "Generation",
+        "hostname": "Hostname",
         "invalidMetadata": "Cached workspace metadata was invalid.",
         "invalidWorkingDir": "The requested working directory could not be reused.",
         "lockBusy": "Another run was preparing the same workspace.",
@@ -129,21 +132,28 @@
         "noSessionId": "Legacy result: the exact reason the sandbox was not reused is unavailable.",
         "notConfigured": "Workspace reuse was not configured for this run.",
         "notReused": "Not reused",
+        "outcomeUnavailableDescription": "Additional details are unavailable.",
         "poolMiss": "No matching sandbox found in the idle pool.",
         "profileMismatch": "Idle pool entry exists but its profile does not match.",
         "provisioning": "Provisioning",
         "reused": "Reused",
         "reusedDescription": "Sandbox was unparked from the idle pool.",
+        "runnerId": "Runner ID",
         "sandbox": "Sandbox",
         "sandboxPrepareFallback": "A cached workspace was found but could not be used after sandbox preparation.",
         "sandboxReusedDescription": "Workspace remained available inside the reused sandbox.",
         "startup": "Startup",
         "startupCold": "Cold start",
+        "startupColdDescription": "A fresh sandbox and workspace were prepared.",
         "startupSandbox": "Sandbox reuse",
+        "startupSandboxDescription": "The sandbox and its workspace were reused.",
         "startupUnknown": "Unknown",
+        "startupUnknownDescription": "Startup reuse details are unavailable.",
         "startupWorkspace": "Workspace reuse",
+        "startupWorkspaceDescription": "A fresh sandbox restored a cached workspace.",
         "unavailable": "Unavailable",
         "unparkFailed": "Unpark attempt failed; a fresh sandbox was provisioned.",
+        "version": "Version",
         "workspace": "Workspace",
         "workspaceNoReuseKey": "No workspace reuse key was available.",
         "workspaceReusedDescription": "Workspace was restored from the runner cache."
@@ -431,7 +441,6 @@
       "ariaLabel": "Sidebar",
       "chat": "Chat",
       "collapse": "Collapse sidebar",
-      "expand": "Expand sidebar",
       "hideChatList": "Hide chat list",
       "manage": "Manage",
       "mobile": {
@@ -453,9 +462,9 @@
       "rail": {
         "new": "New",
         "workflows": "Workflows",
-        "works": "Works"
+        "works": "Channels"
       },
-      "searchConversations": "Search conversations",
+      "searchWorkspace": "Search workspace",
       "showChatList": "Show chat list",
       "workspaceSwitcher": {
         "create": "Create workspace",
@@ -506,7 +515,6 @@
         "arrow": "Arrow",
         "box": "Box",
         "pen": "Draw",
-        "redact": "Redact",
         "text": "Text"
       },
       "undo": "Undo"
@@ -1066,6 +1074,7 @@
         "secondFactorDescription": "This sign-in requires an additional verification step that this page doesn't support. Start over to try another sign-in method.",
         "secondFactorTitle": "Additional verification required",
         "selectOrganization": "Continue with {{organizationName}}",
+        "signedInAs": "Signed in as {{identifier}}",
         "unsupportedDescription": "Your account returned an authentication step that this page doesn't support. Start over to try another sign-in method.",
         "unsupportedTitle": "Sign-in step unavailable"
       },
@@ -1074,7 +1083,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Use current sign-in",
         "addAccount": "Add account",
         "appleMethod": "Continue with Apple",
         "back": "Back",
@@ -1104,6 +1112,7 @@
         "hidePassword": "Hide password",
         "identifierLabel": "Email address or username",
         "identifierPlaceholder": "Enter your email address or username",
+        "lastUsed": "Last used",
         "methodsHelpPrompt": "Don’t have any of these?",
         "newPasswordLabel": "New password",
         "newPasswordSubtitle": "For security reasons, it is required to reset your password.",
@@ -1141,7 +1150,6 @@
         "verify": "Verify"
       },
       "signUp": {
-        "action": "Use current sign-up",
         "alreadyHaveAccount": "Already have an account?",
         "appleMethod": "Continue with Apple",
         "back": "Back",
@@ -1691,7 +1699,6 @@
         "inviteMember": "Invite humans 🤝",
         "otherChannels": "Telegram and phone"
       },
-      "invitePeople": "Invite people",
       "taglines": {
         "anonymous": {
           "buildSomething": "Ready to build something?",
@@ -1888,18 +1895,17 @@
       "agentSuggestions": "Agents",
       "configureModel": "Configure model",
       "createWorkflow": "Create workflow",
+      "imageModelForThisChat": "Image model for this chat",
       "message": "Message",
+      "modelForThisChat": "Model for this chat",
       "placeholder": "Ask me to automate workflows, manage tasks...",
       "selectedModelUnavailable": "The selected model is not available. Configure it before sending.",
       "selectedModelUnavailableToast": "The selected model is not available",
       "selectModel": "Select model",
-      "setAsDefault": "Set as default",
-      "temporaryFastModeDisabledNotice": "Fast mode is temporarily disabled for this run",
-      "temporaryFastModeEnabledNotice": "Fast mode is temporarily enabled for this run",
-      "temporaryImageModelNotice": "Temporarily switched to {{model}} for images",
-      "temporaryModelNotice": "Temporarily switched to {{model}}",
-      "temporaryVideoModelNotice": "Temporarily switched to {{model}} for video",
+      "temporarilySwitchTo": "Temporarily switch to",
       "threadSuggestions": "Chat threads",
+      "useForFutureChats": "Use this for future chats",
+      "videoModelForThisChat": "Video model for this chat",
       "visualAttachmentsUnsupported": "{{modelName}} cannot recognize images or videos. Switch to a vision-capable model to attach them.",
       "workflows": {
         "empty": "No matching workflows",
@@ -1929,13 +1935,14 @@
       "yourComputer": "Your computer"
     },
     "connectors": {
-      "accountForThread": "Account for this thread",
+      "accountForThread": "Account for this chat",
       "add": "Add {{connectorName}}",
       "addConnectors": "Add connectors",
       "authorizationFailed": "{{connectorName}} connected but could not be authorized for {{agentName}}",
       "authorized": "{{connectorName}} connected and authorized for {{agentName}}",
       "available_one": "Available connectors to connect ({{count}})",
       "available_other": "Available connectors to connect ({{count}})",
+      "back": "Back",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
       "defaultAccountFor": "{{connector}} · Using default account: {{account}}",
@@ -1991,7 +1998,7 @@
       "agents": "Agents",
       "back": "Back",
       "content": "Content",
-      "description": "Forward selected content to an agent or chat.",
+      "description": "Send selected content to an agent or chat to continue working on it.",
       "noResults": "No agents or chats found",
       "search": "Search agents and chats...",
       "sent": "Forwarded successfully",
@@ -2304,48 +2311,6 @@
       "copied": "Copied",
       "deleted": "Chat deleted"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Changing files",
-            "singular": "Changing a file"
-          },
-          "terminal": {
-            "plural": "Changed files",
-            "singular": "Changed a file"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Reading files",
-            "singular": "Reading a file"
-          },
-          "terminal": {
-            "plural": "Read files",
-            "singular": "Read a file"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Running commands",
-            "singular": "Running a command"
-          },
-          "terminal": {
-            "plural": "Ran commands",
-            "singular": "Ran a command"
-          }
-        }
-      },
-      "collapse": "Collapse tool activity",
-      "expand": "Expand tool activity",
-      "status": {
-        "cancelled": "Cancelled",
-        "error": "Failed",
-        "pending": "In progress",
-        "success": "Completed"
-      }
-    },
     "voice": {
       "checkingLimit": "Checking voice input limit",
       "input": "Voice input",
@@ -2410,8 +2375,7 @@
       "skipName": "Skip",
       "summaryMany": "{{value}} accounts",
       "summaryOne": "{{value}} account",
-      "summaryWithAttention": "{{summary}} · {{value}} need attention",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention": "{{value}}/{{total}} need attention"
     },
     "actions": {
       "apply": "Apply",
@@ -2475,6 +2439,8 @@
       "access": {
         "add": "Add access",
         "manage": "Manage {{connector}} access",
+        "summaryMany": "{{value}} agents",
+        "unavailable": "Access unavailable",
         "usedBy": "Used by "
       },
       "categories": {
@@ -5023,6 +4989,20 @@
         "sectionTitle": "Account & Security"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "Carry a bright, subtle palette across every interface layer.",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "Color theme"
+        },
         "description": "Choose how the interface looks.",
         "sectionTitle": "Appearance",
         "theme": {
@@ -5323,15 +5303,20 @@
       "viewSource": "Diagram source"
     },
     "notFound": {
+      "action": "Back to home",
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "This shared conversation does not exist.",
+    "handoffDescription": "{{assistantName}} carries the context into a new chat",
+    "handoffPrompt": "Continue this shared conversation with me: {{url}}",
+    "makeConversationYours": "Make this conversation yours",
     "notFoundTitle": "Shared conversation not found",
-    "tryOkou": "Try {{assistantName}}"
+    "share": "Share",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "tryItYourself": "Try it yourself"
   },
   "usage": {
     "displayNames": {
@@ -6076,6 +6061,67 @@
       },
       "title": "Workflows",
       "viewAutomations": "View automations"
+    },
+    "official": {
+      "activeInstallationDescription": "This Official Workflow remains operational and its managed content stays read-only.",
+      "activeInstallationTitle": "Official Workflow",
+      "agent": "Agent",
+      "automationCount_one": "{{count}} automation",
+      "automationCount_other": "{{count}} automations",
+      "badge": "Official",
+      "browse": "Browse Official",
+      "chooseValue": "Choose a value",
+      "copySucceededUninstallFailed": "The copy is ready, but the original Official Workflow could not be uninstalled.",
+      "description": "Install managed workflows maintained by vm0.",
+      "empty": "No Official Workflows are available.",
+      "includedAutomations": "Included automations",
+      "install": "Install",
+      "installDescription": "Choose an Agent and complete every required parameter. All included automations will be installed.",
+      "installed": "Official Workflow installed",
+      "installErrorDescription": "Check the Agent and parameter values, then try again.",
+      "installErrorTitle": "Official Workflow could not be installed",
+      "installTitle": "Install {{name}}",
+      "intendedOff": "intended off",
+      "intendedOn": "intended on",
+      "loadErrorDescription": "This catalog may be unavailable or not enabled for your account.",
+      "loadErrorTitle": "Official Workflows could not be loaded",
+      "no": "No",
+      "noParameters": "No parameters are required.",
+      "noResults": "No Official Workflows match your search.",
+      "notFound": "This Official Workflow was not found.",
+      "parameterCount_one": "{{count}} parameter",
+      "parameterCount_other": "{{count}} parameters",
+      "parameterRequired": "{{key}} (required)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Reconfigure",
+      "reconfigured": "Official Workflow reconfigured",
+      "reconfigureDescription": "Update typed parameters without replacing this Workflow or its automations.",
+      "reconfigureDialogDescription": "Review every managed automation and update its parameters.",
+      "reconfigureErrorDescription": "Review the required values and try again.",
+      "reconfigureErrorTitle": "Official Workflow could not be reconfigured",
+      "reconfigureTitle": "Installation parameters",
+      "reconfigureUnavailable": "Authoritative parameter metadata is temporarily unavailable.",
+      "retiredBadge": "Official · Retired",
+      "retiredDefinitionDescription": "This retained Definition can be viewed, but it can no longer be installed.",
+      "retiredInstallationDescription": "This Definition is retired. Your existing installation remains operational and read-only until you uninstall it.",
+      "retiredInstallationTitle": "Official Workflow retired",
+      "retiredTitle": "Retired Definition",
+      "retry": "Try again",
+      "search": "Search Official Workflows",
+      "selectAgent": "Select an Agent",
+      "statusCurrent": "Current",
+      "statusFailed": "Failed",
+      "statusNeedsReconfiguration": "Needs reconfiguration",
+      "statusReconciling": "Reconciling",
+      "title": "Official Workflows",
+      "unavailableInstallationDescription": "The accepted Definition is temporarily unavailable. Existing operational controls remain available.",
+      "unavailableInstallationTitle": "Official Definition unavailable",
+      "uninstall": "Uninstall",
+      "uninstallConfirm": "This removes the Official installation and all of its automations. This action cannot be undone.",
+      "uninstallDescription": "Remove this Official Workflow installation through its managed lifecycle.",
+      "uninstallTitle": "Uninstall Official Workflow",
+      "viewAndInstall": "View and install",
+      "yes": "Yes"
     }
   },
   "works": {

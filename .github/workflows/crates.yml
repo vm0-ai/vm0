@@ -113,6 +113,7 @@ jobs:
           check_crate runner
           check_crate nbd-cow
           check_crate vsock-test
+          check_crate xtask
 
           # Aggregate: true if any crate or CI config changed
           if grep -q "=true" "$GITHUB_OUTPUT"; then
@@ -299,11 +300,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
           shared-key: check
           save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check Rust module paths
+        run: |
+          cd crates
+          cargo xtask check-rust-path-attributes
 
       - name: Check formatting
         run: |
@@ -744,9 +753,8 @@ jobs:
         run: .github/scripts/wait-runner-image.sh
 
   # Balance these scenarios by recent CI timings across four concurrent
-  # metal-host users.
-  # Run balloon first in lane A, exec last in lane B, and upgrade last in lane C
-  # to stagger the three heaviest scenarios during normal runs.
+  # metal-host users. Keep balloon and process containment isolated, and delay
+  # exec and upgrade behind shorter scenarios in lanes B and C.
   runner-behavior-lane-a:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -852,11 +860,17 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-systemd-reload.sh
 
-      - name: Test VM keep-alive across conversation turns
+      - name: Test sandbox keep-alive across conversation turns
         timeout-minutes: 5
         env:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-keep-alive.sh
+
+      - name: Run benchmark
+        timeout-minutes: 8
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-benchmark.sh
 
       - name: Run upgrade test
         timeout-minutes: 5
@@ -886,12 +900,6 @@ jobs:
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Run benchmark
-        timeout-minutes: 8
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-benchmark.sh
 
       - name: Test exec process containment
         timeout-minutes: 5

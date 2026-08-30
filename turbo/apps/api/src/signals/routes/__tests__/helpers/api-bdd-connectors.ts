@@ -274,9 +274,13 @@ export function mockCustomConnectorOAuth2Provider(
 }
 
 export function mockGitHubConnectorOAuth(
-  options: { readonly userId?: number } = {},
+  options: {
+    readonly userId?: number;
+    readonly login?: string;
+    readonly email?: string | null;
+  } = {},
 ): void {
-  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
   mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "github-client-secret");
 
@@ -292,8 +296,11 @@ export function mockGitHubConnectorOAuth(
     http.get(GITHUB_USER_URL, () => {
       return HttpResponse.json({
         id: options.userId ?? 42,
-        login: "bdd-github-user",
-        email: "bdd-github@example.test",
+        login: options.login ?? "bdd-github-user",
+        email:
+          options.email === undefined
+            ? "bdd-github@example.test"
+            : options.email,
       });
     }),
   );
@@ -314,7 +321,7 @@ interface StripeConnectorOAuthRecorder {
 export function mockStripeConnectorOAuth(
   options: StripeConnectorOAuthOptions = {},
 ): StripeConnectorOAuthRecorder {
-  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("STRIPE_OAUTH_CLIENT_ID", "stripe-client-id");
   mockOptionalEnv("STRIPE_SECRET_KEY", "stripe-client-secret");
 
@@ -350,7 +357,7 @@ interface DatadogOAuthProviderRecorder {
 }
 
 export function mockDatadogConnectorOAuth(): DatadogOAuthProviderRecorder {
-  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("DATADOG_OAUTH_CLIENT_ID", "datadog-client-id");
   mockOptionalEnv("DATADOG_OAUTH_CLIENT_SECRET", "datadog-client-secret");
 
@@ -375,7 +382,7 @@ interface TestOAuthAuthCodeProviderOptions {
   readonly refreshToken?: string | null;
   readonly expiresIn?: number;
   readonly omitExpiresIn?: boolean;
-  readonly scope?: string;
+  readonly scope?: string | null;
   readonly tokenError?: boolean;
   readonly userinfoError?: boolean;
   readonly userId?: string;
@@ -391,7 +398,7 @@ interface TestOAuthAuthCodeProviderRecorder {
  * Provider boundary for the test-oauth auth-code connector. The connector's
  * exchange/userinfo URLs resolve from process.env to http://localhost:3000,
  * matching the device-auth fixtures above. refreshToken null/omitted leaves
- * refresh_token out of the token response.
+ * refresh_token out of the token response, and scope null leaves scope out.
  */
 export function mockTestOAuthAuthCodeProvider(
   options: TestOAuthAuthCodeProviderOptions = {},
@@ -418,7 +425,7 @@ export function mockTestOAuthAuthCodeProvider(
           ? {}
           : { expires_in: options.expiresIn ?? 3600 }),
         token_type: "Bearer",
-        scope: options.scope ?? "read",
+        ...(options.scope === null ? {} : { scope: options.scope ?? "read" }),
       });
     }),
     http.get(TEST_OAUTH_USERINFO_URL, () => {
@@ -508,7 +515,7 @@ interface GoogleDriveConnectorOAuthRecorder {
 export function mockGoogleDriveConnectorOAuth(
   options: GoogleDriveConnectorOAuthOptions = {},
 ): GoogleDriveConnectorOAuthRecorder {
-  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   const recorded: GoogleDriveConnectorOAuthRecorder = { refreshBodies: [] };
@@ -581,7 +588,7 @@ interface GmailConnectorOAuthOptions {
 export function mockGmailConnectorOAuth(
   options: GmailConnectorOAuthOptions = {},
 ): void {
-  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
 
@@ -618,7 +625,7 @@ export function mockGmailConnectorOAuth(
 }
 
 export function mockGoogleFormsConnectorOAuth(): void {
-  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
 
@@ -837,7 +844,7 @@ interface TestOAuthDeviceConnectorProviderOptions {
   readonly deviceCode?: string;
   readonly interval?: number;
   readonly expiresIn?: number;
-  readonly tokenScope?: string;
+  readonly tokenScope?: string | null;
   readonly tokenBehavior?: "ok" | "emptyJson";
 }
 
@@ -950,7 +957,9 @@ export function mockTestOAuthDeviceConnectorProvider(
         access_token: `test-device-access:${deviceCode}`,
         token_type: "Bearer",
         expires_in: 3600,
-        scope: options.tokenScope ?? "read",
+        ...(options.tokenScope === null
+          ? {}
+          : { scope: options.tokenScope ?? "read" }),
       });
     }),
   );
@@ -1055,7 +1064,6 @@ export function mockBase44OAuthProvider(): Base44OAuthProviderRecorder {
         refresh_token: "base44-refresh-token",
         token_type: "Bearer",
         expires_in: 3600,
-        scope: "apps:read apps:write offline",
       });
     }),
     http.get(BASE44_USERINFO_URL, ({ request }) => {
@@ -1482,6 +1490,23 @@ export function createConnectorBddApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async listBuiltinConnectorAccounts(
+      actor: ApiTestUser,
+      connectorSlug: ConnectorSlug,
+    ): Promise<readonly ConnectorAccountConnection[]> {
+      const client = setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      );
+      const response = await accept(
+        client.connections({
+          headers: authenticate(actor),
+          query: { kind: "builtin", connectorSlug, limit: 100 },
+        }),
+        [200],
+      );
+      return response.body.connections;
     },
 
     async listCustomConnectorAccounts(

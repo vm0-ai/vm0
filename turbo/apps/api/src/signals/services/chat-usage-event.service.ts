@@ -29,7 +29,7 @@ import {
 } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { chatEventTypeIn } from "./chat-event-type.service";
 import { insertChatEvent, replaceLoadedChatEvent } from "./chat-event.service";
 import {
@@ -46,6 +46,7 @@ const USAGE_CONTEXT_GROUP_BY_COLUMNS = [
   agentRuns.status,
   agentRuns.chatThreadId,
   agentRuns.goalId,
+  agentRuns.orgId,
   chatThreads.userId,
 ] as const;
 
@@ -85,6 +86,7 @@ async function loadUsageEventContext(tx: WriteTx, runId: string) {
       status: agentRuns.status,
       chatThreadId: agentRuns.chatThreadId,
       goalId: agentRuns.goalId,
+      orgId: agentRuns.orgId,
       userId: chatThreads.userId,
       hasPending: exists(
         tx
@@ -225,6 +227,7 @@ export const maybeEmitRunUsageEvent$ = command(
           ? ("revised" as const)
           : ("emitted" as const),
         chatThreadId: context.chatThreadId,
+        orgId: context.orgId,
         userId: context.userId,
         totalCredits: payload.totalCredits,
       };
@@ -235,10 +238,11 @@ export const maybeEmitRunUsageEvent$ = command(
       return false;
     }
 
-    await publishUserSignal(
-      [emitted.userId],
-      `chatThreadMessageCreated:${emitted.chatThreadId}`,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: emitted.userId,
+      orgId: emitted.orgId,
+      threadId: emitted.chatThreadId,
+    });
     signal.throwIfAborted();
 
     L.debug(

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.9.15](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.14...guest-mock-codex-v0.9.15) (2026-08-29)
+
+## [0.9.14](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.13...guest-mock-codex-v0.9.14) (2026-08-28)
+
+## [0.9.13](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.12...guest-mock-codex-v0.9.13) (2026-08-28)
+
+## [0.9.12](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.11...guest-mock-codex-v0.9.12) (2026-08-28)
+
+
+### Bug Fixes
+
+* **rust:** terminate guest mock codex descendants ([#30063](https://github.com/vm0-ai/vm0/issues/30063)) ([2722fea](https://github.com/vm0-ai/vm0/commit/2722feae9537cd3148698b019cd27729b7515a18))
+
+## [0.9.11](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.10...guest-mock-codex-v0.9.11) (2026-08-28)
+
+## [0.9.10](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.9...guest-mock-codex-v0.9.10) (2026-08-28)
+
+## [0.9.9](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.8...guest-mock-codex-v0.9.9) (2026-08-28)
+
+## [0.9.8](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.7...guest-mock-codex-v0.9.8) (2026-08-28)
+
+## [0.9.7](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.6...guest-mock-codex-v0.9.7) (2026-08-27)
+
+## [0.9.6](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.5...guest-mock-codex-v0.9.6) (2026-08-27)
+
+## [0.9.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.4...guest-mock-codex-v0.9.5) (2026-08-27)
+
+
+### Documentation
+
+* **rust:** document guest-mock-codex home resolution ([#29779](https://github.com/vm0-ai/vm0/issues/29779)) ([a6eff03](https://github.com/vm0-ai/vm0/commit/a6eff039777ce742e3463fca7e4c9b41ee5e895d))
+
 ## [0.9.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.3...guest-mock-codex-v0.9.4) (2026-08-26)
 
 ## [0.9.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.2...guest-mock-codex-v0.9.3) (2026-08-26)

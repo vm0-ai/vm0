@@ -39,6 +39,7 @@ import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-stat
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
+import { retryRichMarkdown$ } from "../../signals/rich-markdown-retry.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import {
   attachmentSidebarRef,
@@ -57,6 +58,7 @@ import {
   type AttachmentLightboxState,
 } from "../../signals/okou-page/attachment-chips.ts";
 import { openThreadArtifactSplitView$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { closeArtifactCatalogPreview$ } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
 import { FilePreviewIcon } from "./file-preview-icon.tsx";
 import {
   artifactPreviewUrlsMatch,
@@ -93,6 +95,7 @@ import {
 } from "./zoomable-image-canvas.tsx";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
+import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -232,6 +235,7 @@ function DialogIconButton({
 }) {
   return (
     <Button
+      showTooltip
       type="button"
       onClick={onClick}
       variant="quiet"
@@ -388,15 +392,30 @@ function ArtifactDialogLoadingBody() {
   );
 }
 
-function ArtifactDialogUnavailableBody({ label }: { label: string }) {
+function ArtifactDialogUnavailableBody({
+  label,
+  onRetry,
+}: {
+  label: string;
+  onRetry?: () => void;
+}) {
   const { t } = useTranslation();
   return (
-    <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-      {t(
-        ($) => {
-          return $.artifacts.preview.unavailable;
-        },
-        { kind: label },
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
+      <span>
+        {t(
+          ($) => {
+            return $.artifacts.preview.unavailable;
+          },
+          { kind: label },
+        )}
+      </span>
+      {onRetry !== undefined && (
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          {t(($) => {
+            return $.chat.errors.recovery.tryAgain;
+          })}
+        </Button>
       )}
     </div>
   );
@@ -529,6 +548,7 @@ function ArtifactDialogImageNavigationControls({
     <>
       {navigation.onPrevious && (
         <Button
+          showTooltip
           type="button"
           onClick={navigation.onPrevious}
           aria-label={t(($) => {
@@ -547,6 +567,7 @@ function ArtifactDialogImageNavigationControls({
       )}
       {navigation.onNext && (
         <Button
+          showTooltip
           type="button"
           onClick={navigation.onNext}
           aria-label={t(($) => {
@@ -619,6 +640,7 @@ function ArtifactDialogMarkdownBody({
   tree$: MarkdownPreviewTreeComputed;
 }) {
   const { t } = useTranslation();
+  const retry = useSet(retryRichMarkdown$);
   const loadable = useLoadable(tree$);
   if (loadable.state === "loading") {
     return (
@@ -637,6 +659,7 @@ function ArtifactDialogMarkdownBody({
             label={t(($) => {
               return $.artifacts.kinds.markdown;
             })}
+            onRetry={retry}
           />
         </ArtifactDialogCard>
       </ArtifactDialogStage>
@@ -1251,6 +1274,7 @@ function ArtifactPreviewDialogActions({
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
+  const closeArtifactCatalogPreview = useSet(closeArtifactCatalogPreview$);
   const openArtifactSidebarPreview = useSet(openThreadArtifactSplitView$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const toggleLightboxDialogFullscreen = useSet(
@@ -1284,6 +1308,7 @@ function ArtifactPreviewDialogActions({
     <div className="flex shrink-0 items-center gap-1">
       {annotationTarget && (
         <Button
+          showTooltip
           type="button"
           variant="quiet"
           size="icon-sm"
@@ -1341,7 +1366,7 @@ function ArtifactPreviewDialogActions({
           return $.artifacts.actions.close;
         })}
         onClick={() => {
-          closeLightboxWithDialogExit(rootSignal);
+          closeArtifactCatalogPreview(rootSignal);
         }}
       >
         <X size={18} />
@@ -1362,14 +1387,14 @@ function ArtifactPreviewDialogContent({
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
   const dialogMountRef = useSet(lightboxDialogMountRef$);
-  const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
+  const closeArtifactCatalogPreview = useSet(closeArtifactCatalogPreview$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
   const subtitle = artifactDialogKindLabel(preview, artifact);
   const visible = useGet(lightboxDialogVisible$);
   const fullscreen = useGet(lightboxDialogFullscreen$);
 
   const closeWithAnimation = () => {
-    closeLightboxWithDialogExit(rootSignal);
+    closeArtifactCatalogPreview(rootSignal);
   };
 
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -1784,9 +1809,11 @@ function ComposerImagePreviewButton({
 
 function AttachmentChip({
   attachment,
+  onAnnotationChange,
   onRemove,
 }: {
   attachment: ChatAttachment;
+  onAnnotationChange: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -1822,7 +1849,14 @@ function AttachmentChip({
                       filename: attachment.filename,
                       url: previewUrl,
                       annotation,
-                      commit: setAnnotation,
+                      commit: (next) => {
+                        // Writing the signal alone leaves the marks on this
+                        // one in-memory object: nothing saves the draft, so a
+                        // reload — or a draft sync that swaps the attachment
+                        // out — loses every mark the user just drew.
+                        setAnnotation(next);
+                        onAnnotationChange();
+                      },
                     },
                   }
                 : {}),
@@ -1844,7 +1878,7 @@ function AttachmentChip({
           <Loader2 size={10} className="animate-spin text-muted-foreground" />
         </span>
       )}
-      <button
+      <IconTooltipButton
         type="button"
         onClick={onRemove}
         className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
@@ -1869,7 +1903,7 @@ function AttachmentChip({
         }
       >
         <X size={9} />
-      </button>
+      </IconTooltipButton>
     </div>
   );
 }
@@ -1880,9 +1914,11 @@ function AttachmentChip({
 
 export function AttachmentChips({
   attachments,
+  onAnnotationChange,
   onRemove,
 }: {
   attachments: ChatAttachment[];
+  onAnnotationChange: () => void;
   onRemove: (attachment: ChatAttachment) => void;
 }) {
   return (
@@ -1890,6 +1926,7 @@ export function AttachmentChips({
       {attachments.map((a) => {
         return (
           <AttachmentChip
+            onAnnotationChange={onAnnotationChange}
             key={String(a.fileInfo$)}
             attachment={a}
             onRemove={() => {

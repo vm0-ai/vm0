@@ -121,7 +121,10 @@
         "cacheMiss": "再利用キーに一致するキャッシュ済みワークスペースがありませんでした。",
         "deviceLimitMismatch": "アイドル プール エントリは存在しますが、そのデバイス レート リミッタの状態が一致しません。",
         "diskPressure": "ランナーのディスク使用量が逼迫していたため、ワークスペースの再利用をスキップしました。",
+        "environment": "環境",
         "featureDisabled": "この実行ではサンドボックスの再利用が無効になっています。",
+        "generation": "世代",
+        "hostname": "ホスト名",
         "invalidMetadata": "キャッシュ済みワークスペースのメタデータが無効でした。",
         "invalidWorkingDir": "指定された作業ディレクトリを再利用できませんでした。",
         "lockBusy": "別の実行が同じワークスペースを準備していました。",
@@ -129,21 +132,28 @@
         "noSessionId": "従来の結果です。サンドボックスが再利用されなかった正確な理由は確認できません。",
         "notConfigured": "この実行ではワークスペースの再利用が構成されていませんでした。",
         "notReused": "再利用されない",
+        "outcomeUnavailableDescription": "追加の詳細は利用できません。",
         "poolMiss": "アイドル状態のプールに一致するサンドボックスが見つかりません。",
         "profileMismatch": "アイドル プール エントリは存在しますが、そのプロファイルが一致しません。",
         "provisioning": "プロビジョニング中",
         "reused": "再利用",
         "reusedDescription": "サンドボックスがアイドル状態のプールからパーク解除されました。",
+        "runnerId": "ランナー ID",
         "sandbox": "サンドボックス",
         "sandboxPrepareFallback": "キャッシュ済みワークスペースが見つかりましたが、サンドボックスの準備後に使用できませんでした。",
         "sandboxReusedDescription": "再利用されたサンドボックス内でワークスペースを引き続き利用できました。",
         "startup": "起動",
         "startupCold": "コールドスタート",
+        "startupColdDescription": "新しいサンドボックスとワークスペースが準備されました。",
         "startupSandbox": "サンドボックス再利用",
+        "startupSandboxDescription": "サンドボックスとそのワークスペースが再利用されました。",
         "startupUnknown": "不明",
+        "startupUnknownDescription": "起動時の再利用に関する詳細は利用できません。",
         "startupWorkspace": "ワークスペース再利用",
+        "startupWorkspaceDescription": "新しいサンドボックスでキャッシュ済みのワークスペースが復元されました。",
         "unavailable": "利用不可",
         "unparkFailed": "パーク解除の試行は失敗しました。新しいサンドボックスがプロビジョニングされました。",
+        "version": "バージョン",
         "workspace": "ワークスペース",
         "workspaceNoReuseKey": "ワークスペースの再利用キーがありませんでした。",
         "workspaceReusedDescription": "ワークスペースがランナーのキャッシュから復元されました。"
@@ -431,7 +441,6 @@
       "ariaLabel": "サイドバー",
       "chat": "チャット",
       "collapse": "サイドバーを折りたたむ",
-      "expand": "サイドバーを展開する",
       "hideChatList": "チャットリストを非表示",
       "manage": "管理",
       "mobile": {
@@ -455,7 +464,7 @@
         "workflows": "ワークフロー",
         "works": "連携先"
       },
-      "searchConversations": "会話を検索する",
+      "searchWorkspace": "ワークスペースを検索",
       "showChatList": "チャットリストを表示",
       "workspaceSwitcher": {
         "create": "ワークスペースの作成",
@@ -505,7 +514,6 @@
         "arrow": "矢印",
         "box": "矩形",
         "pen": "手描き",
-        "redact": "塗りつぶし",
         "text": "テキスト"
       },
       "undo": "元に戻す"
@@ -1065,6 +1073,7 @@
         "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
         "secondFactorTitle": "追加の確認が必要です",
         "selectOrganization": "{{organizationName}} で続行",
+        "signedInAs": "{{identifier}} としてサインイン中",
         "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
         "unsupportedTitle": "サインイン手順を利用できません"
       },
@@ -1073,7 +1082,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "現在のサインインを使用",
         "addAccount": "アカウントを追加",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
@@ -1103,6 +1111,7 @@
         "hidePassword": "パスワードを非表示",
         "identifierLabel": "メールアドレスまたはユーザー名",
         "identifierPlaceholder": "メールアドレスまたはユーザー名を入力してください",
+        "lastUsed": "最後に使用したもの",
         "methodsHelpPrompt": "これらの方法を利用できませんか？",
         "newPasswordLabel": "新しいパスワード",
         "newPasswordSubtitle": "セキュリティ上の理由から、パスワードのリセットが必要です。",
@@ -1140,7 +1149,6 @@
         "verify": "確認する"
       },
       "signUp": {
-        "action": "現在のサインアップを使用",
         "alreadyHaveAccount": "アカウントをお持ちですか？",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
@@ -1690,7 +1698,6 @@
         "inviteMember": "人間を招待 🤝",
         "otherChannels": "Telegram、電話"
       },
-      "invitePeople": "人を招待する",
       "taglines": {
         "anonymous": {
           "buildSomething": "何かを構築する準備はできていますか?",
@@ -1885,18 +1892,17 @@
       "agentSuggestions": "エージェント",
       "configureModel": "モデルの構成",
       "createWorkflow": "ワークフローの作成",
+      "imageModelForThisChat": "このチャットの画像モデル",
       "message": "メッセージ",
+      "modelForThisChat": "このチャットのモデル",
       "placeholder": "ワークフローの自動化、タスクの管理を依頼してください...",
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
-      "setAsDefault": "デフォルトに設定",
-      "temporaryFastModeDisabledNotice": "この実行では一時的に高速モードが無効です",
-      "temporaryFastModeEnabledNotice": "この実行では一時的に高速モードが有効です",
-      "temporaryImageModelNotice": "画像モデルを一時的に {{model}} に切り替えました",
-      "temporaryModelNotice": "一時的に {{model}} に切り替えました",
-      "temporaryVideoModelNotice": "動画モデルを一時的に {{model}} に切り替えました",
+      "temporarilySwitchTo": "一時的な切り替え先",
       "threadSuggestions": "チャットスレッド",
+      "useForFutureChats": "今後のチャットでも使用",
+      "videoModelForThisChat": "このチャットの動画モデル",
       "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
         "empty": "一致するワークフローがありません",
@@ -1933,6 +1939,7 @@
       "authorized": "{{connectorName}} が接続され、{{agentName}} に対して承認されました",
       "available_one": "接続可能なコネクタ ({{count}})",
       "available_other": "接続可能なコネクタ ({{count}})",
+      "back": "戻る",
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
       "defaultAccountFor": "{{connector}} · デフォルトアカウントを使用中: {{account}}",
@@ -1988,7 +1995,7 @@
       "agents": "エージェント",
       "back": "戻る",
       "content": "内容",
-      "description": "選択した内容をエージェントまたはチャットに転送します。",
+      "description": "選択した内容をエージェントまたはチャットに送り、そのまま作業を続けます。",
       "noResults": "エージェントまたはチャットが見つかりません",
       "search": "エージェントとチャットを検索...",
       "sent": "転送しました",
@@ -2300,48 +2307,6 @@
       "copied": "コピーされました",
       "deleted": "チャットが削除されました"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "複数のファイルを変更中",
-            "singular": "ファイルを変更中"
-          },
-          "terminal": {
-            "plural": "複数のファイルを変更",
-            "singular": "ファイルを変更"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "複数のファイルを読み取り中",
-            "singular": "ファイルを読み取り中"
-          },
-          "terminal": {
-            "plural": "複数のファイルを読み取り",
-            "singular": "ファイルを読み取り"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "複数のコマンドを実行中",
-            "singular": "コマンドを実行中"
-          },
-          "terminal": {
-            "plural": "複数のコマンドを実行",
-            "singular": "コマンドを実行"
-          }
-        }
-      },
-      "collapse": "ツールアクティビティを折りたたむ",
-      "expand": "ツールアクティビティを展開",
-      "status": {
-        "cancelled": "キャンセル済み",
-        "error": "失敗",
-        "pending": "進行中",
-        "success": "完了"
-      }
-    },
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
       "input": "音声入力",
@@ -2409,9 +2374,8 @@
       "summaryMany_other": "",
       "summaryOne": "{{value}} 件のアカウント",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} 件に対応が必要",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention": "{{value}}/{{total}} 件に対応が必要",
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "申し込む",
@@ -2475,6 +2439,8 @@
       "access": {
         "add": "アクセス権の追加",
         "manage": "{{connector}} アクセスを管理する",
+        "summaryMany": "{{value}} 件のエージェント",
+        "unavailable": "アクセスを利用できません",
         "usedBy": "使用者 "
       },
       "categories": {
@@ -5023,6 +4989,20 @@
         "sectionTitle": "アカウントとセキュリティ"
       },
       "appearance": {
+        "colorTheme": {
+          "description": "明るく淡いカラーパレットをインターフェース全体に反映します。",
+          "options": {
+            "berryBlush": "Berry blush",
+            "blueHorizon": "Blue horizon",
+            "citrusSpark": "Citrus spark",
+            "cottonSky": "Cotton sky",
+            "daydream": "Daydream",
+            "deepLagoon": "Deep lagoon",
+            "goldenHour": "Golden hour",
+            "limelight": "Limelight"
+          },
+          "title": "カラーテーマ"
+        },
         "description": "インターフェイスの外観を選択します。",
         "sectionTitle": "外観",
         "theme": {
@@ -5323,15 +5303,20 @@
       "viewSource": "図のソース"
     },
     "notFound": {
+      "action": "ホームに戻る",
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "この共有された会話は存在しません。",
+    "handoffDescription": "{{assistantName}} がコンテキストを新しいチャットに引き継ぎます",
+    "handoffPrompt": "この共有された会話を私と続けてください: {{url}}",
+    "makeConversationYours": "この会話を自分のものに",
     "notFoundTitle": "共有された会話が見つかりません",
-    "tryOkou": "{{assistantName}}を試す"
+    "share": "共有",
+    "signIn": "ログイン",
+    "signUp": "新規登録",
+    "tryItYourself": "自分で試す"
   },
   "usage": {
     "displayNames": {
@@ -6076,6 +6061,67 @@
       },
       "title": "ワークフロー",
       "viewAutomations": "オートメーションを表示する"
+    },
+    "official": {
+      "activeInstallationDescription": "この公式ワークフローは引き続き動作し、管理対象コンテンツは読み取り専用のままです。",
+      "activeInstallationTitle": "公式ワークフロー",
+      "agent": "エージェント",
+      "automationCount_one": "{{count}} 件の自動化",
+      "automationCount_other": "{{count}} 件の自動化",
+      "badge": "公式",
+      "browse": "公式を探す",
+      "chooseValue": "値を選択",
+      "copySucceededUninstallFailed": "コピーは準備できましたが、元の公式ワークフローをアンインストールできませんでした。",
+      "description": "vm0 が管理・保守するワークフローをインストールします。",
+      "empty": "利用可能な公式ワークフローはありません。",
+      "includedAutomations": "含まれる自動化",
+      "install": "インストール",
+      "installDescription": "エージェントを選択し、必須パラメーターをすべて入力してください。含まれるすべての自動化がインストールされます。",
+      "installed": "公式ワークフローをインストールしました",
+      "installErrorDescription": "エージェントとパラメーター値を確認して、もう一度お試しください。",
+      "installErrorTitle": "公式ワークフローをインストールできませんでした",
+      "installTitle": "{{name}} をインストール",
+      "intendedOff": "オフに設定",
+      "intendedOn": "オンに設定",
+      "loadErrorDescription": "このカタログは利用できないか、アカウントで有効になっていない可能性があります。",
+      "loadErrorTitle": "公式ワークフローを読み込めませんでした",
+      "no": "いいえ",
+      "noParameters": "必要なパラメーターはありません。",
+      "noResults": "検索に一致する公式ワークフローはありません。",
+      "notFound": "この公式ワークフローは見つかりませんでした。",
+      "parameterCount_one": "{{count}} 個のパラメーター",
+      "parameterCount_other": "{{count}} 個のパラメーター",
+      "parameterRequired": "{{key}}（必須）",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "再構成",
+      "reconfigured": "公式ワークフローを再構成しました",
+      "reconfigureDescription": "このワークフローや自動化を置き換えずに、型付きパラメーターを更新します。",
+      "reconfigureDialogDescription": "管理対象の自動化をすべて確認し、パラメーターを更新してください。",
+      "reconfigureErrorDescription": "必須の値を確認して、もう一度お試しください。",
+      "reconfigureErrorTitle": "公式ワークフローを再構成できませんでした",
+      "reconfigureTitle": "インストールパラメーター",
+      "reconfigureUnavailable": "正規のパラメーターメタデータは一時的に利用できません。",
+      "retiredBadge": "公式 · 廃止",
+      "retiredDefinitionDescription": "保持されているこの定義は表示できますが、新たにインストールすることはできません。",
+      "retiredInstallationDescription": "この定義は廃止されています。既存のインストールは、アンインストールするまで動作し、読み取り専用のままです。",
+      "retiredInstallationTitle": "廃止された公式ワークフロー",
+      "retiredTitle": "廃止された定義",
+      "retry": "もう一度試す",
+      "search": "公式ワークフローを検索",
+      "selectAgent": "エージェントを選択",
+      "statusCurrent": "最新",
+      "statusFailed": "失敗",
+      "statusNeedsReconfiguration": "再構成が必要",
+      "statusReconciling": "同期中",
+      "title": "公式ワークフロー",
+      "unavailableInstallationDescription": "承認済みの定義は一時的に利用できません。既存の操作コントロールは引き続き利用できます。",
+      "unavailableInstallationTitle": "公式定義を利用できません",
+      "uninstall": "アンインストール",
+      "uninstallConfirm": "公式インストールとそのすべての自動化を削除します。この操作は元に戻せません。",
+      "uninstallDescription": "管理されたライフサイクルを通じて、この公式ワークフローのインストールを削除します。",
+      "uninstallTitle": "公式ワークフローをアンインストール",
+      "viewAndInstall": "表示してインストール",
+      "yes": "はい"
     }
   },
   "works": {

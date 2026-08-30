@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cron";
@@ -53,13 +54,16 @@ import {
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
   deleteApiTestConnectorCatalogRuntimeProjectionSet,
   expireApiTestConnectorCatalogRuntimeProjectionAuthority,
+  installApiTestConnectorCatalog,
   invalidateApiTestConnectorCatalogCompatibility,
   mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
+  readApiTestConnectorCatalogSnapshot,
   readApiTestConnectorCatalogRuntimeProjection,
   readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogRuntimeProjectionAuthority,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import {
@@ -90,6 +94,7 @@ import {
   requestOauthCallbackRaw,
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
+import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
@@ -127,6 +132,7 @@ const context = testContext();
 const zeroMocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
+const githubApi = createGithubBddApi(context);
 const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
 const OFFICIAL_RUNNER_AUTHORIZATION =
@@ -138,6 +144,7 @@ const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
 const PRIVATE_VALUE = "SECRET_TOKEN";
 const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
+const LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES = 16 * 1024 * 1024;
 const EXPECTED_CAPABILITY_DIGEST =
   "sha256:1bf96aab55b264a18add3139029db3f6502883ac97b16982d1fa4d668444bae7";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -562,7 +569,9 @@ function steamPrivateAuthMethod(args?: {
   };
 }
 
-function awsPrivateAuthMethod(): JsonRecord {
+function awsPrivateAuthMethod(
+  scopes: readonly string[] = ["openid"],
+): JsonRecord {
   const refreshTokenName = "CATALOG_AWS_LOGIN_REFRESH_TOKEN";
   const dpopKeyName = "CATALOG_AWS_LOGIN_DPOP_KEY";
   const accessKeyIdName = "CATALOG_AWS_ACCESS_KEY_ID";
@@ -590,7 +599,7 @@ function awsPrivateAuthMethod(): JsonRecord {
     },
     grant: {
       kind: "external-code",
-      scopes: ["openid"],
+      scopes: [...scopes],
       outputs: {
         refreshToken: `$secrets.${refreshTokenName}`,
         dpopKey: `$secrets.${dpopKeyName}`,
@@ -866,6 +875,41 @@ function datadogPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
       refreshableSecrets: [accessTokenName],
     },
     revoke: { kind: "none" },
+  };
+}
+
+function githubPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
+  const accessTokenName = "CATALOG_GITHUB_ACCESS_TOKEN";
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientIdEnv: "GH_OAUTH_CLIENT_ID",
+      clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
+    },
+    storage: {
+      version: 1,
+      secrets: [accessTokenName],
+      variables: [],
+    },
+    grant: {
+      kind: "auth-code",
+      scopes: [...scopes],
+      callbackOrigin: "web",
+      outputs: { accessToken: `$secrets.${accessTokenName}` },
+    },
+    access: {
+      kind: "static",
+      envBindings: {
+        GH_TOKEN: `$secrets.${accessTokenName}`,
+        GITHUB_TOKEN: `$secrets.${accessTokenName}`,
+      },
+    },
+    revoke: {
+      kind: "token-revoke",
+      inputs: { accessToken: `$secrets.${accessTokenName}` },
+    },
   };
 }
 
@@ -1388,6 +1432,17 @@ function configureSource(): string {
   return bucket;
 }
 
+function legacyConnectorCatalogSourceId(bucket: string): string {
+  const endpoint =
+    env("S3_ENDPOINT") ??
+    `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
+  return createHash("sha256")
+    .update(new URL(endpoint).origin)
+    .update("\0")
+    .update(bucket)
+    .digest("hex");
+}
+
 function setApiVersion(version: string): void {
   apiPackage.version = version;
 }
@@ -1733,7 +1788,7 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
     ).resolves.toStrictEqual({
-      backendVersion: "999.0.0",
+      validatorVersion: "1.0.0",
       buildCommitSha: null,
     });
     mockNow(new Date("2026-07-15T08:02:00.000Z"));
@@ -1745,6 +1800,19 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       readApiTestConnectorCatalogRuntimeProjectionAuthority(),
     ).resolves.toStrictEqual(apiTestConnectorCatalogValidationAuthority());
+
+    const newerProjectionAuthority = {
+      validatorVersion: "999.0.0",
+      buildCommitSha: null,
+    };
+    await setApiTestConnectorCatalogRuntimeProjectionAuthority(
+      newerProjectionAuthority,
+    );
+    mockNow(new Date("2026-07-15T08:03:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual(newerProjectionAuthority);
 
     serveObjects(catalogObjects([first, second], second));
     expect((await syncCatalog()).body).toMatchObject({
@@ -3657,45 +3725,50 @@ describe("connector catalog valid lifecycle", () => {
   }, 30_000);
 
   it("executes an external device grant with catalog-owned storage", async () => {
-    const provider = mockTestOAuthDeviceConnectorProvider();
+    const provider = mockTestOAuthDeviceConnectorProvider({ tokenScope: null });
     configureSource();
-    const release = buildRelease({
-      version: "2026-07-15.external-device-grant",
-      connectorSlug: "test-oauth-device",
-      label: "Catalog Device OAuth",
-      mutateCatalog: (artifact) => {
-        const method = publicAuthMethod({
-          id: "api",
-          grantKind: "device-auth",
-        });
-        method.startOptions = [
-          {
-            id: "environment",
-            kind: "select",
-            label: "Environment",
-            required: true,
-            defaultValue: null,
-            options: [
-              { value: "test", label: "Test" },
-              { value: "live", label: "Live" },
-            ],
-          },
-        ];
-        setArtifactAuthMethods(artifact, [method]);
-      },
-      mutateRuntime: (artifact) => {
-        const method = devicePrivateAuthMethod({
-          accessTokenName: "CATALOG_DEVICE_ACCESS_TOKEN",
-          clientId: "test-oauth-device-api-client",
-          scopes: ["read"],
-        });
-        method.id = "api";
-        recordValue(method.grant, "device grant").startOptionMappings = [
-          { privateName: "mode", publicId: "environment" },
-        ];
-        setArtifactAuthMethods(artifact, [method]);
-      },
-    });
+    const deviceGrantRelease = (version: string, scopes: readonly string[]) => {
+      return buildRelease({
+        version,
+        connectorSlug: "test-oauth-device",
+        label: "Catalog Device OAuth",
+        mutateCatalog: (artifact) => {
+          const method = publicAuthMethod({
+            id: "api",
+            grantKind: "device-auth",
+          });
+          method.startOptions = [
+            {
+              id: "environment",
+              kind: "select",
+              label: "Environment",
+              required: true,
+              defaultValue: null,
+              options: [
+                { value: "test", label: "Test" },
+                { value: "live", label: "Live" },
+              ],
+            },
+          ];
+          setArtifactAuthMethods(artifact, [method]);
+        },
+        mutateRuntime: (artifact) => {
+          const method = devicePrivateAuthMethod({
+            accessTokenName: "CATALOG_DEVICE_ACCESS_TOKEN",
+            clientId: "test-oauth-device-api-client",
+            scopes,
+          });
+          method.id = "api";
+          recordValue(method.grant, "device grant").startOptionMappings = [
+            { privateName: "mode", publicId: "environment" },
+          ];
+          setArtifactAuthMethods(artifact, [method]);
+        },
+      });
+    };
+    const release = deviceGrantRelease("2026-07-15.external-device-grant", [
+      "read",
+    ]);
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
 
@@ -3728,6 +3801,16 @@ describe("connector catalog valid lifecycle", () => {
       { environment: "live" },
     );
     expect(provider.deviceCodeBodies[0]?.get("mode")).toBe("live");
+    expect(provider.deviceCodeBodies[0]?.get("scope")).toBe("read");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+
+    const changedScopes = deviceGrantRelease(
+      "2026-07-15.external-device-scope-change",
+      ["read", "future_scope"],
+    );
+    serveObjects(catalogObjects([release, changedScopes], changedScopes));
+    await syncCatalog();
+    const callsBeforeCompletion = context.mocks.s3.send.mock.calls.length;
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: false,
     });
@@ -3748,6 +3831,14 @@ describe("connector catalog valid lifecycle", () => {
       authMethod: "api",
       oauthScopes: ["read"],
     });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "test-oauth-device"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: ["read", "future_scope"],
+      storedScopes: ["read"],
+    });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
@@ -3759,12 +3850,12 @@ describe("connector catalog valid lifecycle", () => {
         type: "connector",
       }),
     );
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeCompletion);
   });
 
   it("executes an external OpenID grant with catalog-owned storage", async () => {
-    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     mockEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     mockOptionalEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     configureSource();
@@ -3868,8 +3959,27 @@ describe("connector catalog valid lifecycle", () => {
     onTestFinished(async () => {
       await cleanupConnector();
     });
-    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
+    const changedScopes = buildRelease({
+      version: "2026-07-15.external-code-scope-change",
+      connectorSlug: "aws",
+      label: "Catalog AWS",
+      mutateCatalog: (artifact) => {
+        const method = publicAuthMethod({
+          id: "cli",
+          grantKind: "external-code",
+        });
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          awsPrivateAuthMethod(["openid", "future_scope"]),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([release, changedScopes], changedScopes));
+    await syncCatalog();
+    const callsBeforeCompletion = context.mocks.s3.send.mock.calls.length;
     const completed = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
@@ -3880,6 +3990,14 @@ describe("connector catalog valid lifecycle", () => {
       authMethod: "cli",
       externalId: "123456789012",
       oauthScopes: ["openid"],
+    });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "aws"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: ["openid", "future_scope"],
+      storedScopes: ["openid"],
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
@@ -3899,7 +4017,7 @@ describe("connector catalog valid lifecycle", () => {
         "CATALOG_AWS_SESSION_TOKEN",
       ]),
     );
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeCompletion);
   });
 
   it("rejects new auth-code actions for an authored-hidden external method", async () => {
@@ -4591,7 +4709,7 @@ describe("connector catalog valid lifecycle", () => {
     ]);
   });
 
-  it("derives connected scope and refresh status from the accepted release", async () => {
+  it("preserves the authorization-start scope snapshot across catalog updates", async () => {
     mockDatadogConnectorOAuth();
     configureSource();
     const matching = buildRelease({
@@ -4627,6 +4745,29 @@ describe("connector catalog valid lifecycle", () => {
     if (!state) {
       throw new Error("Expected Datadog authorization state");
     }
+    const changedScopes = buildRelease({
+      version: "2026-07-15.external-scope-change",
+      connectorSlug: "datadog",
+      label: "Datadog",
+      mutateCatalog: (artifact) => {
+        const method = publicAuthMethod({
+          id: "oauth",
+          grantKind: "auth-code",
+        });
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          datadogPrivateAuthMethod([
+            "dashboards_read",
+            "logs_read_index_data",
+            "future_scope",
+          ]),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([matching, changedScopes], changedScopes));
+    await syncCatalog();
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.DatadogConnector]: false,
     });
@@ -4661,12 +4802,12 @@ describe("connector catalog valid lifecycle", () => {
       context,
       routes: connectorCatalogRoutes,
     })(connectorCatalogContract);
-    const connected = await accept(catalogClient.status({ headers }), [200]);
-    expect(connected.body.connectors[0]).toMatchObject({
+    const mismatched = await accept(catalogClient.status({ headers }), [200]);
+    expect(mismatched.body.connectors[0]).toMatchObject({
       slug: "datadog",
       connected: true,
-      connectionStatus: "connected",
-      scopeMismatch: false,
+      connectionStatus: "scope-mismatch",
+      scopeMismatch: true,
       authMethodSupportsRefresh: true,
       tokenExpiresAt: expect.any(String),
       singleAuthCodeAuthMethodId: "oauth",
@@ -4677,41 +4818,116 @@ describe("connector catalog valid lifecycle", () => {
         reconnectReason: null,
       },
     });
-    expect(connected.body.connectors[0]?.connection).not.toHaveProperty(
+    expect(mismatched.body.connectors[0]?.connection).not.toHaveProperty(
       "oauthScopes",
     );
+    await expect(
+      connectorsApi.readScopeDiff(actor, "datadog"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: [
+        "dashboards_read",
+        "logs_read_index_data",
+        "future_scope",
+      ],
+      storedScopes: ["dashboards_read", "logs_read_index_data"],
+    });
+  });
 
-    const changedScopes = buildRelease({
-      version: "2026-07-15.external-scope-change",
-      connectorSlug: "datadog",
-      label: "Datadog",
+  it("preserves the GitHub app setup scope snapshot across catalog updates", async () => {
+    configureSource();
+    const requestedScopes = ["repo", "project", "workflow"];
+    const matching = buildRelease({
+      version: "2026-07-15.github-app-setup-start",
+      connectorSlug: "github",
+      label: "GitHub",
       mutateCatalog: (artifact) => {
-        const method = publicAuthMethod({
-          id: "oauth",
-          grantKind: "auth-code",
-        });
-        setArtifactAuthMethods(artifact, [method]);
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
       },
       mutateRuntime: (artifact) => {
         setArtifactAuthMethods(artifact, [
-          datadogPrivateAuthMethod([
-            "dashboards_read",
-            "logs_read_index_data",
-            "future_scope",
-          ]),
+          githubPrivateAuthMethod(requestedScopes),
         ]);
       },
     });
-    serveObjects(catalogObjects([matching, changedScopes], changedScopes));
+    const changedScopes = buildRelease({
+      version: "2026-07-15.github-app-setup-scope-change",
+      connectorSlug: "github",
+      label: "GitHub",
+      mutateCatalog: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutateRuntime: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          githubPrivateAuthMethod([...requestedScopes, "future_scope"]),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([matching], matching));
     await syncCatalog();
-    const mismatched = await accept(catalogClient.status({ headers }), [200]);
-    expect(mismatched.body.connectors[0]).toMatchObject({
-      slug: "datadog",
+
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "GitHub setup scope snapshot",
+    });
+    const installed = await githubApi.installGithubApp(actor, agent.agentId, {
+      oauthCode: {
+        code: `github-scope-snapshot-${randomUUID()}`,
+        githubUserId: newGithubUserId(),
+      },
+      beforeCallback: async () => {
+        serveObjects(catalogObjects([matching, changedScopes], changedScopes));
+        await syncCatalog();
+      },
+    });
+
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const catalogClient = setupApp({
+      context,
+      routes: connectorCatalogRoutes,
+    })(connectorCatalogContract);
+    const status = await accept(
+      catalogClient.status({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body.connectors[0]).toMatchObject({
+      slug: "github",
       connected: true,
       connectionStatus: "scope-mismatch",
       scopeMismatch: true,
-      authMethodSupportsRefresh: true,
     });
+    await expect(
+      connectorsApi.readScopeDiff(actor, "github"),
+    ).resolves.toStrictEqual({
+      addedScopes: ["future_scope"],
+      removedScopes: [],
+      currentScopes: [...requestedScopes, "future_scope"],
+      storedScopes: requestedScopes,
+    });
+
+    const parsedState: unknown = JSON.parse(installed.state);
+    if (!isJsonRecord(parsedState)) {
+      throw new Error("Expected GitHub app setup state to be an object");
+    }
+    const tampered = await githubApi.requestSetupCallback(
+      new URLSearchParams({
+        installation_id: installed.remoteInstallationId,
+        setup_action: "install",
+        state: JSON.stringify({
+          ...parsedState,
+          oauthRequestedScopes: [...requestedScopes, "tampered_scope"],
+        }),
+      }).toString(),
+    );
+    expect(tampered.location).toContain("Invalid%20state%20signature");
   });
 
   it("fails closed without accepted catalog state", async () => {
@@ -5583,7 +5799,7 @@ describe("connector catalog executable compatibility", () => {
     });
   });
 
-  it("repairs missing and preserves newer catalog validation authorities", async () => {
+  it("repairs missing and preserves newer validator package authorities", async () => {
     configureSource();
     const release = buildRelease({
       version: "2026-07-27.validation-authority-repair",
@@ -5604,7 +5820,7 @@ describe("connector catalog executable compatibility", () => {
 
     const newerAuthority = {
       ...currentAuthority,
-      backendVersion: "999999.0.0",
+      validatorVersion: "999999.0.0",
     };
     await setApiTestConnectorCatalogValidationAuthority(newerAuthority);
     mockNow(new Date("2026-07-27T08:02:00.000Z"));
@@ -5614,7 +5830,7 @@ describe("connector catalog executable compatibility", () => {
     ).resolves.toStrictEqual(newerAuthority);
   });
 
-  it("repairs accepted validation authority after an API release", async () => {
+  it("preserves accepted authority across an API-only release", async () => {
     configureSource();
     mockEnv("ENV", "production");
     setApiVersion("1.318.0");
@@ -5623,22 +5839,17 @@ describe("connector catalog executable compatibility", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
+    const currentAuthority = apiTestConnectorCatalogValidationAuthority();
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
-    ).resolves.toStrictEqual({
-      backendVersion: "1.318.0",
-      buildCommitSha: null,
-    });
+    ).resolves.toStrictEqual(currentAuthority);
 
     setApiVersion("1.319.0");
     mockNow(new Date("2026-07-27T08:01:00.000Z"));
     expect((await syncCatalog()).body.outcome).toBe("unchanged");
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
-    ).resolves.toStrictEqual({
-      backendVersion: "1.319.0",
-      buildCommitSha: null,
-    });
+    ).resolves.toStrictEqual(currentAuthority);
     const evaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
     expect(evaluations).toHaveLength(1);
@@ -5646,51 +5857,7 @@ describe("connector catalog executable compatibility", () => {
       evaluations.map((evaluation) => {
         return evaluation.validationAuthority;
       }),
-    ).toStrictEqual([{ backendVersion: "1.319.0", buildCommitSha: null }]);
-  });
-
-  it("prevents a draining older API release from downgrading validation authority", async () => {
-    configureSource();
-    mockEnv("ENV", "production");
-    setApiVersion("1.319.0");
-    const release = buildRelease({
-      version: "2026-07-27.validation-release-overlap",
-    });
-    serveObjects(catalogObjects([release], release));
-    await syncCatalog();
-
-    const alternateCatalogKey = release.catalogKey.replace(
-      /catalog\.json$/u,
-      "catalog-copy.json",
-    );
-    const alternatePointer = buildRelease({
-      version: release.version,
-      mutatePointer: (pointer) => {
-        pointer.catalogKey = alternateCatalogKey;
-      },
-    });
-    const alternateObjects = new Map(
-      catalogObjects([release], alternatePointer),
-    );
-    alternateObjects.set(alternateCatalogKey, releaseCatalogBytes(release));
-
-    setApiVersion("1.318.0");
-    serveObjects(alternateObjects);
-    mockNow(new Date("2026-07-27T08:01:00.000Z"));
-    expect((await syncCatalog()).body.outcome).toBe("accepted");
-    await expect(
-      readApiTestConnectorCatalogValidationAuthority(),
-    ).resolves.toStrictEqual({
-      backendVersion: "1.319.0",
-      buildCommitSha: null,
-    });
-    const evaluations =
-      await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(
-      evaluations.map((evaluation) => {
-        return evaluation.validationAuthority;
-      }),
-    ).toStrictEqual([{ backendVersion: "1.319.0", buildCommitSha: null }]);
+    ).toStrictEqual([currentAuthority]);
   });
 
   it("repairs accepted validation authority after a preview build", async () => {
@@ -5704,10 +5871,12 @@ describe("connector catalog executable compatibility", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
+    const validatorVersion =
+      apiTestConnectorCatalogValidationAuthority().validatorVersion;
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
-      backendVersion: DEFAULT_API_VERSION,
+      validatorVersion,
       buildCommitSha: firstCommit,
     });
 
@@ -5717,13 +5886,19 @@ describe("connector catalog executable compatibility", () => {
     await expect(
       readApiTestConnectorCatalogValidationAuthority(),
     ).resolves.toStrictEqual({
-      backendVersion: DEFAULT_API_VERSION,
+      validatorVersion,
+      buildCommitSha: secondCommit,
+    });
+    await expect(
+      readApiTestConnectorCatalogRuntimeProjectionAuthority(),
+    ).resolves.toStrictEqual({
+      validatorVersion,
       buildCommitSha: secondCommit,
     });
   });
 
   it("accepts inline confidential test clients and applies rollout at request time", async () => {
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     const provider = mockTestOAuthAuthCodeProvider({
       refreshToken: "catalog-test-oauth-refresh",
     });
@@ -5904,7 +6079,7 @@ describe("connector catalog executable compatibility", () => {
 
   it("ignores filtered sibling methods when choosing the callback origin", async () => {
     configureSource();
-    mockEnv("VM0_WEB_URL", "https://app.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://app.vm0.test");
     mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_ID", "cloudflare-client-id");
     mockOptionalEnv(
       "CLOUDFLARE_OAUTH_CLIENT_SECRET",
@@ -6200,32 +6375,57 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
-  it("accepts catalogs below the shared byte limit and rejects larger catalogs", async () => {
-    configureSource();
+  it("accepts 32 MiB in a rollback-isolated source generation and rejects 32 MiB plus one with latest-valid retention", async () => {
+    const bucket = configureSource();
+    const legacySourceId = legacyConnectorCatalogSourceId(bucket);
+    await installApiTestConnectorCatalog({
+      catalogVersion: "2026-07-14.rollback-compatible",
+      sourceId: legacySourceId,
+    });
+    const legacySnapshot =
+      await readApiTestConnectorCatalogSnapshot(legacySourceId);
+    expect(legacySnapshot.catalogRawSize).toBeLessThanOrEqual(
+      LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    );
+    const legacyRawBytes = gunzipSync(legacySnapshot.catalogGzip, {
+      maxOutputLength: LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    });
+    expect(legacyRawBytes.byteLength).toBe(legacySnapshot.catalogRawSize);
+    expect(digest(legacyRawBytes)).toBe(legacySnapshot.catalogDigest);
+
+    expect(CONNECTOR_CATALOG_MAX_RAW_BYTES).toBe(32 * 1024 * 1024);
+    const acceptedVersion = "2026-07-15.thirty-two-mib-limit";
+    const unpadded = buildRelease({
+      version: acceptedVersion,
+      mutateCatalog: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").description = "";
+      },
+    });
+    const descriptionBytes =
+      CONNECTOR_CATALOG_MAX_RAW_BYTES -
+      releaseCatalogBytes(unpadded).byteLength;
     const accepted = buildRelease({
-      version: "2026-07-15.sixteen-mib-limit",
+      version: acceptedVersion,
       mutateCatalog: (artifact) => {
         firstRecord(artifact.connectors, "connectors").description = "x".repeat(
-          CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
+          descriptionBytes,
         );
       },
     });
     const acceptedBytes = releaseCatalogBytes(accepted);
-    expect(acceptedBytes.byteLength).toBeGreaterThan(
-      CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
-    );
-    expect(acceptedBytes.byteLength).toBeLessThanOrEqual(
-      CONNECTOR_CATALOG_MAX_RAW_BYTES,
-    );
+    expect(acceptedBytes.byteLength).toBe(CONNECTOR_CATALOG_MAX_RAW_BYTES);
     serveObjects(catalogObjects([accepted], accepted));
 
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
       active: { catalogVersion: accepted.version },
     });
+    await expect(
+      readApiTestConnectorCatalogSnapshot(legacySourceId),
+    ).resolves.toStrictEqual(legacySnapshot);
 
     const rejected = buildRelease({
-      version: "2026-07-15.over-sixteen-mib-limit",
+      version: "2026-07-15.over-thirty-two-mib-limit",
       catalogBytes: Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1),
     });
     serveObjects(catalogObjects([rejected], rejected));
@@ -6239,6 +6439,9 @@ describe("connector catalog rejection and latest-valid retention", () => {
         failureCode: "object-too-large",
       },
     });
+    await expect(
+      readApiTestConnectorCatalogSnapshot(legacySourceId),
+    ).resolves.toStrictEqual(legacySnapshot);
   });
 
   it("classifies unavailable and oversized objects before acceptance", async () => {

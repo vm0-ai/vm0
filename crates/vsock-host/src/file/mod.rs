@@ -12,7 +12,7 @@ use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 
 use crate::exec_operation;
 
-pub use copy::{CopyFileOptions, CopyFileResult};
+pub use copy::{COPY_FILE_STREAM_MAX_BYTES, CopyFileOptions, CopyFileResult};
 pub use write::WriteFileEntry;
 
 const MISSING_FILE_EXIT_CODE: i32 = 66;
@@ -223,6 +223,20 @@ pub(crate) mod test_support {
             path,
             content,
             write_observer,
+            TEST_WRITE_FILE_CHUNK_LIMIT,
+        )
+        .await
+    }
+
+    pub(crate) async fn write_private_files_with_small_limits(
+        host: &VsockHost,
+        files: &[crate::WriteFileEntry<'_>],
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<()> {
+        host.write_private_files_with_write_observer_and_limits(
+            files,
+            write_observer,
+            TEST_WRITE_FILE_CHUNK_LIMIT,
             TEST_WRITE_FILE_CHUNK_LIMIT,
         )
         .await

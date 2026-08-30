@@ -492,7 +492,7 @@ describe("sandbox Pi agent loop", () => {
     });
     const h1 = memory.toJsonl();
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       outcome: "handoff",
       baseSession: { sessionId: SESSION_ID, sha256: null },
       session: {
@@ -500,6 +500,7 @@ describe("sandbox Pi agent loop", () => {
         sha256: createHash("sha256").update(h1).digest("hex"),
         rawSize: Buffer.byteLength(h1),
       },
+      sandboxEventSequenceStart: 4,
     };
     const handoffServer = createServer((request, response) => {
       if (request.url === "/manifest.json") {
@@ -573,6 +574,11 @@ describe("sandbox Pi agent loop", () => {
 
       host = new RpcHost({ cwd: root, agentDir, sessionDir, env });
       const state = await host.state("handoff-state");
+      expect(host.records[0]).toStrictEqual({
+        type: "vm0_pi_api_first_turn_boundary",
+        schemaVersion: 1,
+        sandboxEventSequenceStart: 4,
+      });
       expect(state).toMatchObject({
         sessionId: SESSION_ID,
         messageCount: 2,

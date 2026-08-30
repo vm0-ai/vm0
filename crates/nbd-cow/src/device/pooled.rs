@@ -241,8 +241,10 @@ impl PooledNbdCowDevice {
     /// The caller must move the same backing file within one filesystem before
     /// calling this method. This updates only path metadata used by bitmap
     /// persistence and cleanup; it does not reopen, reset, or rebind the COW
-    /// layer or NBD device. Any in-flight COW operation completes before the
-    /// path metadata is updated.
+    /// layer or NBD device. Relocation waits for a COW operation that already
+    /// holds the `CowLayer` mutex to complete before the path metadata is
+    /// updated. A submitted COW operation that has not yet acquired the mutex
+    /// is not waited on and may run after relocation returns.
     ///
     /// # Errors
     ///

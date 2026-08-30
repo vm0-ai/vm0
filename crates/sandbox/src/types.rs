@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
@@ -41,11 +41,10 @@ pub const EXEC_OUTPUT_LIMIT_1_MIB: ExecOutputLimits = ExecOutputLimits::same(102
 /// Larger output budget used by interactive runner exec-style tooling.
 pub const EXEC_OUTPUT_LIMIT_7_MIB: ExecOutputLimits = ExecOutputLimits::same(7 * 1024 * 1024);
 
-/// One ordinary guest file write entry for a multi-file write operation.
+/// One guest file entry for a typed multi-file write operation.
 ///
-/// Entries use the same semantics as [`crate::Sandbox::write_file`]: create
-/// missing parent directories, create or truncate the target file, and write
-/// the provided bytes without private runtime-file semantics.
+/// The selected [`crate::Sandbox`] method defines whether entries use ordinary
+/// or private runtime-file semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WriteFileEntry<'a> {
     /// Guest path to create or replace.
@@ -166,8 +165,6 @@ pub struct StartProcessRequest<'a> {
     pub sudo: bool,
     /// Buffered or streamed stdout behavior.
     pub output: ProcessOutputMode,
-    /// Optional operation-bound control sink requested for the started process.
-    pub control: ProcessControlMode,
 }
 
 impl StartProcessRequest<'_> {
@@ -175,6 +172,26 @@ impl StartProcessRequest<'_> {
     ///
     /// Non-zero sub-millisecond durations round up to 1ms so callers do not
     /// accidentally turn a bounded process into an unbounded one.
+    pub fn timeout_ms(&self) -> u32 {
+        duration_ms(self.timeout)
+    }
+}
+
+/// Request for the controlled guest Agent process.
+///
+/// Agent startup is intentionally separate from ordinary supervised process
+/// startup so generic callers cannot select the controlled Agent topology.
+pub struct StartAgentProcessRequest<'a> {
+    /// Guest-side Agent supervisor timeout.
+    pub timeout: Duration,
+    /// Environment variables passed to the fixed Guest Agent executable.
+    pub env: &'a [(&'a str, &'a str)],
+    /// Buffered or streamed Agent output behavior.
+    pub output: ProcessOutputMode,
+}
+
+impl StartAgentProcessRequest<'_> {
+    /// Return the timeout as milliseconds, saturating at `u32::MAX`.
     pub fn timeout_ms(&self) -> u32 {
         duration_ms(self.timeout)
     }
@@ -765,6 +782,7 @@ impl GuestProcessControlHandle {
 /// [`Sandbox::wait_process`](crate::Sandbox::wait_process). When stdout streaming is
 /// enabled, callers may use [`take_stdout_receiver`](Self::take_stdout_receiver)
 /// before waiting; if they do, they must drain it while the process runs.
+#[must_use = "retain this process handle and complete supervision with Sandbox::wait_process"]
 pub struct GuestProcessHandle {
     /// Guest process id reported by the provider.
     ///
@@ -853,6 +871,70 @@ impl GuestProcessHandle {
     }
 }
 
+/// Handle returned by
+/// [`Sandbox::start_agent_process`](crate::Sandbox::start_agent_process).
+///
+/// A successful Agent start always includes the process-control capability.
+/// The process handle remains the sole owner of wait, cancellation, stdout,
+/// and drop cleanup state.
+#[must_use = "retain this Agent process handle and complete supervision with Sandbox::wait_process"]
+pub struct GuestAgentProcessHandle {
+    process: GuestProcessHandle,
+    control: GuestProcessControlHandle,
+    start_timing: GuestAgentStartTiming,
+}
+
+/// Provider-neutral timing captured at the controlled Agent readiness boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestAgentStartTiming {
+    /// Host monotonic instant when the guest controlled process was spawned.
+    pub shell_started_at: Instant,
+    /// Host monotonic instant when Agent runtime placement was confirmed.
+    pub ready_at: Instant,
+    /// Guest time spent creating the per-exec process containment hierarchy.
+    pub containment_create: Duration,
+    /// Guest time spent creating workload and tool placement brokers.
+    pub placement_broker_setup: Duration,
+    /// Guest time spent launching the controlled process.
+    ///
+    /// The `shell_spawn` name remains stable for timing-series compatibility;
+    /// direct Agent launch does not execute a shell.
+    pub shell_spawn: Duration,
+    /// Guest time from controlled-process launch through confirmed placement.
+    pub bootstrap_ready_wait: Duration,
+}
+
+impl GuestAgentProcessHandle {
+    /// Convert a provider process handle into a controlled Agent handle.
+    pub fn try_from_process(
+        mut process: GuestProcessHandle,
+        start_timing: GuestAgentStartTiming,
+    ) -> crate::Result<Self> {
+        let Some(control) = process.control.take() else {
+            return Err(crate::SandboxError::Operation {
+                operation: crate::SandboxOperation::StartAgentProcess,
+                reason: crate::SandboxOperationReason::Other,
+                message: "provider returned an Agent process without process control".into(),
+            });
+        };
+        Ok(Self {
+            process,
+            control,
+            start_timing,
+        })
+    }
+
+    /// Return timing captured while the controlled Agent became ready.
+    pub fn start_timing(&self) -> GuestAgentStartTiming {
+        self.start_timing
+    }
+
+    /// Consume the Agent handle into its process owner and control capability.
+    pub fn into_parts(self) -> (GuestProcessHandle, GuestProcessControlHandle) {
+        (self.process, self.control)
+    }
+}
+
 impl Drop for GuestProcessHandle {
     fn drop(&mut self) {
         self.drop_unclaimed_stdout();
@@ -896,26 +978,14 @@ pub enum ProcessOutputMode {
         /// This bounds host buffering for delivered chunks. It is not a
         /// guarantee that a slow caller applies backpressure to the guest; host
         /// delivery overflow is reported through [`ProcessExit::stream_overflowed`].
+        /// The queue retains at most this many chunks; the next valid chunk
+        /// closes delivery and marks the process exit as overflowed.
         queue_capacity: usize,
         /// Optional captured stderr byte limit retained in [`ProcessExit`].
         ///
         /// When unset, providers may discard stderr in stream mode.
         stderr_capture_limit_bytes: Option<u32>,
     },
-}
-
-/// Process-control mode for a process started with
-/// [`Sandbox::start_process`](crate::Sandbox::start_process).
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProcessControlMode {
-    /// Do not request a process-control sink.
-    None,
-    /// Request a provider-backed process-control sink.
-    ///
-    /// Providers may still return a process handle without a control handle.
-    /// Callers must check [`GuestProcessHandle::control_handle`] on the returned
-    /// process handle before sending control messages.
-    Enabled,
 }
 
 impl ProcessOutputMode {
@@ -961,26 +1031,26 @@ impl ProcessOutputMode {
     ///
     /// Stream chunk limits and queue capacities must be positive, and queue
     /// capacities must not exceed [`MAX_QUEUE_CAPACITY`](Self::MAX_QUEUE_CAPACITY).
-    pub fn validate(self) -> crate::Result<()> {
+    pub fn validate(self, operation: crate::SandboxOperation) -> crate::Result<()> {
         match self {
             Self::Stream {
                 chunk_limit_bytes: 0,
                 ..
             } => Err(crate::SandboxError::Operation {
-                operation: crate::SandboxOperation::StartProcess,
+                operation,
                 reason: crate::SandboxOperationReason::Other,
                 message: "process stream chunk limit must be positive".into(),
             }),
             Self::Stream {
                 queue_capacity: 0, ..
             } => Err(crate::SandboxError::Operation {
-                operation: crate::SandboxOperation::StartProcess,
+                operation,
                 reason: crate::SandboxOperationReason::Other,
                 message: "process stream queue capacity must be positive".into(),
             }),
             Self::Stream { queue_capacity, .. } if queue_capacity > Self::MAX_QUEUE_CAPACITY => {
                 Err(crate::SandboxError::Operation {
-                    operation: crate::SandboxOperation::StartProcess,
+                    operation,
                     reason: crate::SandboxOperationReason::Other,
                     message: format!(
                         "process stream queue capacity must be at most {}",
@@ -1062,6 +1132,18 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    fn guest_agent_start_timing() -> GuestAgentStartTiming {
+        let ready_at = Instant::now();
+        GuestAgentStartTiming {
+            shell_started_at: ready_at,
+            ready_at,
+            containment_create: Duration::ZERO,
+            placement_broker_setup: Duration::ZERO,
+            shell_spawn: Duration::ZERO,
+            bootstrap_ready_wait: Duration::ZERO,
+        }
+    }
+
     #[test]
     fn timeout_ms_normal() {
         let req = ExecRequest {
@@ -1112,7 +1194,16 @@ mod tests {
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            control: ProcessControlMode::None,
+        };
+        assert_eq!(req.timeout_ms(), 1);
+    }
+
+    #[test]
+    fn start_agent_process_timeout_rounds_nonzero_submillisecond_up() {
+        let req = StartAgentProcessRequest {
+            timeout: Duration::from_nanos(1),
+            env: &[],
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
         };
         assert_eq!(req.timeout_ms(), 1);
     }
@@ -1396,6 +1487,57 @@ mod tests {
         handle.drop_unclaimed_stdout();
 
         assert!(!closed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn guest_agent_process_handle_requires_control() {
+        let process = GuestProcessHandle::new(
+            42,
+            None,
+            None,
+            GuestProcessWaiter::new(|_| {
+                Box::pin(async { Ok(ProcessExit::new(42, 0, Vec::new(), Vec::new())) })
+            }),
+        );
+
+        let error =
+            match GuestAgentProcessHandle::try_from_process(process, guest_agent_start_timing()) {
+                Ok(_) => panic!("Agent handle unexpectedly accepted missing control"),
+                Err(error) => error,
+            };
+        assert!(matches!(
+            error,
+            crate::SandboxError::Operation {
+                operation: crate::SandboxOperation::StartAgentProcess,
+                reason: crate::SandboxOperationReason::Other,
+                ..
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn guest_agent_process_handle_transfers_process_and_control() {
+        let control = GuestProcessControlHandle::new(|message_id, _, _| {
+            Box::pin(async move { Ok(ProcessControlAck { message_id }) })
+        });
+        let process = GuestProcessHandle::new(
+            42,
+            None,
+            Some(control),
+            GuestProcessWaiter::new(|_| {
+                Box::pin(async { Ok(ProcessExit::new(42, 0, Vec::new(), Vec::new())) })
+            }),
+        );
+
+        let agent =
+            GuestAgentProcessHandle::try_from_process(process, guest_agent_start_timing()).unwrap();
+        let (process, control) = agent.into_parts();
+        assert_eq!(process.guest_pid, 42);
+        let ack = control
+            .control("message", b"payload", Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert_eq!(ack.message_id, "message");
     }
 
     #[test]

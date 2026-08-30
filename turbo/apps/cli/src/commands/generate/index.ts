@@ -15,7 +15,6 @@ import { avatarVideoCommand } from "./avatar-video";
 import { websiteCommand } from "./website";
 import { voiceCommand } from "./voice";
 import { createListerOnlyCommand } from "./lister-only";
-import { introVideoTemplatesEnabled, introVideoCommand } from "./intro-video";
 
 const musicCommand = createListerOnlyCommand({
   name: "music",
@@ -80,9 +79,6 @@ export const generateCommand = new Command()
   .addCommand(dashboardDesignCommand)
   .addCommand(mobileAppDesignCommand)
   .addCommand(videoCommand)
-  .addCommand(introVideoCommand, {
-    hidden: !introVideoTemplatesEnabled(),
-  })
   .addCommand(avatarVideoCommand)
   .addCommand(websiteCommand)
   .addCommand(spriteCommand)
