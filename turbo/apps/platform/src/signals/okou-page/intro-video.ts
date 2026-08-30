@@ -20,6 +20,7 @@ import {
   onRef,
   onRejection,
   resetSignal,
+  setLoop,
   settle,
   withCleanup,
 } from "../utils.ts";
@@ -557,22 +558,34 @@ function createRecordingProgressCommands(
   );
   const updateRecordingSeconds$ = command(
     async ({ set }, generation: number, signal: AbortSignal): Promise<void> => {
-      while (
-        generation === runtime.generation &&
-        runtime.recorder?.state === "recording"
-      ) {
-        await delay(250, { signal });
-        if (
-          generation !== runtime.generation ||
-          runtime.recorder?.state !== "recording"
-        ) {
-          return;
-        }
-        set(
-          internal.recordingSeconds$,
-          Math.max(0, Math.floor((now() - runtime.recordingStartedAt) / 1000)),
+      const recordingIsActive = () => {
+        return (
+          generation === runtime.generation &&
+          runtime.recorder?.state === "recording"
         );
-      }
+      };
+      let isFirstIteration = true;
+      await setLoop(
+        () => {
+          if (!recordingIsActive()) {
+            return true;
+          }
+          if (isFirstIteration) {
+            isFirstIteration = false;
+            return false;
+          }
+          set(
+            internal.recordingSeconds$,
+            Math.max(
+              0,
+              Math.floor((now() - runtime.recordingStartedAt) / 1000),
+            ),
+          );
+          return false;
+        },
+        250,
+        signal,
+      );
     },
   );
   return { runRecordingCountdown$, updateRecordingSeconds$ };
