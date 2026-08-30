@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 import {
   findManagedSocialKitTool,
   managedSocialKitToolCatalog,
@@ -39,6 +41,13 @@ interface SocialKitDownloadOptions {
   readonly quality?: string;
   readonly resume?: string;
 }
+
+type DownloadSignal = "SIGINT" | "SIGTERM";
+
+const DOWNLOAD_SIGNAL_EXIT_CODE: Readonly<Record<DownloadSignal, number>> = {
+  SIGINT: 130,
+  SIGTERM: 143,
+};
 
 type SocialKitCatalogRetrieval =
   | { readonly kind: "cursor" }
@@ -179,22 +188,94 @@ function positiveInteger(value: string): number {
   return parsed;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+function resumeDownloadCommand(downloadId: string): string {
+  return `okou social download --resume ${downloadId}`;
+}
+
+function terminalDownloadError(response: SocialKitDownloadResponse): Error {
+  if (!response.error) {
+    return new Error(
+      `Okou Social download ${response.downloadId} returned ${response.status} without error details`,
+    );
+  }
+  const lines = [
+    "Okou Social download failed",
+    `  Download ID: ${response.downloadId}`,
+    `  Status: ${response.status}`,
+    `  Platform: ${response.platform}`,
+    `  Requested quality: ${response.quality}`,
+    `  Requested format: ${response.format}`,
+    `  Error code: ${response.error.code}`,
+    `  Error: ${response.error.message}`,
+    `  Retryable: ${response.error.retryable ? "yes" : "no"}`,
+    `  Billed: ${response.error.billed ? "yes" : "no"}`,
+  ];
+  if (response.status === "artifact_failed") {
+    lines.push(`  Resume: ${resumeDownloadCommand(response.downloadId)}`);
+  }
+  return new Error(lines.join("\n"));
+}
+
+function failDownload(
+  response: SocialKitDownloadResponse,
+  compact: boolean,
+): never {
+  if (compact) {
+    console.log(JSON.stringify(response));
+  }
+  throw terminalDownloadError(response);
+}
+
+async function withDownloadInterruption(
+  downloadId: string,
+  action: (signal: AbortSignal) => Promise<void>,
+): Promise<void> {
+  const controller = new AbortController();
+  let interruption: DownloadSignal | undefined;
+  const interrupt = (signal: DownloadSignal): void => {
+    if (interruption) {
+      return;
+    }
+    interruption = signal;
+    console.error(
+      `Okou Social download ${downloadId} continues on the server after ${signal}`,
+    );
+    console.error(`Resume: ${resumeDownloadCommand(downloadId)}`);
+    process.exitCode = DOWNLOAD_SIGNAL_EXIT_CODE[signal];
+    controller.abort();
+  };
+  const onSigint = (): void => {
+    interrupt("SIGINT");
+  };
+  const onSigterm = (): void => {
+    interrupt("SIGTERM");
+  };
+  process.once("SIGINT", onSigint);
+  process.once("SIGTERM", onSigterm);
+  try {
+    await action(controller.signal);
+  } catch (error) {
+    if (!interruption) {
+      throw error;
+    }
+  } finally {
+    process.removeListener("SIGINT", onSigint);
+    process.removeListener("SIGTERM", onSigterm);
+  }
 }
 
 async function waitForDownload(
   initial: SocialKitDownloadResponse,
   compact: boolean,
   retryArtifactFailures: boolean,
+  signal: AbortSignal,
 ): Promise<void> {
   let current = initial;
   let previousStatus: string | undefined;
   let pollImmediately =
     retryArtifactFailures && current.status === "artifact_failed";
   for (let attempt = 0; attempt < 900; attempt += 1) {
+    signal.throwIfAborted();
     if (current.status !== previousStatus) {
       console.error(
         `Okou Social download ${current.downloadId}: ${current.status}`,
@@ -206,24 +287,21 @@ async function waitForDownload(
       return;
     }
     if (current.status === "provider_failed") {
-      throw new Error(
-        `Okou Social download ${current.downloadId} failed before billing`,
-      );
+      failDownload(current, compact);
     }
     if (current.status === "artifact_failed" && !retryArtifactFailures) {
-      throw new Error(
-        `Okou Social download ${current.downloadId} was billed but artifact materialization failed; resume with --resume ${current.downloadId}`,
-      );
+      failDownload(current, compact);
     }
     if (pollImmediately) {
       pollImmediately = false;
     } else {
-      await sleep(2_000);
+      await sleep(2_000, undefined, { signal });
     }
-    current = await getSocialKitDownload(current.downloadId);
+    current = await getSocialKitDownload(current.downloadId, signal);
   }
+  signal.throwIfAborted();
   throw new Error(
-    `Okou Social download ${current.downloadId} is still running; resume with --resume ${current.downloadId}`,
+    `Okou Social download ${current.downloadId} is still running; resume with: ${resumeDownloadCommand(current.downloadId)}`,
   );
 }
 
@@ -482,11 +560,14 @@ const downloadCommand = new Command()
   .argument("[url]", "Public social media URL")
   .option(
     "--max-duration <seconds>",
-    "Maximum accepted media duration and billing bound",
+    "Required maximum accepted media duration; billing uses completed duration",
     positiveInteger,
   )
-  .option("--quality <quality>", "240p, 360p, 480p, 720p, or 1080p")
-  .option("--format <format>", "mp4 or m4a")
+  .option(
+    "--quality <quality>",
+    "240p, 360p, 480p, 720p, or 1080p (default: 720p)",
+  )
+  .option("--format <format>", "mp4 or m4a (default: mp4)")
   .option("--resume <download-id>", "Resume polling an existing download")
   .option("--json", "Print compact JSON")
   .action(
@@ -497,6 +578,7 @@ const downloadCommand = new Command()
         options: SocialKitDownloadOptions,
       ) => {
         if (options.resume) {
+          const downloadId = options.resume;
           if (
             platform ||
             url ||
@@ -505,14 +587,17 @@ const downloadCommand = new Command()
             options.format
           ) {
             throw new InvalidArgumentError(
-              "--resume cannot be combined with a new download request",
+              `--resume cannot be combined with a new download request; use: ${resumeDownloadCommand(downloadId)}`,
             );
           }
-          await waitForDownload(
-            await getSocialKitDownload(options.resume),
-            options.json === true,
-            true,
-          );
+          await withDownloadInterruption(downloadId, async (signal) => {
+            await waitForDownload(
+              await getSocialKitDownload(downloadId, signal),
+              options.json === true,
+              true,
+              signal,
+            );
+          });
           return;
         }
         if (!platform || !url || !options.maxDuration) {
@@ -533,11 +618,10 @@ const downloadCommand = new Command()
               "Okou Social download request is invalid",
           );
         }
-        await waitForDownload(
-          await createSocialKitDownload(parsed.data),
-          options.json === true,
-          false,
-        );
+        const created = await createSocialKitDownload(parsed.data);
+        await withDownloadInterruption(created.downloadId, async (signal) => {
+          await waitForDownload(created, options.json === true, false, signal);
+        });
       },
     ),
   );
