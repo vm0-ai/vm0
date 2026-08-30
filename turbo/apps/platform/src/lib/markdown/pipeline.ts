@@ -4,6 +4,7 @@ import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeIgnore from "rehype-ignore";
+import rehypePrism from "rehype-prism-plus/common";
 import rehypeRaw from "rehype-raw";
 import rehypeRewrite from "rehype-rewrite";
 import rehypeSlug from "rehype-slug";
@@ -40,7 +41,7 @@ declare module "hast" {
  *
  * The rehype plugin order is load-bearing:
  *
- *   slug → autolinkHeadings → ignore → rewrite → attrs → cards → mermaid
+ *   slug → autolinkHeadings → ignore → rewrite → attrs → cards → mermaid → prism
  */
 
 type MarkdownCard = NonNullable<Data["card"]>;
@@ -344,6 +345,7 @@ function rehypePlugins(options: MarkdownParseOptions): PluggableList {
     [rehypeAttrs, { properties: "attr" }],
     ...cardPlugins,
     ...mermaidPlugins,
+    [rehypePrism, { ignoreMissing: true }],
   ];
 }
 

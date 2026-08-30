@@ -1,4 +1,4 @@
-import "@uiw/react-markdown-preview/markdown.css";
+import "../css/vendor/uiw-react-markdown-preview-5.2.0.css";
 import { CopyButton } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";

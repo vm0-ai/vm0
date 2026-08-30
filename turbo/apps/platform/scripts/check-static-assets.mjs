@@ -1,10 +1,18 @@
-import { readdirSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(__dirname, "..");
+const vendoredMarkdownCssPath = path.join(
+  appRoot,
+  "src/views/css/vendor/uiw-react-markdown-preview-5.2.0.css",
+);
+const vendoredMarkdownCssBodyStart = "@media (prefers-color-scheme: dark) {";
+const vendoredMarkdownCssSha256 =
+  "9ec83e6d9f5791bfd74fdd9dec383a30106d736055faa9655376afa62583d94f";
 
 function toPosixPath(value) {
   return value.split(path.sep).join("/");
@@ -87,4 +95,65 @@ Only same-origin browser assets such as manifest or push-notification icons shou
   }
 }
 
+function checkVendoredMarkdownCss() {
+  const requiredHeader = [
+    "@uiw/react-markdown-preview@5.2.0, package/markdown.css",
+    "https://unpkg.com/@uiw/react-markdown-preview@5.2.0/markdown.css",
+    "https://github.com/uiwjs/react-markdown-preview/tree/v5.2.0",
+    "SPDX-License-Identifier: MIT",
+    "Copyright (c) 2020 uiw",
+  ];
+  const requiredSelectors = [
+    "[data-color-mode*='dark'] .wmde-markdown",
+    ".wmde-markdown .token.comment",
+    ".wmde-markdown .token.keyword",
+    ".wmde-markdown .highlight-line",
+    ".wmde-markdown .code-line.line-number::before",
+    ".wmde-markdown .markdown-alert",
+    ".wmde-markdown .task-list-item",
+    ".wmde-markdown pre .copied",
+  ];
+  const css = readFileSync(vendoredMarkdownCssPath, "utf8");
+  const bodyStart = css.indexOf(vendoredMarkdownCssBodyStart);
+  const violations = [];
+
+  if (bodyStart === -1) {
+    violations.push("published CSS body marker is missing");
+  } else {
+    const header = css.slice(0, bodyStart);
+    const body = css.slice(bodyStart);
+    const actualSha256 = createHash("sha256").update(body).digest("hex");
+
+    if (actualSha256 !== vendoredMarkdownCssSha256) {
+      violations.push(
+        `published CSS body changed (expected sha256 ${vendoredMarkdownCssSha256}, received ${actualSha256})`,
+      );
+    }
+
+    for (const requiredText of requiredHeader) {
+      if (header.indexOf(requiredText) === -1) {
+        violations.push(`attribution header is missing: ${requiredText}`);
+      }
+    }
+
+    for (const selector of requiredSelectors) {
+      if (body.indexOf(selector) === -1) {
+        violations.push(`required upstream selector is missing: ${selector}`);
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    process.stderr.write(
+      `Vendored Markdown CSS lint failed.\n\n${violations
+        .map((violation) => {
+          return `  - ${violation}`;
+        })
+        .join("\n")}\n`,
+    );
+    process.exit(1);
+  }
+}
+
 checkStaticAssets();
+checkVendoredMarkdownCss();
