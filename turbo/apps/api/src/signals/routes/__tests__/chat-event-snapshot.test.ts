@@ -399,7 +399,6 @@ describe("chat event snapshot read endpoints", () => {
         query: {
           sinceSeqId: firstSeqId,
           sinceEventId: firstRow.id,
-          sinceProjection: "tool-redacted",
         },
       }),
       [200],
@@ -407,6 +406,10 @@ describe("chat event snapshot read endpoints", () => {
     expect(rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
       CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
     );
+    expect(rows.body.projection).toBe("tool-redacted");
+    expect(rows.body.cursor).toMatchObject({
+      projection: "tool-redacted",
+    });
     for (const row of rows.body.rows) {
       chatEventRowSchema.parse(row);
       expect(row.chatThreadId).toBe(threadId);

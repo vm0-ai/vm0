@@ -2,7 +2,6 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
-  type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, eq, gt } from "drizzle-orm";
@@ -28,7 +27,6 @@ type ChatEventSnapshotDownload =
       readonly expiresInSeconds: number;
       readonly lastEventId: string | null;
       readonly lastSeqId: number;
-      readonly projection: ChatEventSnapshotProjection;
     };
 
 type ChatEventRowsPage =
@@ -39,14 +37,12 @@ type ChatEventRowsPage =
       readonly rows: readonly ChatEventRow[];
       readonly cursor: ChatEventCursor;
       readonly hasMore: boolean;
-      readonly projection: ChatEventSnapshotProjection;
     };
 
 interface ChatEventRowsBaseArgs {
   readonly threadId: string;
   readonly userId: string;
   readonly limit: number;
-  readonly projection: ChatEventSnapshotProjection;
 }
 
 type ChatEventRowsArgs = ChatEventRowsBaseArgs &
@@ -55,7 +51,6 @@ type ChatEventRowsArgs = ChatEventRowsBaseArgs &
     | {
         readonly sinceSeqId: number;
         readonly sinceEventId: string;
-        readonly sinceProjection: ChatEventSnapshotProjection;
       }
   );
 
@@ -72,7 +67,6 @@ interface SnapshotPointer {
 async function currentSnapshotPointer(
   db: ReadonlyDb,
   threadId: string,
-  projection: ChatEventSnapshotProjection,
 ): Promise<SnapshotPointer | null> {
   const [pointer] = await db
     .select({
@@ -88,7 +82,6 @@ async function currentSnapshotPointer(
           chatEventSnapshots.archiveSchemaVersion,
           CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         ),
-        eq(chatEventSnapshots.projection, projection),
       ),
     )
     .limit(1);
@@ -143,7 +136,6 @@ async function currentSnapshotCursor(
           chatEventSnapshots.archiveSchemaVersion,
           CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         ),
-        eq(chatEventSnapshots.projection, args.projection),
       ),
     )
     .limit(1);
@@ -171,14 +163,6 @@ async function cursorContinuationSeqId(
   db: ReadonlyDb,
   args: ChatEventRowsArgs,
 ): Promise<number | null> {
-  if (
-    args.sinceSeqId !== THREAD_START_SEQ_ID &&
-    "sinceProjection" in args &&
-    args.sinceProjection !== undefined &&
-    args.sinceProjection !== args.projection
-  ) {
-    return null;
-  }
   const currentSnapshot = await currentSnapshotCursor(db, args);
   const currentContinuation = currentSnapshotContinuation(
     currentSnapshot,
@@ -216,7 +200,6 @@ async function cursorContinuationSeqId(
 export function chatThreadEventSnapshot(args: {
   readonly threadId: string;
   readonly userId: string;
-  readonly projection: ChatEventSnapshotProjection;
 }) {
   return command(
     async (
@@ -234,11 +217,7 @@ export function chatThreadEventSnapshot(args: {
         return { kind: "thread-not-found" } as const;
       }
 
-      const pointer = await currentSnapshotPointer(
-        db,
-        args.threadId,
-        args.projection,
-      );
+      const pointer = await currentSnapshotPointer(db, args.threadId);
       signal.throwIfAborted();
       if (pointer === null) {
         return { kind: "snapshot-not-found" };
@@ -258,7 +237,6 @@ export function chatThreadEventSnapshot(args: {
         expiresInSeconds: SNAPSHOT_URL_TTL_SECONDS,
         lastEventId: pointer.lastEventId,
         lastSeqId: pointer.lastSeqId,
-        projection: args.projection,
       };
     },
   );
@@ -283,15 +261,6 @@ export function chatThreadEventRows(
     if (!owned) {
       return { kind: "thread-not-found" } as const;
     }
-    if (
-      args.sinceSeqId !== THREAD_START_SEQ_ID &&
-      "sinceProjection" in args &&
-      args.sinceProjection !== undefined &&
-      args.sinceProjection !== args.projection
-    ) {
-      return { kind: "expired" } as const;
-    }
-
     const continuationSeqId = await cursorContinuationSeqId(db, args);
     if (continuationSeqId === null) {
       return { kind: "expired" } as const;
@@ -331,7 +300,6 @@ export function chatThreadEventRows(
           ? {
               lastEventId: args.sinceEventId,
               lastSeqId: args.sinceSeqId,
-              projection: args.projection,
             }
           : (() => {
               throw new Error("Positive Chat Event cursor is missing its ID");
@@ -342,7 +310,6 @@ export function chatThreadEventRows(
         : {
             lastEventId: cursorLast.id,
             lastSeqId: cursorLast.seqId,
-            projection: args.projection,
           };
 
     return {
@@ -350,7 +317,6 @@ export function chatThreadEventRows(
       rows,
       cursor,
       hasMore: physicalRows.length === args.limit,
-      projection: args.projection,
     } as const;
   });
 }

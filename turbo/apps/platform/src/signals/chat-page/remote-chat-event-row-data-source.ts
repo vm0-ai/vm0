@@ -3,9 +3,10 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import type {
-  ChatEventCursor,
-  ChatEventSnapshotProjection,
+import {
+  LEGACY_CHAT_EVENT_PROJECTION,
+  withoutLegacyChatEventProjection,
+  type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -50,7 +51,9 @@ export const listRowsAfter$ = command(
           : {
               sinceSeqId: cursor.lastSeqId,
               sinceEventId: cursor.lastEventId,
-              sinceProjection: cursor.projection,
+              // Stage 1 App-to-API adapter for retained pre-Stage-1 targets.
+              // Remove under vm0-ai/vm0#30329 when that API gate closes.
+              sinceProjection: LEGACY_CHAT_EVENT_PROJECTION,
               limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
             },
       fetchOptions: { signal },
@@ -73,7 +76,7 @@ export const listRowsAfter$ = command(
     return {
       kind: "rows",
       rows: result.body.rows,
-      cursor: result.body.cursor,
+      cursor: withoutLegacyChatEventProjection(result.body.cursor),
       hasMore: result.body.hasMore,
     };
   },
@@ -96,7 +99,6 @@ export const fetchChatEventSnapshotRows$ = command(
       readonly rows: readonly ChatEventRow[];
       readonly lastEventId: string | null;
       readonly lastSeqId: number;
-      readonly projection: ChatEventSnapshotProjection;
     } | null;
   }> => {
     const client = get(apiClient$)(chatThreadEventsContract);
@@ -147,7 +149,6 @@ export const fetchChatEventSnapshotRows$ = command(
         rows,
         lastEventId: download.body.lastEventId,
         lastSeqId: download.body.lastSeqId,
-        projection: download.body.projection,
       },
     };
   },

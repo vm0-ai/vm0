@@ -113,7 +113,6 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
               WHERE snapshot.chat_thread_id = event.chat_thread_id
                 AND snapshot.archive_schema_version
                   = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-                AND snapshot.projection = 'tool-redacted'
                 AND snapshot.last_seq_id >= event.seq_id
                 AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
             )
@@ -251,7 +250,6 @@ async function hasMoreRetainableRows(
             WHERE snapshot.chat_thread_id = event.chat_thread_id
               AND snapshot.archive_schema_version
                 = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-              AND snapshot.projection = 'tool-redacted'
               AND snapshot.last_seq_id >= event.seq_id
               AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
           )
