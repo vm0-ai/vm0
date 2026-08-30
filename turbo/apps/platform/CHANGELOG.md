@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.810.3](https://github.com/vm0-ai/vm0/compare/app-v0.810.2...app-v0.810.3) (2026-08-30)
+
+
+### Bug Fixes
+
+* **platform:** recover shared database authentication ([#30265](https://github.com/vm0-ai/vm0/issues/30265)) ([02dea69](https://github.com/vm0-ai/vm0/commit/02dea690f43867a6b743808e51022018f2f78471))
+
+
+### Refactoring
+
+* **platform:** remove mermaid lazy loading ([#30268](https://github.com/vm0-ai/vm0/issues/30268)) ([87cb9bd](https://github.com/vm0-ai/vm0/commit/87cb9bd559365a5c8c9e753bfcee3d1bd0dba673))
+
 ## [0.810.2](https://github.com/vm0-ai/vm0/compare/app-v0.810.1...app-v0.810.2) (2026-08-30)
 
 
