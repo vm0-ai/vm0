@@ -6005,6 +6005,27 @@ describe("CHAT-02: model-first provider policies", () => {
       readThreadSessionConversation(context, run.threadId),
     ).resolves.toStrictEqual(canonicalConversation);
     expect(modelCalls).toBe(5);
+
+    const conversationClear = await holdThreadSessionConversationClearFixture({
+      threadId: run.threadId,
+      signal: context.signal,
+    });
+    conversationClear.release();
+    await conversationClear.done;
+    const repeatedCombinedH2 = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(repeatedCombinedH2.body).toStrictEqual(combinedH2.body);
   }, 90_000);
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {

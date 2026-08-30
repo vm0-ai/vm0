@@ -434,7 +434,7 @@ async function completeAgentRunTransition(
       checkpointInput,
       checkpointPreparation,
       signal,
-      { requireExactGenericCompletedRetry: true },
+      { combinedCompletion: true },
     );
     if (checkpointResult.status !== 200) {
       return { kind: "response", response: checkpointResult };

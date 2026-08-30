@@ -18239,17 +18239,18 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         );
       }
 
-      const recovery = await webhooks.requestAgentComplete(
-        {
-          runId: run.runId,
-          exitCode: 1,
-          error: "guest reported failure",
-          checkpoint: {
-            cliAgentType: "claude-code",
-            cliAgentSessionId,
-            cliAgentSessionHistoryHash: historyHash,
-          },
+      const recoveryBody = {
+        runId: run.runId,
+        exitCode: 1,
+        error: "guest reported failure",
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
         },
+      } as const;
+      const recovery = await webhooks.requestAgentComplete(
+        recoveryBody,
         sandboxHeaders,
         [200],
       );
@@ -18273,7 +18274,45 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         sessionId: cliAgentSessionId,
         historyRef: { kind: "blob", hash: historyHash },
       });
-      await api.requestCancelRun(actor, continued.runId, [200]);
+      const successorHistory = `bdd ${ordering} successor history ${continued.runId}`;
+      const successorHistoryHash = createHash("sha256")
+        .update(successorHistory)
+        .digest("hex");
+      const successorCliAgentSessionId = `bdd-${ordering}-successor-${continued.runId}`;
+      mockSessionHistoryBlob(successorHistoryHash, successorHistory);
+      await webhooks.requestAgentComplete(
+        {
+          runId: continued.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType: "claude-code",
+            cliAgentSessionId: successorCliAgentSessionId,
+            cliAgentSessionHistoryHash: successorHistoryHash,
+          },
+        },
+        { authorization: `Bearer ${continuedClaim.sandboxToken}` },
+        [200],
+      );
+
+      const repeatedAfterSuccessor = await webhooks.requestAgentComplete(
+        recoveryBody,
+        sandboxHeaders,
+        [200],
+      );
+      expect(repeatedAfterSuccessor.body).toStrictEqual(recovery.body);
+
+      const afterRetry = await api.createRun(actor, {
+        agentId,
+        sessionId: run.sessionId,
+        prompt: `resume the ${ordering} successor`,
+        modelProvider: "anthropic-api-key",
+      });
+      const afterRetryClaim = await api.claimRunnerJob(afterRetry.runId);
+      expect(afterRetryClaim.resumeSession).toMatchObject({
+        sessionId: successorCliAgentSessionId,
+        historyRef: { kind: "blob", hash: successorHistoryHash },
+      });
+      await api.requestCancelRun(actor, afterRetry.runId, [200]);
     },
   );
 

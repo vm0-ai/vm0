@@ -703,8 +703,12 @@ function checkpointSuccessResponse(
   };
 }
 
+type AgentCheckpointSuccessResponse = ReturnType<
+  typeof checkpointSuccessResponse
+>;
+
 type AgentCheckpointResponse =
-  | ReturnType<typeof checkpointSuccessResponse>
+  | AgentCheckpointSuccessResponse
   | AgentCheckpointErrorResponse;
 
 function isActivePiCheckpointStatus(status: RunStatus): boolean {
@@ -953,13 +957,13 @@ async function persistAgentCheckpoint(
   );
 }
 
-async function completedGenericCheckpointRetryResponse(
+async function exactCheckpointRetryResponse(
   tx: Tx,
   run: CheckpointRunContext,
   body: AgentCheckpointBody,
   storageMounts: readonly PersistedStorageMount[],
   signal: AbortSignal,
-): Promise<AgentCheckpointResponse> {
+): Promise<AgentCheckpointSuccessResponse | undefined> {
   const existing = await loadExistingCheckpoint(tx, body.runId);
   signal.throwIfAborted();
   const exactRetry =
@@ -968,9 +972,7 @@ async function completedGenericCheckpointRetryResponse(
     existing.historyHash === (body.cliAgentSessionHistoryHash ?? null) &&
     isDeepStrictEqual(existing.storageMounts, storageMounts);
   if (!exactRetry) {
-    return badRequestMessage(
-      "[CHECKPOINT_ALREADY_COMMITTED] Final checkpoint does not exactly match the completed run",
-    );
+    return undefined;
   }
   return checkpointSuccessResponse(
     {
@@ -988,7 +990,7 @@ export async function persistAgentCheckpointInTransaction(
   prepared: PreparedAgentCheckpoint,
   signal: AbortSignal,
   options: {
-    readonly requireExactGenericCompletedRetry?: boolean;
+    readonly combinedCompletion?: true;
   } = {},
 ): Promise<AgentCheckpointResponse> {
   const run = await lockCheckpointRunContext(tx, input);
@@ -1010,17 +1012,25 @@ export async function persistAgentCheckpointInTransaction(
     return badRequestMessage(checkpointRunStateError(run.status));
   }
   if (
-    !piRun &&
-    run.status === "completed" &&
-    options.requireExactGenericCompletedRetry
+    options.combinedCompletion &&
+    (run.status === "completed" ||
+      (!piRun && (run.status === "failed" || run.status === "cancelled")))
   ) {
-    return await completedGenericCheckpointRetryResponse(
+    const exactRetry = await exactCheckpointRetryResponse(
       tx,
       run,
       input.body,
       storageMounts,
       signal,
     );
+    if (exactRetry) {
+      return exactRetry;
+    }
+    if (run.status === "completed") {
+      return badRequestMessage(
+        "[CHECKPOINT_ALREADY_COMMITTED] Final checkpoint does not exactly match the completed run",
+      );
+    }
   }
   if (piRun) {
     const admission = await admitPiCheckpoint(
