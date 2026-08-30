@@ -1,6 +1,7 @@
 import {
   createChildAbortController,
   createDeferredPromise,
+  onRejection,
   settle,
   withCleanup,
 } from "../signals/utils.ts";
@@ -142,7 +143,11 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
     }
 
     const recovery = withCleanup(
-      this.runAuthenticationRecovery(rejectedHeartbeat),
+      onRejection(this.runAuthenticationRecovery(rejectedHeartbeat), () => {
+        if (this.lastRecovery?.work === recovery) {
+          this.lastRecovery = null;
+        }
+      }),
       () => {
         if (this.activeRecovery === recovery) {
           this.activeRecovery = null;

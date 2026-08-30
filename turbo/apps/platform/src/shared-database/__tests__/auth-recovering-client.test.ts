@@ -166,6 +166,38 @@ describe("auth recovering shared database bridge", () => {
     expect(inner.heartbeats).toHaveLength(1);
   });
 
+  it("allows a later recovery after a token refresh rejects", async () => {
+    const inner = new FakeBridge();
+    inner.queryErrors.push(
+      authenticationBlockedError(),
+      authenticationBlockedError(),
+    );
+    const refreshError = new Error("Clerk token refresh failed");
+    let refreshes = 0;
+    const bridge = new AuthRecoveringSharedDatabaseBridge(
+      inner,
+      () => {
+        refreshes += 1;
+        return refreshes === 1
+          ? Promise.reject(refreshError)
+          : Promise.resolve("replacement-token");
+      },
+      context.signal,
+    );
+    await bridge.heartbeat(heartbeat(), context.signal);
+
+    await expect(query(bridge, context.signal)).rejects.toBe(refreshError);
+    await expect(query(bridge, context.signal)).resolves.toStrictEqual([]);
+
+    expect(refreshes).toBe(2);
+    expect(inner.queryCalls).toBe(3);
+    expect(
+      inner.heartbeats.map((value) => {
+        return value.identity.token;
+      }),
+    ).toStrictEqual(["initial-token", "replacement-token"]);
+  });
+
   it("surfaces a second auth rejection without another query retry", async () => {
     const inner = new FakeBridge();
     inner.queryErrors.push(
