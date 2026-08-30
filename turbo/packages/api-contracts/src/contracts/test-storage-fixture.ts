@@ -44,6 +44,27 @@ const downloadResponseSchema = z.union([
     size: z.literal(0),
   }),
 ]);
+const writebackStateSchema = z.object({
+  storage: z
+    .object({
+      headVersionId: z.string().nullable(),
+      size: z.number(),
+      fileCount: z.number(),
+      updatedAt: z.string(),
+    })
+    .nullable(),
+  version: z
+    .object({
+      archiveSize: z.number(),
+      size: z.number(),
+      fileCount: z.number(),
+      message: z.string().nullable(),
+      createdBy: z.string(),
+      createdAt: z.string(),
+    })
+    .nullable(),
+  lineageCount: z.number(),
+});
 
 export const testStorageStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -81,6 +102,13 @@ export const testStorageStateActionBodySchema = z.discriminatedUnion("action", [
     storageOwner: storageOwnerSchema,
     versionId: z.string().optional(),
   }),
+  z.object({
+    action: z.literal("inspect-writeback"),
+    storageId: z.string().uuid(),
+    versionId: z.string().min(1),
+    runId: z.string().uuid(),
+    parentVersionId: z.string().min(1),
+  }),
 ]);
 
 export const testStorageStateActionResponseSchema = z.object({
@@ -98,6 +126,7 @@ export const testStorageStateActionResponseSchema = z.object({
     )
     .optional(),
   download: downloadResponseSchema.optional(),
+  writeback: writebackStateSchema.optional(),
 });
 
 export const testStorageFixtureContract = c.router({

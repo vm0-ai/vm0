@@ -38,6 +38,13 @@ interface BddStorageDownloadQuery {
   readonly version?: string;
 }
 
+interface BddStorageWritebackQuery {
+  readonly storageId: string;
+  readonly versionId: string;
+  readonly runId: string;
+  readonly parentVersionId: string;
+}
+
 function requireOrgId(actor: ApiTestUser): string {
   if (!actor.orgId) {
     throw new Error("Storage fixture requires an org-scoped actor");
@@ -168,6 +175,20 @@ export function createStoragesBddApi(context: TestContext) {
         throw new Error("Storage download action returned no result");
       }
       return response.download;
+    },
+
+    async inspectWriteback(query: BddStorageWritebackQuery) {
+      const response = await postAction(context, {
+        action: "inspect-writeback",
+        storageId: query.storageId,
+        versionId: query.versionId,
+        runId: query.runId,
+        parentVersionId: query.parentVersionId,
+      });
+      if (!response.writeback) {
+        throw new Error("Storage writeback inspection returned no result");
+      }
+      return response.writeback;
     },
   };
 }

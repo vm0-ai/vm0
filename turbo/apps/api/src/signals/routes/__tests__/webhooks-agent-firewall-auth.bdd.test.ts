@@ -38,6 +38,11 @@ import {
   mockTestOAuthAuthCodeProvider,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  transitionRunToTerminal,
+  transitionRunToTimeout,
+  type TestTerminalRunStatus,
+} from "./helpers/api-bdd-run-timeout";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   setConnectorCredentialStorageState,
@@ -65,8 +70,14 @@ const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
  */
 
 const context = testContext();
+const TERMINAL_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "cancelled",
+  "timeout",
+] as const satisfies readonly TestTerminalRunStatus[];
 
-async function firewallRun(): Promise<{
+async function firewallRun(existingActor?: ApiTestUser): Promise<{
   readonly actor: ApiTestUser;
   readonly runId: string;
   readonly headers: { readonly authorization: string };
@@ -74,7 +85,7 @@ async function firewallRun(): Promise<{
   const bdd = createBddApi(context);
   const runsApi = createRunsApi(context);
   const fw = createFirewallApi(context);
-  const actor = bdd.user();
+  const actor = existingActor ?? bdd.user();
   bdd.acceptAgentStorageWrites();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
@@ -1693,6 +1704,153 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     }
     expect(served.body.headers.Authorization).toBe("Bearer fresh-api-access");
     expect(served.body.refreshedConnectors).toStrictEqual([]);
+  });
+});
+
+describe("FW-5: timeout closes firewall credential authority", () => {
+  it.each(TERMINAL_RUN_STATUSES)(
+    "rejects a %s run before connector refresh",
+    async (status) => {
+      const fw = createFirewallApi(context);
+      const { actor, runId, headers } = await firewallRun();
+      await fw.seedTestConnector(actor, {
+        connectorSlug: "test-oauth",
+        authMethod: "oauth",
+        accessToken: "stale-access",
+        refreshToken: "refresh-1",
+        expiresIn: -60,
+      });
+      let refreshRequests = 0;
+      fw.mockTestOauthTokenRefresh(() => {
+        refreshRequests += 1;
+        return fw.oauthTokenResponse({
+          accessToken: "must-not-refresh",
+          expiresIn: 3600,
+        });
+      });
+
+      const terminal = await transitionRunToTerminal(context, runId, status);
+      expect(terminal.body.ok).toBeTruthy();
+      const denied = await fw.requestFirewallAuth(
+        headers,
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({
+            TEST_OAUTH_TOKEN: "stale-access",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+          },
+          ...(await exactSecretConnectorSources(actor, {
+            TEST_OAUTH_TOKEN: "test-oauth",
+          })),
+        },
+        [403],
+      );
+      if (denied.status !== 403) {
+        throw new Error("Expected timed-out firewall auth to be forbidden");
+      }
+      expect(denied.body.error.code).toBe("FORBIDDEN");
+      expect(refreshRequests).toBe(0);
+    },
+  );
+
+  it("withholds static connector credentials when timeout wins during resolution", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, runId, headers } = await firewallRun();
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "current-access",
+      refreshToken: "refresh-1",
+      expiresIn: 3600,
+    });
+    const decryptGate = gateFirstStoredSecretDecrypt();
+    const pending = fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+        },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_TOKEN: "test-oauth",
+        })),
+      },
+      [403],
+    );
+    await decryptGate.started;
+    const timeout = await transitionRunToTimeout(context, runId);
+    expect(timeout.body.ok).toBeTruthy();
+    decryptGate.release();
+
+    const denied = await pending;
+    if (denied.status !== 403) {
+      throw new Error("Expected final firewall admission to be forbidden");
+    }
+    expect(denied.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("preserves shared refresh state while withholding it from the timed-out run", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, runId, headers } = await firewallRun();
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "stale-access",
+      refreshToken: "refresh-1",
+      expiresIn: -60,
+    });
+    const refreshStarted = createDeferredPromise<void>(context.signal);
+    const releaseRefresh = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseRefresh.settled()) {
+        releaseRefresh.resolve(undefined);
+      }
+    });
+    let refreshRequests = 0;
+    fw.mockTestOauthTokenRefresh(async () => {
+      refreshRequests += 1;
+      refreshStarted.resolve(undefined);
+      await releaseRefresh.promise;
+      return fw.oauthTokenResponse({
+        accessToken: "shared-fresh-access",
+        refreshToken: "shared-refresh-2",
+        expiresIn: 3600,
+      });
+    });
+    const sources = await exactSecretConnectorSources(actor, {
+      TEST_OAUTH_TOKEN: "test-oauth",
+    });
+    const body = {
+      encryptedSecrets: fw.encryptedSecretsBody({
+        TEST_OAUTH_TOKEN: "stale-access",
+      }),
+      authHeaders: {
+        Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+      },
+      ...sources,
+    };
+
+    const pending = fw.requestFirewallAuth(headers, body, [403]);
+    await refreshStarted.promise;
+    const timeout = await transitionRunToTimeout(context, runId);
+    expect(timeout.body.ok).toBeTruthy();
+    releaseRefresh.resolve(undefined);
+    const denied = await pending;
+    if (denied.status !== 403) {
+      throw new Error("Expected refreshed credential response to be forbidden");
+    }
+    expect(denied.body.error.code).toBe("FORBIDDEN");
+
+    const activeRun = await firewallRun(actor);
+    const served = await fw.requestFirewallAuth(activeRun.headers, body, [200]);
+    if (served.status !== 200) {
+      throw new Error("Expected refreshed shared state to remain usable");
+    }
+    expect(served.body.headers.Authorization).toBe(
+      "Bearer shared-fresh-access",
+    );
+    expect(refreshRequests).toBe(1);
   });
 });
 
