@@ -23,6 +23,7 @@ async fn submit_defaults_profile_and_writes_default_partition() {
             secret_env: vec![],
             timeout: 5,
             active_inputs: vec![],
+            storage_manifest: None,
         },
         home,
     )
@@ -58,6 +59,7 @@ async fn submit_writes_non_default_profile_partition() {
             secret_env: vec![],
             timeout: 5,
             active_inputs: vec![],
+            storage_manifest: None,
         },
         home,
     )
@@ -87,6 +89,7 @@ async fn submit_serializes_feature_flags_and_identity_fields() {
             secret_env: vec![],
             timeout: 5,
             active_inputs: vec![],
+            storage_manifest: None,
         },
         home,
     )
@@ -125,6 +128,7 @@ async fn submit_keeps_session_only_job_without_reuse_key() {
             secret_env: vec![],
             timeout: 5,
             active_inputs: vec![],
+            storage_manifest: None,
         },
         home,
     )
@@ -134,6 +138,52 @@ async fn submit_keeps_session_only_job_without_reuse_key() {
     assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(request.session_id.as_deref(), Some("sess-123"));
     assert!(request.reuse_key.is_none());
+}
+
+#[tokio::test]
+async fn submit_serializes_canonical_storage_manifest_and_timestamp() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("storage-manifest.json");
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec(&serde_json::json!({
+            "storageMounts": [{
+                "name": "computer-use",
+                "storageId": "fixture-storage",
+                "versionId": "fixture-version",
+                "mountPath": "/home/user/.claude/skills/computer-use",
+                "archiveUrl": "https://example.test/computer-use.tar.gz",
+                "archiveSize": 123,
+                "baselineCandidate": true
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let mut args = submit_args_for_test();
+    args.storage_manifest = Some(manifest_path);
+    let before_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+
+    let (code, request) =
+        run_submit_and_write_success(args, HomePaths::with_root(dir.path().to_path_buf()))
+            .await
+            .unwrap();
+    let after_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+
+    assert_eq!(code, ExitCode::SUCCESS);
+    let mounts = request.storage_mounts.unwrap();
+    assert_eq!(mounts.len(), 1);
+    assert_eq!(mounts[0].name, "computer-use");
+    assert_eq!(
+        mounts[0].mount_path,
+        "/home/user/.claude/skills/computer-use"
+    );
+    assert_eq!(mounts[0].baseline_candidate, Some(true));
+    assert!(
+        request
+            .submitted_at_ms
+            .is_some_and(|value| (before_ms..=after_ms).contains(&value))
+    );
 }
 
 #[tokio::test]

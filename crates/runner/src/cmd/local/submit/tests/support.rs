@@ -158,6 +158,7 @@ pub(super) fn submit_args_for_test() -> SubmitArgs {
         secret_env: vec![],
         timeout: 1,
         active_inputs: vec![],
+        storage_manifest: None,
     }
 }
 

@@ -14,6 +14,7 @@ pub(super) use crate::local_queue::JobResponse;
 pub(super) use crate::provider::{CompletionAuth, JobCandidate, JobProvider};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::types::CompleteRequest;
+use api_contracts::generated::types::runners::storage::StorageMountEntry;
 pub(super) use tokio_util::sync::CancellationToken;
 
 pub(super) trait LocalProviderTestExt {
@@ -209,6 +210,8 @@ struct JobOptions<'a> {
     reuse_key: Option<&'a str>,
     session_id: Option<&'a str>,
     active_input: Option<bool>,
+    storage_mounts: Option<Vec<StorageMountEntry>>,
+    submitted_at_ms: Option<u64>,
 }
 
 fn write_job_in_partition_with_options(
@@ -242,8 +245,29 @@ fn job_request_json(job_id: RunId, prompt: &str, options: JobOptions<'_>) -> Vec
         session_id: options.session_id.map(String::from),
         feature_flags: None,
         active_input: options.active_input,
+        storage_mounts: options.storage_mounts,
+        submitted_at_ms: options.submitted_at_ms,
     };
     serde_json::to_vec(&req).unwrap()
+}
+
+pub(super) fn write_job_with_storage_manifest(
+    dir: &std::path::Path,
+    job_id: RunId,
+    storage_mounts: Vec<StorageMountEntry>,
+    submitted_at_ms: Option<u64>,
+) {
+    write_job_in_partition_with_options(
+        dir,
+        crate::profile::DEFAULT_PROFILE,
+        job_id,
+        "hello with storage",
+        JobOptions {
+            storage_mounts: Some(storage_mounts),
+            submitted_at_ms,
+            ..JobOptions::default()
+        },
+    );
 }
 
 pub(super) fn write_job_with_environments(
@@ -265,6 +289,8 @@ pub(super) fn write_job_with_environments(
         session_id: None,
         feature_flags: None,
         active_input: None,
+        storage_mounts: None,
+        submitted_at_ms: None,
     };
     let json = serde_json::to_vec(&req).unwrap();
     let job_dir = local_queue::profile_jobs_dir(dir, crate::profile::DEFAULT_PROFILE).unwrap();

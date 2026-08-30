@@ -1,4 +1,85 @@
 use super::support::*;
+use api_contracts::generated::types::runners::storage::StorageMountEntry;
+
+fn storage_mount(name: &str, mount_path: &str) -> StorageMountEntry {
+    StorageMountEntry {
+        name: name.to_owned(),
+        storage_id: format!("{name}-storage"),
+        version_id: format!("{name}-version"),
+        mount_path: mount_path.to_owned(),
+        archive_url: Some(format!("https://example.test/{name}.tar.gz")),
+        archive_size: Some(123),
+        empty: None,
+        baseline_candidate: Some(true),
+        instructions_target_filename: None,
+        missing_root_policy: None,
+        writeback: None,
+    }
+}
+
+#[tokio::test]
+async fn claim_maps_local_storage_manifest_and_timestamp_into_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+    let run_id = RunId::new_v4();
+    let submitted_at_ms = 1_900_000_000_000;
+    write_job_with_storage_manifest(
+        dir.path(),
+        run_id,
+        vec![storage_mount(
+            "computer-use",
+            "/home/user/.claude/skills/computer-use",
+        )],
+        Some(submitted_at_ms),
+    );
+
+    let candidate = provider.discover().await.unwrap();
+    let claimed = provider.claim(candidate).await.unwrap();
+    let context = claimed.context();
+
+    assert_eq!(context.api_start_time, Some(submitted_at_ms));
+    let manifest = context.storage_manifest.as_ref().unwrap();
+    assert_eq!(manifest.storages.len(), 1);
+    assert_eq!(manifest.storages[0].name, "computer-use");
+    assert_eq!(
+        manifest.storages[0].mount_path,
+        "/home/user/.claude/skills/computer-use"
+    );
+    assert!(manifest.storages[0].baseline_candidate);
+}
+
+#[tokio::test]
+async fn claim_terminally_fails_invalid_local_storage_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+    let run_id = RunId::new_v4();
+    let mount_path = "/home/user/.claude/skills/computer-use";
+    write_job_with_storage_manifest(
+        dir.path(),
+        run_id,
+        vec![
+            storage_mount("computer-use", mount_path),
+            storage_mount("gen", mount_path),
+        ],
+        None,
+    );
+
+    let candidate = provider.discover().await.unwrap();
+    assert!(provider.claim(candidate).await.is_none());
+
+    let result = read_result(dir.path(), run_id);
+    assert_ne!(result.exit_code, 0);
+    assert!(
+        result
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("duplicate mountPath")),
+        "got: {:?}",
+        result.error
+    );
+    assert!(!local_queue::claim_path(dir.path(), run_id).exists());
+    assert!(provider.find_unclaimed_job().is_none());
+}
 
 #[tokio::test]
 async fn claim_attaches_active_input_source_when_requested() {

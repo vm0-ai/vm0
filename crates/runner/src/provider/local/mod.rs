@@ -20,6 +20,7 @@ use tracing::{info, warn};
 use super::{ClaimedJob, CompletionAuth, CompletionReportTiming, JobCandidate, JobProvider};
 use crate::local_queue::{LocalClaimResult, LocalDiscoveredJob, LocalQueue};
 use crate::run_cancellation::RunCancellationRegistry;
+use crate::storage_manifest::StorageManifest;
 use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState};
 use cancel::{LocalCancelScanner, LocalCancelWatcher};
 use watch::{QueueFileKind, RECONCILE_INTERVAL, ensure_watcher, next_change_or_pending};
@@ -259,6 +260,26 @@ impl JobProvider for LocalProvider {
             }
         };
 
+        let storage_manifest = match req.storage_mounts {
+            Some(storage_mounts) => match StorageManifest::from_storage_mounts(storage_mounts) {
+                Ok(manifest) => Some(manifest),
+                Err(error) => {
+                    let error = format!("invalid local storage manifest: {error}");
+                    warn!(run_id = %run_id, error = %error, "local: claimed job has invalid storage manifest");
+                    let queue = self.queue.clone();
+                    if let Err(cleanup_error) = tokio::task::spawn_blocking(move || {
+                        queue.fail_claimed_job_sync(run_id, error);
+                    })
+                    .await
+                    {
+                        warn!(run_id = %run_id, error = %cleanup_error, "local: invalid storage manifest cleanup failed");
+                    }
+                    return None;
+                }
+            },
+            None => None,
+        };
+
         let environment_merge = merge_local_environments(req.environment, req.secret_environment);
         let context = ExecutionContext {
             run_id,
@@ -267,7 +288,7 @@ impl JobProvider for LocalProvider {
             append_system_prompt: None,
             vars: req.vars,
             sandbox_token: String::new(),
-            storage_manifest: None,
+            storage_manifest,
             environment: environment_merge.environment,
             platform_environment: None,
             resume_session: req
@@ -281,7 +302,7 @@ impl JobProvider for LocalProvider {
             secret_connector_metadata_map: None,
             cli_agent_type: req.cli_agent_type,
             real_agent_in_preview: None,
-            api_start_time: None,
+            api_start_time: req.submitted_at_ms,
             user_timezone: req.user_timezone,
             capture_network_bodies: None,
             firewalls: None,

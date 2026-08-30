@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use api_contracts::generated::types::runners::storage::StorageMountEntry;
+
 use crate::ids::RunId;
 
 /// Job request written by `runner local submit` as a `{job_id}.job` file.
@@ -28,6 +30,12 @@ pub(crate) struct JobRequest {
     pub(crate) feature_flags: Option<HashMap<String, bool>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) active_input: Option<bool>,
+    /// Canonical storage mounts supplied by an operator-controlled local job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) storage_mounts: Option<Vec<StorageMountEntry>>,
+    /// Epoch-millisecond time when local submit constructed the queue request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) submitted_at_ms: Option<u64>,
 }
 
 /// Job response written by the runner as a `{job_id}.result` file.

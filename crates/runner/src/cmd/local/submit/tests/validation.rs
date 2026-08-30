@@ -27,6 +27,7 @@ async fn rejects_invalid_profile_name() {
         secret_env: vec![],
         timeout: 1,
         active_inputs: vec![],
+        storage_manifest: None,
     };
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
@@ -51,6 +52,7 @@ async fn accepts_valid_profile_name() {
         secret_env: vec![],
         timeout: 0,
         active_inputs: vec![],
+        storage_manifest: None,
     };
     // Should pass validation and fail later (HomePaths or timeout), not on profile.
     let dir = tempfile::tempdir().unwrap();
@@ -75,6 +77,7 @@ async fn rejects_feature_flag_missing_equals() {
         secret_env: vec![],
         timeout: 1,
         active_inputs: vec![],
+        storage_manifest: None,
     };
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
@@ -96,6 +99,7 @@ async fn rejects_feature_flag_non_boolean() {
         secret_env: vec![],
         timeout: 1,
         active_inputs: vec![],
+        storage_manifest: None,
     };
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
@@ -122,6 +126,7 @@ async fn timeout_message_includes_group_and_profile() {
         secret_env: vec![],
         timeout: 0,
         active_inputs: vec![],
+        storage_manifest: None,
     };
 
     let err = run_submit_with_home(args, home).await.unwrap_err();
@@ -223,6 +228,55 @@ async fn serialized_job_over_size_limit_is_rejected_before_publication() {
 }
 
 #[tokio::test]
+async fn malformed_storage_manifest_is_rejected_before_publication() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("storage-manifest.json");
+    std::fs::write(&manifest_path, b"not json").unwrap();
+    let mut args = submit_args_for_test();
+    args.storage_manifest = Some(manifest_path);
+
+    let error = run_submit_with_home(args, HomePaths::with_root(dir.path().to_path_buf()))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, RunnerError::Config(_)), "got: {error:?}");
+    assert!(
+        error.to_string().contains("parse local storage manifest"),
+        "got: {error}"
+    );
+    let job_dir = local_queue::profile_jobs_dir(
+        &dir.path().join("groups/test/group"),
+        crate::profile::DEFAULT_PROFILE,
+    )
+    .unwrap();
+    assert!(std::fs::read_dir(job_dir).unwrap().next().is_none());
+}
+
+#[tokio::test]
+async fn oversized_storage_manifest_is_rejected_before_publication() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("storage-manifest.json");
+    let manifest_file = std::fs::File::create(&manifest_path).unwrap();
+    manifest_file
+        .set_len(local_queue::LOCAL_JOB_MAX_BYTES as u64 + 1)
+        .unwrap();
+    let mut args = submit_args_for_test();
+    args.storage_manifest = Some(manifest_path);
+
+    let error = run_submit_with_home(args, HomePaths::with_root(dir.path().to_path_buf()))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, RunnerError::Config(_)), "got: {error:?}");
+    assert!(
+        error
+            .to_string()
+            .contains(&local_queue::LOCAL_JOB_MAX_BYTES.to_string()),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
 async fn timeout_removes_unclaimed_job_from_queue() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
@@ -240,6 +294,7 @@ async fn timeout_removes_unclaimed_job_from_queue() {
         secret_env: vec![],
         timeout: 0,
         active_inputs: vec![],
+        storage_manifest: None,
     };
 
     let err = run_submit_with_home(args, home).await.unwrap_err();

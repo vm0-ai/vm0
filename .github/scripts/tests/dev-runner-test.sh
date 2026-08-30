@@ -6,6 +6,8 @@ DEV_RUNNER="${REPO_ROOT}/scripts/dev-runner.sh"
 TARGET_HELPER="${REPO_ROOT}/.github/scripts/runner-image-target.sh"
 GUEST_HELPER="${REPO_ROOT}/.github/scripts/runner-guest-binaries.sh"
 GUEST_INVENTORY="${REPO_ROOT}/crates/runner/guest-binaries.json"
+STORAGE_BASELINE_WORKER="${REPO_ROOT}/.github/scripts/runner-storage-baseline-benchmark-remote.sh"
+STORAGE_BASELINE_REPORT="${REPO_ROOT}/.github/scripts/runner-storage-baseline-report.sh"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -28,6 +30,8 @@ setup_test_root() {
   ln -s "$TARGET_HELPER" "${root}/.github/scripts/runner-image-target.sh"
   ln -s "$GUEST_HELPER" "${root}/.github/scripts/runner-guest-binaries.sh"
   ln -s "$GUEST_INVENTORY" "${root}/crates/runner/guest-binaries.json"
+  ln -s "$STORAGE_BASELINE_WORKER" "${root}/.github/scripts/runner-storage-baseline-benchmark-remote.sh"
+  ln -s "$STORAGE_BASELINE_REPORT" "${root}/.github/scripts/runner-storage-baseline-report.sh"
   touch "${root}/.certs/vm0-metal-local.pem"
 
   cat >"${root}/scripts/.env.local" <<'ENV'
@@ -55,6 +59,12 @@ case "$command" in
     ;;
   "sudo install -m 755 /dev/stdin "*)
     cat >/dev/null
+    ;;
+  "sudo tee "*"storage-baseline-"*" >/dev/null && sudo chmod 0755 "*)
+    cat >/dev/null
+    ;;
+  "sudo "*"storage-baseline-benchmark.sh"*)
+    printf '%s\n' 'storage baseline benchmark invoked'
     ;;
   *" setup")
     ;;
@@ -147,6 +157,20 @@ run_deploy() {
     "$@" "${root}/scripts/dev-runner.sh" deploy
 }
 
+run_storage_baseline_benchmark() {
+  local name=$1
+  shift
+  local root="${TMPDIR}/${name}"
+  setup_test_root "$root"
+
+  REMOTE_ARCH=x86_64 \
+    CF_SSH_LOG="${root}/cf-ssh.log" \
+    SERVICE_STOP_LOG="${root}/service-stop.log" \
+    CARGO_LOG="${root}/cargo.log" \
+    PATH="${root}/bin:$PATH" \
+    "${root}/scripts/dev-runner.sh" storage-baseline-benchmark "$@"
+}
+
 run_deploy arm64-success aarch64 env >"${TMPDIR}/arm64-success.out" 2>"${TMPDIR}/arm64-success.err"
 grep -q -- "--target aarch64-unknown-linux-musl" "${TMPDIR}/arm64-success/cargo.log" || fail "expected ARM64 cargo target"
 grep -q "service stop" "${TMPDIR}/arm64-success/service-stop.log" || fail "expected ARM64 service stop"
@@ -209,5 +233,25 @@ fi
 [ ! -f "${TMPDIR}/unsupported/cargo.log" ] || fail "unsupported architecture should fail before cargo"
 [ ! -f "${TMPDIR}/unsupported/service-stop.log" ] || fail "unsupported architecture should fail before service stop"
 grep -q "unsupported remote architecture for dev-host: ppc64le" "${TMPDIR}/unsupported.err" || fail "expected unsupported architecture error"
+
+SOURCE_REVISION=dc9bfc7a3c2faf607e2520d80c233792bf8f9249
+run_storage_baseline_benchmark storage-baseline 7 "$SOURCE_REVISION" \
+  >"${TMPDIR}/storage-baseline.out" 2>"${TMPDIR}/storage-baseline.err"
+grep -q 'storage baseline benchmark invoked' "${TMPDIR}/storage-baseline.out" \
+  || fail "expected storage baseline worker output"
+grep -q "storage-baseline-benchmark.sh.*'$SOURCE_REVISION'.*'7'.*storage-baseline-report.sh" \
+  "${TMPDIR}/storage-baseline/cf-ssh.log" \
+  || fail "expected bounded storage baseline worker invocation"
+[ "$(grep -c 'sudo tee.*storage-baseline-' "${TMPDIR}/storage-baseline/cf-ssh.log")" -eq 2 ] \
+  || fail "expected storage baseline worker and report uploads"
+
+if run_storage_baseline_benchmark storage-baseline-invalid 0 "$SOURCE_REVISION" \
+  >"${TMPDIR}/storage-baseline-invalid.out" 2>"${TMPDIR}/storage-baseline-invalid.err"; then
+  fail "expected invalid storage baseline sample count to fail"
+fi
+grep -q 'sample count must be between 1 and 100' "${TMPDIR}/storage-baseline-invalid.err" \
+  || fail "expected invalid storage baseline sample diagnostic"
+[ ! -s "${TMPDIR}/storage-baseline-invalid/cf-ssh.log" ] \
+  || fail "invalid storage baseline input should fail before SSH"
 
 echo "dev-runner-test: ok"

@@ -29,6 +29,7 @@ async fn submit_returns_failure_for_nonzero_job_response() {
             secret_env: vec![],
             timeout: 5,
             active_inputs: vec![],
+            storage_manifest: None,
         },
         home,
         42,

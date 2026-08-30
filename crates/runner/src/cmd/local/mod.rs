@@ -19,7 +19,7 @@ pub struct LocalArgs {
 #[derive(Subcommand)]
 enum LocalCommand {
     /// Submit a job to a locally running runner
-    Submit(submit::SubmitArgs),
+    Submit(Box<submit::SubmitArgs>),
     /// Cancel a running job
     Cancel(cancel::CancelArgs),
 }
@@ -27,7 +27,7 @@ enum LocalCommand {
 /// Dispatch `runner local` to the selected local file-queue subcommand.
 pub async fn run_local(args: LocalArgs) -> RunnerResult<ExitCode> {
     match args.command {
-        LocalCommand::Submit(args) => submit::run_submit(args).await,
+        LocalCommand::Submit(args) => submit::run_submit(*args).await,
         LocalCommand::Cancel(args) => cancel::run_cancel(args).await,
     }
 }

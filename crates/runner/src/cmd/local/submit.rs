@@ -5,12 +5,14 @@
 //! the job.
 
 use std::collections::{HashMap, HashSet};
+use std::io::Read;
 use std::io::Write;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use api_contracts::generated::types::runners::storage::StorageMountEntry;
 use clap::Args;
 use tokio::signal::unix::{Signal, SignalKind, signal};
 use uuid::Uuid;
@@ -34,6 +36,12 @@ const MAX_LOCAL_SUBMIT_TIMEOUT_SECS: u64 = 24 * 60 * 60;
 
 /// Grace period after Ctrl+C to wait for the runner to write a `.result` file.
 const CANCEL_GRACE: Duration = Duration::from_secs(10);
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalStorageManifestInput {
+    storage_mounts: Vec<StorageMountEntry>,
+}
 
 #[derive(Args)]
 pub struct SubmitArgs {
@@ -70,6 +78,9 @@ pub struct SubmitArgs {
     /// Delayed active input for local smoke tests (repeatable, format: after=1s,text=hello)
     #[arg(long = "active-input")]
     active_inputs: Vec<String>,
+    /// Canonical storage manifest JSON for an operator-controlled local job
+    #[arg(long)]
+    storage_manifest: Option<PathBuf>,
 }
 
 /// Detect the system timezone from the `TZ` env var or a timezone file.
@@ -364,6 +375,7 @@ impl SubmitPlan {
             secret_env,
             timeout,
             active_inputs,
+            storage_manifest,
         } = args;
 
         crate::group::validate_or_err(&group)?;
@@ -393,6 +405,10 @@ impl SubmitPlan {
 
         let job_id = RunId::new_v4();
         let active_inputs = Self::parse_active_inputs(&active_inputs, timeout)?;
+        let storage_mounts = storage_manifest
+            .as_deref()
+            .map(Self::read_storage_manifest)
+            .transpose()?;
         let request = JobRequest {
             job_id,
             prompt,
@@ -406,6 +422,8 @@ impl SubmitPlan {
             session_id,
             feature_flags,
             active_input: (!active_inputs.is_empty()).then_some(true),
+            storage_mounts,
+            submitted_at_ms: Some(chrono::Utc::now().timestamp_millis().max(0) as u64),
         };
 
         let request_json = serde_json::to_vec(&request)
@@ -427,6 +445,56 @@ impl SubmitPlan {
             request_json,
             active_inputs,
         })
+    }
+
+    fn read_storage_manifest(path: &Path) -> RunnerResult<Vec<StorageMountEntry>> {
+        let file = std::fs::File::open(path).map_err(|error| {
+            RunnerError::Config(format!(
+                "open local storage manifest {}: {error}",
+                path.display()
+            ))
+        })?;
+        let metadata = file.metadata().map_err(|error| {
+            RunnerError::Config(format!(
+                "stat local storage manifest {}: {error}",
+                path.display()
+            ))
+        })?;
+        if metadata.len() > local_queue::LOCAL_JOB_MAX_BYTES as u64 {
+            return Err(RunnerError::Config(format!(
+                "local storage manifest {} exceeds {} bytes (got {} bytes)",
+                path.display(),
+                local_queue::LOCAL_JOB_MAX_BYTES,
+                metadata.len()
+            )));
+        }
+
+        let read_limit = local_queue::LOCAL_JOB_MAX_BYTES + 1;
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        file.take(read_limit as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|error| {
+                RunnerError::Config(format!(
+                    "read local storage manifest {}: {error}",
+                    path.display()
+                ))
+            })?;
+        if bytes.len() > local_queue::LOCAL_JOB_MAX_BYTES {
+            return Err(RunnerError::Config(format!(
+                "local storage manifest {} exceeds {} bytes",
+                path.display(),
+                local_queue::LOCAL_JOB_MAX_BYTES
+            )));
+        }
+
+        let manifest: LocalStorageManifestInput =
+            serde_json::from_slice(&bytes).map_err(|error| {
+                RunnerError::Config(format!(
+                    "parse local storage manifest {}: {error}",
+                    path.display()
+                ))
+            })?;
+        Ok(manifest.storage_mounts)
     }
 
     fn parse_active_inputs(

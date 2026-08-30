@@ -9,6 +9,7 @@ set -euo pipefail
 # Usage:
 #   scripts/dev-runner.sh deploy   Build, upload, and start the runner
 #   scripts/dev-runner.sh remove   Stop and uninstall the runner
+#   scripts/dev-runner.sh storage-baseline-benchmark [samples] [source-revision]
 #
 # Set RUNNER_TARGET_TRIPLE to force a supported runner target. When unset,
 # deploy derives the target from the remote host architecture.
@@ -221,6 +222,46 @@ cmd_deploy_local() {
   LOCAL_MODE=1 cmd_deploy
 }
 
+cmd_storage_baseline_benchmark() {
+  local samples="${2:-20}"
+  local source_revision="${3:-dc9bfc7a3c2faf607e2520d80c233792bf8f9249}"
+  local worker_source="$PROJECT_ROOT/.github/scripts/runner-storage-baseline-benchmark-remote.sh"
+  local report_source="$PROJECT_ROOT/.github/scripts/runner-storage-baseline-report.sh"
+  local worker_remote="$RUNNER_DIR/storage-baseline-benchmark.sh"
+  local report_remote="$RUNNER_DIR/storage-baseline-report.sh"
+
+  case "$samples" in
+    ''|*[!0-9]*)
+      log "Error: storage baseline sample count must be an integer"
+      return 2
+      ;;
+  esac
+  if [ "$samples" -lt 1 ] || [ "$samples" -gt 100 ]; then
+    log "Error: storage baseline sample count must be between 1 and 100"
+    return 2
+  fi
+  if [[ ! "$source_revision" =~ ^[0-9a-f]{40}$ ]]; then
+    log "Error: storage baseline source revision must be a full lowercase 40-character Git commit"
+    return 2
+  fi
+
+  log "Staging storage baseline benchmark on $HOST..."
+  ssh_cmd "sudo tee '$worker_remote' >/dev/null && sudo chmod 0755 '$worker_remote'" \
+    < "$worker_source"
+  ssh_cmd "sudo tee '$report_remote' >/dev/null && sudo chmod 0755 '$report_remote'" \
+    < "$report_source"
+
+  log "Running $samples samples per cohort from vm0-skills@$source_revision..."
+  ssh_cmd "sudo '$worker_remote' \
+    '$REMOTE_BIN_DIR' \
+    '$RUNNER_SERVICE_SUFFIX' \
+    '$RUNNER_GROUP' \
+    '$RUNNER_DIR' \
+    '$source_revision' \
+    '$samples' \
+    '$report_remote'"
+}
+
 cmd_exec() {
   RUN_ID="${2:?Usage: $0 exec <run-id> <command...>}"
   COMMAND="${3:?Usage: $0 exec <run-id> <command...>}"
@@ -245,11 +286,12 @@ COMMAND="${1:-}"
 case "$COMMAND" in
   deploy) cmd_deploy ;;
   deploy-local) cmd_deploy_local ;;
+  storage-baseline-benchmark) cmd_storage_baseline_benchmark "$@" ;;
   submit) cmd_submit "$@" ;;
   exec) cmd_exec "$@" ;;
   remove) cmd_remove ;;
   *)
-    log "Usage: $0 {deploy|deploy-local|submit|exec|remove}"
+    log "Usage: $0 {deploy|deploy-local|storage-baseline-benchmark|submit|exec|remove}"
     exit 1
     ;;
 esac

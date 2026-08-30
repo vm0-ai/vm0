@@ -51,6 +51,14 @@ impl<'de> Deserialize<'de> for StorageManifest {
     }
 }
 
+impl StorageManifest {
+    pub(crate) fn from_storage_mounts(
+        storage_mounts: Vec<StorageMountEntry>,
+    ) -> Result<Self, String> {
+        normalize_storage_mounts(storage_mounts)
+    }
+}
+
 fn normalize_storage_mounts(
     storage_mounts: Vec<StorageMountEntry>,
 ) -> Result<StorageManifest, String> {

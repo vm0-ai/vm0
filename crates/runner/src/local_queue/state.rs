@@ -1062,6 +1062,8 @@ mod tests {
             session_id: Some("session-123".into()),
             feature_flags: None,
             active_input: None,
+            storage_mounts: None,
+            submitted_at_ms: None,
         };
         std::fs::write(&job_path, serde_json::to_vec(&request).unwrap()).unwrap();
         job_path

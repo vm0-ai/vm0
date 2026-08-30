@@ -84,6 +84,7 @@ fn submit_plan_creates_private_queue_dirs_and_job_file() {
             secret_env: vec![],
             timeout: 5,
             active_inputs: vec![],
+            storage_manifest: None,
         },
         home,
     )
@@ -126,6 +127,7 @@ fn submit_plan_tightens_existing_permissive_queue_dirs() {
             secret_env: vec![],
             timeout: 5,
             active_inputs: vec![],
+            storage_manifest: None,
         },
         home,
     )
