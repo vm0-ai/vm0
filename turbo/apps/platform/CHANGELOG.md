@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.812.1](https://github.com/vm0-ai/vm0/compare/app-v0.812.0...app-v0.812.1) (2026-08-30)
+
+
+### Refactoring
+
+* detach chat event cursors from projection ([#30280](https://github.com/vm0-ai/vm0/issues/30280)) ([4af0bb3](https://github.com/vm0-ai/vm0/commit/4af0bb302f2365e03543e7423b6fc7368f392650))
+* route recording progress through setLoop ([#30328](https://github.com/vm0-ai/vm0/issues/30328)) ([812d999](https://github.com/vm0-ai/vm0/commit/812d999884231f83a95149191e936e1d864b8c46))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.9
+    * @okouai/core bumped to 8.603.1
+
 ## [0.812.0](https://github.com/vm0-ai/vm0/compare/app-v0.811.0...app-v0.812.0) (2026-08-30)
 
 
