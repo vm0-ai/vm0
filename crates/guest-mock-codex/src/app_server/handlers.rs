@@ -368,7 +368,7 @@ impl AppServerState {
             write_secondary_thread_notifications(output, &thread_id, &turn_id, response_text)?;
             return Ok(ServerAction::Continue);
         }
-        if self.scenario.writes_turn_started_before_steer() {
+        if self.scenario.writes_turn_started_before_control() {
             if let Some(current_thread) = &mut self.current_thread
                 && matches!(
                     self.scenario,
@@ -518,6 +518,11 @@ impl AppServerState {
         let thread_id = current_thread.protocol_thread_id.clone();
         if let Some(current_thread) = &mut self.current_thread {
             current_thread.active_turn_id = None;
+        }
+        if self.scenario == Scenario::CompleteBeforeTurnInterrupt {
+            write_json_line(output, &turn_completed_notification(&thread_id, turn_id))?;
+            write_error(output, id, INVALID_REQUEST, "turn is not active")?;
+            return Ok(ServerAction::Continue);
         }
         write_success(output, id, json!({}))?;
         write_json_line(output, &turn_interrupted_notification(&thread_id, turn_id))?;
