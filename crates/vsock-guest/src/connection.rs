@@ -35,7 +35,7 @@ use crate::guest_storage_manifest::{
 };
 use crate::handlers::{MessageOutcome, handle_basic_message};
 use crate::log::log;
-use crate::memory_snapshot::read_memory_snapshot;
+use crate::memory_snapshot::MeminfoSource;
 use crate::process_containment::{ProcessContainmentMode, verify_exec_process_containment_empty};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
@@ -254,6 +254,7 @@ fn handle_memory_snapshot(
     seq: u32,
     payload: &[u8],
     operation_state: &OperationState,
+    meminfo_source: &MeminfoSource,
     writer: &GuestWriter,
 ) -> io::Result<()> {
     if !validate_empty_control_payload(
@@ -267,7 +268,7 @@ fn handle_memory_snapshot(
     if !operation_state.is_quiesced() {
         return send_error_response(seq, "guest operations are not fully quiesced", writer);
     }
-    match read_memory_snapshot() {
+    match meminfo_source.read_memory_snapshot() {
         Ok(snapshot) => {
             let payload = snapshot.encode_payload();
             let response = vsock_proto::encode(MSG_MEMORY_SNAPSHOT_RESULT, seq, &payload)
@@ -312,6 +313,7 @@ struct ConnectionDispatcher {
     exec_control_registry: ExecControlRegistry,
     operation_state: OperationState,
     guest_agent_program: GuestAgentProgram,
+    meminfo_source: MeminfoSource,
     process_containment_mode: ProcessContainmentMode,
     exec_drain_deadline: Duration,
 }
@@ -323,6 +325,17 @@ struct ConnectionPrograms {
     guest_storage_manifest: GuestStorageManifestProgram,
 }
 
+impl ConnectionPrograms {
+    fn production() -> Self {
+        Self {
+            guest_agent: GuestAgentProgram::production(),
+            guest_dns_readiness: GuestDnsReadinessProgram::production(),
+            guest_state_restore: GuestStateRestoreProgram::production(),
+            guest_storage_manifest: GuestStorageManifestProgram::production(),
+        }
+    }
+}
+
 impl ConnectionDispatcher {
     fn new(
         writer: GuestWriter,
@@ -330,6 +343,7 @@ impl ConnectionDispatcher {
         process_containment_mode: ProcessContainmentMode,
         exec_drain_deadline: Duration,
         programs: ConnectionPrograms,
+        meminfo_source: MeminfoSource,
     ) -> io::Result<Self> {
         let file_write_worker =
             FileWriteWorker::start(writer.clone(), Arc::clone(&connection_cancel))?;
@@ -362,6 +376,7 @@ impl ConnectionDispatcher {
             exec_control_registry: ExecControlRegistry::default(),
             operation_state: OperationState::default(),
             guest_agent_program: programs.guest_agent,
+            meminfo_source,
             process_containment_mode,
             exec_drain_deadline,
         })
@@ -711,7 +726,13 @@ impl ConnectionDispatcher {
     }
 
     fn handle_memory_snapshot(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
-        handle_memory_snapshot(msg.seq, msg.payload, &self.operation_state, &self.writer)
+        handle_memory_snapshot(
+            msg.seq,
+            msg.payload,
+            &self.operation_state,
+            &self.meminfo_source,
+            &self.writer,
+        )
     }
 
     fn handle_basic_message(&self, msg: BorrowedRawMessage<'_>) -> io::Result<DispatchOutcome> {
@@ -816,6 +837,21 @@ pub fn handle_connection_with_test_process_containment_and_exec_drain_deadline(
     )
 }
 
+/// Handles a host-side test connection with an explicit meminfo source file.
+#[doc(hidden)]
+pub fn handle_connection_with_test_memory_snapshot_path(
+    stream: UnixStream,
+    path: std::path::PathBuf,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        ConnectionPrograms::production(),
+        MeminfoSource::for_test(path),
+    )
+}
+
 /// Handles a host-side test connection with a test DNS readiness executable.
 ///
 /// This remains available without `test-support` so integration tests can
@@ -829,10 +865,11 @@ pub fn handle_connection_with_test_dns_readiness_program(
         stream,
         ProcessContainmentMode::TestNoop,
         EXEC_OUTPUT_DRAIN_DEADLINE,
-        GuestAgentProgram::production(),
-        GuestDnsReadinessProgram::for_test(program),
-        GuestStateRestoreProgram::production(),
-        GuestStorageManifestProgram::production(),
+        ConnectionPrograms {
+            guest_dns_readiness: GuestDnsReadinessProgram::for_test(program),
+            ..ConnectionPrograms::production()
+        },
+        MeminfoSource::production(),
     )
 }
 
@@ -846,10 +883,11 @@ pub fn handle_connection_with_test_storage_manifest_program(
         stream,
         ProcessContainmentMode::TestNoop,
         EXEC_OUTPUT_DRAIN_DEADLINE,
-        GuestAgentProgram::production(),
-        GuestDnsReadinessProgram::production(),
-        GuestStateRestoreProgram::production(),
-        GuestStorageManifestProgram::for_test(program),
+        ConnectionPrograms {
+            guest_storage_manifest: GuestStorageManifestProgram::for_test(program),
+            ..ConnectionPrograms::production()
+        },
+        MeminfoSource::production(),
     )
 }
 
@@ -863,10 +901,11 @@ pub fn handle_connection_with_test_guest_state_restore_program(
         stream,
         ProcessContainmentMode::TestNoop,
         EXEC_OUTPUT_DRAIN_DEADLINE,
-        GuestAgentProgram::production(),
-        GuestDnsReadinessProgram::production(),
-        GuestStateRestoreProgram::for_test(program),
-        GuestStorageManifestProgram::production(),
+        ConnectionPrograms {
+            guest_state_restore: GuestStateRestoreProgram::for_test(program),
+            ..ConnectionPrograms::production()
+        },
+        MeminfoSource::production(),
     )
 }
 
@@ -880,10 +919,11 @@ pub fn handle_connection_with_test_guest_agent_program(
         stream,
         ProcessContainmentMode::TestNoop,
         EXEC_OUTPUT_DRAIN_DEADLINE,
-        GuestAgentProgram::for_test(program),
-        GuestDnsReadinessProgram::production(),
-        GuestStateRestoreProgram::production(),
-        GuestStorageManifestProgram::production(),
+        ConnectionPrograms {
+            guest_agent: GuestAgentProgram::for_test(program),
+            ..ConnectionPrograms::production()
+        },
+        MeminfoSource::production(),
     )
 }
 
@@ -907,10 +947,8 @@ fn handle_connection_with_mode_and_exec_drain_deadline(
         stream,
         process_containment_mode,
         exec_drain_deadline,
-        GuestAgentProgram::production(),
-        GuestDnsReadinessProgram::production(),
-        GuestStateRestoreProgram::production(),
-        GuestStorageManifestProgram::production(),
+        ConnectionPrograms::production(),
+        MeminfoSource::production(),
     )
 }
 
@@ -918,19 +956,15 @@ fn handle_connection_with_mode_and_program(
     stream: UnixStream,
     process_containment_mode: ProcessContainmentMode,
     exec_drain_deadline: Duration,
-    guest_agent_program: GuestAgentProgram,
-    guest_dns_readiness_program: GuestDnsReadinessProgram,
-    guest_state_restore_program: GuestStateRestoreProgram,
-    guest_storage_manifest_program: GuestStorageManifestProgram,
+    programs: ConnectionPrograms,
+    meminfo_source: MeminfoSource,
 ) -> io::Result<()> {
     match handle_connection_with_outcome(
         stream,
         process_containment_mode,
         exec_drain_deadline,
-        guest_agent_program,
-        guest_dns_readiness_program,
-        guest_state_restore_program,
-        guest_storage_manifest_program,
+        programs,
+        meminfo_source,
     ) {
         Ok(_) => Ok(()),
         Err(failure) => Err(failure.error),
@@ -941,10 +975,8 @@ fn handle_connection_with_outcome(
     stream: UnixStream,
     process_containment_mode: ProcessContainmentMode,
     exec_drain_deadline: Duration,
-    guest_agent_program: GuestAgentProgram,
-    guest_dns_readiness_program: GuestDnsReadinessProgram,
-    guest_state_restore_program: GuestStateRestoreProgram,
-    guest_storage_manifest_program: GuestStorageManifestProgram,
+    programs: ConnectionPrograms,
+    meminfo_source: MeminfoSource,
 ) -> Result<ConnectionEnd, ConnectionFailure> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while worker threads write results.
@@ -972,12 +1004,8 @@ fn handle_connection_with_outcome(
         connection_cancel.clone(),
         process_containment_mode,
         exec_drain_deadline,
-        ConnectionPrograms {
-            guest_agent: guest_agent_program,
-            guest_dns_readiness: guest_dns_readiness_program,
-            guest_state_restore: guest_state_restore_program,
-            guest_storage_manifest: guest_storage_manifest_program,
-        },
+        programs,
+        meminfo_source,
     )
     .map_err(|error| session.failure(error))?;
     let mut buf = [0u8; READ_BUFFER_SIZE];
@@ -1125,10 +1153,8 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                         stream,
                         process_containment_mode,
                         EXEC_OUTPUT_DRAIN_DEADLINE,
-                        GuestAgentProgram::production(),
-                        GuestDnsReadinessProgram::production(),
-                        GuestStateRestoreProgram::production(),
-                        GuestStorageManifestProgram::production(),
+                        ConnectionPrograms::production(),
+                        MeminfoSource::production(),
                     )
                 })
         } else {
@@ -1141,10 +1167,8 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                         stream,
                         process_containment_mode,
                         EXEC_OUTPUT_DRAIN_DEADLINE,
-                        GuestAgentProgram::production(),
-                        GuestDnsReadinessProgram::production(),
-                        GuestStateRestoreProgram::production(),
-                        GuestStorageManifestProgram::production(),
+                        ConnectionPrograms::production(),
+                        MeminfoSource::production(),
                     )
                 })
         };

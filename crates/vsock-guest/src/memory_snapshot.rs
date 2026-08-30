@@ -1,9 +1,37 @@
 use std::io;
+use std::path::{Path, PathBuf};
 
 use vsock_proto::MemorySnapshot;
 
 const MEMINFO_PATH: &str = "/proc/meminfo";
 const KIB: u64 = 1024;
+
+pub(crate) enum MeminfoSource {
+    Production,
+    Test(PathBuf),
+}
+
+impl MeminfoSource {
+    pub(crate) fn production() -> Self {
+        Self::Production
+    }
+
+    pub(crate) fn for_test(path: PathBuf) -> Self {
+        Self::Test(path)
+    }
+
+    pub(crate) fn read_memory_snapshot(&self) -> io::Result<MemorySnapshot> {
+        let meminfo = std::fs::read_to_string(self.path())?;
+        parse_memory_snapshot(&meminfo)
+    }
+
+    fn path(&self) -> &Path {
+        match self {
+            Self::Production => Path::new(MEMINFO_PATH),
+            Self::Test(path) => path,
+        }
+    }
+}
 
 #[derive(Default)]
 struct MemorySnapshotFields {
@@ -25,11 +53,6 @@ struct MemorySnapshotFields {
     page_tables_bytes: Option<u64>,
     swap_total_bytes: Option<u64>,
     swap_free_bytes: Option<u64>,
-}
-
-pub(crate) fn read_memory_snapshot() -> io::Result<MemorySnapshot> {
-    let meminfo = std::fs::read_to_string(MEMINFO_PATH)?;
-    parse_memory_snapshot(&meminfo)
 }
 
 fn parse_memory_snapshot(meminfo: &str) -> io::Result<MemorySnapshot> {
