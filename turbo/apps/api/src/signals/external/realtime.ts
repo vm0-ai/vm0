@@ -120,10 +120,20 @@ async function publishChatDatabaseSignalNow(
   topic: string,
   payload: unknown,
 ): Promise<void> {
-  const channelName = getUserOrgChannelName(target.userId, target.orgId);
-  const channel = ablyClient().channels.get(channelName);
-  await channel.publish(topic, payload);
-  L.debug(`Published "${topic}" to ${channelName}`);
+  // Version-migration fallback: already-loaded App clients can keep the
+  // pre-SharedWorker user-channel subscription for up to two days. Keep the
+  // duplicate user publish until that stale-client window has drained.
+  const channelNames = [
+    getUserOrgChannelName(target.userId, target.orgId),
+    getUserChannelName(target.userId),
+  ];
+  const client = ablyClient();
+  await Promise.all(
+    channelNames.map(async (channelName) => {
+      await client.channels.get(channelName).publish(topic, payload);
+    }),
+  );
+  L.debug(`Published "${topic}" to ${channelNames.join(", ")}`);
 }
 
 function publishChatDatabaseSignal(
@@ -162,10 +172,10 @@ export async function publishUserPreferenceChangedForUserSafely(
 }
 
 /**
- * Fire the user-level "thread list shape changed" signal. The sidebar
- * subscribes to this topic and reloads the full list on any delivery —
- * payload is intentionally empty because the server is authoritative and
- * the client already has a cheap list endpoint to re-fetch.
+ * Fire the per-user-org "thread list shape changed" signal. The SharedWorker
+ * consumes this topic to invalidate its local thread-event view; the App then
+ * reloads derived thread and indicator state. The payload is intentionally
+ * empty because the server is authoritative.
  */
 export async function publishThreadListChanged(target: {
   readonly userId: string;

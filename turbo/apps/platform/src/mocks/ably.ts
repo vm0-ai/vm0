@@ -460,12 +460,22 @@ export const FetchRequest = Symbol("FetchRequest");
 export const WebSocketTransport = Symbol("WebSocketTransport");
 export const XHRPolling = Symbol("XHRPolling");
 
-/** Fire a server-side publish on every connected Realtime instance. */
+function isSharedDatabaseRealtimeTopic(topic: string): boolean {
+  return (
+    topic === "threadListChanged" ||
+    topic.startsWith("chatThreadMessageCreated:")
+  );
+}
+
+/** Fire a server-side publish using the production topic-to-channel routing. */
 export function triggerAblyEvent(topic: string, data?: unknown): void {
+  const channelPrefix = isSharedDatabaseRealtimeTopic(topic)
+    ? "user-org:"
+    : "user:";
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
       for (const [channelName, channel] of realtime.namedChannels()) {
-        if (channelName.startsWith("user:")) {
+        if (channelName.startsWith(channelPrefix)) {
           channel.trigger(topic, data);
         }
       }

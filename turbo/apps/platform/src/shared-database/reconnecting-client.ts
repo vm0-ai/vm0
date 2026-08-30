@@ -9,6 +9,7 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
   SharedDatabaseHeartbeat,
+  SharedDatabaseSubscriptionCallback,
 } from "./bridge.ts";
 import {
   SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
@@ -38,7 +39,7 @@ interface Connection {
 }
 
 interface DurableSubscription {
-  readonly callback: () => void;
+  readonly callback: SharedDatabaseSubscriptionCallback;
   readonly dataKey: SharedDatabaseDataKey;
   registeredGeneration: number | null;
   registrationController: AbortController | null;
@@ -187,7 +188,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
 
   async on(
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void> {
     signal.throwIfAborted();

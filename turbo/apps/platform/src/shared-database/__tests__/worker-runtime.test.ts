@@ -1216,7 +1216,7 @@ describe("shared database worker runtime", () => {
     ).resolves.toStrictEqual([secondRow]);
   });
 
-  it("does not report a disconnected realtime session as connected on heartbeat", async () => {
+  it("keeps a reconnecting realtime session non-connected on heartbeat", async () => {
     const workerEvents: WorkerEvent[] = [];
     const clientId = await connectRuntime(workerEvents);
     context.workerStore.set(
@@ -1236,7 +1236,7 @@ describe("shared database worker runtime", () => {
     await vi.waitFor(() => {
       expect(workerEvents.at(-1)).toMatchObject({
         type: "status",
-        status: "disconnected",
+        status: "connecting",
       });
     });
     await context.workerStore.set(
@@ -1247,7 +1247,7 @@ describe("shared database worker runtime", () => {
     );
     expect(workerEvents.at(-1)).toMatchObject({
       type: "status",
-      status: "disconnected",
+      status: "connecting",
     });
   });
 

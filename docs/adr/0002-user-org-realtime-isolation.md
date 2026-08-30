@@ -20,7 +20,10 @@ client-side filtering or thread-to-organization inference.
 
 ## Consequences
 
-The API publishes `chatThreadMessageCreated` and `threadListChanged` exclusively
-to the `user-org:<userId>:<orgId>` channel for each user-org identity. The
-existing user channel remains available for unrelated user-scoped signals, but
-it no longer carries chat database invalidations.
+The permanent App path consumes `chatThreadMessageCreated` and
+`threadListChanged` exclusively from the `user-org:<userId>:<orgId>` channel
+through the SharedWorker. During rollout, the API also publishes those two
+topics to the existing `user:<userId>` channel so already-loaded App clients
+compiled against the disabled switch continue receiving invalidations. Remove
+that duplicate publication after the two-day stale-App window has drained; the
+user channel otherwise remains reserved for unrelated user-scoped signals.
