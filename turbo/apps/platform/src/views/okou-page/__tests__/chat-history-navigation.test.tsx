@@ -12,7 +12,6 @@ import {
   type ChatThreadEvent,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/okou-page/sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { click, fill } from "../../../__tests__/page-helper.ts";
@@ -43,6 +42,8 @@ import {
   setScrollMetrics,
   mockResizeObserver,
 } from "./chat-lifecycle-test-helpers.ts";
+
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 describe("chat lifecycle", () => {
   it("renders new messages after a payload-less created event", async () => {
@@ -99,7 +100,11 @@ describe("chat lifecycle", () => {
       expect(screen.getByText(initialMessage.content)).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
     expect(
       context.mocks.ably.hasSubscription(
@@ -108,7 +113,10 @@ describe("chat lifecycle", () => {
     ).toBeFalsy();
 
     exposeNewMessage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await waitFor(() => {
       expect(screen.getByText(newMessage.content)).toBeInTheDocument();
@@ -196,7 +204,11 @@ describe("chat lifecycle", () => {
       screen.findByText(initialMessage.content),
     ).resolves.toBeInTheDocument();
     await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
 
     await sendMessageInUI(user, chatComposerTextarea(), prompt);
@@ -206,7 +218,10 @@ describe("chat lifecycle", () => {
     });
 
     exposePersistedMessage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await expect(
       screen.findByText(acknowledgement.content),
@@ -295,11 +310,18 @@ describe("chat lifecycle", () => {
     });
     expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
 
     exposeReplacement = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await waitFor(() => {
       expect(screen.getAllByText(prompt)).toHaveLength(1);
@@ -384,7 +406,11 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText(sidebarInitialMessage.content),
       ).toBeInTheDocument();
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
     expect(
       context.mocks.ably.hasSubscription(
@@ -398,7 +424,8 @@ describe("chat lifecycle", () => {
     ).toBeFalsy();
 
     exposeSidebarMessage = true;
-    context.mocks.ably.trigger(
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
       `chatThreadMessageCreated:${KEYBOARD_NEXT_THREAD_ID}`,
     );
 
@@ -1125,7 +1152,17 @@ describe("chat lifecycle", () => {
     });
 
     expect(document.title).toBe(`${originalTitle} | VM0`);
-    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      "threadListChanged",
+    );
     await waitFor(() => {
       expect(document.title).toBe(`${renamedTitle} | VM0`);
     });
