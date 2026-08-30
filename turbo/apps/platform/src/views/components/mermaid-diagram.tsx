@@ -1,4 +1,4 @@
-import { Button, CopyButton } from "@okouai/ui";
+import { CopyButton } from "@okouai/ui";
 import { useLoadable, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -39,22 +39,8 @@ export function MermaidDiagramView({
 }) {
   const { t } = useTranslation();
   const openImageLightbox = useSet(openImageLightbox$);
-  const retry = useSet(signals.retry$);
   const loadable = useLoadable(signals.diagram$);
   const image = loadable.state === "hasData" ? loadable.data : null;
-
-  if (loadable.state === "hasError") {
-    return (
-      <div className="space-y-2" data-mermaid-status="error">
-        <MermaidCodeBlock signals={signals} />
-        <Button type="button" variant="outline" size="sm" onClick={retry}>
-          {t(($) => {
-            return $.chat.errors.recovery.tryAgain;
-          })}
-        </Button>
-      </div>
-    );
-  }
 
   if (loadable.state !== "loading" && image === null) {
     return <MermaidCodeBlock signals={signals} />;
