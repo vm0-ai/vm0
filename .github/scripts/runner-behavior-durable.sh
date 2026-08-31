@@ -173,6 +173,7 @@ sudo systemd-run \
   --gid="$REMOTE_GID" \
   --working-directory="$REMOTE_PWD" \
   --setenv="HOME=${REMOTE_HOME}" \
+  --setenv="RUNNER_BEHAVIOR_DURABLE_UNIT=${UNIT}.service" \
   /bin/bash -c '
     worker=$1
     log=$2

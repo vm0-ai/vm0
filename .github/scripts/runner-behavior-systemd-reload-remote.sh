@@ -57,7 +57,8 @@ trap cleanup EXIT
 sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force >/dev/null 2>&1 || true
 sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force >/dev/null 2>&1 || true
 
-[ -n "${XDG_SESSION_ID:-}" ] || fail "XDG_SESSION_ID is unavailable"
+[ -n "${RUNNER_BEHAVIOR_DURABLE_UNIT:-}" ] \
+  || fail "durable execution unit is unavailable"
 JOURNAL_CURSOR=$(sudo journalctl -b --no-pager -n 0 --show-cursor \
   | sed -n 's/^-- cursor: //p')
 [ -n "$JOURNAL_CURSOR" ] || fail "could not capture journal cursor"
@@ -110,15 +111,15 @@ for UNIT in "$UNIT_A" "$UNIT_B"; do
     || fail "$UNIT remained loaded after uninstall"
 done
 
-SESSION_SCOPE="unit session-${XDG_SESSION_ID}.scope"
+REQUEST_SCOPE="unit ${RUNNER_BEHAVIOR_DURABLE_UNIT}"
 RELOAD_COUNT=$(sudo journalctl -b _PID=1 --after-cursor="$JOURNAL_CURSOR" \
   --no-pager -o cat \
-  | awk -v scope="$SESSION_SCOPE" \
+  | awk -v scope="$REQUEST_SCOPE" \
     'index($0, "Reloading requested") && index($0, scope) { count++ } END { print count + 0 }')
 
-echo "Session ${XDG_SESSION_ID} requested ${RELOAD_COUNT} systemd manager reload(s)"
-# Another session may absorb either completed lifecycle generation, so only
-# this session's upper bound is attributable.
+echo "Durable unit ${RUNNER_BEHAVIOR_DURABLE_UNIT} requested ${RELOAD_COUNT} systemd manager reload(s)"
+# Another systemd client may absorb either completed lifecycle generation, so
+# only this durable unit's upper bound is attributable.
 [ "$RELOAD_COUNT" -le 4 ] \
   || fail "expected at most one reload per successful lifecycle operation, got $RELOAD_COUNT"
 

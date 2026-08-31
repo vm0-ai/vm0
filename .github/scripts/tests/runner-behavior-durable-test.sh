@@ -355,6 +355,8 @@ run_driver_case() {
   assert_contains "$case_dir/systemd-run-args" "--gid=$(id -g)"
   assert_contains "$case_dir/systemd-run-args" "--working-directory=$fake_remote_cwd"
   assert_contains "$case_dir/systemd-run-args" "--setenv=HOME=$fake_remote_home"
+  assert_contains "$case_dir/systemd-run-args" \
+    "--setenv=RUNNER_BEHAVIOR_DURABLE_UNIT=vm0-ci-${case_name}-30429172938-1.service"
   assert_count "$case_dir/stdout" "1" "$durable_output"
   assert_contains "$case_dir/stderr" "Lost SSH launch response"
   assert_contains "$case_dir/stderr" "Transient SSH failure while observing ${case_name} result"
@@ -408,6 +410,8 @@ run_driver_case process-containment \
   3 "$AGENT_READY_BENCHMARK_REMOTE_WORKER"
 run_driver_case systemd-reload \
   "$SYSTEMD_RELOAD_DRIVER" "$SYSTEMD_RELOAD_REMOTE_WORKER" 2 0
+assert_contains "$SYSTEMD_RELOAD_REMOTE_WORKER" \
+  "REQUEST_SCOPE=\"unit \${RUNNER_BEHAVIOR_DURABLE_UNIT}\""
 run_driver_case upgrade-local \
   "$UPGRADE_LOCAL_DRIVER" "$UPGRADE_LOCAL_REMOTE_WORKER" 2 0
 
