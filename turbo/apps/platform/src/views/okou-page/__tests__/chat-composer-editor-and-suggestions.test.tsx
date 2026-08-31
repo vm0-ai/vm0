@@ -703,7 +703,6 @@ describe("chat composer models", () => {
   it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
     const reloadWorkflowsRequested = context.mocks.deferred<void>();
-    const reloadBarrierRequested = context.mocks.deferred<void>();
     const releaseReloadWorkflows = context.mocks.deferred<void>();
     const reloadedWorkflow = workflowSummary({
       name: "new-chat-workflow",
@@ -712,7 +711,6 @@ describe("chat composer models", () => {
       agentId: AGENT_ID,
     });
     let workflowPhase: "initial" | "reloaded" = "initial";
-    let reloadRequestCount = 0;
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
@@ -720,11 +718,8 @@ describe("chat composer models", () => {
       if (workflowPhase === "initial") {
         return respond(200, []);
       }
-      reloadRequestCount += 1;
-      if (reloadRequestCount === 1) {
+      if (!reloadWorkflowsRequested.settled()) {
         reloadWorkflowsRequested.resolve();
-      } else if (reloadRequestCount === 2) {
-        reloadBarrierRequested.resolve();
       }
       await releaseReloadWorkflows.promise;
       return respond(200, [reloadedWorkflow]);
@@ -750,6 +745,8 @@ describe("chat composer models", () => {
     const initialEditor = await within(thread).findByRole("textbox", {
       name: "Message",
     });
+    await user.click(initialEditor);
+    await user.keyboard("/new-chat-workflow");
 
     workflowPhase = "reloaded";
     act(() => {
@@ -761,15 +758,18 @@ describe("chat composer models", () => {
     await reloadWorkflowsRequested.promise;
     act(() => {
       releaseReloadWorkflows.resolve();
-      context.mocks.ably.trigger(
-        `chatThreadWorkflowsChanged:${THREAD_ID}`,
-        null,
-      );
     });
-    await reloadBarrierRequested.promise;
 
     await expect(findComposerEditor()).resolves.toBe(initialEditor);
-    await user.click(initialEditor);
+    await waitFor(() => {
+      const highlightedWorkflow = within(initialEditor)
+        .getAllByText("/new-chat-workflow")
+        .find((element) => {
+          return element.tagName.toLowerCase() === "span";
+        });
+      expect(highlightedWorkflow).toHaveClass("text-primary");
+    });
+    await user.keyboard("{Control>}a{/Control}{Backspace}");
     await user.keyboard("/");
     await expect(
       screen.findByText("new-chat-workflow"),
