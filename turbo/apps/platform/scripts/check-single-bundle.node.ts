@@ -165,6 +165,41 @@ await test("allows Prism common and rejects non-common entries", () => {
   );
 });
 
+await test("rejects server-only contracts from the eager platform graph", () => {
+  assert.deepEqual(
+    applicationBundleViolations([
+      {
+        ...applicationChunk(),
+        moduleIds: [
+          "/repo/apps/platform/src/main.ts",
+          "/repo/packages/api-contracts/src/contracts/runners.ts",
+          "/repo/packages/api-contracts/src/contracts/webhooks.ts",
+        ],
+      },
+      vendorChunk(),
+      runtimeChunk(),
+      workerAsset(),
+    ]),
+    [
+      `${APP_FILE}: server-only API contract modules reached the eager platform graph: /packages/api-contracts/src/contracts/runners.ts, /packages/api-contracts/src/contracts/webhooks.ts`,
+    ],
+  );
+
+  assert.deepEqual(
+    singleWorkerBundleViolations([
+      {
+        code: "worker",
+        fileName: "assets/shared-database-worker.js",
+        moduleIds: ["/repo/packages/api-contracts/src/contracts/runners.ts"],
+        type: "chunk",
+      },
+    ]),
+    [
+      "assets/shared-database-worker.js: server-only API contract modules reached the eager platform graph: /packages/api-contracts/src/contracts/runners.ts",
+    ],
+  );
+});
+
 await test("rejects worker chunks with imports or forbidden packages", () => {
   assert.deepEqual(
     singleWorkerBundleViolations([

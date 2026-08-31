@@ -13,15 +13,35 @@ import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelUsageObservationEventsSchema } from "./model-usage-observations";
 import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
+import {
+  CANONICAL_GUEST_HOME_DIR,
+  CANONICAL_WORKING_DIR,
+  runnerGroupSchema,
+  runnerHeartbeatGenerationSchema,
+  runnerHostnameSchema,
+} from "./runner-primitives";
 import { eventSequenceNumberSchema } from "./runs";
+
+export {
+  CANONICAL_GUEST_HOME_DIR,
+  CANONICAL_WORKING_DIR,
+  RUNNER_HOSTNAME_MAX_LENGTH,
+  RUNNER_VERSION_MAX_LENGTH,
+  runnerGroupSchema,
+  runnerHeartbeatGenerationSchema,
+  runnerHostnameSchema,
+  runnerVersionSchema,
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+  type SandboxReuseResult,
+  type WorkspaceReuseResult,
+} from "./runner-primitives";
 
 const c = initContract();
 
 export const MIN_EPOCH_MS_TIMESTAMP = 1_000_000_000_000;
 const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
 
-export const CANONICAL_GUEST_HOME_DIR = "/home/user";
-export const CANONICAL_WORKING_DIR = `${CANONICAL_GUEST_HOME_DIR}/workspace`;
 export const CANONICAL_CLAUDE_CONFIG_DIR = `${CANONICAL_GUEST_HOME_DIR}/.claude`;
 export const CANONICAL_CODEX_HOME_DIR = `${CANONICAL_GUEST_HOME_DIR}/.codex`;
 export const CANONICAL_CODEX_SESSIONS_DIR = `${CANONICAL_CODEX_HOME_DIR}/sessions`;
@@ -97,23 +117,6 @@ export const runnerClaimPollReasonSchema = z.enum([
   "slow",
   "fast",
 ]);
-
-export const runnerHeartbeatGenerationSchema = z
-  .number()
-  .int()
-  .positive()
-  .max(Number.MAX_SAFE_INTEGER);
-
-export const RUNNER_HOSTNAME_MAX_LENGTH = 255;
-export const RUNNER_VERSION_MAX_LENGTH = 128;
-export const runnerHostnameSchema = z
-  .string()
-  .min(1)
-  .max(RUNNER_HOSTNAME_MAX_LENGTH);
-export const runnerVersionSchema = z
-  .string()
-  .min(1)
-  .max(RUNNER_VERSION_MAX_LENGTH);
 
 const runnerProcessIdentitySchema = z
   .object({
@@ -461,16 +464,6 @@ const runnerBuiltinFirewallsResolveResponseSchema = z.object({
  * Must stay in sync with Rust: crates/runner/src/profile.rs → DEFAULT_PROFILE
  */
 export const DEFAULT_PROFILE = "vm0/default";
-
-/**
- * Runner group format: vm0/<name> (e.g., "vm0/production")
- */
-export const runnerGroupSchema = z
-  .string()
-  .regex(
-    /^[a-z0-9-]+\/[a-z0-9-]+$/,
-    "Runner group must be in vm0/<name> format (e.g., vm0/production)",
-  );
 
 const runnersPollBodySchema = z.object({
   runnerId: z.uuid().optional(),
