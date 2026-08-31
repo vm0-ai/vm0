@@ -38,7 +38,11 @@ function vendorChunk() {
     code: "vendor",
     fileName: VENDOR_FILE,
     imports: [RUNTIME_FILE],
-    moduleIds: ["/repo/node_modules/react/index.js"],
+    moduleIds: [
+      "/repo/node_modules/react/index.js",
+      "/repo/node_modules/rehype-prism-plus/dist/common.es.js",
+      "/repo/node_modules/refractor/lib/common.js",
+    ],
     type: "chunk" as const,
   };
 }
@@ -136,6 +140,31 @@ await test("keeps third-party modules only in vendor and rejects extra edges", (
   );
 });
 
+await test("allows Prism common and rejects non-common entries", () => {
+  assert.deepEqual(applicationBundleViolations(validApplicationOutputs()), []);
+
+  assert.deepEqual(
+    applicationBundleViolations([
+      applicationChunk(),
+      {
+        ...vendorChunk(),
+        moduleIds: [
+          ...vendorChunk().moduleIds,
+          "/repo/node_modules/rehype-prism-plus/dist/index.es.js",
+          "/repo/node_modules/rehype-prism-plus/dist/all.es.js",
+          "/repo/node_modules/rehype-prism-plus/dist/generator.es.js",
+          "/repo/node_modules/refractor/lib/all.js",
+        ],
+      },
+      runtimeChunk(),
+      workerAsset(),
+    ]),
+    [
+      `${VENDOR_FILE}: forbidden non-common Prism modules reached the bundle: rehype-prism-plus (root entry), rehype-prism-plus/all, rehype-prism-plus/generator, refractor/all`,
+    ],
+  );
+});
+
 await test("rejects worker chunks with imports or forbidden packages", () => {
   assert.deepEqual(
     singleWorkerBundleViolations([
@@ -160,13 +189,13 @@ await test("rejects worker chunks with imports or forbidden packages", () => {
         code: "worker",
         fileName: "assets/shared-database-worker.js",
         imports: ["assets/worker-dependency.js"],
-        moduleIds: ["/repo/node_modules/lowlight/lib/index.js"],
+        moduleIds: ["/repo/node_modules/katex/dist/katex.mjs"],
         type: "chunk",
       },
     ]),
     [
       "assets/shared-database-worker.js: unexpected JavaScript imports: assets/worker-dependency.js",
-      "assets/shared-database-worker.js: forbidden packages reached the bundle: lowlight",
+      "assets/shared-database-worker.js: forbidden packages reached the bundle: katex",
     ],
   );
 });

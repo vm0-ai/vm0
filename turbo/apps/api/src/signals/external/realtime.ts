@@ -8,15 +8,11 @@ import type {
   RunnerPreference,
 } from "@okouai/api-contracts/contracts/runners";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
-import { db } from "../../lib/db";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
 import { waitUntil } from "../context/wait-until";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort, tapError } from "../utils";
 
 const L = logger("Realtime");
@@ -124,20 +120,21 @@ async function publishChatDatabaseSignalNow(
   topic: string,
   payload: unknown,
 ): Promise<void> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db(),
-    target.orgId,
-    target.userId,
+  // Version-migration fallback: already-loaded App clients can keep the
+  // pre-SharedWorker user-channel subscription for up to two days. Remove the
+  // duplicate publish after the replacement App is live and the client-version
+  // floor excludes pre-#30272 builds; follow-up #30334.
+  const channelNames = [
+    getUserOrgChannelName(target.userId, target.orgId),
+    getUserChannelName(target.userId),
+  ];
+  const client = ablyClient();
+  await Promise.all(
+    channelNames.map(async (channelName) => {
+      await client.channels.get(channelName).publish(topic, payload);
+    }),
   );
-  const channelName = isFeatureEnabled(
-    FeatureSwitchKey.SharedChatDatabase,
-    featureSwitchContext,
-  )
-    ? getUserOrgChannelName(target.userId, target.orgId)
-    : getUserChannelName(target.userId);
-  const channel = ablyClient().channels.get(channelName);
-  await channel.publish(topic, payload);
-  L.debug(`Published "${topic}" to ${channelName}`);
+  L.debug(`Published "${topic}" to ${channelNames.join(", ")}`);
 }
 
 function publishChatDatabaseSignal(
@@ -176,10 +173,10 @@ export async function publishUserPreferenceChangedForUserSafely(
 }
 
 /**
- * Fire the user-level "thread list shape changed" signal. The sidebar
- * subscribes to this topic and reloads the full list on any delivery —
- * payload is intentionally empty because the server is authoritative and
- * the client already has a cheap list endpoint to re-fetch.
+ * Fire the per-user-org "thread list shape changed" signal. The SharedWorker
+ * consumes this topic to invalidate its local thread-event view; the App then
+ * reloads derived thread and indicator state. The payload is intentionally
+ * empty because the server is authoritative.
  */
 export async function publishThreadListChanged(target: {
   readonly userId: string;

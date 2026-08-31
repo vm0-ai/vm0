@@ -460,12 +460,35 @@ export const FetchRequest = Symbol("FetchRequest");
 export const WebSocketTransport = Symbol("WebSocketTransport");
 export const XHRPolling = Symbol("XHRPolling");
 
-/** Fire a server-side publish on every connected Realtime instance. */
+function isSharedDatabaseRealtimeTopic(topic: string): boolean {
+  return (
+    topic === "threadListChanged" ||
+    topic.startsWith("chatThreadMessageCreated:")
+  );
+}
+
+/** Fire a server-side publish using the production topic-to-channel routing. */
 export function triggerAblyEvent(topic: string, data?: unknown): void {
+  const channelPrefix = isSharedDatabaseRealtimeTopic(topic)
+    ? "user-org:"
+    : "user:";
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
       for (const [channelName, channel] of realtime.namedChannels()) {
-        if (channelName.startsWith("user:")) {
+        if (channelName.startsWith(channelPrefix)) {
+          channel.trigger(topic, data);
+        }
+      }
+    }
+  }
+}
+
+/** Fire a chat-database publish on every connected user-org channel. */
+export function triggerChatDatabaseEvent(topic: string, data?: unknown): void {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "connected") {
+      for (const [channelName, channel] of realtime.namedChannels()) {
+        if (channelName.startsWith("user-org:")) {
           channel.trigger(topic, data);
         }
       }
@@ -509,6 +532,7 @@ export function triggerAblyReconnect(): void {
 export function triggerAblyConnectionState(
   state: "connected" | "disconnected" | "suspended",
   options: {
+    readonly channelName?: string;
     readonly code?: number;
     readonly message?: string;
     readonly retryIn?: number;
@@ -517,9 +541,16 @@ export function triggerAblyConnectionState(
 ): void {
   let activeRealtime: Realtime | null = null;
   for (const realtime of realtimeInstances) {
-    if (realtime.connection.state !== "closed") {
-      activeRealtime = realtime;
+    if (realtime.connection.state === "closed") {
+      continue;
     }
+    if (options.channelName) {
+      const channel = realtime.getExistingChannel(options.channelName);
+      if (!channel || channel.state === "initialized") {
+        continue;
+      }
+    }
+    activeRealtime = realtime;
   }
   activeRealtime?.transitionTo(
     state,

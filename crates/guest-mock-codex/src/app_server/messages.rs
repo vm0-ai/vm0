@@ -6,6 +6,72 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 const LARGE_NOTIFICATION_MESSAGE_BYTES: usize = 17 * 1024 * 1024;
+const HISTORICAL_TURN_ID: &str = "00000000-0000-4000-8000-000000000099";
+
+#[derive(Clone, Copy)]
+struct MockTokenUsage {
+    input_tokens: i64,
+    cached_input_tokens: i64,
+    cache_write_input_tokens: i64,
+    output_tokens: i64,
+    reasoning_output_tokens: i64,
+    total_tokens: i64,
+}
+
+impl MockTokenUsage {
+    const fn add(self, other: Self) -> Self {
+        Self {
+            input_tokens: self.input_tokens + other.input_tokens,
+            cached_input_tokens: self.cached_input_tokens + other.cached_input_tokens,
+            cache_write_input_tokens: self.cache_write_input_tokens
+                + other.cache_write_input_tokens,
+            output_tokens: self.output_tokens + other.output_tokens,
+            reasoning_output_tokens: self.reasoning_output_tokens + other.reasoning_output_tokens,
+            total_tokens: self.total_tokens + other.total_tokens,
+        }
+    }
+}
+
+const EMPTY_USAGE: MockTokenUsage = MockTokenUsage {
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    cache_write_input_tokens: 0,
+    output_tokens: 0,
+    reasoning_output_tokens: 0,
+    total_tokens: 0,
+};
+const HISTORICAL_USAGE: MockTokenUsage = MockTokenUsage {
+    input_tokens: 100,
+    cached_input_tokens: 20,
+    cache_write_input_tokens: 5,
+    output_tokens: 50,
+    reasoning_output_tokens: 10,
+    total_tokens: 150,
+};
+const FIRST_RESPONSE_USAGE: MockTokenUsage = MockTokenUsage {
+    input_tokens: 7,
+    cached_input_tokens: 2,
+    cache_write_input_tokens: 1,
+    output_tokens: 11,
+    reasoning_output_tokens: 3,
+    total_tokens: 18,
+};
+const SECOND_RESPONSE_USAGE: MockTokenUsage = MockTokenUsage {
+    input_tokens: 5,
+    cached_input_tokens: 1,
+    cache_write_input_tokens: 2,
+    output_tokens: 13,
+    reasoning_output_tokens: 4,
+    total_tokens: 18,
+};
+const SECONDARY_USAGE: MockTokenUsage = MockTokenUsage {
+    input_tokens: 900,
+    cached_input_tokens: 300,
+    cache_write_input_tokens: 200,
+    output_tokens: 700,
+    reasoning_output_tokens: 400,
+    total_tokens: 1600,
+};
 
 pub(super) fn initialize_response() -> Value {
     json!({
@@ -299,11 +365,25 @@ pub(super) fn turn_completed_notification(thread_id: &str, turn_id: &str) -> Val
         "method": "turn/completed",
         "params": {
             "threadId": thread_id,
-            "turn": completed_turn(turn_id),
-            "usage": {
-                "inputTokens": 7,
-                "outputTokens": 11,
-                "totalTokens": 18
+            "turn": completed_turn(turn_id)
+        }
+    })
+}
+
+pub(super) fn turn_interrupted_notification(thread_id: &str, turn_id: &str) -> Value {
+    json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": thread_id,
+            "turn": {
+                "id": turn_id,
+                "items": [],
+                "itemsView": "notLoaded",
+                "status": "interrupted",
+                "error": null,
+                "startedAt": 1,
+                "completedAt": 3,
+                "durationMs": 2
             }
         }
     })
@@ -325,14 +405,22 @@ pub(super) fn turn_failed_notification(thread_id: &str, turn_id: &str) -> Value 
                 "startedAt": 1,
                 "completedAt": 3,
                 "durationMs": 2
-            },
-            "usage": {
-                "inputTokens": 7,
-                "outputTokens": 0,
-                "totalTokens": 7
             }
         }
     })
+}
+
+pub(super) fn historical_token_usage_notification(thread_id: &str) -> Value {
+    token_usage_updated_notification(
+        thread_id,
+        HISTORICAL_TURN_ID,
+        HISTORICAL_USAGE,
+        HISTORICAL_USAGE,
+    )
+}
+
+pub(super) fn secondary_token_usage_notification(thread_id: &str, turn_id: &str) -> Value {
+    token_usage_updated_notification(thread_id, turn_id, SECONDARY_USAGE, SECONDARY_USAGE)
 }
 
 pub(super) fn warning_notification(thread_id: &str, index: usize) -> Value {
@@ -367,6 +455,22 @@ pub(super) fn write_turn_notifications<W: Write>(
 ) -> io::Result<()> {
     write_turn_start_notifications(output, thread_id, turn_id)?;
     write_turn_completion_notifications(output, thread_id, turn_id, response_text)
+}
+
+pub(super) fn write_resumed_turn_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+    response_text: &str,
+) -> io::Result<()> {
+    write_turn_start_notifications(output, thread_id, turn_id)?;
+    write_turn_completion_notifications_with_baseline(
+        output,
+        thread_id,
+        turn_id,
+        response_text,
+        HISTORICAL_USAGE,
+    )
 }
 
 pub(super) fn write_turn_start_notifications<W: Write>(
@@ -411,11 +515,89 @@ pub(super) fn write_turn_completion_notifications<W: Write>(
     turn_id: &str,
     response_text: &str,
 ) -> io::Result<()> {
+    write_turn_completion_notifications_with_baseline(
+        output,
+        thread_id,
+        turn_id,
+        response_text,
+        EMPTY_USAGE,
+    )
+}
+
+fn write_turn_completion_notifications_with_baseline<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+    response_text: &str,
+    baseline: MockTokenUsage,
+) -> io::Result<()> {
     write_json_line(
         output,
         &assistant_item_completed_notification(thread_id, turn_id, response_text),
     )?;
+    write_turn_usage_notifications_with_baseline(output, thread_id, turn_id, baseline)?;
     write_json_line(output, &turn_completed_notification(thread_id, turn_id))
+}
+
+pub(super) fn write_turn_usage_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+) -> io::Result<()> {
+    write_turn_usage_notifications_with_baseline(output, thread_id, turn_id, EMPTY_USAGE)
+}
+
+fn write_turn_usage_notifications_with_baseline<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+    baseline: MockTokenUsage,
+) -> io::Result<()> {
+    let first_total = baseline.add(FIRST_RESPONSE_USAGE);
+    let first =
+        token_usage_updated_notification(thread_id, turn_id, first_total, FIRST_RESPONSE_USAGE);
+    write_json_line(output, &first)?;
+    write_json_line(output, &first)?;
+    write_json_line(
+        output,
+        &token_usage_updated_notification(
+            thread_id,
+            turn_id,
+            first_total.add(SECOND_RESPONSE_USAGE),
+            SECOND_RESPONSE_USAGE,
+        ),
+    )
+}
+
+fn token_usage_updated_notification(
+    thread_id: &str,
+    turn_id: &str,
+    total: MockTokenUsage,
+    last: MockTokenUsage,
+) -> Value {
+    json!({
+        "method": "thread/tokenUsage/updated",
+        "params": {
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "tokenUsage": {
+                "total": token_usage_breakdown(total),
+                "last": token_usage_breakdown(last),
+                "modelContextWindow": 258400
+            }
+        }
+    })
+}
+
+fn token_usage_breakdown(usage: MockTokenUsage) -> Value {
+    json!({
+        "inputTokens": usage.input_tokens,
+        "cachedInputTokens": usage.cached_input_tokens,
+        "cacheWriteInputTokens": usage.cache_write_input_tokens,
+        "outputTokens": usage.output_tokens,
+        "reasoningOutputTokens": usage.reasoning_output_tokens,
+        "totalTokens": usage.total_tokens
+    })
 }
 
 pub(super) fn server_request(id: Value) -> Value {

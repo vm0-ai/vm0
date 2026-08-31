@@ -38,6 +38,7 @@ import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/wor
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
 import {
@@ -90,6 +91,8 @@ import {
   composerElementFrom,
   findComposerEditor,
 } from "./chat-composer-test-helpers.ts";
+
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
@@ -932,12 +935,14 @@ describe("chat composer models", () => {
     const reconciledTitle = "Reconciled Fast thread";
     const reconciledSelectedModel = createdBody?.model ?? null;
     const reconciledServiceTier = createdBody?.serviceTier ?? null;
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    let reconciliationEventRequests = 0;
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      reconciliationEventRequests++;
       return respond(200, {
         events: [
           {
             id: reconciledCreateEventId,
-            seqId: 1,
+            seqId: (query.sinceSeqId ?? 0) + 1,
             kind: "created",
             chatThreadId: reconciledThreadId,
             agentId: AGENT_ID,
@@ -952,8 +957,16 @@ describe("chat composer models", () => {
         hasMore: false,
       });
     });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
     triggerAblyEvent("threadListChanged");
     await waitFor(() => {
+      expect(reconciliationEventRequests).toBeGreaterThan(0);
       expect(document.title).toBe(`${reconciledTitle} | VM0`);
     });
     await expectComposerModel("GPT 5.6 Sol Fast");
@@ -1572,8 +1585,15 @@ describe("chat composer models", () => {
     await expectComposerModel("GPT 5.6 Sol Fast");
 
     lifecycle.setCodexServiceTier(null);
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
     act(() => {
-      triggerAblyEvent("threadListChanged");
+      changeChatThreadList();
     });
     await expectComposerModel("GPT 5.6 Sol");
     await sendMessageInUI(
@@ -3535,7 +3555,14 @@ describe("chat composer models", () => {
       computerUseHostId: null,
       createdAt: "2026-07-22T09:00:00.000Z",
     };
-    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
+    changeChatThreadList();
     await waitFor(() => {
       expect(
         within(sideThread).getByText("Renamed other agent thread"),

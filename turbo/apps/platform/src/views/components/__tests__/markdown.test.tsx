@@ -215,18 +215,44 @@ describe("assistant markdown", () => {
     expect(screen.queryByTestId("rich-content-loading")).toBeNull();
   });
 
-  it("renders code fences without syntax token decoration", async () => {
-    mockThread("```ts\nconst value = 1;\n```");
+  it("highlights common fenced-code languages with Prism tokens", async () => {
+    mockThread("```js\nconst answer = 42;\n```");
 
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
     });
 
-    const code = await screen.findByText("const value = 1;", {
-      selector: "code",
+    const keyword = await waitFor(() => {
+      const token = document.querySelector<HTMLElement>(
+        ".wmde-markdown code.language-js .token.keyword",
+      );
+      if (!token) {
+        throw new Error("Expected a Prism keyword token");
+      }
+      return token;
     });
-    expect(code).toBeInTheDocument();
+    expect(keyword).toHaveTextContent("const");
+  });
+
+  it("keeps unknown fenced-code languages as plain code", async () => {
+    mockThread("```not-a-real-language\nplain_value = 1\n```");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const code = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        ".wmde-markdown code.language-not-a-real-language",
+      );
+      if (!element) {
+        throw new Error("Expected the unknown-language code block");
+      }
+      return element;
+    });
+    expect(code).toHaveTextContent("plain_value = 1");
     expect(code.querySelector(".token")).toBeNull();
   });
 

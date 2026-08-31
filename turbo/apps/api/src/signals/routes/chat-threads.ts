@@ -1,7 +1,4 @@
-import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-  CHAT_EVENT_SCHEMA_VERSION_HEADER,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed } from "ccstate";
 import {
   chatSearchContract,
@@ -166,7 +163,6 @@ const getChatEventSnapshotInner$ = command(
       chatThreadEventSnapshot({
         threadId: params.threadId,
         userId: auth.userId,
-        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
       }),
       signal,
     );
@@ -192,7 +188,6 @@ const getChatEventSnapshotInner$ = command(
         expiresInSeconds: snapshot.expiresInSeconds,
         lastEventId: snapshot.lastEventId,
         lastSeqId: snapshot.lastSeqId,
-        projection: snapshot.projection,
       },
     };
   },
@@ -218,8 +213,13 @@ const listChatEventRowsInner$ = command(
       chatThreadEventRows({
         threadId: params.threadId,
         userId: auth.userId,
-        projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-        ...query,
+        limit: query.limit,
+        ...(query.sinceEventId === undefined
+          ? { sinceSeqId: 0 as const }
+          : {
+              sinceSeqId: query.sinceSeqId,
+              sinceEventId: query.sinceEventId,
+            }),
       }),
     );
     signal.throwIfAborted();
@@ -244,7 +244,6 @@ const listChatEventRowsInner$ = command(
         rows: [...page.rows],
         cursor: page.cursor,
         hasMore: page.hasMore,
-        projection: page.projection,
       },
     };
   },

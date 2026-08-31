@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.812.4](https://github.com/vm0-ai/vm0/compare/app-v0.812.3...app-v0.812.4) (2026-08-30)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#30366](https://github.com/vm0-ai/vm0/issues/30366)) ([ec658a5](https://github.com/vm0-ai/vm0/commit/ec658a548883f28e75126106528e53c7241a1ade))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/core bumped to 8.603.4
+
+## [0.812.3](https://github.com/vm0-ai/vm0/compare/app-v0.812.2...app-v0.812.3) (2026-08-30)
+
+
+### Bug Fixes
+
+* **platform:** align pinned agent shortcuts with sidebar navigation ([#30338](https://github.com/vm0-ai/vm0/issues/30338)) ([81834c3](https://github.com/vm0-ai/vm0/commit/81834c35a51d4ce5920946acdd3712d4c8c9a21d))
+
+
+### Refactoring
+
+* clear app and connector lint warnings ([#30350](https://github.com/vm0-ai/vm0/issues/30350)) ([36e363e](https://github.com/vm0-ai/vm0/commit/36e363e2bd57c38ba82c541cb80e17c568551364))
+* remove shared chat database feature switch ([#30272](https://github.com/vm0-ai/vm0/issues/30272)) ([2210065](https://github.com/vm0-ai/vm0/commit/221006596f337e8d50882a3c427b2cdd56619d87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.11
+    * @okouai/connectors bumped to 1.210.8
+    * @okouai/core bumped to 8.603.3
+
+## [0.812.2](https://github.com/vm0-ai/vm0/compare/app-v0.812.1...app-v0.812.2) (2026-08-30)
+
+
+### Refactoring
+
+* **platform:** remove markdown preview dependency ([#30330](https://github.com/vm0-ai/vm0/issues/30330)) ([ff2be93](https://github.com/vm0-ai/vm0/commit/ff2be93200242e4ab6b58cc673bac1853c84cc82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.10
+    * @okouai/core bumped to 8.603.2
+
+## [0.812.1](https://github.com/vm0-ai/vm0/compare/app-v0.812.0...app-v0.812.1) (2026-08-30)
+
+
+### Refactoring
+
+* detach chat event cursors from projection ([#30280](https://github.com/vm0-ai/vm0/issues/30280)) ([4af0bb3](https://github.com/vm0-ai/vm0/commit/4af0bb302f2365e03543e7423b6fc7368f392650))
+* route recording progress through setLoop ([#30328](https://github.com/vm0-ai/vm0/issues/30328)) ([812d999](https://github.com/vm0-ai/vm0/commit/812d999884231f83a95149191e936e1d864b8c46))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.9
+    * @okouai/core bumped to 8.603.1
+
 ## [0.812.0](https://github.com/vm0-ai/vm0/compare/app-v0.811.0...app-v0.812.0) (2026-08-30)
 
 

@@ -14,7 +14,7 @@ use api_contracts::generated::{
 };
 
 use crate::constants;
-use guest_common::{log_info, log_warn};
+use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
@@ -26,182 +26,22 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT: usize = 5;
-
-#[derive(Clone, Copy)]
-struct BootstrapAliasSourceEventSpec {
-    family: &'static str,
-    canonical_key: &'static str,
-}
-
-const BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY: [BootstrapAliasSourceEventSpec;
-    BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT] = [
-    BootstrapAliasSourceEventSpec {
-        family: "api_url_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_API_URL_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "guest_agent_tuning_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "guest_agent_tuning_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "guest_agent_tuning_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-    },
-    BootstrapAliasSourceEventSpec {
-        family: "guest_agent_tuning_env_source",
-        canonical_key: guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    },
-];
-
-#[derive(Clone, Copy)]
-enum BootstrapAlias {
-    ApiUrl,
-    StuckToolTimeout,
-    PostResultSigtermGrace,
-    PostResultTotalCap,
-    PostResultSigkillGrace,
-}
-
-#[derive(Clone, Copy)]
-enum BootstrapAliasSource {
-    CanonicalOnly,
-    LegacyOnly,
-    Dual,
-}
-
-impl BootstrapAliasSource {
-    fn label(self) -> &'static str {
-        match self {
-            Self::CanonicalOnly => "canonical-only",
-            Self::LegacyOnly => "legacy-only",
-            Self::Dual => "dual",
-        }
-    }
-}
-
-/// Fixed-size, value-free source evidence captured while resolving bootstrap aliases.
+/// Empty value-free source evidence retained across capture and runtime sink setup.
 ///
-/// The internal slots correspond exactly to the five canonical keys in
-/// `BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY`. Only guest-agent's environment
-/// resolvers can populate them.
+/// All staged bootstrap alias source slots have been retired.
 #[derive(Clone, Default)]
-pub struct BootstrapAliasSourceEvents {
-    api_url: Option<BootstrapAliasSource>,
-    stuck_tool_timeout: Option<BootstrapAliasSource>,
-    post_result_sigterm_grace: Option<BootstrapAliasSource>,
-    post_result_total_cap: Option<BootstrapAliasSource>,
-    post_result_sigkill_grace: Option<BootstrapAliasSource>,
-}
+pub struct BootstrapAliasSourceEvents;
 
 impl BootstrapAliasSourceEvents {
-    fn record(&mut self, alias: BootstrapAlias, source: BootstrapAliasSource) {
-        let slot = match alias {
-            BootstrapAlias::ApiUrl => &mut self.api_url,
-            BootstrapAlias::StuckToolTimeout => &mut self.stuck_tool_timeout,
-            BootstrapAlias::PostResultSigtermGrace => &mut self.post_result_sigterm_grace,
-            BootstrapAlias::PostResultTotalCap => &mut self.post_result_total_cap,
-            BootstrapAlias::PostResultSigkillGrace => &mut self.post_result_sigkill_grace,
-        };
-        *slot = Some(source);
-    }
-
-    fn sources(&self) -> [Option<BootstrapAliasSource>; BOOTSTRAP_ALIAS_SOURCE_EVENT_COUNT] {
-        [
-            self.api_url,
-            self.stuck_tool_timeout,
-            self.post_result_sigterm_grace,
-            self.post_result_total_cap,
-            self.post_result_sigkill_grace,
-        ]
-    }
-
     fn iter(&self) -> impl Iterator<Item = (&'static str, &'static str, &'static str)> + '_ {
-        BOOTSTRAP_ALIAS_SOURCE_EVENT_INVENTORY
-            .into_iter()
-            .zip(self.sources())
-            .filter_map(|(event, source)| {
-                source.map(|source| (event.family, event.canonical_key, source.label()))
-            })
+        std::iter::empty()
     }
 
-    fn emit(&self) {
-        for (family, canonical_key, source) in self.iter() {
-            log_info!(LOG_TAG, "{family} key={canonical_key} source={source}");
-        }
-    }
+    fn emit(&self) {}
 }
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
-}
-
-/// Resolve the Runner-to-Guest Agent API URL at the single process-env capture
-/// boundary. The production Runner writer is canonical-only, while managed
-/// CLI-child exposure remains [`guest_contracts::env::API_URL_ENV`]. Retain this
-/// fail-closed legacy reader until the exact canonical writer production release,
-/// complete legacy-writer service and reusable-sandbox drain, supported rollback
-/// window, and value-free legacy-source-zero gates.
-fn api_url_env_or_empty(events: &mut BootstrapAliasSourceEvents) -> Result<String, String> {
-    let canonical_key = guest_contracts::env::CANONICAL_API_URL_ENV;
-    let legacy_key = guest_contracts::env::API_URL_ENV;
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting API backend URL environment aliases: canonical_key={canonical_key} \
-                 legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(BootstrapAlias::ApiUrl, source);
-    Ok(value)
-}
-
-/// Resolve one Guest Agent timing alias pair at the single process-env capture
-/// boundary. Canonical aliases are reader-only during #28914 Stage 1; the
-/// runner writer and supported local tuning interface remain legacy-only.
-/// Remove the legacy reader only after #28914's existing runner/sandbox drain
-/// and rollback gates close and source telemetry shows zero legacy-only reads.
-fn guest_agent_tuning_env_or_empty(
-    alias: BootstrapAlias,
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-    events: &mut BootstrapAliasSourceEvents,
-) -> Result<String, String> {
-    let canonical = std::env::var(canonical_key).ok();
-    let legacy = std::env::var(legacy_key).ok();
-
-    let (value, source) = match (canonical, legacy) {
-        (None, None) => return Ok(String::new()),
-        (Some(value), None) => (value, BootstrapAliasSource::CanonicalOnly),
-        (None, Some(value)) => (value, BootstrapAliasSource::LegacyOnly),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            (canonical, BootstrapAliasSource::Dual)
-        }
-        (Some(_), Some(_)) => {
-            return Err(format!(
-                "conflicting guest agent tuning environment aliases: \
-                 canonical_key={canonical_key} legacy_key={legacy_key} state=conflict"
-            ));
-        }
-    };
-
-    events.record(alias, source);
-    Ok(value)
 }
 
 /// CLI framework dispatched by the runner via `CLI_AGENT_TYPE`. Unknown
@@ -379,8 +219,8 @@ pub struct GuestConfigRaw {
     pub post_result_sigterm_grace_secs: String,
     pub post_result_total_cap_secs: String,
     pub post_result_sigkill_grace_secs: String,
-    /// Opaque, value-free bootstrap alias source state retained until the
-    /// run-scoped system-log sink is installed.
+    /// Empty bootstrap alias source state retained until the run-scoped
+    /// system-log sink is installed.
     #[doc(hidden)]
     pub bootstrap_alias_sources: BootstrapAliasSourceEvents,
 }
@@ -388,8 +228,7 @@ pub struct GuestConfigRaw {
 impl GuestConfigRaw {
     /// Capture raw startup values from the current process environment.
     ///
-    /// Returns an error when a canonical and legacy bootstrap alias pair
-    /// contains conflicting values.
+    /// Returns an error when the canonical runtime directory cannot be resolved.
     pub fn from_process_env() -> Result<Self, String> {
         let guest_runtime_dir =
             guest_contracts::runtime_paths::guest_runtime_dir_env_from_process_env()
@@ -402,33 +241,17 @@ impl GuestConfigRaw {
     pub(crate) fn from_process_env_with_guest_runtime_dir(
         guest_runtime_dir: Option<PathBuf>,
     ) -> Result<Self, String> {
-        let mut bootstrap_alias_sources = BootstrapAliasSourceEvents::default();
-        let api_url = api_url_env_or_empty(&mut bootstrap_alias_sources)?;
+        let bootstrap_alias_sources = BootstrapAliasSourceEvents;
+        let api_url = env_or_empty(guest_contracts::env::CANONICAL_API_URL_ENV);
 
-        let stuck_tool_timeout_secs = guest_agent_tuning_env_or_empty(
-            BootstrapAlias::StuckToolTimeout,
-            guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-            &mut bootstrap_alias_sources,
-        )?;
-        let post_result_sigterm_grace_secs = guest_agent_tuning_env_or_empty(
-            BootstrapAlias::PostResultSigtermGrace,
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            &mut bootstrap_alias_sources,
-        )?;
-        let post_result_total_cap_secs = guest_agent_tuning_env_or_empty(
-            BootstrapAlias::PostResultTotalCap,
-            guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-            guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
-            &mut bootstrap_alias_sources,
-        )?;
-        let post_result_sigkill_grace_secs = guest_agent_tuning_env_or_empty(
-            BootstrapAlias::PostResultSigkillGrace,
-            guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            &mut bootstrap_alias_sources,
-        )?;
+        let stuck_tool_timeout_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV);
+        let post_result_sigterm_grace_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV);
+        let post_result_total_cap_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV);
+        let post_result_sigkill_grace_secs =
+            env_or_empty(guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV);
 
         let user_env_file = env_or_empty(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV);
         let run_payload_file = env_or_empty(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV);
@@ -500,43 +323,179 @@ impl GuestConfigRaw {
 }
 
 /// Immutable guest-agent startup configuration for a single run.
+///
+/// Fixed bootstrap values are captured by [`GuestConfigRaw`], variable-length
+/// values are loaded from [`guest_contracts::env::RunPayload`], and derived
+/// values are normalized while building this type. The fields preserve the
+/// runner's wire representation where a downstream consumer owns the contract.
 #[derive(Clone)]
 pub struct GuestConfig {
+    /// Stable run identifier from [`guest_contracts::env::RUN_ID_ENV`]. It
+    /// correlates logs, telemetry, API requests, runtime paths, and completion
+    /// state.
     pub run_id: String,
+    /// Backend API base URL from
+    /// [`guest_contracts::env::CANONICAL_API_URL_ENV`]. It is used to build the
+    /// guest-agent HTTP client and the managed CLI runtime configuration.
     pub api_url: String,
+    /// Backend API bearer token from
+    /// [`guest_contracts::env::CANONICAL_API_TOKEN_ENV`]. An empty token
+    /// disables backend API configuration in the guest-agent HTTP client.
     pub api_token: String,
+    /// Runner-assigned sandbox identifier from
+    /// [`guest_contracts::env::CANONICAL_SANDBOX_ID_ENV`]. It is included in
+    /// completion and user-cancellation reports.
     pub sandbox_id: String,
+    /// Wire-format outcome of the runner's sandbox-reuse decision from
+    /// [`guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV`]. `reused`
+    /// means the sandbox was unparked; other values explain why reuse did not
+    /// happen. The value is retained for completion and cancellation reports.
     pub sandbox_reuse_result: String,
+    /// Final wire-format outcome of workspace preparation from
+    /// [`guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV`]. Values
+    /// such as `reused` and `sandboxReused` identify the reuse path, while the
+    /// other values describe why workspace reuse did not happen.
     pub workspace_reuse_result: String,
+    /// User prompt loaded from [`guest_contracts::env::RunPayload`] and passed
+    /// to the selected CLI protocol and active-input runtime.
     pub prompt: String,
+    /// Optional additional system-prompt text from
+    /// [`guest_contracts::env::RunPayload`]. An empty string means no extra
+    /// system prompt; non-empty content is transferred through the selected
+    /// CLI's launch payload or private prompt file.
     pub append_system_prompt: String,
+    /// Optional Vercel protection-bypass secret from
+    /// [`guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV`]. A non-empty
+    /// value is attached to guest-agent API requests as the bypass header.
     pub vercel_bypass: String,
+    /// Optional CLI session or thread identifier from
+    /// [`guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV`]. An empty
+    /// string means that the selected CLI starts without resuming a session.
     pub resume_session_id: String,
+    /// Optional Unix epoch timestamp in milliseconds from
+    /// [`guest_contracts::env::CANONICAL_API_START_TIME_ENV`]. It is retained
+    /// as a string; timing telemetry ignores empty, non-numeric, implausible,
+    /// or seconds-shaped values.
     pub api_start_time: String,
+    /// Optional CLI execution budget materialized from the runner-owned
+    /// second-based value in
+    /// [`guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV`].
+    /// Absence or an empty value is `None`; a present value must be a positive
+    /// `u64` that fits the process `Instant` range. The resulting duration
+    /// bounds CLI execution.
     pub agent_execution_timeout: Option<Duration>,
+    /// Comma-separated base64-encoded secret values from
+    /// [`guest_contracts::env::RunPayload`]. The secret masker decodes these
+    /// values and uses them to redact telemetry and diagnostics; an empty
+    /// string means there are no values to mask.
     pub secret_values: String,
+    /// Comma-separated Claude Code tool names from
+    /// [`guest_contracts::env::RunPayload`] that should be denied. An empty
+    /// string means there is no explicit deny list; the values become repeated
+    /// `--disallowed-tools` arguments.
     pub disallowed_tools: String,
+    /// Comma-separated Claude Code tool names from
+    /// [`guest_contracts::env::RunPayload`] that should be allowed. An empty
+    /// string means there is no explicit allow list; the values become repeated
+    /// `--tools` arguments.
     pub tools: String,
+    /// Opaque raw Claude Code settings payload from
+    /// [`guest_contracts::env::RunPayload`]. An empty string means there is no
+    /// settings override; a non-empty value is passed as `--settings`.
     pub settings: String,
+    /// Whether to launch the mock Claude binary. This is materialized from
+    /// [`guest_contracts::env::USE_MOCK_CLAUDE_ENV`] and is true only for the
+    /// exact string `"true"`.
     pub use_mock_claude: bool,
+    /// Mock Claude executable path from the optional
+    /// [`guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV`] override. An
+    /// absent override selects [`DEFAULT_MOCK_CLAUDE_PATH`]; a present value,
+    /// including an empty string, is preserved.
     pub mock_claude_path: String,
+    /// Captured `CLI_AGENT_TYPE` wire value from
+    /// [`guest_contracts::env::CLI_AGENT_TYPE_ENV`]. This string is preserved,
+    /// including empty or unknown values, alongside the normalized
+    /// [`framework`](Self::framework) field.
     pub cli_agent_type: String,
+    /// Normalized CLI framework derived from `cli_agent_type`. `"claude-code"`
+    /// and an empty value map to [`Framework::ClaudeCode`], `"codex"` maps to
+    /// [`Framework::Codex`], and `"pi"` maps to [`Framework::Pi`]. Unknown
+    /// values emit a warning and also fall back to `ClaudeCode`.
     pub framework: Framework,
+    /// User, model-provider, and connector environment loaded from the private
+    /// JSON file named by
+    /// [`guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV`]. An absent or
+    /// empty file pointer produces an empty map. Runner-owned keys are removed
+    /// before the map is passed to managed CLI children.
     pub user_env: HashMap<String, String>,
+    /// Whether to launch the mock Codex binary. This is materialized from
+    /// [`guest_contracts::env::USE_MOCK_CODEX_ENV`] and is true for exactly
+    /// `"true"` or `"1"`.
     pub use_mock_codex: bool,
+    /// Mock Codex executable path from the optional
+    /// [`guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV`] override. An
+    /// absent override selects [`DEFAULT_MOCK_CODEX_PATH`]; a present value,
+    /// including an empty string, is preserved.
     pub mock_codex_path: String,
+    /// Effective home directory for the managed CLI child. `HOME` from
+    /// `user_env` takes precedence over the captured process `HOME`; missing
+    /// both values is a materialization error.
     pub home_dir: String,
+    /// Effective Claude configuration directory. Production uses the
+    /// canonical generated runner path; debug builds may use a non-empty
+    /// test-only override. Session metadata uses this path to identify Claude
+    /// Code history.
     pub claude_config_dir: String,
+    /// Effective Codex home directory. Production uses the canonical generated
+    /// runner path; debug builds may use a non-empty test-only override. Codex
+    /// setup and session metadata use this path.
     pub codex_home_dir: String,
+    /// Artifact mounts parsed from the camelCase JSON array in
+    /// [`guest_contracts::env::RunPayload`]. Empty input produces an empty
+    /// vector; checkpoint creation uses the entries for artifact snapshots.
     pub artifacts: Vec<ArtifactEnv>,
+    /// Feature flags parsed from the JSON object in
+    /// [`guest_contracts::env::RunPayload`]. Empty input produces an empty map
+    /// keyed by flag name with boolean enabled states.
     pub feature_flags: HashMap<String, bool>,
+    /// JSON object containing API-owned Codex provider and runtime metadata
+    /// from [`guest_contracts::env::RunPayload`]. The value is parsed for
+    /// Codex startup configuration and is otherwise retained in its wire form.
     pub codex_runtime_config: String,
+    /// Serialized Pi launch-config version marker from
+    /// [`guest_contracts::env::PI_LAUNCH_CONFIG_ENV`]. Pi parses this value and
+    /// uses it to create the private launch payload consumed by the Pi child.
     pub pi_launch_config: String,
+    /// JSON object containing non-secret Pi model metadata from
+    /// [`guest_contracts::env::PI_MODEL_CONFIG_ENV`]. It is included in the
+    /// private Pi launch payload.
     pub pi_model_config: String,
+    /// Chat Thread identifier from
+    /// [`guest_contracts::env::PI_SESSION_ID_ENV`] used as Pi's native session
+    /// identifier and included in Pi launch and session-history inputs.
     pub pi_session_id: String,
+    /// Stuck-tool timeout in seconds parsed from
+    /// [`guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV`]. Empty
+    /// or invalid input uses the 300-second compiled default; the CLI loop
+    /// uses this value to terminate a tool call that produces no result.
     pub stuck_tool_timeout_secs: u64,
+    /// Grace period after the CLI reports its final result before the process
+    /// group receives SIGTERM. The value is parsed from
+    /// [`guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV`]
+    /// in seconds; empty, invalid, or over-3600-second input uses the
+    /// 10-second compiled default.
     pub post_result_sigterm_grace: Duration,
+    /// Absolute post-result cleanup cap after the CLI reports its final result.
+    /// The value is parsed from
+    /// [`guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV`] in
+    /// seconds; empty, invalid, or over-3600-second input uses the 120-second
+    /// compiled default.
     pub post_result_total_cap: Duration,
+    /// Grace period after SIGTERM before escalation to SIGKILL when the CLI
+    /// process group does not exit. The value is parsed from
+    /// [`guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV`]
+    /// in seconds; empty, invalid, or over-3600-second input uses the
+    /// 5-second compiled default.
     pub post_result_sigkill_grace: Duration,
 }
 

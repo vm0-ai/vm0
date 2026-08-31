@@ -71,13 +71,19 @@ export async function createSocialKitDownload(
 
 export async function getSocialKitDownload(
   downloadId: string,
+  signal: AbortSignal,
 ): Promise<SocialKitDownloadResponse> {
   const config = await getClientConfig();
   const client = initClient(socialContract, config);
   const result = await client.getDownload({
     headers: {},
     params: { downloadId },
-    fetchOptions: { signal: AbortSignal.timeout(SOCIALKIT_API_TIMEOUT_MS) },
+    fetchOptions: {
+      signal: AbortSignal.any([
+        signal,
+        AbortSignal.timeout(SOCIALKIT_API_TIMEOUT_MS),
+      ]),
+    },
   });
   if (result.status === 200) {
     return result.body;

@@ -35,10 +35,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { foregroundReady$ } from "../../../signals/auth-retry.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 function connectedPersonalCodexProvider(
   overrides: Partial<ModelProviderResponse> = {},
@@ -392,7 +394,9 @@ describe("zero sidebar account menu", () => {
     }
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
       ).toBeTruthy();
       expect(within(accountButton).queryByRole("status")).toBeNull();
     });
@@ -449,7 +453,9 @@ describe("zero sidebar account menu", () => {
     }
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
       ).toBeTruthy();
     });
 
@@ -687,7 +693,9 @@ describe("zero sidebar account menu", () => {
         context.mocks.ably.hasSubscription("billing:changed"),
       ).toBeTruthy();
       expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
       ).toBeTruthy();
       expect(
         context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
@@ -697,7 +705,7 @@ describe("zero sidebar account menu", () => {
     });
 
     let previousIndicatorRequests = indicatorRequests;
-    context.mocks.ably.trigger("threadListChanged");
+    changeChatThreadList();
     await waitFor(() => {
       expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
     });

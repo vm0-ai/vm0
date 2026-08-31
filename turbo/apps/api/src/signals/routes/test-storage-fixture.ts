@@ -3,9 +3,10 @@ import {
   type TestStorageStateActionBody,
 } from "@okouai/api-contracts/contracts/test-storage-fixture";
 import { VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 
 import { conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
@@ -298,6 +299,65 @@ async function downloadStorageState(
   });
 }
 
+async function inspectWritebackState(
+  db: Db,
+  body: StorageStateAction<"inspect-writeback">,
+  signal: AbortSignal,
+) {
+  const [storage] = await db
+    .select({
+      headVersionId: storages.headVersionId,
+      size: storages.size,
+      fileCount: storages.fileCount,
+      updatedAt: storages.updatedAt,
+    })
+    .from(storages)
+    .where(eq(storages.id, body.storageId))
+    .limit(1);
+  signal.throwIfAborted();
+  const [version] = await db
+    .select({
+      archiveSize: storageVersions.archiveSize,
+      size: storageVersions.size,
+      fileCount: storageVersions.fileCount,
+      message: storageVersions.message,
+      createdBy: storageVersions.createdBy,
+      createdAt: storageVersions.createdAt,
+    })
+    .from(storageVersions)
+    .where(
+      and(
+        eq(storageVersions.storageId, body.storageId),
+        eq(storageVersions.id, body.versionId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  const [lineage] = await db
+    .select({ count: count() })
+    .from(storageVersionLineage)
+    .where(
+      and(
+        eq(storageVersionLineage.storageId, body.storageId),
+        eq(storageVersionLineage.versionId, body.versionId),
+        eq(storageVersionLineage.runId, body.runId),
+        eq(storageVersionLineage.parentVersionId, body.parentVersionId),
+      ),
+    );
+  signal.throwIfAborted();
+  return actionOk({
+    writeback: {
+      storage: storage
+        ? { ...storage, updatedAt: storage.updatedAt.toISOString() }
+        : null,
+      version: version
+        ? { ...version, createdAt: version.createdAt.toISOString() }
+        : null,
+      lineageCount: lineage?.count ?? 0,
+    },
+  });
+}
+
 const action$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!isTestEndpointAllowed(get(request$))) {
     return testEndpointNotFoundResponse();
@@ -320,6 +380,9 @@ const action$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
     case "download": {
       return await downloadStorageState(db, bodyResult.data, signal);
+    }
+    case "inspect-writeback": {
+      return await inspectWritebackState(db, bodyResult.data, signal);
     }
   }
 });

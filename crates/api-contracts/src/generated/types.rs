@@ -453,6 +453,172 @@ pub mod webhooks {
             }
         }
 
+        /// DTOs for atomically completing agent runs.
+        pub mod complete {
+            /// Outcome of the sandbox reuse decision.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestSandboxReuseResult {
+                /// An idle sandbox was reused.
+                #[serde(rename = "reused")]
+                Reused,
+                /// Legacy outcome from the removed feature gate.
+                #[serde(rename = "featureDisabled")]
+                FeatureDisabled,
+                /// Legacy outcome for an unavailable reuse identity.
+                #[serde(rename = "noSessionId")]
+                NoSessionId,
+                /// The run had no sandbox reuse key.
+                #[serde(rename = "noReuseKey")]
+                NoReuseKey,
+                /// No matching idle sandbox was available.
+                #[serde(rename = "poolMiss")]
+                PoolMiss,
+                /// The idle sandbox profile did not match.
+                #[serde(rename = "profileMismatch")]
+                ProfileMismatch,
+                /// The idle sandbox device limits did not match.
+                #[serde(rename = "deviceLimitMismatch")]
+                DeviceLimitMismatch,
+                /// The selected idle sandbox could not be unparked.
+                #[serde(rename = "unparkFailed")]
+                UnparkFailed,
+            }
+
+            /// Final outcome of workspace reuse preparation.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestWorkspaceReuseResult {
+                /// A cached workspace was reused.
+                #[serde(rename = "reused")]
+                Reused,
+                /// The workspace remained in a reused sandbox.
+                #[serde(rename = "sandboxReused")]
+                SandboxReused,
+                /// No matching workspace cache was available.
+                #[serde(rename = "cacheMiss")]
+                CacheMiss,
+                /// The run had no workspace reuse key.
+                #[serde(rename = "noReuseKey")]
+                NoReuseKey,
+                /// The cached workspace directory was invalid.
+                #[serde(rename = "invalidWorkingDir")]
+                InvalidWorkingDir,
+                /// The cached workspace was locked by another run.
+                #[serde(rename = "lockBusy")]
+                LockBusy,
+                /// The cached workspace metadata was invalid.
+                #[serde(rename = "invalidMetadata")]
+                InvalidMetadata,
+                /// Workspace reuse was disabled by disk pressure.
+                #[serde(rename = "diskPressure")]
+                DiskPressure,
+                /// Workspace reuse was not configured.
+                #[serde(rename = "notConfigured")]
+                NotConfigured,
+                /// Workspace preparation fell back after sandbox setup.
+                #[serde(rename = "sandboxPrepareFallback")]
+                SandboxPrepareFallback,
+            }
+
+            /// Reason a final checkpoint intentionally omits resumable CLI agent session history.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestCheckpointCliAgentSessionHistoryDisposition {
+                /// The native history exceeded the bounded checkpoint limit.
+                #[serde(rename = "discarded_oversized")]
+                DiscardedOversized,
+                /// The native history was unavailable or unusable.
+                #[serde(rename = "unavailable")]
+                Unavailable,
+            }
+
+            /// Policy used when a final checkpoint artifact root is missing.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestCheckpointArtifactSnapshotMissingRootPolicy {
+                /// Treat a missing artifact root as an error.
+                #[serde(rename = "fail")]
+                Fail,
+                /// Preserve the parent artifact version when the root is missing.
+                #[serde(rename = "preserveParentVersion")]
+                PreserveParentVersion,
+            }
+
+            /// Artifact version captured by a final checkpoint.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct RequestCheckpointArtifactSnapshot {
+                /// User-facing artifact name referenced by the run.
+                pub name: String,
+                /// Artifact version selected for the checkpoint.
+                pub version: String,
+                /// Guest filesystem path where the artifact is mounted.
+                pub mount_path: String,
+                /// Optional policy retained when the artifact mount root is missing.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub missing_root_policy: Option<RequestCheckpointArtifactSnapshotMissingRootPolicy>,
+            }
+
+            /// Volume versions captured by a final checkpoint.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct RequestCheckpointVolumeVersionsSnapshot {
+                /// Volume names mapped to their captured versions.
+                pub versions: std::collections::BTreeMap<String, String>,
+            }
+
+            /// Final checkpoint metadata included with completion.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct RequestCheckpoint {
+                /// CLI agent implementation that produced the session.
+                pub cli_agent_type: String,
+                /// CLI agent session identifier being checkpointed.
+                pub cli_agent_session_id: String,
+                /// Optional SHA-256 hash of uploaded CLI agent session history.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub cli_agent_session_history_hash: Option<String>,
+                /// Optional reason resumable session history was omitted.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub cli_agent_session_history_disposition:
+                    Option<RequestCheckpointCliAgentSessionHistoryDisposition>,
+                /// Optional artifact versions captured by the checkpoint.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub artifact_snapshots: Option<Vec<RequestCheckpointArtifactSnapshot>>,
+                /// Optional volume versions captured by the checkpoint.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub volume_versions_snapshot: Option<RequestCheckpointVolumeVersionsSnapshot>,
+            }
+
+            /// Request body for completing an agent run.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct Request {
+                /// Agent run identifier bound to the sandbox token.
+                pub run_id: String,
+                /// Process exit code reported by the caller.
+                pub exit_code: i32,
+                /// Optional process failure description.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub error: Option<String>,
+                /// Highest contiguous agent event sequence delivered before completion.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub last_event_sequence: Option<u32>,
+                /// Optional sandbox identifier used by the run.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub sandbox_id: Option<String>,
+                /// Optional outcome of the sandbox reuse decision.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub sandbox_reuse_result: Option<RequestSandboxReuseResult>,
+                /// Optional outcome of the workspace reuse decision.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub workspace_reuse_result: Option<RequestWorkspaceReuseResult>,
+                /// Optional active-input delivery receipts recovered during completion.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub active_input_delivery_ids: Option<Vec<String>>,
+                /// Optional final checkpoint persisted atomically with completion.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub checkpoint: Option<RequestCheckpoint>,
+            }
+        }
+
         /// Sandbox storage upload DTOs shared by guest agents and webhook handlers.
         pub mod storages {
             /// File metadata entry used to compute and commit content-addressed storage uploads.

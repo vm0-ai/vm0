@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { chatEventRowSchema } from "./chat-event-rows";
-import {
-  CHAT_EVENT_SCHEMA_VERSION_HEADER,
-  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
-} from "./chat-event-schema-version";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
 import { CHAT_EVENT_TYPES } from "./chat-events";
 import {
   connectorAccountConnectionSchema,
@@ -32,9 +29,6 @@ const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]: z.string(),
 });
-const chatEventSnapshotProjectionSchema = z.enum(
-  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
-);
 const chatEventCursorSchema = z.union([
   z
     .object({
@@ -46,14 +40,12 @@ const chatEventCursorSchema = z.union([
     .object({
       lastEventId: z.string().uuid(),
       lastSeqId: z.number().int().positive(),
-      projection: chatEventSnapshotProjectionSchema,
     })
     .strict(),
 ]);
 const chatEventSnapshotResponseBaseSchema = z.object({
   url: z.string().url(),
   expiresInSeconds: z.number().int().positive(),
-  projection: chatEventSnapshotProjectionSchema,
 });
 const chatEventSnapshotResponseSchema = z.union([
   chatEventSnapshotResponseBaseSchema.extend({
@@ -1838,7 +1830,6 @@ export const chatThreadEventsContract = c.router({
       z.object({
         sinceSeqId: z.coerce.number().int().positive(),
         sinceEventId: z.string().uuid(),
-        sinceProjection: chatEventSnapshotProjectionSchema,
         limit: z.coerce.number().min(1).max(50).default(50),
       }),
     ]),
@@ -1847,7 +1838,6 @@ export const chatThreadEventsContract = c.router({
         rows: z.array(chatEventRowSchema),
         cursor: chatEventCursorSchema,
         hasMore: z.boolean(),
-        projection: chatEventSnapshotProjectionSchema,
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

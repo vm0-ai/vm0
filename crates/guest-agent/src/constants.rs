@@ -46,7 +46,8 @@ pub const ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS: u64 = 5;
 
 /// Workaround for Claude Code bug where WebSearch/WebFetch hang indefinitely.
 /// Kill the CLI process if a network tool hasn't returned a result within
-/// this duration. Override with `VM0_STUCK_TOOL_TIMEOUT_SECS` env var.
+/// this duration. Override with the `OKOU_STUCK_TOOL_TIMEOUT_SECS` bootstrap
+/// environment variable.
 /// See: https://github.com/anthropics/claude-code/issues/11650
 pub const STUCK_TOOL_TIMEOUT_SECS: u64 = 300;
 

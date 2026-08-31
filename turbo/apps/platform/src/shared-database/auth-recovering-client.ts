@@ -8,6 +8,7 @@ import {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
+  SharedDatabaseSubscriptionCallback,
 } from "./bridge.ts";
 import type {
   SharedDatabaseDataKey,
@@ -106,7 +107,7 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
 
   async on(
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void> {
     await this.bridge.on(dataKey, callback, signal);

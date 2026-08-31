@@ -412,7 +412,6 @@ describe("cron snapshot chat events", () => {
     const tailRows = await chat.listThreadEventRows(owner, threadId, {
       lastEventId: parentHead.last_event_id,
       lastSeqId: parentHead.last_seq_id,
-      projection: "tool-redacted",
     });
     await projectChatEventSearch(threadId);
 
@@ -844,7 +843,6 @@ describe("cron snapshot chat events", () => {
     const tail = await chat.listThreadEventRows(owner, threadId, {
       lastEventId: head.terminal_event_id ?? head.last_event_id,
       lastSeqId: head.terminal_seq_id ?? coveredSeqId,
-      projection: "tool-redacted",
     });
     expect(tail.length).toBeGreaterThan(0);
     let previousSeqId = coveredSeqId;

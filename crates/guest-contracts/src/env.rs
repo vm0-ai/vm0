@@ -16,24 +16,21 @@
 //! selected runner-owned keys may cross the local user-env boundary as
 //! guest-agent timing overrides.
 
-/// Legacy backend API base URL spelling retained by compatibility readers.
+/// Legacy backend API URL spelling retained outside Guest root capture.
 ///
-/// The production Runner and the guest-agent's curated managed CLI-child
-/// environment do not emit this alias.
+/// Guest root capture reads only [`CANONICAL_API_URL_ENV`]. This spelling
+/// remains an independent compatibility input for the Runner operator and the
+/// managed CLI reader, and remains named by user-environment filtering and
+/// negative coverage. The production Runner and the guest-agent's curated
+/// managed CLI-child environment do not emit this alias.
 pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
-/// Canonical backend API URL spelling written by the production Runner and
-/// exposed to managed CLI children.
+/// Canonical backend API URL spelling written by the production Runner, read at
+/// Guest root bootstrap, and exposed to managed CLI children.
 ///
-/// The Guest Agent bootstrap reader and Runner operator parser reuse this exact
-/// spelling but have independent rollout floors. On the Runner-to-Guest surface,
-/// the Runner emits only this canonical alias, while the Guest Agent retains
-/// [`API_URL_ENV`] as a rollback reader fallback. On the Guest-to-managed-CLI
-/// surface, the curated child environment emits only this canonical alias.
-/// Remove the legacy bootstrap reader only after the exact canonical writer
-/// production release, complete legacy-writer service and reusable-sandbox
-/// drain, supported rollback window, and value-free legacy-source-zero gates in
-/// #28914. Runner operator input retains its own independent support floor.
+/// The production Runner emits only this spelling and Guest root capture reads
+/// it without consulting [`API_URL_ENV`]. The Runner operator and downstream
+/// managed CLI reader retain independent compatibility contracts.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
@@ -359,7 +356,8 @@ pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 
 /// Canonical stuck-tool timeout bootstrap output written by the runner.
 ///
-/// Guest readers retain [`STUCK_TOOL_TIMEOUT_SECS_ENV`] as a rollback fallback.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "OKOU_STUCK_TOOL_TIMEOUT_SECS";
 
 /// Retained local input for the Guest Agent SIGTERM grace period in seconds
@@ -373,8 +371,8 @@ pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GR
 
 /// Canonical post-result SIGTERM grace bootstrap output written by the runner.
 ///
-/// Guest readers retain [`POST_RESULT_SIGTERM_GRACE_SECS_ENV`] as a rollback
-/// fallback.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGTERM_GRACE_SECS";
 
@@ -390,8 +388,8 @@ pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS
 
 /// Canonical post-result total-cap bootstrap output written by the runner.
 ///
-/// Guest readers retain [`POST_RESULT_TOTAL_CAP_SECS_ENV`] as a rollback
-/// fallback.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "OKOU_POST_RESULT_TOTAL_CAP_SECS";
 
 /// Retained local input for the Guest Agent grace period in seconds before
@@ -405,8 +403,8 @@ pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GR
 
 /// Canonical post-result SIGKILL grace bootstrap output written by the runner.
 ///
-/// Guest readers retain [`POST_RESULT_SIGKILL_GRACE_SECS_ENV`] as a rollback
-/// fallback.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGKILL_GRACE_SECS";
 

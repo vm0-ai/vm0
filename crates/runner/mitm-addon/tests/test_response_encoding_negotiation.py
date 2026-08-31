@@ -51,6 +51,26 @@ _BROWSER_USER_AGENT = (
             id="drops-safe-q-zero",
         ),
         pytest.param(
+            [("Accept-Encoding", "gzip;q=1., zstd")],
+            ["gzip;q=1."],
+            id="accepts-q-one-zero-digit-fraction",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=0., gzip;q=1, zstd")],
+            ["identity"],
+            id="rejects-q-zero-zero-digit-fraction",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=0.5, identity;q=0., zstd")],
+            ["gzip;q=0.5, identity;q=0"],
+            id="preserves-identity-zero-digit-fraction-rejection",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip, *;q=0., zstd")],
+            ["gzip, identity;q=0"],
+            id="preserves-wildcard-zero-digit-fraction-rejection",
+        ),
+        pytest.param(
             [("Accept-Encoding", "gzip, identity;q=0, zstd")],
             ["gzip, identity;q=0"],
             id="preserves-explicit-identity-rejection-with-safe-coding",

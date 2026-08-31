@@ -19,22 +19,24 @@ ruby -e '
   desktop_text = File.read(ARGV[0])
   release_text = File.read(ARGV[1])
 
+  canonical_signing_identity = "OKOU_DESKTOP_SIGNING_IDENTITY"
   canonical_writer_counts = {
     "OKOU_DESKTOP_PRODUCT" => [8, 2],
     "OKOU_DESKTOP_PLATFORM_URL" => [11, 2],
+    canonical_signing_identity => [0, 5],
   }
   canonical_writer_counts.each do |name, expected_counts|
     actual_counts = [desktop_text.scan(name).length, release_text.scan(name).length]
-    raise "Desktop workflows must use the complete canonical product/platform writer surface" unless actual_counts == expected_counts
+    raise "Desktop workflows must use the complete canonical environment writer surface" unless actual_counts == expected_counts
   end
   legacy_prefix = "VM0_"
-  legacy_names = ["DESKTOP_PRODUCT", "DESKTOP_PLATFORM_URL"].map do |suffix|
+  legacy_names = ["DESKTOP_PRODUCT", "DESKTOP_PLATFORM_URL", "DESKTOP_SIGNING_IDENTITY"].map do |suffix|
     legacy_prefix + suffix
   end
   legacy_writer_present = legacy_names.any? do |name|
     desktop_text.include?(name) || release_text.include?(name)
   end
-  raise "Desktop workflows must not use legacy product/platform writers" if legacy_writer_present
+  raise "Desktop workflows must not use legacy environment writers" if legacy_writer_present
 
   detector = desktop.fetch("detect-desktop-version")
   build = desktop.fetch("build-macos")
@@ -73,6 +75,8 @@ ruby -e '
   raise "canonical artifact must upload the Okou archive" unless artifact_upload.include?("okou-app.tar.gz")
 
   promote = release.fetch("promote-desktop-release")
+  expected_signing_identity = "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)"
+  raise "Desktop promotion must define the canonical signing identity" unless promote.fetch("env").fetch(canonical_signing_identity) == expected_signing_identity
   raise "Desktop promotion must use production environment" unless promote.fetch("environment") == "production"
   checkout = promote.fetch("steps").find { |step| step["uses"].to_s.start_with?("actions/checkout@") }
   raise "Desktop promotion must check out release_target" unless checkout.fetch("with").fetch("ref") == ARGV[4]

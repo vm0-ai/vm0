@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.812.0",
+  "version": "0.812.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +16,7 @@
     "lint:build-config": "node --test scripts/check-production-minification.node.mjs && tsx --test scripts/check-single-bundle.node.ts",
     "lint:localized-ui": "node --test scripts/check-localized-ui.node.mjs && node scripts/check-localized-ui.mjs",
     "lint:static-assets": "node scripts/check-static-assets.mjs",
-    "lint": "pnpm lint:static-assets && pnpm lint:emoji-data && pnpm lint:localized-ui && pnpm lint:build-config && pnpm i18n:check && oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "lint": "pnpm lint:static-assets && pnpm lint:emoji-data && pnpm lint:localized-ui && pnpm lint:build-config && pnpm i18n:check && oxlint --deny-warnings && oxlint --type-aware -c ../../.oxlintrc.typeaware.json --deny-warnings && eslint . --max-warnings 0",
     "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit"
   },
   "dependencies": {
@@ -50,7 +50,6 @@
     "@tiptap/markdown": "3.21.0",
     "@tiptap/pm": "3.21.0",
     "@tiptap/react": "3.21.0",
-    "@uiw/react-markdown-preview": "^5.1.5",
     "ably": "^2.21.0",
     "ccstate": "^5.4.0",
     "ccstate-react": "^5.4.0",
@@ -69,6 +68,7 @@
     "rehype-attr": "^4.0.2",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-ignore": "^2.0.3",
+    "rehype-prism-plus": "2.0.2",
     "rehype-raw": "^7.0.0",
     "rehype-rewrite": "^4.0.4",
     "rehype-slug": "^6.0.0",
@@ -103,7 +103,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "unicode-emoji-json": "^0.9.0",
-    "typescript-eslint": "^8.66.0",
+    "typescript-eslint": "^8.67.0",
     "vite": "^8.0.16",
     "vitest": "^4.1.10"
   }

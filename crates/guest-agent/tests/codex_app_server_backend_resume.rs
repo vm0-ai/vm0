@@ -24,7 +24,7 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
             common::CodexAppServerEnvConfig {
                 run_id: "codex-app-server-backend-resume-test",
                 prompt: "drive the app-server resume backend",
-                scenario: Some("runtime-turn-complete"),
+                scenario: Some("runtime-turn-usage-resume-replay"),
                 resume_session_id: Some(resume_thread_id),
             },
         )?;
@@ -57,6 +57,11 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
         events[0].get("thread_id").and_then(Value::as_str),
         Some(canonical_resume_thread_id)
     );
+    let completed = events
+        .iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("turn.completed"))
+        .ok_or("missing turn.completed event")?;
+    assert_eq!(completed["usage"], common::expected_codex_turn_usage());
 
     let stored_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert_eq!(stored_id, canonical_resume_thread_id);

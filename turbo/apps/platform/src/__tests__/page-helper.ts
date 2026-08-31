@@ -165,14 +165,12 @@ export async function setupBootstrap(
     setFeatureSwitchCacheForTest$,
     cachedFeatureSwitches,
   );
-  if (cachedFeatureSwitches[FeatureSwitchKey.SharedChatDatabase]) {
-    new SharedWorkerTestBootstrap(
-      options.context.store,
-      options.context.workerStore,
-      options.context.signal,
-      options.afterSharedDatabaseWorkerHeartbeat,
-    );
-  }
+  new SharedWorkerTestBootstrap(
+    options.context.store,
+    options.context.workerStore,
+    options.context.signal,
+    options.afterSharedDatabaseWorkerHeartbeat,
+  );
 
   mockUser(
     options.user !== undefined

@@ -54,6 +54,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function mockChatEventCursorId(seqId: number): string {
+  const suffix = seqId.toString(16).padStart(12, "0").slice(-12);
+  return `00000000-0000-4000-8000-${suffix}`;
+}
+
 async function negotiatedChatEventHeaders(
   request: Request,
 ): Promise<Record<string, string>> {
@@ -523,9 +528,30 @@ async function mockChatThread(
         .filter((row) => {
           return typeof row.seqId === "number" && row.seqId > sinceSeqId;
         });
+      const lastRow = rows.at(-1);
+      const lastSeqId =
+        lastRow !== undefined && typeof lastRow.seqId === "number"
+          ? lastRow.seqId
+          : null;
+      const cursor =
+        lastSeqId !== null
+          ? {
+              lastEventId: mockChatEventCursorId(lastSeqId),
+              lastSeqId,
+            }
+          : sinceEventId === null
+            ? { lastEventId: null, lastSeqId: 0 }
+            : {
+                lastEventId: sinceEventId,
+                lastSeqId: sinceSeqId,
+              };
       await route.fulfill({
         headers: await negotiatedChatEventHeaders(route.request()),
-        json: { rows },
+        json: {
+          rows,
+          cursor,
+          hasMore: false,
+        },
       });
     },
   );

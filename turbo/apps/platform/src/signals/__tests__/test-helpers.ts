@@ -1,9 +1,5 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-  type ChatEventCursor,
-  type ChatEventSnapshotProjection,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { createStore, type Store } from "ccstate";
 import { afterEach, beforeAll } from "vitest";
 import { i18n, initializeI18n } from "../../i18n/index.ts";
@@ -32,21 +28,16 @@ export function chatEventRowsResponse(
   query: {
     readonly sinceSeqId: number;
     readonly sinceEventId?: string;
-    readonly sinceProjection?: ChatEventSnapshotProjection;
   },
   options: {
     readonly cursor?: ChatEventCursor;
     readonly hasMore?: boolean;
-    readonly projection?: ChatEventSnapshotProjection;
   } = {},
 ): {
   readonly rows: ChatEventRow[];
   readonly cursor: ChatEventCursor;
   readonly hasMore: boolean;
-  readonly projection: ChatEventSnapshotProjection;
 } {
-  const projection =
-    options.projection ?? CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION;
   const lastRow = rows.at(-1);
   let cursor: ChatEventCursor;
   if (options.cursor !== undefined) {
@@ -57,16 +48,11 @@ export function chatEventRowsResponse(
       // cursors are UUIDs. Normalize only the mock cursor boundary.
       lastEventId: testCursorEventId(lastRow),
       lastSeqId: lastRow.seqId,
-      projection,
     };
   } else if (query.sinceEventId !== undefined) {
-    if (query.sinceProjection === undefined) {
-      throw new Error("Current Chat Event row cursors require a projection");
-    }
     cursor = {
       lastEventId: query.sinceEventId,
       lastSeqId: query.sinceSeqId,
-      projection: query.sinceProjection,
     };
   } else {
     cursor = { lastEventId: null, lastSeqId: 0 };
@@ -75,7 +61,6 @@ export function chatEventRowsResponse(
     rows: [...rows],
     cursor,
     hasMore: options.hasMore ?? false,
-    projection,
   };
 }
 

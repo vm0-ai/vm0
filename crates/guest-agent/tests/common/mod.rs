@@ -21,7 +21,7 @@ pub(crate) mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
-use serde_json::Value;
+use serde_json::{Value, json};
 use shell_quote::quote_shell_arg;
 use std::collections::HashMap;
 use std::ffi::{CString, OsStr};
@@ -72,6 +72,10 @@ pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session
 pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
+pub const MOCK_CODEX_ACTIVE_TURN_READY_FILE: &str = ".vm0-mock-codex-active-turn-ready";
+pub const MOCK_CODEX_ACTIVE_TURN_READY_EVENT: &str = "vm0_mock_codex_active_turn_ready";
+pub const MOCK_CODEX_TURN_INTERRUPT_READY_FILE: &str = ".vm0-mock-codex-turn-interrupt-ready";
+pub const MOCK_CODEX_TURN_INTERRUPT_READY_EVENT: &str = "vm0_mock_codex_turn_interrupt_ready";
 pub const MOCK_POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
 pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
 pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
@@ -1274,6 +1278,17 @@ pub fn read_codex_session_history_events_for_runtime(
         .lines()
         .map(|line| serde_json::from_str(line).map_err(Into::into))
         .collect()
+}
+
+pub fn expected_codex_turn_usage() -> Value {
+    json!({
+        "input_tokens": 12,
+        "cached_input_tokens": 3,
+        "cache_write_input_tokens": 3,
+        "output_tokens": 24,
+        "reasoning_output_tokens": 7,
+        "total_tokens": 36
+    })
 }
 
 /// Configure the process environment for one mock-Claude CLI integration-test

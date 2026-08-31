@@ -1,7 +1,6 @@
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
@@ -57,7 +56,6 @@ export async function readProjectedChatEvents(
     cursor = {
       lastEventId: args.sinceEventId,
       lastSeqId: args.sinceSeqId,
-      projection: CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
     };
   }
 
@@ -79,7 +77,6 @@ export async function readProjectedChatEvents(
             : {
                 sinceSeqId: cursor.lastSeqId,
                 sinceEventId: cursor.lastEventId,
-                sinceProjection: cursor.projection,
                 limit,
               },
       }),

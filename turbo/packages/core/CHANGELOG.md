@@ -1,5 +1,46 @@
 # Changelog
 
+## [8.603.4](https://github.com/vm0-ai/vm0/compare/core-v8.603.3...core-v8.603.4) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.12
+
+## [8.603.3](https://github.com/vm0-ai/vm0/compare/core-v8.603.2...core-v8.603.3) (2026-08-30)
+
+
+### Refactoring
+
+* remove shared chat database feature switch ([#30272](https://github.com/vm0-ai/vm0/issues/30272)) ([2210065](https://github.com/vm0-ai/vm0/commit/221006596f337e8d50882a3c427b2cdd56619d87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.11
+
+## [8.603.2](https://github.com/vm0-ai/vm0/compare/core-v8.603.1...core-v8.603.2) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.10
+
+## [8.603.1](https://github.com/vm0-ai/vm0/compare/core-v8.603.0...core-v8.603.1) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.9
+
 ## [8.603.0](https://github.com/vm0-ai/vm0/compare/core-v8.602.0...core-v8.603.0) (2026-08-30)
 
 

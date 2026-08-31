@@ -20,7 +20,6 @@ import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
-  type ChatEventSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -43,7 +42,6 @@ type ZeroChatEventSnapshotResult =
       readonly url: string;
       readonly lastEventId: string | null;
       readonly lastSeqId: number;
-      readonly projection: ChatEventSnapshotProjection;
     }
   | { readonly kind: "missing" };
 
@@ -274,7 +272,6 @@ export async function getChatEventSnapshot(options: {
       url: result.body.url,
       lastEventId: result.body.lastEventId,
       lastSeqId: result.body.lastSeqId,
-      projection: result.body.projection,
     };
   }
   if (result.status === 404) {
@@ -292,7 +289,6 @@ export async function listChatEventRows(
     | {
         readonly sinceEventId: string;
         readonly sinceSeqId: number;
-        readonly sinceProjection: ChatEventSnapshotProjection;
       }
   ),
 ): Promise<ZeroChatEventRowsPage> {
@@ -307,7 +303,6 @@ export async function listChatEventRows(
         : {
             sinceSeqId: options.sinceSeqId,
             sinceEventId: options.sinceEventId,
-            sinceProjection: options.sinceProjection,
             limit: options.limit,
           },
   });

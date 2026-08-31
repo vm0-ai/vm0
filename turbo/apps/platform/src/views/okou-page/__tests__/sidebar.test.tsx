@@ -58,6 +58,7 @@ import {
 } from "../../../signals/okou-page/sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
@@ -85,6 +86,7 @@ const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 const WORKFLOW_ID = "d0000000-0000-4000-a000-000000000001";
 const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 interface SidebarThread {
   readonly id: string;
@@ -679,6 +681,64 @@ describe("zero sidebar", () => {
         "Running",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("refreshes rendered unread indicators from shared thread invalidations", async () => {
+    prepareAgents();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
+    ]);
+    let hasUnread = false;
+    let indicatorRequests = 0;
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      indicatorRequests += 1;
+      return respond(200, {
+        agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
+        threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
+      });
+    });
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: hasUnread
+          ? [
+              {
+                threadId: EXISTING_THREAD_ID,
+                unreadAt: "2026-03-10T00:05:00Z",
+              },
+            ]
+          : [],
+      });
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const nav = await waitFor(() => {
+      const current = mobileSidebar();
+      expect(within(current).getByText("Zero")).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+      return current;
+    });
+    const agentRow = agentRowByName(nav, "Zero");
+    const threadRow = threadRowByTitle("Remote unread conversation");
+    await waitFor(() => {
+      expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
+      expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
+      expect(indicatorRequests).toBeGreaterThan(0);
+    });
+
+    const requestsBeforeInvalidation = indicatorRequests;
+    hasUnread = true;
+    changeChatThreadList();
+
+    await waitFor(() => {
+      expect(indicatorRequests).toBeGreaterThan(requestsBeforeInvalidation);
+      expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
+      expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
+    });
   });
 
   it("keeps the sidebar responsive when a draft membership request rejects", async () => {
@@ -2563,7 +2623,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps the chat list owner without carrying rows across agent scopes", async () => {
+  it("keeps the chat list owner when switching to a pinned agent chat", async () => {
     prepareAgents();
     const supportUnreadGate = context.mocks.deferred<void>();
     context.mocks.data.userPreferences({
@@ -2638,7 +2698,7 @@ describe("zero sidebar", () => {
     });
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${INCIDENT_THREAD_ID}`);
+      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
       expect(
         within(sidebar()).queryByText("Research kickoff"),
       ).not.toBeInTheDocument();
@@ -2654,7 +2714,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("falls back to the pinned agent chat when the next pinned agent has no thread", async () => {
+  it("opens the pinned agent chat even when the next agent has a thread", async () => {
     prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
@@ -2666,7 +2726,14 @@ describe("zero sidebar", () => {
         agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
       },
     );
-    mockSidebarThreadStory([researchThread]);
+    const supportThread = createThread(
+      INCIDENT_THREAD_ID,
+      "Support escalation",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      },
+    );
+    mockSidebarThreadStory([researchThread, supportThread]);
 
     setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
 

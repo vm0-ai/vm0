@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.38.126](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.125...desktop-v0.38.126) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.12
+
+## [0.38.125](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.124...desktop-v0.38.125) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.11
+
+## [0.38.124](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.123...desktop-v0.38.124) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.10
+
+## [0.38.123](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.122...desktop-v0.38.123) (2026-08-30)
+
+
+### Refactoring
+
+* **desktop:** retire notarization API legacy aliases ([#30315](https://github.com/vm0-ai/vm0/issues/30315)) ([8ba2d24](https://github.com/vm0-ai/vm0/commit/8ba2d24dc54d0d359c9efdd1e23a7e4a10ab8532))
+* **desktop:** retire signing identity legacy alias ([#30317](https://github.com/vm0-ai/vm0/issues/30317)) ([45b8896](https://github.com/vm0-ai/vm0/commit/45b88962c223c65f8cc650d19276db60198070e7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.9
+
 ## [0.38.122](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.121...desktop-v0.38.122) (2026-08-30)
 
 

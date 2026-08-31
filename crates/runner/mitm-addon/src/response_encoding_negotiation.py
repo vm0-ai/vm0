@@ -14,7 +14,7 @@ _STREAM_DECODABLE_ENCODINGS = body_decoding.stream_decodable_content_encodings()
 _INVALID_Q_VALUE = Decimal(-1)
 _MIN_Q_VALUE = Decimal(0)
 _MAX_Q_VALUE = Decimal(1)
-_Q_VALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{1,3})?|1(?:\.0{1,3})?)")
+_Q_VALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)")
 _HTTP_OWS_CHARS = " \t"
 
 

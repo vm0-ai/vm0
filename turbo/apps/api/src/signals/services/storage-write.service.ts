@@ -7,9 +7,9 @@ import { and, eq } from "drizzle-orm";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
-import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
-import type { AuthContext } from "../../types/auth";
+import type { Tx } from "../../lib/db-types";
+import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   downloadManifest,
@@ -19,13 +19,12 @@ import {
   type S3ObjectHead,
   verifyS3FilesExist,
 } from "../external/s3";
-import { tapError } from "../utils";
 import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
 
-const L = logger("storage-write");
+const ACTIVE_SANDBOX_STORAGE_RUN_STATUSES = ["pending", "running"] as const;
 
 interface StorageChanges {
   readonly deleted?: readonly string[];
@@ -40,7 +39,7 @@ interface PrepareStorageUploadInput {
 }
 
 interface PrepareStorageInput extends PrepareStorageUploadInput {
-  readonly auth: AuthContext;
+  readonly auth: SandboxAuth;
   readonly storageId: string;
 }
 
@@ -57,16 +56,22 @@ interface CommitStorageUploadInput {
 }
 
 interface CommitStorageInput extends CommitStorageUploadInput {
-  readonly auth: AuthContext;
+  readonly auth: SandboxAuth;
   readonly storageId: string;
 }
 
 interface CommitStorageForStorageInput extends CommitStorageUploadInput {
   readonly storageId: string;
+  readonly sandboxAuth?: SandboxAuth;
 }
 
 type StorageRow = typeof storages.$inferSelect;
 type StorageVersionRow = typeof storageVersions.$inferSelect;
+
+interface MountedWritebackStorage {
+  readonly runStatus: typeof agentRuns.$inferSelect.status;
+  readonly storage: StorageRow;
+}
 
 function storageRowSelection() {
   return {
@@ -169,22 +174,22 @@ function storageServiceNotConfigured(): StorageErrorResponse {
 async function findMountedWritebackStorage(
   args: {
     readonly db: Db;
-    readonly auth: AuthContext;
+    readonly auth: SandboxAuth;
     readonly storageId: string;
   },
   signal: AbortSignal,
-): Promise<StorageRow | StorageErrorResponse> {
-  if (!hasRunId(args.auth)) {
-    return notFound("Writeback storage not found");
-  }
-
+): Promise<MountedWritebackStorage | StorageErrorResponse> {
   const [run] = await args.db
-    .select({ storageMounts: agentRuns.storageMounts })
+    .select({
+      status: agentRuns.status,
+      storageMounts: agentRuns.storageMounts,
+    })
     .from(agentRuns)
     .where(
       and(
         eq(agentRuns.id, args.auth.runId),
         eq(agentRuns.userId, args.auth.userId),
+        eq(agentRuns.orgId, args.auth.orgId),
       ),
     )
     .limit(1);
@@ -215,13 +220,72 @@ async function findMountedWritebackStorage(
     .limit(1);
   signal.throwIfAborted();
 
-  return storage ?? notFound("Writeback storage not found");
+  return storage
+    ? { runStatus: run.status, storage }
+    : notFound("Writeback storage not found");
 }
 
-function hasRunId(auth: AuthContext): auth is AuthContext & {
-  readonly runId: string;
-} {
-  return "runId" in auth && typeof auth.runId === "string";
+async function lockMountedWritebackStorage(
+  args: {
+    readonly tx: Tx;
+    readonly auth: SandboxAuth;
+    readonly storageId: string;
+  },
+  signal: AbortSignal,
+): Promise<MountedWritebackStorage | StorageErrorResponse> {
+  const [run] = await args.tx
+    .select({
+      status: agentRuns.status,
+      storageMounts: agentRuns.storageMounts,
+    })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, args.auth.runId),
+        eq(agentRuns.userId, args.auth.userId),
+        eq(agentRuns.orgId, args.auth.orgId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (!run) {
+    return notFound("Agent run not found");
+  }
+
+  const mount = run.storageMounts?.find((entry) => {
+    return entry.storageId === args.storageId && entry.writeback === true;
+  });
+  if (!mount) {
+    return notFound("Writeback storage not found");
+  }
+
+  const [storage] = await args.tx
+    .select(storageRowSelection())
+    .from(storages)
+    .where(
+      and(
+        eq(storages.id, mount.storageId),
+        eq(storages.orgId, mount.orgId),
+        eq(storages.userId, mount.userId),
+        eq(storages.name, mount.name),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  return storage
+    ? { runStatus: run.status, storage }
+    : notFound("Writeback storage not found");
+}
+
+function sandboxStorageRunIsActive(
+  status: typeof agentRuns.$inferSelect.status,
+): boolean {
+  return ACTIVE_SANDBOX_STORAGE_RUN_STATUSES.some((activeStatus) => {
+    return status === activeStatus;
+  });
 }
 
 function mergeWithBaseVersion(
@@ -319,24 +383,7 @@ async function resolveStorageForPrepare(
     readonly input: PrepareStorageInput;
   },
   signal: AbortSignal,
-): Promise<StorageRow | StorageErrorResponse> {
-  return await findMountedWritebackStorage(
-    {
-      db: args.db,
-      auth: args.input.auth,
-      storageId: args.input.storageId,
-    },
-    signal,
-  );
-}
-
-async function resolveStorageForCommit(
-  args: {
-    readonly db: Db;
-    readonly input: CommitStorageInput;
-  },
-  signal: AbortSignal,
-): Promise<StorageRow | StorageErrorResponse> {
+): Promise<MountedWritebackStorage | StorageErrorResponse> {
   return await findMountedWritebackStorage(
     {
       db: args.db,
@@ -543,162 +590,85 @@ function verifyUploadedStorageFiles(
   });
 }
 
-function commitExistingStorageVersion(
-  args: {
-    readonly db: Db;
-    readonly bucket: string;
-    readonly storage: StorageRow;
-    readonly version: StorageVersionRow;
-    readonly input: CommitStorageUploadInput;
-  },
-  signal: AbortSignal,
-): Computed<Promise<CommitStorageResponse>> {
-  return computed(async (get): Promise<CommitStorageResponse> => {
-    const explicitEmptyVersion = args.version.fileCount === 0;
-    const verification = explicitEmptyVersion
-      ? null
-      : await get(
-          verifyUploadedStorageFiles(
-            {
-              bucket: args.bucket,
-              s3Key: args.version.s3Key,
-              fileCount: args.version.fileCount,
-            },
-            signal,
-          ),
-        );
-    signal.throwIfAborted();
-
-    if (verification && verification.kind !== "verified") {
-      return s3FilesMissingConflict();
-    }
-
-    const verifiedArchiveSize =
-      verification?.kind === "verified" ? verification.archiveSize : undefined;
-    const archiveSizeChanged =
-      verifiedArchiveSize !== undefined &&
-      args.version.archiveSize !== verifiedArchiveSize;
-    const headChanged = args.storage.headVersionId !== args.input.versionId;
-    if (archiveSizeChanged || headChanged) {
-      await args.db.transaction(async (tx) => {
-        if (archiveSizeChanged) {
-          await tx
-            .update(storageVersions)
-            .set({ archiveSize: verifiedArchiveSize })
-            .where(
-              and(
-                eq(storageVersions.id, args.version.id),
-                eq(storageVersions.storageId, args.storage.id),
-              ),
-            );
-        }
-        if (headChanged) {
-          await tx
-            .update(storages)
-            .set({
-              headVersionId: args.input.versionId,
-              updatedAt: nowDate(),
-            })
-            .where(eq(storages.id, args.storage.id));
-        }
-      });
-      signal.throwIfAborted();
-    }
-
-    return {
-      status: 200,
-      body: {
-        success: true,
-        versionId: args.input.versionId,
-        storageName: args.storage.name,
-        size: Number(args.version.size),
-        fileCount: args.version.fileCount,
-        deduplicated: true,
-      },
-    };
-  });
-}
-
-async function insertStorageVersionAndUpdateHead(args: {
-  readonly db: Db;
-  readonly storageId: string;
-  readonly s3Key: string;
-  readonly input: CommitStorageUploadInput;
-  readonly size: number;
+interface VerifiedStorageCommit {
   readonly archiveSize: number;
-  readonly fileCount: number;
-}): Promise<void> {
-  await args.db.transaction(async (tx) => {
-    const [insertedVersion] = await tx
-      .insert(storageVersions)
-      .values({
-        id: args.input.versionId,
-        storageId: args.storageId,
-        s3Key: args.s3Key,
-        size: args.size,
-        archiveSize: args.archiveSize,
-        fileCount: args.fileCount,
-        message: args.input.message ?? null,
-        createdBy: args.input.runId ? "agent" : "user",
-      })
-      .onConflictDoNothing()
-      .returning({ id: storageVersions.id });
-
-    let version = insertedVersion;
-    if (!version) {
-      const [updatedVersion] = await tx
-        .update(storageVersions)
-        .set({ archiveSize: args.archiveSize })
-        .where(
-          and(
-            eq(storageVersions.storageId, args.storageId),
-            eq(storageVersions.id, args.input.versionId),
-          ),
-        )
-        .returning({ id: storageVersions.id });
-      version = updatedVersion;
-    }
-
-    if (!version) {
-      throw new Error(`Version ${args.input.versionId} not found after insert`);
-    }
-
-    await tx
-      .update(storages)
-      .set({
-        headVersionId: args.input.versionId,
-        size: args.size,
-        fileCount: args.fileCount,
-        updatedAt: nowDate(),
-      })
-      .where(eq(storages.id, args.storageId));
-  });
+  readonly s3Key: string;
 }
 
-function commitNewStorageVersion(
+function terminalStorageCommitPersistedStateMatches(args: {
+  readonly storage: StorageRow;
+  readonly version: StorageVersionRow | undefined;
+  readonly input: CommitStorageForStorageInput;
+}): boolean {
+  const version = args.version;
+  const sandboxAuth = args.input.sandboxAuth;
+  const parentVersionId = args.input.parentVersionId;
+  const size = totalSize(args.input.files);
+  const fileCount = args.input.files.length;
+  return (
+    version !== undefined &&
+    sandboxAuth !== undefined &&
+    parentVersionId !== undefined &&
+    version.s3Key === `${args.storage.s3Prefix}/${args.input.versionId}` &&
+    Number(version.size) === size &&
+    version.fileCount === fileCount &&
+    version.message === (args.input.message ?? null) &&
+    version.createdBy === "agent" &&
+    args.storage.headVersionId === args.input.versionId &&
+    Number(args.storage.size) === size &&
+    args.storage.fileCount === fileCount
+  );
+}
+
+function verifyStorageCommit(
   args: {
-    readonly db: Db;
     readonly bucket: string;
     readonly storage: StorageRow;
+    readonly version: StorageVersionRow | undefined;
     readonly input: CommitStorageUploadInput;
   },
   signal: AbortSignal,
-): Computed<Promise<CommitStorageResponse>> {
-  return computed(async (get): Promise<CommitStorageResponse> => {
-    const s3Key = `${args.storage.s3Prefix}/${args.input.versionId}`;
-    const fileCount = args.input.files.length;
-    const uploadVerification = await get(
-      verifyUploadedStorageFiles(
-        {
-          bucket: args.bucket,
-          s3Key,
-          fileCount,
-        },
-        signal,
-      ),
-    );
-    if (uploadVerification.kind !== "verified") {
-      switch (uploadVerification.kind) {
+): Computed<Promise<VerifiedStorageCommit | CommitStorageResponse>> {
+  return computed(
+    async (get): Promise<VerifiedStorageCommit | CommitStorageResponse> => {
+      if (args.version?.fileCount === 0) {
+        return {
+          archiveSize: args.version.archiveSize,
+          s3Key: args.version.s3Key,
+        };
+      }
+
+      const s3Key =
+        args.version?.s3Key ??
+        `${args.storage.s3Prefix}/${args.input.versionId}`;
+      const verification = await get(
+        verifyUploadedStorageFiles(
+          {
+            bucket: args.bucket,
+            s3Key,
+            fileCount: args.version?.fileCount ?? args.input.files.length,
+          },
+          signal,
+        ),
+      );
+      signal.throwIfAborted();
+
+      if (args.version) {
+        return verification.kind === "verified"
+          ? {
+              archiveSize: verification.archiveSize,
+              s3Key,
+            }
+          : s3FilesMissingConflict();
+      }
+
+      switch (verification.kind) {
+        case "verified": {
+          return {
+            archiveSize: verification.archiveSize,
+            s3Key,
+          };
+        }
         case "missing-manifest": {
           return badRequestMessage(
             "Manifest not uploaded - upload failed or incomplete",
@@ -715,61 +685,268 @@ function commitNewStorageVersion(
           );
         }
       }
-    }
+    },
+  );
+}
 
-    const size = totalSize(args.input.files);
-    await insertStorageVersionAndUpdateHead({
-      db: args.db,
-      storageId: args.storage.id,
-      s3Key,
+async function terminalStorageCommitAlreadySucceeded(args: {
+  readonly tx: Tx;
+  readonly storage: StorageRow;
+  readonly version: StorageVersionRow | undefined;
+  readonly verification: VerifiedStorageCommit;
+  readonly input: CommitStorageForStorageInput;
+}): Promise<boolean> {
+  const version = args.version;
+  const sandboxAuth = args.input.sandboxAuth;
+  const parentVersionId = args.input.parentVersionId;
+  if (
+    !version ||
+    !sandboxAuth ||
+    !parentVersionId ||
+    !terminalStorageCommitPersistedStateMatches({
+      storage: args.storage,
+      version,
       input: args.input,
-      size,
-      archiveSize: uploadVerification.archiveSize,
-      fileCount,
-    });
-    signal.throwIfAborted();
+    }) ||
+    version.s3Key !== args.verification.s3Key ||
+    version.archiveSize !== args.verification.archiveSize
+  ) {
+    return false;
+  }
 
-    return {
-      status: 200,
-      body: {
-        success: true,
-        versionId: args.input.versionId,
-        storageName: args.storage.name,
-        size,
-        fileCount,
-      },
-    };
-  });
+  const [lineage] = await args.tx
+    .select({ id: storageVersionLineage.id })
+    .from(storageVersionLineage)
+    .where(
+      and(
+        eq(storageVersionLineage.storageId, args.storage.id),
+        eq(storageVersionLineage.versionId, args.input.versionId),
+        eq(storageVersionLineage.parentVersionId, parentVersionId),
+        eq(storageVersionLineage.runId, sandboxAuth.runId),
+      ),
+    )
+    .limit(1);
+  return lineage !== undefined;
+}
+
+function storageCommitSuccess(args: {
+  readonly storage: StorageRow;
+  readonly versionId: string;
+  readonly size: number;
+  readonly fileCount: number;
+  readonly deduplicated: boolean;
+}): CommitStorageResponse {
+  return {
+    status: 200,
+    body: {
+      success: true,
+      versionId: args.versionId,
+      storageName: args.storage.name,
+      size: args.size,
+      fileCount: args.fileCount,
+      ...(args.deduplicated ? { deduplicated: true } : {}),
+    },
+  };
 }
 
 async function recordStorageLineage(args: {
-  readonly db: Db;
+  readonly tx: Tx;
   readonly storageId: string;
-  readonly versionId: string;
-  readonly parentVersionId: string | undefined;
-  readonly runId: string | undefined;
+  readonly input: CommitStorageForStorageInput;
 }): Promise<void> {
-  const parentVersionId = args.parentVersionId;
-  const runId = args.runId;
-  if (!parentVersionId || !runId) {
+  const sandboxAuth = args.input.sandboxAuth;
+  const parentVersionId = args.input.parentVersionId;
+  if (!sandboxAuth || !parentVersionId) {
     return;
   }
 
-  await tapError(
-    args.db.insert(storageVersionLineage).values({
-      storageId: args.storageId,
-      versionId: args.versionId,
-      parentVersionId,
-      runId,
-    }),
-    (error) => {
-      L.error(
-        `Failed to record lineage for ${args.versionId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    },
-  );
+  await args.tx.insert(storageVersionLineage).values({
+    storageId: args.storageId,
+    versionId: args.input.versionId,
+    parentVersionId,
+    runId: sandboxAuth.runId,
+  });
+}
+
+async function commitActiveStorageVersion(args: {
+  readonly tx: Tx;
+  readonly storage: StorageRow;
+  readonly version: StorageVersionRow | undefined;
+  readonly input: CommitStorageForStorageInput;
+  readonly verification: VerifiedStorageCommit;
+}): Promise<CommitStorageResponse> {
+  if (args.version) {
+    if (args.version.archiveSize !== args.verification.archiveSize) {
+      await args.tx
+        .update(storageVersions)
+        .set({ archiveSize: args.verification.archiveSize })
+        .where(
+          and(
+            eq(storageVersions.id, args.version.id),
+            eq(storageVersions.storageId, args.storage.id),
+          ),
+        );
+    }
+    if (args.storage.headVersionId !== args.input.versionId) {
+      await args.tx
+        .update(storages)
+        .set({
+          headVersionId: args.input.versionId,
+          size: Number(args.version.size),
+          fileCount: args.version.fileCount,
+          updatedAt: nowDate(),
+        })
+        .where(eq(storages.id, args.storage.id));
+    }
+    await recordStorageLineage({
+      tx: args.tx,
+      storageId: args.storage.id,
+      input: args.input,
+    });
+    return storageCommitSuccess({
+      storage: args.storage,
+      versionId: args.input.versionId,
+      size: Number(args.version.size),
+      fileCount: args.version.fileCount,
+      deduplicated: true,
+    });
+  }
+
+  const size = totalSize(args.input.files);
+  const fileCount = args.input.files.length;
+  const [insertedVersion] = await args.tx
+    .insert(storageVersions)
+    .values({
+      id: args.input.versionId,
+      storageId: args.storage.id,
+      s3Key: args.verification.s3Key,
+      size,
+      archiveSize: args.verification.archiveSize,
+      fileCount,
+      message: args.input.message ?? null,
+      createdBy: args.input.runId ? "agent" : "user",
+    })
+    .onConflictDoNothing()
+    .returning({ id: storageVersions.id });
+
+  let committedVersion = insertedVersion;
+  if (!committedVersion) {
+    const [updatedVersion] = await args.tx
+      .update(storageVersions)
+      .set({ archiveSize: args.verification.archiveSize })
+      .where(
+        and(
+          eq(storageVersions.storageId, args.storage.id),
+          eq(storageVersions.id, args.input.versionId),
+        ),
+      )
+      .returning({ id: storageVersions.id });
+    committedVersion = updatedVersion;
+  }
+  if (!committedVersion) {
+    throw new Error(`Version ${args.input.versionId} not found after insert`);
+  }
+
+  await args.tx
+    .update(storages)
+    .set({
+      headVersionId: args.input.versionId,
+      size,
+      fileCount,
+      updatedAt: nowDate(),
+    })
+    .where(eq(storages.id, args.storage.id));
+  await recordStorageLineage({
+    tx: args.tx,
+    storageId: args.storage.id,
+    input: args.input,
+  });
+
+  return storageCommitSuccess({
+    storage: args.storage,
+    versionId: args.input.versionId,
+    size,
+    fileCount,
+    deduplicated: false,
+  });
+}
+
+async function commitVerifiedStorageVersion(
+  args: {
+    readonly db: Db;
+    readonly input: CommitStorageForStorageInput;
+    readonly verification: VerifiedStorageCommit;
+  },
+  signal: AbortSignal,
+): Promise<CommitStorageResponse> {
+  return await args.db.transaction(async (tx) => {
+    const mounted = args.input.sandboxAuth
+      ? await lockMountedWritebackStorage(
+          {
+            tx,
+            auth: args.input.sandboxAuth,
+            storageId: args.input.storageId,
+          },
+          signal,
+        )
+      : undefined;
+    if (mounted && "status" in mounted) {
+      return mounted;
+    }
+
+    const [userStorage] = mounted
+      ? []
+      : await tx
+          .select(storageRowSelection())
+          .from(storages)
+          .where(eq(storages.id, args.input.storageId))
+          .limit(1);
+    signal.throwIfAborted();
+    const storage = mounted?.storage ?? userStorage;
+    if (!storage) {
+      return notFound("Storage not found");
+    }
+
+    const [version] = await tx
+      .select()
+      .from(storageVersions)
+      .where(
+        and(
+          eq(storageVersions.storageId, storage.id),
+          eq(storageVersions.id, args.input.versionId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (mounted && !sandboxStorageRunIsActive(mounted.runStatus)) {
+      const alreadySucceeded = await terminalStorageCommitAlreadySucceeded({
+        tx,
+        storage,
+        version,
+        verification: args.verification,
+        input: args.input,
+      });
+      signal.throwIfAborted();
+      return alreadySucceeded && version
+        ? storageCommitSuccess({
+            storage,
+            versionId: args.input.versionId,
+            size: Number(version.size),
+            fileCount: version.fileCount,
+            deduplicated: true,
+          })
+        : notFound("Active agent run not found");
+    }
+
+    return await commitActiveStorageVersion({
+      tx,
+      storage,
+      version,
+      input: args.input,
+      verification: args.verification,
+    });
+  });
 }
 
 export const prepareStorageUploadForStorage$ = command(
@@ -883,46 +1060,30 @@ export const commitStorageUploadForStorage$ = command(
     });
     signal.throwIfAborted();
 
-    if (existingVersion) {
-      return await get(
-        commitExistingStorageVersion(
-          {
-            db: writeDb,
-            bucket,
-            storage,
-            version: existingVersion,
-            input: args,
-          },
-          signal,
-        ),
-      );
-    }
-
-    const response = await get(
-      commitNewStorageVersion(
+    const verification = await get(
+      verifyStorageCommit(
         {
-          db: writeDb,
           bucket,
           storage,
+          version: existingVersion,
           input: args,
         },
         signal,
       ),
     );
     signal.throwIfAborted();
-
-    if (response.status === 200) {
-      await recordStorageLineage({
-        db: writeDb,
-        storageId: storage.id,
-        versionId: args.versionId,
-        parentVersionId: args.parentVersionId,
-        runId: args.runId,
-      });
-      signal.throwIfAborted();
+    if ("status" in verification) {
+      return verification;
     }
 
-    return response;
+    return await commitVerifiedStorageVersion(
+      {
+        db: writeDb,
+        input: args,
+        verification,
+      },
+      signal,
+    );
   },
 );
 
@@ -933,7 +1094,7 @@ export const prepareStorageUploadForAuth$ = command(
     signal: AbortSignal,
   ): Promise<PrepareStorageResponse> => {
     const writeDb = set(writeDb$);
-    const storage = await resolveStorageForPrepare(
+    const mounted = await resolveStorageForPrepare(
       {
         db: writeDb,
         input: args,
@@ -942,12 +1103,41 @@ export const prepareStorageUploadForAuth$ = command(
     );
     signal.throwIfAborted();
 
-    if ("status" in storage) {
-      return storage;
+    if ("status" in mounted) {
+      return mounted;
+    }
+    if (!sandboxStorageRunIsActive(mounted.runStatus)) {
+      return notFound("Active agent run not found");
     }
 
-    const upload: PrepareStorageForStorageInput = args;
-    return await set(prepareStorageUploadForStorage$, upload, signal);
+    const response = await set(
+      prepareStorageUploadForStorage$,
+      {
+        storageId: args.storageId,
+        files: args.files,
+        force: args.force,
+        runId: args.runId,
+        baseVersion: args.baseVersion,
+        changes: args.changes,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (response.status !== 200) {
+      return response;
+    }
+
+    const admitted = await writeDb.transaction(async (tx) => {
+      const current = await lockMountedWritebackStorage(
+        { tx, auth: args.auth, storageId: args.storageId },
+        signal,
+      );
+      return !(
+        "status" in current || !sandboxStorageRunIsActive(current.runStatus)
+      );
+    });
+    signal.throwIfAborted();
+    return admitted ? response : notFound("Active agent run not found");
   },
 );
 
@@ -958,20 +1148,74 @@ export const commitStorageUploadForAuth$ = command(
     signal: AbortSignal,
   ): Promise<CommitStorageResponse> => {
     const writeDb = set(writeDb$);
-    const storage = await resolveStorageForCommit(
+    const mounted = await findMountedWritebackStorage(
       {
         db: writeDb,
-        input: args,
+        auth: args.auth,
+        storageId: args.storageId,
       },
       signal,
     );
     signal.throwIfAborted();
 
-    if ("status" in storage) {
-      return storage;
+    if ("status" in mounted) {
+      return mounted;
     }
 
-    const upload: CommitStorageForStorageInput = args;
-    return await set(commitStorageUploadForStorage$, upload, signal);
+    const commitInput: CommitStorageForStorageInput = {
+      storageId: args.storageId,
+      versionId: args.versionId,
+      files: args.files,
+      runId: args.runId,
+      parentVersionId: args.parentVersionId,
+      message: args.message,
+      sandboxAuth: args.auth,
+    };
+    const terminalRetry = !sandboxStorageRunIsActive(mounted.runStatus);
+    if (terminalRetry) {
+      const parentVersionId = args.parentVersionId;
+      const version = await findStorageVersion({
+        db: writeDb,
+        storageId: mounted.storage.id,
+        versionId: args.versionId,
+      });
+      signal.throwIfAborted();
+      if (
+        !parentVersionId ||
+        !terminalStorageCommitPersistedStateMatches({
+          storage: mounted.storage,
+          version,
+          input: commitInput,
+        })
+      ) {
+        return notFound("Active agent run not found");
+      }
+
+      const [lineage] = await writeDb
+        .select({ id: storageVersionLineage.id })
+        .from(storageVersionLineage)
+        .where(
+          and(
+            eq(storageVersionLineage.storageId, mounted.storage.id),
+            eq(storageVersionLineage.versionId, args.versionId),
+            eq(storageVersionLineage.parentVersionId, parentVersionId),
+            eq(storageVersionLineage.runId, args.auth.runId),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+      if (!lineage) {
+        return notFound("Active agent run not found");
+      }
+    }
+
+    const response = await set(
+      commitStorageUploadForStorage$,
+      commitInput,
+      signal,
+    );
+    return terminalRetry && response.status !== 200
+      ? notFound("Active agent run not found")
+      : response;
   },
 );

@@ -1,5 +1,56 @@
 # Changelog
 
+## [9.298.0](https://github.com/vm0-ai/vm0/compare/cli-v9.297.14...cli-v9.298.0) (2026-08-30)
+
+
+### Features
+
+* **cli:** improve social download diagnostics ([#30361](https://github.com/vm0-ai/vm0/issues/30361)) ([6e9881f](https://github.com/vm0-ai/vm0/commit/6e9881f9ab8b3aa9753d5c2e93b184f575825c6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/core bumped to 8.603.4
+
+## [9.297.14](https://github.com/vm0-ai/vm0/compare/cli-v9.297.13...cli-v9.297.14) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.11
+    * @okouai/connectors bumped to 1.210.8
+    * @okouai/core bumped to 8.603.3
+
+## [9.297.13](https://github.com/vm0-ai/vm0/compare/cli-v9.297.12...cli-v9.297.13) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.10
+    * @okouai/core bumped to 8.603.2
+
+## [9.297.12](https://github.com/vm0-ai/vm0/compare/cli-v9.297.11...cli-v9.297.12) (2026-08-30)
+
+
+### Refactoring
+
+* detach chat event cursors from projection ([#30280](https://github.com/vm0-ai/vm0/issues/30280)) ([4af0bb3](https://github.com/vm0-ai/vm0/commit/4af0bb302f2365e03543e7423b6fc7368f392650))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.9
+    * @okouai/core bumped to 8.603.1
+
 ## [9.297.11](https://github.com/vm0-ai/vm0/compare/cli-v9.297.10...cli-v9.297.11) (2026-08-30)
 
 

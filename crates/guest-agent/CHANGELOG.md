@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.82.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.22...guest-agent-v0.82.23) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document GuestConfig field contracts ([#30359](https://github.com/vm0-ai/vm0/issues/30359)) ([d0ebfde](https://github.com/vm0-ai/vm0/commit/d0ebfde1ae2639216cb879841457e5d4b40a5664))
+
+## [0.82.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.21...guest-agent-v0.82.22) (2026-08-30)
+
+
+### Bug Fixes
+
+* interrupt active codex turns before shutdown ([#30344](https://github.com/vm0-ai/vm0/issues/30344)) ([2270569](https://github.com/vm0-ai/vm0/commit/2270569209f12ec58078cee520878409b4f15041))
+* preserve codex per-turn token usage ([#30337](https://github.com/vm0-ai/vm0/issues/30337)) ([c9ef6c1](https://github.com/vm0-ai/vm0/commit/c9ef6c1e407cf07ca71a1ac7bc0bfccfad3bf205))
+
+## [0.82.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.20...guest-agent-v0.82.21) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api url root legacy reader ([#30293](https://github.com/vm0-ai/vm0/issues/30293)) ([acf0976](https://github.com/vm0-ai/vm0/commit/acf09762659b1c0c112e51948b2dda9670fe5240))
+* **guest:** retire timing tuning legacy readers ([#30303](https://github.com/vm0-ai/vm0/issues/30303)) ([27477c4](https://github.com/vm0-ai/vm0/commit/27477c4cea651fc86fbea0194bd438946e6581ad))
+
 ## [0.82.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.19...guest-agent-v0.82.20) (2026-08-30)
 
 

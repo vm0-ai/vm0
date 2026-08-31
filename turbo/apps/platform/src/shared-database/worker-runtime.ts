@@ -75,7 +75,6 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
     : {
         sinceSeqId: cursor.lastSeqId,
         sinceEventId: cursor.lastEventId,
-        sinceProjection: cursor.projection,
         limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
       };
 }
@@ -85,6 +84,7 @@ type WorkerClientEvent = Extract<
   {
     readonly type:
       | "append"
+      | "invalidate"
       | "authentication-required"
       | "reload-required"
       | "status";
@@ -721,7 +721,7 @@ export class SharedDatabaseWorkerRuntime {
       }
       credential.dirtyDataKeyIds.delete(sharedDatabaseDataKeyId(actor.dataKey));
       if (settled.value.changed) {
-        this.notifyActor(actor.dataKey);
+        this.notifyActor(actor.dataKey, "append");
       }
       this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
       this.cleanupActorAfterSync(actor);
@@ -771,7 +771,7 @@ export class SharedDatabaseWorkerRuntime {
     if (settled?.status === "fulfilled") {
       credential.dirtyDataKeyIds.delete(sharedDatabaseDataKeyId(actor.dataKey));
       if (settled.value.changed) {
-        this.notifyActor(actor.dataKey);
+        this.notifyActor(actor.dataKey, "append");
       }
       this.repeatRealtimeCatchUp(actor, credential, repeatAfterCurrentSync);
       this.cleanupActorAfterSync(actor);
@@ -1055,7 +1055,6 @@ export class SharedDatabaseWorkerRuntime {
           : {
               lastEventId: snapshot.body.lastEventId,
               lastSeqId: snapshot.body.lastSeqId,
-              projection: snapshot.body.projection,
             },
     };
   }
@@ -1508,7 +1507,10 @@ export class SharedDatabaseWorkerRuntime {
     await Promise.all(work);
   }
 
-  private notifyActor(dataKey: SharedDatabaseDataKey): void {
+  private notifyActor(
+    dataKey: SharedDatabaseDataKey,
+    type: "append" | "invalidate",
+  ): void {
     const id = sharedDatabaseDataKeyId(dataKey);
     for (const client of this.clients.values()) {
       for (const [
@@ -1517,7 +1519,7 @@ export class SharedDatabaseWorkerRuntime {
       ] of client.subscriptions) {
         if (sharedDatabaseDataKeyId(subscriptionDataKey) === id) {
           client.emit({
-            type: "append",
+            type,
             subscriptionId,
             dataKey,
           });
@@ -1553,6 +1555,9 @@ export class SharedDatabaseWorkerRuntime {
         },
         onMessage: (message) => {
           this.handleRealtimeMessage(credential, message);
+        },
+        onReconnect: () => {
+          this.catchUpSubscribedActorsForCredential(credential);
         },
         onStatus: (status) => {
           this.realtimeStatuses.set(credentialId, status);
@@ -1629,7 +1634,7 @@ export class SharedDatabaseWorkerRuntime {
       };
       const actor = this.getOrCreateActor(dataKey);
       actor.backgroundCatchUp = true;
-      this.enqueueActorCatchUp(
+      this.invalidateAndEnqueueActorCatchUp(
         actor,
         credential,
         `shared database background realtime catch-up: ${sharedDatabaseDataKeyId(dataKey)}`,
@@ -1647,7 +1652,7 @@ export class SharedDatabaseWorkerRuntime {
       if (!matches || !this.isActorSubscribed(id)) {
         continue;
       }
-      this.enqueueActorCatchUp(
+      this.invalidateAndEnqueueActorCatchUp(
         actor,
         credential,
         `shared database realtime catch-up: ${id}`,
@@ -1667,12 +1672,26 @@ export class SharedDatabaseWorkerRuntime {
       ) {
         continue;
       }
-      this.enqueueActorCatchUp(
+      this.invalidateAndEnqueueActorCatchUp(
         actor,
         credential,
         `shared database post-attach actor catch-up: ${actorId}`,
       );
     }
+  }
+
+  private invalidateAndEnqueueActorCatchUp(
+    actor: DatasetActor,
+    credential: CredentialState,
+    description: string,
+  ): void {
+    const actorId = sharedDatabaseDataKeyId(actor.dataKey);
+    if (actor.invalidationPending || !this.isActorActive(actorId)) {
+      return;
+    }
+    // Establish each tab's read barrier before the worker catch-up can finish.
+    this.notifyActor(actor.dataKey, "invalidate");
+    this.enqueueActorCatchUp(actor, credential, description);
   }
 
   private enqueueActorCatchUp(

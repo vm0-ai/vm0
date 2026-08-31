@@ -1,5 +1,79 @@
 # Changelog
 
+## [1.512.0](https://github.com/vm0-ai/vm0/compare/api-v1.511.8...api-v1.512.0) (2026-08-30)
+
+
+### Features
+
+* **cli:** improve social download diagnostics ([#30361](https://github.com/vm0-ai/vm0/issues/30361)) ([6e9881f](https://github.com/vm0-ai/vm0/commit/6e9881f9ab8b3aa9753d5c2e93b184f575825c6c))
+
+
+### Bug Fixes
+
+* support atomic guest checkpoint completion ([#30363](https://github.com/vm0-ai/vm0/issues/30363)) ([a3e30e0](https://github.com/vm0-ai/vm0/commit/a3e30e0b098ff97fa23c23d6367d0c8a9f4e1a5a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/connector-catalog-validation bumped to 2.0.15
+    * @okouai/core bumped to 8.603.4
+    * @okouai/db bumped to 1.228.20
+
+## [1.511.8](https://github.com/vm0-ai/vm0/compare/api-v1.511.7...api-v1.511.8) (2026-08-30)
+
+
+### Refactoring
+
+* remove shared chat database feature switch ([#30272](https://github.com/vm0-ai/vm0/issues/30272)) ([2210065](https://github.com/vm0-ai/vm0/commit/221006596f337e8d50882a3c427b2cdd56619d87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.11
+    * @okouai/connector-catalog-validation bumped to 2.0.14
+    * @okouai/connectors bumped to 1.210.8
+    * @okouai/core bumped to 8.603.3
+    * @okouai/db bumped to 1.228.19
+
+## [1.511.7](https://github.com/vm0-ai/vm0/compare/api-v1.511.6...api-v1.511.7) (2026-08-30)
+
+
+### Bug Fixes
+
+* **api:** stop sandbox authority after run timeout ([#30324](https://github.com/vm0-ai/vm0/issues/30324)) ([93c36ff](https://github.com/vm0-ai/vm0/commit/93c36ff94a3da6714ce97ebf40d14f907cac4464))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.10
+    * @okouai/connector-catalog-validation bumped to 2.0.13
+    * @okouai/core bumped to 8.603.2
+    * @okouai/db bumped to 1.228.18
+
+## [1.511.6](https://github.com/vm0-ai/vm0/compare/api-v1.511.5...api-v1.511.6) (2026-08-30)
+
+
+### Refactoring
+
+* detach chat event cursors from projection ([#30280](https://github.com/vm0-ai/vm0/issues/30280)) ([4af0bb3](https://github.com/vm0-ai/vm0/commit/4af0bb302f2365e03543e7423b6fc7368f392650))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.9
+    * @okouai/connector-catalog-validation bumped to 2.0.12
+    * @okouai/core bumped to 8.603.1
+    * @okouai/db bumped to 1.228.17
+
 ## [1.511.5](https://github.com/vm0-ai/vm0/compare/api-v1.511.4...api-v1.511.5) (2026-08-30)
 
 

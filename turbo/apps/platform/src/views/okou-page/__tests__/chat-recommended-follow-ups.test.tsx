@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { click, fill } from "../../../__tests__/page-helper.ts";
+import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
@@ -378,7 +379,7 @@ describe("chat lifecycle", () => {
     expect(context.mocks.ably.hasSubscription(createdTopic)).toBeFalsy();
 
     chatEvents.push(followupsEvent);
-    context.mocks.ably.trigger(createdTopic, {});
+    createChatEvent(FOLLOWUP_THREAD_ID, {});
 
     await waitFor(() => {
       expect(buttonByText(followupPrompt)).toBeInTheDocument();

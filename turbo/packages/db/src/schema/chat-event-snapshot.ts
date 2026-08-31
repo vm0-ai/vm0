@@ -10,7 +10,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreads } from "./chat-thread";
 
 /**
@@ -32,7 +31,7 @@ export const chatEventSnapshots = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    /** Highest physical stream position covered, including projection-omitted rows. */
+    /** Highest physical stream position covered, including body-omitted rows. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
     /** Last physical event observed through the coverage watermark. */
     lastEventId: uuid("last_event_id").notNull(),
@@ -44,11 +43,6 @@ export const chatEventSnapshots = pgTable(
     archiveSchemaVersion: integer("archive_schema_version")
       .default(7)
       .notNull(),
-    /** Canonical output.tool-free projection. */
-    projection: text("projection")
-      .$type<ChatEventSnapshotProjection>()
-      .default("tool-redacted")
-      .notNull(),
     /** Immutable content-addressed object referenced by this pointer. */
     objectKey: text("object_key").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -57,14 +51,9 @@ export const chatEventSnapshots = pgTable(
     return [
       index("chat_event_snapshots_thread_idx").on(table.chatThreadId),
       index("chat_event_snapshots_object_key_idx").on(table.objectKey),
-      uniqueIndex("chat_event_snapshots_thread_version_projection_unique").on(
+      uniqueIndex("chat_event_snapshots_thread_version_unique").on(
         table.chatThreadId,
         table.archiveSchemaVersion,
-        table.projection,
-      ),
-      check(
-        "chat_event_snapshots_projection_check",
-        sql`${table.projection} = 'tool-redacted'`,
       ),
       check(
         "chat_event_snapshots_archive_schema_version_check",

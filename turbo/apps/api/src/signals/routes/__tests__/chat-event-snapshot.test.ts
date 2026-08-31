@@ -193,7 +193,6 @@ describe("chat event snapshot read endpoints", () => {
       expiresInSeconds: 900,
       lastEventId: head.last_event_id,
       lastSeqId: head.last_seq_id,
-      projection: "tool-redacted",
     });
 
     const snapshotObject = readFakeChatEventObject(head.object_key);
@@ -399,7 +398,6 @@ describe("chat event snapshot read endpoints", () => {
         query: {
           sinceSeqId: firstSeqId,
           sinceEventId: firstRow.id,
-          sinceProjection: "tool-redacted",
         },
       }),
       [200],
@@ -407,6 +405,10 @@ describe("chat event snapshot read endpoints", () => {
     expect(rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
       CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
     );
+    expect(rows.body.cursor).toStrictEqual({
+      lastEventId: rows.body.rows.at(-1)?.id,
+      lastSeqId: rows.body.rows.at(-1)?.seqId,
+    });
     for (const row of rows.body.rows) {
       chatEventRowSchema.parse(row);
       expect(row.chatThreadId).toBe(threadId);
@@ -452,7 +454,6 @@ describe("chat event snapshot read endpoints", () => {
         query: {
           sinceSeqId: firstSeqId,
           sinceEventId: randomUUID(),
-          sinceProjection: "tool-redacted",
         },
       }),
       [410],
@@ -471,7 +472,6 @@ describe("chat event snapshot read endpoints", () => {
         query: {
           sinceSeqId: 999_999,
           sinceEventId: randomUUID(),
-          sinceProjection: "tool-redacted",
         },
       }),
       [410],

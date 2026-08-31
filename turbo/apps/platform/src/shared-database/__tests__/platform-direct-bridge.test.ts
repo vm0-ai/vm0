@@ -6,7 +6,6 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
@@ -30,7 +29,6 @@ import {
   queryChatEventSharedDatabase$,
   setSharedDatabaseConnectionStatus$,
 } from "../../signals/shared-database.ts";
-import { selectSharedDatabaseMode$ } from "../../signals/shared-database-mode.ts";
 import { okouDebugRealtimeIndicator$ } from "../../signals/okou-page/realtime-status.ts";
 
 vi.mock("idb", async () => {
@@ -87,7 +85,6 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
         schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
         lastEventId: cachedRow.id,
         lastSeqId: cachedRow.seqId,
-        projection: "tool-redacted",
       }),
       tx.done,
     ]);
@@ -156,7 +153,6 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
     });
     await vi.waitFor(() => {
       expect(prewarmedThreadIds).toContain(unreadThreadId);
@@ -243,7 +239,6 @@ describe("shared database direct Platform bridge", () => {
       action: "set-enabled",
       enabled: true,
     });
-    context.store.set(selectSharedDatabaseMode$, true);
     context.store.set(setSharedDatabaseConnectionStatus$, "connected");
 
     expect(context.store.get(okouDebugRealtimeIndicator$)).toBeNull();
@@ -268,7 +263,6 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
       afterSharedDatabaseWorkerHeartbeat: async () => {
         const gate = context.mocks.deferred<void>();
         heartbeatGates.push(gate);
@@ -323,7 +317,6 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
     });
 
     const owner = createChildAbortController(context.signal);
@@ -335,12 +328,12 @@ describe("shared database direct Platform bridge", () => {
       orgId: orgId(),
       threadId,
     };
-    let appends = 0;
+    let notifications = 0;
     await context.store.set(
       onSharedDatabase$,
       dataKey,
       () => {
-        appends += 1;
+        notifications += 1;
       },
       owner.signal,
     );
@@ -364,7 +357,7 @@ describe("shared database direct Platform bridge", () => {
         }),
       ).toStrictEqual([1]);
     });
-    expect(appends).toBe(1);
+    expect(notifications).toBe(2);
     expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1]);
 
     await context.store.set(
@@ -376,7 +369,7 @@ describe("shared database direct Platform bridge", () => {
       },
       owner.signal,
     );
-    expect(appends).toBe(1);
+    expect(notifications).toBe(2);
     expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1, 0, 1]);
     owner.abort(new DOMException("chat closed", "AbortError"));
   });
@@ -445,7 +438,6 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
     });
     await vi.waitFor(() => {
       expect(

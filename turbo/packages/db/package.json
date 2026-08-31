@@ -1,6 +1,6 @@
 {
   "name": "@okouai/db",
-  "version": "1.228.16",
+  "version": "1.228.20",
   "private": true,
   "type": "module",
   "exports": {
@@ -45,8 +45,8 @@
     "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-kms": "^3.1104.0",
-    "@aws-sdk/client-s3": "^3.1104.0",
+    "@aws-sdk/client-kms": "^3.1116.0",
+    "@aws-sdk/client-s3": "^3.1116.0",
     "@clerk/backend": "^3.13.1",
     "@okouai/api-contracts": "workspace:*",
     "@okouai/core": "workspace:*",
