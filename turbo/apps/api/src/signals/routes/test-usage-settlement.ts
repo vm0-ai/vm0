@@ -1,5 +1,6 @@
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
 import { orgPlanEntitlementsCanonicalWrites } from "@okouai/db/operations/org-plan-entitlement-canonical-write";
+import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
@@ -57,13 +58,13 @@ const setupUsageSettlement$ = command(
 
     const db = set(writeDb$);
     await db
-      .insert(orgMetadata)
+      .insert(orgMetadataLegacyWrites)
       .values({
         orgId: bodyResult.data.org_id,
         credits: bodyResult.data.credits,
       })
       .onConflictDoUpdate({
-        target: orgMetadata.orgId,
+        target: orgMetadataLegacyWrites.orgId,
         set: { credits: bodyResult.data.credits },
       });
     signal.throwIfAborted();
