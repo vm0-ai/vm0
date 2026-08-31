@@ -16,7 +16,7 @@ import {
   publishThreadListChanged,
 } from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
-import { settle, tapError } from "../utils";
+import { settle, settleIncludingAbort, tapError } from "../utils";
 import {
   dispatchCompleteSideEffects$,
   drainStaleQueues$,
@@ -435,17 +435,17 @@ const cleanupSingleRun$ = command(
     }
 
     if (committed.previousStatus === "running" && committed.runnerGroup) {
-      await tapError(
+      const cancellation = await settleIncludingAbort(
         publishCancelToRunnerGroup(committed.runnerGroup, run.id, "hard"),
-        (error) => {
-          L.error("Failed to publish timeout cancel to runner group", {
-            runId: run.id,
-            runnerGroup: committed.runnerGroup,
-            error,
-          });
-        },
       );
       signal.throwIfAborted();
+      if (!cancellation.ok) {
+        L.error("Failed to publish timeout cancel to runner group", {
+          runId: run.id,
+          runnerGroup: committed.runnerGroup,
+          error: cancellation.error,
+        });
+      }
     }
 
     await set(

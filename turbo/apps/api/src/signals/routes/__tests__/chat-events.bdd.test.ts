@@ -2853,7 +2853,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     }
     context.mocks.ably.publish.mockClear();
     context.mocks.ably.publish.mockRejectedValueOnce(
-      new Error("timeout cancel unavailable"),
+      new DOMException("timeout cancel unavailable", "AbortError"),
     );
     mockNow(now() + 3 * 60 * 1000);
     onTestFinished(() => {
