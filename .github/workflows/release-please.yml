@@ -86,8 +86,8 @@ jobs:
       desktop_release_created: ${{ steps.release.outputs['turbo/apps/desktop--release_created'] }}
       host_worker_release_created: ${{ steps.release.outputs['turbo/apps/host-worker--release_created'] }}
       runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
-      api_runtime_dependency_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' || steps.release.outputs['turbo/packages/connector-catalog-validation--release_created'] == 'true' }}
-      api_deploy_required: ${{ steps.release.outputs['turbo/apps/api--release_created'] == 'true' || steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' || steps.release.outputs['turbo/packages/connector-catalog-validation--release_created'] == 'true' }}
+      api_runtime_dependency_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
+      api_deploy_required: ${{ steps.release.outputs['turbo/apps/api--release_created'] == 'true' || steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       api_version: ${{ steps.release.outputs['turbo/apps/api--version'] }}
       app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
@@ -139,7 +139,6 @@ jobs:
               ${{ toJSON(steps.release.outputs['turbo/apps/platform--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/connectors--sha']) }},
-              ${{ toJSON(steps.release.outputs['turbo/packages/connector-catalog-validation--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/core--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/db--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/pi-agent-runtime--sha']) }},
@@ -214,7 +213,6 @@ jobs:
               ${{ toJSON(steps.release.outputs['turbo/apps/platform--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/connectors--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['turbo/packages/connector-catalog-validation--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/core--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/db--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/pi-agent-runtime--tag_name']) }},

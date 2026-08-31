@@ -18,12 +18,12 @@ import { nowDate } from "../lib/time";
 import {
   connectorCatalogArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
-import { encodeConnectorCatalogSnapshot } from "@okouai/connector-catalog-validation/artifacts/loader";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
+import { encodeConnectorCatalogSnapshot } from "@okouai/connectors/connector-catalog/artifacts/loader";
 import {
   connectorCatalogFirewallConfig,
   validateConnectorCatalogArtifact,
-} from "@okouai/connector-catalog-validation/artifacts/relationships";
+} from "@okouai/connectors/connector-catalog/artifacts/relationships";
 import {
   connectorCatalogExecutableCapabilityState,
   connectorCatalogCompatibilityEvaluationSchema,

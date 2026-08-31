@@ -14,9 +14,9 @@ import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
-import { decodeConnectorCatalogSnapshot } from "@okouai/connector-catalog-validation/artifacts/loader";
-import { connectorCatalogCompatibilityEvaluationSchema } from "@okouai/connector-catalog-validation/compatibility";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
+import { decodeConnectorCatalogSnapshot } from "@okouai/connectors/connector-catalog/artifacts/loader";
+import { connectorCatalogCompatibilityEvaluationSchema } from "@okouai/connectors/connector-catalog/compatibility";
 import {
   CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
   connectorCatalogAuthMethodKey,
@@ -30,7 +30,7 @@ import {
   type ConnectorCatalogRuntimeProjectionRowsRead,
   type ConnectorCatalogRuntimeProjectionRowSetIdentity,
   type ConnectorCatalogRuntimeProjectionValidationTiming,
-} from "@okouai/connector-catalog-validation/runtime-projection";
+} from "@okouai/connectors/connector-catalog/runtime-projection";
 import { connectorCatalogExecutableCapabilityState } from "./connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
 import {

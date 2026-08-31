@@ -1,5 +1,6 @@
-import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import { z } from "zod";
+
+import { connectorSlugSchema } from "../../connector-identity";
 
 export { connectorSlugSchema };
 
