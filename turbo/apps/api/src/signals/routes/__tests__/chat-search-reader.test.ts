@@ -7,7 +7,7 @@ import type { z } from "zod";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { now } from "../../../lib/time";
+import { mockNow, now, withMockNowForTest } from "../../../lib/time";
 import {
   insertChatSearchProjectionCoverageFixture,
   insertSearchablePromptFixture,
@@ -19,9 +19,11 @@ import { holdChatThreadDeleteTransactionFixture } from "../../../test-fixtures/c
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 const context = testContext();
 const bdd = createBddApi(context);
+const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 type ChatSearchProjectionResponse = z.infer<
   typeof cronProjectChatEventSearchResponseSchema
@@ -58,6 +60,21 @@ async function createSearchThread(
     title: `Search reader ${randomUUID()}`,
   });
   return { agentId: agent.agentId, threadId: thread.id };
+}
+
+async function sendNoCreditMessage(
+  actor: ApiTestUser,
+  args: {
+    readonly agentId: string;
+    readonly threadId: string;
+    readonly prompt: string;
+  },
+): Promise<void> {
+  await api.ensureOrgModelProvider(actor);
+  const sent = await chat.requestSendEvent(actor, args, [201]);
+  if (sent.status !== 201 || sent.body.runId !== null) {
+    throw new Error("Expected a no-credit send without a run");
+  }
 }
 
 describe("GET /api/chat/search durable reader", () => {
@@ -179,25 +196,27 @@ describe("GET /api/chat/search durable reader", () => {
       owner,
       `visible-reader-${randomUUID().slice(0, 8)}`,
     );
-    await insertSearchablePromptFixture({
-      chatThreadId: visible.threadId,
-      text: keyword,
-      createdAt: new Date(baseTime),
-    });
-
     const orphanThreadIds: string[] = [];
-    for (let index = 1; index <= 6; index++) {
-      const orphan = await createSearchThread(
-        owner,
-        `orphan-reader-${randomUUID().slice(0, 8)}`,
-      );
-      orphanThreadIds.push(orphan.threadId);
-      await insertSearchablePromptFixture({
-        chatThreadId: orphan.threadId,
-        text: keyword,
-        createdAt: new Date(baseTime + index * 1000),
+    await withMockNowForTest(baseTime, async () => {
+      await sendNoCreditMessage(owner, {
+        agentId: visible.agentId,
+        threadId: visible.threadId,
+        prompt: keyword,
       });
-    }
+      for (let index = 1; index <= 6; index++) {
+        mockNow(baseTime + index * 1000);
+        const orphan = await createSearchThread(
+          owner,
+          `orphan-reader-${randomUUID().slice(0, 8)}`,
+        );
+        orphanThreadIds.push(orphan.threadId);
+        await sendNoCreditMessage(owner, {
+          agentId: orphan.agentId,
+          threadId: orphan.threadId,
+          prompt: keyword,
+        });
+      }
+    });
 
     // Each DELETE has already fired the compatibility trigger but remains
     // uncommitted while the lock-free projector reads the old MVCC row. The
@@ -241,5 +260,5 @@ describe("GET /api/chat/search durable reader", () => {
     expect(cleanup.orphanedThreads).toBe(orphanThreadIds.length);
     const clean = await requestChatSearchProjection(orphanThreadIds);
     expect(clean.orphanedThreads).toBe(0);
-  });
+  }, 60_000);
 });

@@ -40,7 +40,6 @@ import {
   insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
-import { insertSearchablePromptFixture } from "../../../test-fixtures/chat-event-search";
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
@@ -403,21 +402,55 @@ function expectDriveStatuses(
 
 /** Cheapest visible message writer: the no-credit send persists a searchable
  * user row plus a non-searchable output.error without creating a run. */
-async function sendNoCreditMessage(
+type NoCreditMessageBody = {
+  readonly agentId: string;
+  readonly threadId?: string;
+  readonly prompt: string;
+  readonly userMessage?: UserMessageInputDocument;
+};
+
+async function sendNoCreditMessageResult(
   actor: ApiTestUser,
-  body: {
-    readonly agentId: string;
-    readonly threadId?: string;
-    readonly prompt: string;
-    readonly userMessage?: UserMessageInputDocument;
-  },
-): Promise<string> {
+  body: NoCreditMessageBody,
+): Promise<{ readonly threadId: string; readonly createdAt: number }> {
   await api.ensureOrgModelProvider(actor);
   const sent = await chat.requestSendEvent(actor, body, [201]);
-  if (sent.status !== 201 || sent.body.runId !== null) {
+  if (
+    sent.status !== 201 ||
+    sent.body.runId !== null ||
+    sent.body.createdAt === undefined
+  ) {
     throw new Error("Expected a no-credit send without a run");
   }
-  return sent.body.threadId;
+  const createdAt = Date.parse(sent.body.createdAt);
+  if (!Number.isFinite(createdAt)) {
+    throw new Error("Expected the no-credit send to return a timestamp");
+  }
+  return { threadId: sent.body.threadId, createdAt };
+}
+
+async function sendNoCreditMessage(
+  actor: ApiTestUser,
+  body: NoCreditMessageBody,
+): Promise<string> {
+  return (await sendNoCreditMessageResult(actor, body)).threadId;
+}
+
+async function advanceNoCreditMessageCreatedAt(
+  actor: ApiTestUser,
+  agentId: string,
+  after: number,
+): Promise<number> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const filler = await sendNoCreditMessageResult(actor, {
+      agentId,
+      prompt: `timestamp boundary ${randomUUID()}`,
+    });
+    if (filler.createdAt > after) {
+      return filler.createdAt;
+    }
+  }
+  throw new Error("Expected the chat API timestamp to advance");
 }
 
 /**
@@ -2748,24 +2781,18 @@ describe("CHAT-01 chat search", () => {
     expect(crossOrg.results[0]?.chatThreadId).toBe(ownerThreadA);
 
     // The since filter keeps only messages at or after the boundary.
-    const sinceBoundary = now();
-    const ancientThread = await chat.createThread(owner, {
+    const ancient = await sendNoCreditMessageResult(owner, {
       agentId: agentA.agentId,
-      title: `Ancient quokka ${randomUUID()}`,
+      prompt: "ancient quokka spotted",
     });
-    await insertSearchablePromptFixture({
-      chatThreadId: ancientThread.id,
-      text: "ancient quokka spotted",
-      createdAt: new Date(sinceBoundary - 1),
-    });
-    const recentThread = await chat.createThread(owner, {
+    const sinceBoundary = await advanceNoCreditMessageCreatedAt(
+      owner,
+      agentA.agentId,
+      ancient.createdAt,
+    );
+    await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
-      title: `Recent quokka ${randomUUID()}`,
-    });
-    await insertSearchablePromptFixture({
-      chatThreadId: recentThread.id,
-      text: "recent quokka spotted",
-      createdAt: new Date(sinceBoundary),
+      prompt: "recent quokka spotted",
     });
     await projectChatEventSearch();
     const since = await chat.searchChat(owner, "quokka", {
@@ -3116,45 +3143,33 @@ describe("CHAT-01 chat search index", () => {
       displayName: "Index filter agent B",
     });
 
-    const sinceBoundary = now();
-    const oldThreadA = await chat.createThread(owner, {
+    await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
-      title: `Old capybara A ${randomUUID()}`,
+      prompt: "旧的水豚记录一",
     });
-    await insertSearchablePromptFixture({
-      chatThreadId: oldThreadA.id,
-      text: "旧的水豚记录一",
-      createdAt: new Date(sinceBoundary - 2),
-    });
-    const oldThreadB = await chat.createThread(owner, {
+    const oldMessage = await sendNoCreditMessageResult(owner, {
       agentId: agentA.agentId,
-      title: `Old capybara B ${randomUUID()}`,
+      prompt: "旧的水豚记录二",
     });
-    await insertSearchablePromptFixture({
-      chatThreadId: oldThreadB.id,
-      text: "旧的水豚记录二",
-      createdAt: new Date(sinceBoundary - 1),
-    });
-    const recentThread = await chat.createThread(owner, {
+    const sinceBoundary = await advanceNoCreditMessageCreatedAt(
+      owner,
+      agentA.agentId,
+      oldMessage.createdAt,
+    );
+    const recentMessageA = await sendNoCreditMessageResult(owner, {
       agentId: agentA.agentId,
-      title: `Recent capybara ${randomUUID()}`,
+      prompt: "新的水豚记录",
     });
-    const recentThreadA = recentThread.id;
-    await insertSearchablePromptFixture({
-      chatThreadId: recentThreadA,
-      text: "新的水豚记录",
-      createdAt: new Date(sinceBoundary),
-    });
-    const otherAgentThread = await chat.createThread(owner, {
+    await advanceNoCreditMessageCreatedAt(
+      owner,
+      agentA.agentId,
+      recentMessageA.createdAt,
+    );
+    const threadB = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
-      title: `Other capybara ${randomUUID()}`,
+      prompt: "另一个水豚记录",
     });
-    const threadB = otherAgentThread.id;
-    await insertSearchablePromptFixture({
-      chatThreadId: threadB,
-      text: "另一个水豚记录",
-      createdAt: new Date(sinceBoundary + 1),
-    });
+    const recentThreadA = recentMessageA.threadId;
     const tick = await projectChatEventSearch();
     expect(tick.success).toBeTruthy();
 

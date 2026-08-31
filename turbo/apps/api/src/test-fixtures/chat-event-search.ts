@@ -170,7 +170,6 @@ export async function renameChatSearchAgentFixture(args: {
 export async function insertSearchablePromptFixture(args: {
   readonly chatThreadId: string;
   readonly text: string;
-  readonly createdAt?: Date;
 }): Promise<{ readonly id: string; readonly seqId: number }> {
   const inserted = await db().transaction(async (tx) => {
     return await insertChatEvent(tx, {
@@ -179,7 +178,6 @@ export async function insertSearchablePromptFixture(args: {
       contextType: "web",
       userMessage: createUserMessageDocument({ text: args.text }),
       runId: null,
-      createdAt: args.createdAt,
     });
   });
   if (!inserted) {

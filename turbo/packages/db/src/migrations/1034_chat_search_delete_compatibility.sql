@@ -1,6 +1,6 @@
--- Temporary #30453 old-API/new-DB bridge. The DB deploys up to about four
--- seconds before the API. Remove with #30468 only after the pre-#30453 API
--- artifact is no longer eligible for rollback.
+-- Temporary #30453 old-API/new-DB bridge for DB/API skew, whose observed
+-- maximum exposure is about 102 minutes. Remove with #30468 only after the
+-- pre-#30453 API is no longer serving, draining, or eligible for rollback.
 CREATE FUNCTION "delete_chat_event_search_projection_1034"()
 RETURNS trigger
 LANGUAGE plpgsql
