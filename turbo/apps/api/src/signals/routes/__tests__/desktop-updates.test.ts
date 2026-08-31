@@ -18,8 +18,6 @@ const DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
 const OKOU_DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/ai-okou-desktop-updates/ai-okou-desktop-update-manifest.json";
-const DESKTOP_ZERO_MIGRATION_POLICY_URL =
-  "https://github.com/vm0-ai/vm0/releases/download/desktop-migration-policy/desktop-migration-policy.json";
 
 interface DesktopUpdateRelease {
   readonly version: string;
@@ -125,51 +123,18 @@ describe("desktop update routes", () => {
     await accept(manifestStateClient().reset({ body: {} }), [200]);
   });
 
-  it.each(["off", "soft", "hard"] as const)(
-    "serves the no-store %s Zero migration policy",
-    async (mode) => {
-      server.use(
-        http.get(DESKTOP_ZERO_MIGRATION_POLICY_URL, () => {
-          return HttpResponse.json({ schemaVersion: 1, mode });
-        }),
-      );
+  it("serves the no-store hard Zero migration policy", async () => {
+    const response = await appRequest(
+      "http://api.test/api/desktop/migration-policy",
+    );
 
-      const response = await appRequest(
-        "http://api.test/api/desktop/migration-policy",
-      );
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("Cache-Control")).toBe("no-store");
-      await expect(response.json()).resolves.toStrictEqual({
-        schemaVersion: 1,
-        mode,
-      });
-    },
-  );
-
-  it.each([
-    HttpResponse.json({ schemaVersion: 2, mode: "hard" }),
-    new HttpResponse(null, { status: 503 }),
-  ])(
-    "defaults to soft coexistence for an unavailable policy",
-    async (mockResponse) => {
-      server.use(
-        http.get(DESKTOP_ZERO_MIGRATION_POLICY_URL, () => {
-          return mockResponse;
-        }),
-      );
-
-      const response = await appRequest(
-        "http://api.test/api/desktop/migration-policy",
-      );
-
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toStrictEqual({
-        schemaVersion: 1,
-        mode: "soft",
-      });
-    },
-  );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    await expect(response.json()).resolves.toStrictEqual({
+      schemaVersion: 1,
+      mode: "hard",
+    });
+  });
 
   it("redirects the release page route to the current stable desktop release", async () => {
     mockDesktopUpdateManifest(
