@@ -78,9 +78,6 @@ const internalWorkerCredentialContext$ = state<WorkerCredentialContext | null>(
 const connectionControllersState$ = state<
   ReadonlyMap<ConnectionId, AbortController>
 >(new Map());
-const connectionSignalsState$ = state<ReadonlyMap<ConnectionId, AbortSignal>>(
-  new Map(),
-);
 const connectionPortsState$ = state<
   ReadonlyMap<ConnectionId, SharedDatabasePortLike>
 >(new Map());
@@ -118,13 +115,6 @@ export const workerAuthRecovery$ = computed((get) => {
 
 export const connectionControllers$ = computed((get) => {
   return get(connectionControllersState$);
-});
-
-export const connectionSignals$ = computed((get) => {
-  // This Store intentionally exposes connection lifecycle signals for
-  // ownership inspection.
-  // eslint-disable-next-line ccstate/no-get-signal
-  return get(connectionSignalsState$);
 });
 
 export const connectionPorts$ = computed((get) => {
@@ -181,9 +171,6 @@ const removeConnection$ = command(
       connectionControllersState$,
       deleteMapKey(get(connectionControllersState$), connectionId),
     );
-    set(connectionSignalsState$, (current) => {
-      return deleteMapKey(current, connectionId);
-    });
     set(
       connectionPortsState$,
       deleteMapKey(get(connectionPortsState$), connectionId),
@@ -218,9 +205,6 @@ export const registerConnection$ = command(
         connectionController,
       ),
     );
-    set(connectionSignalsState$, (current) => {
-      return new Map(current).set(connectionId, signal);
-    });
     set(
       connectionPortsState$,
       new Map(get(connectionPortsState$)).set(connectionId, port),
@@ -237,12 +221,6 @@ export const registerConnection$ = command(
       { once: true },
     );
     return signal;
-  },
-);
-
-export const unregisterConnection$ = command(
-  ({ set }, connectionId: ConnectionId): void => {
-    set(removeConnection$, connectionId);
   },
 );
 

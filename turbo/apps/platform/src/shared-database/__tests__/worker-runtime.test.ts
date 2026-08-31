@@ -33,7 +33,6 @@ import {
   registerConnection$,
   connectionControllers$,
   connectionPorts$,
-  connectionSignals$,
   type WorkerBroadcastMessage,
 } from "../worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
@@ -237,12 +236,6 @@ describe("shared database worker runtime", () => {
         ["second-connection", secondController],
       ]),
     );
-    expect(store.get(connectionSignals$)).toStrictEqual(
-      new Map([
-        ["first-connection", firstSignal],
-        ["second-connection", secondSignal],
-      ]),
-    );
     expect(store.get(connectionPorts$)).toStrictEqual(
       new Map([
         ["first-connection", firstPort],
@@ -258,13 +251,11 @@ describe("shared database worker runtime", () => {
     expect(
       store.get(connectionControllers$).has("first-connection"),
     ).toBeFalsy();
-    expect(store.get(connectionSignals$).has("first-connection")).toBeFalsy();
     expect(store.get(connectionPorts$).has("first-connection")).toBeFalsy();
 
     store.set(disposeSharedDatabaseCredentialStore$);
     expect(secondSignal.aborted).toBeTruthy();
     expect(store.get(connectionControllers$).size).toBe(0);
-    expect(store.get(connectionSignals$).size).toBe(0);
     expect(store.get(connectionPorts$).size).toBe(0);
   });
 
@@ -280,30 +271,22 @@ describe("shared database worker runtime", () => {
     });
     const firstController = createChildAbortController(context.signal);
     const secondController = createChildAbortController(context.signal);
-    const { binding: firstBinding } = workerContext.bindConnection(
-      {
-        connectionId: "first-connection",
-        connectionController: firstController,
-        port: new CollectingPort(),
-        identity: firstIdentity,
-        apiBaseUrl: location.origin,
-        vercelProtectionBypass: undefined,
-      },
-      null,
-      null,
-    );
-    const { binding: secondBinding } = workerContext.bindConnection(
-      {
-        connectionId: "second-connection",
-        connectionController: secondController,
-        port: new CollectingPort(),
-        identity: secondIdentity,
-        apiBaseUrl: location.origin,
-        vercelProtectionBypass: undefined,
-      },
-      null,
-      null,
-    );
+    const { binding: firstBinding } = workerContext.bindConnection({
+      connectionId: "first-connection",
+      connectionController: firstController,
+      port: new CollectingPort(),
+      identity: firstIdentity,
+      apiBaseUrl: location.origin,
+      vercelProtectionBypass: undefined,
+    });
+    const { binding: secondBinding } = workerContext.bindConnection({
+      connectionId: "second-connection",
+      connectionController: secondController,
+      port: new CollectingPort(),
+      identity: secondIdentity,
+      apiBaseUrl: location.origin,
+      vercelProtectionBypass: undefined,
+    });
 
     expect(firstBinding.store).not.toBe(secondBinding.store);
     expect(workerContext.credentialStoreCount()).toBe(2);
@@ -675,8 +658,12 @@ describe("shared database worker runtime", () => {
       { identity: identity(), apiBaseUrl: location.origin },
       firstSignal,
     );
-    const credentialStoreReady = store.set(startCredentialStoreDaemons$);
-    context.track(credentialStoreReady);
+    const credentialStoreReady = store.set(
+      startCredentialStoreDaemons$,
+      (daemon) => {
+        context.track(daemon);
+      },
+    );
     await initialAttachment.started;
     for (const port of [firstPort, secondPort]) {
       expect(

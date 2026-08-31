@@ -11,7 +11,10 @@ import {
   settle,
 } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
-import type { SharedDatabaseIdentity } from "./data-key.ts";
+import {
+  sharedDatabaseCredentialId,
+  type SharedDatabaseIdentity,
+} from "./data-key.ts";
 import {
   sharedDatabaseClientMessageSchema,
   SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
@@ -28,7 +31,6 @@ import {
   indicatorsStoreMessage$,
   queryStoreMessage$,
   reloadIndicatorsStoreMessage$,
-  startCredentialStoreDaemons$,
 } from "./worker-signals.ts";
 
 type RequestMessage = Extract<
@@ -112,6 +114,7 @@ export class SharedDatabaseMessagePortServer {
   private readonly connectionSignal: AbortSignal;
   private binding: SharedDatabaseConnectionBinding | null = null;
   private credentialConnectionSignal: AbortSignal | null = null;
+  private credentialReady = false;
   private disconnected = false;
 
   constructor(
@@ -127,12 +130,14 @@ export class SharedDatabaseMessagePortServer {
     port.start();
     this.connectionSignal.addEventListener(
       "abort",
-      () => {
-        this.disconnect("connection-abort");
-      },
+      this.handleConnectionAbort,
       { once: true },
     );
   }
+
+  private readonly handleConnectionAbort = (): void => {
+    this.disconnect("connection-abort");
+  };
 
   private readonly handleCredentialConnectionAbort = (): void => {
     this.disconnect("credential-abort");
@@ -195,7 +200,11 @@ export class SharedDatabaseMessagePortServer {
     signal: AbortSignal,
   ): Promise<unknown> | unknown {
     const binding = this.binding;
-    if (!binding || this.credentialConnectionSignal !== signal) {
+    if (
+      !binding ||
+      !this.credentialReady ||
+      this.credentialConnectionSignal !== signal
+    ) {
       throw new SharedDatabaseClientNotConnectedError();
     }
     const store = binding.store;
@@ -243,20 +252,50 @@ export class SharedDatabaseMessagePortServer {
       signal,
     );
     signal.throwIfAborted();
-    const previousCredentialConnectionSignal = this.credentialConnectionSignal;
-    const update = this.context.bindConnection(
-      {
-        connectionId: this.connectionId,
-        connectionController: this.connectionController,
-        port: this.port,
+    const credentialId = sharedDatabaseCredentialId(identity);
+    const currentBinding = this.binding;
+    if (currentBinding) {
+      if (currentBinding.credentialId !== credentialId) {
+        return this.reloadAfterCredentialChange();
+      }
+      return await this.heartbeatBoundConnection(
+        currentBinding,
+        message,
         identity,
-        apiBaseUrl: message.apiBaseUrl,
-        vercelProtectionBypass: message.vercelProtectionBypass,
-      },
-      this.binding,
-      previousCredentialConnectionSignal,
-    );
+        signal,
+      );
+    }
+    const update = this.context.bindConnection({
+      connectionId: this.connectionId,
+      connectionController: this.connectionController,
+      port: this.port,
+      identity,
+      apiBaseUrl: message.apiBaseUrl,
+      vercelProtectionBypass: message.vercelProtectionBypass,
+    });
     const { binding, signal: credentialConnectionSignal } = update;
+    this.setCredentialBinding(binding, credentialConnectionSignal);
+    return await this.heartbeatBoundConnection(
+      binding,
+      message,
+      identity,
+      signal,
+    );
+  }
+
+  private async heartbeatBoundConnection(
+    binding: SharedDatabaseConnectionBinding,
+    message: Extract<
+      SharedDatabaseClientMessage,
+      { readonly type: "heartbeat" }
+    >,
+    identity: SharedDatabaseIdentity,
+    signal: AbortSignal,
+  ): Promise<SharedDatabaseHeartbeatResult> {
+    const credentialConnectionSignal = this.credentialConnectionSignal;
+    if (!credentialConnectionSignal || binding !== this.binding) {
+      throw new SharedDatabaseClientNotConnectedError();
+    }
     const result = binding.store.set(
       heartbeatStoreMessage$,
       this.connectionId,
@@ -264,21 +303,39 @@ export class SharedDatabaseMessagePortServer {
       identity,
       credentialConnectionSignal,
     );
-    await binding.store.set(startCredentialStoreDaemons$);
+    await this.context.startCredentialStoreDaemons(binding.credentialId);
     signal.throwIfAborted();
-    this.setCredentialBinding(binding, credentialConnectionSignal);
-    update.releasePrevious();
+    credentialConnectionSignal.throwIfAborted();
+    this.credentialReady = true;
     return result;
+  }
+
+  private reloadAfterCredentialChange(): never {
+    const reason = new DOMException(
+      "Shared database MessagePort credential changed",
+      "AbortError",
+    );
+    this.connectionSignal.removeEventListener(
+      "abort",
+      this.handleConnectionAbort,
+    );
+    this.credentialConnectionSignal?.removeEventListener(
+      "abort",
+      this.handleCredentialConnectionAbort,
+    );
+    this.connectionController.abort(reason);
+    this.emit({ type: "reload-required" });
+    this.disconnect("credential-changed");
+    throw reason;
   }
 
   private setCredentialBinding(
     binding: SharedDatabaseConnectionBinding,
     signal: AbortSignal,
   ): void {
-    this.credentialConnectionSignal?.removeEventListener(
-      "abort",
-      this.handleCredentialConnectionAbort,
-    );
+    if (this.binding || this.credentialConnectionSignal) {
+      throw new Error("Shared database MessagePort credential is immutable");
+    }
     this.binding = binding;
     this.credentialConnectionSignal = signal;
     signal.addEventListener("abort", this.handleCredentialConnectionAbort, {
@@ -296,6 +353,10 @@ export class SharedDatabaseMessagePortServer {
       reason,
     });
     this.port.removeEventListener("message", this.handleMessage);
+    this.connectionSignal.removeEventListener(
+      "abort",
+      this.handleConnectionAbort,
+    );
     this.credentialConnectionSignal?.removeEventListener(
       "abort",
       this.handleCredentialConnectionAbort,
@@ -308,6 +369,7 @@ export class SharedDatabaseMessagePortServer {
     );
     this.binding = null;
     this.credentialConnectionSignal = null;
+    this.credentialReady = false;
     this.port.close();
   }
 

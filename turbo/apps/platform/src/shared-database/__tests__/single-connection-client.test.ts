@@ -119,6 +119,32 @@ function query() {
 }
 
 describe("single-connection shared database bridge", () => {
+  it("requests a reload when transport construction fails synchronously", async () => {
+    const statuses: SharedDatabaseConnectionStatus[] = [];
+    const events = createEvents(statuses);
+    let constructionAttempts = 0;
+    const bridge = new SingleConnectionSharedDatabaseBridge({
+      createBridge: () => {
+        constructionAttempts += 1;
+        throw new Error("SharedWorker construction failed");
+      },
+      events,
+    });
+    const owner = createChildAbortController(context.signal);
+
+    const pendingHeartbeat = bridge.heartbeat(heartbeat(), owner.signal);
+    await vi.waitFor(() => {
+      expect(events.reloadRequired).toHaveBeenCalledOnce();
+    });
+
+    expect(constructionAttempts).toBe(1);
+    expect(statuses).toStrictEqual(["connecting"]);
+    owner.abort(new DOMException("App unloaded", "AbortError"));
+    await expect(pendingHeartbeat).rejects.toMatchObject({
+      name: "AbortError",
+    });
+  });
+
   it("requests a reload after heartbeat timeout without replacing the transport", async () => {
     const bridges: FakeBridge[] = [];
     const statuses: SharedDatabaseConnectionStatus[] = [];

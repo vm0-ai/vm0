@@ -42,6 +42,7 @@ const WORKER_APP_VERSION = "message-port-worker-version";
 
 class InMemoryMessagePort implements SharedDatabasePortLike {
   readonly listeners = new Set<(event: MessageEvent<unknown>) => void>();
+  readonly postedMessages: unknown[] = [];
   peer: InMemoryMessagePort | null = null;
   closed = false;
 
@@ -50,6 +51,7 @@ class InMemoryMessagePort implements SharedDatabasePortLike {
       return;
     }
     const cloned: unknown = structuredClone(value);
+    this.postedMessages.push(cloned);
     queueMicrotask(() => {
       this.peer?.dispatch(cloned);
     });
@@ -233,6 +235,26 @@ describe("shared database MessagePort protocol", () => {
     owner.abort();
   });
 
+  it("rejects the initial heartbeat when the credential realtime subscription fails", async () => {
+    installHeartbeatAuthentication();
+    context.mocks.ably.rejectNextSubscribe("credential attach failed");
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
+    const bridge = connectProtocolTransport(workerContext, bridgeEvents());
+    const owner = createChildAbortController(context.signal);
+
+    await expect(bridge.heartbeat(heartbeat(), owner.signal)).rejects.toThrow(
+      "credential attach failed",
+    );
+
+    owner.abort(new DOMException("App unloaded", "AbortError"));
+    await vi.waitFor(() => {
+      expect(workerContext.credentialStoreCount()).toBe(0);
+    });
+  });
+
   it("correlates out-of-order queries across the structured-cloned transport", async () => {
     const { platformStore } = await installProtocolBridge();
 
@@ -408,7 +430,7 @@ describe("shared database MessagePort protocol", () => {
     });
   });
 
-  it("rebinds one MessagePort when trusted heartbeat identity changes", async () => {
+  it("reloads and disconnects only the MessagePort whose credential changes", async () => {
     context.mocks.api(authContract.me, ({ request, respond }) => {
       const secondCredential =
         request.headers.get("authorization") === "Bearer second-token";
@@ -422,35 +444,206 @@ describe("shared database MessagePort protocol", () => {
       context.signal,
       WORKER_APP_VERSION,
     );
+    const [movingPlatformPort, movingWorkerPort] = messagePortPair();
+    new SharedDatabaseMessagePortServer(
+      workerContext,
+      movingWorkerPort,
+      context.signal,
+    );
+    const movingEvents = bridgeEvents();
+    const movingBridge = new MessagePortSharedDatabaseBridge(
+      movingPlatformPort,
+      location.origin,
+      movingEvents,
+    );
+    const [keeperPlatformPort, keeperWorkerPort] = messagePortPair();
+    new SharedDatabaseMessagePortServer(
+      workerContext,
+      keeperWorkerPort,
+      context.signal,
+    );
+    const keeperEvents = bridgeEvents();
+    const keeperBridge = new MessagePortSharedDatabaseBridge(
+      keeperPlatformPort,
+      location.origin,
+      keeperEvents,
+    );
+    const movingOwner = createChildAbortController(context.signal);
+    const keeperOwner = createChildAbortController(context.signal);
+
+    await movingBridge.heartbeat({ token: "first-token" }, movingOwner.signal);
+    await keeperBridge.heartbeat({ token: "keeper-token" }, keeperOwner.signal);
+    expect(workerContext.credentialStoreCount()).toBe(1);
+    const key = dataKey(crypto.randomUUID());
+    const oldRow = row(key.threadId, 1);
+    const oldRequestGate = context.mocks.deferred<void>();
+    const oldRequestHandlerFinished = context.mocks.deferred<void>();
+    let oldRequestStarted = false;
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      async ({ query, respond }) => {
+        if (query.sinceSeqId > 0) {
+          return respond(200, chatEventRowsResponse([], query));
+        }
+        oldRequestStarted = true;
+        await oldRequestGate.promise;
+        oldRequestHandlerFinished.resolve(undefined);
+        return respond(200, chatEventRowsResponse([oldRow], query));
+      },
+    );
+    const oldRequest = movingBridge.query(
+      { dataKey: key, afterSeqId: null, consistency: "catch-up" },
+      movingOwner.signal,
+    );
+    await vi.waitFor(() => {
+      expect(oldRequestStarted).toBeTruthy();
+    });
+    const oldQueryMessage = movingPlatformPort.postedMessages.find(
+      (message) => {
+        return (
+          typeof message === "object" &&
+          message !== null &&
+          "type" in message &&
+          message.type === "query"
+        );
+      },
+    ) as
+      | Extract<SharedDatabaseClientMessage, { readonly type: "query" }>
+      | undefined;
+    expect(oldQueryMessage).toBeDefined();
+    if (!oldQueryMessage) {
+      throw new Error("Expected the old credential query message");
+    }
+
+    const changedHeartbeat = movingBridge.heartbeat(
+      { token: "second-token" },
+      movingOwner.signal,
+    );
+    await vi.waitFor(() => {
+      expect(movingEvents.reloadRequired).toHaveBeenCalledOnce();
+      expect(movingWorkerPort.closed).toBeTruthy();
+      expect(workerContext.credentialStoreCount()).toBe(1);
+    });
+    expect(keeperEvents.reloadRequired).not.toHaveBeenCalled();
+    expect(keeperWorkerPort.closed).toBeFalsy();
+    await expect(
+      keeperBridge.query(
+        {
+          dataKey: dataKey(crypto.randomUUID()),
+          afterSeqId: null,
+          consistency: "cache-only",
+        },
+        keeperOwner.signal,
+      ),
+    ).resolves.toStrictEqual([]);
+
+    oldRequestGate.resolve(undefined);
+    await oldRequestHandlerFinished.promise;
+    const [secondPlatformPort, secondWorkerPort] = messagePortPair();
+    new SharedDatabaseMessagePortServer(
+      workerContext,
+      secondWorkerPort,
+      context.signal,
+    );
+    const secondBridge = new MessagePortSharedDatabaseBridge(
+      secondPlatformPort,
+      location.origin,
+      bridgeEvents(),
+    );
+    const secondOwner = createChildAbortController(context.signal);
+    await secondBridge.heartbeat({ token: "second-token" }, secondOwner.signal);
+    expect(secondWorkerPort.closed).toBeFalsy();
+    expect(workerContext.credentialStoreCount()).toBe(2);
+    const oldResponses = movingWorkerPort.postedMessages.filter((message) => {
+      return (
+        typeof message === "object" &&
+        message !== null &&
+        "requestId" in message &&
+        message.requestId === oldQueryMessage.requestId
+      );
+    });
+    expect(oldResponses).toStrictEqual([]);
+
+    movingOwner.abort(new DOMException("App reloaded", "AbortError"));
+    await expect(oldRequest).rejects.toMatchObject({ name: "AbortError" });
+    await expect(changedHeartbeat).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    secondOwner.abort();
+    keeperOwner.abort();
+    await vi.waitFor(() => {
+      expect(workerContext.credentialStoreCount()).toBe(0);
+    });
+  });
+
+  it("refreshes the token without reloading a same-credential MessagePort", async () => {
+    installHeartbeatAuthentication();
+    const authorizationHeaders: (string | null)[] = [];
+    context.mocks.api(
+      chatThreadEventsContract.snapshot,
+      ({ request, respond }) => {
+        authorizationHeaders.push(request.headers.get("authorization"));
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query, request, respond }) => {
+        authorizationHeaders.push(request.headers.get("authorization"));
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
     const [platformPort, workerPort] = messagePortPair();
     new SharedDatabaseMessagePortServer(
       workerContext,
       workerPort,
       context.signal,
     );
+    const events = bridgeEvents();
     const bridge = new MessagePortSharedDatabaseBridge(
       platformPort,
       location.origin,
-      bridgeEvents(),
+      events,
     );
     const owner = createChildAbortController(context.signal);
 
     await bridge.heartbeat({ token: "first-token" }, owner.signal);
-    expect(workerContext.credentialStoreCount()).toBe(1);
-    await bridge.heartbeat({ token: "second-token" }, owner.signal);
-
-    expect(workerPort.closed).toBeFalsy();
-    expect(workerContext.credentialStoreCount()).toBe(1);
+    await bridge.heartbeat({ token: "refreshed-token" }, owner.signal);
     await expect(
       bridge.query(
         {
           dataKey: dataKey(crypto.randomUUID()),
           afterSeqId: null,
-          consistency: "cache-only",
+          consistency: "catch-up",
         },
         owner.signal,
       ),
     ).resolves.toStrictEqual([]);
+
+    expect(authorizationHeaders.length).toBeGreaterThan(0);
+    expect(new Set(authorizationHeaders)).toStrictEqual(
+      new Set(["Bearer refreshed-token"]),
+    );
+    expect(events.reloadRequired).not.toHaveBeenCalled();
+    expect(workerPort.closed).toBeFalsy();
+    expect(workerContext.credentialStoreCount()).toBe(1);
     owner.abort();
     await vi.waitFor(() => {
       expect(workerContext.credentialStoreCount()).toBe(0);

@@ -4,7 +4,6 @@ import {
   createChildAbortController,
   createDeferredPromise,
   settle,
-  throwIfAbort,
   withCleanup,
 } from "../signals/utils.ts";
 import type {
@@ -144,24 +143,25 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     }
     signal.throwIfAborted();
     const controller = createChildAbortController(this.requireOwnerSignal());
-    // use try-catch here because SharedWorker construction can fail synchronously.
-    // confirmed by ethan@vm0.ai
-    // eslint-disable-next-line no-restricted-syntax
-    try {
-      this.options.events.statusChanged("connecting");
-      const bridge = this.options.createBridge(
-        this.connectionEvents,
-        controller.signal,
-      );
-      this.connectionController = controller;
-      this.bridge = bridge;
-      return bridge;
-    } catch (error) {
-      throwIfAbort(error);
-      controller.abort(error);
-      signal.throwIfAborted();
+    this.options.events.statusChanged("connecting");
+    const created = await settle(
+      this.constructBridge(controller.signal),
+      signal,
+    );
+    if (!created.ok) {
+      controller.abort(created.error);
       return await this.requestReload(signal);
     }
+    const bridge = created.value;
+    this.connectionController = controller;
+    this.bridge = bridge;
+    return bridge;
+  }
+
+  private async constructBridge(
+    signal: AbortSignal,
+  ): Promise<SharedDatabaseBridge> {
+    return await this.options.createBridge(this.connectionEvents, signal);
   }
 
   private async runWithReload<T>(

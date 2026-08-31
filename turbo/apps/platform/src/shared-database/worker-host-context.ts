@@ -1,5 +1,7 @@
 import type { Store } from "ccstate";
 
+import { captureSentryLogError } from "../lib/sentry-config.ts";
+import { isAbortError, withCleanup } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
 import {
   sharedDatabaseCredentialId,
@@ -8,24 +10,22 @@ import {
 import {
   credentialStoreConnectionCount$,
   registerConnection$,
-  unregisterConnection$,
   type ConnectionId,
 } from "./worker-context.ts";
 import {
   createSharedDatabaseCredentialStore,
   disposeSharedDatabaseCredentialStore$,
+  startCredentialStoreDaemons$,
 } from "./worker-signals.ts";
 
 export interface SharedDatabaseConnectionBinding {
   readonly credentialId: string;
   readonly store: Store;
-  readonly connectionId: ConnectionId;
 }
 
-export interface SharedDatabaseConnectionBindingUpdate {
+interface SharedDatabaseConnectionRegistration {
   readonly binding: SharedDatabaseConnectionBinding;
   readonly signal: AbortSignal;
-  readonly releasePrevious: () => void;
 }
 
 interface BindSharedDatabaseConnectionOptions {
@@ -39,6 +39,7 @@ interface BindSharedDatabaseConnectionOptions {
 
 export class SharedDatabaseWorkerContext {
   private readonly credentialStores = new Map<string, Store>();
+  private readonly credentialDaemonTasks = new Set<Promise<void>>();
 
   constructor(
     private readonly workerSignal: AbortSignal,
@@ -58,23 +59,9 @@ export class SharedDatabaseWorkerContext {
 
   bindConnection(
     options: BindSharedDatabaseConnectionOptions,
-    previous: SharedDatabaseConnectionBinding | null,
-    previousSignal: AbortSignal | null,
-  ): SharedDatabaseConnectionBindingUpdate {
+  ): SharedDatabaseConnectionRegistration {
     this.workerSignal.throwIfAborted();
     const credentialId = sharedDatabaseCredentialId(options.identity);
-    if (
-      previous?.credentialId === credentialId &&
-      previousSignal !== null &&
-      !previousSignal.aborted
-    ) {
-      return {
-        binding: previous,
-        signal: previousSignal,
-        releasePrevious: () => {},
-      };
-    }
-
     let store = this.credentialStores.get(credentialId);
     if (!store) {
       store = createSharedDatabaseCredentialStore(
@@ -95,7 +82,7 @@ export class SharedDatabaseWorkerContext {
       options.port,
       options.connectionController.signal,
     );
-    const binding = { credentialId, store, connectionId: options.connectionId };
+    const binding = { credentialId, store };
     signal.addEventListener(
       "abort",
       () => {
@@ -103,17 +90,17 @@ export class SharedDatabaseWorkerContext {
       },
       { once: true },
     );
-    return {
-      binding,
-      signal,
-      releasePrevious: () => {
-        if (!previous) {
-          return;
-        }
-        previous.store.set(unregisterConnection$, previous.connectionId);
-        this.releaseCredentialStore(previous.credentialId, previous.store);
-      },
-    };
+    return { binding, signal };
+  }
+
+  startCredentialStoreDaemons(credentialId: string): Promise<void> {
+    const store = this.credentialStores.get(credentialId);
+    if (!store) {
+      throw new Error("Shared database credential Store was not found");
+    }
+    return store.set(startCredentialStoreDaemons$, (daemon) => {
+      this.ownCredentialDaemon(daemon);
+    });
   }
 
   credentialStoreCount(): number {
@@ -134,5 +121,23 @@ export class SharedDatabaseWorkerContext {
     }
     this.credentialStores.delete(credentialId);
     store.set(disposeSharedDatabaseCredentialStore$);
+  }
+
+  private ownCredentialDaemon(daemon: Promise<void>): void {
+    const owned = withCleanup(this.observeCredentialDaemon(daemon), () => {
+      this.credentialDaemonTasks.delete(owned);
+    });
+    this.credentialDaemonTasks.add(owned);
+  }
+
+  private async observeCredentialDaemon(daemon: Promise<void>): Promise<void> {
+    const [result] = await Promise.allSettled([daemon]);
+    if (result?.status !== "rejected" || isAbortError(result.reason)) {
+      return;
+    }
+    captureSentryLogError("SharedDatabaseWorker", [
+      "credential daemon failed",
+      result.reason,
+    ]);
   }
 }

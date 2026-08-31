@@ -23,8 +23,6 @@ import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
-  detach,
-  Reason,
   settle,
 } from "../signals/utils.ts";
 import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
@@ -89,6 +87,8 @@ interface CredentialStoreResources {
   readonly runtime: SharedDatabaseWorkerRuntime;
   readonly authRecovery: WorkerAuthRecovery;
 }
+
+export type CredentialStoreDaemonOwner = (daemon: Promise<void>) => void;
 
 function requireRuntime(
   runtime: SharedDatabaseWorkerRuntime | null,
@@ -279,8 +279,14 @@ const runCredentialStoreDaemons$ = command(
       },
       signal,
     );
-    await set(setupRealtime$, signal);
-    signal.throwIfAborted();
+    const setup = await settle(set(setupRealtime$, signal), signal);
+    if (!setup.ok) {
+      if (!ready.settled()) {
+        ready.reject(setup.error);
+      }
+      set(updateSharedDatabaseRealtimeStatus$, "failed");
+      return;
+    }
     const subscriptions = await settle(
       Promise.all([
         set(
@@ -309,13 +315,16 @@ const runCredentialStoreDaemons$ = command(
     );
     signal.throwIfAborted();
     if (!subscriptions.ok) {
+      if (!ready.settled()) {
+        ready.reject(subscriptions.error);
+      }
       set(updateSharedDatabaseRealtimeStatus$, "failed");
     }
   },
 );
 
 export const startCredentialStoreDaemons$ = command(
-  ({ get, set }): Promise<void> => {
+  ({ get, set }, ownDaemon: CredentialStoreDaemonOwner): Promise<void> => {
     const existing = get(credentialStoreDaemonsReadyState$);
     if (existing) {
       return existing;
@@ -323,11 +332,7 @@ export const startCredentialStoreDaemons$ = command(
     const signal = get(rootSignal$);
     const ready = createDeferredPromise<void>(signal);
     set(credentialStoreDaemonsReadyState$, ready.promise);
-    detach(
-      set(runCredentialStoreDaemons$, ready, signal),
-      Reason.Daemon,
-      "shared database credential daemons",
-    );
+    ownDaemon(set(runCredentialStoreDaemons$, ready, signal));
     return ready.promise;
   },
 );
