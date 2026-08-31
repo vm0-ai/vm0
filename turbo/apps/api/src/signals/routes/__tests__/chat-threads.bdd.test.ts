@@ -37,7 +37,6 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
-  holdChatThreadRowLockFixture,
   insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
@@ -2636,7 +2635,7 @@ describe("CHAT-01 chat search", () => {
     expect(forbidden.body.error.message).toContain("chat-event:read");
   });
 
-  it("searches own messages with filters and context", async () => {
+  it("searches own matched messages with filters", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
@@ -2785,7 +2784,8 @@ describe("CHAT-01 chat search", () => {
       "agent A mentions narwhal",
     );
 
-    // Context windows around the match stay chronological.
+    // The old context request remains accepted during rollout, but only the
+    // matched message is returned.
     const contextThread = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
       prompt: "context round one",
@@ -2811,39 +2811,8 @@ describe("CHAT-01 chat search", () => {
       throw new Error("Expected one okapi match");
     }
     expect(match.matchedMessage.content).toBe("the okapi was here");
-    expect(
-      match.contextBefore.map((message) => {
-        return message.content;
-      }),
-    ).toStrictEqual(["context round one"]);
-    expect(
-      match.contextAfter.map((message) => {
-        return message.content;
-      }),
-    ).toStrictEqual(["context round three"]);
-    const matchedAt = Date.parse(match.matchedMessage.createdAt);
-    for (const message of match.contextBefore) {
-      expect(Date.parse(message.createdAt)).toBeLessThan(matchedAt);
-    }
-    for (const message of match.contextAfter) {
-      expect(Date.parse(message.createdAt)).toBeGreaterThan(matchedAt);
-    }
-    const beforeTimes = match.contextBefore.map((message) => {
-      return Date.parse(message.createdAt);
-    });
-    expect(
-      [...beforeTimes].sort((a, b) => {
-        return a - b;
-      }),
-    ).toStrictEqual(beforeTimes);
-    const afterTimes = match.contextAfter.map((message) => {
-      return Date.parse(message.createdAt);
-    });
-    expect(
-      [...afterTimes].sort((a, b) => {
-        return a - b;
-      }),
-    ).toStrictEqual(afterTimes);
+    expect(match.contextBefore).toStrictEqual([]);
+    expect(match.contextAfter).toStrictEqual([]);
 
     // hasMore flips when matches exceed the limit.
     await sendNoCreditMessage(owner, {
@@ -2864,7 +2833,7 @@ describe("CHAT-01 chat search", () => {
     expect(limited.hasMore).toBeTruthy();
   }, 60_000);
 
-  it("associates batched context windows across matches and threads", async () => {
+  it("returns batched matched messages without context across threads", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agentA = await bdd.createAgent(owner, {
@@ -2877,46 +2846,20 @@ describe("CHAT-01 chat search", () => {
     const alphaPrompt = `${marker} needle alpha`;
     const betaPrompt = `${marker} needle beta`;
     const gammaPrompt = `${marker} needle gamma`;
-    const sharedPrompt = `${marker} shared bridge`;
 
     const threadA = await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
-      prompt: `${marker} first anchor`,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      threadId: threadA,
       prompt: alphaPrompt,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      threadId: threadA,
-      prompt: sharedPrompt,
     });
     await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
       threadId: threadA,
       prompt: betaPrompt,
     });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      threadId: threadA,
-      prompt: `${marker} final anchor`,
-    });
 
     const threadB = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
-      prompt: `${marker} second anchor`,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentB.agentId,
-      threadId: threadB,
       prompt: gammaPrompt,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentB.agentId,
-      threadId: threadB,
-      prompt: `${marker} second tail`,
     });
 
     await projectChatEventSearch();
@@ -2948,102 +2891,9 @@ describe("CHAT-01 chat search", () => {
     expect(alpha.chatThreadId).toBe(threadA);
     expect(beta.chatThreadId).toBe(threadA);
     expect(gamma.chatThreadId).toBe(threadB);
-
-    const expectedContextLengths = new Map([
-      [alphaPrompt, { before: 1, after: 2 }],
-      [betaPrompt, { before: 2, after: 1 }],
-      [gammaPrompt, { before: 1, after: 1 }],
-    ]);
     for (const match of contextual.results) {
-      const expectedLengths = expectedContextLengths.get(
-        match.matchedMessage.content,
-      );
-      if (!expectedLengths) {
-        throw new Error("Unexpected batched chat-search match");
-      }
-      expect(match.contextBefore).toHaveLength(expectedLengths.before);
-      expect(match.contextAfter).toHaveLength(expectedLengths.after);
-      expect(
-        [...match.contextBefore, ...match.contextAfter].every((message) => {
-          return message.chatThreadId === match.chatThreadId;
-        }),
-      ).toBeTruthy();
-      expect(
-        [...match.contextBefore, ...match.contextAfter].some((message) => {
-          return (
-            message.chatThreadId === match.matchedMessage.chatThreadId &&
-            message.seqId === match.matchedMessage.seqId
-          );
-        }),
-      ).toBeFalsy();
-
-      const matchedAt = Date.parse(match.matchedMessage.createdAt);
-      const beforeTimes = match.contextBefore.map((message) => {
-        return Date.parse(message.createdAt);
-      });
-      const afterTimes = match.contextAfter.map((message) => {
-        return Date.parse(message.createdAt);
-      });
-      expect(
-        beforeTimes.every((createdAt) => {
-          return createdAt < matchedAt;
-        }),
-      ).toBeTruthy();
-      expect(
-        afterTimes.every((createdAt) => {
-          return createdAt > matchedAt;
-        }),
-      ).toBeTruthy();
-      expect(
-        [...beforeTimes].sort((left, right) => {
-          return left - right;
-        }),
-      ).toStrictEqual(beforeTimes);
-      expect(
-        [...afterTimes].sort((left, right) => {
-          return left - right;
-        }),
-      ).toStrictEqual(afterTimes);
-    }
-
-    const sharedAfterAlpha = alpha.contextAfter.filter((message) => {
-      return message.content === sharedPrompt;
-    });
-    const sharedBeforeBeta = beta.contextBefore.filter((message) => {
-      return message.content === sharedPrompt;
-    });
-    // The revoked queue-first duplicate stays hidden, while the visible row
-    // remains associated with both overlapping windows.
-    expect(sharedAfterAlpha).toHaveLength(1);
-    expect(sharedBeforeBeta).toHaveLength(1);
-    expect([
-      sharedAfterAlpha[0]?.chatThreadId,
-      sharedAfterAlpha[0]?.seqId,
-    ]).toStrictEqual([
-      sharedBeforeBeta[0]?.chatThreadId,
-      sharedBeforeBeta[0]?.seqId,
-    ]);
-
-    const beforeOnly = await chat.searchChat(owner, `${marker} needle`, {
-      limit: 3,
-      before: 1,
-      after: 0,
-    });
-    expect(beforeOnly.results).toHaveLength(3);
-    for (const match of beforeOnly.results) {
-      expect(match.contextBefore).toHaveLength(1);
-      expect(match.contextAfter).toStrictEqual([]);
-    }
-
-    const afterOnly = await chat.searchChat(owner, `${marker} needle`, {
-      limit: 3,
-      before: 0,
-      after: 1,
-    });
-    expect(afterOnly.results).toHaveLength(3);
-    for (const match of afterOnly.results) {
       expect(match.contextBefore).toStrictEqual([]);
-      expect(match.contextAfter).toHaveLength(1);
+      expect(match.contextAfter).toStrictEqual([]);
     }
   }, 60_000);
 });
@@ -3180,15 +3030,6 @@ describe("CHAT-01 chat search index", () => {
 
     const visibleHit = await chat.searchChat(actor, visibleNeedle);
     expect(visibleHit.results).toHaveLength(1);
-    const context = [
-      ...(visibleHit.results[0]?.contextBefore ?? []),
-      ...(visibleHit.results[0]?.contextAfter ?? []),
-    ];
-    expect(
-      context.some((message) => {
-        return message.content.includes(followupOnlyNeedle);
-      }),
-    ).toBeFalsy();
 
     const followupHit = await chat.searchChat(actor, followupOnlyNeedle);
     expect(followupHit.results).toStrictEqual([]);
@@ -3232,7 +3073,7 @@ describe("CHAT-01 chat search index", () => {
     expect(both.results).toHaveLength(2);
   }, 60_000);
 
-  it("continues when a selected thread is deleted during projection", async () => {
+  it("ignores a thread deleted before projection", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(owner, {
@@ -3247,37 +3088,14 @@ describe("CHAT-01 chat search index", () => {
       agentId: agent.agentId,
       prompt: `${marker} beta`,
     });
-    const [blockedThreadId, deletedThreadId] = [threadA, threadB].sort();
-    if (!blockedThreadId || !deletedThreadId) {
-      throw new Error("Expected two chat threads");
-    }
-
-    const threadLock = await holdChatThreadRowLockFixture({
-      threadId: blockedThreadId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      threadLock.release();
-      await threadLock.done;
-    });
-
-    const [tick] = await Promise.all([
-      projectChatEventSearch(),
-      (async () => {
-        await expect
-          .poll(threadLock.blockedWaiterCount)
-          .toBeGreaterThanOrEqual(1);
-        await chat.deleteThread(owner, deletedThreadId);
-        threadLock.release();
-        await threadLock.done;
-      })(),
-    ]);
+    await chat.deleteThread(owner, threadB);
+    const tick = await projectChatEventSearch();
     expect(tick.success).toBeTruthy();
 
     const found = await chat.searchChat(owner, marker);
     expect(found.results).toHaveLength(1);
-    expect(found.results[0]?.chatThreadId).toBe(blockedThreadId);
-    const deleted = await chat.requestReadThread(owner, deletedThreadId, [404]);
+    expect(found.results[0]?.chatThreadId).toBe(threadA);
+    const deleted = await chat.requestReadThread(owner, threadB, [404]);
     expectApiError(deleted.body);
   }, 60_000);
 

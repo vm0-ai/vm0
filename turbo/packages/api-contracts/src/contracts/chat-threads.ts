@@ -1740,7 +1740,12 @@ const chatSearchResultSchema = z.object({
   agentName: z.string(),
   matchedMessage: chatSearchMessageSchema,
   matchedRanges: z.array(chatSearchMatchRangeSchema),
+  /**
+   * Deprecated rollout compatibility; always empty. Remove only after old
+   * browser builds and commit-addressed CLI execution contexts have drained.
+   */
   contextBefore: z.array(chatSearchMessageSchema),
+  /** @see contextBefore */
   contextAfter: z.array(chatSearchMessageSchema),
 });
 
@@ -1750,8 +1755,7 @@ const chatSearchResultSchema = z.object({
  * query schema below) and chat-message search is a lookup tool, not a bulk
  * export. Callers that hit `hasMore=true` should narrow the query (add
  * `agentId`, `since`, or a more specific `keyword`) rather than paginate. If
- * genuine pagination is ever needed, introduce `nextCursor` here — the
- * contract has no external consumers yet, so adding it later is safe.
+ * genuine pagination is ever needed, introduce `nextCursor` here.
  */
 const chatSearchResponseSchema = z.object({
   results: z.array(chatSearchResultSchema),
@@ -1773,6 +1777,7 @@ export const chatSearchContract = c.router({
       agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
+      // Deprecated request compatibility; the backend ignores both values.
       before: z.coerce.number().min(0).max(10).default(0),
       after: z.coerce.number().min(0).max(10).default(0),
     }),

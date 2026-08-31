@@ -322,8 +322,6 @@ const searchChatInner$ = computed(async (get) => {
       agentId: query.agentId,
       since: query.since,
       limit: query.limit,
-      before: query.before,
-      after: query.after,
     }),
   );
 

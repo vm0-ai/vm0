@@ -175,16 +175,17 @@ describe("GET /api/cron/project-chat-event-search", () => {
     );
   });
 
-  it("skips a thread whose deletion commits during projection", async () => {
+  it("projects without waiting for an in-flight thread deletion", async () => {
     const actor = bdd.user();
     const agent = await chat.createAgentForChatThread(actor);
     const thread = await chat.createThread(actor, {
       agentId: agent.agentId,
       title: `Projection deletion ${randomUUID()}`,
     });
+    const promptText = `deleting prompt ${randomUUID()}`;
     await insertChatSearchProjectionCoverageFixture({
       chatThreadId: thread.id,
-      promptText: `deleting prompt ${randomUUID()}`,
+      promptText,
       assistantText: `deleting assistant ${randomUUID()}`,
       errorText: `deleting error ${randomUUID()}`,
       terminalText: `deleting terminal ${randomUUID()}`,
@@ -199,17 +200,45 @@ describe("GET /api/cron/project-chat-event-search", () => {
       await Promise.all([heldDeletion.done, tick]);
     });
 
-    await expect
-      .poll(heldDeletion.firstBlockedStatementKind)
-      .toBe("select_for_key_share");
+    const projected = await tick;
+    expect(projected.success).toBeTruthy();
+    expect(projected.threads).toBe(1);
+    await expect(heldDeletion.firstBlockedStatementKind()).resolves.toBeNull();
+
     heldDeletion.release();
     await heldDeletion.done;
 
-    const projected = await tick;
-    expect(projected.success).toBeTruthy();
-    expect(projected.threads).toBe(0);
     const deleted = await chat.requestReadThread(actor, thread.id, [404]);
     expect(deleted.status).toBe(404);
+    const hidden = await chat.searchChat(actor, promptText);
+    expect(hidden.results).toStrictEqual([]);
+
+    const cleanup = await projectOwnedChatEventSearch([thread.id]);
+    expect(cleanup.orphanedThreads).toBe(1);
+    const clean = await projectOwnedChatEventSearch([thread.id]);
+    expect(clean.orphanedThreads).toBe(0);
+  });
+
+  it("removes search projection rows synchronously on normal deletion", async () => {
+    const actor = bdd.user();
+    const agent = await chat.createAgentForChatThread(actor);
+    const thread = await chat.createThread(actor, {
+      agentId: agent.agentId,
+      title: `Projection cleanup ${randomUUID()}`,
+    });
+    const promptText = `synchronous cleanup ${randomUUID()}`;
+    await insertSearchablePromptFixture({
+      chatThreadId: thread.id,
+      text: promptText,
+    });
+    await projectOwnedChatEventSearch([thread.id]);
+
+    await chat.deleteThread(actor, thread.id);
+
+    const hidden = await chat.searchChat(actor, promptText);
+    expect(hidden.results).toStrictEqual([]);
+    const repair = await projectOwnedChatEventSearch([thread.id]);
+    expect(repair.orphanedThreads).toBe(0);
   });
 
   it("bounds each projection tick to the configured thread batch", async () => {

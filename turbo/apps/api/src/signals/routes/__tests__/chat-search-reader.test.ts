@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
+import { cronProjectChatEventSearchResponseSchema } from "@okouai/api-contracts/contracts/cron";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
 import {
   insertChatSearchProjectionCoverageFixture,
   insertSearchablePromptFixture,
@@ -12,6 +15,7 @@ import {
   renameChatSearchAgentFixture,
   updateChatSearchSourceThreadFixture,
 } from "../../../test-fixtures/chat-event-search";
+import { holdChatThreadDeleteTransactionFixture } from "../../../test-fixtures/chat-events";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -19,10 +23,13 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 const context = testContext();
 const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
+type ChatSearchProjectionResponse = z.infer<
+  typeof cronProjectChatEventSearchResponseSchema
+>;
 
-async function projectChatSearchMessages(
+async function requestChatSearchProjection(
   chatThreadIds: readonly string[],
-): Promise<void> {
+): Promise<ChatSearchProjectionResponse> {
   const client = setupApp({
     context,
     routes: testChatEventSearchProjectionRoutes,
@@ -31,9 +38,14 @@ async function projectChatSearchMessages(
     client.project({ body: { chat_thread_ids: [...chatThreadIds] } }),
     [200],
   );
-  expect(response.body.convergence.durableCaughtUpThreads).toBe(
-    chatThreadIds.length,
-  );
+  return response.body;
+}
+
+async function projectChatSearchMessages(
+  chatThreadIds: readonly string[],
+): Promise<void> {
+  const body = await requestChatSearchProjection(chatThreadIds);
+  expect(body.convergence.durableCaughtUpThreads).toBe(chatThreadIds.length);
 }
 
 async function createSearchThread(
@@ -48,15 +60,26 @@ async function createSearchThread(
   return { agentId: agent.agentId, threadId: thread.id };
 }
 
+async function deleteThreadWithoutSearchCleanup(
+  threadId: string,
+): Promise<void> {
+  const heldDeletion = await holdChatThreadDeleteTransactionFixture({
+    threadId,
+    signal: context.signal,
+  });
+  heldDeletion.release();
+  await heldDeletion.done;
+}
+
 describe("GET /api/chat/search durable reader", () => {
-  it("serves message identities and context after source events are deleted", async () => {
+  it("serves matched message identity after source events are deleted", async () => {
     const owner = bdd.user();
     const source = await createSearchThread(
       owner,
       `durable-reader-${randomUUID().slice(0, 8)}`,
     );
     const keyword = `durablereader${randomUUID().replaceAll("-", "")}`;
-    const first = await insertChatSearchProjectionCoverageFixture({
+    await insertChatSearchProjectionCoverageFixture({
       chatThreadId: source.threadId,
       promptText: "context user before",
       assistantText: "context assistant before",
@@ -97,35 +120,10 @@ describe("GET /api/chat/search durable reader", () => {
       seqId: second.prompt.seqId,
       runId: null,
     });
-    expect(
-      result.contextBefore.map((message) => {
-        return message.content;
-      }),
-    ).toStrictEqual(["context user before", "context assistant before"]);
-    expect(
-      result.contextAfter.map((message) => {
-        return message.content;
-      }),
-    ).toStrictEqual(["context assistant after"]);
-
-    expect(result.contextBefore[0]).toMatchObject({
-      chatThreadId: source.threadId,
-      role: "user",
-      seqId: first.prompt.seqId,
-      runId: null,
-    });
-    expect(result.contextBefore[1]).toMatchObject({
-      chatThreadId: source.threadId,
-      role: "assistant",
-      seqId: first.assistant.seqId,
-      runId: first.assistantRunId,
-    });
-    expect(result.contextAfter[0]).toMatchObject({
-      chatThreadId: source.threadId,
-      role: "assistant",
-      seqId: second.assistant.seqId,
-      runId: second.assistantRunId,
-    });
+    // Previous clients can still request context during rollout, but the new
+    // backend no longer loads or returns surrounding messages.
+    expect(result.contextBefore).toStrictEqual([]);
+    expect(result.contextAfter).toStrictEqual([]);
 
     for (const excluded of [secondError, secondTerminal]) {
       const excludedSearch = await chat.searchChat(owner, excluded);
@@ -185,5 +183,49 @@ describe("GET /api/chat/search durable reader", () => {
     const sameUserOtherOrg = bdd.user({ userId: owner.userId });
     const otherOrgSearch = await chat.searchChat(sameUserOtherOrg, keyword);
     expect(otherOrgSearch.results).toStrictEqual([]);
+  });
+
+  it("continues past orphan-only candidate pages and preserves hasMore", async () => {
+    const owner = bdd.user();
+    const keyword = `orphanpage${randomUUID().replaceAll("-", "")}`;
+    const baseTime = now();
+    const visible = await createSearchThread(
+      owner,
+      `visible-reader-${randomUUID().slice(0, 8)}`,
+    );
+    await insertSearchablePromptFixture({
+      chatThreadId: visible.threadId,
+      text: keyword,
+      createdAt: new Date(baseTime),
+    });
+
+    const orphanThreadIds: string[] = [];
+    for (let index = 1; index <= 6; index++) {
+      const orphan = await createSearchThread(
+        owner,
+        `orphan-reader-${randomUUID().slice(0, 8)}`,
+      );
+      orphanThreadIds.push(orphan.threadId);
+      await insertSearchablePromptFixture({
+        chatThreadId: orphan.threadId,
+        text: keyword,
+        createdAt: new Date(baseTime + index * 1000),
+      });
+    }
+
+    await projectChatSearchMessages([visible.threadId, ...orphanThreadIds]);
+    for (const threadId of orphanThreadIds) {
+      await deleteThreadWithoutSearchCleanup(threadId);
+    }
+
+    const search = await chat.searchChat(owner, keyword, { limit: 1 });
+    expect(search.results).toHaveLength(1);
+    expect(search.results[0]?.chatThreadId).toBe(visible.threadId);
+    expect(search.hasMore).toBeFalsy();
+
+    const cleanup = await requestChatSearchProjection(orphanThreadIds);
+    expect(cleanup.orphanedThreads).toBe(orphanThreadIds.length);
+    const clean = await requestChatSearchProjection(orphanThreadIds);
+    expect(clean.orphanedThreads).toBe(0);
   });
 });
