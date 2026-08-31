@@ -35,7 +35,13 @@ export interface RecommendedFollowupSource {
   readonly followups: readonly RecommendedFollowup[];
 }
 
-export type ThinkingIndicatorMode = "waiting" | "running" | "finished" | null;
+export type ThinkingIndicatorMode =
+  | "waiting"
+  | "waiting-queued"
+  | "running"
+  | "running-queued"
+  | "finished"
+  | null;
 
 export interface EventImageGroupProjection {
   readonly role: ChatEventGroup["role"];

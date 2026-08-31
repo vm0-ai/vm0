@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { click } from "../../../__tests__/page-helper.ts";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
@@ -692,7 +692,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("does not show thinking for server-queued work", async () => {
+  it("shows server queue state only while the queue marker is unresolved", async () => {
     mockServerQueuedThreadStories();
 
     detachedSetupPage({
@@ -702,6 +702,11 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Start queued deployment")).toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button").some((button) => {
+          return button.textContent === "queue...";
+        }),
+      ).toBeTruthy();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
@@ -716,6 +721,11 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Queued deployment is running now."),
       ).toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button").some((button) => {
+          return button.textContent === "queue...";
+        }),
+      ).toBeFalsy();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
       expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });

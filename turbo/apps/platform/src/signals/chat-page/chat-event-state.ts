@@ -373,7 +373,7 @@ function assistantRunIndicatorState(
   if (isQueueMarkerEvent(event)) {
     return undefined;
   }
-  if (runId !== undefined && isChatRunTerminalEventType(event.eventType)) {
+  if (isChatRunTerminalEventType(event.eventType)) {
     return null;
   }
   if (runId === undefined) {
@@ -490,6 +490,13 @@ function activeRunIndicatorStateFromChatEvents(
       }
       if (state === "running") {
         return state;
+      }
+      if (
+        event.runId === undefined &&
+        (event.eventType === "output.message" ||
+          event.eventType === "output.error")
+      ) {
+        return newerPendingState;
       }
       continue;
     }

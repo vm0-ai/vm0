@@ -199,6 +199,7 @@ import {
   useOpenThreadArtifacts,
 } from "./thread-sidebar.tsx";
 import { ChatThreadSidebarShell } from "./chat-thread-sidebar-shell.tsx";
+import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -4914,12 +4915,49 @@ function ShimmerText({
 }
 
 function ThinkingLabel({
+  isQueued,
   thinkingLabel,
   serverThinkingLabel,
 }: {
+  isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
+  const { t } = useTranslation();
+  const openQueueDrawer = useSet(openQueueDrawer$);
+
+  if (isQueued) {
+    const waitingIn = t(($) => {
+      return $.chat.run.waitingIn;
+    });
+    const queueEllipsis = t(($) => {
+      return $.chat.run.queueEllipsis;
+    });
+    return (
+      <ShimmerText
+        visualChildren={
+          <>
+            {waitingIn}{" "}
+            <span className="underline underline-offset-2">
+              {queueEllipsis}
+            </span>
+          </>
+        }
+      >
+        {waitingIn}{" "}
+        <button
+          type="button"
+          onClick={() => {
+            openQueueDrawer();
+          }}
+          className="cursor-pointer underline underline-offset-2"
+        >
+          {queueEllipsis}
+        </button>
+      </ShimmerText>
+    );
+  }
+
   if (serverThinkingLabel) {
     return (
       <ShimmerText
@@ -4941,10 +4979,12 @@ function ThinkingLabel({
 
 function InlineThinkingRow({
   blockStyle,
+  isQueued,
   thinkingLabel,
   serverThinkingLabel,
 }: {
   blockStyle: CSSProperties;
+  isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
@@ -4956,6 +4996,7 @@ function InlineThinkingRow({
         <span />
       </span>
       <ThinkingLabel
+        isQueued={isQueued}
         thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
       />
@@ -5006,17 +5047,23 @@ function FinishedRunRow({
 function WaitingForAssistantResponse({
   thread,
   blockStyle,
+  isQueued,
   thinkingLabel,
   serverThinkingLabel,
 }: {
   thread: ChatPanelSignals;
   blockStyle: CSSProperties;
+  isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
+  const thinkingIndicatorProps = isQueued
+    ? {}
+    : { "data-thinking-indicator": true };
+
   return (
     <div
-      data-thinking-indicator
+      {...thinkingIndicatorProps}
       data-role="assistant"
       className="zero-thinking-enter flex flex-col gap-1"
     >
@@ -5030,6 +5077,7 @@ function WaitingForAssistantResponse({
               <span />
             </span>
             <ThinkingLabel
+              isQueued={isQueued}
               thinkingLabel={thinkingLabel}
               serverThinkingLabel={serverThinkingLabel}
             />
@@ -5048,23 +5096,24 @@ function WaitingForAssistantResponse({
 }
 
 function AssistantThinkingStatusRow({
-  running,
+  active,
   blockStyle,
+  isQueued,
   thinkingLabel,
   serverThinkingLabel,
   thread,
   recommendedFollowupSource,
 }: {
-  running: boolean;
+  active: boolean;
   blockStyle: CSSProperties;
+  isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
   thread: ChatPanelSignals;
   recommendedFollowupSource: RecommendedFollowupSource | null;
 }) {
-  const thinkingIndicatorProps = running
-    ? { "data-thinking-indicator": true }
-    : {};
+  const thinkingIndicatorProps =
+    active && !isQueued ? { "data-thinking-indicator": true } : {};
 
   return (
     <div
@@ -5074,9 +5123,10 @@ function AssistantThinkingStatusRow({
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
-        {running ? (
+        {active ? (
           <InlineThinkingRow
             blockStyle={blockStyle}
+            isQueued={isQueued}
             thinkingLabel={thinkingLabel}
             serverThinkingLabel={serverThinkingLabel}
           />
@@ -5088,12 +5138,16 @@ function AssistantThinkingStatusRow({
   );
 }
 
-function thinkingIndicatorRunning(mode: ThinkingIndicatorMode): boolean {
+function runStatusIndicatorActive(mode: ThinkingIndicatorMode): boolean {
   return mode !== null && mode !== "finished";
 }
 
+function thinkingIndicatorQueued(mode: ThinkingIndicatorMode): boolean {
+  return mode === "waiting-queued" || mode === "running-queued";
+}
+
 function thinkingIndicatorUsesStatusRow(mode: ThinkingIndicatorMode): boolean {
-  return mode === "running" || mode === "finished";
+  return mode === "running" || mode === "running-queued" || mode === "finished";
 }
 
 function equalRecommendedFollowupSources(
@@ -5123,7 +5177,8 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
       equalityFn: equalRecommendedFollowupSources,
     }) ?? null;
   const thinkingLabel = useGet(thread.thinkingPhrase$);
-  const running = thinkingIndicatorRunning(mode);
+  const active = runStatusIndicatorActive(mode);
+  const isQueued = thinkingIndicatorQueued(mode);
   const thinkingEventId = useLastResolved(thread.thinkingEventId$);
   const displayedThinkingText =
     useLastResolved(thread.displayedThinkingText$) ?? "";
@@ -5133,7 +5188,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
     thread.setThinkingIndicatorTextRef$,
   );
   const serverThinkingLabel =
-    thinkingText && thinkingEventId && running
+    thinkingText && thinkingEventId && active && !isQueued
       ? {
           displayedText: displayedThinkingText,
           fadingOut: thinkingTextFadingOut,
@@ -5151,8 +5206,9 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   if (thinkingIndicatorUsesStatusRow(mode)) {
     return (
       <AssistantThinkingStatusRow
-        running={running}
+        active={active}
         blockStyle={blockStyle}
+        isQueued={isQueued}
         thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
         thread={thread}
@@ -5166,6 +5222,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
     <WaitingForAssistantResponse
       thread={thread}
       blockStyle={blockStyle}
+      isQueued={isQueued}
       thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
     />

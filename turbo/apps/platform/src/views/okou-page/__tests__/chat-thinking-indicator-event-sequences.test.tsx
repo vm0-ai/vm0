@@ -7,6 +7,12 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const THINKING_INDICATOR_SELECTOR = "[data-thinking-indicator]";
 
+function hasQueueButton(): boolean {
+  return queryAllByRoleFast("button").some((button) => {
+    return button.textContent === "queue...";
+  });
+}
+
 function setupChatEventSequence(
   threadId: string,
   chatEvents: MockChatEventInput[],
@@ -69,6 +75,34 @@ describe("chat thinking indicator event sequences", () => {
     });
   });
 
+  it("clears legacy pending state after a runless assistant response", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000218";
+    setupChatEventSequence(threadId, [
+      {
+        id: "event-legacy-prompt",
+        role: "user",
+        content: "Legacy prompt without a run",
+        runId: undefined,
+        createdAt: "2026-08-30T10:45:48.424Z",
+      },
+      {
+        id: "event-legacy-response",
+        role: "assistant",
+        content: "Legacy response without a run",
+        runId: undefined,
+        createdAt: "2026-08-30T10:45:48.991Z",
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Legacy response without a run"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+      expect(document.querySelector(THINKING_INDICATOR_SELECTOR)).toBeNull();
+    });
+  });
+
   it("keeps the active run thinking when a later run is queued", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000213";
     setupChatEventSequence(threadId, [
@@ -113,10 +147,11 @@ describe("chat thinking indicator event sequences", () => {
         throw new Error("Thinking indicator not found");
       }
       expect(queryAllByRoleFast("button", indicator)).toHaveLength(0);
+      expect(hasQueueButton()).toBeFalsy();
     });
   });
 
-  it("does not show thinking when the latest runnable work is only queued", async () => {
+  it("shows queue UI without thinking when the latest runnable work is only queued", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000214";
     setupChatEventSequence(threadId, [
       {
@@ -139,11 +174,12 @@ describe("chat thinking indicator event sequences", () => {
     await waitFor(() => {
       expect(screen.getByText("Only queued prompt")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(hasQueueButton()).toBeTruthy();
       expect(document.querySelector(THINKING_INDICATOR_SELECTOR)).toBeNull();
     });
   });
 
-  it("does not show thinking for a prompt behind an already queued run", async () => {
+  it("keeps queue UI without thinking for a prompt behind an already queued run", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000217";
     setupChatEventSequence(threadId, [
       {
@@ -173,6 +209,7 @@ describe("chat thinking indicator event sequences", () => {
     await waitFor(() => {
       expect(screen.getByText("Prompt behind queued run")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(hasQueueButton()).toBeTruthy();
       expect(document.querySelector(THINKING_INDICATOR_SELECTOR)).toBeNull();
     });
   });
