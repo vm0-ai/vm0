@@ -810,7 +810,6 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
       part.type === "source" ||
       part.type === "automation" ||
       part.type === "goal" ||
-      part.type === "morning_brief" ||
       part.type === "model"
     ) {
       continue;

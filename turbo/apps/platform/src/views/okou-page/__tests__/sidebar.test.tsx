@@ -4142,8 +4142,6 @@ describe("zero sidebar", () => {
           sendMode: "enter",
           theme: "system",
           colorTheme: "blue-horizon",
-          morningBriefEnabled: false,
-          morningBriefNextRunAt: null,
           captureNetworkBodiesRemaining: 0,
         });
       },
@@ -4501,8 +4499,6 @@ describe("zero sidebar", () => {
         sendMode: "enter",
         theme: "system",
         colorTheme: "blue-horizon",
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
       });
     });

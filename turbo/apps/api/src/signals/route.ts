@@ -29,7 +29,6 @@ import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
-import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { healthRoutes } from "./routes/health";
 import { buildInfoRoutes } from "./routes/build-info";
@@ -247,7 +246,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronSteerRunTimeBudgetRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
-  ...emailMorningBriefUnsubscribeRoutes,
   ...emailUnsubscribeRoutes,
   ...agentDraftRoutes,
   ...agentInstructionsRoutes,

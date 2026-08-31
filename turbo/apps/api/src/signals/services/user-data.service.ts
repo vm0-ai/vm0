@@ -131,8 +131,6 @@ export function userPreferences({
         sendMode: "enter",
         theme: null,
         colorTheme: null,
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
       };
     }
@@ -147,11 +145,6 @@ export function userPreferences({
       sendMode: parseSendMode(row.sendMode),
       theme: parseThemePreference(row.theme),
       colorTheme: parseColorTheme(row.colorTheme),
-      // Deployment fallback for old App bundles: keep the deprecated response
-      // shape terminal until phase B, after the replacement App version floor
-      // and the released legacy zero-traffic gate tracked by #30264.
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
   });
@@ -217,7 +210,7 @@ type UpdateUserPreferencesResult =
 
 type StoredUserPreferences = Omit<
   UserPreferencesResponse,
-  "morningBriefNextRunAt" | "theme" | "colorTheme"
+  "theme" | "colorTheme"
 > & {
   readonly theme: ThemePreference | null;
   readonly colorTheme: ColorTheme | null;
@@ -238,9 +231,6 @@ function mergeUserPreferences(
     sendMode: preferences.sendMode ?? existing.sendMode,
     theme: preferences.theme ?? existing.theme ?? null,
     colorTheme: preferences.colorTheme ?? existing.colorTheme ?? null,
-    // Old App bundles may still send this deprecated field. Accept it as a
-    // no-op until phase B; no request may reactivate the legacy runtime.
-    morningBriefEnabled: false,
     captureNetworkBodiesRemaining:
       preferences.captureNetworkBodiesRemaining ??
       existing.captureNetworkBodiesRemaining,
@@ -308,7 +298,6 @@ export const updateUserPreferences$ = command(
         sendMode: merged.sendMode,
         theme: merged.theme,
         colorTheme: merged.colorTheme,
-        morningBriefEnabled: false,
         captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
         createdAt: updatedAt,
         updatedAt,
@@ -324,10 +313,7 @@ export const updateUserPreferences$ = command(
 
     return {
       ok: true,
-      data: {
-        ...merged,
-        morningBriefNextRunAt: null,
-      },
+      data: merged,
     };
   },
 );

@@ -99,10 +99,6 @@ export type UserMessageRenderPart =
       readonly part: UserMessagePartOfType<"goal">;
     }
   | {
-      readonly type: "morning_brief";
-      readonly part: UserMessagePartOfType<"morning_brief">;
-    }
-  | {
       readonly type: "file";
       readonly part: UserMessagePartOfType<"file">;
       readonly signals: ArtifactSignals;

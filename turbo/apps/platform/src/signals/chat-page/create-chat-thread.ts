@@ -1233,9 +1233,6 @@ const registerUserMessageRenderPart$ = command(
       case "goal": {
         return { type: "goal", part };
       }
-      case "morning_brief": {
-        return { type: "morning_brief", part };
-      }
       case "model": {
         return { type: "model", part };
       }

@@ -415,8 +415,7 @@ async function expectAutomationSourceAnnotation(
       return (
         part.type === "source" ||
         part.type === "automation" ||
-        part.type === "goal" ||
-        part.type === "morning_brief"
+        part.type === "goal"
       );
     }),
   ).toStrictEqual([

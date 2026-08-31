@@ -17,6 +17,18 @@ import {
 describe("chat message response contract", () => {
   const workflowId = "11111111-1111-4111-8111-111111111111";
 
+  it("rejects the retired Morning Brief document marker", () => {
+    const parsed = userMessageDocumentSchema.safeParse({
+      version: 1,
+      parts: [
+        { type: "text", text: "Preserve the historical prompt" },
+        { type: "morning_brief", briefDate: "2026-08-24" },
+      ],
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects legacy automation metadata", () => {
     const parsed = chatEventSchema.safeParse({
       id: "message-1",
@@ -293,24 +305,6 @@ describe("chat thread generation template contract", () => {
         parts: [
           { type: "text", text: "Visible content" },
           { type: "goal", goalBrief: "Finish the rollout" },
-        ],
-      }),
-    ).toMatchObject({ success: true });
-    expect(
-      userMessageDocumentSchema.safeParse({
-        version: 1,
-        parts: [
-          { type: "goal", goalBrief: "Finish the rollout" },
-          { type: "morning_brief", briefDate: "2026-08-05" },
-        ],
-      }),
-    ).toMatchObject({ success: false });
-    expect(
-      userMessageDocumentSchema.safeParse({
-        version: 1,
-        parts: [
-          { type: "text", text: "Generate my Morning Brief" },
-          { type: "morning_brief", briefDate: "2026-08-05" },
         ],
       }),
     ).toMatchObject({ success: true });
