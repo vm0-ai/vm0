@@ -24,6 +24,11 @@ export async function signInWithClerkEmailCode(
   await openAuthV2(page, signInUrl.toString());
   await submitSignInIdentifier(page, email);
   await submitClerkEmailCode(page);
+  await page.waitForURL(
+    (url) =>
+      url.origin === signInUrl.origin && !url.pathname.startsWith("/sign-in"),
+    { timeout: 30_000, waitUntil: "domcontentloaded" },
+  );
   await page.waitForFunction(
     () => Boolean(window.Clerk?.loaded && window.Clerk.session),
     undefined,
