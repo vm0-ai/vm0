@@ -99,10 +99,6 @@ export function workerBridgeSource(
 ): string {
   return `(() => new Promise((resolveBridge) => {
     const installBridge = () => {
-      if (globalThis._vm0 === undefined) {
-        setTimeout(installBridge, 0);
-        return;
-      }
       const channel = new BroadcastChannel(${JSON.stringify(channelName)});
       const nativeFetch = globalThis.fetch.bind(globalThis);
       const pending = new Map();
@@ -143,6 +139,22 @@ export function workerBridgeSource(
       globalThis.fetch = routedFetch;
       resolveBridge();
     };
-    installBridge();
+    if (globalThis._vm0 !== undefined) {
+      installBridge();
+      return;
+    }
+    Object.defineProperty(globalThis, "_vm0", {
+      configurable: true,
+      get: () => undefined,
+      set: (value) => {
+        Object.defineProperty(globalThis, "_vm0", {
+          configurable: true,
+          enumerable: true,
+          value,
+          writable: true,
+        });
+        installBridge();
+      },
+    });
   }))()`;
 }
