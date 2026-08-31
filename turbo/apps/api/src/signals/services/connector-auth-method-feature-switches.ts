@@ -35,6 +35,7 @@ const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<
   "ramp\0api-token": FeatureSwitchKey.RampConnector,
   "reddit\0oauth": FeatureSwitchKey.RedditConnector,
   "spotify\0oauth": FeatureSwitchKey.SpotifyConnector,
+  "stripe\0oauth": FeatureSwitchKey.StripeMarketplaceOAuthConnector,
   "supabase\0oauth": FeatureSwitchKey.SupabaseConnector,
   "test-oauth\0api": FeatureSwitchKey.TestOauthConnector,
   "test-oauth\0api-token": FeatureSwitchKey.TestOauthConnector,
