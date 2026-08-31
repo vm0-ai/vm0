@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::ProtocolError;
 use crate::frame::encode_into;
+use crate::payloads::exec_operation::encode_exec_result_frame_into_with_type;
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
     expect_consumed, read_slice, read_str, read_u16, read_u32,
@@ -177,6 +178,16 @@ pub fn encode_guest_storage_manifest_result(
 }
 
 /// Encode a full fixed guest storage-manifest terminal result frame.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if stdout or stderr was discarded or exceeds
+/// [`GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES`] bytes; if `diagnostic` cannot
+/// fit its wire length field; or if the encoded payload exceeds the maximum
+/// message size.
+///
+/// Validation runs before the shared frame encoder clears `frame`, so a
+/// validation error leaves the destination unchanged.
 pub fn encode_guest_storage_manifest_result_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
@@ -186,14 +197,16 @@ pub fn encode_guest_storage_manifest_result_frame_into(
     stderr: ExecCapturedOutput<'_>,
     diagnostic: &str,
 ) -> Result<(), ProtocolError> {
-    let payload =
-        encode_guest_storage_manifest_result(termination, duration_ms, stdout, stderr, diagnostic)?;
-    encode_into(
+    validate_result_output(stdout, "stdout")?;
+    validate_result_output(stderr, "stderr")?;
+    encode_exec_result_frame_into_with_type::<MSG_GUEST_STORAGE_MANIFEST_RESULT>(
         frame,
-        MSG_GUEST_STORAGE_MANIFEST_RESULT,
         seq,
-        payload.len(),
-        |frame| frame.extend_from_slice(&payload),
+        termination,
+        duration_ms,
+        stdout,
+        stderr,
+        diagnostic,
     )
 }
 
