@@ -406,22 +406,10 @@ export default [
       // metadata entry points must share one value-free resolution matrix that
       // cannot be observed completely through a single production API route.
       "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
-      // A pre-migration schema cannot be constructed through a production API.
-      // This focused transaction validates the rollout contract against real
-      // PostgreSQL tables before and after the autonomy-budget columns exist.
-      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
-      // A pre-0835 table cannot be constructed through a production API. This
-      // focused transaction proves Calendar watch reads and initial writes stay
-      // legal on both sides of the transition-column migration.
-      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
       // A physical relation versus a compatibility view cannot be selected
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
       "src/signals/services/__tests__/agent-draft-write.service.test.ts",
-      // The strict email trust boundary is a deterministic pure renderer. A
-      // focused matrix pins parser-normalized URL policy, inert markup, and
-      // byte-bound fallback behavior that route tests cannot isolate fully.
-      "src/signals/services/__tests__/official-automation-result-email-renderer.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
@@ -549,14 +537,6 @@ export default [
       // metadata entry points must share one value-free resolution matrix that
       // cannot be observed completely through a single production API route.
       "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
-      // A pre-migration schema cannot be constructed through a production API.
-      // This focused transaction validates the rollout contract against real
-      // PostgreSQL tables before and after the autonomy-budget columns exist.
-      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
-      // A pre-0835 table cannot be constructed through a production API. This
-      // focused transaction proves Calendar watch reads and initial writes stay
-      // legal on both sides of the transition-column migration.
-      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
       // A physical relation versus a compatibility view cannot be selected
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.

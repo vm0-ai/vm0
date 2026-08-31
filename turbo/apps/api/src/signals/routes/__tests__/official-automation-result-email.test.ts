@@ -353,12 +353,46 @@ describe.sequential("Official Automation result email callbacks", () => {
       "## Priorities",
       "",
       "- **Reply** to the [customer](https://example.com/customer)",
-      "- [unsafe destination](jav&#x61;script:alert(1))",
+      "- [Email](MAILTO:user@example.com?subject=Hello)",
+      "- [javascript](jav&#x61;script:alert(1))",
+      "- [percent-obfuscated](java%73cript:alert(1))",
+      "- [data](data:text/html;base64,PHNjcmlwdD4=)",
+      "- [file](file:///etc/passwd)",
+      "- [cid](cid:tracking-pixel)",
+      "- [protocol-relative](//evil.example/path)",
+      "- [root-relative](/relative/path)",
+      "- [relative](../relative/path)",
+      "- [http](http://example.com/path)",
+      "- [other-scheme](ftp://example.com/file)",
+      "- [malformed-https](https://%zz.example/path)",
+      "- [non-absolute-https](https:relative/path)",
+      "- [empty-mailto](mailto:)",
       "- ![tracking pixel](https://tracker.example/pixel.png)",
+      "",
+      "1. First ordered item",
+      "2. Second ordered item",
+      "",
+      "> A quoted decision",
+      "",
+      "Use `inlineCode()` here.",
+      "",
+      "```mermaid",
+      "graph TD",
+      "A[Start] --> B[Done]",
+      "```",
+      "",
+      "| Owner | Priority |",
+      "| --- | --- |",
+      "| Sales | High |",
       "",
       longPlainText,
       "",
       '<script>alert("unsafe") &</script>',
+      "<style>* { display:none }</style>",
+      '<img src="x" onerror="alert(1)">',
+      '<svg onload="alert(1)"><path /></svg>',
+      '<iframe srcdoc="unsafe"></iframe>',
+      '<div onclick="alert(1)">click</div>',
       "😀".repeat(9000),
     ].join("\n");
     const resultCallbackId = await seedResultCallback({
@@ -455,16 +489,46 @@ describe.sequential("Official Automation result email callbacks", () => {
         ? send.html
         : "";
     expect(html).not.toContain("<script>alert");
+    expect(html).not.toContain("<style>");
     expect(html).not.toContain("<img");
+    expect(html).not.toContain("<svg");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toMatch(/<[^>]+\son(?:click|error|load)=/u);
     expect(html).not.toContain("tracker.example");
     expect(html).toContain("&lt;script&gt;");
+    expect(html).toContain("&lt;style&gt;");
     expect(html).toContain("&amp;");
     expect(html).toContain("&quot;");
     expect(html).toContain(">Priorities</h2>");
     expect(html).toContain("<ul style=");
+    expect(html).toContain("<ol style=");
+    expect(html).toContain("<blockquote style=");
+    expect(html).toContain("<code style=");
+    expect(html).toContain("<pre style=");
+    expect(html).toContain("A[Start] --&gt; B[Done]");
+    expect(html).toContain('<table role="presentation" width="100%"');
+    expect(html).toContain("<th style=");
+    expect(html).toContain("<td style=");
     expect(html).toContain("<strong style=");
     expect(html).toContain('href="https://example.com/customer"');
-    expect(html).not.toContain('href="javascript:');
+    expect(html).toContain('href="MAILTO:user@example.com?subject=Hello"');
+    for (const unsafeDestination of [
+      "javascript:",
+      "java%73cript:",
+      "data:",
+      "file:",
+      "cid:",
+      "//evil.example",
+      "/relative/path",
+      "../relative/path",
+      "http://",
+      "ftp://",
+      "https://%zz",
+      "https:relative",
+      "mailto:",
+    ]) {
+      expect(html).not.toContain(`href="${unsafeDestination}`);
+    }
     expect(html).toContain("[Result truncated]");
     expect(html).toContain(`https://app.okou.ai/activities/${runId}`);
     expect(html).toContain("https://app.okou.ai/email/unsubscribe");
