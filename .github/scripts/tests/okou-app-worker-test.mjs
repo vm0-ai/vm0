@@ -360,9 +360,10 @@ assert.ok(
     "https://static.vm0.io/platform/icon.svg",
   ),
 );
-assert.equal(
-  tagAttribute(vm0Page.html, "img", "alt", "", "src"),
-  "https://static.vm0.io/platform/icon.svg",
+assert.equal(tagAttribute(vm0Page.html, "img", "alt", "", "src"), null);
+assert.match(
+  vm0Page.html,
+  /class="app-bootstrap-skeleton__avatar-placeholder"/u,
 );
 assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
 
@@ -408,9 +409,10 @@ assert.ok(
     (href) => href === "https://static.okou.io",
   ),
 );
-assert.equal(
-  tagAttribute(okouPage.html, "img", "alt", "", "src"),
-  "https://static.okou.io/platform/icon.svg",
+assert.equal(tagAttribute(okouPage.html, "img", "alt", "", "src"), null);
+assert.match(
+  okouPage.html,
+  /class="app-bootstrap-skeleton__avatar-placeholder"/u,
 );
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 

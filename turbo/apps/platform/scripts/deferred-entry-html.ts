@@ -3,13 +3,24 @@ import type { Plugin } from "vite";
 const APP_ENTRY_ATTRIBUTE = "data-vm0-app-entry";
 const APP_STYLESHEET_ATTRIBUTE = "data-vm0-app-stylesheet";
 
+function tagAttributes(tag: string): ReadonlyMap<string, string | undefined> {
+  const attributes = new Map<string, string | undefined>();
+  const pattern = /\s([A-Za-z_:][A-Za-z0-9:._-]*)(?:="([^"]*)")?/gu;
+  for (const match of tag.matchAll(pattern)) {
+    const name = match[1];
+    if (name !== undefined) {
+      attributes.set(name, match[2]);
+    }
+  }
+  return attributes;
+}
+
 function attributeValue(tag: string, name: string): string | undefined {
-  const match = new RegExp(`\\s${name}="([^"]*)"`, "u").exec(tag);
-  return match?.[1];
+  return tagAttributes(tag).get(name);
 }
 
 function hasAttribute(tag: string, name: string): boolean {
-  return new RegExp(`\\s${name}(?:="[^"]*")?(?=\\s|/?>)`, "u").test(tag);
+  return tagAttributes(tag).has(name);
 }
 
 function preloadTag(
