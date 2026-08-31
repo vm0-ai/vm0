@@ -32,6 +32,15 @@ const variableStateSchema = z.object({
 const customOauthStateSchema = z.object({
   storage_version: z.number().int().positive().nullable(),
   context_storage_version: z.number().int().positive().nullable(),
+  context_valid: z.boolean().optional(),
+  oauth_setup: z.enum(["custom", "automatic"]).optional(),
+});
+
+const automaticOauthBindingStateSchema = z.object({
+  exists: z.boolean(),
+  valid: z.boolean(),
+  registration_method: z.enum(["cimd", "dcr"]).nullable(),
+  dcr_client_secret_present: z.boolean().optional(),
 });
 
 export const testConnectorCredentialStorageStateActionBodySchema =
@@ -53,6 +62,48 @@ export const testConnectorCredentialStorageStateActionBodySchema =
     z.object({
       action: z.literal("read-custom-oauth-state"),
       state: z.string(),
+    }),
+    z.object({
+      action: z.literal("seed-custom-oauth-state-context"),
+      state: z.string().min(1),
+      org_id: z.string(),
+      user_id: z.string(),
+      custom_connector_id: z.uuid(),
+      storage_version: z.number().int().positive(),
+      redirect_uri: z.url(),
+      oauth_context: z.record(z.string(), z.unknown()),
+    }),
+    z.object({
+      action: z.literal("seed-automatic-oauth-binding"),
+      org_id: z.string(),
+      user_id: z.string(),
+      custom_connector_id: z.uuid(),
+      connector_account_id: z.uuid(),
+      issuer: z.string().min(1),
+      resource: z.string().min(1),
+      resource_metadata_url: z.string().min(1).nullable(),
+      token_endpoint: z.string().min(1),
+      client_id: z.string().min(1),
+      registration: z.discriminatedUnion("method", [
+        z.object({
+          method: z.literal("cimd"),
+          token_endpoint_auth_method: z.literal("none"),
+        }),
+        z.object({
+          method: z.literal("dcr"),
+          registration_id: z.uuid(),
+          token_endpoint_auth_method: z.enum([
+            "none",
+            "client_secret_basic",
+            "client_secret_post",
+          ]),
+          encrypted_client_secret: z.string().min(1).nullable(),
+        }),
+      ]),
+    }),
+    z.object({
+      action: z.literal("read-automatic-oauth-binding"),
+      connector_account_id: z.uuid(),
     }),
     z.object({
       action: z.literal("read-oauth-state-account-mutation"),
@@ -222,6 +273,7 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
       .nullable()
       .optional(),
     custom_oauth_state: customOauthStateSchema.nullable().optional(),
+    automatic_oauth_binding: automaticOauthBindingStateSchema.optional(),
     feishu_member_connection: feishuMemberConnectionStateSchema
       .nullable()
       .optional(),

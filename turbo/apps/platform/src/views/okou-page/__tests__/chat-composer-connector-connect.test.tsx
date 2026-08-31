@@ -5,6 +5,8 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
+  customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
   customConnectorValuesContract,
   customConnectorsContract,
   type CustomConnectorHttpResponse,
@@ -105,7 +107,7 @@ function buttonByText(text: string, container: ParentNode): HTMLElement {
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
-  return {
+  return customConnectorHttpResponseSchema.parse({
     kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     storageVersion: 1,
@@ -134,13 +136,14 @@ function customConnector(
     createdAt: "2026-07-30T00:00:00.000Z",
     updatedAt: "2026-07-30T00:00:00.000Z",
     ...overrides,
-  };
+  });
 }
 
 function managedFeishuConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
-  return customConnector({
+  return customConnectorHttpResponseSchema.parse({
+    ...customConnector(),
     id: "55555555-5555-4555-8555-555555555555",
     slug: "_feishu-00000000-0000-4000-8000-000000000055",
     displayName: "Feishu",
@@ -153,6 +156,7 @@ function managedFeishuConnector(
       },
     ],
     authMode: "oauth",
+    oauthSetup: "custom",
     permissionBundleRef: "builtin:feishu@1",
     oauthConfig: {
       providerAdapter: "feishu",
@@ -173,7 +177,7 @@ function managedFeishuConnector(
 function mcpCustomConnector(
   overrides: Partial<CustomConnectorMcpResponse> = {},
 ): CustomConnectorMcpResponse {
-  return {
+  return customConnectorMcpResponseSchema.parse({
     kind: "mcp",
     id: "44444444-4444-4444-8444-444444444444",
     storageVersion: 1,
@@ -205,7 +209,7 @@ function mcpCustomConnector(
     createdAt: "2026-08-11T00:00:00.000Z",
     updatedAt: "2026-08-11T00:00:00.000Z",
     ...overrides,
-  };
+  });
 }
 
 function mockCatalog(

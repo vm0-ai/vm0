@@ -29,6 +29,7 @@ import {
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
+  customConnectorHttpResponseSchema,
   customConnectorValuesContract,
   customConnectorsContract,
   type CustomConnectorHttpResponse,
@@ -210,7 +211,7 @@ function mockAgentConnectorAuthorizations(
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
-  return {
+  return customConnectorHttpResponseSchema.parse({
     kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     storageVersion: 1,
@@ -239,7 +240,7 @@ function customConnector(
     createdAt: "2026-06-09T10:00:00Z",
     updatedAt: "2026-06-09T10:00:00Z",
     ...overrides,
-  };
+  });
 }
 
 function mcpCustomConnector(): CustomConnectorMcpResponse {

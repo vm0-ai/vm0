@@ -15,6 +15,7 @@ import {
   type CustomConnectorMcpTransport,
   type CustomConnectorOAuthConfig,
   type CustomConnectorOAuthConfigInput,
+  type CustomConnectorOAuthSetup,
   type CustomConnectorPermissionBundleRef,
   type CustomConnectorPermissionBundleResponse,
   type CustomConnectorProposal,
@@ -35,6 +36,8 @@ import {
   type OrgCustomConnectorOAuthProviderAdapter,
   type OrgCustomConnectorOAuthTokenEndpointAuthMethod,
 } from "@okouai/db/schema/org-custom-connector-oauth-config";
+import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-connector-account-oauth-binding";
+import { orgCustomConnectorDcrRegistrations } from "@okouai/db/schema/org-custom-connector-dcr-registration";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 
 import { clerk$ } from "../external/clerk";
@@ -197,6 +200,7 @@ interface CustomConnectorSharedRow {
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMode: CustomConnectorAuthMode;
+  readonly oauthSetup: CustomConnectorOAuthSetup | null;
   readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
   readonly enabled: boolean;
   readonly skillMarkdown: string | null;
@@ -228,6 +232,7 @@ interface DefinitionInputBase {
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMode?: CustomConnectorAuthMode;
+  readonly oauthSetup?: CustomConnectorOAuthSetup;
   readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
   readonly skillMarkdown: string | null;
   readonly slug?: string;
@@ -253,6 +258,7 @@ interface ValidatedDefinitionBase {
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMode: CustomConnectorAuthMode;
+  readonly oauthSetup: CustomConnectorOAuthSetup | null;
   readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
   readonly skillMarkdown: string | null;
   readonly slug: string | undefined;
@@ -449,6 +455,32 @@ export function normaliseCustomConnectorRow(
   const storedFields = fieldArray(row.fields);
   const storedHeaderInjections = headerInjectionArray(row.headerInjections);
   const queryInjections = queryInjectionArray(row.queryInjections);
+  const isHttp = hasHttpDiscriminator(row);
+  const oauthSetup = (() => {
+    if (row.authMode === "manual") {
+      if (row.oauthSetup !== null || oauthConfig !== null) {
+        throw new Error(
+          "Invalid persisted manual Custom Connector OAuth setup",
+        );
+      }
+      return null;
+    }
+    if (row.oauthSetup === "automatic") {
+      if (isHttp || oauthConfig !== null) {
+        throw new Error(
+          "Invalid persisted Automatic OAuth Custom Connector setup",
+        );
+      }
+      return "automatic" as const;
+    }
+    if (
+      (row.oauthSetup === null || row.oauthSetup === "custom") &&
+      oauthConfig !== null
+    ) {
+      return "custom" as const;
+    }
+    throw new Error("Invalid persisted Custom OAuth app configuration");
+  })();
   const shared = {
     id: row.id,
     orgId: row.orgId,
@@ -458,6 +490,7 @@ export function normaliseCustomConnectorRow(
     headerInjections: storedHeaderInjections,
     queryInjections,
     authMode: row.authMode,
+    oauthSetup,
     oauthConfig,
     enabled: row.enabled,
     skillMarkdown: row.skillMarkdown,
@@ -468,7 +501,7 @@ export function normaliseCustomConnectorRow(
     updatedAt: row.updatedAt,
   };
 
-  if (hasHttpDiscriminator(row)) {
+  if (isHttp) {
     if (
       !isValidPersistedHttpDefinition(
         row,
@@ -555,6 +588,7 @@ function grantConfigurationChanged(args: {
   return (
     protocolConfigurationChanged ||
     args.existing.authMode !== args.definition.authMode ||
+    args.existing.oauthSetup !== args.definition.oauthSetup ||
     !jsonValuesEqual(args.existing.fields, args.definition.fields) ||
     !jsonValuesEqual(
       args.existing.headerInjections,
@@ -595,6 +629,7 @@ function credentialContractChanged(args: {
 }): boolean {
   return (
     args.existing.authMode !== args.definition.authMode ||
+    args.existing.oauthSetup !== args.definition.oauthSetup ||
     !credentialFieldsEqual(args.existing.fields, args.definition.fields) ||
     !oauthConfigsEqual(args.existing.oauthConfig, args.nextOAuthConfig)
   );
@@ -610,6 +645,7 @@ function mcpDefinitionUpdateIsAccessNeutralOrReducing(args: {
     args.existing.endpoint === args.definition.endpoint &&
     args.existing.transport === args.definition.transport &&
     args.existing.authMode === args.definition.authMode &&
+    args.existing.oauthSetup === args.definition.oauthSetup &&
     jsonValuesEqual(args.existing.fields, args.definition.fields) &&
     jsonValuesEqual(
       args.existing.headerInjections,
@@ -762,6 +798,25 @@ export function serialiseCustomConnector(args: {
       ? ["oauth"]
       : []),
   ];
+  const auth = (() => {
+    if (args.row.authMode === "manual") {
+      return { authMode: "manual" as const };
+    }
+    if (args.row.oauthSetup === "custom" && args.row.oauthConfig) {
+      return {
+        authMode: "oauth" as const,
+        oauthSetup: "custom" as const,
+        oauthConfig: serialiseOAuthConfig(args.row.oauthConfig),
+      };
+    }
+    if (args.row.oauthSetup === "automatic" && !args.row.oauthConfig) {
+      return {
+        authMode: "oauth" as const,
+        oauthSetup: "automatic" as const,
+      };
+    }
+    throw new Error("Invalid normalized Custom Connector OAuth setup");
+  })();
   const common = {
     id: args.row.id,
     slug: args.row.slug,
@@ -769,10 +824,6 @@ export function serialiseCustomConnector(args: {
     fields: [...args.row.fields],
     headerInjections: [...args.row.headerInjections],
     queryInjections: [...args.row.queryInjections],
-    authMode: args.row.authMode,
-    ...(args.row.oauthConfig
-      ? { oauthConfig: serialiseOAuthConfig(args.row.oauthConfig) }
-      : {}),
     skillMarkdown: args.row.skillMarkdown,
     storageVersion: args.row.storageVersion,
     connected,
@@ -796,6 +847,7 @@ export function serialiseCustomConnector(args: {
   if (args.row.kind === "mcp") {
     return {
       ...common,
+      ...auth,
       kind: "mcp",
       endpoint: args.row.endpoint,
       transport: args.row.transport,
@@ -804,8 +856,13 @@ export function serialiseCustomConnector(args: {
     } satisfies CustomConnectorMcpResponse;
   }
 
+  if (auth.authMode === "oauth" && auth.oauthSetup === "automatic") {
+    throw new Error("HTTP Custom Connectors cannot use Automatic OAuth");
+  }
+
   return {
     ...common,
+    ...auth,
     kind: "http",
     prefixTemplates: [...args.row.prefixTemplates],
     permissionBundleRef: effectivePermissionBundleRef(args.row),
@@ -1327,6 +1384,7 @@ function validateOAuthConfigInput(
 
 function validateOAuthConfigUpdate(args: {
   readonly authMode: CustomConnectorAuthMode;
+  readonly oauthSetup: CustomConnectorOAuthSetup | null;
   readonly input: CustomConnectorOAuthConfigInput | undefined;
   readonly existingConfig: CustomConnectorOAuthConfigRow | null;
 }): ValidatedOAuthConfigUpdate | BadRequestResponse {
@@ -1334,6 +1392,14 @@ function validateOAuthConfigUpdate(args: {
     if (args.input !== undefined) {
       return badRequestMessage(
         "OAuth configuration requires OAuth authentication mode",
+      );
+    }
+    return { kind: "none" };
+  }
+  if (args.oauthSetup === "automatic") {
+    if (args.input !== undefined) {
+      return badRequestMessage(
+        "Automatic OAuth does not accept a static OAuth configuration",
       );
     }
     return { kind: "none" };
@@ -1392,6 +1458,34 @@ function validateAuthInjectionReferences(args: {
   return null;
 }
 
+function validateDefinitionAuth(
+  input: DefinitionInput,
+  fields: readonly CustomConnectorField[],
+):
+  | {
+      readonly authMode: CustomConnectorAuthMode;
+      readonly oauthSetup: CustomConnectorOAuthSetup | null;
+    }
+  | BadRequestResponse {
+  const authMode = input.authMode ?? "manual";
+  const oauthSetup =
+    authMode === "oauth" ? (input.oauthSetup ?? "custom") : null;
+  if (oauthSetup === "automatic" && input.kind !== "mcp") {
+    return badRequestMessage(
+      "Automatic OAuth is available only for MCP Streamable HTTP connectors",
+    );
+  }
+  if (
+    authMode === "oauth" &&
+    fields.some((field) => {
+      return field.kind === "secret";
+    })
+  ) {
+    return badRequestMessage("OAuth custom connector fields must be variables");
+  }
+  return { authMode, oauthSetup };
+}
+
 function validateDefinition(
   input: DefinitionInput,
 ): ValidatedDefinition | BadRequestResponse {
@@ -1403,15 +1497,11 @@ function validateDefinition(
   if (isBadRequest(fields)) {
     return fields;
   }
-  const authMode = input.authMode ?? "manual";
-  if (
-    authMode === "oauth" &&
-    fields.some((field) => {
-      return field.kind === "secret";
-    })
-  ) {
-    return badRequestMessage("OAuth custom connector fields must be variables");
+  const auth = validateDefinitionAuth(input, fields);
+  if (isBadRequest(auth)) {
+    return auth;
   }
+  const { authMode, oauthSetup } = auth;
 
   const headerInjections = validateHeaderInjections({
     raw: input.headerInjections,
@@ -1455,6 +1545,7 @@ function validateDefinition(
     headerInjections,
     queryInjections,
     authMode,
+    oauthSetup,
     permissionBundleRef: input.permissionBundleRef,
     skillMarkdown: input.skillMarkdown,
     slug,
@@ -1531,6 +1622,7 @@ function definitionFromCreateInput(
         headerInjections: input.headerInjections,
         queryInjections: input.queryInjections,
         authMode: input.authMode,
+        oauthSetup: input.oauthSetup,
         permissionBundleRef: null,
         skillMarkdown: input.skillMarkdown ?? null,
         slug: input.slug,
@@ -1543,6 +1635,7 @@ function definitionFromCreateInput(
         headerInjections: input.headerInjections,
         queryInjections: input.queryInjections,
         authMode: input.authMode,
+        oauthSetup: input.oauthSetup,
         permissionBundleRef: input.permissionBundleRef ?? null,
         skillMarkdown: input.skillMarkdown ?? null,
         slug: input.slug,
@@ -1553,6 +1646,12 @@ function definitionFromUpdateInput(
   input: UpdateCustomConnectorBody,
   existing?: CustomConnectorRow,
 ): DefinitionInput {
+  const authMode = input.authMode ?? existing?.authMode ?? "manual";
+  const oauthSetup = input.oauthSetup ?? existing?.oauthSetup ?? undefined;
+  const skillMarkdown =
+    input.skillMarkdown !== undefined
+      ? input.skillMarkdown
+      : (existing?.skillMarkdown ?? null);
   if (input.kind === "mcp") {
     return {
       kind: "mcp",
@@ -1562,12 +1661,10 @@ function definitionFromUpdateInput(
       fields: input.fields,
       headerInjections: input.headerInjections,
       queryInjections: input.queryInjections,
-      authMode: input.authMode ?? existing?.authMode ?? "manual",
+      authMode,
+      oauthSetup,
       permissionBundleRef: null,
-      skillMarkdown:
-        input.skillMarkdown !== undefined
-          ? input.skillMarkdown
-          : (existing?.skillMarkdown ?? null),
+      skillMarkdown,
     };
   }
   return {
@@ -1577,15 +1674,13 @@ function definitionFromUpdateInput(
     fields: input.fields,
     headerInjections: input.headerInjections,
     queryInjections: input.queryInjections,
-    authMode: input.authMode ?? existing?.authMode ?? "manual",
+    authMode,
+    oauthSetup,
     permissionBundleRef:
       input.permissionBundleRef !== undefined
         ? input.permissionBundleRef
         : (existing?.permissionBundleRef ?? null),
-    skillMarkdown:
-      input.skillMarkdown !== undefined
-        ? input.skillMarkdown
-        : (existing?.skillMarkdown ?? null),
+    skillMarkdown,
   };
 }
 
@@ -1742,6 +1837,7 @@ async function persistCustomConnectorCreate(
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
+        oauthSetup: args.definition.oauthSetup,
         skillMarkdown: args.definition.skillMarkdown,
         skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,
@@ -1808,11 +1904,17 @@ export const createCustomConnector$ = command(
     }
     const oauthConfigUpdate = validateOAuthConfigUpdate({
       authMode: v.authMode,
+      oauthSetup: v.oauthSetup,
       input: args.input.oauthConfig,
       existingConfig: null,
     });
     if (isBadRequest(oauthConfigUpdate)) {
       return oauthConfigUpdate;
+    }
+    if (v.oauthSetup === "automatic") {
+      return badRequestMessage(
+        "Automatic OAuth connector setup is not enabled yet",
+      );
     }
     signal.throwIfAborted();
 
@@ -1954,6 +2056,32 @@ interface PersistCustomConnectorUpdateArgs {
   readonly preparedSkill: PreparedServerSideVolume | null;
 }
 
+async function deleteReplacedAutomaticOAuthData(
+  tx: DbTransaction,
+  args: Pick<
+    PersistCustomConnectorUpdateArgs,
+    "existing" | "definition" | "id" | "orgId"
+  >,
+): Promise<void> {
+  if (
+    args.existing.oauthSetup !== "automatic" ||
+    args.definition.oauthSetup === "automatic"
+  ) {
+    return;
+  }
+  await tx
+    .delete(customConnectorAccountOauthBindings)
+    .where(eq(customConnectorAccountOauthBindings.customConnectorId, args.id));
+  await tx
+    .delete(orgCustomConnectorDcrRegistrations)
+    .where(
+      and(
+        eq(orgCustomConnectorDcrRegistrations.customConnectorId, args.id),
+        eq(orgCustomConnectorDcrRegistrations.orgId, args.orgId),
+      ),
+    );
+}
+
 async function persistCustomConnectorUpdate(
   db: Db,
   args: PersistCustomConnectorUpdateArgs,
@@ -2017,6 +2145,7 @@ async function persistCustomConnectorUpdate(
         signal,
       );
     }
+    await deleteReplacedAutomaticOAuthData(tx, args);
     const kindColumns = protocolColumns(args.definition);
     const [updated] = await tx
       .update(orgCustomConnectors)
@@ -2027,6 +2156,7 @@ async function persistCustomConnectorUpdate(
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
+        oauthSetup: args.definition.oauthSetup,
         skillMarkdown: args.definition.skillMarkdown,
         skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,
@@ -2133,8 +2263,14 @@ function prepareCustomConnectorUpdate(args: {
   if (isBadRequest(definition)) {
     return definition;
   }
+  if (definition.oauthSetup === "automatic") {
+    return badRequestMessage(
+      "Automatic OAuth connector setup is not enabled yet",
+    );
+  }
   const oauthConfigUpdate = validateOAuthConfigUpdate({
     authMode: definition.authMode,
+    oauthSetup: definition.oauthSetup,
     input: args.input.oauthConfig,
     existingConfig: args.existing.oauthConfig,
   });

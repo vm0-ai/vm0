@@ -11,6 +11,7 @@ export function customConnectorDefinitionSelection() {
     headerInjections: orgCustomConnectors.headerInjections,
     queryInjections: orgCustomConnectors.queryInjections,
     authMode: orgCustomConnectors.authMode,
+    oauthSetup: orgCustomConnectors.oauthSetup,
     enabled: orgCustomConnectors.enabled,
     permissionBundleRef: orgCustomConnectors.permissionBundleRef,
     mcpEndpoint: orgCustomConnectors.mcpEndpoint,

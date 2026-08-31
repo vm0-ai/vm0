@@ -1,6 +1,8 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import {
   customConnectorByIdContract,
+  customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
   customConnectorOAuth2Contract,
   customConnectorValuesContract,
   customConnectorsContract,
@@ -334,7 +336,7 @@ async function setupAwsExternalCodeConnection(): Promise<{
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse>,
 ): CustomConnectorHttpResponse {
-  return {
+  return customConnectorHttpResponseSchema.parse({
     kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     slug: "acme-search",
@@ -363,13 +365,13 @@ function customConnector(
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
     ...overrides,
-  };
+  });
 }
 
 function mcpCustomConnector(
   overrides: Partial<CustomConnectorMcpResponse> = {},
 ): CustomConnectorMcpResponse {
-  return {
+  return customConnectorMcpResponseSchema.parse({
     kind: "mcp",
     id: "44444444-4444-4444-8444-444444444444",
     slug: "_acme-mcp",
@@ -401,7 +403,7 @@ function mcpCustomConnector(
     createdAt: "2026-08-10T00:00:00.000Z",
     updatedAt: "2026-08-10T00:00:00.000Z",
     ...overrides,
-  };
+  });
 }
 
 function publicCustomConnectorOAuthConfig(
@@ -511,14 +513,14 @@ function mockCustomConnectorStory(): {
         if (connector.id !== params.id) {
           return connector;
         }
-        updated = {
+        updated = customConnectorHttpResponseSchema.parse({
           ...connector,
           connected: true,
           missingRequiredFields: [],
           configuredFieldKeys: body.values.map((value) => {
             return value.key;
           }),
-        };
+        });
         return updated;
       });
       if (!updated) {
@@ -561,21 +563,25 @@ function mockCustomConnectorStory(): {
         if (connector.id !== params.id) {
           return connector;
         }
-        updated = {
+        const authMode = body.authMode ?? connector.authMode;
+        if (authMode !== "manual") {
+          throw new Error("Expected a manual HTTP custom connector update");
+        }
+        updated = customConnectorHttpResponseSchema.parse({
           ...connector,
           displayName: body.displayName,
           prefixTemplates: body.prefixTemplates,
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          authMode: body.authMode ?? connector.authMode,
+          authMode,
           storageVersion: body.storageVersion ?? connector.storageVersion,
           ...(body.oauthConfig
             ? {
                 oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
               }
             : {}),
-        };
+        });
         return updated;
       });
       if (!updated) {
@@ -5515,6 +5521,9 @@ describe("connectors page", () => {
       if (body.kind !== "mcp") {
         throw new Error("Expected an MCP custom connector create");
       }
+      if ((body.authMode ?? "manual") !== "manual") {
+        throw new Error("Expected a manual MCP custom connector create");
+      }
       createBodies.push(body);
       connector = mcpCustomConnector({
         displayName: body.displayName,
@@ -5522,7 +5531,7 @@ describe("connectors page", () => {
         fields: body.fields,
         headerInjections: body.headerInjections,
         queryInjections: body.queryInjections,
-        authMode: body.authMode ?? "manual",
+        authMode: "manual",
         storageVersion: body.storageVersion ?? 1,
         connected: false,
         missingRequiredFields: ["secret"],
@@ -5536,18 +5545,22 @@ describe("connectors page", () => {
         if (body.kind !== "mcp" || !connector) {
           throw new Error("Expected an existing MCP custom connector update");
         }
+        if ((body.authMode ?? connector.authMode) !== "manual") {
+          throw new Error("Expected a manual MCP custom connector update");
+        }
         updateBodies.push(body);
-        connector = {
+        const updatedConnector = customConnectorMcpResponseSchema.parse({
           ...connector,
           displayName: body.displayName,
           endpoint: body.endpoint,
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          authMode: body.authMode ?? connector.authMode,
+          authMode: "manual",
           storageVersion: body.storageVersion ?? connector.storageVersion,
-        };
-        return respond(200, connector);
+        });
+        connector = updatedConnector;
+        return respond(200, updatedConnector);
       },
     );
     context.mocks.api(
@@ -5824,6 +5837,7 @@ describe("connectors page", () => {
         headerInjections: body.headerInjections,
         queryInjections: body.queryInjections,
         authMode: "oauth",
+        oauthSetup: "custom",
         oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
         storageVersion: body.storageVersion ?? 1,
         connected: false,
@@ -5847,6 +5861,7 @@ describe("connectors page", () => {
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
           authMode: "oauth",
+          oauthSetup: "custom",
           oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
           storageVersion: body.storageVersion ?? connector.storageVersion,
         };
@@ -6241,6 +6256,7 @@ describe("connectors page", () => {
         },
       ],
       authMode: "oauth",
+      oauthSetup: "custom",
       permissionBundleRef: "builtin:feishu@1",
       oauthConfig: {
         providerAdapter: "feishu",
@@ -6306,6 +6322,9 @@ describe("connectors page", () => {
       return respond(200, { connectors: connector ? [connector] : [] });
     });
     context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
+      if (body.authMode !== "oauth" || !body.oauthConfig) {
+        throw new Error("Expected an OAuth HTTP custom connector create");
+      }
       createdBodies.push(body);
       connector = customConnector({
         displayName: body.displayName,
@@ -6313,7 +6332,8 @@ describe("connectors page", () => {
         fields: body.fields ?? [],
         headerInjections: body.headerInjections ?? [],
         queryInjections: body.queryInjections ?? [],
-        authMode: body.authMode,
+        authMode: "oauth",
+        oauthSetup: "custom",
         storageVersion: body.storageVersion,
         ...(body.oauthConfig
           ? {
@@ -6334,22 +6354,27 @@ describe("connectors page", () => {
         if (!connector) {
           throw new Error("Expected custom connector to exist");
         }
-        connector = {
+        if (body.authMode !== "oauth" || !body.oauthConfig) {
+          throw new Error("Expected an OAuth HTTP custom connector update");
+        }
+        const updatedConnector = customConnectorHttpResponseSchema.parse({
           ...connector,
           displayName: body.displayName,
           prefixTemplates: body.prefixTemplates,
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          authMode: body.authMode ?? connector.authMode,
+          authMode: "oauth",
+          oauthSetup: "custom",
           storageVersion: body.storageVersion ?? connector.storageVersion,
           ...(body.oauthConfig
             ? {
                 oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
               }
             : {}),
-        };
-        return respond(200, connector);
+        });
+        connector = updatedConnector;
+        return respond(200, updatedConnector);
       },
     );
     context.mocks.api(
@@ -7091,6 +7116,7 @@ describe("connectors page", () => {
         },
       ],
       authMode: "oauth",
+      oauthSetup: "custom",
       oauthConfig: {
         providerAdapter: "standard",
         clientId: "acme-client",

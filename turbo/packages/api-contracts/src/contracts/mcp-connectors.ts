@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { customConnectorMcpResponseSchema } from "./custom-connectors";
+import { customConnectorMcpResponseCoreSchema } from "./custom-connectors";
 
 const c = initContract();
 
-export const mcpConnectorSchema = customConnectorMcpResponseSchema.pick({
+export const mcpConnectorSchema = customConnectorMcpResponseCoreSchema.pick({
   id: true,
   slug: true,
   displayName: true,
