@@ -200,20 +200,18 @@
         border-radius: 9999px;
       }
 
-      .app-bootstrap-skeleton__avatar-placeholder,
       .app-bootstrap-skeleton__avatar-layers {
         position: absolute;
         inset: 0;
       }
 
-      .app-bootstrap-skeleton__avatar-placeholder {
-        display: block;
-        width: 64px;
-        height: 64px;
+      .app-bootstrap-skeleton__avatar-layers {
+        opacity: 0;
+        transform: scale(1.25);
       }
 
-      .app-bootstrap-skeleton__avatar-layers {
-        transform: scale(1.25);
+      .app-bootstrap-skeleton__avatar-layers--ready {
+        opacity: 1;
       }
 
       .app-bootstrap-skeleton__avatar img {
@@ -329,28 +327,25 @@
     >
       <div class="app-bootstrap-skeleton__content">
         <div class="app-bootstrap-skeleton__avatar" aria-hidden="true">
-          <svg
-            class="app-bootstrap-skeleton__avatar-placeholder"
-            viewBox="0 0 64 64"
-            aria-hidden="true"
-          >
-            <circle cx="32" cy="32" r="32" fill="#fee8dc" />
-            <path d="M18 46c2-9 7-14 14-14s12 5 14 14" fill="#ed4e01" />
-            <circle cx="32" cy="25" r="12" fill="#f6b996" />
-            <circle cx="28" cy="24" r="1.5" fill="#14171d" />
-            <circle cx="36" cy="24" r="1.5" fill="#14171d" />
-            <path
-              d="M28 29c2.5 2 5.5 2 8 0"
-              fill="none"
-              stroke="#14171d"
-              stroke-linecap="round"
-              stroke-width="1.5"
-            />
-          </svg>
           <div class="app-bootstrap-skeleton__avatar-layers">
-            <img data-app-bootstrap-avatar-layer="head" alt="" />
-            <img data-app-bootstrap-avatar-layer="face" alt="" />
-            <img data-app-bootstrap-avatar-layer="hair" alt="" />
+            <img
+              data-app-bootstrap-avatar-layer="head"
+              alt=""
+              decoding="async"
+              fetchpriority="low"
+            />
+            <img
+              data-app-bootstrap-avatar-layer="face"
+              alt=""
+              decoding="async"
+              fetchpriority="low"
+            />
+            <img
+              data-app-bootstrap-avatar-layer="hair"
+              alt=""
+              decoding="async"
+              fetchpriority="low"
+            />
           </div>
         </div>
         <div class="app-bootstrap-skeleton__message">
@@ -1524,6 +1519,26 @@
             staticAssetBase + "/platform/views/zero-page/assets/avatar-svg/";
           var avatar =
             avatarPresets[Math.floor(Math.random() * avatarPresets.length)];
+          var avatarLayers = skeleton.querySelectorAll(
+            "[data-app-bootstrap-avatar-layer]",
+          );
+          var loadedAvatarLayers = 0;
+          for (var i = 0; i < avatarLayers.length; i += 1) {
+            avatarLayers[i].addEventListener(
+              "load",
+              function () {
+                loadedAvatarLayers += 1;
+                if (loadedAvatarLayers === avatarLayers.length) {
+                  skeleton
+                    .querySelector(".app-bootstrap-skeleton__avatar-layers")
+                    .classList.add(
+                      "app-bootstrap-skeleton__avatar-layers--ready",
+                    );
+                }
+              },
+              { once: true },
+            );
+          }
           var messageIndex = Math.floor(Math.random() * messages.length);
           var staticMessage = skeleton.querySelector(
             ".app-bootstrap-skeleton__message-static",

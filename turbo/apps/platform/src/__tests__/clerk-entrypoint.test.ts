@@ -251,6 +251,9 @@ describe("platform Clerk entrypoint", () => {
       'script[type="module"][src="/src/main.ts"]',
     );
     const externalSkeletonImages = skeleton?.querySelectorAll("img[src]");
+    const avatarLayers = skeleton?.querySelectorAll(
+      "[data-app-bootstrap-avatar-layer]",
+    );
     if (!(skeleton instanceof HTMLDivElement)) {
       throw new Error("Built index.html does not contain the app skeleton");
     }
@@ -285,7 +288,12 @@ describe("platform Clerk entrypoint", () => {
       "@keyframes app-bootstrap-skeleton-type",
     );
     expect(externalSkeletonImages).toHaveLength(0);
-    expect(skeleton.querySelector("svg")).not.toBeNull();
+    expect(avatarLayers).toHaveLength(3);
+    for (const avatarLayer of avatarLayers ?? []) {
+      expect(avatarLayer.getAttribute("decoding")).toBe("async");
+      expect(avatarLayer.getAttribute("fetchpriority")).toBe("low");
+    }
+    expect(skeleton.querySelector("svg")).toBeNull();
     expect(
       parsedDocument.querySelector(
         "link[data-vm0-font-stylesheet]:not([rel]):not([as])",
