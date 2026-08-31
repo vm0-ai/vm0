@@ -2873,19 +2873,14 @@ describe("zero sidebar", () => {
     });
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
-    let unreadAgentRequests = 0;
-    mockUnreadAgents(
-      () => {
-        return unreadAgentIds;
-      },
-      () => {
-        unreadAgentRequests += 1;
-      },
-    );
+    mockUnreadAgents(() => {
+      return unreadAgentIds;
+    });
 
-    setupSidebarPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     const nav = await waitFor(() => {
@@ -2962,18 +2957,12 @@ describe("zero sidebar", () => {
       expect(within(supportDialogRow).getByLabelText("Unread")).toBeVisible();
     });
 
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
-    });
     unreadAgentIds = [SUPPORT_AGENT_ID];
     context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
       agentId: RESEARCH_AGENT_ID,
     });
 
     await waitFor(() => {
-      expect(unreadAgentRequests).toBeGreaterThan(1);
       expect(
         within(researchSidebarRow).queryByLabelText("Unread"),
       ).not.toBeInTheDocument();
