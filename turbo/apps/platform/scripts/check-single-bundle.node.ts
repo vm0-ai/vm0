@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { build } from "vite";
 
+import { deferApplicationEntryResources } from "./deferred-entry-html.ts";
 import {
   RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES,
   VENDOR_MODULE_PATTERN,
@@ -22,6 +23,39 @@ import {
 const APP_FILE = "assets/index-AppHash1.js";
 const VENDOR_FILE = "assets/vendor-Vendor01.js";
 const RUNTIME_FILE = "assets/rolldown-runtime-Runtime1.js";
+
+await test("defers app execution and styles without delaying resource discovery", () => {
+  const html = deferApplicationEntryResources(`
+    <link rel="stylesheet" crossorigin href="/assets/app-AppHash1.css">
+    <link rel="stylesheet" href="https://fonts.example/font.css">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-Vendor01.js">
+    <script data-vm0-app-entry="" type="module" crossorigin src="/assets/app-AppHash1.js"></script>
+  `);
+
+  assert.match(
+    html,
+    /<link rel="modulepreload" crossorigin href="\/assets\/app-AppHash1\.js" data-vm0-app-entry="">/u,
+  );
+  assert.match(
+    html,
+    /<link rel="preload" as="style" crossorigin href="\/assets\/app-AppHash1\.css" data-vm0-app-stylesheet="">/u,
+  );
+  assert.match(
+    html,
+    /<link rel="modulepreload" crossorigin href="\/assets\/vendor-Vendor01\.js">/u,
+  );
+  assert.match(
+    html,
+    /<link rel="stylesheet" href="https:\/\/fonts\.example\/font\.css">/u,
+  );
+  assert.doesNotMatch(html, /<script[^>]+src="\/assets\/app-AppHash1\.js"/u);
+});
+
+await test("fails closed when the deferred app entry is missing", () => {
+  assert.throws(() => {
+    deferApplicationEntryResources("<main>missing app entry</main>");
+  }, /Expected exactly one deferred app entry, found 0/u);
+});
 
 function applicationChunk() {
   return {

@@ -88,11 +88,24 @@ function executeClerkBootstrap(html: string): void {
     "location",
     `${clerkBootstrapSource(html)}\n//# sourceURL=platform-clerk-bootstrap-test.js`,
   ) as ClerkBootstrapScript;
-  executeEntrypointScript(window, document, location);
+  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
+  window.__vm0AfterFirstPaint ??= (callback) => {
+    callback();
+  };
+  try {
+    executeEntrypointScript(window, document, location);
+  } finally {
+    if (previousAfterFirstPaint === undefined) {
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
+    } else {
+      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
+    }
+  }
 }
 
 function captureClerkBootstrapScript(url: string): HTMLScriptElement {
   context.mocks.browser.url(url);
+  window.__vm0BrowserSupported = true;
   let clerkScript: HTMLScriptElement | undefined;
   const appendSpy = vi
     .spyOn(document.head, "appendChild")
@@ -108,6 +121,7 @@ function captureClerkBootstrapScript(url: string): HTMLScriptElement {
 
   executeClerkBootstrap(builtIndexHtml());
   appendSpy.mockRestore();
+  Reflect.deleteProperty(window, "__vm0BrowserSupported");
   if (!clerkScript) {
     throw new Error("Clerk bootstrap did not create the core script");
   }
@@ -218,13 +232,18 @@ async function completeEarlyClerkScript(
 }
 
 describe("platform Clerk entrypoint", () => {
-  it("declares the Clerk bootstrap before the app module", () => {
+  it("discovers the paintable skeleton before Clerk and the app module", () => {
     const html = builtIndexHtml();
     const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+    const skeleton = parsedDocument.getElementById("app-bootstrap-skeleton");
     const bootstrap = parsedDocument.querySelector(CLERK_BOOTSTRAP_SELECTOR);
     const mainScript = parsedDocument.querySelector(
       'script[type="module"][src="/src/main.ts"]',
     );
+    const externalSkeletonImages = skeleton?.querySelectorAll("img[src]");
+    if (!(skeleton instanceof HTMLDivElement)) {
+      throw new Error("Built index.html does not contain the app skeleton");
+    }
     if (!(bootstrap instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the Clerk bootstrap");
     }
@@ -232,10 +251,70 @@ describe("platform Clerk entrypoint", () => {
       throw new Error("Built index.html does not contain the app module");
     }
 
-    expect(bootstrap.compareDocumentPosition(mainScript)).toBe(
+    expect(skeleton.compareDocumentPosition(mainScript)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+    expect(skeleton.compareDocumentPosition(bootstrap)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(externalSkeletonImages).toHaveLength(0);
+    expect(skeleton.querySelector("svg")).not.toBeNull();
+    expect(
+      parsedDocument.querySelector(
+        'link[data-vm0-font-stylesheet][rel="preload"][as="style"]',
+      ),
+    ).not.toBeNull();
+    expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
+      html.indexOf("var appEntry ="),
+    );
     expect(html).not.toContain("@clerk/ui");
+  });
+
+  it("preconnects immediately and starts the Clerk core after first paint", () => {
+    context.mocks.browser.url("https://app.vm0.ai/");
+    window.__vm0BrowserSupported = true;
+    let afterFirstPaint: (() => void) | undefined;
+    window.__vm0AfterFirstPaint = (callback) => {
+      afterFirstPaint = callback;
+    };
+    const appendedNodes: Node[] = [];
+    const appendSpy = vi
+      .spyOn(document.head, "appendChild")
+      .mockImplementation(<T extends Node>(node: T): T => {
+        appendedNodes.push(node);
+        return node;
+      });
+
+    try {
+      executeClerkBootstrap(builtIndexHtml());
+      expect(
+        appendedNodes.filter((node) => {
+          return node instanceof HTMLLinkElement && node.rel === "preconnect";
+        }),
+      ).toHaveLength(1);
+      expect(
+        appendedNodes.filter((node) => {
+          return node instanceof HTMLScriptElement;
+        }),
+      ).toHaveLength(0);
+      if (afterFirstPaint === undefined) {
+        throw new Error("Clerk bootstrap did not register its paint callback");
+      }
+
+      afterFirstPaint();
+
+      const clerkScripts = appendedNodes.filter((node) => {
+        return (
+          node instanceof HTMLScriptElement &&
+          node.dataset.clerkJsScript !== undefined
+        );
+      });
+      expect(clerkScripts).toHaveLength(1);
+    } finally {
+      appendSpy.mockRestore();
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
+      Reflect.deleteProperty(window, "__vm0BrowserSupported");
+    }
   });
 
   it.each([

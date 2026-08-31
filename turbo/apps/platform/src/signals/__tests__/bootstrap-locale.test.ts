@@ -117,11 +117,15 @@ function executeMetadataEntrypoint(): void {
 const context = testContext();
 
 function bindBootstrapStateToSignal(): void {
+  window.__vm0AfterFirstPaint = (callback) => {
+    callback();
+  };
   context.signal.addEventListener(
     "abort",
     () => {
       Reflect.deleteProperty(window, "__vm0BrowserSupported");
       Reflect.deleteProperty(window, "__vm0BrowserUpgrade");
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
       Reflect.deleteProperty(window, "__vm0PreBundleCopy");
       delete document.documentElement.dataset.appBrandName;
       delete document.documentElement.dataset.appHeadManaged;
@@ -676,10 +680,10 @@ describe("bootstrap locale", () => {
     context.mocks.browser.language("en-US");
     context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "id-ID");
-    executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
       "Mozilla/5.0 Chrome/100.0.0.0 Safari/537.36",
     );
+    executeLocaleEntrypoint();
 
     const metadata = document.createElement("meta");
     metadata.name = "description";
@@ -861,10 +865,10 @@ describe("bootstrap locale", () => {
   it("uses cached Spanish across pre-bundle UI and i18next", async () => {
     context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "es-ES");
-    executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
       "Mozilla/5.0 Chrome/100.0.0.0 Safari/537.36",
     );
+    executeLocaleEntrypoint();
 
     const metadata = document.createElement("meta");
     metadata.name = "description";
@@ -996,10 +1000,10 @@ describe("bootstrap locale", () => {
     context.mocks.browser.language("en-US");
     context.store.set(activeOrgIdStorage.set$, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "hi-IN");
-    executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
       "Mozilla/5.0 Chrome/100.0.0.0 Safari/537.36",
     );
+    executeLocaleEntrypoint();
 
     const metadata = document.createElement("meta");
     metadata.name = "description";
