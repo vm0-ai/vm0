@@ -63,7 +63,11 @@ import {
   testContext,
   chatEventRowsResponse,
 } from "../../../signals/__tests__/test-helpers.ts";
-import { PLACEHOLDER, mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  PLACEHOLDER,
+  mockChatLifecycle,
+  sendMessageInUI,
+} from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 
 const context = testContext();
@@ -895,6 +899,76 @@ describe("chat event action cards", () => {
     await waitFor(() => {
       expect(card).toHaveTextContent("Already selected for this chat");
     });
+  });
+
+  it("registers a realtime account card in an optimistic thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000028",
+      displayName: "Realtime account",
+    });
+    let optimisticThreadId: string | undefined;
+    mockConnectorAccountActionAuthorization(account.target);
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        expect(params.connectionId).toBe(account.id);
+        return respond(200, account);
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(optimisticThreadId);
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    context.mocks.api(browserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Browser not found" },
+      });
+    });
+    const lifecycle = mockChatLifecycle(context, {
+      threadTitle: "Optimistic connector account card",
+      onThreadCreate: ({ clientThreadId }) => {
+        optimisticThreadId = clientThreadId;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await sendMessageInUI(user, textarea, "Start with my selected account");
+    await waitFor(() => {
+      expect(optimisticThreadId).toBeDefined();
+      expect(
+        screen.getByText("Start with my selected account"),
+      ).toBeInTheDocument();
+    });
+    if (!optimisticThreadId) {
+      throw new Error("Expected an optimistic thread identifier");
+    }
+
+    lifecycle.completeRun(
+      connectorAccountActionUrl(
+        optimisticThreadId,
+        account,
+        "Continue optimistic task",
+      ),
+    );
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).toHaveTextContent("Use Realtime account for future runs?");
   });
 
   it("renders an unconnected banking request with the compact action card layout", async () => {
