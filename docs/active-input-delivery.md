@@ -96,6 +96,31 @@ state in one short transaction. Realtime publication, callbacks, usage work,
 and queue drain run only after commit. A first late finalization drains the
 thread without replaying the run's ordinary terminal callbacks or billing work.
 
+### Final Checkpoint Completion
+
+The Guest may include final checkpoint metadata in
+`/api/webhooks/agent/complete`. Session history and artifact bytes are uploaded
+before that request; completion carries only their validated identities and
+storage snapshots. The API then persists the checkpoint, promotes the eligible
+canonical AgentSession conversation, settles active-input delivery, and applies
+the terminal run state in the same database transaction.
+
+The nested checkpoint omits `runId`; the completion request's outer `runId` and
+sandbox authorization remain authoritative. Invalid checkpoint metadata rejects
+the combined request without partially finalizing delivery or changing the run
+status. Repeating a committed combined request is idempotent, and a later
+checkpoint-less Runner completion observes the first terminal result.
+
+The standalone checkpoint route and checkpoint-less completion remain supported
+for older Guests. Runner completion timing and payloads are unchanged. The API
+release that accepts the combined request must reach production, and preceding
+API handlers must drain, before a Guest starts sending it. While combined Guests
+can execute, that API release is the rollback floor.
+
+This compatibility boundary does not make timeout immutable and does not change
+legacy standalone checkpoint admission. Those changes require the later timeout
+rollout after the old active-run cohort drains.
+
 ## Compatibility
 
 `activeInputDeliveryIds` is optional, contains at most 1,024 unique canonical

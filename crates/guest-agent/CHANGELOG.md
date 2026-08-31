@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.82.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.22...guest-agent-v0.82.23) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document GuestConfig field contracts ([#30359](https://github.com/vm0-ai/vm0/issues/30359)) ([d0ebfde](https://github.com/vm0-ai/vm0/commit/d0ebfde1ae2639216cb879841457e5d4b40a5664))
+
 ## [0.82.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.21...guest-agent-v0.82.22) (2026-08-30)
 
 

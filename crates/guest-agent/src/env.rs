@@ -323,43 +323,179 @@ impl GuestConfigRaw {
 }
 
 /// Immutable guest-agent startup configuration for a single run.
+///
+/// Fixed bootstrap values are captured by [`GuestConfigRaw`], variable-length
+/// values are loaded from [`guest_contracts::env::RunPayload`], and derived
+/// values are normalized while building this type. The fields preserve the
+/// runner's wire representation where a downstream consumer owns the contract.
 #[derive(Clone)]
 pub struct GuestConfig {
+    /// Stable run identifier from [`guest_contracts::env::RUN_ID_ENV`]. It
+    /// correlates logs, telemetry, API requests, runtime paths, and completion
+    /// state.
     pub run_id: String,
+    /// Backend API base URL from
+    /// [`guest_contracts::env::CANONICAL_API_URL_ENV`]. It is used to build the
+    /// guest-agent HTTP client and the managed CLI runtime configuration.
     pub api_url: String,
+    /// Backend API bearer token from
+    /// [`guest_contracts::env::CANONICAL_API_TOKEN_ENV`]. An empty token
+    /// disables backend API configuration in the guest-agent HTTP client.
     pub api_token: String,
+    /// Runner-assigned sandbox identifier from
+    /// [`guest_contracts::env::CANONICAL_SANDBOX_ID_ENV`]. It is included in
+    /// completion and user-cancellation reports.
     pub sandbox_id: String,
+    /// Wire-format outcome of the runner's sandbox-reuse decision from
+    /// [`guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV`]. `reused`
+    /// means the sandbox was unparked; other values explain why reuse did not
+    /// happen. The value is retained for completion and cancellation reports.
     pub sandbox_reuse_result: String,
+    /// Final wire-format outcome of workspace preparation from
+    /// [`guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV`]. Values
+    /// such as `reused` and `sandboxReused` identify the reuse path, while the
+    /// other values describe why workspace reuse did not happen.
     pub workspace_reuse_result: String,
+    /// User prompt loaded from [`guest_contracts::env::RunPayload`] and passed
+    /// to the selected CLI protocol and active-input runtime.
     pub prompt: String,
+    /// Optional additional system-prompt text from
+    /// [`guest_contracts::env::RunPayload`]. An empty string means no extra
+    /// system prompt; non-empty content is transferred through the selected
+    /// CLI's launch payload or private prompt file.
     pub append_system_prompt: String,
+    /// Optional Vercel protection-bypass secret from
+    /// [`guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV`]. A non-empty
+    /// value is attached to guest-agent API requests as the bypass header.
     pub vercel_bypass: String,
+    /// Optional CLI session or thread identifier from
+    /// [`guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV`]. An empty
+    /// string means that the selected CLI starts without resuming a session.
     pub resume_session_id: String,
+    /// Optional Unix epoch timestamp in milliseconds from
+    /// [`guest_contracts::env::CANONICAL_API_START_TIME_ENV`]. It is retained
+    /// as a string; timing telemetry ignores empty, non-numeric, implausible,
+    /// or seconds-shaped values.
     pub api_start_time: String,
+    /// Optional CLI execution budget materialized from the runner-owned
+    /// second-based value in
+    /// [`guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV`].
+    /// Absence or an empty value is `None`; a present value must be a positive
+    /// `u64` that fits the process `Instant` range. The resulting duration
+    /// bounds CLI execution.
     pub agent_execution_timeout: Option<Duration>,
+    /// Comma-separated base64-encoded secret values from
+    /// [`guest_contracts::env::RunPayload`]. The secret masker decodes these
+    /// values and uses them to redact telemetry and diagnostics; an empty
+    /// string means there are no values to mask.
     pub secret_values: String,
+    /// Comma-separated Claude Code tool names from
+    /// [`guest_contracts::env::RunPayload`] that should be denied. An empty
+    /// string means there is no explicit deny list; the values become repeated
+    /// `--disallowed-tools` arguments.
     pub disallowed_tools: String,
+    /// Comma-separated Claude Code tool names from
+    /// [`guest_contracts::env::RunPayload`] that should be allowed. An empty
+    /// string means there is no explicit allow list; the values become repeated
+    /// `--tools` arguments.
     pub tools: String,
+    /// Opaque raw Claude Code settings payload from
+    /// [`guest_contracts::env::RunPayload`]. An empty string means there is no
+    /// settings override; a non-empty value is passed as `--settings`.
     pub settings: String,
+    /// Whether to launch the mock Claude binary. This is materialized from
+    /// [`guest_contracts::env::USE_MOCK_CLAUDE_ENV`] and is true only for the
+    /// exact string `"true"`.
     pub use_mock_claude: bool,
+    /// Mock Claude executable path from the optional
+    /// [`guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV`] override. An
+    /// absent override selects [`DEFAULT_MOCK_CLAUDE_PATH`]; a present value,
+    /// including an empty string, is preserved.
     pub mock_claude_path: String,
+    /// Captured `CLI_AGENT_TYPE` wire value from
+    /// [`guest_contracts::env::CLI_AGENT_TYPE_ENV`]. This string is preserved,
+    /// including empty or unknown values, alongside the normalized
+    /// [`framework`](Self::framework) field.
     pub cli_agent_type: String,
+    /// Normalized CLI framework derived from `cli_agent_type`. `"claude-code"`
+    /// and an empty value map to [`Framework::ClaudeCode`], `"codex"` maps to
+    /// [`Framework::Codex`], and `"pi"` maps to [`Framework::Pi`]. Unknown
+    /// values emit a warning and also fall back to `ClaudeCode`.
     pub framework: Framework,
+    /// User, model-provider, and connector environment loaded from the private
+    /// JSON file named by
+    /// [`guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV`]. An absent or
+    /// empty file pointer produces an empty map. Runner-owned keys are removed
+    /// before the map is passed to managed CLI children.
     pub user_env: HashMap<String, String>,
+    /// Whether to launch the mock Codex binary. This is materialized from
+    /// [`guest_contracts::env::USE_MOCK_CODEX_ENV`] and is true for exactly
+    /// `"true"` or `"1"`.
     pub use_mock_codex: bool,
+    /// Mock Codex executable path from the optional
+    /// [`guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV`] override. An
+    /// absent override selects [`DEFAULT_MOCK_CODEX_PATH`]; a present value,
+    /// including an empty string, is preserved.
     pub mock_codex_path: String,
+    /// Effective home directory for the managed CLI child. `HOME` from
+    /// `user_env` takes precedence over the captured process `HOME`; missing
+    /// both values is a materialization error.
     pub home_dir: String,
+    /// Effective Claude configuration directory. Production uses the
+    /// canonical generated runner path; debug builds may use a non-empty
+    /// test-only override. Session metadata uses this path to identify Claude
+    /// Code history.
     pub claude_config_dir: String,
+    /// Effective Codex home directory. Production uses the canonical generated
+    /// runner path; debug builds may use a non-empty test-only override. Codex
+    /// setup and session metadata use this path.
     pub codex_home_dir: String,
+    /// Artifact mounts parsed from the camelCase JSON array in
+    /// [`guest_contracts::env::RunPayload`]. Empty input produces an empty
+    /// vector; checkpoint creation uses the entries for artifact snapshots.
     pub artifacts: Vec<ArtifactEnv>,
+    /// Feature flags parsed from the JSON object in
+    /// [`guest_contracts::env::RunPayload`]. Empty input produces an empty map
+    /// keyed by flag name with boolean enabled states.
     pub feature_flags: HashMap<String, bool>,
+    /// JSON object containing API-owned Codex provider and runtime metadata
+    /// from [`guest_contracts::env::RunPayload`]. The value is parsed for
+    /// Codex startup configuration and is otherwise retained in its wire form.
     pub codex_runtime_config: String,
+    /// Serialized Pi launch-config version marker from
+    /// [`guest_contracts::env::PI_LAUNCH_CONFIG_ENV`]. Pi parses this value and
+    /// uses it to create the private launch payload consumed by the Pi child.
     pub pi_launch_config: String,
+    /// JSON object containing non-secret Pi model metadata from
+    /// [`guest_contracts::env::PI_MODEL_CONFIG_ENV`]. It is included in the
+    /// private Pi launch payload.
     pub pi_model_config: String,
+    /// Chat Thread identifier from
+    /// [`guest_contracts::env::PI_SESSION_ID_ENV`] used as Pi's native session
+    /// identifier and included in Pi launch and session-history inputs.
     pub pi_session_id: String,
+    /// Stuck-tool timeout in seconds parsed from
+    /// [`guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV`]. Empty
+    /// or invalid input uses the 300-second compiled default; the CLI loop
+    /// uses this value to terminate a tool call that produces no result.
     pub stuck_tool_timeout_secs: u64,
+    /// Grace period after the CLI reports its final result before the process
+    /// group receives SIGTERM. The value is parsed from
+    /// [`guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV`]
+    /// in seconds; empty, invalid, or over-3600-second input uses the
+    /// 10-second compiled default.
     pub post_result_sigterm_grace: Duration,
+    /// Absolute post-result cleanup cap after the CLI reports its final result.
+    /// The value is parsed from
+    /// [`guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV`] in
+    /// seconds; empty, invalid, or over-3600-second input uses the 120-second
+    /// compiled default.
     pub post_result_total_cap: Duration,
+    /// Grace period after SIGTERM before escalation to SIGKILL when the CLI
+    /// process group does not exit. The value is parsed from
+    /// [`guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV`]
+    /// in seconds; empty, invalid, or over-3600-second input uses the
+    /// 5-second compiled default.
     pub post_result_sigkill_grace: Duration,
 }
 
