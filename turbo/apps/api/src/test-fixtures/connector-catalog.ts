@@ -30,6 +30,10 @@ import {
   persistConnectorCatalogCompatibility,
 } from "../signals/services/connector-catalog-compatibility.service";
 import {
+  clearConnectorCatalogExternalReaderIdentityReadHookForTest,
+  setConnectorCatalogExternalReaderIdentityReadHookForTest,
+} from "../signals/services/connector-catalog-external-reader.service";
+import {
   CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
   clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest,
   persistConnectorCatalogRuntimeProjection,
@@ -245,6 +249,24 @@ export function setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook(
 
 export function clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements(): void {
   clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest();
+}
+
+export function setApiTestConnectorCatalogExternalReaderIdentityReplacements(
+  catalogVersions: readonly string[],
+): void {
+  let nextIndex = 0;
+  setConnectorCatalogExternalReaderIdentityReadHookForTest(async () => {
+    const catalogVersion = catalogVersions[nextIndex];
+    if (catalogVersion === undefined) {
+      return;
+    }
+    nextIndex += 1;
+    await installApiTestConnectorCatalog({ catalogVersion });
+  });
+}
+
+export function clearApiTestConnectorCatalogExternalReaderIdentityReplacements(): void {
+  clearConnectorCatalogExternalReaderIdentityReadHookForTest();
 }
 
 interface ApiTestConnectorCatalogIdentity {
