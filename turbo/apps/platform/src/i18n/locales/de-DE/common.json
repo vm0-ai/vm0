@@ -2011,7 +2011,11 @@
       "avatar": {
         "heading": "Avatar auswählen",
         "help": "Wähle einen Präsentator oder fahre ohne Avatar fort",
-        "none": "Kein Avatar"
+        "none": "Kein Avatar",
+        "visualBalanceAvatarLed": "Avatar-fokussiert — der Sprecher ist die meiste Zeit im Bild",
+        "visualBalanceBalanced": "Ausgewogene Mischung — gleiche Zeit für beides",
+        "visualBalanceBRollLed": "B-Roll-fokussiert — Schwerpunkt auf Folien und visuellen Inhalten",
+        "visualBalanceHeading": "Wie soll die visuelle Balance aussehen?"
       },
       "cardDescription": "Eine Datei oder Bildschirmaufnahme in ein fertiges Video verwandeln",
       "description": "Füge eine Quelle hinzu, wähle optional Avatar und Stimme und erstelle das Video in einem Chat-Thread.",

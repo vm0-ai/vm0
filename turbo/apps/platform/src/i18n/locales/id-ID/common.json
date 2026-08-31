@@ -2008,7 +2008,11 @@
       "avatar": {
         "heading": "Pilih avatar",
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
-        "none": "Tanpa avatar"
+        "none": "Tanpa avatar",
+        "visualBalanceAvatarLed": "Fokus pada avatar — narator tampil di layar hampir sepanjang waktu",
+        "visualBalanceBalanced": "Campuran seimbang — waktu yang sama untuk keduanya",
+        "visualBalanceBRollLed": "Fokus pada visual — utamakan slide dan materi visual",
+        "visualBalanceHeading": "Bagaimana keseimbangan visual yang Anda inginkan?"
       },
       "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
       "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
