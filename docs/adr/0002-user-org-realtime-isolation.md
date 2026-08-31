@@ -25,4 +25,7 @@ The App consumes `chatThreadMessageCreated`, `threadListChanged`, and
 `user-org:<userId>:<orgId>` channel through the SharedWorker. The worker fans
 indicator invalidations out to every matching tab and preserves the read-cursor
 payload needed to reconcile optimistic read marks. The user channel remains
-reserved for unrelated user-scoped signals.
+reserved for unrelated user-scoped signals. The canonical web-client floor is
+`0.812.3`, the first released App build containing the unconditional
+SharedWorker consumer, so the API rejects older user-channel-only clients
+before serving application routes.
