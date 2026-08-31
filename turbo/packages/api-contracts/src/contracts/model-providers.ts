@@ -23,8 +23,14 @@ export {
 export {
   getModelProviderFirewall,
   getModelProviderPiChatCompletionsUrl,
+  getModelProviderPiEndpoint,
+  MODEL_PROVIDER_PI_APIS,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
+} from "./model-provider-firewalls";
+export type {
+  ModelProviderPiApi,
+  ModelProviderPiEndpoint,
 } from "./model-provider-firewalls";
 export type {
   BuiltInModelProviderType,

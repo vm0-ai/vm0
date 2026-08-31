@@ -1078,10 +1078,8 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
       if (getFrameworkForType(type) === "codex") {
         const providerBase =
           envBindings?.OPENAI_BASE_URL?.replace(/\/+$/, "") ??
-          "https://api.openai.com/v1/responses";
-        const expectedBase =
-          type === "deepseek" ? `${providerBase}/responses` : providerBase;
-        expect(actualBase).toBe(expectedBase);
+          "https://api.openai.com/v1";
+        expect(actualBase).toBe(`${providerBase}/responses`);
         continue;
       }
 
@@ -1351,10 +1349,7 @@ describe("codex-oauth-token codex provider", () => {
   });
 });
 
-describe("getFirewallBaseUrl regression — existing providers unchanged", () => {
-  // Snapshot of every firewall-supported provider's base URL after the
-  // per-provider refactor in #11878. Catches accidental URL changes for
-  // existing providers when a new codex-framework provider is added.
+describe("model provider primary firewall inference paths", () => {
   it.each([
     ["anthropic-api-key", "https://api.anthropic.com/v1/messages"],
     ["claude-code-oauth-token", "https://api.anthropic.com/v1/messages"],
@@ -1363,12 +1358,8 @@ describe("getFirewallBaseUrl regression — existing providers unchanged", () =>
     ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
     ["openai-api-key", "https://api.openai.com/v1/responses"],
     ["codex-oauth-token", "https://chatgpt.com/backend-api/codex"],
-    // Codex gateway providers scope the firewall to OPENAI_BASE_URL so codex
-    // can use either /chat/completions or /responses paths the gateway
-    // proxies — distinct from the narrow /v1/responses scope on the OpenAI
-    // direct provider.
-    ["openrouter-codex", "https://openrouter.ai/api/v1"],
-    ["vercel-ai-gateway-codex", "https://ai-gateway.vercel.sh/v1"],
+    ["openrouter-codex", "https://openrouter.ai/api/v1/responses"],
+    ["vercel-ai-gateway-codex", "https://ai-gateway.vercel.sh/v1/responses"],
   ] as const)("%s firewall base URL is %s", (type, expected) => {
     expect(MODEL_PROVIDER_FIREWALL_CONFIGS[type]!.apis[0]!.base).toBe(expected);
   });
@@ -1459,15 +1450,26 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
   });
 
   it.each(["openrouter-codex", "vercel-ai-gateway-codex"] as const)(
-    "%s firewall injects Authorization: Bearer header on the resolved base",
+    "%s injects Authorization only on exact OpenAI inference paths",
     (type) => {
       const config = MODEL_PROVIDER_FIREWALL_CONFIGS[type];
-      expect(config.apis).toHaveLength(1);
-      expect(config.apis[0]!.auth.headers).toMatchObject({
-        Authorization: expect.stringMatching(
-          /^Bearer \$\{\{ secrets\.[A-Z_]+ \}\}$/,
-        ),
-      });
+      const providerBase = getModelProviderEnvBindings(type)?.OPENAI_BASE_URL;
+      expect(providerBase).toBeDefined();
+      expect(
+        config.apis.map((api) => {
+          return api.base;
+        }),
+      ).toStrictEqual([
+        `${providerBase}/responses`,
+        `${providerBase}/chat/completions`,
+      ]);
+      for (const api of config.apis) {
+        expect(api.auth.headers).toMatchObject({
+          Authorization: expect.stringMatching(
+            /^Bearer \$\{\{ secrets\.[A-Z_]+ \}\}$/,
+          ),
+        });
+      }
     },
   );
 });

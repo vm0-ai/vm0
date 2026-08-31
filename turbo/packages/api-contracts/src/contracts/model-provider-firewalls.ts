@@ -5,6 +5,19 @@ import type {
   ModelProviderType,
 } from "./model-provider-types";
 
+export const MODEL_PROVIDER_PI_APIS = [
+  "openai-completions",
+  "openai-responses",
+  "openai-codex-responses",
+] as const;
+
+export type ModelProviderPiApi = (typeof MODEL_PROVIDER_PI_APIS)[number];
+
+export interface ModelProviderPiEndpoint {
+  readonly baseUrl: string;
+  readonly inferenceUrl: string;
+}
+
 // Custom gateway types are excluded because their firewall is compiled per
 // surface from the stored base URL and auth header, not from a static table.
 type FirewallSupportedProvider = Exclude<
@@ -28,16 +41,15 @@ interface SingleSecretFirewallProviderConfig {
   readonly openaiBaseUrl?: string;
   readonly firewallBaseUrl?: string;
   /**
-   * Chat-completions endpoint used by the in-sandbox Pi agent loop.
+   * OpenAI-compatible transports supported by the in-sandbox Pi agent loop.
    *
-   * The firewall injects the real key only for bases it lists, and `base`
-   * matching is a prefix match. The Codex-era bases above point at
-   * `/responses`, which does not prefix `/chat/completions`, so a Pi sandbox
-   * turn would forward the placeholder verbatim and be rejected upstream.
-   * Listing the exact inference path keeps injection scoped: it does not widen
-   * to vendor admin endpoints on the same host.
+   * Runtime base URLs and exact firewall credential-injection paths are both
+   * derived from this declaration so a transport change cannot make them drift.
    */
-  readonly piChatCompletionsUrl?: string;
+  readonly piApis?: readonly Exclude<
+    ModelProviderPiApi,
+    "openai-codex-responses"
+  >[];
 }
 
 export const MODEL_PROVIDER_ENV_PLACEHOLDERS = {
@@ -89,6 +101,7 @@ const MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS: Record<
     secretName: "DEEPSEEK_API_KEY",
     openaiBaseUrl: "https://api.deepseek.com/",
     firewallBaseUrl: "https://api.deepseek.com/responses",
+    piApis: ["openai-responses"],
   },
   "vercel-ai-gateway": {
     framework: "claude-code",
@@ -99,16 +112,18 @@ const MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS: Record<
     framework: "codex",
     secretName: "OPENROUTER_API_KEY",
     openaiBaseUrl: "https://openrouter.ai/api/v1",
+    piApis: ["openai-completions", "openai-responses"],
   },
   "vercel-ai-gateway-codex": {
     framework: "codex",
     secretName: "VERCEL_AI_GATEWAY_API_KEY",
     openaiBaseUrl: "https://ai-gateway.vercel.sh/v1",
+    piApis: ["openai-completions", "openai-responses"],
   },
   "openai-api-key": {
     framework: "codex",
     secretName: "OPENAI_API_KEY",
-    piChatCompletionsUrl: "https://api.openai.com/v1/chat/completions",
+    piApis: ["openai-completions", "openai-responses"],
   },
 };
 
@@ -132,6 +147,7 @@ function getFirewallBaseUrl(type: FirewallSupportedProvider): string {
   }
   if (config.framework === "codex") {
     return (
+      getModelProviderPiEndpoint(type, "openai-responses")?.inferenceUrl ??
       config.openaiBaseUrl?.replace(/\/+$/, "") ??
       "https://api.openai.com/v1/responses"
     );
@@ -155,16 +171,19 @@ function mpFirewall(
     ? `${authHeader.valuePrefix} ${secretRef}`
     : secretRef;
   const auth = { headers: { [authHeader.name]: headerValue } };
-  const piChatCompletionsUrl =
-    MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS[type].piChatCompletionsUrl;
+  const config = MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS[type];
+  const piInferenceUrls = (config.piApis ?? []).flatMap((api) => {
+    const endpoint = getModelProviderPiEndpoint(type, api);
+    return endpoint ? [endpoint.inferenceUrl] : [];
+  });
+  const authBases = [
+    ...new Set([getFirewallBaseUrl(type), ...piInferenceUrls]),
+  ];
   return {
     name: `model-provider:${type}`,
-    apis: [
-      { base: getFirewallBaseUrl(type), auth, permissions: [] },
-      ...(piChatCompletionsUrl === undefined
-        ? []
-        : [{ base: piChatCompletionsUrl, auth, permissions: [] }]),
-    ],
+    apis: authBases.map((base) => {
+      return { base, auth, permissions: [] };
+    }),
     placeholders: { [secretName]: placeholderValue },
   };
 }
@@ -213,8 +232,7 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
     MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
   ),
   // Codex-framework twin of vercel-ai-gateway. It reuses the same stored Vercel
-  // secret, but the sandbox env name is OPENAI_API_KEY. Base URL is scoped to
-  // the /v1 prefix so codex can use either /chat/completions or /responses.
+  // secret, but the sandbox env name is OPENAI_API_KEY.
   "vercel-ai-gateway-codex": mpFirewall(
     "vercel-ai-gateway-codex",
     { name: "Authorization", valuePrefix: "Bearer" },
@@ -272,31 +290,50 @@ function isFirewallSupported(
 }
 
 /**
- * Chat-completions URL the in-sandbox Pi agent loop calls for a provider, or
- * undefined when the provider is not Pi-capable. `pi-sandbox-config` derives the
- * Pi base URL from this same table so the firewall rule and the runtime call
- * cannot drift apart.
+ * API-aware endpoint the Pi runtime and firewall share for one provider.
  */
-export function getModelProviderPiChatCompletionsUrl(
+export function getModelProviderPiEndpoint(
   type: ModelProviderType,
-): string | undefined {
+  api: ModelProviderPiApi,
+): ModelProviderPiEndpoint | undefined {
+  if (type === "codex-oauth-token") {
+    return api === "openai-codex-responses"
+      ? {
+          baseUrl: "https://chatgpt.com/backend-api",
+          inferenceUrl: "https://chatgpt.com/backend-api/codex/responses",
+        }
+      : undefined;
+  }
+  if (api === "openai-codex-responses") {
+    return undefined;
+  }
   const config = (
     MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS as Partial<
       Record<ModelProviderType, SingleSecretFirewallProviderConfig>
     >
   )[type];
-  if (config?.piChatCompletionsUrl !== undefined) {
-    return config.piChatCompletionsUrl;
+  if (!config?.piApis?.includes(api)) {
+    return undefined;
   }
-  // Codex subscription (codex-oauth-token) is a multi-secret provider, so it
-  // lives outside the single-secret table above. The Pi runtime calls
-  // `${base}/codex/responses`, which is prefix-covered by the firewall base
-  // `https://chatgpt.com/backend-api/codex` (see MODEL_PROVIDER_FIREWALL_CONFIGS),
-  // so this base and that rule cannot drift apart.
+  const baseUrl = config.openaiBaseUrl ?? "https://api.openai.com/v1";
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  return {
+    baseUrl,
+    inferenceUrl:
+      api === "openai-completions"
+        ? `${normalizedBaseUrl}/chat/completions`
+        : `${normalizedBaseUrl}/responses`,
+  };
+}
+
+/** @deprecated Use the API-aware endpoint contract instead. */
+export function getModelProviderPiChatCompletionsUrl(
+  type: ModelProviderType,
+): string | undefined {
   if (type === "codex-oauth-token") {
     return "https://chatgpt.com/backend-api";
   }
-  return undefined;
+  return getModelProviderPiEndpoint(type, "openai-completions")?.inferenceUrl;
 }
 
 export function getModelProviderFirewall(
