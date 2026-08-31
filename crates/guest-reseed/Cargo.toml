@@ -1,6 +1,6 @@
 [package]
 name = "guest-reseed"
-version = "0.3.7"
+version = "0.3.8"
 edition.workspace = true
 description = "Repair snapshot-sensitive guest state and apply guest timezones"
 
