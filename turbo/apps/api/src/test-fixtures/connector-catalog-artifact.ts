@@ -575,6 +575,17 @@ const slackPermissions = [
 
 const connectors = [
   connector({
+    connectorSlug: "ahrefs",
+    label: "Ahrefs",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "ahrefs",
+        prefix: "AHREFS",
+        tokenEnvironmentNames: ["AHREFS_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "airtable",
     label: "Airtable",
     authMethods: [
@@ -695,6 +706,39 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "cal-com",
+    label: "Cal.com",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "cal-com",
+        prefix: "CALCOM",
+        tokenEnvironmentNames: ["CALCOM_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "canva",
+    label: "Canva",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "canva",
+        prefix: "CANVA",
+        tokenEnvironmentNames: ["CANVA_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "close",
+    label: "Close",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "close",
+        prefix: "CLOSE",
+        tokenEnvironmentNames: ["CLOSE_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "cloudflare",
     label: "Cloudflare",
     authMethods: [
@@ -775,6 +819,22 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "copper",
+    label: "Copper",
+    authMethods: [
+      providerMethod({
+        connectorSlug: "copper",
+        authMethodId: "oauth",
+        values: {
+          accessToken: secret("COPPER_ACCESS_TOKEN"),
+        },
+        envBindings: {
+          COPPER_TOKEN: secret("COPPER_ACCESS_TOKEN"),
+        },
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "datadog",
     label: "Datadog",
     authMethods: [
@@ -800,6 +860,39 @@ const connectors = [
           "slos_read",
         ],
         refreshableSecrets: ["DATADOG_ACCESS_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "deel",
+    label: "Deel",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "deel",
+        prefix: "DEEL",
+        tokenEnvironmentNames: ["DEEL_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "docusign",
+    label: "DocuSign",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "docusign",
+        prefix: "DOCUSIGN",
+        tokenEnvironmentNames: ["DOCUSIGN_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "dropbox",
+    label: "Dropbox",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "dropbox",
+        prefix: "DROPBOX",
+        tokenEnvironmentNames: ["DROPBOX_TOKEN"],
       }),
     ],
   }),
@@ -841,6 +934,17 @@ const connectors = [
       ],
       { placeholders: { FIGMA_TOKEN: "fixture-figma-token" } },
     ),
+  }),
+  connector({
+    connectorSlug: "garmin-connect",
+    label: "Garmin Connect",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "garmin-connect",
+        prefix: "GARMIN_CONNECT",
+        tokenEnvironmentNames: ["GARMIN_CONNECT_TOKEN"],
+      }),
+    ],
   }),
   connector({
     connectorSlug: "github",
@@ -1177,6 +1281,33 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "mailchimp",
+    label: "Mailchimp",
+    authMethods: [
+      providerMethod({
+        connectorSlug: "mailchimp",
+        authMethodId: "oauth",
+        values: {
+          accessToken: secret("MAILCHIMP_ACCESS_TOKEN"),
+        },
+        envBindings: {
+          MAILCHIMP_TOKEN: secret("MAILCHIMP_ACCESS_TOKEN"),
+        },
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "mercury",
+    label: "Mercury",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "mercury",
+        prefix: "MERCURY",
+        tokenEnvironmentNames: ["MERCURY_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "meta-ads",
     label: "Meta Ads",
     authMethods: [
@@ -1432,6 +1563,17 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "posthog",
+    label: "PostHog",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "posthog",
+        prefix: "POSTHOG",
+        tokenEnvironmentNames: ["POSTHOG_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "reap",
     label: "Reap",
     authMethods: [
@@ -1471,6 +1613,17 @@ const connectors = [
         ],
       },
     ]),
+  }),
+  connector({
+    connectorSlug: "reddit",
+    label: "Reddit",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "reddit",
+        prefix: "REDDIT",
+        tokenEnvironmentNames: ["REDDIT_TOKEN"],
+      }),
+    ],
   }),
   connector({
     connectorSlug: "runtime",
@@ -1559,6 +1712,17 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "spotify",
+    label: "Spotify",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "spotify",
+        prefix: "SPOTIFY",
+        tokenEnvironmentNames: ["SPOTIFY_TOKEN"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "steam",
     label: "Steam",
     authMethods: [
@@ -1603,6 +1767,17 @@ const connectors = [
         values: { token: secret("STRIPE_TOKEN") },
         envBindings: { STRIPE_TOKEN: secret("STRIPE_TOKEN") },
         startOptions: [selectStartOption()],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "supabase",
+    label: "Supabase",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "supabase",
+        prefix: "SUPABASE",
+        tokenEnvironmentNames: ["SUPABASE_TOKEN"],
       }),
     ],
   }),
@@ -1751,6 +1926,22 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "webflow",
+    label: "Webflow",
+    authMethods: [
+      providerMethod({
+        connectorSlug: "webflow",
+        authMethodId: "oauth",
+        values: {
+          accessToken: secret("WEBFLOW_ACCESS_TOKEN"),
+        },
+        envBindings: {
+          WEBFLOW_TOKEN: secret("WEBFLOW_ACCESS_TOKEN"),
+        },
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "x",
     label: "X",
     authMethods: [
@@ -1828,6 +2019,17 @@ const connectors = [
         permissions: [],
       },
     ]),
+  }),
+  connector({
+    connectorSlug: "zoom",
+    label: "Zoom",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "zoom",
+        prefix: "ZOOM",
+        tokenEnvironmentNames: ["ZOOM_TOKEN"],
+      }),
+    ],
   }),
 ] satisfies readonly ConnectorCatalogArtifactConnector[];
 
