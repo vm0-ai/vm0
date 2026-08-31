@@ -2,13 +2,23 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { test } from "node:test";
 
-import { chromium, type JSHandle, type Page } from "@playwright/test";
+import { chromium, type Page } from "@playwright/test";
 
 import { SharedWorkerRoutes } from "./shared-worker-routes";
 
 interface WorkerFetchResult {
   readonly mocked: Readonly<Record<string, unknown>>;
   readonly passthrough: Readonly<Record<string, unknown>>;
+}
+
+interface WorkerClient {
+  readonly port: MessagePort;
+}
+
+declare global {
+  interface Window {
+    sharedWorkerRouteTestClients?: Map<string, WorkerClient>;
+  }
 }
 
 interface WorkerFixture {
@@ -50,15 +60,15 @@ test("routes requests from a real SharedWorker and cleans up", async (context) =
             );
 
             await page.goto(fixture.origin);
-            const port = await connectSharedWorker(page, "success");
-            const result = fetchFromSharedWorker(port);
+            await connectSharedWorker(page, "success");
+            const result = fetchFromSharedWorker(page, "success");
             await routes.waitForWorker();
-            await registration.handled;
-
-            assert.deepEqual(await result, {
+            const firstResult = await result;
+            assert.deepEqual(firstResult, {
               mocked: { source: "worker-route" },
               passthrough: { source: "network-passthrough" },
             });
+            await registration.handled;
             assert.equal(pageRouteObserved, false);
             assert.equal(fixture.requestCount("/api/mocked"), 0);
             assert.equal(fixture.requestCount("/api/passthrough"), 1);
@@ -67,11 +77,11 @@ test("routes requests from a real SharedWorker and cleans up", async (context) =
             try {
               const isolatedPage = await isolatedContext.newPage();
               await isolatedPage.goto(fixture.origin);
-              const isolatedPort = await connectSharedWorker(
+              await connectSharedWorker(isolatedPage, "isolated-context");
+              const isolatedResult = await fetchFromSharedWorker(
                 isolatedPage,
                 "isolated-context",
               );
-              const isolatedResult = await fetchFromSharedWorker(isolatedPort);
               assert.deepEqual(isolatedResult.mocked, {
                 source: "network-mocked",
               });
@@ -89,7 +99,7 @@ test("routes requests from a real SharedWorker and cleans up", async (context) =
               },
             );
             await assert.rejects(
-              fetchFromSharedWorker(port),
+              fetchFromSharedWorker(page, "success"),
               /Failed to fetch/u,
             );
             assert.equal(handlerCalled, true);
@@ -109,8 +119,8 @@ test("routes requests from a real SharedWorker and cleans up", async (context) =
           try {
             const page = await cleanContext.newPage();
             await page.goto(fixture.origin);
-            const port = await connectSharedWorker(page, "after-cleanup");
-            const result = await fetchFromSharedWorker(port);
+            await connectSharedWorker(page, "after-cleanup");
+            const result = await fetchFromSharedWorker(page, "after-cleanup");
             assert.deepEqual(result.mocked, { source: "network-mocked" });
             assert.equal(fixture.requestCount("/api/mocked"), 2);
           } finally {
@@ -124,31 +134,27 @@ test("routes requests from a real SharedWorker and cleans up", async (context) =
   });
 });
 
-async function connectSharedWorker(
-  page: Page,
-  name: string,
-): Promise<JSHandle<MessagePort>> {
-  return await page.evaluateHandle<MessagePort, string>((workerName) => {
-    return new Promise<MessagePort>((resolve) => {
-      const worker = new SharedWorker("/worker.js", { name: workerName });
-      worker.port.addEventListener(
-        "message",
-        () => {
-          resolve(worker.port);
-        },
-        { once: true },
-      );
-      worker.port.start();
-    });
+async function connectSharedWorker(page: Page, name: string): Promise<void> {
+  await page.evaluate((workerName) => {
+    const worker = new SharedWorker("/worker.js", { name: workerName });
+    const port = worker.port;
+    port.start();
+    window.sharedWorkerRouteTestClients ??= new Map<string, WorkerClient>();
+    window.sharedWorkerRouteTestClients.set(workerName, { port });
   }, name);
 }
 
 async function fetchFromSharedWorker(
-  port: JSHandle<MessagePort>,
+  page: Page,
+  name: string,
 ): Promise<WorkerFetchResult> {
-  return await port.evaluate<WorkerFetchResult>((workerPort) => {
+  return await page.evaluate<WorkerFetchResult, string>((workerName) => {
+    const workerClient = window.sharedWorkerRouteTestClients?.get(workerName);
+    if (!workerClient) {
+      throw new Error(`SharedWorker client ${workerName} is unavailable`);
+    }
     return new Promise<WorkerFetchResult>((resolve, reject) => {
-      workerPort.addEventListener(
+      workerClient.port.addEventListener(
         "message",
         (
           event: MessageEvent<WorkerFetchResult | { readonly error: string }>,
@@ -161,9 +167,9 @@ async function fetchFromSharedWorker(
         },
         { once: true },
       );
-      workerPort.postMessage("fetch");
+      workerClient.port.postMessage("fetch");
     });
-  });
+  }, name);
 }
 
 async function withWorkerFixture<Result>(
@@ -181,8 +187,8 @@ async function withWorkerFixture<Result>(
     if (pathname === "/worker.js") {
       response.writeHead(200, { "content-type": "text/javascript" });
       response.end(`
+        globalThis._vm0 = {};
         onconnect = ({ ports: [port] }) => {
-          port.postMessage({ ready: true });
           port.onmessage = () => {
             Promise.all([
               fetch("/api/mocked", {
@@ -191,7 +197,10 @@ async function withWorkerFixture<Result>(
               fetch("/api/passthrough").then((response) => response.json()),
             ])
               .then(([mocked, passthrough]) => {
-                port.postMessage({ mocked, passthrough });
+                port.postMessage({
+                  mocked,
+                  passthrough,
+                });
               })
               .catch((error) => {
                 port.postMessage({ error: String(error.message ?? error) });

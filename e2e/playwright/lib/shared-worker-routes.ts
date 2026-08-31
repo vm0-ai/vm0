@@ -1,7 +1,11 @@
+import { randomUUID } from "node:crypto";
 import type { Browser, CDPSession, Page } from "@playwright/test";
 
-const WORKER_ROUTES_READY_EVENT = "vm0-shared-worker-routes-ready";
-const WORKER_ROUTES_READY_STORAGE_KEY = "vm0.sharedWorkerRoutes.ready";
+import {
+  installPageBridge,
+  workerBridgeSource,
+  WORKER_ROUTES_READY_EVENT,
+} from "./shared-worker-route-bridge";
 
 interface PendingChildCommand {
   readonly sessionId: string;
@@ -10,7 +14,6 @@ interface PendingChildCommand {
 }
 
 interface PausedRequest {
-  readonly requestId: string;
   readonly url: string;
   readonly method: string;
   readonly headers: Readonly<Record<string, string>>;
@@ -22,6 +25,23 @@ interface RouteEntry {
   readonly resolveHandled: (request: SharedWorkerRequest) => void;
   handled: boolean;
 }
+
+interface ContinueResponse {
+  readonly action: "continue";
+}
+
+interface FailResponse {
+  readonly action: "fail";
+}
+
+interface FulfillResponse {
+  readonly action: "fulfill";
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: string;
+}
+
+type RouteResponse = ContinueResponse | FailResponse | FulfillResponse;
 
 export interface SharedWorkerRequest {
   url(): string;
@@ -71,36 +91,49 @@ class WorkerRequest implements SharedWorkerRequest {
 }
 
 class WorkerRoute implements SharedWorkerRoute {
-  handled = false;
+  response: FulfillResponse | undefined;
 
-  constructor(
-    private readonly workerRequest: SharedWorkerRequest,
-    private readonly fulfillRequest: (
-      options: SharedWorkerFulfillOptions,
-    ) => Promise<void>,
-  ) {}
+  constructor(private readonly workerRequest: SharedWorkerRequest) {}
 
   request(): SharedWorkerRequest {
     return this.workerRequest;
   }
 
   async fulfill(options: SharedWorkerFulfillOptions): Promise<void> {
-    if (this.handled) {
+    if (this.response) {
       throw new Error("SharedWorker request was already handled");
     }
-    this.handled = true;
-    await this.fulfillRequest(options);
+    const headers = { ...options.headers };
+    const body = JSON.stringify(options.json);
+    if (body === undefined) {
+      throw new Error("SharedWorker JSON response is not serializable");
+    }
+    if (
+      !Object.keys(headers).some(
+        (name) => name.toLowerCase() === "content-type",
+      )
+    ) {
+      headers["content-type"] = "application/json";
+    }
+    this.response = {
+      action: "fulfill",
+      status: options.status ?? 200,
+      headers,
+      body,
+    };
   }
 }
 
 export class SharedWorkerRoutes {
   private readonly entries: RouteEntry[] = [];
   private readonly pendingCommands = new Map<number, PendingChildCommand>();
+  private readonly candidateTargets = new Map<string, boolean>();
   private readonly attachingTargets = new Set<string>();
   private readonly operations = new Set<Promise<void>>();
   private readonly errors: Error[] = [];
   private readonly workerReadyPromise: Promise<void>;
   private readonly resolveWorkerReady: () => void;
+  private readonly closeError = new Error("SharedWorker routes closed");
   private workerReadyError: Error | undefined;
   private workerReady = false;
   private nextCommandId = 0;
@@ -109,8 +142,9 @@ export class SharedWorkerRoutes {
   private constructor(
     private readonly session: CDPSession,
     private readonly page: Page,
-    private readonly apiPattern: string,
+    private readonly apiOrigin: string,
     private readonly browserContextId: string,
+    private readonly channelName: string,
   ) {
     let resolveWorkerReady!: () => void;
     this.workerReadyPromise = new Promise<void>((resolve) => {
@@ -122,13 +156,30 @@ export class SharedWorkerRoutes {
         targetInfo.type === "shared_worker" &&
         targetInfo.browserContextId === this.browserContextId
       ) {
+        this.candidateTargets.set(targetInfo.targetId, targetInfo.attached);
+      }
+    });
+    session.on("Target.targetInfoChanged", ({ targetInfo }) => {
+      const sawAttached = this.candidateTargets.get(targetInfo.targetId);
+      if (sawAttached === undefined) {
+        return;
+      }
+      if (targetInfo.attached) {
+        this.candidateTargets.set(targetInfo.targetId, true);
+        return;
+      }
+      if (sawAttached) {
+        this.candidateTargets.delete(targetInfo.targetId);
         this.run(this.attach(targetInfo.targetId), (error) => {
-          if (!this.workerReady) {
+          if (!this.closed && !this.workerReady) {
             this.workerReadyError = error;
             this.resolveWorkerReady();
           }
         });
       }
+    });
+    session.on("Target.targetDestroyed", ({ targetId }) => {
+      this.candidateTargets.delete(targetId);
     });
     session.on("Target.detachedFromTarget", ({ sessionId }) => {
       this.rejectPendingCommands(
@@ -150,70 +201,8 @@ export class SharedWorkerRoutes {
     page: Page,
     apiOrigin: string,
   ): Promise<SharedWorkerRoutes> {
-    // Production sends its heartbeat as soon as the worker connects. Hold
-    // page-to-worker messages until Fetch interception is active so the first
-    // API request cannot escape before the target session attaches.
-    await page.addInitScript(
-      ({ readyEvent, readyStorageKey }) => {
-        if (window.frameElement !== null) {
-          return;
-        }
-        const NativeSharedWorker = globalThis.SharedWorker;
-        let released = sessionStorage.getItem(readyStorageKey) === "true";
-        const pendingMessages: Array<() => void> = [];
-        globalThis.addEventListener(
-          readyEvent,
-          () => {
-            released = true;
-            sessionStorage.setItem(readyStorageKey, "true");
-            for (const send of pendingMessages.splice(0)) {
-              send();
-            }
-          },
-          { once: true },
-        );
-
-        const GatedSharedWorker = function (
-          scriptURL: string | URL,
-          options?: string | WorkerOptions,
-        ): SharedWorker {
-          const worker =
-            typeof options === "string"
-              ? new NativeSharedWorker(scriptURL, options)
-              : new NativeSharedWorker(scriptURL, options);
-          const postMessage = worker.port.postMessage.bind(worker.port);
-          worker.port.postMessage = (
-            message: unknown,
-            transferOrOptions?: Transferable[] | StructuredSerializeOptions,
-          ): void => {
-            const send = (): void => {
-              if (Array.isArray(transferOrOptions)) {
-                postMessage(message, transferOrOptions);
-              } else {
-                postMessage(message, transferOrOptions);
-              }
-            };
-            if (released) {
-              send();
-            } else {
-              pendingMessages.push(send);
-            }
-          };
-          return worker;
-        };
-        Object.setPrototypeOf(GatedSharedWorker, NativeSharedWorker);
-        GatedSharedWorker.prototype = NativeSharedWorker.prototype;
-        Object.defineProperty(globalThis, "SharedWorker", {
-          configurable: true,
-          value: GatedSharedWorker,
-          writable: true,
-        });
-      },
-      {
-        readyEvent: WORKER_ROUTES_READY_EVENT,
-        readyStorageKey: WORKER_ROUTES_READY_STORAGE_KEY,
-      },
-    );
+    const channelName = `vm0-shared-worker-routes-${randomUUID()}`;
+    const routesBindingName = `__vm0RouteSharedWorkerRequest_${randomUUID().replaceAll("-", "")}`;
     const pageSession = await page.context().newCDPSession(page);
     let browserContextId: string;
     try {
@@ -229,10 +218,18 @@ export class SharedWorkerRoutes {
     const routes = new SharedWorkerRoutes(
       session,
       page,
-      `${new URL(apiOrigin).origin}/api/*`,
+      new URL(apiOrigin).origin,
       browserContextId,
+      channelName,
     );
     try {
+      await page.exposeBinding(
+        routesBindingName,
+        async (_source, value: unknown): Promise<RouteResponse> => {
+          return await routes.handleRequest(value);
+        },
+      );
+      await installPageBridge(page, channelName, routesBindingName);
       await session.send("Target.setDiscoverTargets", { discover: true });
     } catch (error) {
       await session.detach();
@@ -270,8 +267,9 @@ export class SharedWorkerRoutes {
 
   async close(): Promise<void> {
     this.closed = true;
-    await Promise.allSettled(this.operations);
+    this.rejectAllPendingCommands(this.closeError);
     await this.session.detach();
+    await Promise.allSettled(this.operations);
     if (this.errors.length === 1) {
       throw this.errors[0];
     }
@@ -295,7 +293,9 @@ export class SharedWorkerRoutes {
       (error: unknown) => {
         this.operations.delete(operation);
         const normalizedError = toError(error);
-        this.errors.push(normalizedError);
+        if (!this.closed) {
+          this.errors.push(normalizedError);
+        }
         onError?.(normalizedError);
       },
     );
@@ -312,11 +312,17 @@ export class SharedWorkerRoutes {
         flatten: false,
       });
       if (this.closed) {
-        await this.session.send("Target.detachFromTarget", { sessionId });
         return;
       }
-      await this.sendChildCommand(sessionId, "Fetch.enable", {
-        patterns: [{ urlPattern: this.apiPattern, requestStage: "Request" }],
+      await this.sendChildCommand(
+        sessionId,
+        "Runtime.runIfWaitingForDebugger",
+        {},
+      );
+      await this.sendChildCommand(sessionId, "Runtime.evaluate", {
+        awaitPromise: true,
+        expression: workerBridgeSource(this.channelName, this.apiOrigin),
+        returnByValue: true,
       });
       this.workerReady = true;
       this.resolveWorkerReady();
@@ -330,18 +336,9 @@ export class SharedWorkerRoutes {
     if (!isRecord(value)) {
       throw new Error("SharedWorker target sent a non-object message");
     }
-    if ("id" in value) {
-      this.resolveChildCommand(value);
+    if (!("id" in value)) {
       return;
     }
-    if (value.method !== "Fetch.requestPaused") {
-      return;
-    }
-    const paused = parsePausedRequest(value.params);
-    this.run(this.handlePausedRequest(sessionId, paused));
-  }
-
-  private resolveChildCommand(value: Readonly<Record<string, unknown>>): void {
     if (typeof value.id !== "number") {
       throw new Error("SharedWorker target response has an invalid command id");
     }
@@ -357,26 +354,22 @@ export class SharedWorkerRoutes {
     pending.resolve();
   }
 
-  private async handlePausedRequest(
-    sessionId: string,
-    paused: PausedRequest,
-  ): Promise<void> {
-    const url = new URL(paused.url);
-    const entry = this.entries.find((candidate) => candidate.matches(url));
-    if (!entry) {
-      await this.sendChildCommand(sessionId, "Fetch.continueRequest", {
-        requestId: paused.requestId,
-      });
-      return;
+  private async handleRequest(value: unknown): Promise<RouteResponse> {
+    if (this.closed) {
+      return { action: "continue" };
     }
-
-    const request = new WorkerRequest(paused);
-    const route = new WorkerRoute(request, async (options) => {
-      await this.fulfill(sessionId, paused.requestId, options);
+    const paused = parsePausedRequest(value);
+    const entry = this.entries.find((candidate) => {
+      return candidate.matches(new URL(paused.url));
     });
+    if (!entry) {
+      return { action: "continue" };
+    }
+    const request = new WorkerRequest(paused);
+    const route = new WorkerRoute(request);
     try {
       await entry.handler(route);
-      if (!route.handled) {
+      if (!route.response) {
         throw new Error(
           "SharedWorker route handler did not handle its request",
         );
@@ -385,42 +378,11 @@ export class SharedWorkerRoutes {
         entry.handled = true;
         entry.resolveHandled(request);
       }
+      return route.response;
     } catch (error) {
-      if (!route.handled) {
-        await this.sendChildCommand(sessionId, "Fetch.failRequest", {
-          requestId: paused.requestId,
-          errorReason: "Failed",
-        });
-      }
-      throw error;
+      this.errors.push(toError(error));
+      return { action: "fail" };
     }
-  }
-
-  private async fulfill(
-    sessionId: string,
-    requestId: string,
-    options: SharedWorkerFulfillOptions,
-  ): Promise<void> {
-    const headers = { ...options.headers };
-    const body = JSON.stringify(options.json);
-    if (body === undefined) {
-      throw new Error("SharedWorker JSON response is not serializable");
-    }
-    if (
-      !Object.keys(headers).some(
-        (name) => name.toLowerCase() === "content-type",
-      )
-    ) {
-      headers["content-type"] = "application/json";
-    }
-    await this.sendChildCommand(sessionId, "Fetch.fulfillRequest", {
-      requestId,
-      responseCode: options.status ?? 200,
-      responseHeaders: Object.entries(headers).map(([name, value]) => {
-        return { name, value };
-      }),
-      body: Buffer.from(body).toString("base64"),
-    });
   }
 
   private async sendChildCommand(
@@ -428,6 +390,9 @@ export class SharedWorkerRoutes {
     method: string,
     params: Readonly<Record<string, unknown>>,
   ): Promise<void> {
+    if (this.closed) {
+      throw this.closeError;
+    }
     const id = ++this.nextCommandId;
     let resolveCommand!: () => void;
     let rejectCommand!: (reason: unknown) => void;
@@ -460,6 +425,13 @@ export class SharedWorkerRoutes {
       }
     }
   }
+
+  private rejectAllPendingCommands(reason: Error): void {
+    for (const pending of this.pendingCommands.values()) {
+      pending.reject(reason);
+    }
+    this.pendingCommands.clear();
+  }
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -467,29 +439,24 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function parsePausedRequest(value: unknown): PausedRequest {
-  if (!isRecord(value) || typeof value.requestId !== "string") {
-    throw new Error("SharedWorker target sent an invalid paused request");
-  }
-  const request = value.request;
   if (
-    !isRecord(request) ||
-    typeof request.url !== "string" ||
-    typeof request.method !== "string" ||
-    !isRecord(request.headers)
+    !isRecord(value) ||
+    typeof value.url !== "string" ||
+    typeof value.method !== "string" ||
+    !isRecord(value.headers)
   ) {
-    throw new Error("SharedWorker target sent invalid request details");
+    throw new Error("SharedWorker route received invalid request details");
   }
   const headers: Record<string, string> = {};
-  for (const [name, headerValue] of Object.entries(request.headers)) {
+  for (const [name, headerValue] of Object.entries(value.headers)) {
     if (typeof headerValue !== "string") {
-      throw new Error("SharedWorker target sent an invalid request header");
+      throw new Error("SharedWorker route received an invalid request header");
     }
     headers[name] = headerValue;
   }
   return {
-    requestId: value.requestId,
-    url: request.url,
-    method: request.method,
+    url: value.url,
+    method: value.method,
     headers,
   };
 }
