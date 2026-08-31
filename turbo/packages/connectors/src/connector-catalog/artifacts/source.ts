@@ -1,5 +1,7 @@
-import { connectorAuthMethodIdSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import { z } from "zod";
+
+import { connectorAuthMethodIdSchema } from "../../connector-identity";
+
 import { connectorCatalogVersionSchema, privateNameSchema } from "./common";
 
 export const publicFieldIdSchema = z.string().regex(/^[a-z][a-zA-Z0-9]*$/u);

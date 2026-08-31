@@ -23,7 +23,7 @@ describe("Auth v2 navigation", () => {
   it("preserves an allowed query redirect through mode and nested-step navigation", () => {
     const redirectUrl = "https://www.vm0.ai/connector/success?vm0_theme=light";
     setBrowserUrl(
-      `https://app.vm0.ai/v2/sign-in/factor-one?flow=identifier&redirect_url=${encodeURIComponent(redirectUrl)}&flow=second#/factor-one?attempt=1`,
+      `https://app.vm0.ai/sign-in/factor-one?flow=identifier&redirect_url=${encodeURIComponent(redirectUrl)}&flow=second#/factor-one?attempt=1`,
     );
 
     const { navigation } = resolveAuthV2PlatformContext("sign-in");
@@ -33,7 +33,7 @@ describe("Auth v2 navigation", () => {
     const nestedUrl = absoluteNavigationUrl(
       navigation.href("sign-in", "/factor-one"),
     );
-    expect(nestedUrl.pathname).toBe("/v2/sign-in/factor-one");
+    expect(nestedUrl.pathname).toBe("/sign-in/factor-one");
     expect(nestedUrl.searchParams.getAll("flow")).toStrictEqual([
       "identifier",
       "second",
@@ -42,14 +42,14 @@ describe("Auth v2 navigation", () => {
     expect(nestedUrl.hash).toBe("#/factor-one?attempt=1");
 
     const signUpUrl = absoluteNavigationUrl(navigation.href("sign-up"));
-    expect(signUpUrl.pathname).toBe("/v2/sign-up");
+    expect(signUpUrl.pathname).toBe("/sign-up");
     expect(signUpUrl.searchParams.get("redirect_url")).toBe(redirectUrl);
   });
 
   it("carries an allowed hash redirect into query and nested hash state", () => {
     const redirectUrl = "https://app.okou.ai/onboarding?source=auth-switch";
     setBrowserUrl(
-      `https://app.vm0.ai/v2/sign-in/factor-one?flow=identifier#/?step=code&redirect_url=${encodeURIComponent(redirectUrl)}`,
+      `https://app.vm0.ai/sign-in/factor-one?flow=identifier#/?step=code&redirect_url=${encodeURIComponent(redirectUrl)}`,
     );
 
     const { navigation } = resolveAuthV2PlatformContext("sign-in");
@@ -105,7 +105,7 @@ describe("Auth v2 navigation", () => {
         source === "hash"
           ? `#/factor-one?redirect_url=${encodedRedirectUrl}`
           : "#/factor-one?step=identifier";
-      setBrowserUrl(`${pageOrigin}/v2/sign-in/factor-one${query}${hash}`);
+      setBrowserUrl(`${pageOrigin}/sign-in/factor-one${query}${hash}`);
 
       const { authBrand, navigation } = resolveAuthV2PlatformContext("sign-in");
       const nestedUrl = absoluteNavigationUrl(

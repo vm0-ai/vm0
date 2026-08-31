@@ -9,6 +9,7 @@ import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
 import { clerkCoreHtmlPlugin } from "./scripts/clerk-html.ts";
 import {
+  VENDOR_MODULE_PATTERN,
   applicationJavaScriptBundlePlugin,
   singleWorkerJavaScriptBundlePlugin,
 } from "./scripts/single-bundle.ts";
@@ -98,14 +99,14 @@ export default defineConfig(({ command }) => ({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
-        // Keep all third-party modules in one cache-stable vendor chunk. The
-        // application entry and Rolldown runtime remain separate generated
-        // chunks, while the SharedWorker is emitted as its own asset.
+        // Keep third-party modules and the pinned generated Mermaid package in
+        // one cache-stable vendor chunk. The application entry and Rolldown
+        // runtime remain separate chunks, while the SharedWorker is an asset.
         codeSplitting: {
           groups: [
             {
               name: "vendor",
-              test: /[\\/]node_modules[\\/]/u,
+              test: VENDOR_MODULE_PATTERN,
             },
           ],
         },

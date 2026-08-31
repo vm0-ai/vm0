@@ -19,13 +19,13 @@ import {
 import type {
   ConnectorCatalogArtifact,
   ConnectorCatalogArtifactConnector,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
 import {
   connectorCatalogFirewallConfig,
   deriveConnectorCatalogFirewallPermissions,
   deriveConnectorCatalogFirewallRouting,
   type ConnectorCatalogFirewallRouting,
-} from "@okouai/connector-catalog-validation/artifacts/relationships";
+} from "@okouai/connectors/connector-catalog/artifacts/relationships";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =

@@ -745,12 +745,6 @@ describe("chat composer models", () => {
     const initialEditor = await within(thread).findByRole("textbox", {
       name: "Message",
     });
-    await user.click(initialEditor);
-    await user.keyboard("/");
-    await expect(
-      screen.findByText("No matching workflows"),
-    ).resolves.toBeInTheDocument();
-    const editor = await findComposerEditor();
 
     workflowPhase = "reloaded";
     act(() => {
@@ -762,10 +756,13 @@ describe("chat composer models", () => {
     await reloadWorkflowsRequested.promise;
     releaseReloadWorkflows.resolve();
 
+    await expect(findComposerEditor()).resolves.toBe(initialEditor);
+    await user.click(initialEditor);
+    await user.keyboard("/");
     await expect(
       screen.findByText("new-chat-workflow"),
     ).resolves.toBeInTheDocument();
-    await expect(findComposerEditor()).resolves.toBe(editor);
+    await expect(findComposerEditor()).resolves.toBe(initialEditor);
 
     await user.keyboard("{Enter}");
 

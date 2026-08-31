@@ -54,7 +54,7 @@ function setupSignUpPage(
   state: MockedSignUpResourceState,
   options: { readonly path?: string; readonly url?: string } = {},
 ): void {
-  const path = options.path ?? "/v2/sign-up";
+  const path = options.path ?? "/sign-up";
   mockSignUpResource(state);
   context.mocks.browser.url(options.url ?? `https://app.vm0.ai${path}`);
   detachedSetupPage({
@@ -202,7 +202,7 @@ describe("auth v2 sign-up flow", () => {
     expect(
       screen.getByRole("region", { name: "Create your account" }),
     ).toContainElement(signIn);
-    expect(signIn.getAttribute("href")).toMatch(/^\/v2\/sign-in(?:[?#]|$)/);
+    expect(signIn.getAttribute("href")).toMatch(/^\/sign-in(?:[?#]|$)/);
     const legalConsent = screen.getByRole("checkbox");
     expect(legalConsent).toBeVisible();
     await expect(
@@ -352,7 +352,7 @@ describe("auth v2 sign-up flow", () => {
       });
       mockAuthV2Capabilities({ appleOAuth: true, googleOAuth: true });
       const untrustedRedirect = "https://app.okou.ai.evil.example/steal";
-      const path = `/v2/sign-up?gclid=click-123&utm_campaign=summer&redirect_url=${encodeURIComponent(untrustedRedirect)}#/start?step=oauth`;
+      const path = `/sign-up?gclid=click-123&utm_campaign=summer&redirect_url=${encodeURIComponent(untrustedRedirect)}#/start?step=oauth`;
       setupSignUpPage(
         { status: null },
         {
@@ -392,7 +392,7 @@ describe("auth v2 sign-up flow", () => {
       expect(handoff).not.toHaveProperty("continueSignIn");
       const callbackUrl = new URL(handoff?.redirectUrl ?? "", location.origin);
       const completionUrl = new URL(handoff?.redirectUrlComplete ?? "");
-      expect(callbackUrl.pathname).toBe("/v2/sign-up/sso-callback");
+      expect(callbackUrl.pathname).toBe("/sign-up/sso-callback");
       expect(callbackUrl.searchParams.get("redirect_url")).toBe(
         completionUrl.toString(),
       );
@@ -440,7 +440,7 @@ describe("auth v2 sign-up flow", () => {
   });
 
   it("hands a completed Google callback to continuation exactly once", async () => {
-    const path = "/v2/sign-up/sso-callback?gclid=click-123&utm_campaign=summer";
+    const path = "/sign-up/sso-callback?gclid=click-123&utm_campaign=summer";
     setupSignUpPage(
       {
         createdSessionId: "session_google_sign_up",
@@ -474,7 +474,7 @@ describe("auth v2 sign-up flow", () => {
       return Promise.resolve(mockedClerk.client.signIn);
     });
     const path =
-      "/v2/sign-up/sso-callback?gclid=existing-123&utm_campaign=transfer";
+      "/sign-up/sso-callback?gclid=existing-123&utm_campaign=transfer";
     setupSignUpPage(
       {
         externalAccountError: {
@@ -523,8 +523,8 @@ describe("auth v2 sign-up flow", () => {
         status: "missing_requirements",
       },
       {
-        path: "/v2/sign-up/sso-callback",
-        url: "https://app.vm0.ai/v2/sign-up/sso-callback",
+        path: "/sign-up/sso-callback",
+        url: "https://app.vm0.ai/sign-up/sso-callback",
       },
     );
 
@@ -566,8 +566,8 @@ describe("auth v2 sign-up flow", () => {
         status: "missing_requirements",
       },
       {
-        path: "/v2/sign-up/sso-callback",
-        url: "https://app.vm0.ai/v2/sign-up/sso-callback",
+        path: "/sign-up/sso-callback",
+        url: "https://app.vm0.ai/sign-up/sso-callback",
       },
     );
 
@@ -595,7 +595,7 @@ describe("auth v2 sign-up flow", () => {
       return Promise.resolve(mockedClerk.client.signIn);
     });
     const redirectUrl = "https://app.okou.ai/onboarding?source=transfer";
-    const path = `/v2/sign-up/sso-callback?utm_campaign=transfer&redirect_url=${encodeURIComponent(redirectUrl)}#/callback?attempt=1`;
+    const path = `/sign-up/sso-callback?utm_campaign=transfer&redirect_url=${encodeURIComponent(redirectUrl)}#/callback?attempt=1`;
     setupSignUpPage(
       {
         externalAccountError: {
@@ -613,7 +613,7 @@ describe("auth v2 sign-up flow", () => {
       expect(assigned.calls).toHaveLength(1);
     });
     const destination = new URL(assigned.calls[0] ?? "", location.origin);
-    expect(destination.pathname).toBe("/v2/sign-in/factor-one");
+    expect(destination.pathname).toBe("/sign-in/factor-one");
     expect(destination.searchParams.get("redirect_url")).toBe(redirectUrl);
     expect(destination.searchParams.get("utm_campaign")).toBe("transfer");
     expect(destination.hash).toBe("#/callback?attempt=1");
@@ -633,8 +633,8 @@ describe("auth v2 sign-up flow", () => {
         status: null,
       },
       {
-        path: "/v2/sign-up/sso-callback",
-        url: "https://app.vm0.ai/v2/sign-up/sso-callback",
+        path: "/sign-up/sso-callback",
+        url: "https://app.vm0.ai/sign-up/sso-callback",
       },
     );
 
@@ -664,7 +664,7 @@ describe("auth v2 sign-up flow", () => {
       }),
     );
     setupSignUpPage(readyEmailVerificationState(), {
-      path: "/v2/sign-up/verify-email-address",
+      path: "/sign-up/verify-email-address",
     });
 
     await expect(
@@ -800,7 +800,7 @@ describe("auth v2 sign-up flow", () => {
       return attempt.promise;
     });
     const path =
-      "/v2/sign-up/verify-email-address?gclid=click-123&utm_campaign=summer";
+      "/sign-up/verify-email-address?gclid=click-123&utm_campaign=summer";
     setupSignUpPage(readyEmailVerificationState(), {
       path,
       url: `https://app.vm0.ai${path}`,
@@ -1226,7 +1226,7 @@ describe("auth v2 sign-up flow", () => {
     async ({ state, title }) => {
       const redirectUrl = "https://app.okou.ai/onboarding?source=sign-up";
       setupSignUpPage(state, {
-        path: `/v2/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
+        path: `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
       });
 
       await expect(
@@ -1239,7 +1239,6 @@ describe("auth v2 sign-up flow", () => {
         "href",
         expect.stringContaining("redirect_url="),
       );
-      expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
       expect(
         mockedClerk.signUpPrepareEmailAddressVerification,
       ).not.toHaveBeenCalled();

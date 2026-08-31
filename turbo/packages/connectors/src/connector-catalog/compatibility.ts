@@ -1,25 +1,26 @@
 import { createHash } from "node:crypto";
 
-import {
-  connectorCatalogCompatibilityReasonSchema,
-  type ConnectorCatalogCompatibilityReason,
-} from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
-import {
-  connectorAuthMethodIdSchema,
-  connectorSlugSchema,
-} from "@okouai/api-contracts/contracts/connector-identity";
+import { z } from "zod";
+
 import {
   CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS,
   getConnectorAuthProviderRegistrationCapabilities,
   type ConnectorAuthProviderMethodContract,
   type ConnectorAuthProviderRegistrationCapability,
-} from "@okouai/connectors/auth-providers";
-import { z } from "zod";
+} from "../auth-providers/connector-auth";
+import {
+  connectorAuthMethodIdSchema,
+  connectorSlugSchema,
+} from "../connector-identity";
 
 import type {
   ConnectorCatalogArtifact,
   ConnectorCatalogAuthMethod,
 } from "./artifacts/artifacts";
+import {
+  connectorCatalogCompatibilityReasonSchema,
+  type ConnectorCatalogCompatibilityReason,
+} from "./contracts";
 
 const COMPATIBILITY_REASON_ORDER = [
   "missing-grant-provider",

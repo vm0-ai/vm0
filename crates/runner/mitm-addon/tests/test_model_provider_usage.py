@@ -802,9 +802,15 @@ class TestModelProviderResponseHookUsage:
     def test_full_path_response_to_webhook(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):
-        """Integration: response() -> _maybe_report -> _enqueue -> _retry -> webhook.
+        """Integration test for the response hook's terminal model-usage lifecycle.
 
-        Verifies wiring between all intermediate layers through loopback HTTP.
+        The response hook reaches terminal one-shot reporting through
+        ``terminal_usage.report_model_provider_usage_once()``, which buffers
+        billing and model-observation payloads through the public ``usage``
+        facade. The explicit ``usage.flush_usage_events(trigger="test")`` call
+        admits those buffers to retry-capable webhook enqueue and delivery, and
+        this test verifies the successful loopback HTTP requests. It does not
+        trigger a delivery retry.
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")

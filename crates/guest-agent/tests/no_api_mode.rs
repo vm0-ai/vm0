@@ -88,7 +88,7 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
 
     let complete_log_path = tmp.path().join("complete-system.log");
     let complete_log_guard = SystemLogOverrideGuard::set(&complete_log_path);
-    guest_agent::complete::report_success_for_run(
+    guest_agent::complete::report_user_cancellation_for_run(
         &http,
         &runtime.config.run_id,
         "sandbox-no-api",

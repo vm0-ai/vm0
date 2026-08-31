@@ -59,6 +59,8 @@ export type IntroVideoVoiceSelection =
   | { readonly kind: "none" }
   | { readonly kind: "original" };
 
+export type IntroVideoVisualBalance = "avatar-led" | "b-roll-led" | "balanced";
+
 interface RecordingRuntime {
   audioContext: AudioContext | null;
   audioContextClose: Promise<void> | null;
@@ -293,12 +295,18 @@ function buildIntroVideoPrompt(args: {
   readonly avatar: AvatarVideoAvatar | null;
   readonly instructions: string;
   readonly source: IntroVideoSource;
+  readonly visualBalance: IntroVideoVisualBalance;
   readonly voice: IntroVideoVoiceSelection | null;
 }): string {
   const aspectRatio = args.aspectRatio === "portrait" ? "9:16" : "16:9";
   const avatar = args.avatar
     ? `${args.avatar.name} (${args.avatar.id})`
     : "No avatar";
+  const visualBalanceDescription: Record<IntroVideoVisualBalance, string> = {
+    "avatar-led": "Avatar-led (presenter on screen most of the time)",
+    "b-roll-led": "B-roll-led (focus on slides and source visuals)",
+    balanced: "Balanced mix (roughly equal time for presenter and visuals)",
+  };
   const direction = args.instructions.trim() || DEFAULT_INSTRUCTIONS;
   return [
     "Create a polished intro video from the attached source.",
@@ -309,6 +317,9 @@ function buildIntroVideoPrompt(args: {
     `- Aspect ratio: ${aspectRatio}`,
     `- Avatar: ${avatar}`,
     `- Voice: ${voiceSelectionLabel(args.voice)}`,
+    ...(args.avatar
+      ? [`- Visual balance: ${visualBalanceDescription[args.visualBalance]}`]
+      : []),
     "",
     "Editing direction:",
     direction,
@@ -332,6 +343,7 @@ interface IntroVideoInternalState {
   readonly sourceUploaded$: State<boolean>;
   readonly step$: State<IntroVideoWizardStep>;
   readonly systemAudio$: State<boolean>;
+  readonly visualBalance$: State<IntroVideoVisualBalance>;
   readonly voice$: State<IntroVideoVoiceSelection | null>;
 }
 
@@ -351,6 +363,7 @@ function createIntroVideoInternalState(): IntroVideoInternalState {
     sourceUploaded$: state(false),
     step$: state<IntroVideoWizardStep>("source"),
     systemAudio$: state(true),
+    visualBalance$: state<IntroVideoVisualBalance>("balanced"),
     voice$: state<IntroVideoVoiceSelection | null>(null),
   };
 }
@@ -376,6 +389,7 @@ function createIntroVideoSelectors(internal: IntroVideoInternalState) {
     sourcePersisted$: exposeState(internal.sourcePersisted$),
     step$: exposeState(internal.step$),
     systemAudio$: exposeState(internal.systemAudio$),
+    visualBalance$: exposeState(internal.visualBalance$),
     voice$: exposeState(internal.voice$),
   };
 }
@@ -492,12 +506,18 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
   const setInstructions$ = command(({ set }, instructions: string): void => {
     set(internal.instructions$, instructions);
   });
+  const setVisualBalance$ = command(
+    ({ set }, visualBalance: IntroVideoVisualBalance): void => {
+      set(internal.visualBalance$, visualBalance);
+    },
+  );
   return {
     setAspectRatio$,
     setAvatar$,
     setInstructions$,
     setMicrophone$,
     setSystemAudio$,
+    setVisualBalance$,
     setVoice$,
   };
 }
@@ -899,6 +919,30 @@ function createDownloadSourceCommand(internal: IntroVideoInternalState) {
   });
 }
 
+function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
+  return command(
+    async (
+      { set },
+      source: IntroVideoSource,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      // A stale local draft is harmless if cleanup fails after the server send.
+      await settle(deleteIntroVideoDraft(), signal);
+      releasePreviewUrl(source);
+      set(internal.source$, null);
+      set(internal.sourcePersisted$, false);
+      set(internal.sourceUploaded$, false);
+      set(internal.avatar$, null);
+      set(internal.voice$, null);
+      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+      set(internal.visualBalance$, "balanced");
+      set(internal.step$, "source");
+      set(internal.busy$, false);
+      set(internal.open$, false);
+    },
+  );
+}
+
 function createSubmissionCommands(
   internal: IntroVideoInternalState,
   downloadSource$: Command<void, []>,
@@ -929,26 +973,7 @@ function createSubmissionCommands(
       return true;
     },
   );
-  const clearCompletedDraft$ = command(
-    async (
-      { set },
-      source: IntroVideoSource,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      // A stale local draft is harmless if cleanup fails after the server send.
-      await settle(deleteIntroVideoDraft(), signal);
-      releasePreviewUrl(source);
-      set(internal.source$, null);
-      set(internal.sourcePersisted$, false);
-      set(internal.sourceUploaded$, false);
-      set(internal.avatar$, null);
-      set(internal.voice$, null);
-      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-      set(internal.step$, "source");
-      set(internal.busy$, false);
-      set(internal.open$, false);
-    },
-  );
+  const clearCompletedDraft$ = createClearCompletedDraftCommand(internal);
   const submitComposer$ = command(
     async (
       { get, set },
@@ -1008,6 +1033,7 @@ function createSubmissionCommands(
           avatar: get(internal.avatar$),
           instructions: get(internal.instructions$),
           source,
+          visualBalance: get(internal.visualBalance$),
           voice: get(internal.voice$),
         }),
       );
