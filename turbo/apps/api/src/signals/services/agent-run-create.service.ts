@@ -1510,36 +1510,26 @@ function frameworkApiKeyEnv(framework: SupportedFramework): string {
   return framework === "codex" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 }
 
-function autoMemoryMountPath(
-  framework: SupportedFramework,
-  usePiMemoryPath: boolean,
-): string {
-  if (usePiMemoryPath) {
-    return PI_MEMORY_ROOT;
-  }
+function autoMemoryMountPath(framework: SupportedFramework): string {
   return framework === "codex"
     ? CANONICAL_CODEX_MEMORY_MOUNT_PATH
     : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH;
 }
 
-function autoMemoryArtifact(
-  framework: SupportedFramework,
-  usePiMemoryPath: boolean,
-): ContextArtifact {
+function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
   return withAutoMemoryMissingRootPolicy({
     name: AUTO_MEMORY_ARTIFACT_NAME,
-    mountPath: autoMemoryMountPath(framework, usePiMemoryPath),
+    mountPath: autoMemoryMountPath(framework),
   });
 }
 
 function isCanonicalAutoMemoryArtifact(
   artifact: ContextArtifact,
   framework: SupportedFramework,
-  usePiMemoryPath: boolean,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
-    artifact.mountPath === autoMemoryMountPath(framework, usePiMemoryPath)
+    artifact.mountPath === autoMemoryMountPath(framework)
   );
 }
 
@@ -1555,10 +1545,9 @@ function withAutoMemoryMissingRootPolicy(
 function withCanonicalAutoMemoryMissingRootPolicy(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
-  usePiMemoryPath: boolean,
 ): readonly ContextArtifact[] {
   return artifacts.map((artifact) => {
-    return isCanonicalAutoMemoryArtifact(artifact, framework, usePiMemoryPath)
+    return isCanonicalAutoMemoryArtifact(artifact, framework)
       ? withAutoMemoryMissingRootPolicy(artifact)
       : artifact;
   });
@@ -1567,24 +1556,22 @@ function withCanonicalAutoMemoryMissingRootPolicy(
 function claimsAutoMemorySlot(
   artifact: ContextArtifact,
   framework: SupportedFramework,
-  usePiMemoryPath: boolean,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME ||
-    artifact.mountPath === autoMemoryMountPath(framework, usePiMemoryPath)
+    artifact.mountPath === autoMemoryMountPath(framework)
   );
 }
 
 function withoutSupersededAutoMemoryArtifacts(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
-  usePiMemoryPath: boolean,
   slotOwnerIndex: number,
 ): readonly ContextArtifact[] {
   return artifacts.filter((artifact, index) => {
     return (
       index >= slotOwnerIndex ||
-      !isCanonicalAutoMemoryArtifact(artifact, framework, usePiMemoryPath)
+      !isCanonicalAutoMemoryArtifact(artifact, framework)
     );
   });
 }
@@ -1610,7 +1597,7 @@ function composeArtifacts(
 function artifactsForRun(args: {
   readonly resolved: ResolvedAgentExecution;
   readonly framework: SupportedFramework;
-  readonly usePiMemoryPath: boolean;
+  readonly includeAutoMemory: boolean;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
   const isContinuation = Boolean(args.resolved.agentSessionId);
@@ -1622,40 +1609,37 @@ function artifactsForRun(args: {
     : [...composeContextArtifacts, ...args.resolved.artifacts];
   const bodyArtifacts = args.bodyArtifacts ?? [];
   const artifacts = [...baseArtifacts, ...bodyArtifacts];
+  if (!args.includeAutoMemory) {
+    return {
+      artifacts: artifacts.filter((artifact) => {
+        return (
+          artifact.name !== AUTO_MEMORY_ARTIFACT_NAME &&
+          artifact.mountPath !== PI_MEMORY_ROOT
+        );
+      }),
+    };
+  }
 
   let autoMemorySlotArtifactIndex: number | undefined;
   for (let index = artifacts.length - 1; index >= 0; index -= 1) {
     const artifact = artifacts[index];
-    if (
-      artifact &&
-      claimsAutoMemorySlot(artifact, args.framework, args.usePiMemoryPath)
-    ) {
+    if (artifact && claimsAutoMemorySlot(artifact, args.framework)) {
       autoMemorySlotArtifactIndex = index;
       break;
     }
   }
   if (autoMemorySlotArtifactIndex === undefined) {
     return {
-      artifacts: [
-        ...artifacts,
-        autoMemoryArtifact(args.framework, args.usePiMemoryPath),
-      ],
+      artifacts: [...artifacts, autoMemoryArtifact(args.framework)],
     };
   }
 
   const slotOwner = artifacts[autoMemorySlotArtifactIndex]!;
-  if (
-    !isCanonicalAutoMemoryArtifact(
-      slotOwner,
-      args.framework,
-      args.usePiMemoryPath,
-    )
-  ) {
+  if (!isCanonicalAutoMemoryArtifact(slotOwner, args.framework)) {
     return {
       artifacts: withoutSupersededAutoMemoryArtifacts(
         artifacts,
         args.framework,
-        args.usePiMemoryPath,
         autoMemorySlotArtifactIndex,
       ),
     };
@@ -1665,7 +1649,6 @@ function artifactsForRun(args: {
     artifacts: withCanonicalAutoMemoryMissingRootPolicy(
       artifacts,
       args.framework,
-      args.usePiMemoryPath,
     ),
   };
 }
@@ -7012,6 +6995,7 @@ function preparePiLaunchResources(args: {
             schemaVersion: 2,
             apiFirstTurn: {
               schemaVersion: 1,
+              ownershipTransfer: { schemaVersion: 1 },
               resourceSnapshotDigest: piResourceSnapshotDigest(
                 piResourceDiscoveryMounts(args.storageMounts),
               ),
@@ -7020,9 +7004,6 @@ function preparePiLaunchResources(args: {
               deadlineAt: args.apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
               baseSession: piBaseSession(resumeSession, chatThreadId),
               sandboxEventSequenceStart: 1,
-              // Consumer-first rollout: keep V3 ownership transfer disabled
-              // until the compatible CLI and Guest release is proven live on
-              // every Pi-eligible Sandbox path.
             },
           },
           resumeSession,
@@ -8260,12 +8241,16 @@ interface FinalizedPreparedRunContext extends PreparedRunContext {
 function isPiSandboxEnabledForRun(
   createArgs: CreateAgentRunArgs,
   featureSwitchContext: FeatureSwitchContext,
-  modelProvider: ResolvedModelProviderEnvironment | null,
 ): boolean {
   return shouldUsePiExecution({
     chatThreadId: createArgs.chatThreadId,
-    modelProviderType: modelProvider?.type,
-    selectedModel: createArgs.selectedModelOverride,
+    modelProviderType:
+      createArgs.agentRunModelPin?.modelProvider ??
+      createArgs.modelProviderType,
+    selectedModel:
+      createArgs.agentRunModelPin?.selectedModel ??
+      createArgs.selectedModelOverride,
+    codexServiceTier: createArgs.codexServiceTier,
     triggerSource: createArgs.body.triggerSource,
     featureSwitchContext,
   });
@@ -8276,13 +8261,7 @@ function resolvePreparedPiModelConfig(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
 }): PiModelConfig | undefined {
-  if (
-    !isPiSandboxEnabledForRun(
-      args.createArgs,
-      args.featureSwitchContext,
-      args.modelProvider,
-    )
-  ) {
+  if (!isPiSandboxEnabledForRun(args.createArgs, args.featureSwitchContext)) {
     return undefined;
   }
   const config = resolvePiSandboxModelConfig(args.modelProvider);
@@ -9260,7 +9239,7 @@ function prepareRunOutputMetadata(args: {
   const artifacts = artifactsForRun({
     resolved: args.resolved,
     framework: args.framework,
-    usePiMemoryPath: args.piSandbox !== undefined,
+    includeAutoMemory: args.piSandbox === undefined,
     bodyArtifacts: args.body.artifacts,
   }).artifacts;
   return {

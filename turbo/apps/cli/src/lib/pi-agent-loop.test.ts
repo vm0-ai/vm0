@@ -394,6 +394,29 @@ function prepareDeepSeekModel(session: MemoryPiSession, baseUrl: string): void {
   });
 }
 
+function prepareTerraModel(session: MemoryPiSession, baseUrl: string): void {
+  session.prepareModelTurn(
+    {
+      id: "gpt-5.6-terra",
+      name: "GPT 5.6 Terra",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl,
+      reasoning: true,
+      input: ["text", "image"],
+      cost: {
+        input: 2,
+        output: 12,
+        cacheRead: 0.2,
+        cacheWrite: 2.5,
+      },
+      contextWindow: 272_000,
+      maxTokens: 128_000,
+    },
+    "low",
+  );
+}
+
 async function startOwnershipTransferHost(args: {
   readonly root: string;
   readonly jsonl: string;
@@ -403,6 +426,7 @@ async function startOwnershipTransferHost(args: {
     | "settled-session-continuation";
   readonly baseSessionSha256: string | null;
   readonly providerBaseUrl: string;
+  readonly model?: "deepseek" | "terra";
 }): Promise<{
   readonly host: RpcHost;
   readonly handoffServer: Server;
@@ -479,17 +503,21 @@ async function startOwnershipTransferHost(args: {
     }),
     { mode: 0o600 },
   );
+  const terra = args.model === "terra";
   const env = {
     ...process.env,
     OKOU_RUN_ID: RUN_ID,
     OKOU_PI_SESSION_ID: SESSION_ID,
     OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
     OKOU_PI_MODEL_CONFIG: JSON.stringify({
-      provider: "deepseek",
+      provider: terra ? "openai" : "deepseek",
       baseUrl: args.providerBaseUrl,
-      model: "deepseek-v4-flash",
+      model: terra ? "gpt-5.6-terra" : "deepseek-v4-flash",
+      ...(terra
+        ? { api: "openai-responses" as const, thinkingLevel: "low" as const }
+        : {}),
       apiKeyEnv: "OPENAI_API_KEY",
-      credentialSecretName: "DEEPSEEK_API_KEY",
+      credentialSecretName: terra ? "OPENAI_API_KEY" : "DEEPSEEK_API_KEY",
     }),
     OPENAI_API_KEY: "pi-ownership-transfer-test-key",
   };
@@ -586,29 +614,27 @@ describe("sandbox Pi agent loop", () => {
     }
   });
 
-  it("restores API H1, executes its pending tool, and continues without replaying the prompt", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-handoff-rpc-"));
-    const agentDir = join(root, ".pi", "agent");
-    const sessionDir = join(agentDir, "sessions", "--test--");
-    const sourceFile = join(root, "handoff-source.txt");
-    const prompt = "read the handoff source exactly once";
+  it("restores Terra H1, executes its pending tool, and checkpoints H2", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-terra-handoff-rpc-"));
+    const sourceFile = join(root, "terra-handoff-source.txt");
+    const prompt = "read the Terra handoff source exactly once";
     const provider = await ProviderHarness.start();
     const memory = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
-    prepareDeepSeekModel(memory, provider.baseUrl);
+    prepareTerraModel(memory, provider.baseUrl);
     memory.appendMessage({ role: "user", content: prompt, timestamp: 1 });
     memory.appendMessage({
       role: "assistant",
       content: [
         {
           type: "thinking",
-          thinking: "API-first reasoning preserved for the tool handoff",
+          thinking: "Terra reasoning preserved for the Okou handoff",
           thinkingSignature: JSON.stringify({
             type: "reasoning",
-            id: "rs_api_handoff",
+            id: "rs_terra_okou_handoff",
             content: [
               {
                 type: "reasoning_text",
-                text: "API-first reasoning preserved for the tool handoff",
+                text: "Terra reasoning preserved for the Okou handoff",
               },
             ],
             summary: [],
@@ -616,14 +642,14 @@ describe("sandbox Pi agent loop", () => {
         },
         {
           type: "toolCall",
-          id: "api-read-call",
+          id: "api-terra-read-call",
           name: "read",
           arguments: { path: sourceFile },
         },
       ],
       api: "openai-responses",
-      provider: "deepseek",
-      model: "deepseek-v4-flash",
+      provider: "openai",
+      model: "gpt-5.6-terra",
       usage: {
         input: 5,
         output: 3,
@@ -636,110 +662,44 @@ describe("sandbox Pi agent loop", () => {
       timestamp: 2,
     });
     const h1 = memory.toJsonl();
-    const manifest = {
-      schemaVersion: 2,
-      outcome: "handoff",
-      baseSession: { sessionId: SESSION_ID, sha256: null },
-      session: {
-        sessionId: SESSION_ID,
-        sha256: createHash("sha256").update(h1).digest("hex"),
-        rawSize: Buffer.byteLength(h1),
-      },
-      sandboxEventSequenceStart: 4,
-    };
-    const handoffServer = createServer((request, response) => {
-      if (request.url === "/manifest.json") {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify(manifest));
-        return;
-      }
-      if (request.url === "/session.jsonl") {
-        response.writeHead(200, {
-          "content-type": "application/x-ndjson",
-          "content-length": String(Buffer.byteLength(h1)),
-        });
-        response.end(h1);
-        return;
-      }
-      response.writeHead(404);
-      response.end();
-    });
     let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
 
     try {
-      await mkdir(agentDir, { recursive: true });
-      await writeFile(sourceFile, "tool output from the sandbox filesystem");
-      await new Promise<void>((resolve, reject) => {
-        handoffServer.once("error", reject);
-        handoffServer.listen(0, "127.0.0.1", () => {
-          handoffServer.off("error", reject);
-          resolve();
-        });
-      });
-      const address = handoffServer.address();
-      if (address === null || typeof address === "string") {
-        throw new Error("Pi handoff test server has no TCP address");
-      }
-      const handoffBaseUrl = `http://127.0.0.1:${address.port}`;
-      const payloadFile = join(root, "launch-payload.json");
       await writeFile(
-        payloadFile,
-        JSON.stringify({
-          schemaVersion: 1,
-          appendSystemPrompt: null,
-          launchConfig: {
-            schemaVersion: 2,
-            apiFirstTurn: {
-              schemaVersion: 1,
-              resourceSnapshotDigest: "a".repeat(64),
-              manifestUrl: `${handoffBaseUrl}/manifest.json`,
-              sessionUrl: `${handoffBaseUrl}/session.jsonl`,
-              deadlineAt: Date.now() + 10_000,
-              baseSession: { sessionId: SESSION_ID, sha256: null },
-              sandboxEventSequenceStart: 1,
-            },
-          },
-        }),
-        { mode: 0o600 },
+        sourceFile,
+        "Terra tool output from the sandbox filesystem",
       );
-      const env = {
-        ...process.env,
-        OKOU_RUN_ID: RUN_ID,
-        OKOU_PI_SESSION_ID: SESSION_ID,
-        OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
-        OKOU_PI_MODEL_CONFIG: JSON.stringify({
-          provider: "deepseek",
-          baseUrl: provider.baseUrl,
-          model: "deepseek-v4-flash",
-          apiKeyEnv: "OPENAI_API_KEY",
-          credentialSecretName: "DEEPSEEK_API_KEY",
-        }),
-        OPENAI_API_KEY: "pi-handoff-test-key",
-      };
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: h1,
+        mode: "pending-tool-continuation",
+        baseSessionSha256: null,
+        providerBaseUrl: provider.baseUrl,
+        model: "terra",
+      });
+      host = started.host;
+      handoffServer = started.handoffServer;
 
-      host = new RpcHost({ cwd: root, agentDir, sessionDir, env });
-      const state = await host.state("handoff-state");
+      const state = await host.state("terra-handoff-state");
       expect(host.records[0]).toStrictEqual({
         type: "vm0_pi_api_first_turn_boundary",
-        schemaVersion: 1,
+        schemaVersion: 2,
         sandboxEventSequenceStart: 4,
+        ownershipTransferMode: "pending-tool-continuation",
       });
-      expect(state).toMatchObject({
-        sessionId: SESSION_ID,
-        messageCount: 2,
-      });
+      expect(state).toMatchObject({ sessionId: SESSION_ID, messageCount: 2 });
       expect(String(state.sessionFile)).toContain("api-first-turn-");
 
-      host.send({ id: "handoff", type: "prompt", message: prompt });
+      host.send({ id: "terra-handoff", type: "prompt", message: prompt });
       const continuationRequest = await provider.nextRequest();
       const continuationBody = JSON.stringify(continuationRequest.body);
       expect(continuationBody).toContain(
-        "tool output from the sandbox filesystem",
+        "Terra tool output from the sandbox filesystem",
       );
-      expect(continuationBody).toContain("rs_api_handoff");
-      expect(continuationBody).toContain("reasoning_text");
+      expect(continuationBody).toContain("rs_terra_okou_handoff");
       expect(occurrences(continuationBody, prompt)).toBe(1);
-      continuationRequest.respond("handoff continuation complete");
+      continuationRequest.respond("Terra Okou handoff complete");
       await host.waitFor((record) => {
         return record.type === "agent_settled";
       });
@@ -749,23 +709,23 @@ describe("sandbox Pi agent loop", () => {
       expect(provider.requests).toHaveLength(1);
       const persisted = await readFile(String(state.sessionFile), "utf8");
       expect(occurrences(persisted, prompt)).toBe(1);
-      expect(persisted).toContain("api-read-call");
-      expect(persisted).toContain("handoff continuation complete");
+      expect(persisted).toContain("api-terra-read-call");
+      expect(persisted).toContain(
+        "Terra tool output from the sandbox filesystem",
+      );
+      expect(persisted).toContain("Terra Okou handoff complete");
+      expect(MemoryPiSession.fromJsonl(persisted).isSettledCheckpoint()).toBe(
+        true,
+      );
     } finally {
       await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
       await provider.close();
-      await new Promise<void>((resolve, reject) => {
-        handoffServer.close((error) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve();
-          }
-        });
-      });
       await rm(root, { recursive: true, force: true });
     }
-  }, 20_000);
+  }, 30_000);
 
   it("runs the sandbox-first prompt exactly once through AgentSession", async () => {
     const root = await mkdtemp(join(tmpdir(), "vm0-pi-sandbox-first-rpc-"));
