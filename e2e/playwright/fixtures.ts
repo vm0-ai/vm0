@@ -2,6 +2,10 @@ import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test as base } from "@playwright/test";
 
 import { resolveApiBackendUrl } from "./api-backend-url";
+import {
+  installPreviewBypassCookie,
+  VERCEL_PROTECTION_BYPASS_NAME,
+} from "./lib/preview-bypass";
 import { SharedWorkerRoutes } from "./lib/shared-worker-routes";
 import { deriveAppUrl } from "./playwright.config";
 
@@ -28,11 +32,19 @@ export const test = base.extend<WorkerRouteFixtures>({
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     if (apiUrl && bypassSecret) {
       const apiOrigin = new URL(apiUrl).origin;
+      // Playwright routing covers page requests but not native SharedWorker
+      // fetches. The production bridge reads this app-origin cookie and
+      // forwards the bypass through its worker heartbeat.
+      await installPreviewBypassCookie(
+        context,
+        deriveAppUrl(apiUrl),
+        bypassSecret,
+      );
       await context.route(`${apiOrigin}/**`, async (route) => {
         await route.continue({
           headers: {
             ...route.request().headers(),
-            "x-vercel-protection-bypass": bypassSecret,
+            [VERCEL_PROTECTION_BYPASS_NAME]: bypassSecret,
           },
         });
       });
