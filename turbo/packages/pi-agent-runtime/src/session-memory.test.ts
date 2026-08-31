@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { MemoryPiSession, runPiFirstModelTurn } from "./session-memory";
 import { UnsupportedPiSessionVersionError } from "./errors";
+import { createPiApiFirstTurnOwnership } from "./provider-ownership";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
 const temporaryDirectories: string[] = [];
@@ -67,8 +68,10 @@ describe("MemoryPiSession", () => {
       api: "memory-test",
       provider: "memory-test",
     });
+    const ownership = createPiApiFirstTurnOwnership();
     faux.setResponses([
       (context, options) => {
+        expect(ownership.stage).toBe("provider-may-have-started");
         modelContext = context;
         expect(options?.sessionId).toBe(SESSION_ID);
         return fauxAssistantMessage(
@@ -91,9 +94,11 @@ describe("MemoryPiSession", () => {
           parameters: Type.Object({ path: Type.String() }),
         },
       ],
+      ownership,
     });
 
     expect(turn.handoffRequired).toBe(true);
+    expect(ownership.stage).toBe("provider-may-have-started");
     expect(faux.state.callCount).toBe(1);
     expect(modelContext?.systemPrompt).toBe("preheated Pi system prompt");
     expect(
@@ -140,8 +145,10 @@ describe("MemoryPiSession", () => {
       },
     };
     let requestedReasoning: string | undefined;
+    const ownership = createPiApiFirstTurnOwnership();
     faux.setResponses([
       (_context, options) => {
+        expect(ownership.stage).toBe("provider-may-have-started");
         requestedReasoning = options?.reasoning;
         return fauxAssistantMessage(
           fauxToolCall("read", { path: "/etc/os-release" }),
@@ -164,6 +171,7 @@ describe("MemoryPiSession", () => {
           parameters: Type.Object({ path: Type.String() }),
         },
       ],
+      ownership,
     });
 
     expect(requestedReasoning).toBe("high");
@@ -235,6 +243,7 @@ describe("MemoryPiSession", () => {
       thinkingLevel: "low",
       timestamp: 1,
       tools: [],
+      ownership: createPiApiFirstTurnOwnership(),
     });
     await runPiFirstModelTurn({
       model: faux.getModel(),
@@ -245,6 +254,7 @@ describe("MemoryPiSession", () => {
       thinkingLevel: "high",
       timestamp: 3,
       tools: [],
+      ownership: createPiApiFirstTurnOwnership(),
     });
 
     expect(requestedReasoning).toStrictEqual(["low", "low"]);
@@ -302,6 +312,34 @@ describe("MemoryPiSession", () => {
           return entry.type === "thinking_level_change";
         }),
     ).toHaveLength(1);
+  });
+
+  it("moves ownership before a synchronous provider transport failure", async () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "memory-failure-test",
+      provider: "memory-failure-test",
+    });
+    const ownership = createPiApiFirstTurnOwnership();
+
+    await expect(
+      runPiFirstModelTurn({
+        model: faux.getModel(),
+        session: memory,
+        stream: () => {
+          expect(ownership.stage).toBe("provider-may-have-started");
+          throw new Error("provider transport failed");
+        },
+        systemPrompt: "system",
+        prompt: "must not be replayed",
+        tools: [],
+        ownership,
+      }),
+    ).rejects.toThrow("provider transport failed");
+    expect(ownership.stage).toBe("provider-may-have-started");
   });
 
   it("uses Pi migrations and compacted-context projection", async () => {
