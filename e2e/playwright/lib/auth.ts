@@ -21,10 +21,6 @@ export async function signInWithClerkSignInToken(
   signInUrl.searchParams.set("token", signInToken);
 
   await page.goto(signInUrl.toString(), { waitUntil: "domcontentloaded" });
-  await page.waitForURL((url) => url.pathname !== "/sign-in-token", {
-    timeout: 30_000,
-    waitUntil: "domcontentloaded",
-  });
   await page.waitForFunction(
     (organizationId) => {
       return Boolean(
@@ -40,7 +36,9 @@ export async function signInWithClerkSignInToken(
   const token = await refreshClerkSessionToken(page, {
     activeOrganizationId: options.activeOrganizationId,
   });
-  if (!options.preserveAppPage) {
+  if (options.preserveAppPage) {
+    await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  } else {
     await page.goto("about:blank");
   }
   return token;

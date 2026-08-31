@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import {
   errors,
   expect,
@@ -216,10 +218,31 @@ async function navigateToReadyAuthV2(
 
 function clerkFrontendApiHost(): string {
   const frontendApi = process.env.CLERK_FAPI;
-  if (!frontendApi) {
-    throw new Error("CLERK_FAPI environment variable is required");
+  if (frontendApi) {
+    return new URL(`https://${frontendApi}`).host;
   }
-  return new URL(`https://${frontendApi}`).host;
+
+  const publishableKey = process.env.CLERK_PUBLISHABLE_KEY;
+  const encodedFrontendApi = publishableKey?.match(
+    /^pk_(?:test|live)_(?<frontendApi>.+)$/u,
+  )?.groups?.frontendApi;
+  if (!encodedFrontendApi) {
+    throw new Error(
+      "CLERK_FAPI or a valid CLERK_PUBLISHABLE_KEY environment variable is required",
+    );
+  }
+
+  const decodedFrontendApi = Buffer.from(encodedFrontendApi, "base64").toString(
+    "utf8",
+  );
+  const hostname = decodedFrontendApi.endsWith("$")
+    ? decodedFrontendApi.slice(0, -1)
+    : decodedFrontendApi;
+  const url = new URL(`https://${hostname}`);
+  if (url.pathname !== "/" || url.search || url.hash) {
+    throw new Error("CLERK_PUBLISHABLE_KEY contains an invalid frontend API");
+  }
+  return url.host;
 }
 
 function clerkFrontendApiPath(
