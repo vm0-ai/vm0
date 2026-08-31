@@ -520,10 +520,28 @@ const BOOTSTRAP_CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
 const BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK =
   "vm0:bootstrap:clerk-load-completed";
 
+function resetBootstrapClerkLoadMarks(): void {
+  performance.clearMarks(BOOTSTRAP_CLERK_LOAD_STARTED_MARK);
+  performance.clearMarks(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK);
+
+  const bootstrap = window.__vm0ClerkBootstrap;
+  const startedAt = bootstrap?.clerkLoadStartedAt;
+  if (typeof startedAt === "number" && Number.isFinite(startedAt)) {
+    performance.mark(BOOTSTRAP_CLERK_LOAD_STARTED_MARK, {
+      startTime: startedAt,
+    });
+  }
+  const completedAt = bootstrap?.clerkLoadCompletedAt;
+  if (typeof completedAt === "number" && Number.isFinite(completedAt)) {
+    performance.mark(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK, {
+      startTime: completedAt,
+    });
+  }
+}
+
 export const initBootstrapPhaseTiming$ = command(
   ({ set }, signal: AbortSignal) => {
-    performance.clearMarks(BOOTSTRAP_CLERK_LOAD_STARTED_MARK);
-    performance.clearMarks(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK);
+    resetBootstrapClerkLoadMarks();
     set(bootstrapPhaseTimingState$, {
       initialVisibilityState: document.visibilityState,
       wasHidden: document.visibilityState !== "visible",

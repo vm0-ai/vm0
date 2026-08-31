@@ -198,8 +198,8 @@ describe("shared database browser bridge", () => {
       new URL(
         String(constructorCalls[0]?.scriptURL),
         window.location.href,
-      ).searchParams.get("okou-app-version"),
-    ).toBe("0.540.0");
+      ).searchParams.has("okou-app-version"),
+    ).toBeFalsy();
   });
 
   it("reloads once with a recovery marker after a worker load failure", async () => {

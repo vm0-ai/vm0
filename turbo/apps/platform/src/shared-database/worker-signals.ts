@@ -1,7 +1,8 @@
 import type { InboundMessage } from "ably";
-import { command, createStore, state, type Store } from "ccstate";
+import { command, computed, createStore, state, type Store } from "ccstate";
 
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
+import { appVersion$, initializeAppVersion$ } from "../signals/app-version.ts";
 import {
   setAuthenticatedIdentity$,
   setAuthRecovery$,
@@ -52,20 +53,28 @@ import {
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
+import { createSharedDatabaseContractClientFactory } from "./worker-client.ts";
 
 const STALE_CONNECTION_AFTER_MS = 3 * 60 * 1000;
 
 const credentialControllerState$ = state<AbortController | null>(null);
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const credentialStoreDaemonsReadyState$ = state<Promise<void> | null>(null);
+const sharedDatabaseClientFactory$ = computed((get) => {
+  return createSharedDatabaseContractClientFactory(get(appVersion$));
+});
 
 interface CreateSharedDatabaseCredentialStoreOptions {
+  readonly appVersion: string;
   readonly identity: SharedDatabaseIdentity;
   readonly apiBaseUrl: string;
   readonly vercelProtectionBypass: string | undefined;
 }
 
-export interface InitializeCredentialStoreOptions extends CreateSharedDatabaseCredentialStoreOptions {
+export interface InitializeCredentialStoreOptions {
+  readonly identity: SharedDatabaseIdentity;
+  readonly apiBaseUrl: string;
+  readonly vercelProtectionBypass: string | undefined;
   readonly onForceUpgrade: () => void;
 }
 
@@ -143,7 +152,7 @@ const installCredentialStore$ = command(
 
 export const initializeCredentialStore$ = command(
   (
-    { set },
+    { get, set },
     controller: AbortController,
     options: InitializeCredentialStoreOptions,
     broadcast: (message: WorkerBroadcastMessage) => void,
@@ -161,6 +170,7 @@ export const initializeCredentialStore$ = command(
       options.vercelProtectionBypass,
       signal,
       broadcast,
+      get(sharedDatabaseClientFactory$),
     );
     set(
       installCredentialStore$,
@@ -176,6 +186,7 @@ export function createSharedDatabaseCredentialStore(
   workerSignal: AbortSignal,
 ): Store {
   const store = createStore();
+  store.set(initializeAppVersion$, options.appVersion);
   const credentialController = createChildAbortController(workerSignal);
   const credentialSignal = credentialController.signal;
   const broadcast = (message: WorkerBroadcastMessage): void => {

@@ -16,12 +16,13 @@ function requiredEnvironmentValue(
   return value;
 }
 
-export function clerkCoreHtmlPlugin(): Plugin {
+export function clerkCoreHtmlPlugin(appVersion: string): Plugin {
   let options: ClerkCoreHtmlOptions;
   return {
     name: "platform-clerk-core-html",
     configResolved(config) {
       options = {
+        appVersion,
         previewPublishableKey: requiredEnvironmentValue(
           config.env,
           "VITE_CLERK_PUBLISHABLE_KEY_PREVIEW",

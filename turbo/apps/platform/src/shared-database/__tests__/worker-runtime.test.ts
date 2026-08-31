@@ -37,6 +37,7 @@ import {
   type WorkerBroadcastMessage,
 } from "../worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
+import { createSharedDatabaseContractClientFactory } from "../worker-client.ts";
 import {
   createSharedDatabaseCredentialStore,
   disposeSharedDatabaseCredentialStore$,
@@ -52,6 +53,7 @@ vi.mock("idb", async () => {
 const context = testContext();
 const SNAPSHOT_URL = "https://r2.example.com/shared-worker-chat-events.ndjson";
 const CREATED_AT = "2026-08-14T08:00:00.000Z";
+const WORKER_APP_VERSION = "shared-worker-store-version";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000920";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000920";
 
@@ -177,6 +179,7 @@ function startRuntime(
     (event) => {
       events.push(event);
     },
+    createSharedDatabaseContractClientFactory(WORKER_APP_VERSION),
   );
   runtime.heartbeat(currentIdentity, location.origin, vercelProtectionBypass);
   return { events, runtime };
@@ -194,6 +197,7 @@ describe("shared database worker runtime", () => {
   it("owns independent connection controllers, signals, and ports inside one credential Store", () => {
     const store = createSharedDatabaseCredentialStore(
       {
+        appVersion: WORKER_APP_VERSION,
         identity: identity(),
         apiBaseUrl: location.origin,
         vercelProtectionBypass: undefined,
@@ -262,7 +266,10 @@ describe("shared database worker runtime", () => {
   });
 
   it("keeps credential Stores isolated in the SharedWorker context", () => {
-    const workerContext = new SharedDatabaseWorkerContext(context.signal);
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
     const firstIdentity = identity();
     const secondIdentity = identity({
       orgId: `${identity().orgId}-second`,
@@ -307,6 +314,7 @@ describe("shared database worker runtime", () => {
   it("forwards the Preview bypass to every API contract request", async () => {
     const bypassByRoute = new Map<string, (string | null)[]>();
     const recordBypass = (route: string, request: Request): void => {
+      expect(request.headers.get("x-client-version")).toBe(WORKER_APP_VERSION);
       const values = bypassByRoute.get(route) ?? [];
       values.push(request.headers.get("x-vercel-protection-bypass"));
       bypassByRoute.set(route, values);
@@ -531,6 +539,7 @@ describe("shared database worker runtime", () => {
   it("runs concurrent connection requests independently and aborts only one connection", async () => {
     const store = createSharedDatabaseCredentialStore(
       {
+        appVersion: WORKER_APP_VERSION,
         identity: identity(),
         apiBaseUrl: location.origin,
         vercelProtectionBypass: undefined,
@@ -617,6 +626,7 @@ describe("shared database worker runtime", () => {
   it("broadcasts semantic realtime invalidations without fetching data", async () => {
     const store = createSharedDatabaseCredentialStore(
       {
+        appVersion: WORKER_APP_VERSION,
         identity: identity(),
         apiBaseUrl: location.origin,
         vercelProtectionBypass: undefined,
@@ -1020,6 +1030,7 @@ describe("shared database worker runtime", () => {
   it("blocks a credential on 401 until heartbeat supplies a new token", async () => {
     const store = createSharedDatabaseCredentialStore(
       {
+        appVersion: WORKER_APP_VERSION,
         identity: identity(),
         apiBaseUrl: location.origin,
         vercelProtectionBypass: undefined,

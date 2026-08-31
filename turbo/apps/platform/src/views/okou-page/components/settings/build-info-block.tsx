@@ -1,11 +1,9 @@
-import { useLoadable } from "ccstate-react";
+import { useGet, useLoadable } from "ccstate-react";
 import { Monitor, GitCommit, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import {
-  getBuildCommitSha,
-  getBuildVersion,
-} from "../../../../lib/build-info.ts";
+import { getBuildCommitSha } from "../../../../lib/build-info.ts";
+import { appVersion$ } from "../../../../signals/app-version.ts";
 import { backendBuildInfo$ } from "../../../../signals/okou-page/settings/build-info.ts";
 
 function formatBuildInfoValue(
@@ -59,6 +57,7 @@ function BuildInfoTarget({
 
 export function BuildInfoBlock() {
   const { t } = useTranslation();
+  const appVersion = useGet(appVersion$);
   const backendBuildInfoLoadable = useLoadable(backendBuildInfo$);
   const loading = backendBuildInfoLoadable.state === "loading";
   const backendBuildInfo =
@@ -75,7 +74,7 @@ export function BuildInfoBlock() {
     getBuildCommitSha(),
     unavailable,
   );
-  const frontendVersion = formatBuildInfoValue(getBuildVersion(), unavailable);
+  const frontendVersion = formatBuildInfoValue(appVersion, unavailable);
   const backendCommitSha = loading
     ? loadingLabel
     : formatBuildInfoValue(backendBuildInfo?.backendCommitSha, unavailable);

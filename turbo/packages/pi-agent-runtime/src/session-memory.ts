@@ -26,11 +26,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { UnsupportedPiSessionVersionError } from "./errors";
+import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 
 interface CreateMemoryPiSessionOptions {
   readonly cwd: string;
   readonly id: string;
   readonly parentSession?: string;
+  readonly timestamp?: string;
 }
 
 interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
@@ -43,6 +45,10 @@ interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly timestamp?: number;
   readonly streamOptions?: Omit<SimpleStreamOptions, "sessionId">;
+  readonly ownership: PiApiFirstTurnOwnership;
+  readonly providerRequestBoundary?: (
+    markProviderRequestMayHaveStarted: () => void,
+  ) => Promise<void>;
 }
 
 interface PiModelTurnResult {
@@ -123,7 +129,7 @@ export class MemoryPiSession {
       type: "session",
       version: CURRENT_SESSION_VERSION,
       id: options.id,
-      timestamp: new Date().toISOString(),
+      timestamp: options.timestamp ?? new Date().toISOString(),
       cwd: options.cwd,
       parentSession: options.parentSession,
     };
@@ -218,6 +224,11 @@ export class MemoryPiSession {
     return buildSessionContext(this.#entries, this.#leafId);
   }
 
+  /** Return the canonical active branch used by Pi's public session helpers. */
+  getBranchEntries(): SessionEntry[] {
+    return this.#activeBranch();
+  }
+
   hasPendingToolCalls(): boolean {
     const messages = this.buildSessionContext().messages;
     const resolvedIds = new Set(
@@ -308,6 +319,18 @@ export async function runPiFirstModelTurn<TApi extends Api>(
     messages: convertToLlm(sessionContext.messages),
     tools: [...options.tools],
   };
+  if (options.providerRequestBoundary) {
+    await options.providerRequestBoundary(() => {
+      options.ownership.markProviderRequestMayHaveStarted();
+    });
+    if (options.ownership.stage !== "provider-may-have-started") {
+      throw new Error(
+        "Pi provider request boundary returned without claiming ownership",
+      );
+    }
+  } else {
+    options.ownership.markProviderRequestMayHaveStarted();
+  }
   const responseStream = options.stream(options.model, context, {
     ...options.streamOptions,
     reasoning:

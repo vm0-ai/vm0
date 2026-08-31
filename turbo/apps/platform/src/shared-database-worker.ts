@@ -37,7 +37,10 @@ function main(): void {
   // SharedWorker termination tears down the whole global without an observable
   // abort hook. Credential Stores still own abortable child lifecycles below.
   const workerSignal = AbortSignal.any([]);
-  const context = new SharedDatabaseWorkerContext(workerSignal);
+  const context = new SharedDatabaseWorkerContext(
+    workerSignal,
+    __OKOU_APP_VERSION__,
+  );
   L.debug("worker.bootstrap");
   workerGlobal.addEventListener("connect", (event): void => {
     L.debug("worker.connect", { portCount: event.ports.length });

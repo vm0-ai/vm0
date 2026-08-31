@@ -8,6 +8,7 @@ import {
   setSharedDatabaseBridgeHostForTest$,
   type SharedDatabaseBridgeHost,
 } from "../signals/shared-database-browser.ts";
+import { initializeAppVersion$ } from "../signals/app-version.ts";
 import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
   createChildAbortController,
@@ -58,6 +59,7 @@ import {
 export type SharedWorkerTestTransport = "direct" | "message-port";
 
 interface SetupSharedWorkerTestBootstrap {
+  readonly appVersion: string;
   readonly afterHeartbeat?: () => Promise<void>;
   readonly identity: Pick<SharedDatabaseIdentity, "orgId" | "userId"> | null;
   readonly transport: SharedWorkerTestTransport;
@@ -320,11 +322,12 @@ export const setupSharedWorkerTestBootstrap$ = command(
     options: SetupSharedWorkerTestBootstrap,
     signal: AbortSignal,
   ): void => {
+    options.workerStore.set(initializeAppVersion$, options.appVersion);
     const directIdentity = options.identity;
     const directState: DirectWorkerState = { credentialController: null };
     let directBridge: DirectSharedDatabaseBridge | null = null;
     let directRealtimeForwardingInstalled = false;
-    const context = new SharedDatabaseWorkerContext(signal);
+    const context = new SharedDatabaseWorkerContext(signal, options.appVersion);
     const host: SharedDatabaseBridgeHost = {
       createBridge: (apiBaseUrl, events, _connectionSignal) => {
         let bridge: SharedDatabaseBridge;

@@ -40,7 +40,10 @@ interface BindSharedDatabaseConnectionOptions {
 export class SharedDatabaseWorkerContext {
   private readonly credentialStores = new Map<string, Store>();
 
-  constructor(private readonly workerSignal: AbortSignal) {
+  constructor(
+    private readonly workerSignal: AbortSignal,
+    readonly appVersion: string,
+  ) {
     workerSignal.addEventListener(
       "abort",
       () => {
@@ -76,6 +79,7 @@ export class SharedDatabaseWorkerContext {
     if (!store) {
       store = createSharedDatabaseCredentialStore(
         {
+          appVersion: this.appVersion,
           identity: options.identity,
           apiBaseUrl: options.apiBaseUrl,
           vercelProtectionBypass: options.vercelProtectionBypass,

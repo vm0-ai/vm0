@@ -33,9 +33,14 @@ use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::ids::RunId;
 use crate::provider::ApiClaimTiming;
+use crate::resource_budget::ResourceBudget;
 use crate::run_cancellation::RunCancellationSignals;
 use crate::storage_manifest::{StorageEntry, StorageManifest};
-use crate::telemetry::{JobTelemetry, RunnerPreSpawnConcurrencyBucket, RunnerStartupPath};
+use crate::telemetry::{
+    JobTelemetry, RunnerPreSpawnAttribution, RunnerPreSpawnConcurrencyBucket,
+    RunnerResourceBudgetLeaseCountBucket, RunnerResourceBudgetOccupancy,
+    RunnerResourceBudgetUtilizationBucket, RunnerStartupPath,
+};
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 
 #[test]
@@ -82,6 +87,11 @@ fn api_startup_boundaries_record_the_effective_path_and_exact_reuse_result() {
         context.api_start_time =
             Some((chrono::Utc::now().timestamp_millis().max(0) as u64).saturating_sub(1_000));
         let mut telemetry = new_telemetry();
+        let budget = Arc::new(ResourceBudget::new(4, 8192, 1.0, 0));
+        let _lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let mut attribution = RunnerPreSpawnAttribution::new(RunnerPreSpawnConcurrencyBucket::One);
+        attribution.set_resource_budget_occupancy(RunnerResourceBudgetOccupancy::capture(&budget));
+        telemetry.start_runner_pre_spawn_attribution(attribution);
 
         let agent_ready_at = Instant::now();
         let shell_started_at = agent_ready_at - Duration::from_millis(1);
@@ -93,17 +103,42 @@ fn api_startup_boundaries_record_the_effective_path_and_exact_reuse_result() {
             shell_started_at,
             agent_ready_at,
         );
+        telemetry.record("agent_execute", Duration::from_millis(10), true, None);
 
         let operations = telemetry.pending_ops_with_runner_startup_snapshot();
-        let [spawn, ready] = operations.as_slice() else {
-            panic!("expected API spawn and ready operations, got {operations:?}");
+        let [spawn, ready, execute] = operations.as_slice() else {
+            panic!("expected API spawn, ready, and execute operations, got {operations:?}");
         };
         assert_eq!(spawn.action_type, "api_to_spawn");
         assert_eq!(ready.action_type, "api_to_agent_ready");
         for operation in [spawn, ready] {
             assert_eq!(operation.runner_startup_path, Some(expected_path));
             assert_eq!(operation.sandbox_reuse_result, Some(reuse_result));
+            assert_eq!(
+                operation.runner_resource_budget_vcpu_utilization_bucket,
+                Some(RunnerResourceBudgetUtilizationBucket::TwentySixToFifty),
+            );
+            assert_eq!(
+                operation.runner_resource_budget_memory_utilization_bucket,
+                Some(RunnerResourceBudgetUtilizationBucket::TwentySixToFifty),
+            );
+            assert_eq!(
+                operation.runner_resource_budget_lease_count_bucket,
+                Some(RunnerResourceBudgetLeaseCountBucket::One),
+            );
         }
+        assert_eq!(execute.action_type, "agent_execute");
+        assert!(
+            execute
+                .runner_resource_budget_vcpu_utilization_bucket
+                .is_none()
+        );
+        assert!(
+            execute
+                .runner_resource_budget_memory_utilization_bucket
+                .is_none()
+        );
+        assert!(execute.runner_resource_budget_lease_count_bucket.is_none());
         let durations = telemetry.pending_ops_with_duration_snapshot();
         assert_eq!(durations[0].0, "api_to_spawn");
         assert_eq!(durations[1].0, "api_to_agent_ready");
@@ -704,6 +739,36 @@ fn assert_pre_spawn_concurrency_bucket(
     assert_eq!(operation.runner_pre_spawn_concurrency_bucket, expected);
 }
 
+fn assert_resource_budget_occupancy(
+    telemetry: &JobTelemetry,
+    action: &str,
+    expected: Option<(
+        RunnerResourceBudgetUtilizationBucket,
+        RunnerResourceBudgetUtilizationBucket,
+        RunnerResourceBudgetLeaseCountBucket,
+    )>,
+) {
+    let operations = telemetry.pending_ops_with_runner_startup_snapshot();
+    let matching: Vec<_> = operations
+        .iter()
+        .filter(|operation| operation.action_type == action)
+        .collect();
+    let [operation] = matching.as_slice() else {
+        panic!("expected one {action} operation, got {operations:?}");
+    };
+    let expected = expected.map_or((None, None, None), |(vcpu, memory, leases)| {
+        (Some(vcpu), Some(memory), Some(leases))
+    });
+    assert_eq!(
+        (
+            operation.runner_resource_budget_vcpu_utilization_bucket,
+            operation.runner_resource_budget_memory_utilization_bucket,
+            operation.runner_resource_budget_lease_count_bucket,
+        ),
+        expected,
+    );
+}
+
 fn pre_spawn_timing_with_exact_reuse_speculation() -> RunnerPreSpawnTiming {
     let mut timing = RunnerPreSpawnTiming::start_after_claim();
     timing.record_exact_reuse_speculation(ExactReuseSpeculationTiming {
@@ -1277,6 +1342,56 @@ async fn execute_job_attributes_overlapping_pre_spawn_work_and_releases_membersh
         "api_to_agent_ready",
         Some(RunnerPreSpawnConcurrencyBucket::One),
     );
+}
+
+#[tokio::test]
+async fn execute_job_attributes_resource_budget_occupancy_until_agent_ready() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::new();
+    let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
+    let _current_lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+    let _idle_lease = ResourceBudget::try_reserve_lease(&budget, 3, 12288).unwrap();
+    let mut pre_spawn_timing = pre_spawn_timing_with_phases();
+    pre_spawn_timing.record_resource_budget_occupancy(&budget);
+    let mut context = minimal_context();
+    context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+    let cancel = tokio_util::sync::CancellationToken::new();
+
+    let (_outcome, telemetry) = execute_job_with_prepared_notifier(
+        &factory,
+        context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(pre_spawn_timing),
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
+        },
+    )
+    .await;
+
+    let expected = Some((
+        RunnerResourceBudgetUtilizationBucket::FiftyOneToSeventyFive,
+        RunnerResourceBudgetUtilizationBucket::TwentySixToFifty,
+        RunnerResourceBudgetLeaseCountBucket::Two,
+    ));
+    for action in [
+        "runner_claim_to_executor_start",
+        "runner_fresh_sandbox_prepare",
+        "runner_agent_start_process",
+        "api_to_spawn",
+        "api_to_agent_ready",
+    ] {
+        assert_resource_budget_occupancy(&telemetry, action, expected);
+    }
+    assert_resource_budget_occupancy(&telemetry, "agent_execute", None);
 }
 
 #[tokio::test]

@@ -5,14 +5,19 @@ import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
 import {
+  createPiApiFirstTurnOwnership,
+  createPiSessionJsonl,
   inspectPiSessionJsonl,
+  PiApiFirstTurnCompactionRequiredError,
   runPiApiFirstTurn,
   UnsupportedPiSessionVersionError,
 } from "./api";
 import { projectPiApiAssistantMessage } from "./api-turn";
+import { resolvePiAgentModel } from "./model";
 import { MemoryPiSession } from "./session-memory";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
+const SESSION_TIMESTAMP = "2026-08-31T12:34:56.000Z";
 
 function responsesTextSse(response: ServerResponse, text: string): void {
   const responseId = "resp_terra_api_first";
@@ -86,6 +91,35 @@ function responsesTextSse(response: ServerResponse, text: string): void {
 }
 
 describe("Pi API facade", () => {
+  it("keeps provider request ownership monotonic", () => {
+    const ownership = createPiApiFirstTurnOwnership();
+
+    expect(ownership.stage).toBe("pre-provider");
+    ownership.markProviderRequestMayHaveStarted();
+    expect(ownership.stage).toBe("provider-may-have-started");
+    ownership.markProviderRequestMayHaveStarted();
+    expect(ownership.stage).toBe("provider-may-have-started");
+  });
+
+  it("creates one canonical empty native Pi history", () => {
+    const jsonl = createPiSessionJsonl({
+      cwd: "/home/user/workspace",
+      sessionId: SESSION_ID,
+      timestamp: SESSION_TIMESTAMP,
+    });
+
+    expect(inspectPiSessionJsonl(jsonl)).toStrictEqual({
+      sessionId: SESSION_ID,
+      messageCount: 0,
+      hasPendingToolCalls: false,
+      isSettledCheckpoint: false,
+    });
+    expect(JSON.parse(jsonl.split("\n")[0] ?? "{}")).toMatchObject({
+      id: SESSION_ID,
+      timestamp: SESSION_TIMESTAMP,
+    });
+  });
+
   it("uses Terra Responses with low thinking for an API-first turn", async () => {
     let providerRequest:
       | { readonly url: string | undefined; readonly body: unknown }
@@ -135,6 +169,7 @@ describe("Pi API facade", () => {
           thinkingLevel: "low",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+        ownership: createPiApiFirstTurnOwnership(),
       });
 
       expect(providerRequest).toMatchObject({
@@ -151,6 +186,124 @@ describe("Pi API facade", () => {
         MemoryPiSession.fromJsonl(result.sessionJsonl).buildSessionContext()
           .thinkingLevel,
       ).toBe("low");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+  });
+
+  it("runs threshold-safe H0 once and blocks above-threshold H0 before transport", async () => {
+    let providerRequests = 0;
+    const server = createServer((_request, response) => {
+      providerRequests += 1;
+      responsesTextSse(response, "threshold-safe answer");
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Terra threshold test server has no TCP address");
+    }
+    const resolvedModel = resolvePiAgentModel({
+      provider: "openai",
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      apiKey: "test-key",
+      model: "gpt-5.6-terra",
+      api: "openai-responses",
+    });
+    if (!resolvedModel) {
+      throw new Error("Expected pinned Pi to catalog Terra");
+    }
+    const threshold = resolvedModel.contextWindow - 16_384;
+    const sessionJsonl = (totalTokens: number): string => {
+      const session = MemoryPiSession.create({
+        cwd: "/home/user/workspace",
+        id: SESSION_ID,
+      });
+      session.appendMessage({
+        role: "user",
+        content: "prior prompt",
+        timestamp: 1,
+      });
+      session.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "prior answer" }],
+        api: "openai-responses",
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        usage: {
+          input: totalTokens,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: "stop",
+        timestamp: 2,
+      });
+      return session.toJsonl();
+    };
+    const model = {
+      provider: "openai" as const,
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      apiKey: "test-key",
+      model: "gpt-5.6-terra",
+      api: "openai-responses" as const,
+      thinkingLevel: "low" as const,
+    };
+
+    try {
+      const safeOwnership = createPiApiFirstTurnOwnership();
+      const safe = await runPiApiFirstTurn({
+        cwd: "/home/user/workspace",
+        agentDir: "/home/user/.pi/agent",
+        sessionId: SESSION_ID,
+        sessionJsonl: sessionJsonl(threshold),
+        prompt: "safe threshold prompt",
+        appendSystemPrompt: null,
+        model,
+        resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+        ownership: safeOwnership,
+      });
+      expect(providerRequests).toBe(1);
+      expect(safeOwnership.stage).toBe("provider-may-have-started");
+      expect(safe.sessionJsonl).toContain("safe threshold prompt");
+
+      const blockedOwnership = createPiApiFirstTurnOwnership();
+      await expect(
+        runPiApiFirstTurn({
+          cwd: "/home/user/workspace",
+          agentDir: "/home/user/.pi/agent",
+          sessionId: SESSION_ID,
+          sessionJsonl: sessionJsonl(threshold + 1),
+          prompt: "must remain sandbox-owned",
+          appendSystemPrompt: null,
+          model,
+          resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+          ownership: blockedOwnership,
+        }),
+      ).rejects.toThrow(PiApiFirstTurnCompactionRequiredError);
+      expect(providerRequests).toBe(1);
+      expect(blockedOwnership.stage).toBe("pre-provider");
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

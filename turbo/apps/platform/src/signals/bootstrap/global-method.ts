@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createDebugLoggers } from "../../lib/debug-loggers.ts";
-import { getBuildCommitSha, getBuildVersion } from "../../lib/build-info";
+import { getBuildCommitSha } from "../../lib/build-info";
+import { appVersion$ } from "../app-version.ts";
 import { logger } from "../log";
 import { inspectLogInput$ } from "./inspect-log-input";
 import { extendDebugLoggerLocalStorage$ } from "./loggers";
@@ -11,6 +12,7 @@ const ENABLE_DEBUG_LOGGER_EVENT = "vm0:enable-debug-logger";
 export const setupGlobalMethod$ = command(
   ({ get, set }, signal: AbortSignal) => {
     L.debug("Setting up global method vm0");
+    const appVersion = get(appVersion$);
 
     window.addEventListener(
       ENABLE_DEBUG_LOGGER_EVENT,
@@ -38,7 +40,9 @@ export const setupGlobalMethod$ = command(
         get(inspectLogInput$)?.click();
       },
       getBuildCommitSha,
-      getBuildVersion,
+      getBuildVersion: () => {
+        return appVersion;
+      },
     };
 
     signal.addEventListener("abort", () => {

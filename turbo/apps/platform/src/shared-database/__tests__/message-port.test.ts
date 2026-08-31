@@ -38,6 +38,7 @@ vi.mock("idb", async () => {
 
 const context = testContext();
 const CREATED_AT = "2026-08-14T09:00:00.000Z";
+const WORKER_APP_VERSION = "message-port-worker-version";
 
 class InMemoryMessagePort implements SharedDatabasePortLike {
   readonly listeners = new Set<(event: MessageEvent<unknown>) => void>();
@@ -120,7 +121,8 @@ function dataKey(threadId: string): ChatEventDataKey {
 
 function installHeartbeatAuthentication(): void {
   const current = identity();
-  context.mocks.api(authContract.me, ({ respond }) => {
+  context.mocks.api(authContract.me, ({ request, respond }) => {
+    expect(request.headers.get("x-client-version")).toBe(WORKER_APP_VERSION);
     return respond(200, {
       userId: current.userId,
       email: "message-port@example.com",
@@ -179,7 +181,10 @@ async function installProtocolBridge(): Promise<{
   readonly workerContext: SharedDatabaseWorkerContext;
 }> {
   const platformStore = context.store;
-  const workerContext = new SharedDatabaseWorkerContext(context.signal);
+  const workerContext = new SharedDatabaseWorkerContext(
+    context.signal,
+    WORKER_APP_VERSION,
+  );
   installHeartbeatAuthentication();
   const bridge = connectProtocolTransport(workerContext, bridgeEvents());
   await platformStore.set(
@@ -195,7 +200,10 @@ describe("shared database MessagePort protocol", () => {
   it("waits for the credential realtime subscription before completing the initial heartbeat", async () => {
     installHeartbeatAuthentication();
     const initialAttachment = context.mocks.ably.deferNextSubscribe();
-    const workerContext = new SharedDatabaseWorkerContext(context.signal);
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
     const bridge = connectProtocolTransport(workerContext, bridgeEvents());
     const owner = createChildAbortController(context.signal);
     let heartbeatCompleted = false;
@@ -343,7 +351,10 @@ describe("shared database MessagePort protocol", () => {
 
   it("reloads only the App whose connection heartbeat expired", async () => {
     installHeartbeatAuthentication();
-    const workerContext = new SharedDatabaseWorkerContext(context.signal);
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
     const start = Date.parse("2030-01-01T00:00:00.000Z");
     mockNow(start, context.signal);
     let activeConnectionTransports = 0;
@@ -407,7 +418,10 @@ describe("shared database MessagePort protocol", () => {
         orgId: secondCredential ? "second-org" : identity().orgId,
       });
     });
-    const workerContext = new SharedDatabaseWorkerContext(context.signal);
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
     const [platformPort, workerPort] = messagePortPair();
     new SharedDatabaseMessagePortServer(
       workerContext,
@@ -581,7 +595,10 @@ describe("shared database MessagePort protocol", () => {
   });
 
   it("disconnects a worker port immediately on malformed input", async () => {
-    const workerContext = new SharedDatabaseWorkerContext(context.signal);
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
     const [platformPort, workerPort] = messagePortPair();
     new SharedDatabaseMessagePortServer(
       workerContext,

@@ -64,12 +64,14 @@ function fixedTokenAuthRecovery(token: string): AuthRecovery {
 
 async function authenticateHeartbeat(
   message: Extract<SharedDatabaseClientMessage, { readonly type: "heartbeat" }>,
+  clientVersion: string,
   onForceUpgrade: () => void,
   signal: AbortSignal,
 ): Promise<SharedDatabaseIdentity> {
   const authRecovery = fixedTokenAuthRecovery(message.token);
   const client = createAuthedContractClient(authContract, {
     baseUrl: message.apiBaseUrl,
+    clientVersion,
     getAuthRecovery: () => {
       return Promise.resolve(authRecovery);
     },
@@ -233,6 +235,7 @@ export class SharedDatabaseMessagePortServer {
   ): Promise<SharedDatabaseHeartbeatResult> {
     const identity = await authenticateHeartbeat(
       message,
+      this.context.appVersion,
       () => {
         this.emit({ type: "reload-required" });
         this.disconnect("force-upgrade");

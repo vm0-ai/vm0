@@ -42,6 +42,7 @@ function startApplication(): void {
 
     await store.set(
       bootstrap$,
+      __OKOU_APP_VERSION__,
       () => {
         setupRouter(store, (el) => {
           const rootEl = document.getElementById("root");

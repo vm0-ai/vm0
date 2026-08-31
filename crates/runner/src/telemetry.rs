@@ -13,6 +13,7 @@ use tracing::warn;
 use crate::duration::duration_ms;
 use crate::http::HttpClient;
 use crate::ids::RunId;
+use crate::resource_budget::ResourceBudget;
 use crate::types::SandboxReuseResult;
 pub(crate) use session_history::{
     SessionHistoryCacheProbeMetadata, SessionHistoryContentEncodingState,
@@ -54,10 +55,99 @@ pub(crate) enum RunnerPreSpawnConcurrencyBucket {
     NinePlus,
 }
 
+/// Allocated resources as a bounded share of the effective Runner budget.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub(crate) enum RunnerResourceBudgetUtilizationBucket {
+    #[serde(rename = "0_25")]
+    ZeroToTwentyFive,
+    #[serde(rename = "26_50")]
+    TwentySixToFifty,
+    #[serde(rename = "51_75")]
+    FiftyOneToSeventyFive,
+    #[serde(rename = "76_100")]
+    SeventySixToOneHundred,
+    #[serde(rename = "over_100")]
+    OverOneHundred,
+}
+
+impl RunnerResourceBudgetUtilizationBucket {
+    fn from_allocation(allocated: u32, effective: u32) -> Self {
+        let allocated = u64::from(allocated);
+        let effective = u64::from(effective);
+        if allocated * 4 <= effective {
+            Self::ZeroToTwentyFive
+        } else if allocated * 2 <= effective {
+            Self::TwentySixToFifty
+        } else if allocated * 4 <= effective * 3 {
+            Self::FiftyOneToSeventyFive
+        } else if allocated <= effective {
+            Self::SeventySixToOneHundred
+        } else {
+            Self::OverOneHundred
+        }
+    }
+}
+
+/// Number of leases represented by the Runner resource-budget snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub(crate) enum RunnerResourceBudgetLeaseCountBucket {
+    #[serde(rename = "0")]
+    Zero,
+    #[serde(rename = "1")]
+    One,
+    #[serde(rename = "2")]
+    Two,
+    #[serde(rename = "3_4")]
+    ThreeToFour,
+    #[serde(rename = "5_8")]
+    FiveToEight,
+    #[serde(rename = "9_plus")]
+    NinePlus,
+}
+
+impl RunnerResourceBudgetLeaseCountBucket {
+    fn from_count(count: usize) -> Self {
+        match count {
+            0 => Self::Zero,
+            1 => Self::One,
+            2 => Self::Two,
+            3..=4 => Self::ThreeToFour,
+            5..=8 => Self::FiveToEight,
+            _ => Self::NinePlus,
+        }
+    }
+}
+
+/// One immutable view of Runner-owned resource-budget occupancy.
+#[derive(Clone, Copy)]
+pub(crate) struct RunnerResourceBudgetOccupancy {
+    vcpu_utilization: RunnerResourceBudgetUtilizationBucket,
+    memory_utilization: RunnerResourceBudgetUtilizationBucket,
+    lease_count: RunnerResourceBudgetLeaseCountBucket,
+}
+
+impl RunnerResourceBudgetOccupancy {
+    pub(crate) fn capture(budget: &ResourceBudget) -> Self {
+        let (allocated_vcpu, allocated_memory_mb, lease_count) = budget.allocated();
+        Self {
+            vcpu_utilization: RunnerResourceBudgetUtilizationBucket::from_allocation(
+                allocated_vcpu,
+                budget.effective_vcpu(),
+            ),
+            memory_utilization: RunnerResourceBudgetUtilizationBucket::from_allocation(
+                allocated_memory_mb,
+                budget.effective_memory_mb(),
+            ),
+            lease_count: RunnerResourceBudgetLeaseCountBucket::from_count(lease_count),
+        }
+    }
+}
+
 /// Shared cohort label that becomes inactive when startup terminates before spawn.
 #[derive(Clone)]
 pub(crate) struct RunnerPreSpawnAttribution {
     bucket: RunnerPreSpawnConcurrencyBucket,
+    resource_budget_occupancy: Option<RunnerResourceBudgetOccupancy>,
     active: Arc<AtomicBool>,
 }
 
@@ -65,16 +155,24 @@ impl RunnerPreSpawnAttribution {
     pub(crate) fn new(bucket: RunnerPreSpawnConcurrencyBucket) -> Self {
         Self {
             bucket,
+            resource_budget_occupancy: None,
             active: Arc::new(AtomicBool::new(true)),
         }
+    }
+
+    pub(crate) fn set_resource_budget_occupancy(
+        &mut self,
+        occupancy: RunnerResourceBudgetOccupancy,
+    ) {
+        self.resource_budget_occupancy = Some(occupancy);
     }
 
     pub(crate) fn deactivate(&self) {
         self.active.store(false, Ordering::Relaxed);
     }
 
-    fn active_bucket(&self) -> Option<RunnerPreSpawnConcurrencyBucket> {
-        self.active.load(Ordering::Relaxed).then_some(self.bucket)
+    fn active(&self) -> Option<&Self> {
+        self.active.load(Ordering::Relaxed).then_some(self)
     }
 }
 
@@ -112,6 +210,12 @@ struct SandboxOp {
     sandbox_reuse_result: Option<SandboxReuseResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     runner_pre_spawn_concurrency_bucket: Option<RunnerPreSpawnConcurrencyBucket>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_resource_budget_vcpu_utilization_bucket: Option<RunnerResourceBudgetUtilizationBucket>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_resource_budget_memory_utilization_bucket: Option<RunnerResourceBudgetUtilizationBucket>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_resource_budget_lease_count_bucket: Option<RunnerResourceBudgetLeaseCountBucket>,
     #[serde(flatten)]
     session_history: Option<SessionHistoryTelemetryFields>,
 }
@@ -303,10 +407,20 @@ impl JobTelemetry {
     }
 
     fn push_operation(&mut self, mut operation: SandboxOp) {
-        operation.runner_pre_spawn_concurrency_bucket = self
+        if let Some(attribution) = self
             .runner_pre_spawn_attribution
             .as_ref()
-            .and_then(RunnerPreSpawnAttribution::active_bucket);
+            .and_then(RunnerPreSpawnAttribution::active)
+        {
+            operation.runner_pre_spawn_concurrency_bucket = Some(attribution.bucket);
+            if let Some(occupancy) = attribution.resource_budget_occupancy {
+                operation.runner_resource_budget_vcpu_utilization_bucket =
+                    Some(occupancy.vcpu_utilization);
+                operation.runner_resource_budget_memory_utilization_bucket =
+                    Some(occupancy.memory_utilization);
+                operation.runner_resource_budget_lease_count_bucket = Some(occupancy.lease_count);
+            }
+        }
         self.pending_ops.push(operation);
         if self.oldest_pending.is_none() {
             self.oldest_pending = Some(Instant::now());
@@ -414,6 +528,12 @@ impl JobTelemetry {
                 runner_startup_path: op.runner_startup_path,
                 sandbox_reuse_result: op.sandbox_reuse_result,
                 runner_pre_spawn_concurrency_bucket: op.runner_pre_spawn_concurrency_bucket,
+                runner_resource_budget_vcpu_utilization_bucket: op
+                    .runner_resource_budget_vcpu_utilization_bucket,
+                runner_resource_budget_memory_utilization_bucket: op
+                    .runner_resource_budget_memory_utilization_bucket,
+                runner_resource_budget_lease_count_bucket: op
+                    .runner_resource_budget_lease_count_bucket,
             })
             .collect()
     }
@@ -519,6 +639,12 @@ pub(crate) struct RunnerStartupTelemetrySnapshot {
     pub(crate) runner_startup_path: Option<RunnerStartupPath>,
     pub(crate) sandbox_reuse_result: Option<SandboxReuseResult>,
     pub(crate) runner_pre_spawn_concurrency_bucket: Option<RunnerPreSpawnConcurrencyBucket>,
+    pub(crate) runner_resource_budget_vcpu_utilization_bucket:
+        Option<RunnerResourceBudgetUtilizationBucket>,
+    pub(crate) runner_resource_budget_memory_utilization_bucket:
+        Option<RunnerResourceBudgetUtilizationBucket>,
+    pub(crate) runner_resource_budget_lease_count_bucket:
+        Option<RunnerResourceBudgetLeaseCountBucket>,
 }
 
 fn sandbox_op(
@@ -560,6 +686,9 @@ fn sandbox_op_at(
         runner_startup_path: None,
         sandbox_reuse_result: None,
         runner_pre_spawn_concurrency_bucket: None,
+        runner_resource_budget_vcpu_utilization_bucket: None,
+        runner_resource_budget_memory_utilization_bucket: None,
+        runner_resource_budget_lease_count_bucket: None,
         session_history: metadata.map(SessionHistoryTelemetryFields::from),
     }
 }
@@ -654,6 +783,9 @@ mod tests {
             runner_startup_path: None,
             sandbox_reuse_result: None,
             runner_pre_spawn_concurrency_bucket: None,
+            runner_resource_budget_vcpu_utilization_bucket: None,
+            runner_resource_budget_memory_utilization_bucket: None,
+            runner_resource_budget_lease_count_bucket: None,
             session_history: None,
         };
         let json = serde_json::to_value(&op).unwrap();
@@ -730,9 +862,12 @@ mod tests {
     #[test]
     fn api_startup_boundaries_serialize_bounded_startup_metadata() {
         let mut telemetry = JobTelemetry::new(http_client(), RunId::nil(), "tok".to_string(), None);
-        telemetry.start_runner_pre_spawn_attribution(RunnerPreSpawnAttribution::new(
-            RunnerPreSpawnConcurrencyBucket::ThreeToFour,
-        ));
+        let budget = Arc::new(ResourceBudget::new(4, 400, 1.0, 0));
+        let _lease = ResourceBudget::try_reserve_lease(&budget, 2, 300).unwrap();
+        let mut attribution =
+            RunnerPreSpawnAttribution::new(RunnerPreSpawnConcurrencyBucket::ThreeToFour);
+        attribution.set_resource_budget_occupancy(RunnerResourceBudgetOccupancy::capture(&budget));
+        telemetry.start_runner_pre_spawn_attribution(attribution);
         telemetry.record_api_to_spawn(
             Duration::from_millis(125),
             RunnerStartupPath::Workspace,
@@ -754,6 +889,9 @@ mod tests {
                 "runner_startup_path": "workspace",
                 "sandbox_reuse_result": "poolMiss",
                 "runner_pre_spawn_concurrency_bucket": "3_4",
+                "runner_resource_budget_vcpu_utilization_bucket": "26_50",
+                "runner_resource_budget_memory_utilization_bucket": "51_75",
+                "runner_resource_budget_lease_count_bucket": "1",
             })
         );
         assert_eq!(
@@ -766,8 +904,84 @@ mod tests {
                 "runner_startup_path": "workspace",
                 "sandbox_reuse_result": "poolMiss",
                 "runner_pre_spawn_concurrency_bucket": "3_4",
+                "runner_resource_budget_vcpu_utilization_bucket": "26_50",
+                "runner_resource_budget_memory_utilization_bucket": "51_75",
+                "runner_resource_budget_lease_count_bucket": "1",
             })
         );
+    }
+
+    #[test]
+    fn resource_budget_occupancy_uses_fixed_buckets() {
+        for (allocated, effective, expected) in [
+            (
+                0,
+                0,
+                RunnerResourceBudgetUtilizationBucket::ZeroToTwentyFive,
+            ),
+            (1, 0, RunnerResourceBudgetUtilizationBucket::OverOneHundred),
+            (
+                25,
+                100,
+                RunnerResourceBudgetUtilizationBucket::ZeroToTwentyFive,
+            ),
+            (
+                26,
+                100,
+                RunnerResourceBudgetUtilizationBucket::TwentySixToFifty,
+            ),
+            (
+                50,
+                100,
+                RunnerResourceBudgetUtilizationBucket::TwentySixToFifty,
+            ),
+            (
+                51,
+                100,
+                RunnerResourceBudgetUtilizationBucket::FiftyOneToSeventyFive,
+            ),
+            (
+                75,
+                100,
+                RunnerResourceBudgetUtilizationBucket::FiftyOneToSeventyFive,
+            ),
+            (
+                76,
+                100,
+                RunnerResourceBudgetUtilizationBucket::SeventySixToOneHundred,
+            ),
+            (
+                100,
+                100,
+                RunnerResourceBudgetUtilizationBucket::SeventySixToOneHundred,
+            ),
+            (
+                101,
+                100,
+                RunnerResourceBudgetUtilizationBucket::OverOneHundred,
+            ),
+        ] {
+            assert_eq!(
+                RunnerResourceBudgetUtilizationBucket::from_allocation(allocated, effective),
+                expected,
+            );
+        }
+
+        for (count, expected) in [
+            (0, RunnerResourceBudgetLeaseCountBucket::Zero),
+            (1, RunnerResourceBudgetLeaseCountBucket::One),
+            (2, RunnerResourceBudgetLeaseCountBucket::Two),
+            (3, RunnerResourceBudgetLeaseCountBucket::ThreeToFour),
+            (4, RunnerResourceBudgetLeaseCountBucket::ThreeToFour),
+            (5, RunnerResourceBudgetLeaseCountBucket::FiveToEight),
+            (8, RunnerResourceBudgetLeaseCountBucket::FiveToEight),
+            (9, RunnerResourceBudgetLeaseCountBucket::NinePlus),
+        ] {
+            assert_eq!(
+                RunnerResourceBudgetLeaseCountBucket::from_count(count),
+                expected,
+            );
+        }
     }
 
     #[test]
@@ -794,6 +1008,9 @@ mod tests {
                 runner_startup_path: None,
                 sandbox_reuse_result: None,
                 runner_pre_spawn_concurrency_bucket: None,
+                runner_resource_budget_vcpu_utilization_bucket: None,
+                runner_resource_budget_memory_utilization_bucket: None,
+                runner_resource_budget_lease_count_bucket: None,
                 session_history: Some(metadata.into()),
             }],
         };

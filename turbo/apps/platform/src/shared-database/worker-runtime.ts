@@ -43,7 +43,10 @@ import {
   type SharedDatabaseHeartbeatResult,
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
-import { createSharedDatabaseContractClient } from "./worker-client.ts";
+import type {
+  SharedDatabaseContractClient,
+  SharedDatabaseContractClientFactory,
+} from "./worker-client.ts";
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
@@ -79,8 +82,8 @@ interface CredentialState {
   rejectedToken: string | null;
 }
 
-type ChatEventContractClient = ReturnType<
-  typeof createSharedDatabaseContractClient<typeof chatThreadEventsContract>
+type ChatEventContractClient = SharedDatabaseContractClient<
+  typeof chatThreadEventsContract
 >;
 
 interface ChatEventRemoteState {
@@ -106,9 +109,7 @@ interface ChatThreadEventRemoteState {
 }
 
 interface ChatThreadEventRemoteContext {
-  readonly client: ReturnType<
-    typeof createSharedDatabaseContractClient<typeof chatThreadsContract>
-  >;
+  readonly client: SharedDatabaseContractClient<typeof chatThreadsContract>;
   readonly requestToken: string;
 }
 
@@ -228,6 +229,7 @@ export class SharedDatabaseWorkerRuntime {
     vercelProtectionBypass: string | undefined,
     private readonly rootSignal: AbortSignal,
     private readonly emit: (message: WorkerRuntimeEvent) => void,
+    private readonly createContractClient: SharedDatabaseContractClientFactory,
   ) {
     this.credential = {
       userId: identity.userId,
@@ -382,7 +384,7 @@ export class SharedDatabaseWorkerRuntime {
     }
 
     const requestToken = this.credential.token;
-    const client = createSharedDatabaseContractClient(
+    const client = this.createContractClient(
       chatThreadEventsContract,
       this.credential.apiBaseUrl,
       () => {
@@ -589,7 +591,7 @@ export class SharedDatabaseWorkerRuntime {
   ): Promise<ChatThreadEventQueryResult> {
     const cached = await this.readChatThreadEventCache(dataKey, signal);
     const requestToken = this.credential.token;
-    const client = createSharedDatabaseContractClient(
+    const client = this.createContractClient(
       chatThreadsContract,
       this.credential.apiBaseUrl,
       () => {
@@ -782,9 +784,7 @@ export class SharedDatabaseWorkerRuntime {
   }
 
   private async fetchChatThreadSnapshot(
-    client: ReturnType<
-      typeof createSharedDatabaseContractClient<typeof chatThreadsContract>
-    >,
+    client: SharedDatabaseContractClient<typeof chatThreadsContract>,
     requestToken: string,
     signal: AbortSignal,
   ): Promise<NonNullable<ChatThreadEventQueryResult["snapshot"]>> {

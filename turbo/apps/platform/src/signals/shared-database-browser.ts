@@ -2,7 +2,6 @@ import { command, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
-import { getBuildVersion } from "../lib/build-info.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { i18n } from "../i18n/index.ts";
@@ -92,16 +91,6 @@ function heartbeatInterval(token: string): number {
   );
 }
 
-function sharedDatabaseWorkerUrl(): URL {
-  const version = getBuildVersion();
-  if (version === null) {
-    throw new Error("App version is required for the shared database worker");
-  }
-  const url = new URL(sharedDatabaseWorkerAssetUrl, location.href);
-  url.searchParams.set("okou-app-version", version);
-  return url;
-}
-
 function handleSharedDatabaseReloadRequired(): void {
   const url = new URL(location.href);
   if (!url.searchParams.has(SHARED_DATABASE_RELOAD_MARKER)) {
@@ -124,10 +113,13 @@ function createBrowserSharedDatabaseBridge(
   events: SharedDatabaseBridgeEvents,
   signal: AbortSignal,
 ): SharedDatabaseBridge {
-  const worker = new SharedWorker(sharedDatabaseWorkerUrl(), {
-    name: "okou core service",
-    type: "module",
-  });
+  const worker = new SharedWorker(
+    new URL(sharedDatabaseWorkerAssetUrl, location.href),
+    {
+      name: "okou core service",
+      type: "module",
+    },
+  );
   const portBridge = new MessagePortSharedDatabaseBridge(
     worker.port,
     apiBaseUrl,
