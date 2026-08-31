@@ -144,7 +144,7 @@ async function withAuthV2Fixture<Result>(
   process.env.CLERK_FAPI = `127.0.0.1:${address.port}`;
   try {
     return await use({
-      appUrl: `http://127.0.0.1:${address.port}/v2/sign-up`,
+      appUrl: `http://127.0.0.1:${address.port}/sign-up`,
       releaseFrontendRequest: (status: number): void => {
         if (!frontendResponse) {
           throw new Error("Clerk fixture request has not started");

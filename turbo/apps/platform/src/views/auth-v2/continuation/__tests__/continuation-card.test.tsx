@@ -55,7 +55,7 @@ function setupTaskPage(options: {
 }): void {
   const memberships = options.memberships ?? [];
   const url = new URL(
-    options.url ?? "https://app.vm0.ai/v2/sign-in/tasks/choose-organization",
+    options.url ?? "https://app.vm0.ai/sign-in/tasks/choose-organization",
   );
   context.mocks.browser.url(url.toString());
   detachedSetupPage({
@@ -100,7 +100,7 @@ describe("auth v2 continuation card", () => {
     setupTaskPage({
       memberships,
       taskKey: "choose-organization",
-      url: `https://app.vm0.ai/v2/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
+      url: `https://app.vm0.ai/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
     });
 
     const beta = await waitForButton("Continue with Beta Studio");
@@ -263,10 +263,10 @@ describe("auth v2 continuation card", () => {
 
   it("fails closed when Clerk returns a second-factor sign-in status", async () => {
     mockSignInResource({ status: "needs_second_factor" });
-    context.mocks.browser.url("https://app.vm0.ai/v2/sign-in/factor-two");
+    context.mocks.browser.url("https://app.vm0.ai/sign-in/factor-two");
     detachedSetupPage({
       context,
-      path: "/v2/sign-in/factor-two",
+      path: "/sign-in/factor-two",
       session: null,
       user: null,
     });
