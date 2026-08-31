@@ -1,8 +1,9 @@
 import type { Locator, Page, Request, Response } from "@playwright/test";
+import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
-const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const appUrl = deriveAppUrl(resolveApiBackendUrl());
 const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
@@ -222,7 +223,6 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
 async function enableFeatureSwitch(
   page: Page,
   key:
-    | "chatForward"
     | "composerImageAnnotation"
     | "imageModelSelection"
     | "responsiveFollowupCards",
@@ -248,10 +248,6 @@ async function enableFeatureSwitch(
 
 async function enableResponsiveFollowupCards(page: Page): Promise<void> {
   await enableFeatureSwitch(page, "responsiveFollowupCards");
-}
-
-async function enableChatForward(page: Page): Promise<void> {
-  await enableFeatureSwitch(page, "chatForward");
 }
 
 async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
@@ -1759,7 +1755,6 @@ test("chat composer keeps standard tool icons and Send inside on narrow screens"
 test("forward composer stays inside the modal on narrow screens", async ({
   page,
 }) => {
-  await enableChatForward(page);
   await page.setViewportSize({ width: 360, height: 780 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });

@@ -1,9 +1,10 @@
 import type { Locator, Page } from "@playwright/test";
+import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { authHeadersForToken } from "../lib/onboarding";
 import { deriveAppUrl } from "../playwright.config";
 
-const apiUrl = process.env.VM0_API_BACKEND_URL!;
+const apiUrl = resolveApiBackendUrl();
 const appUrl = deriveAppUrl(apiUrl);
 
 async function openBillingSettings(page: Page): Promise<void> {

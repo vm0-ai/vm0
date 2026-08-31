@@ -244,11 +244,52 @@ def test_normalize_accept_encoding_for_body_inspection(
 ) -> None:
     request_headers = headers(*header_pairs)
 
+    response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(request_headers)
+    assert request_headers.get_all(_ACCEPT_ENCODING) == values
+
+
+@pytest.mark.parametrize(
+    ("header_pairs", "outcome"),
+    [
+        pytest.param([], "rewritten_stream_decodable", id="absent"),
+        pytest.param(
+            [("Accept-Encoding", "gzip")],
+            "already_stream_decodable",
+            id="already-safe",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip, br")],
+            "rewritten_stream_decodable",
+            id="unsafe-coding-removed",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=bogus, br")],
+            "rewritten_stream_decodable",
+            id="malformed-coding-rewritten",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "br, zstd, *;q=0.5, identity;q=0")],
+            "rewritten_stream_decodable",
+            id="wildcard-expanded",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "br, identity;q=0")],
+            "preserved_client_constraints",
+            id="all-safe-representations-rejected",
+        ),
+    ],
+)
+def test_normalization_reports_bounded_negotiation_outcome(
+    headers,
+    header_pairs: list[tuple[str, str]],
+    outcome: response_encoding_negotiation.ResponseEncodingNegotiationOutcome,
+) -> None:
+    request_headers = headers(*header_pairs)
+
     assert (
         response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(request_headers)
-        is None
+        == outcome
     )
-    assert request_headers.get_all(_ACCEPT_ENCODING) == values
 
 
 def test_explicit_normalized_encodings_create_stream_decode_sessions(headers) -> None:
@@ -341,6 +382,7 @@ def _connector_registry(
     path: str,
     billable: bool,
     capture_network_bodies: bool = False,
+    include_encrypted_secrets: bool = True,
 ) -> Path:
     sandbox_fields: dict[str, object] = {}
     if capture_network_bodies:
@@ -363,6 +405,7 @@ def _connector_registry(
                 "unknownPolicy": "deny",
             },
             billable_firewalls=[firewall_name] if billable else None,
+            include_encrypted_secrets=include_encrypted_secrets,
             sandbox_fields=sandbox_fields,
         ),
     )
@@ -418,6 +461,9 @@ async def test_observable_model_provider_request_normalizes_accept_encoding_befo
     auth_fetch.assert_awaited_once()
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
     assert flow.request.headers["Authorization"] == "Bearer x"
+    assert (
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "rewritten_stream_decodable"
+    )
 
 
 async def test_observable_model_provider_without_accept_encoding_sets_identity(
@@ -444,6 +490,9 @@ async def test_observable_model_provider_without_accept_encoding_sets_identity(
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "identity"
+    assert (
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "rewritten_stream_decodable"
+    )
 
 
 async def test_billable_connector_with_response_parser_normalizes_accept_encoding(
@@ -476,6 +525,9 @@ async def test_billable_connector_with_response_parser_normalizes_accept_encodin
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "deflate"
+    assert (
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "rewritten_stream_decodable"
+    )
 
 
 async def test_billable_connector_without_response_parser_keeps_accept_encoding(
@@ -508,6 +560,7 @@ async def test_billable_connector_without_response_parser_keeps_accept_encoding(
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 async def test_non_observable_model_provider_keeps_accept_encoding(
@@ -534,6 +587,7 @@ async def test_non_observable_model_provider_keeps_accept_encoding(
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_auth(
@@ -569,10 +623,53 @@ async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_a
         await await_requestheaders_result(requestheaders_result)
         assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
         assert flow.request.headers["Authorization"] == "Bearer x"
+        assert (
+            flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION]
+            == "rewritten_stream_decodable"
+        )
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+
+
+async def test_header_phase_auth_fallback_restores_encoding_negotiation(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+) -> None:
+    reg_path = _connector_registry(
+        tmp_path,
+        firewall_name=_X_FIREWALL_NAME,
+        host=_X_HOST,
+        path=_X_PATH,
+        billable=True,
+        capture_network_bodies=True,
+        include_encrypted_secrets=False,
+    )
+    original_accept_encoding = "gzip, zstd, br"
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_X_HOST,
+        path=_X_PATH,
+        method="GET",
+        accept_encoding=original_accept_encoding,
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+    auth_fetch.assert_not_called()
+    assert flow.request.headers[_ACCEPT_ENCODING] == original_accept_encoding
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
@@ -628,6 +725,7 @@ async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
 
     auth_fetch.assert_not_called()
     assert metadata_keys.WEBSOCKET_UPGRADE_REQUEST not in flow.metadata
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
 
@@ -720,6 +818,7 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
     assert flow.request.headers["Authorization"] == "Bearer x"
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -756,6 +855,7 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
     assert flow.request.headers["Authorization"] == "Bearer x"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -988,3 +1088,4 @@ async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(
 
     auth_fetch.assert_not_called()
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata

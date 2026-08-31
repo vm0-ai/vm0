@@ -12,6 +12,7 @@ import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { apiTestS3PresignedUrl } from "../../../__tests__/mocks";
 import { buildArtifactKey } from "../../../lib/file-url";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -119,6 +120,11 @@ async function seedActor(): Promise<RecognitionActor> {
 }
 
 function setStoredObjects(objects: readonly StoredObject[]): void {
+  context.mocks.s3.getSignedUrl.mockImplementation(
+    (_client: unknown, command: unknown) => {
+      return Promise.resolve(apiTestS3PresignedUrl(command));
+    },
+  );
   mocks.s3.listObjects(
     objects.map((object) => {
       return {
@@ -277,7 +283,9 @@ describe("POST /api/recognize", () => {
             {
               type: "image_url",
               image_url: {
-                url: expect.stringContaining(fileId),
+                url: expect.stringMatching(
+                  new RegExp(`^https://r2\\.example\\.com/.+${fileId}`, "u"),
+                ),
               },
             },
           ],

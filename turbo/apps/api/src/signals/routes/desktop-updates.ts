@@ -4,7 +4,6 @@ import {
   DESKTOP_UPDATE_LINE_OKOU,
   DESKTOP_UPDATE_LINE_ZERO,
   desktopUpdatesContract,
-  desktopZeroMigrationPolicySchema,
   type DesktopZeroMigrationPolicy,
   type DesktopUpdateLine,
 } from "@okouai/api-contracts/contracts/desktop-updates";
@@ -14,7 +13,6 @@ import { notFound } from "../../lib/error";
 import { request$, setResHeader$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { readBoundedResponseText, safeJsonParse, settle } from "../utils";
 import {
   loadDesktopDmgDownloadUrl,
   loadDesktopReleasePageUrl,
@@ -31,52 +29,32 @@ const productReleasePageParams$ = pathParamsOf(
 const productDmgDownloadParams$ = pathParamsOf(
   desktopUpdatesContract.productDmgDownload,
 );
-const DESKTOP_ZERO_MIGRATION_POLICY_URL =
-  "https://github.com/vm0-ai/vm0/releases/download/desktop-migration-policy/desktop-migration-policy.json";
-const SAFE_DESKTOP_ZERO_MIGRATION_POLICY = {
+
+/**
+ * The Zero Desktop migration policy this service serves.
+ *
+ * The policy used to be fetched from a GitHub release asset on every poll so
+ * that it could be flipped without a deploy. `hard` was activated and verified
+ * on 2026-08-31 and the owner confirmed it will not be rolled back, so the
+ * mechanism is gone and the policy now changes only by editing this constant
+ * and deploying.
+ *
+ * The endpoint itself has to stay: both this route and the desktop client fail
+ * open to `soft`, so removing it would silently un-block every installed Zero
+ * build that still polls.
+ */
+const DESKTOP_ZERO_MIGRATION_POLICY = {
   schemaVersion: 1,
-  mode: "soft",
+  mode: "hard",
 } as const satisfies DesktopZeroMigrationPolicy;
-const DESKTOP_ZERO_MIGRATION_POLICY_MAX_BYTES = 1024;
 
-async function fetchDesktopZeroMigrationPolicy(
-  signal: AbortSignal,
-): Promise<DesktopZeroMigrationPolicy> {
-  const fetched = await settle(
-    fetch(DESKTOP_ZERO_MIGRATION_POLICY_URL, {
-      headers: { Accept: "application/json" },
-      signal,
-    }),
-    signal,
-  );
-  if (!fetched.ok || !fetched.value.ok) {
-    return SAFE_DESKTOP_ZERO_MIGRATION_POLICY;
-  }
-  const body = await settle(
-    readBoundedResponseText(
-      fetched.value,
-      DESKTOP_ZERO_MIGRATION_POLICY_MAX_BYTES,
-    ),
-    signal,
-  );
-  if (!body.ok || body.value.kind !== "text") {
-    return SAFE_DESKTOP_ZERO_MIGRATION_POLICY;
-  }
-  const parsed = desktopZeroMigrationPolicySchema.safeParse(
-    safeJsonParse(body.value.text),
-  );
-  return parsed.success ? parsed.data : SAFE_DESKTOP_ZERO_MIGRATION_POLICY;
-}
-
-const getDesktopMigrationPolicy$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    set(setResHeader$, "Cache-Control", "no-store");
-    return {
-      status: 200 as const,
-      body: await fetchDesktopZeroMigrationPolicy(signal),
-    };
-  },
-);
+const getDesktopMigrationPolicy$ = command(({ set }) => {
+  set(setResHeader$, "Cache-Control", "no-store");
+  return {
+    status: 200 as const,
+    body: DESKTOP_ZERO_MIGRATION_POLICY,
+  };
+});
 
 /**
  * The update line the release-page and DMG routes serve, taken from the

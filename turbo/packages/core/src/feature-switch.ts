@@ -143,11 +143,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Webflow site management connector",
     enabled: false,
   },
-  [FeatureSwitchKey.MetaAdsConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Meta Ads Manager connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -289,12 +284,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.LatestPresentationTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use the latest built-in presentation template archives, direct-HTML authoring guidance, and seedream4 image generation instead of the pre-cutover renderer release.",
-    enabled: true,
-  },
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -342,12 +331,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
-  },
-  [FeatureSwitchKey.ChatForward]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Forward action in the assistant text-selection pill.",
-    enabled: true,
   },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",
@@ -412,12 +395,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.TeamsIntegration]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
-    enabled: true,
-  },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -444,6 +421,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

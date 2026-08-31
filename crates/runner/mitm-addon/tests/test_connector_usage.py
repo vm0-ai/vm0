@@ -12,7 +12,9 @@ class TestXStreamPathRouting:
     """Tests for stream path routing through responseheaders (issue #9534)."""
 
     def _make_x_response_flow(self, real_flow, path: str):
-        return make_x_response_flow(real_flow, path=path)
+        flow = make_x_response_flow(real_flow, path=path)
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "already_stream_decodable"
+        return flow
 
     @pytest.mark.parametrize(
         "path",
