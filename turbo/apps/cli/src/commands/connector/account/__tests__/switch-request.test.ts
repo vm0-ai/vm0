@@ -244,6 +244,46 @@ describe("okou connector account switch-request command", () => {
     expect(mockConsoleLog).not.toHaveBeenCalled();
   });
 
+  it("requires the current web chat agent", async () => {
+    vi.stubEnv("OKOU_AGENT_ID", "");
+
+    await expect(
+      switchConnectorAccountRequestCommand.parseAsync([
+        "node",
+        "okou",
+        "github",
+        "--connection-id",
+        CONNECTION_ID,
+        "--callback-prompt",
+        "Continue",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Connector account switches require the current web chat agent",
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
+  it("rejects a hallucinated connector slug", async () => {
+    await expect(
+      switchConnectorAccountRequestCommand.parseAsync([
+        "node",
+        "okou",
+        "invented-connector",
+        "--connection-id",
+        CONNECTION_ID,
+        "--callback-prompt",
+        "Continue",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Unknown or unavailable connector: invented-connector",
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
   it("rejects missing and wrong-target account references", async () => {
     server.use(
       stubInspection({
