@@ -13,7 +13,6 @@ import {
   testContext,
   chatEventRowsResponse,
 } from "../../signals/__tests__/test-helpers.ts";
-import { appSkeletonVisible$ } from "../../signals/app-skeleton.ts";
 import { createChatEventSignals } from "../../signals/chat-page/chat-event-signals.ts";
 import { eventDrivenChatThreads$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { writeConnectionDiagnostic$ } from "../../signals/connection-diagnostics.ts";
@@ -147,6 +146,7 @@ describe("shared database direct Platform bridge", () => {
     await setupPage({
       context,
       path: "/error",
+      sharedWorkerTestTransport: "message-port",
       withoutRender: true,
       user: { id: userId(), fullName: "Direct Bridge User" },
       session: { token: "direct-bridge-token" },
@@ -240,6 +240,7 @@ describe("shared database direct Platform bridge", () => {
     const bootstrap = setupBootstrap({
       context,
       path: "/error",
+      sharedWorkerTestTransport: "message-port",
       user: { id: userId(), fullName: "Direct Bridge User" },
       session: { token: "direct-bridge-token" },
       org: {
@@ -264,10 +265,8 @@ describe("shared database direct Platform bridge", () => {
     expect(
       context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
     ).toBeTruthy();
-    expect(context.store.get(appSkeletonVisible$)).toBeTruthy();
     heartbeatGates[0]?.resolve(undefined);
     await bootstrap;
-    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
     expect(
       context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
     ).toBeTruthy();
@@ -305,6 +304,7 @@ describe("shared database direct Platform bridge", () => {
     await setupPage({
       context,
       path: "/error",
+      sharedWorkerTestTransport: "message-port",
       withoutRender: true,
       user: { id: userId(), fullName: "Direct Bridge User" },
       session: { token: "direct-bridge-token" },
@@ -437,6 +437,7 @@ describe("shared database direct Platform bridge", () => {
     await setupPage({
       context,
       path: "/error",
+      sharedWorkerTestTransport: "message-port",
       withoutRender: true,
       user: { id: userId(), fullName: "Direct Bridge User" },
       session: { token: "direct-bridge-token" },

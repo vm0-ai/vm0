@@ -30,7 +30,10 @@ import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch-sta
 import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
-import { setupSharedWorkerTestBootstrap$ } from "../shared-database/test-bridge.ts";
+import {
+  setupSharedWorkerTestBootstrap$,
+  type SharedWorkerTestTransport,
+} from "../shared-database/test-bridge.ts";
 
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
@@ -113,6 +116,7 @@ export interface SetupBootstrapOptions {
   cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
+  sharedWorkerTestTransport?: SharedWorkerTestTransport;
 }
 
 export interface SetupPageOptions extends SetupBootstrapOptions {
@@ -199,8 +203,18 @@ export async function setupBootstrap(
   }
   options.context.store.set(
     setupSharedWorkerTestBootstrap$,
+    {
+      workerStore: options.context.workerStore,
+      identity:
+        testUser && activeOrgId
+          ? { userId: testUser.id, orgId: activeOrgId }
+          : null,
+      transport: options.sharedWorkerTestTransport ?? "direct",
+      ...(options.afterSharedDatabaseWorkerHeartbeat
+        ? { afterHeartbeat: options.afterSharedDatabaseWorkerHeartbeat }
+        : {}),
+    },
     options.context.signal,
-    options.afterSharedDatabaseWorkerHeartbeat,
   );
   clearMockedAuthOnAbort(options.context.signal);
   options.context.signal.addEventListener(

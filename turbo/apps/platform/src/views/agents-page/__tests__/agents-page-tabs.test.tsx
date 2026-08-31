@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
@@ -171,9 +172,10 @@ describe("agents page (redesign)", () => {
       });
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: "/agents",
+      sharedWorkerTestTransport: "message-port",
     });
 
     await waitFor(() => {

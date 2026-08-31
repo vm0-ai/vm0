@@ -42,6 +42,7 @@ import {
   fill,
   holdElementAnimations,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { emptySearchImg } from "../platform-assets.ts";
@@ -707,7 +708,11 @@ describe("zero sidebar", () => {
       });
     });
 
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await setupPageAndWaitForContent({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
     const nav = await waitFor(() => {
       const current = mobileSidebar();

@@ -14,6 +14,9 @@ const internalAuthRecovery$ = state<Promise<AuthRecovery> | undefined>(
 const internalAuthenticatedIdentity$ = state<
   Promise<AuthenticatedIdentity> | undefined
 >(undefined);
+const internalAuthenticatedServicesReady$ = state<Promise<void> | undefined>(
+  undefined,
+);
 
 export const setAuthRecovery$ = command(
   ({ set }, recovery: Promise<AuthRecovery>): void => {
@@ -24,6 +27,25 @@ export const setAuthRecovery$ = command(
 export const setAuthenticatedIdentity$ = command(
   ({ set }, identity: Promise<AuthenticatedIdentity>): void => {
     set(internalAuthenticatedIdentity$, identity);
+  },
+);
+
+export const setAuthenticatedServicesReady$ = command(
+  ({ set }, readiness: Promise<void>): void => {
+    set(internalAuthenticatedServicesReady$, readiness);
+  },
+);
+
+export const waitForAuthenticatedServices$ = command(
+  async ({ get }, signal: AbortSignal): Promise<void> => {
+    const readiness = get(internalAuthenticatedServicesReady$);
+    if (!readiness) {
+      throw new Error(
+        "Authenticated services were not initialized during bootstrap",
+      );
+    }
+    await readiness;
+    signal.throwIfAborted();
   },
 );
 

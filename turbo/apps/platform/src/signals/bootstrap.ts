@@ -17,6 +17,7 @@ import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { setApiClientRuntime$ } from "./api-client-runtime.ts";
+import { setAuthenticatedServicesReady$ } from "./auth-context.ts";
 import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
@@ -475,19 +476,18 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
-const setupAuthenticatedRoutes$ = command(
+const setupAuthenticatedBootstrap$ = command(
   async (
     { set },
     ownDaemon: AuthenticatedDaemonOwner,
     signal: AbortSignal,
   ): Promise<void> => {
-    await set(setupAuthenticatedDaemons$, ownDaemon, signal);
+    const servicesReady = set(setupAuthenticatedDaemons$, ownDaemon, signal);
+    set(setAuthenticatedServicesReady$, servicesReady);
+    await servicesReady;
     signal.throwIfAborted();
     ownDaemon(set(runAuthenticatedDaemons$, signal));
-    await Promise.all([
-      set(setupRoutes$, signal),
-      set(setupAuthenticatedBootstrapData$, signal),
-    ]);
+    await set(setupAuthenticatedBootstrapData$, signal);
     signal.throwIfAborted();
   },
 );
@@ -587,7 +587,8 @@ export const bootstrap$ = command(
     set(handleSlackRedirect$);
 
     await Promise.all([
-      set(setupAuthenticatedRoutes$, ownDaemon, signal),
+      set(setupAuthenticatedBootstrap$, ownDaemon, signal),
+      set(setupRoutes$, signal),
       set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
