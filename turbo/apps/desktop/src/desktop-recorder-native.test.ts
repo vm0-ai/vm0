@@ -52,6 +52,7 @@ const PREPARE: HelperBehavior = {
 const STOP: HelperBehavior = {
   result: {
     videoPath: "/tmp/screen-recording.mp4",
+    clickTrackPath: "/tmp/screen-recording.clicks.json",
     durationMs: 4200,
     sizeBytes: 8192,
     width: 1920,
@@ -206,6 +207,7 @@ describe("createRecorderNativeBackend", () => {
     await backend.start("session-1", "/tmp/screen-recording.mp4");
     await expect(backend.stop("session-1")).resolves.toEqual({
       videoPath: "/tmp/screen-recording.mp4",
+      clickTrackPath: "/tmp/screen-recording.clicks.json",
       durationMs: 4200,
       sizeBytes: 8192,
       width: 1920,
@@ -290,6 +292,25 @@ describe("createRecorderNativeBackend", () => {
     expect(await rejection(backend.stop("session-1"))).toMatchObject({
       code: "capture_failed",
       message: "Screen recorder helper returned an invalid videoPath",
+    });
+  });
+
+  it("reports a capture that lost its source", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.state": {
+        result: {
+          status: "failed",
+          elapsedMs: 12_000,
+          error: { code: "source_lost", message: "Display disconnected" },
+        },
+      },
+    });
+    const backend = createBackend(helperPath);
+
+    await expect(backend.getStatus("session-1")).resolves.toEqual({
+      status: "failed",
+      elapsedMs: 12_000,
+      error: { code: "source_lost", message: "Display disconnected" },
     });
   });
 

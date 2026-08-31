@@ -101,6 +101,7 @@ import { logsRoutes } from "./routes/logs";
 import { mailRoutes } from "./routes/mail";
 import { mapsRoutes } from "./routes/maps";
 import { mcpConnectorsRoutes } from "./routes/mcp-connectors";
+import { mcpOAuthClientMetadataRoutes } from "./routes/mcp-oauth-client-metadata";
 import { weatherRoutes } from "./routes/weather";
 import { modelPoliciesRoutes } from "./routes/model-policies";
 import { modelProviderGatewayRoutes } from "./routes/model-provider-gateways";
@@ -296,6 +297,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...mailRoutes,
   ...mapsRoutes,
   ...mcpConnectorsRoutes,
+  ...mcpOAuthClientMetadataRoutes,
   ...weatherRoutes,
   ...scrapeRoutes,
   ...peopleSearchRoutes,

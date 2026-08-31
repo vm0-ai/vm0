@@ -146,6 +146,11 @@ private func handleSources() throws -> [String: Any] {
     return ["sources": sources]
 }
 
+/// Capture rate for the stream, and the rate the click track reports so a
+/// downstream editor can convert `tMs` into a frame index. One value so the two
+/// cannot drift.
+private let captureFrameRate: CMTimeScale = 30
+
 // MARK: - Capture session
 
 private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
@@ -158,6 +163,9 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private let capturesAudio: Bool
     private let sampleQueue = DispatchQueue(label: "ai.okou.recorder.samples")
 
+    private let clickTracker = ClickTrackRecorder()
+    private var timebase = mach_timebase_info_data_t()
+
     private var state: RecorderSessionState = .ready
     private var failure: HelperFailure?
     private var stream: SCStream?
@@ -167,6 +175,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var outputURL: URL?
     private var sessionStartedAt: CMTime?
     private var latestSampleAt: CMTime?
+    private var clickTimeline: ClickTimeline?
+    private var startedAtUnixMs = 0
 
     init(
         id: String,
@@ -182,6 +192,24 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         self.geometry = geometry
         self.outputSize = outputSize
         self.capturesAudio = capturesAudio
+        super.init()
+        mach_timebase_info(&timebase)
+    }
+
+    /// Converts a host-clock presentation timestamp back into the raw mach tick
+    /// units `CGEvent.timestamp` reports, so clicks and frames share one origin.
+    ///
+    /// Returns `nil` rather than a zero anchor when the timestamp cannot be
+    /// converted: anchoring at tick 0 would place every click at its offset from
+    /// system boot instead of from the recording, which is a confidently wrong
+    /// answer. The caller leaves the timeline unset and the track comes out
+    /// empty.
+    private func hostTicks(from time: CMTime) -> UInt64? {
+        let nanoseconds = CMTimeGetSeconds(time) * 1_000_000_000
+        guard nanoseconds > 0, timebase.numer > 0 else {
+            return nil
+        }
+        return UInt64(nanoseconds * Double(timebase.denom) / Double(timebase.numer))
     }
 
     var describedGeometry: [String: Any] {
@@ -295,10 +323,16 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 message: error.localizedDescription
             )
         }
+
+        lock.lock()
+        startedAtUnixMs = Int(Date().timeIntervalSince1970 * 1000)
+        lock.unlock()
+        clickTracker.start()
     }
 
     func stop() throws -> [String: Any] {
         try transition(.stop)
+        clickTracker.stop()
 
         lock.lock()
         let captureStream = stream
@@ -319,6 +353,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         let audio = audioInput
         let url = outputURL
         let duration = elapsedSecondsLocked()
+        let timeline = clickTimeline
+        let startedAt = startedAtUnixMs
         writer = nil
         videoInput = nil
         audioInput = nil
@@ -351,14 +387,62 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 message: "Screen recording output file is unreadable"
             )
         }
+        let clickTrackPath = try writeClickTrack(
+            besideVideoAt: url,
+            timeline: timeline,
+            durationMs: Int(duration * 1000),
+            startedAtUnixMs: startedAt
+        )
 
         return [
             "videoPath": url.path,
+            "clickTrackPath": clickTrackPath,
             "durationMs": Int(duration * 1000),
             "sizeBytes": size,
             "width": outputSize.width,
             "height": outputSize.height,
         ]
+    }
+
+    private func writeClickTrack(
+        besideVideoAt videoURL: URL,
+        timeline: ClickTimeline?,
+        durationMs: Int,
+        startedAtUnixMs: Int
+    ) throws -> String {
+        // A recording that never produced a frame has no timeline to project
+        // clicks onto, so the track is empty rather than guessed.
+        let projected =
+            timeline.map {
+                clickTracker.track(
+                    timeline: $0,
+                    geometry: geometry,
+                    outputSize: outputSize
+                )
+            } ?? (clicks: [], droppedOutOfFrame: 0, warnings: [])
+
+        let payload: [String: Any] = [
+            "version": 1,
+            "recording": [
+                "startedAtUnixMs": startedAtUnixMs,
+                "durationMs": durationMs,
+                "video": [
+                    "width": outputSize.width,
+                    "height": outputSize.height,
+                    "frameRate": Int(captureFrameRate),
+                ],
+                "capture": describedGeometry,
+            ],
+            "clicks": projected.clicks,
+            "droppedOutOfFrameClicks": projected.droppedOutOfFrame,
+            "warnings": projected.warnings,
+        ]
+
+        let trackURL = videoURL.deletingPathExtension()
+            .appendingPathExtension("clicks.json")
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
+        try data.write(to: trackURL, options: .atomic)
+        return trackURL.path
     }
 
     func describedState() -> [String: Any] {
@@ -409,6 +493,9 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         stream = nil
         lock.unlock()
         captureStream?.stopCapture { _ in }
+        // The tap outlives the stream unless it is torn down here: a failed
+        // session is never stopped by the caller.
+        clickTracker.stop()
     }
 
     // MARK: SCStreamDelegate
@@ -446,6 +533,15 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             }
             assetWriter.startSession(atSourceTime: timestamp)
             sessionStartedAt = timestamp
+            // Anchor clicks on the very same frame the video starts on rather
+            // than on when `start` was called, so the two timelines cannot drift.
+            if let startTicks = hostTicks(from: timestamp) {
+                clickTimeline = ClickTimeline(
+                    startTicks: startTicks,
+                    timebaseNumerator: timebase.numer,
+                    timebaseDenominator: timebase.denom
+                )
+            }
         }
         latestSampleAt = timestamp
         let input = type == .screen ? videoInput : audioInput
@@ -557,7 +653,7 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     let configuration = SCStreamConfiguration()
     configuration.width = outputSize.width
     configuration.height = outputSize.height
-    configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+    configuration.minimumFrameInterval = CMTime(value: 1, timescale: captureFrameRate)
     configuration.showsCursor = true
     configuration.queueDepth = 6
     configuration.capturesAudio = systemAudio

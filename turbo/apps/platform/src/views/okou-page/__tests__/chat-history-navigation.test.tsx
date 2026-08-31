@@ -2,6 +2,7 @@ import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.t
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
   chatEventsContract,
   chatThreadByIdContract,
@@ -12,7 +13,6 @@ import {
   type ChatThreadEvent,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/okou-page/sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import {
@@ -50,6 +50,23 @@ import {
 
 const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 type RenameRequest = (threadId: string, title: string) => void;
+
+function mockNoBrowserSession(): void {
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
+}
+
+function mockNoThreadEvents(): void {
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    return respond(200, chatEventRowsResponse([], query));
+  });
+}
 
 describe("chat lifecycle", () => {
   it("renders new messages after a payload-less created event", async () => {
@@ -710,22 +727,16 @@ describe("chat lifecycle", () => {
 
   it("moves to the previous chat with a page shortcut from the composer", async () => {
     mockResizeObserver();
+    mockNoBrowserSession();
     mockKeyboardNavigationThreads();
+    mockNoThreadEvents();
 
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
-    const chatList = await screen.findByTestId("chat-list-column");
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-      expect(
-        within(chatList).getByText("Previous keyboard thread"),
-      ).toBeInTheDocument();
-    });
+    await screen.findByPlaceholderText(PLACEHOLDER);
 
     const composer = chatComposerTextarea();
     composer.focus();
@@ -736,9 +747,9 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Previous thread launch note"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+        "Previous keyboard thread",
+      );
     });
     expect(context.store.get(pathname$)).toBe(
       `/chats/${KEYBOARD_PREV_THREAD_ID}`,
@@ -747,18 +758,17 @@ describe("chat lifecycle", () => {
 
   it("keeps shifted slash editable before opening shortcut help outside the composer", async () => {
     mockResizeObserver();
+    mockNoBrowserSession();
     mockKeyboardNavigationThreads();
+    mockNoThreadEvents();
 
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-    });
+    await screen.findByLabelText("Chat thread");
+    await screen.findByPlaceholderText(PLACEHOLDER);
 
     const composer = chatComposerTextarea();
     composer.focus();
@@ -787,15 +797,9 @@ describe("chat lifecycle", () => {
       callback(performance.now());
       return 1;
     });
+    mockNoBrowserSession();
     mockKeyboardNavigationThreads();
-    context.mocks.api(browserContract.get, ({ respond }) => {
-      return respond(404, {
-        error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },
-      });
-    });
-    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
-      return respond(200, chatEventRowsResponse([], query));
-    });
+    mockNoThreadEvents();
 
     detachedSetupPage({
       context,
@@ -838,6 +842,9 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
+      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+        "Next keyboard thread",
+      );
       expect(context.store.get(pathname$)).toBe(
         `/chats/${KEYBOARD_NEXT_THREAD_ID}`,
       );

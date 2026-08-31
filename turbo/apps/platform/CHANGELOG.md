@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.813.3](https://github.com/vm0-ai/vm0/compare/app-v0.813.2...app-v0.813.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* **platform:** prevent deleted template resurrection ([#29722](https://github.com/vm0-ai/vm0/issues/29722)) ([94ea6ce](https://github.com/vm0-ai/vm0/commit/94ea6ce117d6b633d6912b9d40fb6c53d67095ef))
+
+
+### Refactoring
+
+* **auth:** remove Clerk hosted UI runtime ([#30499](https://github.com/vm0-ai/vm0/issues/30499)) ([c987893](https://github.com/vm0-ai/vm0/commit/c98789371d841762e73c9d1e0442b06c7f9ceb2c))
+* **connectors:** enable the direct okou oauth callback for the slack connector ([#30555](https://github.com/vm0-ai/vm0/issues/30555)) ([6e45142](https://github.com/vm0-ai/vm0/commit/6e45142a9f4f7471348b886efba5655f8c8420fc)), closes [#30550](https://github.com/vm0-ai/vm0/issues/30550)
+
+
+### Performance Improvements
+
+* **app:** decouple build metadata from javascript hashes ([#30436](https://github.com/vm0-ai/vm0/issues/30436)) ([eb5ca9f](https://github.com/vm0-ai/vm0/commit/eb5ca9ffd557817a66a47296301bacd1dac1be39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.16
+    * @okouai/connectors bumped to 3.0.2
+    * @okouai/core bumped to 8.605.0
+
 ## [0.813.2](https://github.com/vm0-ai/vm0/compare/app-v0.813.1...app-v0.813.2) (2026-08-31)
 
 

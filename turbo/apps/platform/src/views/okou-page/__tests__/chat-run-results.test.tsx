@@ -14,7 +14,6 @@ import {
   billingStatus,
   buildModelPolicy,
   buildProvider,
-  expectComposerModel,
 } from "./chat-composer-test-helpers.ts";
 import {
   context,
@@ -1912,7 +1911,7 @@ describe("chat lifecycle", () => {
     });
 
     const card = await screen.findByTestId("assistant-error-recovery");
-    click(within(card).getByRole("combobox", { name: "Switch model" }));
+    click(within(card).getByRole("combobox", { name: "DeepSeek V4 Flash" }));
 
     const deepseek = await screen.findByRole("option", {
       name: /DeepSeek V4 Flash/u,
@@ -2004,7 +2003,7 @@ describe("chat lifecycle", () => {
 
       const card = await screen.findByTestId("assistant-error-recovery");
       expect(within(card).getByText(resetText)).toBeInTheDocument();
-      click(within(card).getByRole("combobox", { name: "Switch model" }));
+      click(within(card).getByRole("combobox", { name: currentOption }));
 
       const alternative = await screen.findByRole("option", {
         name: otherOption,
@@ -2079,11 +2078,11 @@ describe("chat lifecycle", () => {
       }),
     );
     await waitFor(() => {
-      expect(retriedPrompt).toBe("try again");
+      expect(retriedPrompt).toBe("continue");
     });
   });
 
-  it("keeps the current model and alternatives for model capacity and retries", async () => {
+  it("shows the thread model and alternatives for model capacity and continues", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000792";
     let retriedPrompt: string | undefined;
     let retriedUserMessage: unknown;
@@ -2092,7 +2091,6 @@ describe("chat lifecycle", () => {
         id: "00000000-0000-4000-a000-000000000976",
         model: "claude-sonnet-4-6",
         modelLabel: "Claude Sonnet 4.6",
-        isDefault: true,
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000977",
@@ -2103,6 +2101,7 @@ describe("chat lifecycle", () => {
         id: "00000000-0000-4000-a000-000000000978",
         model: "gpt-5.6-sol",
         modelLabel: "GPT 5.6 Sol",
+        isDefault: true,
         defaultProviderType: "codex-oauth-token",
       }),
     ]);
@@ -2141,7 +2140,7 @@ describe("chat lifecycle", () => {
     });
 
     const card = await screen.findByTestId("assistant-error-recovery");
-    click(within(card).getByRole("combobox", { name: "Switch model" }));
+    click(within(card).getByRole("combobox", { name: "Claude Sonnet 4.6" }));
     const claudeOption = await screen.findByRole("option", {
       name: /Claude Opus 4.8/u,
     });
@@ -2154,12 +2153,12 @@ describe("chat lifecycle", () => {
     ).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
-    click(buttonByText("Try again", card));
+    click(buttonByText("Continue", card));
     await waitFor(() => {
-      expect(retriedPrompt).toBe("try again");
+      expect(retriedPrompt).toBe("continue");
       expect(retriedUserMessage).toMatchObject({
         version: 1,
-        parts: [{ type: "text", text: "try again" }],
+        parts: [{ type: "text", text: "continue" }],
       });
     });
   });
@@ -2251,7 +2250,7 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
     expect(sentPrompt).toBeUndefined();
 
-    click(within(card).getByRole("combobox", { name: "Switch model" }));
+    click(within(card).getByRole("combobox", { name: "GPT 5.6 Sol" }));
     await expect(
       screen.findByRole("option", { name: /GPT 5\.6 Luna/u }),
     ).resolves.toBeInTheDocument();
@@ -2263,10 +2262,23 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(updatedModel).toBe("gpt-5.6-luna");
     });
-    await expectComposerModel("GPT 5.6 Luna");
-    expect(sentPrompt).toBeUndefined();
 
     const composer = await screen.findByRole("textbox", { name: "Message" });
+    const composerContainer = composer.closest<HTMLElement>(
+      "[data-chat-composer]",
+    );
+    if (!composerContainer) {
+      throw new Error("Expected chat composer container");
+    }
+    await waitFor(() => {
+      expect(
+        within(composerContainer).getByRole("combobox", {
+          name: "GPT 5.6 Luna",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(sentPrompt).toBeUndefined();
+
     await fillComposer(composer, "Continue with another model");
     click(
       await waitFor(() => {
