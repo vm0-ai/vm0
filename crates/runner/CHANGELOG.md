@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.179.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.14...runner-rs-v0.179.0) (2026-08-31)
+
+
+### Features
+
+* **runner:** report operator environment alias states ([#30428](https://github.com/vm0-ai/vm0/issues/30428)) ([e2ea6c3](https://github.com/vm0-ai/vm0/commit/e2ea6c38eaab2a9eb67d2f61ee4b674ffa4a8d38))
+
 ## [0.178.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.13...runner-rs-v0.178.14) (2026-08-31)
 
 
