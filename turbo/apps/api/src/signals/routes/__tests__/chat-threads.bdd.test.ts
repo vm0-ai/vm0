@@ -1628,7 +1628,11 @@ describe("CHAT-01 chat thread read state", () => {
       activeRun.threadId,
     ]);
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.channelGet.mockClear();
     const firstRead = await chat.markThreadRead(owner, activeRun.threadId);
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${owner.userId}:${owner.orgId}`],
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "chatThreadReadCursorUpdated",
       {
@@ -1980,7 +1984,11 @@ describe("CHAT-01 chat thread read state", () => {
     );
 
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.channelGet.mockClear();
     await chat.markAgentThreadsRead(owner, agentA);
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${owner.userId}:${owner.orgId}`],
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "chatThreadReadCursorUpdated",
       {

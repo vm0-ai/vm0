@@ -6,6 +6,7 @@ import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
 import { authRecovery$, authenticatedIdentity$ } from "./auth.ts";
 import type { AuthRecovery } from "./auth-retry.ts";
+import { invalidateChatIndicatorsFromRealtime$ } from "./chat-thread-list-reload.ts";
 import { logger } from "./log.ts";
 import {
   createChildAbortController,
@@ -209,6 +210,9 @@ export const setupSharedDatabaseBridge$ = command(
           authenticationRequiredTarget.dispatchEvent(
             new Event(AUTHENTICATION_REQUIRED_EVENT),
           );
+        },
+        indicatorsInvalidated: (payload) => {
+          set(invalidateChatIndicatorsFromRealtime$, payload);
         },
         reloadRequired: () => {
           location.reload();
