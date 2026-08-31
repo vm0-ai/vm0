@@ -20,6 +20,7 @@ import {
   subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
 import { initAuthRecovery$, initClerkRuntime$, setupClerk$ } from "../auth.ts";
+import { initializeAppVersion$ } from "../app-version.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
@@ -31,6 +32,7 @@ import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentatio
 const context = testContext();
 
 beforeEach(() => {
+  context.store.set(initializeAppVersion$, __OKOU_APP_VERSION__);
   context.store.set(setRootSignal$, context.signal);
   context.store.set(initClerkRuntime$, context.signal);
   context.store.set(initAuthRecovery$, context.signal);
