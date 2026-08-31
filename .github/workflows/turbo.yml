@@ -1534,9 +1534,12 @@ jobs:
 
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
+      # A Pages deployment alias can serve the shell and then 404 again while
+      # the edge is still converging, so this step only waits for propagation.
+      # The runtime contract is verified once, by the gateway smoke test below,
+      # which retries to convergence instead of point sampling.
       - name: Wait for Cloudflare Pages deployment readiness
         env:
-          CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
           PAGES_URL: ${{ steps.pages-deploy.outputs.url }}
         run: |
           set -euo pipefail
@@ -1563,10 +1566,6 @@ jobs:
 
             if (( ready_passes >= 2 )); then
               echo "Cloudflare Pages shell is ready"
-              bash .github/scripts/verify-okou-app-runtime.sh \
-                "$PAGES_URL" \
-                "https://static.okou.io/okou-app/assets" \
-                "$CANONICAL_ASSETS"
               exit 0
             fi
             sleep 2

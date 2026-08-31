@@ -975,18 +975,11 @@ const chatThreadMetadataSchema = z.object({
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
-  /**
-   * Rolling new app -> old API compatibility for the metadata shortcut. Keep
-   * these fields optional while the older API is serving or remains a rollback
-   * target; remove the optionality only after that rollback window closes. The
-   * app falls back to the event-sourced projection until then. Follow-up:
-   * #29576.
-   */
-  pinnedAt: z.string().nullable().optional(),
-  computerUseHostId: z.string().uuid().nullable().optional(),
-  cloudBrowserEnabled: z.boolean().optional(),
-  selectedVideoModel: z.string().nullable().optional(),
-  selectedImageModel: z.string().nullable().optional(),
+  pinnedAt: z.string().nullable(),
+  computerUseHostId: z.string().uuid().nullable(),
+  cloudBrowserEnabled: z.boolean(),
+  selectedVideoModel: z.string().nullable(),
+  selectedImageModel: z.string().nullable(),
 });
 
 const chatThreadDraftSchema = z
