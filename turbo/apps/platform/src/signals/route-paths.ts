@@ -55,6 +55,7 @@ export const ROUTES = {
   signInCatchAll: "/sign-in{/*path}",
   signUp: "/sign-up",
   signUpCatchAll: "/sign-up{/*path}",
+  // Backward-compatible aliases for existing deep links and OAuth callbacks.
   signInV2: "/v2/sign-in",
   signInV2CatchAll: "/v2/sign-in{/*path}",
   signUpV2: "/v2/sign-up",
