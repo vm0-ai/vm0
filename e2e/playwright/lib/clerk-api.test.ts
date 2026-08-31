@@ -11,7 +11,6 @@ import {
   cleanupCurrentClerkTestGeneration,
   cleanupStaleClerkTestResources,
   createOrganization,
-  createSignInTokenForEmail,
   createUser,
   currentClerkTestGeneration,
   deleteClerkTestOwnerResources,
@@ -191,37 +190,6 @@ test("creates organizations with exact ownership metadata and retries membership
         ),
         2,
       );
-    },
-  );
-});
-
-test("creates an organization-scoped sign-in token for an exact user", async () => {
-  const email = "sign-in@example.com";
-  await withClerkServer(
-    (request, response) => {
-      const url = new URL(request.url, "http://clerk.test");
-      if (request.method === "GET" && url.pathname === "/v1/users") {
-        assert.deepEqual(url.searchParams.getAll("email_address[]"), [email]);
-        sendJson(response, 200, [clerkUser("user_sign_in", email)]);
-        return;
-      }
-      if (request.method === "POST" && request.url === "/v1/sign_in_tokens") {
-        assert.deepEqual(request.body, {
-          expires_in_seconds: 300,
-          org_id: "org_sign_in",
-          user_id: "user_sign_in",
-        });
-        sendJson(response, 200, { token: "ticket_sign_in" });
-        return;
-      }
-      sendJson(response, 404, { errors: [] });
-    },
-    async (requests) => {
-      assert.equal(
-        await createSignInTokenForEmail(email, "org_sign_in"),
-        "ticket_sign_in",
-      );
-      assert.equal(countRequests(requests, "POST", "/v1/sign_in_tokens"), 1);
     },
   );
 });

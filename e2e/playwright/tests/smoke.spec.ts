@@ -1,6 +1,6 @@
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
-import { signInWithClerkSignInToken } from "../lib/auth";
+import { signInWithClerkEmailCode } from "../lib/auth";
 import { completeExploreOnboarding } from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
@@ -12,9 +12,8 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
   const apiUrl = resolveApiBackendUrl();
   const appUrl = deriveAppUrl(apiUrl);
 
-  await signInWithClerkSignInToken(page, email, appUrl, {
+  await signInWithClerkEmailCode(page, email, appUrl, {
     activeOrganizationId: orgId,
-    preserveAppPage: true,
   });
 
   await completeExploreOnboarding(page, {

@@ -1,26 +1,29 @@
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
-import { createSignInTokenForEmail } from "./clerk-api";
+import {
+  authV2Input,
+  authV2Root,
+  openAuthV2,
+  signInMethodButton,
+  submitSignInIdentifier,
+} from "./auth-v2-ui";
 
-export interface ClerkSignInTokenOptions {
+const CLERK_TEST_EMAIL_CODE = "424242";
+
+export interface ClerkEmailCodeSignInOptions {
   readonly activeOrganizationId: string;
-  readonly preserveAppPage?: boolean;
 }
 
-export async function signInWithClerkSignInToken(
+export async function signInWithClerkEmailCode(
   page: Page,
   email: string,
   appUrl: string,
-  options: ClerkSignInTokenOptions,
+  options: ClerkEmailCodeSignInOptions,
 ): Promise<string> {
-  const signInToken = await createSignInTokenForEmail(
-    email,
-    options.activeOrganizationId,
-  );
-  const signInUrl = new URL("/sign-in-token", appUrl);
-  signInUrl.searchParams.set("token", signInToken);
-
-  await page.goto(signInUrl.toString(), { waitUntil: "domcontentloaded" });
+  const signInUrl = new URL("/sign-in", appUrl);
+  await openAuthV2(page, signInUrl.toString());
+  await submitSignInIdentifier(page, email);
+  await submitClerkEmailCode(page);
   await page.waitForFunction(
     () => Boolean(window.Clerk?.loaded && window.Clerk.session),
     undefined,
@@ -42,12 +45,31 @@ export async function signInWithClerkSignInToken(
   const token = await refreshClerkSessionToken(page, {
     activeOrganizationId: options.activeOrganizationId,
   });
-  if (options.preserveAppPage) {
-    await page.goto(appUrl, { waitUntil: "domcontentloaded" });
-  } else {
-    await page.goto("about:blank");
-  }
   return token;
+}
+
+async function submitClerkEmailCode(page: Page): Promise<void> {
+  const root = authV2Root(page);
+  const codeInput = authV2Input(page, "code");
+  const emailCodeButton = signInMethodButton(page, "email-code");
+  const useAnotherMethodButton = root.getByRole("button", {
+    name: /use another method/i,
+  });
+
+  await expect(
+    codeInput.or(emailCodeButton).or(useAnotherMethodButton),
+  ).toBeVisible({ timeout: 30_000 });
+  if (!(await codeInput.isVisible())) {
+    if (await useAnotherMethodButton.isVisible()) {
+      await useAnotherMethodButton.click();
+    }
+    await expect(emailCodeButton).toBeVisible({ timeout: 30_000 });
+    await emailCodeButton.click();
+  }
+
+  await expect(codeInput).toBeVisible({ timeout: 30_000 });
+  await codeInput.fill(CLERK_TEST_EMAIL_CODE);
+  await root.getByRole("button", { exact: true, name: "Continue" }).click();
 }
 
 async function activateClerkOrganization(

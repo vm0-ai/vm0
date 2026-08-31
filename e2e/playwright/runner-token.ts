@@ -4,10 +4,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
 import { resolveApiBackendUrl } from "./api-backend-url";
-import {
-  refreshClerkSessionToken,
-  signInWithClerkSignInToken,
-} from "./lib/auth";
+import { refreshClerkSessionToken, signInWithClerkEmailCode } from "./lib/auth";
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
 import {
@@ -152,7 +149,7 @@ async function provisionRunnerCredential(
   });
   try {
     const page = await context.newPage();
-    let clerkSessionToken = await signInWithClerkSignInToken(
+    let clerkSessionToken = await signInWithClerkEmailCode(
       page,
       target.email,
       appUrl,
