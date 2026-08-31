@@ -34,11 +34,6 @@ vi.mock("@clerk/shared/loadClerkJsScript", () => {
       Reflect.set(globalThis, "Clerk", mockedClerk);
       return Promise.resolve(null);
     },
-    loadClerkUIScript: () => {
-      function MockClerkUI() {}
-      Reflect.set(globalThis, "__internal_ClerkUICtor", MockClerkUI);
-      return Promise.resolve(null);
-    },
   };
 });
 
