@@ -190,6 +190,22 @@ test("restores native SharedWorker fetch during deterministic cleanup", async ()
   }
 });
 
+test("closes cleanly after the runtime SharedWorker has stopped", async () => {
+  const harness = await createHarness();
+  const context = await harness.browser.newContext();
+  const page = await context.newPage();
+  const routes = await installRoutes(harness, context);
+  try {
+    await page.goto(harness.origin);
+    await createWorker(page);
+    await routes.waitForReady();
+    await terminateWorker(page);
+    await routes.close();
+  } finally {
+    await closeTestResources([routes], [context], harness);
+  }
+});
+
 test("fails readiness quickly when the runtime worker is not intercepted", async () => {
   const harness = await createHarness();
   const context = await harness.browser.newContext();
@@ -232,6 +248,11 @@ async function createHarness(): Promise<Harness> {
       response.end(`
         addEventListener("connect", ({ ports: [port] }) => {
           port.addEventListener("message", async (event) => {
+            if (event.data.terminate === true) {
+              port.postMessage({ terminated: true });
+              self.close();
+              return;
+            }
             try {
               const response = await fetch(event.data.path, {
                 headers: event.data.headers,
@@ -320,6 +341,33 @@ async function fetchFromWorker(
     throw new Error("SharedWorker returned an invalid fixture response");
   }
   return value;
+}
+
+async function terminateWorker(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const worker = new SharedWorker("/shared-worker.js", {
+      name: "production-topology-fixture",
+    });
+    worker.port.start();
+    await new Promise<void>((resolve) => {
+      worker.port.addEventListener(
+        "message",
+        (event: MessageEvent<unknown>) => {
+          const message = event.data;
+          if (
+            message &&
+            typeof message === "object" &&
+            "terminated" in message &&
+            message.terminated === true
+          ) {
+            resolve();
+          }
+        },
+        { once: true },
+      );
+      worker.port.postMessage({ terminate: true });
+    });
+  });
 }
 
 function isWorkerFetchResult(value: unknown): value is WorkerFetchResult {

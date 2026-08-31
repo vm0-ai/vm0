@@ -364,10 +364,17 @@ export class SharedWorkerRoutes {
           }
           const channel: unknown = Reflect.get(value, "channel");
           if (channel instanceof BroadcastChannel) {
-            await new Promise<void>((resolve, reject) => {
+            // Chromium may terminate a SharedWorker as soon as its final page
+            // port disappears. Probe first: no response means there is no
+            // runtime left to restore, while a live runtime must acknowledge
+            // the disposal handshake below.
+            const workerIsAlive = await new Promise<boolean>((resolve) => {
+              const probeId = crypto.randomUUID();
+              const listenerController = new AbortController();
               const timer = setTimeout(() => {
-                reject(new Error("SharedWorker route cleanup timed out"));
-              }, 2_000);
+                listenerController.abort();
+                resolve(false);
+              }, 500);
               channel.addEventListener(
                 "message",
                 (event: MessageEvent<unknown>) => {
@@ -376,15 +383,50 @@ export class SharedWorkerRoutes {
                     message &&
                     typeof message === "object" &&
                     "kind" in message &&
-                    message.kind === "disposed"
+                    message.kind === "probe-response" &&
+                    "probeId" in message &&
+                    message.probeId === probeId
                   ) {
                     clearTimeout(timer);
-                    resolve();
+                    listenerController.abort();
+                    resolve(true);
                   }
                 },
+                { signal: listenerController.signal },
               );
-              channel.postMessage({ kind: "dispose" });
+              channel.postMessage({ kind: "probe", probeId });
             });
+            if (workerIsAlive) {
+              await new Promise<void>((resolve, reject) => {
+                const disposeId = crypto.randomUUID();
+                const listenerController = new AbortController();
+                const timer = setTimeout(() => {
+                  listenerController.abort();
+                  reject(new Error("SharedWorker route cleanup timed out"));
+                }, 2_000);
+                channel.addEventListener(
+                  "message",
+                  (event: MessageEvent<unknown>) => {
+                    const message = event.data;
+                    if (
+                      message &&
+                      typeof message === "object" &&
+                      "kind" in message &&
+                      message.kind === "disposed" &&
+                      "disposeId" in message &&
+                      message.disposeId === disposeId
+                    ) {
+                      clearTimeout(timer);
+                      listenerController.abort();
+                      channel.postMessage({ kind: "close", disposeId });
+                      resolve();
+                    }
+                  },
+                  { signal: listenerController.signal },
+                );
+                channel.postMessage({ kind: "dispose", disposeId });
+              });
+            }
             channel.close();
           }
           Reflect.deleteProperty(globalThis, stateKey);
@@ -656,17 +698,36 @@ export class SharedWorkerRoutes {
   const channel = new BroadcastChannel(${channelName});
   const nativeFetch = globalThis.fetch.bind(globalThis);
   const pending = new Map();
+  let activeDisposeId = null;
   channel.addEventListener("message", (event) => {
     const message = event.data;
     if (!message || typeof message !== "object") return;
-    if (message.kind === "dispose") {
+    if (message.kind === "probe" && typeof message.probeId === "string") {
+      channel.postMessage({
+        kind: "probe-response",
+        probeId: message.probeId,
+      });
+      return;
+    }
+    if (message.kind === "dispose" && typeof message.disposeId === "string") {
+      activeDisposeId = message.disposeId;
       globalThis.fetch = nativeFetch;
       for (const entry of pending.values()) {
         entry.cleanup();
         entry.reject(new Error("SharedWorker routes were disposed"));
       }
       pending.clear();
-      channel.postMessage({ kind: "disposed" });
+      channel.postMessage({
+        kind: "disposed",
+        disposeId: message.disposeId,
+      });
+      return;
+    }
+    if (
+      message.kind === "close" &&
+      typeof message.disposeId === "string" &&
+      message.disposeId === activeDisposeId
+    ) {
       channel.close();
       return;
     }
