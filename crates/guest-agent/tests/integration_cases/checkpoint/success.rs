@@ -94,6 +94,7 @@ async fn pi_checkpoint_reports_full_combined_completion_payload() {
     guest_agent::complete::report_checkpoint_for_run(
         &runtime,
         0,
+        None,
         Some(42),
         &active_input_delivery_ids,
         checkpoint,

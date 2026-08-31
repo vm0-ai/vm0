@@ -50,8 +50,15 @@ pub(super) async fn report_prepared_checkpoint(
     exit_code: i32,
     checkpoint: guest_agent::checkpoint::PreparedCheckpoint,
 ) -> Result<(), guest_agent::error::AgentError> {
-    guest_agent::complete::report_checkpoint_for_run(runtime, exit_code, None, &[], checkpoint)
-        .await
+    guest_agent::complete::report_checkpoint_for_run(
+        runtime,
+        exit_code,
+        None,
+        None,
+        &[],
+        checkpoint,
+    )
+    .await
 }
 
 pub(super) fn checkpoint_session_metadata(

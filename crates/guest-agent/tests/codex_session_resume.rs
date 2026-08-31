@@ -257,8 +257,15 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
             &session_metadata,
         )
         .await?;
-        guest_agent::complete::report_checkpoint_for_run(&guest_runtime, 1, None, &[], checkpoint)
-            .await
+        guest_agent::complete::report_checkpoint_for_run(
+            &guest_runtime,
+            1,
+            None,
+            None,
+            &[],
+            checkpoint,
+        )
+        .await
     })?;
     prepare_mock.assert_calls(1);
     upload_mock.assert_calls(1);

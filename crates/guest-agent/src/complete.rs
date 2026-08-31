@@ -35,6 +35,8 @@ struct CompletePayload<'a> {
     run_id: &'a str,
     exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     last_event_sequence: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox_id: Option<&'a str>,
@@ -72,6 +74,7 @@ fn as_optional_slice(values: &[String]) -> Option<&[String]> {
 pub async fn report_checkpoint_for_run(
     runtime: &GuestRuntime,
     exit_code: i32,
+    error: Option<&str>,
     last_event_sequence: Option<u32>,
     active_input_delivery_ids: &[String],
     checkpoint: PreparedCheckpoint,
@@ -82,6 +85,7 @@ pub async fn report_checkpoint_for_run(
         payload_for_runtime(
             runtime,
             exit_code,
+            error,
             last_event_sequence,
             active_input_delivery_ids,
             Some(checkpoint.request()),
@@ -147,6 +151,7 @@ pub async fn report_user_cancellation_for_run(
 fn payload_for_runtime<'a>(
     runtime: &'a GuestRuntime,
     exit_code: i32,
+    error: Option<&'a str>,
     last_event_sequence: Option<u32>,
     active_input_delivery_ids: &'a [String],
     checkpoint: Option<&'a complete::RequestCheckpoint>,
@@ -155,6 +160,7 @@ fn payload_for_runtime<'a>(
     CompletePayload {
         run_id: &config.run_id,
         exit_code,
+        error,
         last_event_sequence,
         sandbox_id: as_optional(&config.sandbox_id),
         sandbox_reuse_result: as_optional(&config.sandbox_reuse_result),
@@ -176,6 +182,7 @@ fn checkpointless_payload_for_run<'a>(
     CompletePayload {
         run_id,
         exit_code,
+        error: None,
         last_event_sequence,
         sandbox_id: as_optional(sandbox_id),
         sandbox_reuse_result: as_optional(sandbox_reuse_result),
@@ -204,6 +211,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            error: None,
             last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -220,6 +228,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            error: None,
             last_event_sequence: None,
             sandbox_id: Some("abc"),
             sandbox_reuse_result: Some("reused"),
@@ -240,6 +249,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            error: None,
             last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: Some("poolMiss"),
@@ -257,6 +267,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            error: None,
             last_event_sequence: None,
             sandbox_id: Some("sid"),
             sandbox_reuse_result: None,
@@ -281,6 +292,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            error: None,
             last_event_sequence: Some(7),
             sandbox_id: None,
             sandbox_reuse_result: None,

@@ -825,6 +825,7 @@ async fn complete_execution(
                 let result = complete::report_checkpoint_for_run(
                     runtime,
                     0,
+                    None,
                     state.last_event_sequence,
                     state.active_input_delivery_ids,
                     checkpoint,
@@ -895,6 +896,7 @@ async fn complete_execution(
                         match complete::report_checkpoint_for_run(
                             runtime,
                             exit_code,
+                            state.failure_message,
                             state.last_event_sequence,
                             state.active_input_delivery_ids,
                             checkpoint,
@@ -1982,7 +1984,7 @@ mod tests {
             when.method(POST)
                 .path("/api/webhooks/agent/complete")
                 .json_body_includes(
-                    r#"{"exitCode":1,"checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
+                    r#"{"exitCode":1,"error":"You've hit your usage limit.","checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
                 );
             then.status(200)
                 .header("Content-Type", "application/json")
