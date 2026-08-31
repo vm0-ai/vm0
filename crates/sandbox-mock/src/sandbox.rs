@@ -11,8 +11,9 @@ use async_trait::async_trait;
 
 use crate::call_records::{
     CopyFileCall, ExecCall, GuestStateRestoreCall, GuestStateRestoreTimezoneCall,
-    ProcessCancelCall, ProcessControlCall, ReadFileCall, StartAgentProcessCall, StartProcessCall,
-    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
+    ProcessCancelCall, ProcessControlCall, ReadFileCall, SessionHistoryIdentityVerifyCall,
+    StartAgentProcessCall, StartProcessCall, StorageManifestCall, WaitProcessCall, WriteFileCall,
+    WriteFilesCall,
 };
 use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
 use crate::overrides::{ExecMatcherOutcome, GuestStateRestoreBehavior, MockSandboxOverrides};
@@ -37,6 +38,7 @@ pub struct MockSandbox {
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     exec_calls: Mutex<Vec<ExecCall>>,
     storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
+    session_history_identity_verify_calls: Mutex<Vec<SessionHistoryIdentityVerifyCall>>,
     guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     read_file_calls: Mutex<Vec<ReadFileCall>>,
@@ -82,6 +84,7 @@ impl MockSandbox {
             exec_results: Mutex::new(VecDeque::new()),
             exec_calls: Mutex::new(Vec::new()),
             storage_manifest_calls: Mutex::new(Vec::new()),
+            session_history_identity_verify_calls: Mutex::new(Vec::new()),
             guest_state_restore_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             read_file_calls: Mutex::new(Vec::new()),
@@ -236,6 +239,13 @@ impl MockSandbox {
     /// Return this sandbox's recorded fixed storage-manifest calls.
     pub fn storage_manifest_calls(&self) -> Vec<StorageManifestCall> {
         self.storage_manifest_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return this sandbox's recorded fixed live identity verifier calls.
+    pub fn session_history_identity_verify_calls(&self) -> Vec<SessionHistoryIdentityVerifyCall> {
+        self.session_history_identity_verify_calls
+            .lock_ignoring_poison()
+            .clone()
     }
 
     /// Return this sandbox's recorded fixed guest-state restore calls.
@@ -807,6 +817,38 @@ impl Sandbox for MockSandbox {
             .pop_front()
             .unwrap_or_else(|| Ok(default_exec_result()))?;
         Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_1_MIB))
+    }
+
+    async fn verify_session_history_identity(
+        &self,
+        request: &SessionHistoryIdentityVerifyRequest<'_>,
+    ) -> Result<ExecResult> {
+        let call = SessionHistoryIdentityVerifyCall {
+            metadata_path: request.metadata_path.to_owned(),
+            runtime_dir: request.runtime_dir.to_owned(),
+            framework: request.framework.to_owned(),
+            session_id_hash: request.session_id_hash.to_owned(),
+            history_ref_kind: request.history_ref_kind.to_owned(),
+            history_hash: request.history_hash.to_owned(),
+            history_size_bytes: request.history_size_bytes,
+            timeout: request.timeout,
+        };
+        self.session_history_identity_verify_calls
+            .lock_ignoring_poison()
+            .push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .exec
+                .session_history_identity_verify_calls
+                .lock_ignoring_poison()
+                .push(call);
+        }
+        let result = self
+            .exec_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or_else(|| Ok(default_exec_result()))?;
+        Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_64_KIB))
     }
 
     async fn restore_guest_state(

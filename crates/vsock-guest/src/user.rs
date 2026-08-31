@@ -92,9 +92,9 @@ pub(crate) fn apply_command_identity(command: &mut Command, sudo: bool) -> io::R
     }
 }
 
-/// Install the trusted Agent environment without sourcing sandbox-owned shell
-/// state during fixed launch.
-pub(crate) fn configure_agent_command_environment(command: &mut Command) -> io::Result<()> {
+/// Install the trusted Guest Agent environment without sourcing sandbox-owned
+/// shell state during fixed launch.
+pub(crate) fn configure_guest_agent_command_environment(command: &mut Command) -> io::Result<()> {
     command
         .envs(TRUSTED_ROOTFS_ENVIRONMENT)
         .env("SHELL", AGENT_SHELL);
@@ -331,9 +331,9 @@ mod tests {
     }
 
     #[test]
-    fn agent_environment_preserves_trusted_defaults() {
+    fn guest_agent_environment_preserves_trusted_defaults() {
         let mut command = Command::new("true");
-        configure_agent_command_environment(&mut command).unwrap();
+        configure_guest_agent_command_environment(&mut command).unwrap();
 
         for (key, expected) in TRUSTED_ROOTFS_ENVIRONMENT {
             let actual = command

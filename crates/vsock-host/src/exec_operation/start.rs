@@ -3,6 +3,13 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
+use guest_contracts::session_history_identity::{
+    SESSION_HISTORY_IDENTITY_VERIFY_DIAGNOSTIC_LABEL,
+    SESSION_HISTORY_IDENTITY_VERIFY_OUTPUT_LIMIT_BYTES, SessionHistoryFramework,
+    SessionHistoryIdentityExpectation,
+    SessionHistoryIdentityVerifyRequest as GuestSessionHistoryIdentityVerifyRequest,
+    SessionHistoryRefKind,
+};
 use tokio::sync::oneshot;
 use tokio::time::{self, Instant};
 use vsock_proto::{
@@ -24,7 +31,7 @@ use super::state::{
 };
 use super::types::{
     ExecCaptureRequest, ExecOperationRequest, ExecOperationResult, ExecStreamRequest,
-    SupervisedExecControl, SupervisedExecRequest,
+    SessionHistoryIdentityVerifyRequest, SupervisedExecControl, SupervisedExecRequest,
 };
 use super::{EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT, SMALL_EXEC_CAPTURE_LIMIT_BYTES};
 
@@ -77,6 +84,7 @@ async fn start_exec_operation_on_shared_with_tracking(
     start_exec_operation_on_shared_with_tracking_and_admission(
         shared,
         request,
+        ExecProcessRole::Workload,
         tracking,
         FrameWriteObserver::default(),
         write_observer,
@@ -87,6 +95,7 @@ async fn start_exec_operation_on_shared_with_tracking(
 async fn start_exec_operation_on_shared_with_tracking_and_admission(
     shared: &Arc<Shared>,
     request: ExecOperationRequest<'_>,
+    role: ExecProcessRole,
     tracking: ExecOperationTracking<'_>,
     write_admission: FrameWriteObserver,
     write_observer: FrameWriteObserver,
@@ -106,7 +115,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
-            role: ExecProcessRole::Workload,
+            role,
             timeout: ExecTimeoutPolicy::Duration {
                 timeout_ms: request.timeout_ms,
             },
@@ -141,7 +150,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
             stream_queue_capacity,
             stream_queue_kind: ExecStreamQueueKind::Events,
             lifecycle: ExecOperationLifecycle::OneShot,
-            role: ExecProcessRole::Workload,
+            role,
             tracking,
         },
     )?;
@@ -430,6 +439,62 @@ pub(crate) async fn exec_operation_capture_on_shared(
     .await
 }
 
+pub(crate) async fn session_history_identity_verify_on_shared(
+    shared: &Arc<Shared>,
+    request: SessionHistoryIdentityVerifyRequest<'_>,
+) -> io::Result<ExecOperationResult> {
+    let framework = SessionHistoryFramework::parse_cli_arg(request.framework)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+    let history_ref_kind = SessionHistoryRefKind::parse_cli_arg(request.history_ref_kind)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+    let expectation = SessionHistoryIdentityExpectation::new(
+        framework,
+        request.session_id_hash,
+        history_ref_kind,
+        request.history_hash,
+        request.history_size_bytes,
+    )
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+    let guest_request = GuestSessionHistoryIdentityVerifyRequest {
+        metadata_path: request.metadata_path.to_owned(),
+        runtime_dir: request.runtime_dir.to_owned(),
+        expectation,
+    };
+    guest_request
+        .validate()
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+    let payload = serde_json::to_string(&guest_request)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+
+    let start_result = start_exec_operation_on_shared_with_tracking_and_admission(
+        shared,
+        ExecOperationRequest {
+            timeout_ms: request.timeout_ms,
+            command: &payload,
+            env: &[],
+            sudo: false,
+            label: SESSION_HISTORY_IDENTITY_VERIFY_DIAGNOSTIC_LABEL,
+            stdout: ExecOutputPolicy::Capture {
+                limit_bytes: SESSION_HISTORY_IDENTITY_VERIFY_OUTPUT_LIMIT_BYTES,
+            },
+            stderr: ExecOutputPolicy::Capture {
+                limit_bytes: SESSION_HISTORY_IDENTITY_VERIFY_OUTPUT_LIMIT_BYTES,
+            },
+            expected_exit_codes: &[],
+            stdin_bytes: None,
+            stream_queue_capacity: None,
+            start_write_timeout: request.wait_timeout,
+        },
+        ExecProcessRole::SessionHistoryIdentityVerifier,
+        ExecOperationTracking::Tracked,
+        FrameWriteObserver::default(),
+        FrameWriteObserver::default(),
+    )
+    .await;
+    let (handle, deadline) = start_result?;
+    handle.wait_until_outcome(deadline).await.into_result()
+}
+
 pub(crate) async fn exec_operation_capture_on_shared_with_write_observer(
     shared: &Arc<Shared>,
     request: ExecCaptureRequest<'_>,
@@ -519,6 +584,7 @@ async fn exec_operation_capture_on_shared_with_tracking_and_admission_outcome(
             stream_queue_capacity: None,
             start_write_timeout: request.wait_timeout,
         },
+        ExecProcessRole::Workload,
         tracking,
         write_admission,
         write_observer,

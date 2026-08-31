@@ -17,9 +17,8 @@ use guest_contracts::session_history_identity::{
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, ProcessOutputMode, Sandbox,
-    StartAgentProcessRequest,
+    SessionHistoryIdentityVerifyRequest, StartAgentProcessRequest,
 };
-use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -476,41 +475,27 @@ async fn verify_restored_session_identity_for_reuse(
     } = verification;
     let metadata_path = metadata_path.to_owned();
     let runtime_dir = runtime_dir.to_owned();
-    let command = build_final_identity_verify_command(
-        guest::RUN_AGENT,
-        &metadata_path,
-        framework.as_str(),
-        session_id_hash,
-        history_ref_kind.as_str(),
-        history_hash,
+    let session_id_hash = session_id_hash.to_owned();
+    let history_hash = history_hash.to_owned();
+    let request = SessionHistoryIdentityVerifyRequest {
+        metadata_path: &metadata_path,
+        runtime_dir: &runtime_dir,
+        framework: framework.as_str(),
+        session_id_hash: &session_id_hash,
+        history_ref_kind: history_ref_kind.as_str(),
+        history_hash: &history_hash,
         history_size_bytes,
-    );
-    verify_final_identity_metadata(sandbox, identity, command, &runtime_dir).await
+        timeout: SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT,
+    };
+    verify_final_identity_metadata(sandbox, identity, &request).await
 }
 
 async fn verify_final_identity_metadata(
     sandbox: &dyn Sandbox,
     identity: RestoredSessionIdentity,
-    command: String,
-    runtime_dir: &str,
+    request: &SessionHistoryIdentityVerifyRequest<'_>,
 ) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
-    let env = [(
-        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        runtime_dir,
-    )];
-    let request = ExecRequest {
-        cmd: &command,
-        timeout: SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT,
-        env: &env,
-        sudo: false,
-        expected_exit_codes: &[],
-        stdin_bytes: None,
-        output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-    };
-    match sandbox
-        .exec_with_diagnostic_label(&request, "session-history-identity-verify")
-        .await
-    {
+    match sandbox.verify_session_history_identity(request).await {
         Ok(result) if helper_exec_succeeded(&result) => Ok(identity),
         Ok(result) => Err(session_history_identity_reason_from_helper_result(&result)),
         Err(_) => Err(SessionHistoryIdentityReason::VerifyHelperExecError),
@@ -553,28 +538,6 @@ fn session_history_identity_reason_from_helper_result(
             SessionHistoryIdentityReason::VerifyHelperFailed
         }
     }
-}
-
-fn build_final_identity_verify_command(
-    run_agent_path: &str,
-    metadata_path: &str,
-    framework: &str,
-    session_id_hash: &str,
-    history_ref_kind: &str,
-    history_hash: &str,
-    history_size_bytes: u64,
-) -> String {
-    let args = [
-        quote_shell_arg(run_agent_path),
-        "verify-session-history-identity".to_string(),
-        quote_shell_arg(metadata_path),
-        quote_shell_arg(framework),
-        quote_shell_arg(session_id_hash),
-        quote_shell_arg(history_ref_kind),
-        quote_shell_arg(history_hash),
-        history_size_bytes.to_string(),
-    ];
-    args.join(" ")
 }
 
 async fn read_final_session_history_identity(
