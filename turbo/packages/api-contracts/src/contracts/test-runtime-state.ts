@@ -103,6 +103,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum(["remove", "invalid"]),
   }),
   z.object({
+    action: z.literal("enable-queued-pi-ownership-transfer"),
+    run_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("mutate-runner-job-connector-permission-baseline"),
     run_id: z.uuid(),
     mode: z.enum([

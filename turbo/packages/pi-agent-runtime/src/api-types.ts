@@ -1,4 +1,5 @@
 import type { PiAgentModelConfig } from "./types";
+import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 
 export interface PiPreheatedAgentsFile {
   readonly path: string;
@@ -68,6 +69,7 @@ export interface PiApiFirstTurnArgs {
   readonly appendSystemPrompt: string | null;
   readonly model: PiAgentModelConfig;
   readonly resourceSnapshot: PiPreheatedResourceSnapshot;
+  readonly ownership: PiApiFirstTurnOwnership;
 }
 
 export interface PiApiFirstTurnResult {

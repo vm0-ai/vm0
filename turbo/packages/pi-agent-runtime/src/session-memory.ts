@@ -26,11 +26,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { UnsupportedPiSessionVersionError } from "./errors";
+import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 
 interface CreateMemoryPiSessionOptions {
   readonly cwd: string;
   readonly id: string;
   readonly parentSession?: string;
+  readonly timestamp?: string;
 }
 
 interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
@@ -43,6 +45,7 @@ interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly timestamp?: number;
   readonly streamOptions?: Omit<SimpleStreamOptions, "sessionId">;
+  readonly ownership: PiApiFirstTurnOwnership;
 }
 
 interface PiModelTurnResult {
@@ -123,7 +126,7 @@ export class MemoryPiSession {
       type: "session",
       version: CURRENT_SESSION_VERSION,
       id: options.id,
-      timestamp: new Date().toISOString(),
+      timestamp: options.timestamp ?? new Date().toISOString(),
       cwd: options.cwd,
       parentSession: options.parentSession,
     };
@@ -308,6 +311,7 @@ export async function runPiFirstModelTurn<TApi extends Api>(
     messages: convertToLlm(sessionContext.messages),
     tools: [...options.tools],
   };
+  options.ownership.markProviderRequestMayHaveStarted();
   const responseStream = options.stream(options.model, context, {
     ...options.streamOptions,
     reasoning:

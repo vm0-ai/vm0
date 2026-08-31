@@ -1,6 +1,10 @@
 export { resumePiApiFirstTurn, runPiOfficialRpcMode } from "./rpc";
 export type { PiSandboxOwnershipTransferMode } from "./rpc";
-export { runPiApiFirstTurn } from "./api";
+export {
+  createPiApiFirstTurnOwnership,
+  createPiSessionJsonl,
+  runPiApiFirstTurn,
+} from "./api";
 export { MemoryPiSession } from "./session-memory";
 export {
   UnsupportedPiResourceSnapshotError,
@@ -12,4 +16,8 @@ export type {
   PiPreheatedResourceSnapshot,
   PiPreheatedSkill,
 } from "./api-types";
+export type {
+  PiApiFirstTurnOwnership,
+  PiApiFirstTurnOwnershipStage,
+} from "./provider-ownership";
 export * from "./index";

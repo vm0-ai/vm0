@@ -13,8 +13,11 @@ import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
 import {
+  createPiApiFirstTurnOwnership,
+  createPiSessionJsonl,
   inspectPiSessionJsonl,
   runPiApiFirstTurn,
+  type PiApiFirstTurnOwnership,
   type PiApiFirstTurnResult,
   UnsupportedPiResourceSnapshotError,
   UnsupportedPiSessionVersionError,
@@ -64,6 +67,7 @@ import {
   type PiApiFirstTurnActivation,
 } from "./pi-api-first-turn-config";
 import {
+  PiResourceSnapshotPreparationError,
   preparePiResourceSnapshot,
   UnsupportedPiResourceError,
 } from "./pi-resource-snapshot.service";
@@ -80,8 +84,11 @@ type PiApiFirstTurnErrorCode =
   | "PI_API_MODEL_FAILED"
   | "PI_API_MODEL_CREDENTIAL_INVALID"
   | "PI_API_PROMPT_UNSUPPORTED"
+  | "PI_API_PREHEAT_FAILED"
   | "PI_API_RESOURCE_INVALID"
+  | "PI_API_RESOURCE_PREPARATION_FAILED"
   | "PI_API_RESOURCE_UNSUPPORTED"
+  | "PI_API_SANDBOX_FALLBACK_FAILED"
   | "PI_H0_DECOMPRESSION_FAILED"
   | "PI_H0_DOWNLOAD_FAILED"
   | "PI_H0_ENCODING_UNSUPPORTED"
@@ -638,6 +645,13 @@ const loadApiFirstTurnResource$ = command(
           prepared.error,
         );
       }
+      if (prepared.error instanceof PiResourceSnapshotPreparationError) {
+        throw piApiFirstTurnError(
+          "PI_API_RESOURCE_PREPARATION_FAILED",
+          prepared.error.message,
+          prepared.error,
+        );
+      }
       throw piApiFirstTurnError(
         "PI_API_RESOURCE_INVALID",
         "Pi resource snapshot could not be loaded strictly",
@@ -723,9 +737,10 @@ async function executeApiModelTurn(
     readonly apiKey: string;
     readonly executionContext: ApiFirstTurnExecutionContext;
     readonly launchConfig: ApiFirstTurnLaunchConfig;
-    readonly loadedSession: LoadedResumeSession;
     readonly resourceSnapshot: PiResourceSnapshot;
+    readonly sessionJsonl: string;
     readonly sessionId: string;
+    readonly ownership: PiApiFirstTurnOwnership;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -750,11 +765,12 @@ async function executeApiModelTurn(
         cwd: CANONICAL_WORKING_DIR,
         agentDir: PI_AGENT_DIR,
         sessionId: args.sessionId,
-        sessionJsonl: args.loadedSession.jsonl,
+        sessionJsonl: args.sessionJsonl,
         prompt: args.activation.prompt,
         appendSystemPrompt: args.activation.appendSystemPrompt,
         model: { ...args.executionContext.piModelConfig, apiKey: args.apiKey },
         resourceSnapshot: args.resourceSnapshot,
+        ownership: args.ownership,
       },
       modelSignal,
     ),
@@ -762,7 +778,7 @@ async function executeApiModelTurn(
   if (!executed.ok) {
     if (executed.error instanceof UnsupportedPiResourceSnapshotError) {
       throw piApiFirstTurnError(
-        "PI_API_RESOURCE_UNSUPPORTED",
+        "PI_API_PREHEAT_FAILED",
         executed.error.message,
         executed.error,
       );
@@ -869,9 +885,182 @@ function ownershipTransferManifest(args: {
   };
 }
 
+type PiSandboxFallbackReason =
+  | "PI_API_PREHEAT_FAILED"
+  | "PI_API_RESOURCE_PREPARATION_FAILED";
+
+function eligibleSandboxFallbackReason(
+  args: {
+    readonly failure: PiApiFirstTurnError;
+    readonly ownership: PiApiFirstTurnOwnership;
+    readonly launchConfig: ApiFirstTurnLaunchConfig;
+  },
+  signal: AbortSignal,
+): PiSandboxFallbackReason | null {
+  if (
+    signal.aborted ||
+    args.ownership.stage !== "pre-provider" ||
+    args.launchConfig.ownershipTransfer?.schemaVersion !== 1
+  ) {
+    return null;
+  }
+  switch (args.failure.code) {
+    case "PI_API_PREHEAT_FAILED":
+    case "PI_API_RESOURCE_PREPARATION_FAILED": {
+      return args.failure.code;
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+function validateSandboxFallbackSession(
+  sessionJsonl: string,
+  sessionId: string,
+): { readonly bytes: Buffer; readonly hash: string } {
+  const bytes = Buffer.from(sessionJsonl, "utf8");
+  if (
+    bytes.length === 0 ||
+    bytes.length > PI_API_FIRST_TURN_SESSION_MAX_BYTES
+  ) {
+    throw piApiFirstTurnError(
+      "PI_H0_TOO_LARGE",
+      "Pi sandbox fallback H0 is empty or exceeds the API first-turn limit",
+    );
+  }
+  const inspected = safeSync(() => {
+    return inspectPiSessionJsonl(sessionJsonl);
+  });
+  if ("error" in inspected) {
+    throw piApiFirstTurnError(
+      "PI_H0_JSONL_INVALID",
+      "Pi sandbox fallback H0 is not a valid native Pi session",
+      inspected.error,
+    );
+  }
+  if (inspected.ok.sessionId !== sessionId) {
+    throw piApiFirstTurnError(
+      "PI_H0_SESSION_MISMATCH",
+      "Pi sandbox fallback H0 session id does not match the launch session",
+    );
+  }
+  return { bytes, hash: sha256(bytes) };
+}
+
+function materializeApiFirstTurnH0(args: {
+  readonly apiStartTime: number;
+  readonly loadedSession: LoadedResumeSession;
+  readonly sessionId: string;
+}): string {
+  return (
+    args.loadedSession.jsonl ??
+    createPiSessionJsonl({
+      cwd: CANONICAL_WORKING_DIR,
+      sessionId: args.sessionId,
+      timestamp: new Date(args.apiStartTime).toISOString(),
+    })
+  );
+}
+
+/**
+ * Intentional runtime ownership fallback for a real preparation failure. This
+ * is not old-Sandbox tolerance: the immutable launch capability proves the V3
+ * reader. Keep it while API preparation happens after durable activation;
+ * parent issue #30564 owns that lifecycle boundary.
+ */
+const publishSandboxFallback$ = command(async function publishSandboxFallback(
+  { get, set },
+  args: ApiFirstTurnContext,
+  signal: AbortSignal,
+): Promise<void> {
+  const { executionContext, launchConfig, sessionId } =
+    validateApiFirstTurnLaunch(args);
+  if (launchConfig.ownershipTransfer?.schemaVersion !== 1) {
+    throw piApiFirstTurnError(
+      "PI_LAUNCH_CONFIG_INVALID",
+      "Pi sandbox fallback requires ownership-transfer capability proof",
+    );
+  }
+  await assertApiTurnCommittable(
+    args,
+    launchConfig.deadlineAt,
+    "Pi sandbox fallback is no longer eligible to commit",
+  );
+  signal.throwIfAborted();
+  const loadedSession = await set(
+    loadResumeSessionJsonl$,
+    {
+      db: args.db,
+      resumeSession: executionContext.resumeSession,
+    },
+    signal,
+  );
+  validateResumeSession({
+    loaded: loadedSession,
+    expectedBaseSession: launchConfig.baseSession,
+    sessionId,
+  });
+  const sessionJsonl = materializeApiFirstTurnH0({
+    apiStartTime: executionContext.apiStartTime,
+    loadedSession,
+    sessionId,
+  });
+  const session = validateSandboxFallbackSession(sessionJsonl, sessionId);
+  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+  const sessionKey = piApiFirstTurnObjectKey(args.activation.runId, "session");
+  await get(
+    putS3Object(
+      bucket,
+      sessionKey,
+      session.bytes,
+      "application/x-ndjson",
+      signal,
+    ),
+  );
+  signal.throwIfAborted();
+  const uploaded = await get(
+    downloadS3BufferWithMaxBytes(
+      bucket,
+      sessionKey,
+      session.bytes.length,
+      signal,
+    ),
+  );
+  signal.throwIfAborted();
+  if (
+    uploaded.length !== session.bytes.length ||
+    sha256(uploaded) !== session.hash
+  ) {
+    throw piApiFirstTurnError(
+      "PI_API_SANDBOX_FALLBACK_FAILED",
+      "Pi sandbox fallback H0 failed read-after-write validation",
+    );
+  }
+  await assertApiTurnCommittable(
+    args,
+    launchConfig.deadlineAt,
+    "Pi sandbox fallback lost commit eligibility before publication",
+  );
+  signal.throwIfAborted();
+  const manifest = ownershipTransferManifest({
+    capability: launchConfig.ownershipTransfer,
+    mode: "sandbox-first",
+    baseSession: launchConfig.baseSession,
+    session: {
+      sessionId,
+      sha256: session.hash,
+      rawSize: session.bytes.length,
+    },
+    sandboxEventSequenceStart: launchConfig.sandboxEventSequenceStart,
+  });
+  await set(writeManifest$, { runId: args.activation.runId, manifest }, signal);
+});
+
 const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
   { set },
   args: ApiFirstTurnContext,
+  ownership: PiApiFirstTurnOwnership,
   signal: AbortSignal,
 ): Promise<PreparedApiFirstTurn> {
   const { executionContext, launchConfig, sessionId } =
@@ -905,15 +1094,21 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     expectedBaseSession: launchConfig.baseSession,
     sessionId,
   });
+  const sessionJsonl = materializeApiFirstTurnH0({
+    apiStartTime: executionContext.apiStartTime,
+    loadedSession,
+    sessionId,
+  });
   const { startedAt, turn } = await executeApiModelTurn(
     {
       activation: args.activation,
       apiKey,
       executionContext,
       launchConfig,
-      loadedSession,
       resourceSnapshot,
+      sessionJsonl,
       sessionId,
+      ownership,
     },
     signal,
   );
@@ -1093,9 +1288,10 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
 const executeApiFirstTurn$ = command(async function executeApiFirstTurn(
   { set },
   args: ApiFirstTurnContext,
+  ownership: PiApiFirstTurnOwnership,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
-  const prepared = await set(prepareApiFirstTurn$, args, signal);
+  const prepared = await set(prepareApiFirstTurn$, args, ownership, signal);
   const committed = await settle(
     set(commitApiFirstTurn$, args, prepared, signal),
     signal,
@@ -1127,6 +1323,24 @@ function normalizedApiFirstTurnFailure(
     signal.aborted
       ? "Pi API first-turn deadline elapsed"
       : "Pi API first turn failed",
+    error,
+  );
+}
+
+function normalizedSandboxFallbackFailure(
+  error: unknown,
+  signal: AbortSignal,
+): PiApiFirstTurnError {
+  if (error instanceof PiApiFirstTurnError) {
+    return error;
+  }
+  return piApiFirstTurnError(
+    signal.aborted
+      ? "PI_API_FIRST_TURN_DEADLINE_EXCEEDED"
+      : "PI_API_SANDBOX_FALLBACK_FAILED",
+    signal.aborted
+      ? "Pi API first-turn deadline elapsed during sandbox fallback"
+      : "Pi sandbox fallback publication failed",
     error,
   );
 }
@@ -1187,8 +1401,9 @@ export const runPiApiFirstTurn$ = command(
     signal: AbortSignal,
   ): Promise<DispatchCompleteSideEffectsInput | undefined> => {
     const context: ApiFirstTurnContext = { db: set(writeDb$), activation };
+    const ownership = createPiApiFirstTurnOwnership();
     const executed = await settleApiFirstTurnExecution(
-      set(executeApiFirstTurn$, context, signal),
+      set(executeApiFirstTurn$, context, ownership, signal),
       signal,
     );
     if (executed.ok) {
@@ -1199,11 +1414,37 @@ export const runPiApiFirstTurn$ = command(
           }
         : undefined;
     }
-    const failure = normalizedApiFirstTurnFailure(executed.error, signal);
-    L.warn("Pi API first-turn failed", {
+    let failure = normalizedApiFirstTurnFailure(executed.error, signal);
+    const fallbackReason = eligibleSandboxFallbackReason(
+      {
+        failure,
+        ownership,
+        launchConfig: activation.executionContext.piLaunchConfig.apiFirstTurn,
+      },
+      signal,
+    );
+    if (fallbackReason) {
+      const fallback = await settleApiFirstTurnExecution(
+        set(publishSandboxFallback$, context, signal),
+        signal,
+      );
+      if (fallback.ok) {
+        L.debug("Pi API first-turn outcome", {
+          runId: activation.runId,
+          outcome: "sandbox_fallback",
+          reason: fallbackReason,
+          ownershipStage: ownership.stage,
+        });
+        return undefined;
+      }
+      failure = normalizedSandboxFallbackFailure(fallback.error, signal);
+    }
+    L.warn("Pi API first-turn outcome", {
       runId: activation.runId,
-      code: failure.code,
-      error: failure,
+      outcome: "terminal_failure",
+      reason: failure.code,
+      ownershipStage: ownership.stage,
+      ...(fallbackReason ? { fallbackReason } : {}),
     });
     return set(failApiFirstTurn$, context, failure);
   },
