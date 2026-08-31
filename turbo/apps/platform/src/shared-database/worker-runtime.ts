@@ -53,7 +53,10 @@ import {
   type SharedDatabaseHeartbeatResult,
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
-import { createSharedDatabaseContractClient } from "./worker-client.ts";
+import type {
+  SharedDatabaseContractClient,
+  SharedDatabaseContractClientFactory,
+} from "./worker-client.ts";
 import {
   assertChatEventSchemaVersion,
   CHAT_EVENT_SCHEMA_VERSION_HEADERS,
@@ -119,8 +122,8 @@ interface ChatEventSyncResult {
   readonly changed: boolean;
 }
 
-type ChatEventContractClient = ReturnType<
-  typeof createSharedDatabaseContractClient<typeof chatThreadEventsContract>
+type ChatEventContractClient = SharedDatabaseContractClient<
+  typeof chatThreadEventsContract
 >;
 
 interface ChatEventRemoteState {
@@ -152,9 +155,7 @@ interface ChatThreadEventRemoteState {
 }
 
 interface ChatThreadEventRemoteContext {
-  readonly client: ReturnType<
-    typeof createSharedDatabaseContractClient<typeof chatThreadsContract>
-  >;
+  readonly client: SharedDatabaseContractClient<typeof chatThreadsContract>;
   readonly credential: CredentialState;
   readonly requestToken: string;
 }
@@ -393,7 +394,10 @@ export class SharedDatabaseWorkerRuntime {
     SharedDatabaseConnectionStatus
   >();
 
-  constructor(private readonly rootSignal: AbortSignal) {
+  constructor(
+    private readonly rootSignal: AbortSignal,
+    private readonly createContractClient: SharedDatabaseContractClientFactory,
+  ) {
     rootSignal.addEventListener(
       "abort",
       () => {
@@ -864,7 +868,7 @@ export class SharedDatabaseWorkerRuntime {
     }
 
     const requestToken = credential.token;
-    const client = createSharedDatabaseContractClient(
+    const client = this.createContractClient(
       chatThreadEventsContract,
       credential.apiBaseUrl,
       () => {
@@ -1057,7 +1061,7 @@ export class SharedDatabaseWorkerRuntime {
   ): Promise<ChatThreadEventSyncResult> {
     const cached = await this.readChatThreadEventCache(actor, signal);
     const requestToken = credential.token;
-    const client = createSharedDatabaseContractClient(
+    const client = this.createContractClient(
       chatThreadsContract,
       credential.apiBaseUrl,
       () => {
@@ -1258,9 +1262,7 @@ export class SharedDatabaseWorkerRuntime {
   }
 
   private async fetchChatThreadSnapshot(
-    client: ReturnType<
-      typeof createSharedDatabaseContractClient<typeof chatThreadsContract>
-    >,
+    client: SharedDatabaseContractClient<typeof chatThreadsContract>,
     credential: CredentialState,
     requestToken: string,
     signal: AbortSignal,

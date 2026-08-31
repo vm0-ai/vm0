@@ -36,6 +36,7 @@ import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   DEFAULT_PROFILE,
+  piApiFirstTurnManifestV3Schema,
 } from "@okouai/api-contracts/contracts/runners";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import {
@@ -120,6 +121,7 @@ import { readAgentRunState$ } from "./helpers/agent-run-callback";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
+  enableQueuedPiOwnershipTransferFixture,
   readRunAutonomyBudgetFixture,
   readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
@@ -847,6 +849,7 @@ async function waitForRunStatus(
     | "completed"
     | "failed"
     | "pending"
+    | "queued"
     | "running"
     | "timeout",
   timeout = 1000,
@@ -5570,7 +5573,7 @@ describe("CHAT-02: model-first provider policies", () => {
   it.each([
     {
       failure: "resource download",
-      expectedCode: "PI_API_RESOURCE_INVALID",
+      expectedCode: "PI_API_RESOURCE_PREPARATION_FAILED",
       failResource: true,
       expectedModelCalls: 0,
     },
@@ -5627,6 +5630,251 @@ describe("CHAT-02: model-first provider policies", () => {
     },
     90_000,
   );
+
+  it("hands a proven pre-provider failure to Sandbox without replaying a later provider failure", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    await api.heartbeatRunner(runnerGroup);
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold the thread while the future Pi launch is queued",
+      model: "claude-sonnet-5",
+    });
+    await flushWaitUntilForTest();
+    const anchorState = await api.readRun(actor, anchor.runId);
+    if (anchorState.status !== "pending") {
+      throw new Error(
+        `Expected pending anchor before claim: ${JSON.stringify(anchorState)}`,
+      );
+    }
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    expect(anchorClaim.claim.cliAgentType).toBe("claude-code");
+
+    await configureBuiltInPiModel(actor, "deepseek-v4-flash");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads(true);
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return HttpResponse.json(
+          { error: "provider unavailable" },
+          { status: 503 },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const fallbackPrompt = "execute this fallback prompt exactly once";
+    const fallback = await sendChatRun(actor, {
+      agentId,
+      prompt: fallbackPrompt,
+      model: "deepseek-v4-flash",
+    });
+    await waitForRunStatus(actor, fallback.runId, "queued");
+    await enableQueuedPiOwnershipTransferFixture(context, fallback.runId);
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    const fallbackManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${fallback.runId}/manifest.json`;
+    await expect
+      .poll(
+        () => {
+          return checkpointObjects.get(fallbackManifestKey);
+        },
+        { timeout: 5000 },
+      )
+      .toBeInstanceOf(Buffer);
+    expect(modelCalls).toBe(0);
+
+    const fallbackManifest = piApiFirstTurnManifestV3Schema.parse(
+      JSON.parse(
+        checkpointObjects.get(fallbackManifestKey)?.toString("utf8") ?? "{}",
+      ),
+    );
+    expect(fallbackManifest).toMatchObject({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode: "sandbox-first",
+      baseSession: { sessionId: fallback.threadId, sha256: null },
+      session: {
+        sessionId: fallback.threadId,
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        rawSize: expect.any(Number),
+      },
+      sandboxEventSequenceStart: 1,
+    });
+    const fallbackSessionKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${fallback.runId}/session.jsonl`;
+    const fallbackH0 =
+      checkpointObjects.get(fallbackSessionKey)?.toString("utf8") ?? "";
+    expect(Buffer.byteLength(fallbackH0)).toBe(
+      fallbackManifest.session.rawSize,
+    );
+    expect(createHash("sha256").update(fallbackH0).digest("hex")).toBe(
+      fallbackManifest.session.sha256,
+    );
+    const sandboxSession = MemoryPiSession.fromJsonl(fallbackH0);
+    expect(sandboxSession.getSessionId()).toBe(fallback.threadId);
+    expect(sandboxSession.buildSessionContext().messages).toHaveLength(0);
+
+    const fallbackClaim = await claimChatRun(runnerGroup, fallback.runId);
+    expect(fallbackClaim.claim).toMatchObject({
+      cliAgentType: "pi",
+      piSessionId: fallback.threadId,
+      prompt: fallbackPrompt,
+      piLaunchConfig: {
+        apiFirstTurn: {
+          ownershipTransfer: { schemaVersion: 1 },
+          sandboxEventSequenceStart: 1,
+        },
+      },
+    });
+    const postProviderPrompt = "must fail after one provider request";
+    const postProvider = await sendChatRun(actor, {
+      agentId,
+      prompt: postProviderPrompt,
+      model: "deepseek-v4-flash",
+    });
+    await waitForRunStatus(actor, postProvider.runId, "queued");
+    await enableQueuedPiOwnershipTransferFixture(context, postProvider.runId);
+
+    mockPiResourceArchiveDownloads();
+    sandboxSession.appendMessage({
+      role: "user",
+      content: fallbackPrompt,
+      timestamp: 1,
+    });
+    const fallbackAnswer = "Sandbox completed the fallback exactly once";
+    sandboxSession.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: fallbackAnswer }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 2,
+    });
+    const fallbackH2 = sandboxSession.toJsonl();
+    expect(occurrences(fallbackH2, fallbackPrompt)).toBe(1);
+    expect(
+      MemoryPiSession.fromJsonl(fallbackH2).isSettledCheckpoint(),
+    ).toBeTruthy();
+    const fallbackH2Hash = createHash("sha256")
+      .update(fallbackH2)
+      .digest("hex");
+    const preparedH2 = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: fallback.runId,
+        hash: fallbackH2Hash,
+        rawSize: Buffer.byteLength(fallbackH2),
+        encodedSize: Buffer.byteLength(fallbackH2),
+        encoding: "identity",
+      },
+      fallbackClaim.sandboxHeaders,
+      [200],
+    );
+    expect(preparedH2.body).toMatchObject({
+      existing: false,
+      encoding: "identity",
+    });
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${fallbackH2Hash}.blob`,
+      Buffer.from(fallbackH2, "utf8"),
+    );
+    await webhooks.requestAgentEvents(
+      {
+        runId: fallback.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              content: [{ type: "text", text: fallbackAnswer }],
+            },
+          },
+          {
+            type: "result",
+            sequenceNumber: 2,
+            result: fallbackAnswer,
+          },
+        ],
+      },
+      fallbackClaim.sandboxHeaders,
+      [200],
+    );
+    const completedFallback = await webhooks.requestAgentComplete(
+      {
+        runId: fallback.runId,
+        exitCode: 0,
+        lastEventSequence: 2,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: fallback.threadId,
+          cliAgentSessionHistoryHash: fallbackH2Hash,
+        },
+      },
+      fallbackClaim.sandboxHeaders,
+      [200],
+    );
+    expect(completedFallback.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await waitForRunStatus(actor, fallback.runId, "completed", 5000);
+    await waitForRunStatus(actor, postProvider.runId, "failed", 5000);
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(1);
+    expect((await api.readRun(actor, postProvider.runId)).error).toContain(
+      "[PI_API_MODEL_FAILED]",
+    );
+    const postProviderManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${postProvider.runId}/manifest.json`;
+    expect(checkpointObjects.has(postProviderManifestKey)).toBeFalsy();
+    const postProviderClaim = await api.requestClaimRunnerJob(
+      true,
+      postProvider.runId,
+      [404],
+    );
+    expect(postProviderClaim.status).toBe(404);
+    const finalThread = await waitForThreadMessages(
+      actor,
+      fallback.threadId,
+      (messages) => {
+        return eventBackedContents(messages, fallback.runId).some((message) => {
+          return message.content === fallbackAnswer;
+        });
+      },
+    );
+    expect(
+      eventBackedContents(finalThread.events, fallback.runId).filter(
+        (message) => {
+          return message.content === fallbackAnswer;
+        },
+      ),
+    ).toHaveLength(1);
+    await expect(
+      readThreadSessionConversation(context, fallback.threadId),
+    ).resolves.toMatchObject({ conversation_run_id: fallback.runId });
+  }, 90_000);
 
   it("fails a corrupt Pi H0 before a second model call and preserves H0", async () => {
     const { actor, agentId } = await entitledChatActor();
@@ -10177,43 +10425,6 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  it("keeps Morning Brief metadata out of the runtime prompt", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const prompt = "Generate my Morning Brief for 2026-08-05.";
-    const baseline = await sendChatRun(actor, {
-      agentId,
-      prompt,
-      userMessage: {
-        version: 1,
-        parts: [{ type: "text", text: prompt }],
-      },
-    });
-    const withMorningBriefPart = await sendChatRun(actor, {
-      agentId,
-      prompt,
-      userMessage: {
-        version: 1,
-        parts: [
-          { type: "text", text: prompt },
-          { type: "morning_brief", briefDate: "2026-08-05" },
-        ],
-      },
-    });
-
-    const baselineRun = await api.readRun(actor, baseline.runId);
-    const morningBriefRun = await api.readRun(
-      actor,
-      withMorningBriefPart.runId,
-    );
-    expect(morningBriefRun.prompt).toBe(baselineRun.prompt);
-    expect(morningBriefRun.prompt).toBe(prompt);
-
-    await cancelChatRun(actor, baseline.runId);
-    await cancelChatRun(actor, withMorningBriefPart.runId);
-  }, 90_000);
-
   it("uses the userMessage document for the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

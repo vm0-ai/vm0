@@ -563,15 +563,6 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
-      // Phase-A historical-read fallback for stored Chat documents. Phase B
-      // may remove it only after #30264's released zero-traffic gate and a
-      // controller-approved historical readability contraction.
-      type: z.literal("morning_brief"),
-      briefDate: z.string(),
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal("file"),
       fileId: z.string().min(1),
       filenameSnapshot: z.string().min(1),
@@ -634,8 +625,7 @@ const userMessageDocumentSchema = z
               return (
                 part.type === "source" ||
                 part.type === "automation" ||
-                part.type === "goal" ||
-                part.type === "morning_brief"
+                part.type === "goal"
               );
             }).length <= 1
           );
@@ -668,8 +658,7 @@ const userMessageInputDocumentSchema = z
               return (
                 part.type === "source" ||
                 part.type === "automation" ||
-                part.type === "goal" ||
-                part.type === "morning_brief"
+                part.type === "goal"
               );
             }).length <= 1
           );

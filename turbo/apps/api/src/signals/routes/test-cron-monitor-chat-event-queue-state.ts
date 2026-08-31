@@ -84,10 +84,6 @@ const STALE_CONTEXT_FIXTURES = [
     contextType: "goal",
     eventType: "input.goal",
   },
-  {
-    contextType: "morning_brief",
-    eventType: "input.prompt",
-  },
 ] as const;
 
 function actionOk(extra: Record<string, unknown> = {}) {

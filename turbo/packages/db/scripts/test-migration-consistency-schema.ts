@@ -2364,43 +2364,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "chat_events",
     triggerName: "chat_events_reject_update",
   },
-  // Temporary #30264 rolling floor. Phase B removes all five triggers and
-  // functions after the released legacy zero-traffic observation gate.
-  {
-    definition:
-      "CREATE TRIGGER force_legacy_morning_brief_disabled_1029 BEFORE INSERT OR UPDATE OF morning_brief_enabled ON public.org_members_metadata FOR EACH ROW EXECUTE FUNCTION force_legacy_morning_brief_disabled_1029()",
-    schemaName: "public",
-    tableName: "org_members_metadata",
-    triggerName: "force_legacy_morning_brief_disabled_1029",
-  },
-  {
-    definition:
-      "CREATE TRIGGER pause_legacy_morning_brief_schedule_1029 BEFORE INSERT OR UPDATE OF next_run_at ON public.morning_brief_schedules FOR EACH ROW EXECUTE FUNCTION pause_legacy_morning_brief_schedule_1029()",
-    schemaName: "public",
-    tableName: "morning_brief_schedules",
-    triggerName: "pause_legacy_morning_brief_schedule_1029",
-  },
-  {
-    definition:
-      "CREATE TRIGGER reject_legacy_morning_brief_delivery_1029 BEFORE INSERT OR UPDATE OF status, run_id, input_key, output_key ON public.morning_brief_deliveries FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_delivery_1029()",
-    schemaName: "public",
-    tableName: "morning_brief_deliveries",
-    triggerName: "reject_legacy_morning_brief_delivery_1029",
-  },
-  {
-    definition:
-      "CREATE TRIGGER reject_legacy_morning_brief_context_1029 BEFORE INSERT ON public.chat_morning_brief_context FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_context_1029()",
-    schemaName: "public",
-    tableName: "chat_morning_brief_context",
-    triggerName: "reject_legacy_morning_brief_context_1029",
-  },
-  {
-    definition:
-      "CREATE TRIGGER reject_legacy_morning_brief_email_1029 BEFORE INSERT ON public.email_outbox FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_email_1029()",
-    schemaName: "public",
-    tableName: "email_outbox",
-    triggerName: "reject_legacy_morning_brief_email_1029",
-  },
   // Temporary #29910 old-writer/new-DB bridges. Remove only with #28368's
   // separately reviewed legacy-acceptor contract after the production drain.
   {
@@ -2570,42 +2533,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 const EXPECTED_PERMANENT_FUNCTIONS = [
   // Same temporary #30453 bridge and #30468 removal gate as its trigger.
   CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
-  // Same temporary #30264 bridge and phase-B removal gate as the triggers.
-  {
-    bodyHash: "44930ae5bfb57cee2cb3645f16abc8fb",
-    functionName: "force_legacy_morning_brief_disabled_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "b888804c00096033c0d80b03ae7181f5",
-    functionName: "pause_legacy_morning_brief_schedule_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "4d498817e1b718b455b034ae068a678b",
-    functionName: "reject_legacy_morning_brief_delivery_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "a652f4bc6cc488ef084432476fda6113",
-    functionName: "reject_legacy_morning_brief_context_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "0fedb75100b0bdde27915e5688d35fc0",
-    functionName: "reject_legacy_morning_brief_email_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
   // Same temporary #29910 bridge and #28368 removal gate as the triggers.
   {
     bodyHash: "08ccacae72d432c06fecb49b4f01dcbf",

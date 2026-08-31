@@ -501,7 +501,7 @@ function sourceIsPendingForRun(
     return false;
   }
   if (source.eventType === "input.prompt") {
-    return source.contextType !== "morning_brief";
+    return true;
   }
   return (
     source.eventType === "input.budget" &&

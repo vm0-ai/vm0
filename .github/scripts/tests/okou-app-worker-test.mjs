@@ -506,7 +506,7 @@ globalThis.fetch = (input) => {
 };
 const proxiedAsset = await worker.fetch(
   new Request(
-    "https://app.okou.ai/okou-app/assets/shared-database-worker-AbCd1234.js?okou-app-version=0.812.5",
+    "https://app.okou.ai/okou-app/assets/shared-database-worker-AbCd1234.js",
     {
       headers: {
         Authorization: "Bearer secret",
@@ -519,7 +519,7 @@ const proxiedAsset = await worker.fetch(
 );
 assert.equal(
   proxiedAssetRequest?.url,
-  "https://static.okou.io/okou-app/assets/shared-database-worker-AbCd1234.js?okou-app-version=0.812.5",
+  "https://static.okou.io/okou-app/assets/shared-database-worker-AbCd1234.js",
 );
 assert.equal(proxiedAssetRequest?.headers.get("range"), "bytes=0-1023");
 assert.equal(proxiedAssetRequest?.headers.get("authorization"), null);

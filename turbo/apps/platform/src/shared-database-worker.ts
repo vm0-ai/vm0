@@ -44,6 +44,7 @@ function main(): void {
   const tabCredentialIds = new Map<TabId, string>();
   const tabHeartbeatAts = new Map<TabId, number>();
   const maps = {
+    appVersion: __OKOU_APP_VERSION__,
     allocateTabId: (): TabId => {
       return nextTabId++;
     },

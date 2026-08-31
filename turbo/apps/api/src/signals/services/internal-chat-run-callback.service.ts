@@ -148,7 +148,6 @@ import {
   isWebChatContextType,
   loadNextUnclaimedQueuedUserMessage,
   queuedUserMessageTriggerSource,
-  retireQueuedMorningBriefMessage,
   type QueuedUserMessageContextType,
   type QueuedUserMessageTriggerSource,
   type QueuedUserMessage,
@@ -2376,9 +2375,6 @@ function priorRunsContextLabel(
     case "github": {
       return "GitHub";
     }
-    case "morning_brief": {
-      return "Workflow Automation";
-    }
     case "web":
     case "agent_run":
     case "agentphone": {
@@ -2877,9 +2873,6 @@ async function resolveQueuedLaunchMaterial(
       });
       break;
     }
-    case "morning_brief": {
-      throw new Error("Legacy Morning Brief queue item reached Run admission");
-    }
     case "automation":
     case "goal": {
       return unreachableQueuedMessageContext(contextType);
@@ -3009,9 +3002,6 @@ function queuedMessageAdmissionFailure(
           contextType,
         ),
       };
-    }
-    case "morning_brief": {
-      throw new Error("Legacy Morning Brief queue item reached admission");
     }
     case "automation":
     case "goal": {
@@ -4072,24 +4062,6 @@ function autoSendAdmissionFailureArgs(
   };
 }
 
-async function retireLegacyMorningBriefQueueHead(
-  args: AutoSendQueuedMessageArgs,
-  queuedMessage: QueuedUserMessage,
-  signal: AbortSignal,
-): Promise<boolean> {
-  if (queuedMessage.contextType !== "morning_brief") {
-    return false;
-  }
-  await retireQueuedMorningBriefMessage(args.db, {
-    threadId: args.chatThreadId,
-    eventId: queuedMessage.id,
-    contextId: queuedMessage.contextId,
-    currentTime: nowDate(),
-  });
-  signal.throwIfAborted();
-  return true;
-}
-
 /**
  * User-message half of the per-thread scheduler: when the thread has no
  * in-flight run, dispatch the oldest queued user message — whoever sent it.
@@ -4115,10 +4087,6 @@ async function autoSendQueuedMessageForThread(
     },
   );
   if (!queuedMessage) {
-    return;
-  }
-
-  if (await retireLegacyMorningBriefQueueHead(args, queuedMessage, signal)) {
     return;
   }
 

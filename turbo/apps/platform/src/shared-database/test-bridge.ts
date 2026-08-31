@@ -47,6 +47,7 @@ import {
   unsubscribeSharedDatabaseWorker$,
 } from "./worker-signals.ts";
 import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
+import { initializeAppVersion$ } from "../signals/app-version.ts";
 
 /**
  * Ordinary page stories keep the production worker signals and computed
@@ -56,6 +57,7 @@ import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 export type SharedWorkerTestTransport = "direct" | "message-port";
 
 interface SetupSharedWorkerTestBootstrap {
+  readonly appVersion: string;
   readonly afterHeartbeat?: () => Promise<void>;
   readonly identity: Pick<SharedDatabaseIdentity, "orgId" | "userId"> | null;
   readonly transport: SharedWorkerTestTransport;
@@ -312,11 +314,13 @@ export const setupSharedWorkerTestBootstrap$ = command(
     options: SetupSharedWorkerTestBootstrap,
     signal: AbortSignal,
   ): void => {
+    options.workerStore.set(initializeAppVersion$, options.appVersion);
     const directIdentity = options.identity;
     let directBridge: DirectSharedDatabaseBridge | null = null;
     let directRealtimeForwardingInstalled = false;
     let nextTabId = 0;
     const maps = {
+      appVersion: options.appVersion,
       allocateTabId: (): TabId => {
         return nextTabId++;
       },

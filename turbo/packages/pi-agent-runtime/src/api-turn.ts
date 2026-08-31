@@ -104,6 +104,7 @@ export async function runPiApiFirstTurn(
         apiKey: args.model.apiKey,
         signal,
       },
+      ownership: args.ownership,
     });
     return {
       assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),

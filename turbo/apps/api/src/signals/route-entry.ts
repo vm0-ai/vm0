@@ -729,9 +729,8 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   "/api/org": ["/api/okou/org", "/api/zero/org"],
   // #28461: the agent reads and writes and the workflow and
-  // workflow-automation management routes. The slice also covered the manual
-  // Morning Brief trigger; #28709 removed that row on zero-traffic evidence,
-  // and #28711 removed `agents/:id/instructions`, `workflow-automations`,
+  // workflow-automation management routes. #28711 removed
+  // `agents/:id/instructions`, `workflow-automations`,
   // `workflows/:workflowId`, `workflows/:workflowId/automations` and
   // `workflows/:workflowId/run` on drained-traffic evidence; #28917 removed
   // `workflow-automations/:id/enable` and `workflow-automations/:id/disable`,

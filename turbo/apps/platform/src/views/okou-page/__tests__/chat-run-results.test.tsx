@@ -18,7 +18,6 @@ import {
 import {
   context,
   detachedSetupPage,
-  SERVER_QUEUED_RUN_THREAD_ID,
   expectTextBefore,
   mockServerQueuedThreadStories,
   buttonByText,
@@ -619,80 +618,6 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Connector usage is ready.")).toBeInTheDocument();
       expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  it("stops a server-queued run and recalls queued follow-up messages", async () => {
-    const interrupts: string[] = [];
-    const recalls: string[] = [];
-    mockChatLifecycle(context, {
-      threadId: SERVER_QUEUED_RUN_THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-server-queued-user",
-          role: "user",
-          content: "Start the server queued run",
-          runId: "run-server-queued",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-server-queue-marker",
-          role: "assistant",
-          content: null,
-          runId: "run-server-queued",
-          runEventId: "queue:queued",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: "msg-server-queued-followup",
-          role: "user",
-          content: null,
-          userMessage: {
-            version: 1,
-            parts: [
-              {
-                type: "text",
-                text: "Follow up when the queued run starts",
-              },
-              { type: "morning_brief", briefDate: "2026-06-09" },
-            ],
-          },
-          runId: undefined,
-          createdAt: "2026-06-09T10:00:02Z",
-        },
-      ],
-      onInterruptEventAppend: (body) => {
-        interrupts.push(body.interruptsRunId);
-      },
-      onRecallEventAppend: (body) => {
-        recalls.push(body.revokesEventId);
-      },
-      activeRunIds: ["run-server-queued"],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${SERVER_QUEUED_RUN_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Start the server queued run"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Follow up when the queued run starts"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("1 message waiting")).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Stop"));
-
-    await waitFor(() => {
-      expect(interrupts).toContain("run-server-queued");
-      expect(recalls).toContain("msg-server-queued-followup");
-      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
   });
 

@@ -5,6 +5,8 @@ import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
 import {
+  createPiApiFirstTurnOwnership,
+  createPiSessionJsonl,
   inspectPiSessionJsonl,
   runPiApiFirstTurn,
   UnsupportedPiSessionVersionError,
@@ -13,6 +15,7 @@ import { projectPiApiAssistantMessage } from "./api-turn";
 import { MemoryPiSession } from "./session-memory";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
+const SESSION_TIMESTAMP = "2026-08-31T12:34:56.000Z";
 
 function responsesTextSse(response: ServerResponse, text: string): void {
   const responseId = "resp_terra_api_first";
@@ -86,6 +89,35 @@ function responsesTextSse(response: ServerResponse, text: string): void {
 }
 
 describe("Pi API facade", () => {
+  it("keeps provider request ownership monotonic", () => {
+    const ownership = createPiApiFirstTurnOwnership();
+
+    expect(ownership.stage).toBe("pre-provider");
+    ownership.markProviderRequestMayHaveStarted();
+    expect(ownership.stage).toBe("provider-may-have-started");
+    ownership.markProviderRequestMayHaveStarted();
+    expect(ownership.stage).toBe("provider-may-have-started");
+  });
+
+  it("creates one canonical empty native Pi history", () => {
+    const jsonl = createPiSessionJsonl({
+      cwd: "/home/user/workspace",
+      sessionId: SESSION_ID,
+      timestamp: SESSION_TIMESTAMP,
+    });
+
+    expect(inspectPiSessionJsonl(jsonl)).toStrictEqual({
+      sessionId: SESSION_ID,
+      messageCount: 0,
+      hasPendingToolCalls: false,
+      isSettledCheckpoint: false,
+    });
+    expect(JSON.parse(jsonl.split("\n")[0] ?? "{}")).toMatchObject({
+      id: SESSION_ID,
+      timestamp: SESSION_TIMESTAMP,
+    });
+  });
+
   it("uses Terra Responses with low thinking for an API-first turn", async () => {
     let providerRequest:
       | { readonly url: string | undefined; readonly body: unknown }
@@ -135,6 +167,7 @@ describe("Pi API facade", () => {
           thinkingLevel: "low",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+        ownership: createPiApiFirstTurnOwnership(),
       });
 
       expect(providerRequest).toMatchObject({

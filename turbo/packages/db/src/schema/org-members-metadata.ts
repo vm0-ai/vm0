@@ -33,10 +33,6 @@ export const orgMembersMetadata = pgTable(
     sendMode: text("send_mode").notNull().default("enter"),
     theme: text("theme").$type<ThemePreference>(),
     colorTheme: text("color_theme").$type<ColorTheme>(),
-    // Opt-in: rollout must not flip existing members on by default.
-    morningBriefEnabled: boolean("morning_brief_enabled")
-      .notNull()
-      .default(false),
     selectedModel: varchar("selected_model", { length: 255 }),
     serviceTier: varchar("service_tier", {
       length: 32,

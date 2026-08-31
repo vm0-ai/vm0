@@ -43,6 +43,9 @@ const runtimeBuildInfoHtmlPlugin = {
 
 export default defineConfig(({ command }) => ({
   base: command === "build" ? APP_ASSET_BASE : "/",
+  define: {
+    __OKOU_APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   experimental: {
     renderBuiltUrl(filename, { hostType, type }) {
       if (
